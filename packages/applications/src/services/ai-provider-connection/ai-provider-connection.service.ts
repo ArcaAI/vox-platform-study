@@ -23,6 +23,7 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  TenantStorageConfigRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
@@ -53,6 +54,9 @@ import {
   taskTypesOfService,
 } from './byo-model-declaration';
 import { PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
+import { builtInDefaultFor } from './built-in-defaults';
+import { PLATFORM_STORAGE_CREDENTIAL_SOURCE, resolvePlatformStorageCredential } from './platform-storage-credential';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { AiProviderConnectionResponse, DeclareConnectionModelsRequest, UpsertAiProviderConnectionRequest } from './dto';
 import { sanitizeProviderExtras } from './provider-extras';
 import { ConnectionRequirementSubject, validateProviderRequirements } from './provider-requirements';
@@ -76,6 +80,27 @@ import { ConnectionRequirementSubject, validateProviderRequirements } from './pr
  * plaintext-at-rest fallback (a key write is REJECTED when Vault is absent), and
  * no read path — and no route at all — ever returns the ciphertext.
  */
+/** Per-write knobs shared by the create and revive paths. */
+interface WriteOptions {
+  /**
+   * Whether `provider-requirements.ts` judges this write. Default `true`.
+   *
+   * `false` is used by ONE caller — `resetRow` — and the reason is narrow: the
+   * body it writes is not an operator's, it is `BUILT_IN_CONNECTION_DEFAULTS`,
+   * which is pinned by a contract test to be EXACTLY what the seed writes on a
+   * fresh database. `llm:llama-cpp` is the case that forces the point: the seed
+   * ships it enabled without `extraJson.modelPath` (the seed runs no
+   * requirement check), so a reset that ran the check would refuse to restore
+   * precisely the row whose default the platform itself ships. The requirement
+   * table still governs every operator write, including the next edit of the
+   * row this just restored.
+   */
+  enforceRequirements?: boolean;
+}
+
+/** The one sanctioned `enforceRequirements: false` — see `WriteOptions`. */
+const RESTORE_BUILT_IN: WriteOptions = { enforceRequirements: false };
+
 @Injectable()
 export class AiProviderConnectionService extends BaseService implements IProviderConnectionService {
   private readonly logger = new Logger(AiProviderConnectionService.name);
@@ -106,6 +131,13 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // arity; an ABSENT repository makes `declareModels` fail closed rather than
     // silently succeed having written nothing.
     @Optional() private readonly aiModelRepository?: AiModelRepository,
+    // TASK-932 D-7 — the platform's OWN object storage, which is what an
+    // enabled-and-keyless `model-registry:s3` row resolves to. Both are
+    // `@Optional()` and TRAILING so every existing positional fixture keeps its
+    // arity; ABSENT means the fallback simply does not apply (`absent`, the
+    // pre-ticket behaviour), never a substituted empty credential.
+    @Optional() private readonly storageConfigRepository?: TenantStorageConfigRepository,
+    @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.AiProviderConnection);
   }
@@ -114,11 +146,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
     const rows = await this.connectionRepository.findByTenantIdAndService(service, scopedTenantId, tx);
-    return rows.map((r) => AiProviderConnectionDtoMapper.toResponse(r));
+    return rows.filter((r) => this.isVisibleToTier(service, r.provider, scopedTenantId)).map((r) => AiProviderConnectionDtoMapper.toResponse(r));
   }
 
   async getRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    this.assertVisibleToTier(service, provider, scopedTenantId);
     const tx = this.crossTenantLane(scopedTenantId);
     const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
     if (!row) return { ...AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, provider), models: [] };
@@ -327,48 +360,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx);
       }
 
-      // Requirements BEFORE encryption, for the same reason the precondition
-      // check comes before it: a row that will be refused must not spend a
-      // Vault round trip, and a Transit outage must not turn a 400 into a 500.
-      this.assertRequirementsSatisfied(service, provider, {
-        enabled: dto.enabled ?? false,
-        baseUrl: dto.baseUrl ?? null,
-        region: dto.region ?? null,
-        apiVersion: dto.apiVersion ?? null,
-        deploymentName: dto.deploymentName ?? null,
-        hasApiKey: dto.apiKey !== undefined,
-        extraJson: dto.extraJson ?? null,
-      });
-
-      // Encrypt only when the caller actually supplied a key — and only AFTER
-      // the precondition verdict above (encrypting first would turn a
-      // stale-If-Match 412 into a 500 whenever Transit was down).
-      const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
-      const entity = AiProviderConnectionFactory.CreateAiProviderConnection({
-        tenantId: scopedTenantId,
-        service,
-        provider,
-        baseUrl: dto.baseUrl ?? null,
-        region: dto.region ?? null,
-        apiVersion: dto.apiVersion ?? null,
-        deploymentName: dto.deploymentName ?? null,
-        encryptedApiKey: secret?.ciphertext ?? null,
-        keyVersion: secret?.keyVersion ?? null,
-        enabled: dto.enabled ?? false,
-        extraJson: dto.extraJson ?? null,
-        maxConcurrent: dto.maxConcurrent ?? null,
-        rpmLimit: dto.rpmLimit ?? null,
-        tpmLimit: dto.tpmLimit ?? null,
-        timeoutS: dto.timeoutS ?? null,
-        createdBy: this.requestUserId ?? undefined,
-      });
-      const saved = await this.connectionRepository.create(entity, tx);
-      this.broadcastSysEvent(SysEventType.ResourceCreated, {
-        resourceId: saved.id,
-        createdAt: saved.createdAt,
-        data: { service, provider, tenantId: scopedTenantId, enabled: saved.enabled, action: 'connection-created' },
-      });
-      return AiProviderConnectionDtoMapper.toResponse(saved);
+      return this.createFromDto(dto, service, provider, scopedTenantId, tx);
     }
 
     if (ev === undefined) {
@@ -489,6 +481,116 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     });
   }
 
+  /**
+   * TASK-932 R-3/D-8 — restore ONE platform-managed row to its built-in default.
+   *
+   * The undo an admin actually needs, and the one `DELETE` cannot be. Deleting a
+   * SYSTEM engine row does not "return it to the default": `apps/text` resolves a
+   * self-hosted engine's base URL only from the injected `provider_overrides`
+   * fold, with no env fallback, so a missing row is a 503 on every generate.
+   * Reset therefore REWRITES the row from `BUILT_IN_CONNECTION_DEFAULTS`.
+   *
+   * AUTH-NOTE: SUPER_ADMIN-ONLY, enforced imperatively. The decorator on the
+   * route reads `@CanManage('GlobalSetting')` because there is no "super admin"
+   * CASL subject and tenant admins legitimately hold `manage` for every OTHER
+   * operation on this controller; the real gate is the `isSuperAdmin` check
+   * below (403 — a privilege rule, NOT the 404-over-403 cross-tenant posture).
+   *
+   * ORDER. The privilege check runs FIRST and is row-INDEPENDENT: every caller
+   * who is not a platform administrator gets the same 403 for every provider,
+   * existing or not, so there is no existence oracle to leak (the same shape as
+   * `assertElevatedTenantlessContext` on the promotion routes). The
+   * tier/existence answers that DO vary by argument come after it.
+   *
+   * WHAT IT RESTORES. Exactly what the default declares — endpoint, `enabled`,
+   * `extraJson`, and the key material (the non-secret self-host placeholder for
+   * an engine; nothing at all for the two model-registry rows, whose blank state
+   * IS their default) — plus the three vendor columns cleared, since no built-in
+   * provider addresses itself by region/api-version/deployment. The CEILINGS are
+   * deliberately preserved: `maxConcurrent` and friends are an operator's tuning
+   * of their own hardware, not part of the row's identity, and silently wiping
+   * them would make "reset the endpoint" a lossy operation.
+   */
+  async resetRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Built-in provider connections are reset by platform super administrators only.');
+    }
+
+    const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    const fallback = builtInDefaultFor(service, provider);
+    if (!fallback) {
+      throw new NotFoundException(
+        `Provider '${provider}' (service '${service}') has no built-in default to reset to. ` +
+          'Only the platform-managed inference engines and the model registry ship one.',
+      );
+    }
+    if (scopedTenantId !== SYSTEM_TENANT_ID) {
+      throw new ForbiddenException(
+        `'${service}:${provider}' is platform-managed: its built-in default lives on the platform (SYSTEM) tier, ` +
+          'so there is nothing to reset for an individual tenant.',
+      );
+    }
+
+    const dto: UpsertAiProviderConnectionRequest = {
+      baseUrl: fallback.baseUrl,
+      region: null,
+      apiVersion: null,
+      deploymentName: null,
+      enabled: fallback.enabled,
+      extraJson: fallback.extraJson,
+      ...(fallback.apiKey !== null ? { apiKey: fallback.apiKey } : {}),
+    };
+
+    const tx = this.crossTenantLane(scopedTenantId);
+    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+
+    if (!existing) {
+      // A row an admin deleted is REVIVED rather than re-inserted: the unique
+      // (tenantId, service, provider) index counts the tombstone, so a plain
+      // create would 409 with no HTTP recovery path (F-028).
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceProvider(service, provider, scopedTenantId, tx);
+      if (deleted) return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
+      return this.createFromDto(dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
+    }
+
+    // The key is written unconditionally when the default declares one (so a
+    // rotated-then-broken engine row is repaired), and CLEARED when it does not
+    // — a stored token on a model-registry row is precisely what "reset to the
+    // built-in default" is asked to remove.
+    const secret = fallback.apiKey !== null ? await this.encryptKey(fallback.apiKey) : undefined;
+    const previousVersion = existing.version;
+    await this.updateEntity(existing, {
+      baseUrl: fallback.baseUrl,
+      region: null,
+      apiVersion: null,
+      deploymentName: null,
+      enabled: fallback.enabled,
+      extraJson: fallback.extraJson,
+      encryptedApiKey: secret?.ciphertext ?? null,
+      keyVersion: secret?.keyVersion ?? null,
+    });
+
+    if (!existing.hasChanges) {
+      // Already at the default. Idempotent by contract — no version bump, no
+      // `updatedAt` rewrite, no event: a reset that changed nothing did nothing.
+      return AiProviderConnectionDtoMapper.toResponse(existing);
+    }
+
+    const updated = await this.connectionRepository.updateWithVersion(existing.id, existing, previousVersion, tx);
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: {
+        service,
+        provider,
+        tenantId: scopedTenantId,
+        previousVersion,
+        newVersion: updated.version,
+        action: 'connection-reset-to-default',
+      },
+    });
+    return AiProviderConnectionDtoMapper.toResponse(updated);
+  }
+
   async resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null> {
     const { tenantRows, systemRows, vetoed } = await this.cascadeRows(service, tenantId, provider);
 
@@ -583,6 +685,69 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * caller only knows as `0`), so a concurrent revive still throws
    * `OptimisticConcurrencyException` via `updateWithVersion`.
    */
+  /**
+   * INSERT one connection row from a full write intent.
+   *
+   * Extracted from `upsertRow`'s create branch (TASK-932) so `resetRow` can
+   * re-create a row that was deleted outright without restating the
+   * requirement check, the encrypt-after-precondition ordering, the factory call
+   * and the `ResourceCreated` broadcast — four things that must stay identical
+   * however the row comes into existence.
+   */
+  private async createFromDto(
+    dto: UpsertAiProviderConnectionRequest,
+    service: ProviderService,
+    provider: string,
+    scopedTenantId: string,
+    tx?: CoreDatabaseService['baseClient'],
+    options: WriteOptions = {},
+  ): Promise<AiProviderConnectionResponse> {
+    // Requirements BEFORE encryption, for the same reason the precondition
+    // check comes before it: a row that will be refused must not spend a
+    // Vault round trip, and a Transit outage must not turn a 400 into a 500.
+    if (options.enforceRequirements !== false) {
+      this.assertRequirementsSatisfied(service, provider, {
+        enabled: dto.enabled ?? false,
+        baseUrl: dto.baseUrl ?? null,
+        region: dto.region ?? null,
+        apiVersion: dto.apiVersion ?? null,
+        deploymentName: dto.deploymentName ?? null,
+        hasApiKey: dto.apiKey !== undefined,
+        extraJson: dto.extraJson ?? null,
+      });
+    }
+
+    // Encrypt only when the caller actually supplied a key — and only AFTER
+    // the precondition verdict above (encrypting first would turn a
+    // stale-If-Match 412 into a 500 whenever Transit was down).
+    const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
+    const entity = AiProviderConnectionFactory.CreateAiProviderConnection({
+      tenantId: scopedTenantId,
+      service,
+      provider,
+      baseUrl: dto.baseUrl ?? null,
+      region: dto.region ?? null,
+      apiVersion: dto.apiVersion ?? null,
+      deploymentName: dto.deploymentName ?? null,
+      encryptedApiKey: secret?.ciphertext ?? null,
+      keyVersion: secret?.keyVersion ?? null,
+      enabled: dto.enabled ?? false,
+      extraJson: dto.extraJson ?? null,
+      maxConcurrent: dto.maxConcurrent ?? null,
+      rpmLimit: dto.rpmLimit ?? null,
+      tpmLimit: dto.tpmLimit ?? null,
+      timeoutS: dto.timeoutS ?? null,
+      createdBy: this.requestUserId ?? undefined,
+    });
+    const saved = await this.connectionRepository.create(entity, tx);
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { service, provider, tenantId: scopedTenantId, enabled: saved.enabled, action: 'connection-created' },
+    });
+    return AiProviderConnectionDtoMapper.toResponse(saved);
+  }
+
   private async restoreAndOverwrite(
     deleted: AiProviderConnectionEntity,
     dto: UpsertAiProviderConnectionRequest,
@@ -590,20 +755,23 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     provider: string,
     scopedTenantId: string,
     tx?: CoreDatabaseService['baseClient'],
+    options: WriteOptions = {},
   ): Promise<AiProviderConnectionResponse> {
     const currentVersion = deleted.version;
 
     // A revive is a FRESH write — every field below is set from the DTO with no
     // carry-over from the tombstone — so it is judged exactly like a create.
-    this.assertRequirementsSatisfied(service, provider, {
-      enabled: dto.enabled ?? false,
-      baseUrl: dto.baseUrl ?? null,
-      region: dto.region ?? null,
-      apiVersion: dto.apiVersion ?? null,
-      deploymentName: dto.deploymentName ?? null,
-      hasApiKey: dto.apiKey !== undefined,
-      extraJson: dto.extraJson ?? null,
-    });
+    if (options.enforceRequirements !== false) {
+      this.assertRequirementsSatisfied(service, provider, {
+        enabled: dto.enabled ?? false,
+        baseUrl: dto.baseUrl ?? null,
+        region: dto.region ?? null,
+        apiVersion: dto.apiVersion ?? null,
+        deploymentName: dto.deploymentName ?? null,
+        hasApiKey: dto.apiKey !== undefined,
+        extraJson: dto.extraJson ?? null,
+      });
+    }
 
     const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
 
@@ -925,7 +1093,70 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       return { outcome: 'denied', reason: 'the platform-default credential entitlement is not granted for this tenant' };
     }
 
+    // TASK-932 D-7 — the weight store's BUILT-IN default. An ENABLED
+    // `model-registry:s3` row that carries no credential of its own is not "no
+    // opinion": it is the declaration that this platform's own object storage
+    // holds the weights. Reached only HERE, after the veto and the entitlement
+    // gate, so a tenant that vetoed the plane still gets `denied` and never a
+    // silently-substituted platform credential.
+    const platformStorage = await this.platformStorageFallback(service, provider, tenantId);
+    if (platformStorage) return platformStorage;
+
     return { outcome: 'absent' };
+  }
+
+  /**
+   * The `model-registry:s3` platform-storage branch, or `null` when it does not
+   * apply (TASK-932 D-7).
+   *
+   * Two conditions, both necessary. The row must be the SYSTEM one and ENABLED —
+   * a disabled row is the platform's own veto and must stay a non-answer — and
+   * it must carry no credential of its own, because an explicit key on the row
+   * is an operator's deliberate override of the built-in default and wins
+   * outright (it has already been returned by the fold above, so reaching here
+   * at all means there was none).
+   *
+   * A resolution FAULT is not swallowed: it propagates to `resolveCredential`'s
+   * catch, which reports `unavailable`. Reading a Vault outage as "no credential
+   * configured" would downgrade an entitled fetch to an anonymous one — the
+   * exact confusion the four-outcome contract exists to prevent.
+   */
+  private async platformStorageFallback(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+  ): Promise<ResolvedProviderCredential | null> {
+    if (service !== 'model-registry' || provider !== 's3') return null;
+
+    const systemRows = await this.readTier(service, SYSTEM_TENANT_ID, provider);
+    const row = systemRows[0];
+    if (!row || !row.enabled) return null;
+    if ((row.encryptedApiKey?.length ?? 0) > 0) return null;
+
+    const credential = await resolvePlatformStorageCredential({
+      storageConfigRepository: this.storageConfigRepository,
+      appSettings: this.appSettingsService,
+      secrets: this.secretsService,
+    });
+    if (!credential) return null;
+
+    this.logger.log(`model-registry:s3 resolved from the platform storage configuration for tenant ${tenantId}`);
+    return {
+      outcome: 'resolved',
+      apiKey: credential.secretAccessKey,
+      baseUrl: credential.endpoint,
+      region: credential.region,
+      // The platform paid for this store, whoever's model is being fetched.
+      funding: 'platform',
+      // `accessKeyId` is the non-secret half of the pair, in the same place an
+      // explicitly-configured row would carry it, so the consumer
+      // (`apps/stt`'s `model_credentials.py`) needs no new branch at all.
+      extras: { accessKeyId: credential.accessKeyId },
+      // ADDITIVE and optional — an unknown field the Python parser simply does
+      // not read — saying WHICH tier answered, for an operator reading the
+      // response or a future consumer that wants to distinguish the two.
+      source: PLATFORM_STORAGE_CREDENTIAL_SOURCE,
+    };
   }
 
   /**
@@ -1118,6 +1349,32 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * not do this", not "this may not exist". Mirrors
    * `AiTaskDefaultService.upsertRow`'s SUPER_ADMIN_ONLY guard.
    */
+  /**
+   * TASK-932 R-12 — whether a TIER may see `(service, provider)` at all.
+   *
+   * The platform tier sees everything it owns. A CUSTOMER tenant sees only the
+   * cloud providers it may bring an account for: the built-in engines, the
+   * platform's own self-hosted serving engines and the whole model-registry
+   * plane are platform infrastructure (owner rule 2026-08-24, re-stated
+   * 2026-09-09), and a tenant that can neither read nor write them has no reason
+   * to be told they exist.
+   *
+   * This is the READ half of the boundary `assertWriteAllowed` already enforced
+   * on writes. It is deliberately the OTHER posture — 404, not 403 — because the
+   * two answer different questions: a write is "you may not do this to your own
+   * tenant" (a privilege statement, nothing to hide), a read is "your tenant has
+   * no such row" (existence, which the house posture hides).
+   */
+  private isVisibleToTier(service: ProviderService, provider: string, targetTenantId: string): boolean {
+    if (targetTenantId === SYSTEM_TENANT_ID) return true;
+    return isCloudByoProvider(service, provider);
+  }
+
+  private assertVisibleToTier(service: ProviderService, provider: string, targetTenantId: string): void {
+    if (this.isVisibleToTier(service, provider, targetTenantId)) return;
+    throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
+  }
+
   private assertWriteAllowed(service: ProviderService, provider: string, targetTenantId: string): void {
     if (targetTenantId === SYSTEM_TENANT_ID) {
       if (!isSuperAdmin(this.requestUser)) {
