@@ -35,12 +35,12 @@ const ACTION_DESCRIPTORS = Object.values(ACTION_CATALOGUE).map((a) => ({
   externalWrite: a.externalWrite,
   defaultTimeoutSeconds: a.defaultTimeoutSeconds,
   defaultMaxAttempts: a.defaultMaxAttempts,
-  entitlementKey: a.entitlementKey,
+  entitlementKey: a.entitlementKey ?? null,
   configSchema: ACTION_CONFIG_SCHEMAS[a.key],
   inputs: ACTION_PORTS[a.key].inputs,
   outputs: ACTION_PORTS[a.key].outputs,
   deprecated: false,
-  replacedBy: undefined,
+  replacedBy: null,
 }));
 
 export const REGISTRY: ReadonlyMap<string, WorkflowNodeDescriptor> = new Map<string, WorkflowNodeDescriptor>(
