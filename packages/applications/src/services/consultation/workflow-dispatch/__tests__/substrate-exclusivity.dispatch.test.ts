@@ -31,7 +31,7 @@ const publishedDefinition = {
   slug: 'arcaai-consultation-v1',
   versionNumber: 3,
   name: 'ArcaAI Consultation',
-  paletteKey: 'consultation',
+  paletteKey: 'core',
   compiledConfig: { formatVersion: 1, stages: [], checksum: 'abc' },
 };
 

@@ -8,7 +8,8 @@ import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workf
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
-import { CONSULTATION_PALETTE_KEY, consultationSelectionViolation } from './consultation-selection-policy';
+import { CORE_PALETTE_KEY } from '@arcaai/workflow-contract';
+import { consultationSelectionViolation } from './consultation-selection-policy';
 import { SelectableConsultationWorkflowListResponse } from './dto';
 import {
   ConsultationWorkflowDispatchResult,
@@ -16,8 +17,6 @@ import {
   IConsultationWorkflowDispatchService,
 } from './IConsultationWorkflowDispatchService';
 
-/** The palette whose assignment resolves to an `AsrPipeline` rather than an interpreter run. */
-const STT_PALETTE_KEY = 'stt';
 
 /** Mirrors `interpreterSessionId` in the exposure plane. */
 function interpreterSessionId(runId: string): string {
@@ -138,7 +137,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    */
   private async resolveTenantDefaultSlug(tenantId: string): Promise<string | null> {
     try {
-      const assignment = await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, null);
+      const assignment = await this.assignments.resolve(tenantId, CORE_PALETTE_KEY, null);
       return assignment.workflowDefinitionSlug;
     } catch (error) {
       this.logger.warn({
@@ -168,7 +167,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // the one that ran.
     const resolved: { workflowDefinitionSlug: string | null; source: ConsultationWorkflowDispatchResult['source'] } = workflowDefinitionSlug
       ? { workflowDefinitionSlug, source: 'caller-selected' }
-      : await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId));
+      : await this.assignments.resolve(tenantId, CORE_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId));
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
@@ -323,19 +322,15 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    * `apps/api/src/modules/streaming/**`, which grep-gate deliberately fences so a
    * change there forces an explicit decision rather than riding along in an unrelated diff.
    */
-  private async resolveSttPipelineId(tenantId: string, departmentId: string | null): Promise<string | null> {
-    if (!this.sttPipelineResolver) return null;
-
-    try {
-      const assignment = await this.assignments.resolve(tenantId, STT_PALETTE_KEY, departmentId);
-      if (!assignment.workflowDefinitionSlug) return null;
-
-      return await this.sttPipelineResolver.resolvePipelineId(tenantId, assignment.workflowDefinitionSlug);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      this.logger.warn({ message: 'STT pipeline resolution failed — falling back to default pipeline resolution', tenantId, reason });
-      return null;
-    }
+  private async resolveSttPipelineId(_tenantId: string, _departmentId: string | null): Promise<string | null> {
+    // TASK-893: the `stt` palette is retired with the rest of the legacy vocabulary, so there is
+    // no `stt` assignment to resolve and no graph that compiles to an `AsrPipeline`. The ASR
+    // binding is the tenant's SPEECH_TO_TEXT Agent, resolved by the gateway at session start
+    // (TASK-861 `ResolvedAsrSpec`); `sttPipelineId` stays on the result for wire compatibility and
+    // is always `null`. Retargeting this read to the `core` palette would ask the pipeline
+    // resolver for a pipeline no `core` graph compiles — a warning per consultation open, for
+    // nothing.
+    return null;
   }
 
   /**

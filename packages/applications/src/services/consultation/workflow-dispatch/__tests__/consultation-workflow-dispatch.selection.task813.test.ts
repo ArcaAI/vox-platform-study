@@ -28,7 +28,7 @@ const consultationDefinition = {
   slug: 'caller_picked_v1',
   versionNumber: 3,
   name: 'Caller Picked',
-  paletteKey: 'consultation',
+  paletteKey: 'core',
   compiledConfig: { formatVersion: 1, stages: [], checksum: 'abc' },
 };
 
@@ -127,12 +127,13 @@ describe('dispatchForConsultation — honouring the caller selection over the ca
 
   it('does NOT consult the consultation-palette cascade when a selection is present', async () => {
     await dispatch('caller_picked_v1');
-    expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT);
+    expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT);
   });
 
-  it('still resolves the INDEPENDENT stt-palette assignment — the two palettes are separate lanes', async () => {
-    await dispatch('caller_picked_v1');
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'stt', DEPARTMENT);
+  it('never resolves an `stt` assignment — the palette is retired (TASK-893); the ASR agent is gateway-resolved', async () => {
+    const result = await dispatch('caller_picked_v1');
+    expect(deps.assignments.resolve).not.toHaveBeenCalledWith(TENANT, 'stt', DEPARTMENT);
+    expect(result.sttPipelineId).toBeNull();
   });
 
   it('falls back to the cascade when no selection is supplied — today behaviour, unchanged', async () => {
@@ -141,7 +142,7 @@ describe('dispatchForConsultation — honouring the caller selection over the ca
     // TASK-891 — no `parentConsultationId` was passed to `dispatch()` here, so the cascade
     // call now also carries the reserved `visit-type:new-visit` tag; the fallback OUTCOME
     // (slug + source) is exactly what it was before that tag existed.
-    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPARTMENT, ['visit-type:new-visit']);
+    expect(deps.assignments.resolve).toHaveBeenCalledWith(TENANT, 'core', DEPARTMENT, ['visit-type:new-visit']);
     expect(result.workflowDefinitionSlug).toBe('cascade_assigned_v1');
     expect(result.source).toBe('tenant');
   });

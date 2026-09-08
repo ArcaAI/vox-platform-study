@@ -67,7 +67,7 @@ const createMockDefinition = (overrides: Record<string, unknown> = {}) => ({
   slug: overrides.slug ?? 'discharge_summary',
   name: overrides.name ?? 'Discharge Summary',
   description: overrides.description ?? null,
-  paletteKey: overrides.paletteKey ?? 'summarization',
+  paletteKey: overrides.paletteKey ?? 'core',
   versionNumber: overrides.versionNumber ?? 1,
   compiledConfig: overrides.compiledConfig ?? VALID_COMPILED_CONFIG,
 });
@@ -142,7 +142,7 @@ describe('WorkflowExposureService', () => {
           slug: 'discharge_summary',
           name: 'Discharge Summary',
           description: null,
-          paletteKey: 'summarization',
+          paletteKey: 'core',
           versionNumber: 1,
           inputSchema: null,
           outputSchema: null,

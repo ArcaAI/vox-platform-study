@@ -1,3 +1,5 @@
+import { CORE_PALETTE_KEY } from '@arcaai/workflow-contract';
+
 /**
  * The consultation-selection predicate
  *
@@ -27,8 +29,19 @@
  * available to the 403 message and the server-side log without either consumer re-deriving it.
  */
 
-/** The palette a consultation-governing graph must declare. */
-export const CONSULTATION_PALETTE_KEY = 'consultation';
+/**
+ * The palettes a consultation-governing graph may declare — `{ core }` since TASK-893, when the
+ * legacy `consultation` palette was retired and every governing graph became a `core` graph
+ * (INTERFACES §7.3). A set rather than a key so a second admissible palette is one entry here.
+ */
+export const CONSULTATION_GOVERNING_PALETTES: ReadonlySet<string> = new Set([CORE_PALETTE_KEY]);
+
+/**
+ * @deprecated TASK-893 — the `consultation` palette no longer exists. The consultation cascade
+ * (`assignments.resolve(tenantId, palette, …)`) resolves `CORE_PALETTE_KEY`; this alias keeps
+ * older readers compiling and pointing at the SAME palette. Removed in R4.
+ */
+export const CONSULTATION_PALETTE_KEY = CORE_PALETTE_KEY;
 
 /**
  * `null` when this definition may govern a consultation; otherwise a clause naming why not,
@@ -38,11 +51,10 @@ export const CONSULTATION_PALETTE_KEY = 'consultation';
  * additionally skips a definition with no `compiledConfig` — but it SKIPS it, degrading to the
  * default engine, rather than refusing the request. Folding that into this predicate would make
  * the list hide a slug the gate still accepts, which is exactly the drift this module exists to
- * prevent. A selectable definition can therefore still degrade at dispatch; that outcome is
- * reported by `GET /consultations/:id/workflow`, which is where "what actually governs" lives.
+ * prevent.
  */
 export function consultationSelectionViolation(definition: { paletteKey: string }): string | null {
-  if (definition.paletteKey !== CONSULTATION_PALETTE_KEY) {
+  if (!CONSULTATION_GOVERNING_PALETTES.has(definition.paletteKey)) {
     return `is palette '${definition.paletteKey}' and cannot govern a consultation`;
   }
 
