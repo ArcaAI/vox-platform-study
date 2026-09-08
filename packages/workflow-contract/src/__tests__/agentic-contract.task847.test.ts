@@ -21,9 +21,12 @@ const { GENERATION_HYPERPARAMETERS, agenticNodeConfigProblems, hyperparameterCap
 const ROUTING_POLICY_ID = '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41';
 
 describe(' step 3 — hyper-parameter capability gating', () => {
-  it('names all seven hyper-parameters, including the two F-12 recorded as absent', () => {
+  it('names every capability-gated generation key: the node`s seven (incl. the two F-12 recorded as absent) plus the agent-only `reasoning`', () => {
+    // TASK-930 D-6 — `reasoning` is authorable on the AGENT, not on the node, but the SAME
+    // `supportedGenerationParams` declaration gates both, so a model row must be able to declare
+    // it. Leaving it out made a seeded published agent unpublishable.
     expect([...GENERATION_HYPERPARAMETERS].sort()).toEqual(
-      ['frequencyPenalty', 'maxTokens', 'presencePenalty', 'seed', 'stopSequences', 'temperature', 'topP'].sort(),
+      ['frequencyPenalty', 'maxTokens', 'presencePenalty', 'reasoning', 'seed', 'stopSequences', 'temperature', 'topP'].sort(),
     );
   });
 
