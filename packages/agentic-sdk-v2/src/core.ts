@@ -178,6 +178,7 @@ export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultation
 
 // TASK-865: published-Agent selection types (business plane).
 export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './types';
+export type { NamedEntityRecognitionInput, NamedEntityRecognitionOutput, RecognizedEntity } from './types';
 export type { UseSelectableAsrAgentsReturn } from './hooks';
 // TASK-890 (OD-F) — invoking a published agent from the browser.
 export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './types';
@@ -651,6 +652,20 @@ export { probeAudioDurationSeconds, type ProbeAudioDurationOptions } from './cor
 export type { UseBatchTranscriptionProps, UseBatchTranscriptionReturn, BatchTranscriptionLimitsResponse } from './hooks/useBatchTranscription';
 export type { SttFallbackProvider } from './hooks/useSttProviderToggle';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
+
+/**
+ * The WebSocket lane of a workflow run stream (TASK-931), exported alongside `SSEClient` for
+ * the same reason: a surface that wants to watch a run outside `useWorkflowRun` — a worker, a
+ * non-React shell — needs the client, not just the hook. `SocketUnavailableError` is exported
+ * so that refusal is catchable by name rather than by message.
+ */
+export {
+  SocketUnavailableError,
+  WorkflowRunSocketClient,
+  resolveWorkflowSocketUrl,
+  workflowRunStreamTicketPath,
+  type WorkflowRunStreamTicket,
+} from './core/WorkflowRunSocketClient';
 
 // Dual-stream recorder (dual-capture X8): records raw + processed
 // tracks in parallel via two MediaRecorders.
