@@ -22,6 +22,7 @@ import { DocumentTemplateServiceModule } from '../../document-template/document-
 import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
+import { LivePreSummaryModule } from '../summary/live-pre-summary.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -115,6 +116,13 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     // neither resolver was reachable from this injector. Both deps are @Optional, so this is
     // additive — a composition without it keeps the pre-TASK-930 TEXT_GENERATION fallback.
     AgentServiceModule,
+    // TASK-932 D-9 — resolves the @Optional `ILivePreSummaryRunner` the WARM START runs through.
+    // One provider wide on purpose: the live path needs exactly one capability from the summary
+    // pipeline, and importing `SummaryServiceModule` wholesale would make every future dependency
+    // of `SummaryService` a dependency of the live flush path too. Absent ⇒ a graph that declares
+    // an `onStart` node publishes `degraded: warm_start_unwired`, which is observable rather than
+    // silent.
+    LivePreSummaryModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

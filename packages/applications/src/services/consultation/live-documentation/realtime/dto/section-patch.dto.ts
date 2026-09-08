@@ -147,3 +147,51 @@ export class SectionPatchDto {
   @ApiProperty({ description: 'ISO-8601 timestamp of this patch' })
   updatedAt: string;
 }
+
+/**
+ * TASK-932 D-9 — the `presummary` SSE payload.
+ *
+ * Published on the SAME `consultation:live-summary:{id}` channel as `section.patch` and the
+ * legacy whole-document `LiveSummaryEventDto`, and discriminated the same way: by `event`. The
+ * legacy payload carries no discriminator at all, which is why every additive event on this
+ * channel must carry one — a consumer tells them apart by the presence and value of `event` and
+ * by nothing else.
+ *
+ * ## Why the console needs three states and not two
+ *
+ * The warm start runs in PARALLEL with the capture session opening: the clinician sees the panel
+ * before there is anything in it. Without `running` the panel cannot distinguish "the model is
+ * working" from "nothing was ever asked for", which is the same skeleton-forever failure
+ * TASK-891 B5 fixed for the case note ("The owner watched that skeleton for ten minutes").
+ *
+ * `reason` is a PHI-safe CODE, never clinical text and never a model message, because this rides
+ * on the clinician's live feed. `no_case_notes` is the ordinary degrade: a first-ever visit has
+ * no prior record to summarise, and the console renders that as a fact rather than as an error.
+ */
+export const PRE_SUMMARY_EVENT = 'presummary' as const;
+
+export const PRE_SUMMARY_STATUSES = ['running', 'ready', 'degraded'] as const;
+export type PreSummaryStatus = (typeof PRE_SUMMARY_STATUSES)[number];
+
+export class PreSummaryEventDto {
+  @ApiProperty({ description: 'Event discriminator on the live-summary channel', enum: [PRE_SUMMARY_EVENT] })
+  event: typeof PRE_SUMMARY_EVENT;
+
+  @ApiProperty({ description: 'Consultation this warm start belongs to' })
+  consultationId: string;
+
+  @ApiProperty({ description: 'Where the warm start is', enum: PRE_SUMMARY_STATUSES })
+  status: PreSummaryStatus;
+
+  @ApiPropertyOptional({ description: 'The generated pre-summary (Markdown), present on `ready`' })
+  content?: string;
+
+  @ApiPropertyOptional({ description: 'PHI-safe reason code on `degraded` (e.g. `no_case_notes`) — never clinical text' })
+  error?: string;
+
+  @ApiPropertyOptional({ description: 'The `agentRef.slug` the graph`s warm-start node names, when it named one' })
+  agentSlug?: string;
+
+  @ApiProperty({ description: 'ISO-8601 timestamp of this event' })
+  updatedAt: string;
+}
