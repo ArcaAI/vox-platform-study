@@ -18,8 +18,9 @@ export type { WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge, WorkflowNodeP
 // per-instance (dynamic) branch handles, loop-body rules, the publish-time checks a JSON
 // Schema cannot express, and the protocol/trigger/schema readers the exposure plane and the
 // OpenAPI generator consume.
+export { ACTION_CATALOGUE, ACTION_KEYS, actionDelegateOf } from './action-catalogue';
+export type { CoreActionDescriptor, NodePortSet } from './action-catalogue';
 export {
-  ACTION_CATALOGUE,
   ANNOTATION_NODE_CLASS,
   CORE_OUTPUT_PROTOCOLS,
   CORE_TRIGGER_KINDS,
@@ -28,7 +29,6 @@ export {
   REVIEW_NODE_CLASS,
   ROUTER_NODE_CLASS,
   actionConfigSchemaOf,
-  actionDelegateOf,
   branchHandlesOf,
   compiledTriggerContextSchema,
   coreNodeConfigProblems,
@@ -42,7 +42,7 @@ export {
   resolveInputPort,
   resolveOutputPort,
 } from './core-contract';
-export type { CoreActionDescriptor, CoreNodeView, CoreOutputProtocol, CoreTriggerKind } from './core-contract';
+export type { CoreNodeView, CoreOutputProtocol, CoreTriggerKind } from './core-contract';
 
 // TASK-864 §3.2 — the CEL-subset expression language `core.condition` / `core.loop` are authored
 // in. Pure, total, dependency-free; the Python interpreter mirrors it and both are held to ONE

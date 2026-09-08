@@ -26,7 +26,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "regen:registry-snapshot": "tsx scripts/regen-node-registry-snapshot.mjs",
+    "regen:action-snapshot": "tsx scripts/regen-action-catalogue-snapshot.mjs"
   },
   "keywords": [
     "arcaai",
