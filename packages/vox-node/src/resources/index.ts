@@ -4,7 +4,7 @@
  * built on `core/**`. `src/client.ts` is the intended consumer of this module.
  *
  * The `admin` surface (`./admin`) is a mix of one hand-authored base class and
- * 52 GENERATED per-area resources — see `./admin/index.ts` for what is absent
+ * 49 GENERATED per-area resources — see `./admin/index.ts` for what is absent
  * from it and which owner decision keeps it absent. Re-exported wholesale
  * because enumerating a generated surface by hand here is precisely the drift
  * the generator exists to prevent.

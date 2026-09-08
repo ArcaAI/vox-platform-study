@@ -127,7 +127,7 @@ export class HopeClient {
    */
   readonly agents: AgentsResource;
   /**
-   * The `/api/v1/admin/**` administration plane — 52 areas, one property per
+   * The `/api/v1/admin/**` administration plane — 49 areas, one property per
    * `svc:admin:*` scope.
    *
    * Requires a {@link HopeClientOptions.serviceAccount} credential. The plane

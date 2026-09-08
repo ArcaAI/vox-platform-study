@@ -96,7 +96,7 @@ export type { ServiceAccountCredentials } from './core/service-account-token';
 /**
  * The `/api/v1/admin/**` surface: the hand-authored
  * {@link AdminResource} base, the {@link AdminNamespace} that `hope.admin` is
- * an instance of, and the 52 generated per-area resources.
+ * an instance of, and the 49 generated per-area resources.
  *
  * Five admin controllers are deliberately ABSENT and stay absent by owner
  * decision — see `resources/admin/index.ts` for the table naming each decision.

@@ -3,7 +3,7 @@
 The HOPE **server-side Node SDK** — a typed client for the HOPE gateway's
 summarization and consultation-summary surfaces, the workflow and published-agent
 invocation planes (`hope.workflows.*`, `hope.agents.*`), plus the full
-**administration plane** (`hope.admin.*`, 52 areas), for backend engineers who
+**administration plane** (`hope.admin.*`, 49 areas), for backend engineers who
 need to call HOPE from a Node service, script, or worker.
 
 ## What this is, and what it is NOT
@@ -205,7 +205,7 @@ the methods you actually call:
 
 ## The admin plane — `hope.admin.*`
 
-52 administration areas, reachable **only** with a service account. The surface
+49 administration areas, reachable **only** with a service account. The surface
 is generated from the gateway's own route metadata and OpenAPI document, and a
 CI gate fails on any drift between them, so it cannot silently fall behind the
 API.

@@ -17,3 +17,38 @@ deliberately surfaces rather than papers over — read this before "fixing" a qu
 | **G9**  | `JobStreamEvent`'s union can't be discriminated on the presence of `error` — a FAILED job also carries its own `error?: string`.                                                                                                                                    | Discriminate on the presence of `status` instead.                                                                                                                                                               |
 | **G10** | No seeded API key could generate a summary — every seeded key carried `consultation:report:read` but none carried `consultation:report:write`. Fixed by adding the write scope to the SDK-type seeded keys.                                                         | Local dev / SDK integration tests would 403 on the flagship day-1 capability otherwise.                                                                                                                         |
 | **G11** | Two SDK-reachable routes (`consultations.get`, `summaries.update`) were left unscoped by the initial scope-enforcement pass. Fixed — both now declare `@RequiredScopes`.                                                                                            | Boot audit rewritten to assert over the named route set rather than a brittle count.                                                                                                                            |
+
+## Addenda
+
+### 2026-09-08 (TASK-931) — **G3 is CLOSED**
+
+Webhook delivery shipped in TASK-890: a processor consumes the queue, deliveries are signed
+(`X-Hope-Webhook-Signature: sha256=<hex>` over the RAW body), and `WebhookRunHistory` records
+them. `@arcaai/vox-node` ships the RECEIVER half — `verifyWebhookSignature` — and the outbound
+trigger half for `POST /hooks/workflows/{hookId}` (`signWebhookTrigger`, a different header and
+a different signed string: the trigger folds `X-Hope-Timestamp` into the HMAC, which is what
+makes the gateway's 300-second replay window mean anything).
+
+The row is left in the table above rather than deleted: a reader who arrives from a comment,
+a changelog entry, or a search for "webhooks never fire" needs to find the correction where the
+claim is, not discover that the claim silently disappeared. **Async consumers no longer have to
+poll.**
+
+### 2026-09-08 (TASK-931) — two additions, neither a gap
+
+Recorded here because both change what the SDK may assume about the gateway, and the next
+person to read this file for "what is the gateway actually like" should not have to reconstruct
+them from a changelog:
+
+- **The agent and workflow INVOCATION planes now accept a service account** (TASK-930 §3:
+  `svc:agent:definition:read`, `svc:agent:invocation:write`, `svc:workflow:definition:read`,
+  `svc:workflow:run:read`, `svc:workflow:run:write`). They previously recorded `svcScopes: []`,
+  and the SDK refused a service-account client at the call site rather than ship a 403 no role
+  grant could fix — that refusal is gone. The CONSULTATION-bound plane
+  (`/consultations/{id}/workflows*`) deliberately gained none and still refuses: running a
+  workflow that writes into a clinical record is not a machine-identity power.
+- **A run stream can be read over a WebSocket** via a run-scoped, single-use ticket
+  (`POST /workflows/{slug}/runs/{runId}/stream-ticket` → `{ ticket, expiresAt, scope, url }`,
+  ~30s, scope `workflow_run:<runId>`, compared by strict equality). SSE remains the default and
+  the only lane that RESUMES — the socket ticket is single-use, so a dropped socket ends the
+  read where SSE reconnects with `Last-Event-ID` and loses nothing.
