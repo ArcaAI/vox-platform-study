@@ -1015,6 +1015,8 @@ export interface ConsultationResponse {
   id: string;
   /** Whether this consultation was just created (true) or already existed (false) */
   isNew: boolean;
+  /** BCP-47 language tag the generated notes are written in, as declared at open. Absent = undeclared (the agent decides). */
+  language?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
   /** Parent consultation ID (for re-visits/referrals) */
