@@ -1,6 +1,7 @@
 /**
  * TASK-890 §3.2/§3.4/§3.11 — `PromptAssemblyService` renders through the ONE grammar over the
- * `context.*` namespace declared by the tenant's `consultation_legacy_v1` schema clone.
+ * `context.*` namespace declared by the tenant's `consultation_note_context` schema clone
+ * (TASK-893 rebuilt the seed set on that ONE trigger context schema; the bridge slug moved with it).
  *
  * This is the highest-blast-radius half of the ticket: this service assembles the prompt for
  * SIX consultation callers, and until now it carried §2.4 flavour 2 — a second single-brace
@@ -182,7 +183,7 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
     expect(error).toBeInstanceOf(ServiceUnavailableException);
     expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
       code: 'LEGACY_CONTEXT_SCHEMA_MISSING',
-      slug: 'consultation_legacy_v1',
+      slug: 'consultation_note_context',
       tenantId: 'tenant-1',
     });
   });
@@ -200,7 +201,7 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
     resolvesTo('Prior: [{{context.prior_visit_summary}}]');
     await (await getService()).assemble(params());
 
-    expect(mockSchemaRepository.findByTenantAndSlug).toHaveBeenCalledWith('tenant-1', 'consultation_legacy_v1');
+    expect(mockSchemaRepository.findByTenantAndSlug).toHaveBeenCalledWith('tenant-1', 'consultation_note_context');
     expect(mockSchemaRepository.findByTenantAndSlug).not.toHaveBeenCalledWith('00000000-0000-0000-0000-000000000000', expect.anything());
   });
 
