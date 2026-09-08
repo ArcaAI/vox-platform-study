@@ -1256,7 +1256,7 @@ function spliceSections(base: SeedDocumentShape, splices: readonly DepartmentSec
   const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
   if (duplicate) throw new Error(`department shape "${title}": duplicate section key "${duplicate}"`);
 
-  return { schemaVersion: '1.0', title, globalInstruction: base.globalInstruction, sections };
+  return { schemaVersion: '1.0', title, ...(base.globalInstruction === undefined ? {} : { globalInstruction: base.globalInstruction }), sections };
 }
 
 export const ARCAAI_DEPARTMENT_VISIT_TYPES = ['new-visit', 'revisit'] as const;

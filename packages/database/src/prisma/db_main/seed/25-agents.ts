@@ -276,8 +276,28 @@ export const PRE_SUMMARY_PARAMETERS = {
   guards: { enabled: true },
 };
 
+/**
+ * TASK-932 D-10 — the finalize prompt now carries the DNA WRITING-STYLE block.
+ *
+ * `{{context.dna_style_text}}` is a declared field of `consultation_note_context`
+ * (`07e`, folded in from the v1 vocabulary) and is the SAME name `PromptAssemblyService`
+ * injects on the gateway finalize path, so one clinician's style reaches both finalizers under
+ * one name. It carries `default("")` for the reason the grammar has the filter at all: a
+ * consultation whose doctor has no report, or has DNA switched off, must finalize normally —
+ * `renderTemplate` throws `PromptVariableUnresolved` on an undefaulted miss, and a finalize that
+ * fails because a style is absent would be a worse outcome than a finalize with no style.
+ *
+ * The block is STYLE ONLY, and says so twice. A writing style may change how a fact is phrased;
+ * it may never change, add or remove one. That boundary is the whole reason DNA is applied at
+ * finalize rather than live (TASK-891 F-1 / D-10): the clinician reads the note before signing it.
+ */
 export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
+  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code.\n\n' +
+  '=== WRITING STYLE ===\n' +
+  'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
+  'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +
+  'The redaction rules above outrank the style in every case: a name is replaced with its placeholder however the clinician would have written it.\n\n' +
+  'Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
 
 /** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
 export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
