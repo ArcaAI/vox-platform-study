@@ -45,9 +45,23 @@ async function createScopedApiKey(request: APIRequestContext, token: string, sco
   return { id: body.apiKey.id, rawKey: body.rawKey };
 }
 
-/** A structurally-valid, compilable graph — a single `noop` node, no edges
- *  (mirrors `workflow-definition.service.test.ts`'s `VALID_GRAPH` fixture). */
-const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
+/**
+ * A structurally-valid, compilable graph in the `core` vocabulary — the two mandatory graph
+ * boundaries and the control edge between them.
+ *
+ * It was `[{ id: 'n1', type: 'noop', config: {} }]` until TASK-893 Phase 4 retired the legacy
+ * vocabulary: `WORKFLOW_NODE_REGISTRY` is now the eleven `core.*` types alone, so `noop` is
+ * unregistered and `compile()` refuses it (WF-C-002, a 400 at create). `kinds: ['api']` on the
+ * trigger is what makes the definition reachable through the exposure plane's `invoke`.
+ */
+const VALID_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+    { id: 'n_output', type: 'core.output', config: { protocols: ['http'] } },
+  ],
+  edges: [{ id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_output', toPort: 'after' }],
+};
 
 interface CreatedDefinition {
   id: string;
@@ -60,7 +74,7 @@ interface CreatedDefinition {
 async function createPublishedWorkflow(request: APIRequestContext, token: string, slug: string): Promise<CreatedDefinition> {
   const created = await request.post('/api/v1/admin/workflow-definitions', {
     headers: { Authorization: `Bearer ${token}` },
-    data: { slug, name: `E2E ${slug}`, paletteKey: 'summarization', graph: VALID_GRAPH },
+    data: { slug, name: `E2E ${slug}`, paletteKey: 'core', graph: VALID_GRAPH },
   });
   expect(created.status(), `create workflow definition '${slug}'`).toBe(201);
   const definition = await created.json();
@@ -174,7 +188,7 @@ test.describe('/api/v1/workflows exposure plane', () => {
       const slug = `e2e_draft_${Date.now()}`;
       const created = await request.post('/api/v1/admin/workflow-definitions', {
         headers: { Authorization: `Bearer ${tenantAdminToken}` },
-        data: { slug, name: 'E2E Draft', paletteKey: 'summarization', graph: VALID_GRAPH },
+        data: { slug, name: 'E2E Draft', paletteKey: 'core', graph: VALID_GRAPH },
       });
       expect(created.status()).toBe(201);
 
