@@ -34,14 +34,15 @@
  * `PublishContext` rather than an optional one: a required field cannot be forgotten, which is
  * precisely how the gate this module replaces came to be unwired.
  */
+import { actionDelegateOf } from './action-catalogue';
 import { agenticNodeConfigProblems } from './agentic-contract';
 import type { AgenticGraphContext } from './agentic-contract';
 import { coreNodeConfigProblems, loopBodyProblems } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
 import { guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
-import { MANDATORY_NODE_TYPES, NODE_CONFIG_SCHEMAS } from './node-config-schemas';
+import { NODE_CONFIG_SCHEMAS } from './node-config-schemas';
 import type { WorkflowNodeDescriptor } from './node-registry';
-import { WORKFLOW_NODE_REGISTRY } from './node-registry';
+import { WORKFLOW_NODE_REGISTRY, classesOf } from './node-registry';
 import { nodeDescriptorContractProblems, workflowEdgePortProblems } from './port-validation';
 import type { WorkflowFinding, WorkflowFindingSeverity, WorkflowRuleClass } from './report';
 import { templateReferenceProblems, templateSyntaxProblems } from './template';
@@ -79,6 +80,9 @@ export type WorkflowPublishFindingCode = (typeof WORKFLOW_PUBLISH_FINDING_CODES)
  * it is. The specificity lives on `code`, which is the axis a console actually branches on.
  */
 export const PUBLISH_FINDING_RULE_ID = 'WF-PUB';
+
+/** The class that earns a `GUARDRAIL_OPTED_OUT` warning when its bearer is switched off. */
+const MANDATORY_CLASS = 'mandatory';
 
 /**
  * The OD-C ramp (P-4), as ONE constant. `PROMPT_VARIABLE_UNDECLARED` is a WARNING in the first
@@ -361,23 +365,34 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
   // omission impossible to do quietly (the other two are the per-call ledger attribute and the
   // `SKIPPED(disabled_by_config)` step result).
   //
-  // It runs over the WHOLE graph, not the `core.*` release-1 subset: every node this fires on is
-  // a clinical guard in one of the legacy palettes, so scoping it to `core.*` would emit nothing
-  // where it matters most. It is a WARNING permanently — an opt-out is a decision on the record,
-  // never a refusal — and it names the registry classes that made the node mandatory so a reader
-  // does not have to open the registry to see what was switched off.
+  // It runs over the WHOLE graph, not the `core.*` release-1 subset: scoping it to a node-type
+  // allow-list would emit nothing where it matters most. It is a WARNING permanently — an opt-out
+  // is a decision on the record, never a refusal — and it names the classes that made the node
+  // mandatory so a reader does not have to open the catalogue to see what was switched off.
+  //
+  // TASK-893: the class is resolved PER INSTANCE (`classesOf(type, config)`), not by a lookup in
+  // `MANDATORY_NODE_TYPES`. With the legacy palettes retired that set is the two GRAPH
+  // BOUNDARIES, and those are exactly the two types whose schema WITHHOLDS `enabled` — so a
+  // type-set test could no longer match anything and this warning would have become dead code
+  // while still looking live. The mandatory clinical guards survive as ACTIONS behind
+  // `core.action`, carrying `mandatory` in their catalogue entry, and `classesOf` is what reaches
+  // them. Losing this finding would remove the first of the three compensating controls TASK-890
+  // D-1's safety argument rests on.
   for (const node of nodes) {
-    if (!MANDATORY_NODE_TYPES.has(node.type)) continue;
+    const classes = classesOf(node.type, isPlainObject(node.config) ? node.config : undefined);
+    if (!classes.includes(MANDATORY_CLASS)) continue;
     if (!isPlainObject(node.config) || node.config.enabled !== false) continue;
-    const classes = registry[node.type]?.classes ?? [];
+    // The delegate's key is what a reader recognises — `core.action` alone says nothing about
+    // WHICH guard was switched off.
+    const label = actionDelegateOf(node.config)?.key ?? node.type;
     findings.push(
       finding(
         'GUARDRAIL_OPTED_OUT',
         'invariant',
         'WARNING',
         node.id,
-        `node \`${node.id}\` (\`${node.type}\`) is DISABLED, and it is a mandatory node${
-          classes.length > 0 ? ` (registry classes: ${classes.join(', ')})` : ''
+        `node \`${node.id}\` (\`${label}\`) is DISABLED, and it is a mandatory node${
+          classes.length > 0 ? ` (classes: ${classes.join(', ')})` : ''
         }. It stays in the graph — publish still refuses a graph that removed it — but it will not execute: each run records a SKIPPED(disabled_by_config) step for it and \`guardrail: "opted_out"\` on the usage row.`,
         '/enabled',
       ),
