@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Pending` — review done, measurements taken, plan and owner decisions (§4) ready; no code written. Ticket number TASK-934 assigned by the highest-existing-number rule (TASK-933 is the highest in `docs/implementation` and `docs/archive`) — confirm (OD-9). |
+| **Status** | `In Progress` — owner go 2026-09-09 ("go with all recommendations, align agents by tiers and complete all lanes"): every §4 recommendation adopted (OD-1 `{7, 15}` measured first, OD-2 q8_0 as platform default, OD-3 agent wins, OD-4 both levels, OD-5 100 ms, OD-6 delete the legacy scripts, OD-7 out of scope, OD-8 dev-DB experiments allowed, OD-9 TASK-934 confirmed, OD-10 time-boxed investigation + N-run median, OD-11 prompt in the per-model profile). Waves: 1 = M, S, O; 2 = P, D; 3 = A. |
 | **Branch** | `dev-2.2` |
 | **Classification** | `bugfix` (regression) + `feature` (per-model control surface) + `refactor` (measurement harness) |
 | **Owner request** | 2026-09-09 — "recently we changed the STT hyper parameters and it caused the performance to degrade; review; perform measurement again as we need best practices for fine-tuned models; make sure the platform admin can control transcription agent hyper parameters and configuration for a specific assigned model" |
