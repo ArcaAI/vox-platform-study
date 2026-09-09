@@ -459,6 +459,33 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
         disfluency: Object.freeze({ type: 'boolean' }),
         stabilizer: Object.freeze({ type: 'boolean' }),
         merge: Object.freeze({ type: 'boolean' }),
+        // TASK-935 (OD-2 a / OD-5 a) — deterministic clinical-vocabulary correction, the
+        // SECOND consumer of `instruction.hotwords`. TASK-934 made those terms bias the
+        // decoder prompt; three runs proved prompt bias cannot reach a token sequence a
+        // fine-tune never learned ("ceftriaxone" decodes as "septrioxone" every time), so
+        // the same list also snaps the decoded text. There is deliberately NO `terms` key
+        // here: a second list would be free to drift from the one that primes the decoder,
+        // and an admin who names a term means it in both places (OD-5 a).
+        lexicon: Object.freeze({
+          type: 'object',
+          additionalProperties: false,
+          properties: Object.freeze({
+            enabled: Object.freeze({
+              type: 'boolean',
+              description:
+                'TASK-935 — snap decoded words onto `instruction.hotwords` when they agree phonetically and differ by no more than `maxDistance` of their characters. Optional; unset ⇒ ON exactly when the resolved hotword list is non-empty, because a term named for the decoder is a term the clinician expects to read back.',
+            }),
+            maxDistance: Object.freeze({
+              type: 'number',
+              minimum: 0.1,
+              maximum: 0.5,
+              description:
+                'TASK-935 — normalised edit distance (`lev / max(len)`) at which a decoded word may be snapped to a configured term. Lower is stricter. Optional; unset ⇒ the engine default (0.34). An exact phonetic match earns twice this, capped at 0.5, so no correction ever rewrites more than half of a word.',
+            }),
+          }),
+          description:
+            'TASK-935 — clinical-vocabulary correction over `instruction.hotwords` (one list, two consumers: decoder prompt bias and this stage). It runs after punctuation and disfluency removal, on partials and finals alike, and can only ever produce a term the tenant configured. Optional; unset ⇒ enabled exactly when there are hotwords.',
+        }),
       }),
     }),
     streaming: Object.freeze({

@@ -42,6 +42,7 @@ from .dto import (
     DiarizationConfig,
     EndpointConfig,
     InferenceConfig,
+    LexiconConfig,
     ModelRef,
     ModelRefs,
     ModelTaskType,
@@ -94,9 +95,7 @@ class _Wire(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def _omit_unset_optionals(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, object]:
+    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped: dict[str, object] = handler(self)
         if not self.OPTIONAL_FIELDS:
             return dumped
@@ -330,11 +329,38 @@ class AsrSpecPunctuation(_Wire):
     enabled: bool
 
 
+class AsrSpecLexicon(_Wire):
+    """TASK-935 (OD-2 a) — the clinical-vocabulary correction stage.
+
+    Note what is ABSENT: the terms. They are ``instruction.hotwords``, resolved once
+    by the gateway (agent → the ASR row's ``decoding.hotwords``) and consumed twice —
+    as decoder prompt bias, and by this stage (OD-5 a). A ``terms`` member here would
+    be a second list on one wire, free to disagree with the first.
+
+    ``max_distance`` is omitted when the agent did not tune it, leaving
+    :data:`stt.postprocessing.lexicon.DEFAULT_MAX_DISTANCE` as the one source of that
+    default — the same rule every other tuning field on this wire follows.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"max_distance"})
+
+    enabled: bool
+    max_distance: float | None = None
+
+
 class AsrSpecPostProcessing(_Wire):
+    #: TASK-935 — ``lexicon`` is OMITTED when the agent expressed no opinion. Absence is
+    #: load-bearing twice over: this model is ``extra='forbid'`` (so the two halves must
+    #: be able to omit a field the other has not learned), and the runtime's default for
+    #: an absent block is CONDITIONAL — the stage runs exactly when the resolved hotword
+    #: list is non-empty, which no single value in this position could express.
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"lexicon"})
+
     punctuation: AsrSpecPunctuation
     disfluency: bool
     stabilizer: bool
     merge: bool
+    lexicon: AsrSpecLexicon | None = None
 
 
 class AsrSpecStreamingSemantic(_Wire):
@@ -614,6 +640,18 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     inference = InferenceConfig(**inference_kwargs)  # type: ignore[arg-type]
 
     pp = core.post_processing
+    # TASK-935 (OD-2 a / OD-5 a) — the correction stage's vocabulary is the hotword list
+    # that already primed the decoder, bound here rather than sent twice. The agent's
+    # SILENCE is resolved here too, and it is conditional on that vocabulary: a term named
+    # for the decoder is one the clinician expects to read back, so an agent that says
+    # nothing gets the stage exactly when it configured terms. An explicit `enabled: false`
+    # is a veto and survives a non-empty list.
+    lexicon_terms = list(core.instruction.hotwords)
+    lexicon = LexiconConfig(
+        enabled=pp.lexicon.enabled if pp.lexicon is not None else bool(lexicon_terms),
+        max_distance=pp.lexicon.max_distance if pp.lexicon is not None else None,
+        terms=lexicon_terms,
+    )
     postprocessing = PostprocessingConfig(
         timestamps=TimestampConfig(word_timestamps=decoding.word_timestamps),
         punctuation=PunctuationConfig(
@@ -622,6 +660,7 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         ),
         remove_disfluencies=pp.disfluency,
         segment_merge=SegmentMergeConfig(enabled=True) if pp.merge else SegmentMergeConfig(),
+        lexicon=lexicon,
     )
 
     st = core.streaming

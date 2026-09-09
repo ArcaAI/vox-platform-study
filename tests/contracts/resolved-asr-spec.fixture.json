@@ -1080,5 +1080,221 @@
         "spec": null
       }
     }
+  },
+  "clinicalVocabularyCorrection": {
+    "$comment": "TASK-935 (OD-2 a / OD-5 a) — the clinical-vocabulary correction stage on the wire. The agent declares postProcessing.lexicon { enabled, maxDistance }; the TERMS are NOT here, because they are instruction.hotwords — one list, two consumers (decoder prompt bias since TASK-934, and this stage). This case deliberately takes the hotwords from the MODEL row (decoding.sources.hotwords: 'model') while the stage itself is the agent's choice, which is the combination that would break if either side ever grew its own term list. Every OTHER case omits `lexicon` entirely — the omit-when-absent rule, which is what lets the two halves deploy in either order against an extra='forbid' mirror.",
+    "input": {
+      "agent": {
+        "agentId": "0199a861-0000-7000-8000-000000000051",
+        "agentVersionId": "0199a861-0000-7000-8000-000000000051",
+        "slug": "clinic-mlen-lexicon",
+        "versionNumber": 5,
+        "task": "SPEECH_TO_TEXT",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "source": "tenant",
+        "compiledConfig": {
+          "task": "SPEECH_TO_TEXT",
+          "service": "stt",
+          "model": {
+            "id": "0199a860-0000-7000-8000-00000000a003",
+            "slug": "arcaai-whisper-large-ml-en-gguf-q8_0",
+            "provider": null,
+            "taskType": "AUTOMATIC_SPEECH_RECOGNITION"
+          },
+          "fallbacks": [],
+          "instruction": null,
+          "resolvedPrompt": null,
+          "parameters": {
+            "decoding": {
+              "languageMode": "ml-en",
+              "codeSwitching": true,
+              "beamSize": 5,
+              "noSpeechThreshold": 0.3
+            },
+            "streaming": {
+              "partialIntervalMs": 500,
+              "partialWindowSec": 15
+            },
+            "postProcessing": {
+              "punctuation": {
+                "enabled": true
+              },
+              "lexicon": {
+                "enabled": true,
+                "maxDistance": 0.3
+              }
+            }
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "tools": [],
+          "protocols": [
+            "http",
+            "socket"
+          ]
+        },
+        "models": [
+          {
+            "role": "primary",
+            "slug": "arcaai-whisper-large-ml-en-gguf-q8_0",
+            "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF",
+            "sourceRevision": null,
+            "localPath": "/models/whisper-turbo-ml-en-q8_0/ggml-model.gguf",
+            "checksum": "sha256:bbbb",
+            "format": "WHISPER_CPP",
+            "computeType": "q8_0",
+            "provider": null,
+            "tenantId": "00000000-0000-0000-0000-000000000000",
+            "metaData": {
+              "asr": {
+                "maxDecodeWindowSec": 7,
+                "partialWindowSec": 6,
+                "initialPrompt": "Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.",
+                "decoding": {
+                  "beamSize": 1,
+                  "temperature": 0,
+                  "noSpeechThreshold": 0.6,
+                  "compressionRatioThreshold": 2.4,
+                  "logprobThreshold": -1,
+                  "conditionOnPrevTokens": true,
+                  "noRepeatNgramSize": 3,
+                  "prevTextContextWords": 50,
+                  "hotwords": [
+                    "ceftriaxone",
+                    "amoxicillin"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "fallbackAgent": null
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "runtimeKey": "0199a861-0000-7000-8000-000000000051",
+      "agent": {
+        "slug": "clinic-mlen-lexicon",
+        "versionId": "0199a861-0000-7000-8000-000000000051",
+        "versionNumber": 5,
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "source": "tenant"
+      },
+      "models": {
+        "asr": {
+          "role": "asr",
+          "slug": "arcaai-whisper-large-ml-en-gguf-q8_0",
+          "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+          "format": "WHISPER_CPP",
+          "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF",
+          "sourceRevision": null,
+          "localPath": "/models/whisper-turbo-ml-en-q8_0/ggml-model.gguf",
+          "checksum": "sha256:bbbb",
+          "computeType": "q8_0",
+          "provider": null,
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "metadata": {
+            "maxDecodeWindowSec": 7,
+            "partialWindowSec": 15,
+            "decoding": {
+              "beamSize": 1,
+              "temperature": 0,
+              "noSpeechThreshold": 0.6,
+              "compressionRatioThreshold": 2.4,
+              "logprobThreshold": -1,
+              "noRepeatNgramSize": 3,
+              "prevTextContextWords": 50,
+              "conditionOnPrevTokens": true,
+              "hotwords": [
+                "ceftriaxone",
+                "amoxicillin"
+              ]
+            },
+            "initialPrompt": "Clinical consultation between a clinician and a patient. English and Malayalam medical terminology."
+          }
+        }
+      },
+      "audioFrontEnd": {
+        "vad": {
+          "enabled": true,
+          "threshold": null,
+          "minSpeechMs": null,
+          "minSilenceMs": null
+        },
+        "denoise": {
+          "enabled": false,
+          "level": "off"
+        },
+        "diarization": {
+          "enabled": false,
+          "backend": "embedding",
+          "maxSpeakers": null
+        },
+        "resample": true,
+        "normalize": true
+      },
+      "decoding": {
+        "languageMode": "ml-en",
+        "codeSwitching": true,
+        "wordTimestamps": false,
+        "beamSize": 5,
+        "temperature": 0,
+        "vadFilter": false,
+        "noSpeechThreshold": 0.3,
+        "compressionRatioThreshold": 2.4,
+        "logprobThreshold": -1,
+        "noRepeatNgramSize": 3,
+        "prevTextContextWords": 50,
+        "conditionOnPrevTokens": true,
+        "sources": {
+          "partialWindowSec": "agent",
+          "beamSize": "agent",
+          "temperature": "model",
+          "noSpeechThreshold": "agent",
+          "compressionRatioThreshold": "model",
+          "logprobThreshold": "model",
+          "noRepeatNgramSize": "model",
+          "prevTextContextWords": "model",
+          "conditionOnPrevTokens": "model",
+          "initialPrompt": "model",
+          "hotwords": "model"
+        }
+      },
+      "postProcessing": {
+        "punctuation": {
+          "enabled": true
+        },
+        "disfluency": false,
+        "stabilizer": false,
+        "merge": false,
+        "lexicon": {
+          "enabled": true,
+          "maxDistance": 0.3
+        }
+      },
+      "streaming": {
+        "partialIntervalMs": 500,
+        "endpointing": "fixed",
+        "maxUtteranceSec": null
+      },
+      "instruction": {
+        "initialPrompt": "Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.",
+        "hotwords": [
+          "ceftriaxone",
+          "amoxicillin"
+        ]
+      },
+      "fallback": {
+        "kind": "none",
+        "autoSwitch": true,
+        "switchAfterConsecutiveFailures": 2,
+        "spec": null
+      }
+    }
   }
 }
