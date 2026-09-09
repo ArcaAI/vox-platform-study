@@ -1,6 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsString, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsNumber,
+  IsInt,
+  Matches,
+  MaxLength,
+  MinLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { AiDeploymentKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY } from '../constants';
 import { AsrProfileRequest } from './asr-profile.request';
