@@ -8,7 +8,7 @@
  * against the column components directly.
  */
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -500,5 +500,115 @@ describe('ConsultationDemoScreen — workflow selection and governance', () => {
     await screen.findByLabelText(/^workflow$/i);
 
     expect(await axe(screen.getByRole('region', { name: /consultations/i }))).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-932 OD-5 — the harness-progress stream ALSO carries the terminal signal for a stop
+ * settling WITHOUT a summary job (`HARNESS_PROGRESS_TERMINAL_STAGE`, folded to
+ * `snapshot.closed === true`). Learning it here means the bounded poll in `useLatestSummary`
+ * (now 60s, was 180s) is a fallback, not the primary path — this pins the push, not the poll.
+ */
+describe('ConsultationDemoScreen — harness-progress terminal signal (TASK-932 OD-5)', () => {
+  interface RecordedCall {
+    url: string;
+    method: string;
+    body: unknown;
+  }
+
+  /** Instrumented EventSource double (mirrors `streams.test.tsx`'s). */
+  class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    readonly url: string;
+    onopen: (() => void) | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: (() => void) | null = null;
+
+    constructor(url: string) {
+      this.url = url;
+      FakeEventSource.instances.push(this);
+    }
+
+    addEventListener(): void {
+      // The harness-progress stream only ever reads the default `message` event.
+    }
+
+    close(): void {
+      // Nothing to release on the double.
+    }
+
+    message(data: unknown): void {
+      this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+    }
+  }
+
+  function stubFinalizeFetch(): RecordedCall[] {
+    const calls: RecordedCall[] = [];
+    let summaryLatestCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input), 'http://test.local').pathname;
+        const call: RecordedCall = {
+          url: path,
+          method: init?.method ?? 'GET',
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        };
+        calls.push(call);
+        if (path === '/api/auth/session') return Response.json(session());
+        if (path === '/api/hope/admin/consent-grants') return Response.json({ data: [], count: 0, page: 1, limit: 50 });
+        // Every SSE hook this screen opens while recording mints a ticket off the SAME
+        // endpoint — echo the scope back like the gateway does.
+        if (path === '/api/auth/stream-ticket') {
+          return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: (call.body as { scope: string }).scope });
+        }
+        if (path === '/api/hope/consultations/c-1/recording/stop') return Response.json({ status: 'DRAINING' });
+        if (path === '/api/hope/consultations/c-1/summary/pre-summary/latest') return Response.json({}, { status: 404 });
+        if (path === '/api/hope/consultations/c-1/summary/latest') {
+          summaryLatestCalls += 1;
+          // No summary job rides this stop (the whole point of R-16a) — the durable note
+          // lands later, out of band, so every read up to and including the one this test
+          // drives stays "not yet".
+          return Response.json({}, { status: 404 });
+        }
+        throw new Error(`Unhandled fetch: ${call.method} ${path} (summary/latest calls so far: ${summaryLatestCalls})`);
+      }),
+    );
+    return calls;
+  }
+
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+    sdk.arca.session.load = vi.fn(async (id: string) => ({ id, patientId: 'P-448', status: 'RECORDING', createdAt: '2026-07-06T14:02:00.000Z' }));
+  });
+
+  it('a terminal harness-progress event invalidates latestSummary without waiting for the poll', async () => {
+    const calls = stubFinalizeFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openConsultation();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/hope/consultations/c-1/recording/stop')).toBe(true));
+
+    // The stop is now "awaiting finalize" — one GET for the draft (404, nothing yet) has
+    // already fired at this point via `useLatestSummary`'s own enable transition.
+    const latestSummaryCallsBeforeSignal = calls.filter((call) => call.url === '/api/hope/consultations/c-1/summary/latest').length;
+    expect(latestSummaryCallsBeforeSignal).toBeGreaterThan(0);
+
+    const harnessProgressSource = await waitFor(() => {
+      const source = FakeEventSource.instances.find((instance) => instance.url.includes('harness-progress'));
+      if (!source) throw new Error('no harness-progress EventSource opened yet');
+      return source;
+    });
+    act(() => harnessProgressSource.message({ stage: 'n_finalize', stages: [], closed: true }));
+
+    // Proven WITHOUT waiting anywhere near `FINALIZE_POLL_MS` (5s): the invalidation the
+    // terminal event triggers, not the poll, is what produces this extra read.
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url === '/api/hope/consultations/c-1/summary/latest').length).toBeGreaterThan(
+        latestSummaryCallsBeforeSignal,
+      ),
+    );
   });
 });

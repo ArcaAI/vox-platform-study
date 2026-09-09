@@ -41,10 +41,18 @@ describe('Phase 3C — S3 + Config secret migrations', () => {
       expect(offenders, 'Secrets live in Vault (SecretsService / credentialsRef), never in a global_settings row.').toEqual([]);
     });
 
-    // Non-secret surface stays on AppSettings:
-    it('keeps S3_PUBLIC_BUCKET on AppSettings (non-secret)', () => {
-      expect(src).toMatch(/appSettingsService\.getValueWithDefault\(['"]S3_PUBLIC_BUCKET['"]/);
+    // TASK-932 OD-8 — S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET retired: the
+    // `testConnection()` health probe no longer lists a named legacy bucket
+    // (it now uses an account-level `ListBucketsCommand`), and the getters
+    // that read this key were deleted (zero production consumers besides the
+    // probe that no longer needs them).
+    it('no longer reads S3_PUBLIC_BUCKET from AppSettings (retired legacy bucket pair, OD-8)', () => {
+      expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]S3_PUBLIC_BUCKET['"]/);
     });
+    it('no longer reads S3_PRIVATE_BUCKET from AppSettings (retired legacy bucket pair, OD-8)', () => {
+      expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]S3_PRIVATE_BUCKET['"]/);
+    });
+    // Non-secret surface stays on AppSettings:
     it('keeps S3_ENDPOINT on AppSettings (non-secret)', () => {
       expect(src).toMatch(/appSettingsService\.getValueWithDefault\(['"]S3_ENDPOINT['"]/);
     });

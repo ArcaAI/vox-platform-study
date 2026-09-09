@@ -68,6 +68,15 @@ export function useArcaLiveSummary(): UseArcaLiveSummaryReturn {
 
       sse.onOpen(() => setStatus('open'));
 
+      // TASK-932 OD-10 (additive, same 3.1.x release) — the gateway relay now ALSO tags these
+      // sub-plane events as NAMED SSE frames instead of only multiplexing them onto the default
+      // `message`. This hook models only the whole-document snapshot (see the `event` guard in
+      // onMessage below), so both names are registered as deliberate no-ops: a section.patch or
+      // presummary delivered on its named event must be PROVABLY never folded here, on an older
+      // gateway (still `message`) or an upgraded one (now routed here and dropped by construction).
+      sse.onEvent('section.patch', () => {});
+      sse.onEvent('presummary', () => {});
+
       sse.onMessage((data: string) => {
         try {
           const next = JSON.parse(data) as LiveSummarySnapshot & { event?: unknown };

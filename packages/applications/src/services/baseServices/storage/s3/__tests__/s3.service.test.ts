@@ -79,7 +79,15 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn().mockResolvedValue('https://signed-url.example.com'),
 }));
 
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, CopyObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  CopyObjectCommand,
+  ListBucketsCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 describe('S3Service', () => {
@@ -220,44 +228,6 @@ describe('S3Service', () => {
 
       // Verify MinIO was detected by checking the service state
       expect(service.isMinIOConfigured()).toBe(true);
-    });
-  });
-
-  describe('getPublicBucketName', () => {
-    it('should return public bucket name', async () => {
-      await service.onModuleInit();
-
-      const bucketName = service.getPublicBucketName();
-
-      expect(bucketName).toBe('public-bucket');
-    });
-
-    it('should return empty string when AppSettings not initialized', () => {
-      mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-      service = makeService(mockAppSettingsService);
-
-      const bucketName = service.getPublicBucketName();
-
-      expect(bucketName).toBe('');
-    });
-  });
-
-  describe('getPrivateBucketName', () => {
-    it('should return private bucket name', async () => {
-      await service.onModuleInit();
-
-      const bucketName = service.getPrivateBucketName();
-
-      expect(bucketName).toBe('private-bucket');
-    });
-
-    it('should return empty string when AppSettings not initialized', () => {
-      mockAppSettingsService = createMockAppSettingsService({ isInitialized: false });
-      service = makeService(mockAppSettingsService);
-
-      const bucketName = service.getPrivateBucketName();
-
-      expect(bucketName).toBe('');
     });
   });
 
@@ -531,6 +501,49 @@ describe('S3Service', () => {
       const result = await service.testConnection();
 
       expect(result).toBe(false);
+    });
+
+    // TASK-932 OD-8 — `testConnection` used to list objects in
+    // `S3_PUBLIC_BUCKET`/`S3_PRIVATE_BUCKET` (a legacy platform-wide bucket
+    // pair nothing provisions), so a real MinIO with neither bucket answered
+    // `NoSuchBucket` and the health check reported "unreachable" while MinIO
+    // was healthy. It now probes with an account-level `ListBucketsCommand`
+    // instead — true on any 2xx, regardless of which buckets exist.
+    it('should return true on connection success, using an account-level ListBucketsCommand', async () => {
+      await service.onModuleInit();
+      mockS3Client.send.mockResolvedValue({ Buckets: [] });
+
+      const result = await service.testConnection();
+
+      expect(result).toBe(true);
+      expect(ListBucketsCommand).toHaveBeenCalledWith({});
+    });
+
+    it('should succeed even when no legacy bucket (S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET) is configured', async () => {
+      mockAppSettingsService = createMockAppSettingsService({
+        settings: {
+          S3_ENDPOINT: 'http://localhost:9000',
+          S3_ACCESS_KEY: 'test-access-key',
+          S3_SECRET_KEY: 'test-secret-key',
+          // Deliberately no S3_PUBLIC_BUCKET / S3_PRIVATE_BUCKET at all.
+        },
+      });
+      service = makeService(mockAppSettingsService);
+      await service.onModuleInit();
+      mockS3Client.send.mockResolvedValue({ Buckets: [] });
+
+      const result = await service.testConnection();
+
+      expect(result).toBe(true);
+    });
+
+    it('never falls back to ListObjectsV2Command for a named bucket', async () => {
+      await service.onModuleInit();
+      mockS3Client.send.mockResolvedValue({ Buckets: [] });
+
+      await service.testConnection();
+
+      expect(ListObjectsV2Command).not.toHaveBeenCalled();
     });
   });
 

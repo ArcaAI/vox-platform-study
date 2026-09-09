@@ -46,6 +46,7 @@ import {
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
+import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
@@ -1306,7 +1307,36 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ...(fields.agentSlug ? { agentSlug: fields.agentSlug } : {}),
       updatedAt: new Date().toISOString(),
     };
-    await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(event));
+    const serialized = JSON.stringify(event);
+    // Cached BEFORE the publish, so there is no window in which a subscriber sees the live event
+    // while a late joiner would still be told there was none.
+    await this.cachePreSummary(session.consultationId, serialized);
+    await this.safeChannelPublish(this.channel(session.consultationId), serialized);
+  }
+
+  /**
+   * Remember the last `presummary` event for late join, under its OWN key.
+   *
+   * The warm start runs in parallel with the capture session opening, so it routinely publishes
+   * before the console's SSE stream has subscribed — measured on the dev stack: `degraded` at
+   * +29 ms, subscribe at +56 ms, and the panel never appeared. `safeChannelPublish` writes no
+   * cache at all, and the whole-document `…:last` key is not available to borrow (answering a
+   * reconnect with a pre-summary would replace the clinician's document with its background
+   * material), so this is a companion key on the same TTL.
+   *
+   * Best-effort in its own right: a cache failure costs a LATE joiner its replay and must never
+   * cost a live one its event, which is why it neither throws nor short-circuits the publish.
+   */
+  private async cachePreSummary(consultationId: string, serialized: string): Promise<void> {
+    try {
+      await this.cacheService.setex(this.preSummaryKey(consultationId), this.SNAPSHOT_TTL, serialized);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to cache the pre-summary for late join (the live publish is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   isActive(consultationId: string): boolean {
@@ -2046,6 +2076,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // snapshot; the orphaned active-set member self-heals on the next
     // `getActiveSessions` read and via the set's TTL.
     await this.clearStats(consultationId, session?.tenantId);
+    // …and the pre-summary replay key with it. It carries the 1h `SNAPSHOT_TTL` so a late joiner
+    // of a LIVE session sees the warm start it missed; left behind, a consultation reopened
+    // inside that hour replays the PREVIOUS session's material to its next late joiner. Runs on
+    // the non-owner path too, for the same reason `clearStats` does. The whole-document `:last`
+    // key deliberately survives: its final write is the terminal `closed: true` payload below,
+    // which is exactly what a late joiner of a finished consultation should see.
+    await this.clearPreSummary(consultationId);
 
     // Tell the (possibly remote) owner to tear down, BEFORE the terminal marker so SSE
     // clients see `closed` last. Lock release is FENCED (C5-06): a stop routed to a
@@ -3378,20 +3415,54 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   on the refcounted finalize inside `subscribeToChannel` — releasing this
    *   viewer's bridge subscription decrements the refcount and only the LAST
    *   viewer out tears the Redis subscription down.
+   *
+   * TASK-932 wave 4 added two things on top, both additive:
+   *
+   *   L-1 — the late join replays TWO cached documents, note snapshot first and then the last
+   *   warm-start `presummary`, because they live under different keys and a warm start
+   *   published before this stream subscribed is otherwise lost (measured: degraded at +29 ms,
+   *   subscribe at +56 ms).
+   *
+   *   L-2 — the SSE frame TYPE is tagged from each payload's own `event`, so a consumer
+   *   discriminates in the transport (`addEventListener('section.patch', …)`) rather than by
+   *   parsing every message. The payloads are byte-identical, and the two kinds a legacy
+   *   consumer actually folds — the snapshot and `closed` — carry no `event` and therefore stay
+   *   on the default `message` type.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
       channel: this.channel(consultationId),
       heartbeatMs: this.heartbeatMs,
-      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
-      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfLiveSummarySnapshot(raw, this.parseLiveSummaryUpdatedAt(snapshot)),
+      loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
+      isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
+      // This channel is MULTIPLEXED, so the frame says which kind it carries: `section.patch` and
+      // `presummary` become named SSE frames, and the undiscriminated whole-document snapshot and
+      // its terminal `closed: true` stay on the default `message` type. The three harness relays
+      // do not opt in, so they are untouched by construction.
+      tagFrameTypeFromPayload: true,
       isTerminal: closedFlagTerminal,
       setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }),
       logContext: { consultationId },
     });
   }
 
-  /** The `updatedAt` of a serialized live-summary snapshot; null when absent/corrupt. */
+  /**
+   * Everything a late joiner is owed, in RENDER order: the whole-document note snapshot first,
+   * then the last warm-start `presummary` event.
+   *
+   * They live under two keys because they are two documents (see {@link preSummaryKey}), and the
+   * order is the contract — the note is what the clinician is writing, the pre-summary is the
+   * background material beside it. Either may be absent; absent entries are simply not emitted.
+   */
+  private async loadLiveSummaryLateJoin(consultationId: string): Promise<string[]> {
+    const [snapshot, preSummary] = await Promise.all([
+      this.cacheService.get(this.snapshotKey(consultationId)),
+      this.cacheService.get(this.preSummaryKey(consultationId)),
+    ]);
+    return [snapshot, preSummary].filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+  }
+
+  /** The `updatedAt` of a serialized live-summary payload; null when absent/corrupt. */
   private parseLiveSummaryUpdatedAt(snapshot: string | null | undefined): string | null {
     if (!snapshot) return null;
     try {
@@ -3403,14 +3474,49 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * True when a relayed channel event carries state the just-emitted snapshot
-   * already contained (same or older `updatedAt` — ISO strings compare
-   * lexicographically). Events without an `updatedAt` are relayed untouched.
+   * The KIND of a serialized channel payload: its `event` discriminator, `''` for the
+   * undiscriminated whole-document payload, `null` when it cannot be parsed at all.
    */
-  private isDuplicateOfLiveSummarySnapshot(raw: string, snapshotUpdatedAt: string | null): boolean {
-    if (!snapshotUpdatedAt) return false;
+  private liveSummaryEventKind(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    try {
+      const event = (JSON.parse(raw) as { event?: unknown }).event;
+      return typeof event === 'string' ? event : '';
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * True when a relayed channel event carries state an entry ALREADY EMITTED to this viewer
+   * contained (same or older `updatedAt` — ISO strings compare lexicographically).
+   *
+   * Keyed on the event KIND, which is the whole point: three kinds share this channel (the
+   * undiscriminated whole-document snapshot, `section.patch`, `presummary`) and their `updatedAt`
+   * clocks are unrelated. Comparing a `presummary` against the NOTE snapshot's timestamp drops a
+   * live warm-start event whenever the note happens to be as fresh — the warm-start panel going
+   * dark again for exactly the reason L-1 exists to fix. Events with no `updatedAt`, and events
+   * of a kind nothing was replayed for, are relayed untouched.
+   *
+   * The `presummary` kind uses BYTE IDENTITY instead of that timestamp comparison (L2 F-8). It is
+   * not a document whose snapshot IS its state — it is a sequence of statuses (`running` →
+   * `ready`/`degraded`) stamped from a MILLISECOND clock and cached before each publish, so a
+   * successor separated only by a Redis round-trip routinely shares a millisecond with the event
+   * a late joiner was replayed, and `<=` would swallow the terminal one: the panel spinning
+   * forever on a warm start that already finished. The cached entry is a byte-identical copy of
+   * what was published, which makes identity both the exact test for "this is the replay" and
+   * the only one that cannot drop a newer event.
+   */
+  private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
+    const kind = this.liveSummaryEventKind(raw);
+    if (kind === null) return false;
+    const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    if (sameKind === undefined) return false;
+    if (kind === PRE_SUMMARY_EVENT) return raw === sameKind;
+    const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
+    if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
-    return updatedAt != null && updatedAt <= snapshotUpdatedAt;
+    return updatedAt != null && updatedAt <= emittedUpdatedAt;
   }
 
   // ------------------------------------------------------------------
@@ -4747,6 +4853,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return `${this.CHANNEL_PREFIX}${consultationId}:last`;
   }
 
+  /**
+   * The last `presummary` event, cached for late join beside — never inside — the whole-document
+   * snapshot. Two keys because they are two different documents: `…:last` is the clinician's
+   * running note, this is the warm-start material that precedes it.
+   */
+  private preSummaryKey(consultationId: string): string {
+    return `${this.CHANNEL_PREFIX}${consultationId}:presummary:last`;
+  }
+
   // ------------------------------------------------------------------
   // TASK-932 R-16a — the LIVE HANDOFF
   //
@@ -4844,9 +4959,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!record && stillLive) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
-    const outputs = Object.fromEntries(
-      Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)),
-    );
+    const outputs = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
     return {
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
@@ -4883,47 +4996,101 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The clinician's EFFECTIVE DNA writing style, as run-context additions.
+   * The clinician's EFFECTIVE DNA additions to the run context: the writing STYLE and the
+   * REDACTION rules, each admitted by its OWN gate, from ONE report and ONE decrypt.
    *
-   * `{}` — never a partial or a placeholder — whenever DNA does not apply: no consultation, no
-   * doctor, no report, the tenant/doctor gate off, or an unwired secrets backend. The seeded
-   * finalize instruction reads `{{context.dna_style_text | default("")}}`, so an absent style
-   * renders as plain clinical prose, which is exactly what "this clinician has no style on
+   * ## Two gates, not one (L2 F-2)
+   *
+   * `resolveEffectiveDnaStyleEnabled` and `resolveEffectiveDnaRedactionEnabled` answer different
+   * questions — an active `agent.dna_style` node vs an active `agent.dna_redaction` node (either
+   * satisfied by a `core.agent` that `declaresDna`), and only the redaction node can waive the
+   * doctor's opt-in with `requireDoctorOptIn: false`. Gating both halves on the STYLE switch
+   * therefore diverged three ways, and the two that matter are UNDER-application: a tenant that
+   * declares redaction but not style, and a doctor whose report carries rules but no style text
+   * (the old `if (!text) return {}`), both shipped no rules — a note the clinician expected
+   * redacted finalizing unredacted, with no FLAG, because `apply_redaction` never ran.
+   *
+   * The halves are otherwise independent: a style with no rules, rules with no style, both, or
+   * neither are all legitimate answers, and the report is read only when at least one gate
+   * admits something (PHI is not decrypted to be thrown away).
+   *
+   * ## What `{}` means
+   *
+   * `{}` — never a partial or a placeholder — whenever DNA does not apply at all: no
+   * consultation, no doctor, no report, both gates off, or an unwired secrets backend. The
+   * seeded finalize instruction reads `{{context.dna_style_text | default("")}}`, so an absent
+   * style renders as plain clinical prose, which is exactly what "this clinician has no style on
    * file" should produce.
    *
-   * Best-effort by construction: a failure to resolve a WRITING STYLE must never cost the note
-   * it would have styled.
+   * A THROWN gate or a failed decrypt is the one case where the halves are not independent: it
+   * costs the WHOLE context. That is the fail-closed posture both resolvers document — nothing
+   * rides a governance read that did not complete.
    */
   private async resolveHandoffContext(consultation: ConsultationEntity | null): Promise<Record<string, unknown>> {
     const doctorId = consultation?.doctorId;
     if (!consultation || !doctorId || !this.dnaReportRepository || !this.secretsService) return {};
     try {
-      if (this.configResolver) {
-        const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
-          tenantId: consultation.tenantId,
-          departmentId: consultation.departmentId ?? null,
-          doctorId,
-        });
-        // The doctor's own opt-out lives behind this switch — an unreadable gate drops DNA
-        // rather than applying it (`resolveEffectiveDnaStyleEnabled` fails closed internally).
-        if (!effective) return {};
-      }
+      const gateContext = { tenantId: consultation.tenantId, departmentId: consultation.departmentId ?? null, doctorId };
+      // An unwired resolver is a COMPOSITION fact (the positional constructions in background
+      // processors and legacy tests), not a degraded read, and it gates nothing — exactly as it
+      // did for the style before this method learned the second gate.
+      const [styleEnabled, redactionEnabled] = this.configResolver
+        ? await Promise.all([
+            this.configResolver.resolveEffectiveDnaStyleEnabled(gateContext).then((gate) => gate.effective),
+            this.configResolver.resolveEffectiveDnaRedactionEnabled(gateContext).then((gate) => gate.effective),
+          ])
+        : [true, true];
+      if (!styleEnabled && !redactionEnabled) return {};
+
       const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
       if (!report) return {};
-      const { styleText } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
-      const text = styleText?.trim();
-      if (!text) return {};
-      // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
-      // names the report that actually shaped the note, not the one that happens to be latest
-      // when someone later reads it.
-      return { dna_style_text: text, dna_style_id: report.id };
+      // ONE decrypt, two fields: the writing style and the doctor's redaction/rewrite rules are
+      // stored on the same report, so both gates are answered by a single read.
+      const { styleText, redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      const text = styleEnabled ? styleText?.trim() : undefined;
+      const rules = redactionEnabled ? this.readHandoffRedactionRules(redactionRules, consultation.id) : [];
+      return {
+        // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
+        // names the report that actually SHAPED the note — which is why it is part of the style
+        // half and absent when nothing shaped it, not a general provenance stamp.
+        ...(text ? { dna_style_text: text, dna_style_id: report.id } : {}),
+        // ABSENT, never `[]`: the interpreter's finalize runs `apply_redaction` only when the
+        // context carries rules, and an empty array would ask it to do nothing at some cost.
+        ...(rules.length > 0 ? { dna_redaction_rules: rules } : {}),
+      };
     } catch (error) {
       this.logger.warn({
-        message: 'Effective DNA writing style could not be resolved for the live handoff — finalizing without it',
+        message: 'Effective DNA style/redaction could not be resolved for the live handoff — finalizing without either',
         consultationId: consultation.id,
         error: error instanceof Error ? error.message : String(error),
       });
       return {};
+    }
+  }
+
+  /**
+   * The doctor's redaction/rewrite rules, from the SAME decrypted report the writing style came
+   * from, validated to the persisted `{ rules: [...] }` shape.
+   *
+   * Rule OBJECTS, not strings: the harness's `RedactionRule` is `extra="forbid"` over
+   * `{ id, type, match, pattern, replacement?, note? }`, so that is what has to arrive.
+   *
+   * `[]` on absent or malformed, which mirrors `resolveRedactionRulesForHarness`'s documented
+   * fail-SAFE on the legacy path: an unusable rule set must not cost the note the STYLE it would
+   * otherwise have carried, and `apply_redaction` is the fail-CLOSED-to-FLAG authority once rules
+   * are actually present.
+   */
+  private readHandoffRedactionRules(redactionRules: unknown, consultationId: string): Record<string, unknown>[] {
+    if (!redactionRules) return [];
+    try {
+      return validateRedactionRuleSet(redactionRules).rules as unknown as Record<string, unknown>[];
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA redaction rules could not be read for the live handoff — finalizing without them (the writing style is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   }
 
@@ -5107,6 +5274,25 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({
         message: 'Failed to publish live-doc session stats',
         consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Drop the pre-summary late-join replay at the end of a session.
+   *
+   * Best-effort, like every other teardown write here: failing to clear a transient replay key
+   * must never fail the clinician's stop. The worst case if it does is what the TTL already
+   * bounds — one stale replay, for at most an hour.
+   */
+  private async clearPreSummary(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.del(this.preSummaryKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to clear the pre-summary replay key on stop',
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

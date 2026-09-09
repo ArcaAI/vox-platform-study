@@ -763,8 +763,12 @@ class HarnessDocWorkflow:
         # AFTER an early draft delivery and runs as assurance-only (a delivered draft is
         # never silently regenerated in the early-delivery path — the regen-if-untouched
         # dynamics live in the post-delivery assurance path below).
+        # The change-id is DATA: it is written into the event history of every execution that
+        # passed this gate, and the replaying worker looks for that exact literal. It must never
+        # be "tidied" as if it were a TASK reference in prose — doing so once already wedged
+        # replay for every in-flight run (see test_task932_h1_durable_markers.py).
         use_optimistic = gate.optimistic_delivery_enabled and workflow.patched(
-            "optimistic-delivery"
+            "task-355-optimistic-delivery"
         )
         regens_used = 0
         # Running token spend for this run, folded from RECORDED
