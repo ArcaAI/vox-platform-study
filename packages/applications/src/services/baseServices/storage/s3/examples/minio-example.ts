@@ -42,19 +42,13 @@ export class MinIOExampleService {
         throw new Error('Cannot connect to MinIO server. Please check your configuration and ensure MinIO is running.');
       }
 
-      // 3. Get bucket names
-      this.logger.log('=== Bucket Configuration ===');
-      const publicBucket = this.s3Service.getPublicBucketName();
-      const privateBucket = this.s3Service.getPrivateBucketName();
-      this.logger.log(`Public Bucket: ${publicBucket || 'Not configured'}`);
-      this.logger.log(`Private Bucket: ${privateBucket || 'Not configured'}`);
+      // 3. Name the bucket to exercise. TASK-932 OD-8 retired the legacy
+      // S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET platform-default pair — a real
+      // integration names its own bucket rather than relying on one.
+      const exampleBucket = 'my-app-bucket';
 
       // 4. File operations example
-      if (publicBucket) {
-        await this.demonstrateFileOperations(publicBucket);
-      } else {
-        this.logger.warn('No public bucket configured, skipping file operations demo');
-      }
+      await this.demonstrateFileOperations(exampleBucket);
 
       this.logger.log('=== MinIO Example Completed Successfully ===');
     } catch (error) {
@@ -137,8 +131,8 @@ export class MinIOExampleService {
           isMinIO,
           connected: isConnected,
           endpoint: minioInfo.endpoint,
-          publicBucket: this.s3Service.getPublicBucketName(),
-          privateBucket: this.s3Service.getPrivateBucketName(),
+          // publicBucket/privateBucket removed (TASK-932 OD-8): the legacy
+          // bucket pair is retired and `IS3Service` no longer has a getter.
           timestamp: new Date().toISOString(),
         },
       };
@@ -203,12 +197,12 @@ INSERT INTO global_settings (key, value, description) VALUES
 ('S3_ENDPOINT', 'http://localhost:9000', 'MinIO server endpoint');
 
 -- Optional MinIO configuration
+-- (S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET removed here — TASK-932 OD-8 retired
+-- that legacy platform-default bucket pair; name your own bucket instead.)
 INSERT INTO global_settings (key, value, description) VALUES
 ('S3_REGION', 'us-east-1', 'MinIO region'),
 ('S3_FORCE_PATH_STYLE', 'true', 'Required for MinIO compatibility'),
 ('S3_REJECT_UNAUTHORIZED', 'false', 'Allow self-signed certificates'),
-('S3_PUBLIC_BUCKET', 'public-files', 'Default public bucket'),
-('S3_PRIVATE_BUCKET', 'private-files', 'Default private bucket'),
 ('S3_MAX_RETRIES', '3', 'Connection retry attempts'),
 ('S3_REQUEST_TIMEOUT', '30000', 'Request timeout in milliseconds'),
 ('S3_PRESIGNED_URL_EXPIRY', '3600', 'Presigned URL expiry seconds');

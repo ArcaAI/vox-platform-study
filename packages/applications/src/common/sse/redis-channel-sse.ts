@@ -15,15 +15,42 @@ export interface RedisChannelSseOptions {
   /** Idle keep-alive period (proxies drop silent SSE streams). */
   heartbeatMs: number;
   /**
-   * Late-join snapshot read, emitted BEFORE any relayed event. Channel events
-   * published while it is in flight are buffered and replayed after it, so the
-   * ordering stays snapshot-first and nothing is dropped.
+   * Late-join read, emitted BEFORE any relayed event. Channel events published while it is in
+   * flight are buffered and replayed after it, so the ordering stays snapshot-first and nothing
+   * is dropped.
+   *
+   * A `string[]` answer emits EVERY entry, in the order given — a lane whose late-join state
+   * lives under more than one key (the live-summary channel caches the whole-document note under
+   * `…:last` and the warm-start `presummary` event under `…:presummary:last`) owes a late joiner
+   * both, primary document first. A single `string` behaves exactly as it always has.
    */
-  loadSnapshot?: () => Promise<string | null | undefined>;
-  /** True when a relayed event carries state the emitted snapshot already had. */
-  isDuplicateOfSnapshot?: (raw: string, snapshot: string | null | undefined) => boolean;
+  loadSnapshot?: () => Promise<string | string[] | null | undefined>;
+  /**
+   * True when a relayed event carries state an emitted entry already had.
+   *
+   * `snapshot` is the FIRST emitted entry, so a single-value caller's two-argument predicate is
+   * unchanged; `emitted` is every entry, in emission order, for a caller that emits more than one
+   * and must therefore compare like with like (an event of one kind is never a duplicate of a
+   * cached event of another).
+   */
+  isDuplicateOfSnapshot?: (raw: string, snapshot: string | null | undefined, emitted: readonly string[]) => boolean;
   /** True for the terminal event — it is emitted, then the stream completes. */
   isTerminal?: (raw: string) => boolean;
+  /**
+   * Tag each frame's SSE `type` from the relayed payload's OWN `event` field (opt-in).
+   *
+   * A channel that multiplexes several kinds of payload behind one JSON discriminator can say so
+   * in the transport instead: Nest's `SseStream` writes `event: <type>` for a `MessageEvent.type`,
+   * so `{"event":"section.patch",…}` arrives as a named frame that
+   * `EventSource.addEventListener('section.patch', …)` receives and `onmessage` does not. A
+   * payload carrying no string `event` — the undiscriminated whole-document snapshot, the
+   * terminal `closed: true` — keeps the default `message` type, and so does everything on a
+   * channel whose caller did not opt in. The JSON is never rewritten.
+   *
+   * Backward compatible for a consumer that folds `onmessage` payloads: it stops SEEING exactly
+   * the payloads a discriminator told it to skip, and still receives every undiscriminated one.
+   */
+  tagFrameTypeFromPayload?: boolean;
   /** Serialized payload emitted (then completed) when setup fails. */
   setupErrorPayload: string;
   /** Context merged into the setup-failure log line. */
@@ -52,7 +79,15 @@ export function sseFromRedisChannel(
   logger: Logger,
   options: RedisChannelSseOptions,
 ): Observable<MessageEvent> {
-  const { channel, heartbeatMs, loadSnapshot, isDuplicateOfSnapshot, isTerminal, setupErrorPayload, logContext } = options;
+  const { channel, heartbeatMs, loadSnapshot, isDuplicateOfSnapshot, isTerminal, tagFrameTypeFromPayload, setupErrorPayload, logContext } = options;
+
+  // Replayed entries and relayed messages go through the SAME builder: a late joiner's cached
+  // `presummary` must arrive on the same named frame as a live one, or a consumer listening by
+  // event name would receive the live event and miss the replay.
+  const toEvent = (raw: string): MessageEvent => {
+    const type = tagFrameTypeFromPayload ? frameTypeOf(raw) : undefined;
+    return (type === undefined ? { data: raw } : { data: raw, type }) as MessageEvent;
+  };
 
   return new Observable<MessageEvent>((subscriber) => {
     let cancelled = false;
@@ -74,18 +109,21 @@ export function sseFromRedisChannel(
       bridgeSub = messages$.subscribe(bridge);
       if (releaseIfCancelled()) return;
 
-      let snapshot: string | null | undefined = null;
+      let emitted: string[] = [];
       if (loadSnapshot) {
-        snapshot = await loadSnapshot();
+        const loaded = await loadSnapshot();
         if (releaseIfCancelled()) return;
-        if (snapshot) {
-          subscriber.next({ data: snapshot } as MessageEvent);
+        // An empty entry is dropped rather than emitted as a blank frame — same as the
+        // single-value `if (snapshot)` guard this replaces.
+        emitted = (Array.isArray(loaded) ? loaded : [loaded]).filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+        for (const entry of emitted) {
+          subscriber.next(toEvent(entry));
         }
       }
 
       const relay$ = bridge.pipe(
-        filter((raw: string) => !(isDuplicateOfSnapshot?.(raw, snapshot) ?? false)),
-        map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
+        filter((raw: string) => !(isDuplicateOfSnapshot?.(raw, emitted[0] ?? null, emitted) ?? false)),
+        map(toEvent),
       );
 
       const heartbeat$ = interval(heartbeatMs).pipe(
@@ -125,6 +163,20 @@ export function sseFromRedisChannel(
       bridgeSub?.unsubscribe();
     };
   });
+}
+
+/**
+ * The SSE frame type a payload names for itself: its own `event` field, when that is a non-empty
+ * string. `undefined` for anything else — a payload with no discriminator, a non-string one, and
+ * a message that is not JSON at all — all of which stay on the default `message` type.
+ */
+function frameTypeOf(raw: string): string | undefined {
+  try {
+    const event = (JSON.parse(raw) as { event?: unknown }).event;
+    return typeof event === 'string' && event !== '' ? event : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** `closed: true` terminal predicate shared by the consultation feeds. */

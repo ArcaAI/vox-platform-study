@@ -245,6 +245,18 @@ const PRO_VALUES = {
  * test, nothing checked them. Follows the same export-for-test convention as
  * `SYSTEM_AI_PROVIDER_CONNECTIONS` (17-ai-provider-connection.ts).
  */
+/**
+ * The `(tenantId, key)` identity of the two SYSTEM-tenant `GlobalSetting` kill
+ * switches this file writes inline (`entitlements.enabled`,
+ * `metering.reconcile.enabled`). Exported only so `seed-global-settings.test.ts`
+ * can fold them into the cross-seed `(tenantId, key)` uniqueness pin without
+ * duplicating the literal key strings.
+ */
+export const ENTITLEMENTS_GLOBAL_SETTING_IDENTITIES: ReadonlyArray<{ tenantId: string; key: string }> = [
+  { tenantId: SYSTEM_TENANT_ID, key: 'entitlements.enabled' },
+  { tenantId: SYSTEM_TENANT_ID, key: 'metering.reconcile.enabled' },
+];
+
 export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
   {
     id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,

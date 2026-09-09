@@ -271,10 +271,18 @@ test.describe('TASK-932 — reset restores inheritance', () => {
  * obeys, so hiding a key in one place cannot be undone by reading its row in
  * the other.
  *
- * The by-id answer is 404 and not 403 deliberately: the WRITE lane answers 403
- * for the same row (TASK-890 OD-P — "you may not write this"), but a READ must
- * be indistinguishable from a missing id or the platform tier is enumerable one
- * request at a time.
+ * TASK-932 OD-3 (owner decision, 2026-09-09) — the by-id answer on a PLATFORM
+ * row is 403, the same as the WRITE lane's (TASK-890 OD-P). It was 404 until
+ * this ticket; the reversal is argued in full on the test below.
+ *
+ * That does NOT harmonise with the descriptor cases higher up this file, and it
+ * must not be "fixed" into doing so. They are two different resources:
+ *   - `GET registry/:key` is 404 for a platform-only key because the key is not
+ *     in that caller's CATALOG at all — the same answer as a key that does not
+ *     exist, because for that caller there is no such setting;
+ *   - `GET :id` is 403 on a platform ROW because the row plainly exists, is
+ *     named in the registry the caller can read, and is simply not theirs to
+ *     see. There is nothing left to hide, and only a rule to state.
  */
 test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', () => {
   test('the legacy row list carries no SYSTEM rows for a tenant admin', async ({ request }) => {
@@ -301,37 +309,53 @@ test.describe('TASK-932 R-1 — the legacy settings ROW list is tenant-pinned', 
     }
   });
 
-  test('a SYSTEM row by id is 404 for a tenant admin and 200 for a super admin', async ({ request }) => {
+  test('a SYSTEM row by id is 403 for a tenant admin and 200 for a super admin (OD-3)', async ({ request }) => {
     const admin = await tenantAdminSession(request);
     const hidden = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(admin.token) });
-    expect(hidden.status()).toBe(404);
+    expect(hidden.status(), 'the platform tier is a PRIVILEGE boundary on reads as well as writes').toBe(403);
 
-    // Same request, elevated: the row exists, so the 404 above is a visibility
+    // Same request, elevated: the row exists, so the 403 above is a privilege
     // rule and not a broken fixture.
     const visible = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(await superAdminToken(request)) });
     expect(visible.status()).toBe(200);
     expect((await visible.json()).tenantId).toBe(SYSTEM_TENANT_ID);
   });
 
-  test('an unknown id and a SYSTEM id are indistinguishable to a tenant admin', async ({ request }) => {
+  /**
+   * TASK-932 OD-3 — the explicit OPPOSITE of what this file asserted before.
+   *
+   * The original test demanded that a SYSTEM id and an unknown id be
+   * byte-identical, on the reasoning that a distinguishable 403 lets a caller
+   * confirm rows one request at a time. The owner's call reverses it, and the
+   * reason it is safe to reverse is visible in the assertion itself: the
+   * platform tier has no existence to protect. Its keys are declared in the
+   * settings registry, shipped in the source tree and rendered BY NAME in the
+   * catalog — a tenant admin learns nothing from a 403 that `HOPE_SETTINGS_REGISTRY`
+   * does not already tell them. What the 404 cost was real: the same row
+   * answered 403 to PATCH/DELETE and 404 to GET, so the platform tier was
+   * documented as two rules depending on the verb.
+   *
+   * The oracle that DOES matter is still closed, and this test is what pins it:
+   * an id naming no row at all stays a 404, because existence is resolved
+   * before privilege at every call site.
+   */
+  test('a SYSTEM id and an unknown id are DISTINGUISHABLE: 403 vs 404 (OD-3)', async ({ request }) => {
     const admin = await tenantAdminSession(request);
     const unknown = await request.get(`${SETTINGS}/00000000-0000-0000-0009-999999999999`, { headers: auth(admin.token) });
     const system = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: auth(admin.token) });
-    expect(unknown.status()).toBe(404);
-    expect(system.status()).toBe(404);
 
-    // Same body, minus `correlationId` — which is per-request metadata about
-    // the RESPONSE, not about the row (`DataNotFoundExceptionFilter`).
-    const stable = (body: Record<string, unknown>) => ({ statusCode: body.statusCode, message: body.message, code: body.code });
-    expect(stable(await system.json())).toEqual(stable(await unknown.json()));
+    expect(unknown.status(), 'an id that names no row is still a 404 — the 403 must not become an existence oracle').toBe(404);
+    expect(system.status(), 'a real platform row is a privilege refusal').toBe(403);
   });
 
-  test('the by-tenant list refuses any tenant that is not the caller own — SYSTEM included', async ({ request }) => {
+  test('the by-tenant list is 403 for the SYSTEM tenant and 200 for the caller own (OD-3)', async ({ request }) => {
     // `where: { tenantId: SYSTEM }` is ACCEPTED by the shared-read merge (SYSTEM
     // is half the pair it allows), so this route was the whole platform tier
-    // behind one path parameter.
+    // behind one path parameter. Another CUSTOMER tenant stays a 404 — that
+    // existence IS a secret — which is pinned in the service unit tests where a
+    // second tenant id can be named without depending on the seed.
     const admin = await tenantAdminSession(request);
-    expect((await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}`, { headers: auth(admin.token) })).status()).toBe(404);
+    expect((await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}`, { headers: auth(admin.token) })).status()).toBe(403);
     expect((await request.get(`${SETTINGS}/tenant/${admin.tenantId}`, { headers: auth(admin.token) })).status()).toBe(200);
   });
 

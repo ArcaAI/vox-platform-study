@@ -45,7 +45,10 @@ interface RateLimitSettingDef {
   description: string;
 }
 
-const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
+// Exported (not just local) so `seed-global-settings.test.ts` can pin these
+// keys into the cross-seed `(tenantId, key)` uniqueness check — every row
+// here lands on SYSTEM_TENANT_ID.
+export const RATE_LIMIT_SETTINGS: RateLimitSettingDef[] = [
   {
     id: IDS.RATE_LIMIT_ENABLED,
     name: 'Rate Limit Enabled',
