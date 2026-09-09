@@ -2076,6 +2076,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // snapshot; the orphaned active-set member self-heals on the next
     // `getActiveSessions` read and via the set's TTL.
     await this.clearStats(consultationId, session?.tenantId);
+    // …and the pre-summary replay key with it. It carries the 1h `SNAPSHOT_TTL` so a late joiner
+    // of a LIVE session sees the warm start it missed; left behind, a consultation reopened
+    // inside that hour replays the PREVIOUS session's material to its next late joiner. Runs on
+    // the non-owner path too, for the same reason `clearStats` does. The whole-document `:last`
+    // key deliberately survives: its final write is the terminal `closed: true` payload below,
+    // which is exactly what a late joiner of a finished consultation should see.
+    await this.clearPreSummary(consultationId);
 
     // Tell the (possibly remote) owner to tear down, BEFORE the terminal marker so SSE
     // clients see `closed` last. Lock release is FENCED (C5-06): a stop routed to a
@@ -5267,6 +5274,25 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({
         message: 'Failed to publish live-doc session stats',
         consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Drop the pre-summary late-join replay at the end of a session.
+   *
+   * Best-effort, like every other teardown write here: failing to clear a transient replay key
+   * must never fail the clinician's stop. The worst case if it does is what the TTL already
+   * bounds — one stale replay, for at most an hour.
+   */
+  private async clearPreSummary(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.del(this.preSummaryKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to clear the pre-summary replay key on stop',
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
