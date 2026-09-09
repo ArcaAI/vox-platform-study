@@ -36,6 +36,19 @@ function blankRule(): RedactionRule {
   return { id: newRuleId(), type: 'remove', match: 'literal', pattern: '' };
 }
 
+/**
+ * A `rewrite` rule matching `literal`/`regex` must carry a replacement — mirrors the
+ * gateway's cross-field check in `validateRedactionRuleSet`. A `category` rewrite stays
+ * optional; that is the semantic rewrite the harness TEXT pass resolves.
+ */
+function requiresReplacement(rule: Pick<RedactionRule, 'type' | 'match'>): boolean {
+  return rule.type === 'rewrite' && (rule.match === 'literal' || rule.match === 'regex');
+}
+
+function isReplacementMissing(rule: RedactionRule): boolean {
+  return requiresReplacement(rule) && (!rule.replacement || rule.replacement.trim() === '');
+}
+
 /** Drop empty patterns and trim optional fields to a persistable rule set. */
 function normalize(rules: RedactionRule[]): RedactionRule[] {
   return rules
@@ -128,21 +141,41 @@ function RuleRow({
           className="font-mono text-sm"
         />
       </div>
-      {rule.type === 'rewrite' ? (
-        <div className="flex flex-col gap-1">
-          <Label className="text-muted-foreground text-xs" htmlFor={`rule-replacement-${rule.id}`}>
-            Replacement
-          </Label>
-          <Input
-            id={`rule-replacement-${rule.id}`}
-            value={rule.replacement ?? ''}
-            onChange={(event) => onChange({ ...rule, replacement: event.target.value })}
-            placeholder="Literal replacement (leave blank for a semantic AI rewrite)"
-            disabled={disabled}
-            className="text-sm"
-          />
-        </div>
-      ) : null}
+      {rule.type === 'rewrite'
+        ? (() => {
+            const required = requiresReplacement(rule);
+            const missing = isReplacementMissing(rule);
+            const errorId = `rule-replacement-error-${rule.id}`;
+            return (
+              <div className="flex flex-col gap-1">
+                <Label className="text-muted-foreground text-xs" htmlFor={`rule-replacement-${rule.id}`}>
+                  Replacement
+                  {required ? (
+                    <span aria-hidden className="text-destructive">
+                      *
+                    </span>
+                  ) : null}
+                </Label>
+                <Input
+                  id={`rule-replacement-${rule.id}`}
+                  value={rule.replacement ?? ''}
+                  onChange={(event) => onChange({ ...rule, replacement: event.target.value })}
+                  placeholder={required ? 'Required — literal replacement text' : 'Literal replacement (leave blank for a semantic AI rewrite)'}
+                  disabled={disabled}
+                  aria-required={required || undefined}
+                  aria-invalid={missing || undefined}
+                  aria-describedby={missing ? errorId : undefined}
+                  className="text-sm"
+                />
+                {missing ? (
+                  <p id={errorId} role="alert" className="text-destructive text-sm">
+                    Replacement is required for a {rule.match} rewrite rule.
+                  </p>
+                ) : null}
+              </div>
+            );
+          })()
+        : null}
       <div className="flex flex-col gap-1">
         <Label className="text-muted-foreground text-xs" htmlFor={`rule-note-${rule.id}`}>
           Note
@@ -200,7 +233,8 @@ export function DnaRedactionCard({
 
   const report = myStyle.data?.data ?? null;
   const etag = myStyle.data?.etag ?? (report ? `"${report.version}"` : null);
-  const canSave = !gated && !!report && !!etag && !update.isPending;
+  const hasInvalidRules = enabled && rules.some(isReplacementMissing);
+  const canSave = !gated && !!report && !!etag && !update.isPending && !hasInvalidRules;
 
   function enterAdvanced() {
     setRawJson(JSON.stringify({ rules: normalize(rules) }, null, 2));
@@ -236,6 +270,10 @@ export function DnaRedactionCard({
   function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!report || !etag) return;
+    if (hasInvalidRules) {
+      toast.error('Add a replacement for each highlighted rewrite rule before saving.');
+      return;
+    }
     const next = enabled ? normalize(rules) : [];
     update.mutate(
       { reportId: report.id, patch: { redactionRules: { rules: next } }, etag },
@@ -373,6 +411,10 @@ export function DnaRedactionCard({
         ) : (
           <p className="text-muted-foreground text-sm">Redaction is off — no rules are applied. Turn it on to add rules.</p>
         )}
+
+        {hasInvalidRules && !advanced ? (
+          <p className="text-destructive text-xs">Add a replacement to each highlighted rewrite rule before saving.</p>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           {enabled && !advanced ? (
