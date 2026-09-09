@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min, ValidateNested } from 'class-validator';
 import { AiDeploymentKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY } from '../constants';
+import { AsrProfileRequest } from './asr-profile.request';
 
 /**
  * `PATCH admin/ai-models/:id`.
@@ -222,6 +224,19 @@ export class UpdateModelRequest {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode ' +
+      "thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`. Send " +
+      '`null` to clear the stored profile without touching any other `_metadata` key; omit the field to leave it untouched.',
+    type: AsrProfileRequest,
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AsrProfileRequest)
+  asrProfile?: AsrProfileRequest | null;
 
   // OCC CAS predicate (echoed from the prior GET, e.g. via
   // the `ETag` header). The controller folds the `If-Match` header over this

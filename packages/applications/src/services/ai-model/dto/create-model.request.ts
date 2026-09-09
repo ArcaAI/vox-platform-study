@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, Matches, MaxLength, MinLength, Min, ValidateNested } from 'class-validator';
 import { AiDeploymentKind, AiTaskKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY, DISCOVERABLE_AI_MODEL_PROVIDERS } from '../constants';
+import { AsrProfileRequest } from './asr-profile.request';
 
 // The vocabularies live in `../constants` since TASK-860; re-exported here so
 // existing importers of the DTO module keep resolving them.
@@ -246,4 +248,15 @@ export class CreateModelRequest {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode ' +
+      "thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`.",
+    type: AsrProfileRequest,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AsrProfileRequest)
+  asrProfile?: AsrProfileRequest;
 }
