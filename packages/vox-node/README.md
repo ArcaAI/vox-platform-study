@@ -1,7 +1,9 @@
 # @arcaai/vox-node
 
 The HOPE **server-side Node SDK** — a typed client for the HOPE gateway's
-summarization and consultation-summary surfaces, the workflow and published-agent
+summarization and consultation-summary surfaces, the **realtime consultation
+lifecycle** (`hope.consultations.open` → `recording` → live SSE `streams`, with
+`hope.stt` streaming audio over a WebSocket), the workflow and published-agent
 invocation planes (`hope.workflows.*`, `hope.agents.*`), plus the full
 **administration plane** (`hope.admin.*`, 49 areas), for backend engineers who
 need to call HOPE from a Node service, script, or worker.
@@ -17,14 +19,23 @@ packages with two separate purposes:
 |---|---|---|
 | Environment | Node >= 22 (also Bun/Deno/edge) | Browser only |
 | React | Not a dependency at all | Required peer dependency |
-| Audio/VAD/STT/ML | None | Core capability |
+| Audio/VAD/STT/ML | No audio PIPELINE (see below) | Core capability |
 | State | None — stateless method calls | Zustand store, session lifecycle |
 | Use case | Backend services calling HOPE | In-browser consultation capture |
 
 If you are building a web UI that records audio or drives a live
-consultation, you want `@arcaai/vox`, not this package. If you are writing a
-backend service, script, or worker that needs to POST a transcript and get a
-summary back, you want this one.
+consultation from the browser, you want `@arcaai/vox`, not this package. If you
+are writing a backend service, script, or worker — one that POSTs a transcript
+and gets a summary back, or one that already HAS audio (a telephony bridge, a
+recording relay) and needs to drive a consultation with it — you want this one.
+
+**"No audio/ML" means no audio PIPELINE, and that is not the same as no audio.**
+Since 3.2.0 this package speaks HOPE's realtime STT wire protocol
+(`RealtimeSttSocket`, [below](#realtime-consultations)): it frames PCM16 up a
+WebSocket and decodes transcripts down. What it does not do — and never will —
+is capture, VAD, denoise, or run a model. Which ASR runs is the tenant's
+published `SPEECH_TO_TEXT` agent, resolved by the gateway; *the browser never
+runs a model*, and neither does this SDK.
 
 This package has **zero runtime dependencies** — only the standard `fetch`,
 `AbortSignal`, Web Crypto (`crypto.getRandomValues`), and `ReadableStream`
@@ -177,6 +188,11 @@ the methods you actually call:
 
 | SDK method | Route | Required scope (API key) |
 |---|---|---|
+| `consultations.open` | `POST /api/v1/consultations/open` | `consultation:session:write` |
+| `consultations.recording.start` / `.stop` | `POST /api/v1/consultations/:id/recording/{start,stop}` | `consultation:session:write` |
+| `consultations.addContext` | `POST /api/v1/consultations/:id/context` | `consultation:session:write` |
+| `consultations.streams.*` | `GET /api/v1/consultations/:id/{live-summary,live-assist,harness-progress,loop}/stream` | `consultation:session:write` |
+| `stt.createStreamSession` / `.refreshTicket` / `.closeStreamSession` | `…/audio/transcription-jobs/stream/session*` | `stt:transcription:write` |
 | `summarization.preSummary` / `.preSummaryStream` | `POST /api/smr/api/v1/presummary` | `consultation:report:write` |
 | `summarization.summary` / `.summaryStream` | `POST /api/smr/api/v1/summary/sync` | `consultation:report:write` |
 | `consultations.summaries.generate` | `POST /api/v1/consultations/:id/summary` | `consultation:report:write` |
@@ -188,20 +204,19 @@ the methods you actually call:
 | `consultations.summaries.latestPreSummary` | `GET /api/v1/consultations/:id/summary/pre-summary/latest` | `consultation:report:read` |
 | `jobs.get` | `GET /api/v1/consultations/jobs/:jobId` | `consultation:session:read` |
 | `jobs.cancel` | `PATCH /api/v1/consultations/jobs/:jobId/cancel` | `consultation:session:read` |
-| `jobs.stream` / `jobs.waitFor` | `GET /api/v1/consultations/jobs/:jobId/stream` | `consultation:session:read` |
-| `consultations.summaries.update` | `PATCH /api/v1/consultations/:id/summary/:summaryId` | **none declared** — see note below |
-| `consultations.get` | `GET /api/v1/consultations/:id` | **none declared** — see note below |
+| `jobs.stream` / `jobs.subscribe` / `jobs.waitFor` | `GET /api/v1/consultations/jobs/:jobId/stream` | `consultation:session:read` |
+| `consultations.summaries.update` | `PATCH /api/v1/consultations/:id/summary/:summaryId` | `consultation:report:write` |
+| `consultations.get` | `GET /api/v1/consultations/:id` | `consultation:session:read` |
 
-> **Two methods carry no scope requirement today.** Verified directly against
-> `apps/api/src/modules/consultation/consultation.controller.ts`:
-> `updateSummary` (backing `consultations.summaries.update`) and `getById`
-> (backing `consultations.get`) have no `@RequiredScopes(...)` decorator at
-> all. Any API key your RBAC role permits can call these two routes
-> regardless of its declared scopes — this is a real gap in the gateway, not
-> an SDK omission, and it is narrower than the pre-fix state (every other
-> route the SDK calls was equally unenforced before this scope-decorator work
-> landed). Don't assume a narrowly-scoped key is blocked from these two
-> calls; it is not.
+> **The two "no scope declared" rows this table used to carry are gone.**
+> `updateSummary` and `getById` genuinely had no `@RequiredScopes(...)` when
+> that note was written; re-verified against
+> `apps/api/src/modules/consultation/consultation.controller.ts` on 2026-09-09,
+> both now declare one, and a CLASS-level `@RequiredScopes('consultation:session:write')`
+> supplies a default for every consultation route that declares none of its own
+> (`Reflector.getAllAndOverride` takes the method's value first, so a finer
+> method-level scope still wins). The gap is closed; the note is kept in this
+> shape so a reader arriving from an older copy can see what changed.
 
 ## The admin plane — `hope.admin.*`
 
@@ -319,7 +334,10 @@ scopes — granting the first never implies the second.
 | Plane | API key | Service account |
 |---|---|---|
 | `hope.agents.*`, `hope.workflows.*` (incl. `.reviews`) | ✅ | ✅ since **3.1.0** |
-| `hope.consultations.workflows.*` — the CLINICAL plane | ✅ | ❌ refused at the call site |
+| `hope.consultations.*` — open, recording, streams, context, summaries | ✅ | ✅ since **3.2.0** |
+| `hope.consultations.workflows.*` — the CLINICAL workflow plane | ✅ | ✅ since **3.2.0** |
+| `hope.stt.*` — streaming sessions and the realtime socket | ✅ | ✅ since **3.2.0** |
+| `hope.tenants.contextSchema()` | ✅ | ✅ since **3.2.0** |
 | `hope.admin.*` | ❌ never, under any scope | ✅ only |
 
 Until 3.1.0 the whole workflow plane declared `svcScopes: []` — deny-by-default
@@ -329,14 +347,27 @@ discover it as a 403 that no role grant could fix. The gateway now declares
 `svc:workflow:definition:read`, `svc:workflow:run:read` and
 `svc:workflow:run:write`, so **one client can now both administer and invoke**.
 
-Two things did NOT change:
+3.2.0 opened the rest. The realtime consultation surface declares
+`svc:consultation:session:write`, `svc:consultation:session:read`,
+`svc:consultation:report:read`, `svc:tenant:context-schema:read` and
+`svc:workflows:execute` — an owner decision (2026-09-09) that a machine driving a
+realtime consultation holds every permission the SDK needs for it, the
+consultation-bound workflow plane included. **`CredentialClassError` no longer
+fires on any plane in this package**; the class is still exported, because an
+integrator on an older SDK still meets it by name.
 
-- **The consultation-bound plane still refuses a service account.** Running a
-  workflow that writes into a clinical record is not a machine-identity power,
-  so it gained no `svc:*` scopes and `CredentialClassError` still fires there.
-- **A service-account client never sends `X-Tenant-Id`**, because
-  `workingTenantId` binds at token EXCHANGE. Setting both throws at construction
-  — as does passing an API key and a service account to one client.
+What did NOT change: **a service-account client never sends `X-Tenant-Id`**,
+because `workingTenantId` binds at token EXCHANGE. Setting both throws at
+construction — as does passing an API key and a service account to one client.
+
+> **On the version numbers above:** the manifest still reads `3.1.0`. Versioning
+> the SDK family in lockstep is a release decision taken outside the change that
+> added these methods; `3.2.0` names the release they ship in.
+
+And one thing a machine still cannot be: **the clinician.** `open` requires a
+`clinicianUserId` from a service-account caller, the consultation row records
+that person as its doctor, and the audit records the service account as the
+actor beside them.
 
 ### Starting a run
 
@@ -493,11 +524,133 @@ the same idempotency key instead.
 
 Realtime transcription is deliberately **not** here: a browser captures audio and
 opens the stream session through `@arcaai/vox` (`audio.start({ agentSlug })`).
-This package has no audio stack and never will — *the browser never runs a model*,
-and neither does this SDK.
+This package has no audio PIPELINE and never will — *the browser never runs a
+model*, and neither does this SDK. `RealtimeSttSocket` is a socket client for the
+gateway's `/ws/stt/stream` protocol, not an inference stack; see
+[Realtime consultations](#realtime-consultations).
 
 Administration of agents (CRUD, versions, publish, assignments) is the generated
 admin plane, `hope.admin.agent.*` — service account only.
+
+## Realtime consultations
+
+Drive a consultation end to end from a backend service: open it, stream audio,
+watch the note being written, stop, read the finished note. This is what
+`audio-stream-svc`-shaped integrations do — a system that already HAS the audio
+and needs HOPE to document it.
+
+```ts
+// 1. Open — get-or-create. A SERVICE ACCOUNT must name the clinician it acts for.
+const consultation = await hope.consultations.open({
+  patientId: 'MRN-4471',
+  clinicianUserId: doctorUserId,   // required for a service account, refused for a human caller
+  departmentId: cardiologyId,      // selects the governing workflow + the department's note shape
+  parentConsultationId: priorId,   // present ⇒ revisit, absent ⇒ new visit. There is no "visit type" field
+  language: 'en',                  // the language the NOTE is written in — not the STT language
+});
+
+// 2. Open the STT session BEFORE recording starts, and hand `start` its id.
+const session = await hope.stt.createStreamSession({ consultationId: consultation.id });
+await hope.consultations.recording.start(consultation.id, { sessionId: session.sessionId });
+
+// 3. Watch the note being written.
+const live = hope.consultations.streams.liveSummary(consultation.id, {
+  onSnapshot: (event) => render(event.runningSummary, event.sections),
+  onSectionPatch: (patch) => applyIfNewer(patch),      // discard revision <= the one you hold
+  onPreSummary: (warm) => showWarmStart(warm.status),  // running → ready | degraded
+  onClosed: () => log('live summary finished'),
+  onError: (error) => log.error(error),                // required — a 403 must never vanish
+});
+
+// 4. Stream PCM16 LE mono up the socket.
+const socket = hope.stt.socket(session);
+socket.on('transcript', (t) => { if (t.isFinal) appendCaption(t.text); });
+await socket.connect();
+for await (const frame of pcm16Frames) socket.sendPcm16(frame);
+socket.stop();   // finalize the utterance; the session stays open
+socket.close();  // end the session
+
+// 5. Stop, then read the finished note.
+await hope.consultations.recording.stop(consultation.id, { persistSnapshot: true });
+live.close();
+const note = await hope.consultations.summaries.latest(consultation.id);
+```
+
+### Identity is fixed at `open`, and read from the ROW afterwards
+
+Four details decide how HOPE documents a visit, and all four are supplied once,
+on `open`:
+
+| Field | What it decides |
+|---|---|
+| `clinicianUserId` | lands on `Consultation.doctorId` — the DNA writing style, the redaction gate, the doctor's report, the prompt tier, and who the audit names as the clinician |
+| `departmentId` | the governing workflow (`DEPARTMENT → TENANT` assignment), the department's note shape, and its context schema |
+| `parentConsultationId` | the visit type: absent = new visit, present = revisit (the graph branches on it, and a revisit carries the prior visit's context) |
+| `language` | the language the generated note is written in. Independent of the STT language mode |
+
+A machine is **never** recorded as the clinician. A service-account call is
+audited as the ACTOR beside the clinician it acted for — which is exactly why
+`clinicianUserId` is required for that credential class and rejected for a human
+one, who already is the clinician.
+
+### The four live planes are not the same shape
+
+| `hope.consultations.streams.…` | Shape | Ends itself? |
+|---|---|---|
+| `liveSummary(id, handlers)` | THREE payload kinds on one channel — a whole-document snapshot, a `section.patch`, a `presummary` | yes, on `closed: true` |
+| `liveAssist(id, handlers)` | one snapshot; a publish replaces only the branch it carries. **Carries PHI** | no |
+| `harnessProgress(id, handlers)` | snapshot fold — the full stage list every time. No PHI | yes, on `closed: true` |
+| `loop(id, handlers)` | APPEND-ONLY: self-contained events, no fold, no late-join replay | no |
+
+Each returns a `{ close() }` handle. `onError` is **required** on every one of
+them: a subscription is fire-and-forget, so a 403 with nowhere to go looks
+exactly like a quiet consultation. `hope.jobs.subscribe(jobId, handlers)` is the
+same shape for async summary jobs, beside the existing `jobs.stream` generator.
+
+The live-summary channel discriminates on the `event` field **inside the JSON**,
+never on the SSE `event:` line — the legacy whole-document payload carries no
+`event` at all, which is what marks it.
+
+### `RealtimeSttSocket` — a socket client, not an audio pipeline
+
+`hope.stt.socket(session)` wires the gateway origin and a ticket refresher for
+you. What crosses the wire:
+
+- **up**: binary frames of **PCM16 LE mono** (`sendPcm16`), and JSON control
+  frames — `stop` (finalize the utterance), `close` (end the session), `resume`.
+  The gateway routes on the WebSocket binary flag, so audio needs no envelope.
+- **down**: `transcript`, `status`, `error`, `resumed` events, typed.
+
+Three things worth knowing before you wire it up:
+
+1. **The handshake carries a single-use TICKET, never a credential.** A JWT or
+   service-account token in a query string is logged by every proxy on the path;
+   the ticket exists so it is not. It is consumed at the first open, so every
+   reconnect mints a fresh one — which is why the socket needs a refresher and
+   why `hope.stt.socket()` is the way to build it.
+2. **Reconnects resume.** After a close this client did not ask for, it mints a
+   ticket, reopens, and sends `{ type: 'resume', sessionId, lastSeq }` with the
+   highest transcript `seq` it observed; the server replays what you missed. If
+   the gap has fallen out of the server's bounded buffer you get a
+   `resume_failed` on the `error` event — a real transcript gap, not a retryable
+   hiccup. Pass `autoResume: false` to drive it yourself.
+3. **Node 22+.** The socket is `globalThis.WebSocket` and nothing else; this
+   package has zero runtime dependencies and will not import a polyfill. On a
+   runtime without it you get `SocketUnavailableError` naming the floor.
+
+Which ASR runs is `agentSlug` — a published `SPEECH_TO_TEXT` agent — or nothing
+at all, which lets the tenant's `department → tenant` assignment cascade decide.
+That is the selection HOPE wants an integration to make; there is no engine and
+no model id to choose here.
+
+### Discovering the tenant's context vocabulary
+
+`hope.tenants.contextSchema()` returns the tenant's pinned context-schema bundle
+— the kinds a case-note write may name. Pin its `contextSchemaVersionId` on every
+`addContext` call so a publish landing mid-run never silently changes what your
+payload is validated against. `@arcaai/vox-codegen --tenant` generates TypeScript
+types from the same bundle, and since 3.2.0 it accepts a service account rather
+than only a human's super-admin JWT.
 
 ## Streaming
 
