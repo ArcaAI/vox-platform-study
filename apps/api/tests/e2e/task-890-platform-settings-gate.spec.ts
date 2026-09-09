@@ -109,14 +109,56 @@ test.describe('TASK-890 — platform settings are super-admin-only to write', ()
     expect((await response.json()).version).toBe(row.version + 1);
   });
 
+  /**
+   * TASK-932 S2-4 — this case used to tolerate `[400, 403]` and probe
+   * `enable-local-raw-capture`, which was an UNREGISTERED key at the time. It
+   * therefore pinned nothing: the write lane refused it at step 1 ("unknown
+   * key"), and `assertMayWriteAtScope` — the guard the test is named after —
+   * was never reached. Since the visibility work landed
+   * (`descriptorOr404` on the write route, 2026-09-09) that same request answers
+   * 404, so the tolerance had gone stale in the other direction too.
+   *
+   * Split in two, each probing the guard it names:
+   *   - the scope guard, with a key a tenant admin CAN see, written at `system`;
+   *   - the platform-only 404, with the key this lane just registered.
+   */
   test('the settings REGISTRY keeps its own system-scope guard (regression pin on assertMayWriteAtScope)', async ({ request }) => {
-    // A different service, the same rule — pinned here so the two cannot drift:
-    // a tenant admin writing a `scope: system` descriptor is a 403, not a 404.
+    // `rateLimit.maxRequests` is `global-kv`, NOT `globalOnly`, `maxScope:
+    // 'tenant'` — a tenant admin may see it and may set it FOR ITSELF. Writing
+    // it at `system` scope changes it platform-wide, which is the 403 this
+    // guard exists to raise, and the only shape that reaches it.
+    const response = await request.put('/api/v1/admin/settings/registry/rateLimit.maxRequests', {
+      headers: { Authorization: `Bearer ${await tenantAdminToken(request)}` },
+      data: { value: 10, scope: 'system' },
+    });
+    expect(response.status(), 'a system-scope write by a tenant admin is a privilege 403, not a 404 or a 400').toBe(403);
+  });
+
+  test('a registered platform-only key is 404 on the write route — existence hiding, not the scope 403', async ({ request }) => {
+    // `enable-local-raw-capture` is now a registered `Feature Availability`
+    // descriptor: `global-kv`, `globalOnly`, `maxScope: 'system'`. Being
+    // `globalOnly` it is absent from a tenant admin's CATALOG, and the write
+    // route answers the same 404 the GET does so the lane cannot be walked as a
+    // directory of the platform's configuration.
+    //
+    // This is deliberately NOT the write lane's own `globalOnly` 403: that 403
+    // is the backstop for a key the caller CAN see. Which of the two answers a
+    // key gets is decided by `isTenantVisibleSetting`, not by the guard order,
+    // and conflating them is how a platform key becomes enumerable.
     const response = await request.put('/api/v1/admin/settings/registry/enable-local-raw-capture', {
       headers: { Authorization: `Bearer ${await tenantAdminToken(request)}` },
-      data: { value: 'false', scope: 'system' },
+      data: { value: false, scope: 'system' },
     });
-    expect([400, 403]).toContain(response.status());
+    expect(response.status(), 'a platform-only key must be indistinguishable from an unknown one to a tenant admin').toBe(404);
+
+    // ...and it is a REAL key, so the 404 above is a visibility rule and not a
+    // broken fixture: the super admin reads it from the catalog by name.
+    const catalog = await request.get('/api/v1/admin/settings/catalog', { headers: { Authorization: `Bearer ${await superAdminToken(request)}` } });
+    const body = (await catalog.json()) as { items: Array<{ key: string; globalOnly?: boolean; maxScope: string }> };
+    const descriptor = body.items.find((i) => i.key === 'enable-local-raw-capture');
+    expect(descriptor, 'the descriptor must exist — this is the proof the S2-4 registration landed').toBeDefined();
+    expect(descriptor!.globalOnly).toBe(true);
+    expect(descriptor!.maxScope).toBe('system');
   });
 });
 
