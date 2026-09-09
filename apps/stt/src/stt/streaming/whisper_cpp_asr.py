@@ -392,10 +392,33 @@ class WhisperCppAsrAdapter:
         sample_rate: int,
         *,
         prompt: str | None = None,
+        max_decode_window_sec: float | None = None,
     ) -> dict[str, Any]:
+        """Decode one buffer.
+
+        TASK-934 — ``max_decode_window_sec`` is a PER-CALL window and it outranks
+        the one this adapter was constructed with. Two things need that:
+
+        * the partial window and the decode window are independent knobs
+          (``partialWindowSec`` 15 s against ``maxDecodeWindowSec`` 7 s on the
+          measured ml-en profile), so a 15 s partial must decode in ONE pass
+          instead of being re-split into the short window the measurement
+          rejected; and
+        * G-6 — the window then travels with the CALL rather than with the
+          adapter instance, so a model-row edit reaches a new session without a
+          process restart, even where the loaded weights are shared.
+
+        ``None`` keeps the constructed window (unchanged behaviour); ``0``
+        disables the guard for this call.
+        """
         audio = np.asarray(samples, dtype=np.float32)
 
-        spans = self._split_spans(audio, sample_rate)
+        window = (
+            self._max_audio_seconds
+            if max_decode_window_sec is None
+            else float(max_decode_window_sec)
+        )
+        spans = self._split_spans(audio, sample_rate, window)
         with self._lock:
             sub_results = [
                 self._build_result(
@@ -428,15 +451,17 @@ class WhisperCppAsrAdapter:
                 return []
         return segments
 
-    def _split_spans(self, audio: np.ndarray, sample_rate: int) -> list[tuple[int, int]]:
+    def _split_spans(
+        self, audio: np.ndarray, sample_rate: int, max_audio_seconds: float
+    ) -> list[tuple[int, int]]:
         """Split *audio* into ``[start, end)`` sample spans no longer than
         ``max_audio_seconds``, cutting at the quietest point (a word gap / silence
         trough) near each target boundary. Returns a single whole-buffer span when
         the guard is disabled or the audio already fits."""
         n = len(audio)
-        if self._max_audio_seconds <= 0 or sample_rate <= 0:
+        if max_audio_seconds <= 0 or sample_rate <= 0:
             return [(0, n)]
-        max_len = int(self._max_audio_seconds * sample_rate)
+        max_len = int(max_audio_seconds * sample_rate)
         if n <= max_len:
             return [(0, n)]
         # Greedy forward: from the current position, cut at the DEEPEST silence

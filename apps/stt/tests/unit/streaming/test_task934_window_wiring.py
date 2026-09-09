@@ -32,6 +32,7 @@ from stt.pipeline.spec import bundle_from_resolved
 from stt.streaming.preprocessor import _DEFAULT_PARTIAL_WINDOW_S, StreamingPreprocessor
 from stt.streaming.session_manager import SessionManager
 
+
 def _fixture() -> dict[str, Any]:
     here = Path(__file__).resolve()
     for parent in here.parents:
