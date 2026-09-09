@@ -161,8 +161,9 @@ def _authored_context(run_payload: dict[str, Any]) -> dict[str, Any]:
     Only the VALIDATED object narrows. The published ``context`` is still the full payload, so the
     thirteen ``run_identity(...)`` readers and any ``trigger.context.*`` binding are untouched.
     """
-    return {key: value for key, value in run_payload.items() if key not in RESERVED_RUN_IDENTITY_KEYS}
-
+    return {
+        key: value for key, value in run_payload.items() if key not in RESERVED_RUN_IDENTITY_KEYS
+    }
 
 
 @activity.defn(name="interpreter.core_trigger")
@@ -887,10 +888,118 @@ def _redaction_audit(output: dict[str, Any]) -> tuple[bool | None, dict[str, Any
     return bool(total), {"source": "core.agent", "labelCounts": counts, "total": total}
 
 
+#: OD-6 — a redaction that could not be confirmed leaves the note FLAGGED, never silent. The
+#: mechanism is the legacy gate's own (`workflows.py`: `decision = str(GateDecision.FLAG)` when
+#: `redaction_failed_closed`), so a clinician sees the same marker whichever lane produced it.
+_REDACTION_UNCONFIRMED = "the redaction engine could not confirm the transform"
+
+
+def _redaction_rules(trigger: Any) -> tuple[list[Any] | None, str | None]:
+    """The doctor's DNA redaction rules off the LIVE HANDOFF context (pure).
+
+    Three outcomes, and they are clinically different:
+
+    * ``(None, None)`` — nothing configured. Not a failure: the doctor asked for no transform,
+      so the finalizer's self-reported audit stays the provenance.
+    * ``(rules, None)`` — a usable set; the deterministic engine runs.
+    * ``(None, reason)`` — rules ARE configured but this lane cannot build them. Something was
+      meant to be removed and will not be, which is the same clinical situation as an engine
+      that could not run, so OD-6 applies rather than a silent fall-through to the audit.
+
+    The gateway holds the set as ``{ rules: [...] }`` (``RedactionRuleSet``); both that and the
+    bare list are accepted, because they are the same object with and without its envelope.
+    """
+    from pydantic import ValidationError  # noqa: PLC0415
+
+    from harness.redaction.engine import RedactionRule  # noqa: PLC0415
+
+    raw = trigger.get("dna_redaction_rules") if isinstance(trigger, dict) else None
+    if isinstance(raw, dict):
+        raw = raw.get("rules")
+    if raw is None or (isinstance(raw, list) and not raw):
+        return None, None
+    if not isinstance(raw, list):
+        return None, f"`dna_redaction_rules` is a {type(raw).__name__}, not a list of rules"
+    try:
+        return [RedactionRule.model_validate(rule) for rule in raw], None
+    except ValidationError as exc:
+        return None, f"the configured redaction rules did not parse ({exc.error_count()} invalid)"
+
+
+async def _deterministic_redaction(
+    payload: NodeActivityInput,
+    content: str,
+    rules: list[Any],
+    *,
+    policy: HarnessPolicy | None,
+    response_format: dict[str, Any] | None,
+    provider: str | None,
+    model: str | None,
+) -> tuple[str, Any, bool | None, dict[str, Any], str | None]:
+    """Run ``apply_redaction`` over the doctor's rules and report what it did.
+
+    Returns ``(content, content_ref, applied, manifest, failed_reason)``.
+
+    This is the SAME activity the legacy ``HarnessDocWorkflow`` runs, called the same way
+    ``persist_draft`` already is from here — activity-to-activity, inside the node activity that
+    holds the note. It therefore adds NO workflow command and needs no ``workflow.patched`` era:
+    the workflow still sees one activity result.
+
+    A partially-applied transform is KEPT even when the pass fails closed (the legacy path's
+    ``if redaction.changed`` adoption), because a half-redacted note is strictly better than an
+    unredacted one; the FLAG is what stops it being read as clean.
+    """
+    from harness.temporal.activities import apply_redaction  # noqa: PLC0415
+    from harness.temporal.models import ApplyRedactionInput  # noqa: PLC0415
+
+    try:
+        redaction = await apply_redaction(
+            ApplyRedactionInput(
+                tenant_id=payload.tenant_id,
+                note_text=content,
+                rules=rules,
+                response_format=response_format,
+                provider=provider,
+                model=model,
+                phi_enabled=policy.phi_enabled if policy else True,
+                phi_fail_closed=policy.phi_fail_closed if policy else True,
+                trajectory=payload.trajectory,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — any failure here is OD-6, never a lost note
+        return content, None, False, {}, f"{_REDACTION_UNCONFIRMED}: {exc}"
+
+    manifest = redaction.manifest
+    audit: dict[str, Any] = {
+        "source": "deterministic",
+        "applied": manifest.applied,
+        "totalHits": manifest.total_hits,
+        "hitsByRule": dict(manifest.hits_by_rule),
+        "ruleIds": sorted(manifest.hits_by_rule.keys()),
+        "failedClosed": redaction.failed_closed,
+    }
+    if redaction.changed:
+        content, content_ref = redaction.text, redaction.text_ref
+    else:
+        content_ref = None
+    return (
+        content,
+        content_ref,
+        manifest.applied,
+        audit,
+        _REDACTION_UNCONFIRMED if redaction.failed_closed else None,
+    )
+
+
 async def _persist_finalized_note(
     payload: NodeActivityInput,
     candidate: ResolvedAgent,
     output: dict[str, Any],
+    *,
+    policy: HarnessPolicy | None = None,
+    response_format: dict[str, Any] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> str | None:
     """Write the finalized note onto the consultation. Returns a failure reason, or ``None``.
 
@@ -917,7 +1026,46 @@ async def _persist_finalized_note(
     identity = run_identity(payload.run_payload)
     trigger = _run_context(payload).get("trigger")
     dna_style_id = trigger.get("dna_style_id") if isinstance(trigger, dict) else None
+
+    # The redaction MARKER. `_redaction_audit` reports what the finalizer SAID it redacted —
+    # the model's own account of its own output. That is provenance, not evidence, and it is
+    # the only thing this lane had: `SummaryMeta.redactionApplied` read `false` on every
+    # interpreter-persisted note because no deterministic pass ran here at all.
+    #
+    # When the doctor HAS configured DNA redaction rules, the real transform runs first and its
+    # manifest replaces the self-report. When they have not, the self-report stays — absence of
+    # rules is not a failed redaction.
     redaction_applied, redaction_manifest = _redaction_audit(output)
+    content_ref = None
+    gate_decision: str | None = None
+    rules, failed_reason = _redaction_rules(trigger)
+    if rules is not None:
+        content, content_ref, redaction_applied, redaction_manifest, failed_reason = (
+            await _deterministic_redaction(
+                payload,
+                content,
+                rules,
+                policy=policy,
+                response_format=response_format,
+                provider=provider,
+                model=model,
+            )
+        )
+    if failed_reason is not None:
+        # OD-6 — persist, do NOT drop: an undocumented encounter is the worse clinical outcome,
+        # and `n_review` already gates what lands here. The forced review flag is the legacy
+        # gate's own `FLAG`, and the reason is named on the manifest so the review is
+        # explainable rather than mysterious.
+        from harness.sensors.aggregator import GateDecision  # noqa: PLC0415
+
+        gate_decision = str(GateDecision.FLAG)
+        redaction_manifest = {
+            **(redaction_manifest or {}),
+            "source": "deterministic",
+            "failedClosed": True,
+            "reason": failed_reason,
+        }
+        redaction_applied = bool(redaction_manifest.get("applied", False))
 
     try:
         await persist_draft(
@@ -925,15 +1073,19 @@ async def _persist_finalized_note(
                 consultation_id=identity.consultation_id or "",
                 tenant_id=payload.tenant_id,
                 content=content,
+                content_ref=content_ref,
                 user_id=identity.user_id,
                 job_id=identity.job_id,
                 model_name=candidate.model.source_uri or candidate.model.slug,
                 prompt_version=(
                     str(candidate.version_number) if candidate.version_number is not None else None
                 ),
-                dna_style_id=dna_style_id if isinstance(dna_style_id, str) and dna_style_id else None,
+                dna_style_id=(
+                    dna_style_id if isinstance(dna_style_id, str) and dna_style_id else None
+                ),
                 redaction_applied=redaction_applied,
                 redaction_manifest=redaction_manifest,
+                gate_decision=gate_decision,
                 is_auto_generated=True,
             )
         )
@@ -1196,7 +1348,19 @@ async def _run_text_generation(
         # already completed. The note still reaches the review gate and the output node, and the
         # reason names what did not happen.
         if _is_consultation_finalizer(payload, config):
-            failure = await _persist_finalized_note(payload, candidate, output)
+            # The provider/model/PHI policy and the wire response format are the ones THIS
+            # generation already resolved — threaded rather than re-resolved, so the optional
+            # semantic-rewrite half of the redaction runs against the same engine that wrote
+            # the note and the transformed note still satisfies the same schema.
+            failure = await _persist_finalized_note(
+                payload,
+                candidate,
+                output,
+                policy=policy,
+                response_format=wire_format,
+                provider=provider,
+                model=model,
+            )
             if failure is not None:
                 return NodeActivityResult(
                     status="DEGRADED", reason=f"core.agent: {failure}", output=output
