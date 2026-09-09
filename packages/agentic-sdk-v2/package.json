@@ -79,7 +79,7 @@
     "@arcaai/vad": "workspace:*",
     "@huggingface/transformers": "^4.2.0",
     "@ricky0123/vad-web": "^0.0.30",
-    "deepmerge-ts": "^7.1.6",
+    "deepmerge-ts": "^8.0.2",
     "diff": "^9.0.0",
     "eventemitter3": "^5.0.4",
     "onnxruntime-common": "1.27.0",

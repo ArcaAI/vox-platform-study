@@ -43,7 +43,7 @@
     "@arcaai/config-ts": "workspace:*",
     "@arcaai/json-schema-subset": "workspace:*",
     "ajv": "^8.20.0",
-    "ajv-formats": "^2.1.1",
+    "ajv-formats": "^3.0.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.0"
