@@ -12,6 +12,7 @@ import {
   consultationJobStreamPath,
   generateSummaryAsync,
   getConsultationJob,
+  getLatestPreSummary,
   getLatestSummary,
   getNamedEntities,
   getSummaryProvenance,
@@ -519,6 +520,37 @@ export function foldPreSummaryEvent(current: PreSummaryView | null, raw: string)
   };
 }
 
+/**
+ * TASK-932 C1-2 — folds a `getLatestPreSummary` REST read into the SSE-derived state.
+ *
+ * The REST route reads the SAME persisted row a `ready` SSE event describes, so this is never a
+ * competing source of truth — only a way to recover it when the terminal SSE frame never arrived
+ * (the 30ms lost-event window in the docblock above). A REST read therefore never regresses
+ * anything the fold has already produced: it never overrides an already-terminal state unless the
+ * REST answer is PROVABLY newer (a rare re-generation), and it never replaces a `running` state
+ * with an equal-or-older `updatedAt`.
+ *
+ * Exported for the reconciler test — same rationale as `foldPreSummaryEvent`.
+ */
+export function reconcilePreSummaryFromLatest(current: PreSummaryView | null, latest: SummaryResult): PreSummaryView | null {
+  const restView: PreSummaryView = {
+    status: 'ready',
+    content: latest.content,
+    error: null,
+    agentSlug: current?.agentSlug ?? null,
+    updatedAt: latest.updatedAt ?? null,
+  };
+  if (!current) return restView;
+
+  const currentTime = current.updatedAt ? Date.parse(current.updatedAt) : null;
+  const restTime = restView.updatedAt ? Date.parse(restView.updatedAt) : null;
+  const restIsStrictlyNewer = currentTime !== null && restTime !== null && restTime > currentTime;
+
+  if (TERMINAL_PRE_SUMMARY.has(current.status)) return restIsStrictlyNewer ? restView : current;
+  if (currentTime !== null && restTime !== null && restTime <= currentTime) return current;
+  return restView;
+}
+
 export function usePreSummaryStream(consultationId: string | null, enabled = true): PreSummaryStreamHandle {
   const [preSummary, setPreSummary] = useState<PreSummaryView | null>(null);
 
@@ -538,6 +570,20 @@ export function usePreSummaryStream(consultationId: string | null, enabled = tru
     onEvent: handleEvent,
     enabled: enabled && !!consultationId,
   });
+
+  // REST catch-up: recovers a `ready` pre-summary whose terminal SSE event was published before
+  // this stream subscribed (lost outright — no replay). Fires once per consultation; reconciled
+  // in during render (not an effect) so it can never regress state the fold already produced.
+  const catchUp = useQuery({
+    queryKey: playgroundConsultationKeys.latestPreSummary(consultationId ?? 'none'),
+    queryFn: () => getLatestPreSummary(consultationId as string),
+    enabled: enabled && !!consultationId,
+  });
+
+  if (catchUp.data) {
+    const reconciled = reconcilePreSummaryFromLatest(preSummary, catchUp.data);
+    if (reconciled !== preSummary) setPreSummary(reconciled);
+  }
 
   return { preSummary, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
 }
