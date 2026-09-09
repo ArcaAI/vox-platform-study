@@ -119,3 +119,55 @@ test.describe('TASK-890 — platform settings are super-admin-only to write', ()
     expect([400, 403]).toContain(response.status());
   });
 });
+
+/**
+ * TASK-932 S2-1 — a `(tenantId, key)` pair holds at most ONE live row.
+ *
+ * `create` used to probe only for a soft-DELETED row at the exact
+ * `(tenantId, name, key)` — the shape of the OLD unique index — so the same key
+ * under a different `name`/`namespace` was accepted and stored twice. Nothing
+ * about that is cosmetic: `AppSettingsService` rebuilds its cache keyed by key
+ * alone and REFUSES the whole cache when it finds two ("duplicate platform
+ * key(s) detected"), so the second row does not shadow one setting, it takes
+ * the settings cache down for the process.
+ *
+ * Pinned here and not in the route matrix because the refusal depends on the
+ * STATE of the table, not on the caller: the same POST from the same super
+ * admin succeeds or 400s according to whether the key is already occupied.
+ */
+test.describe('TASK-932 S2-1 — the settings table holds one live row per (tenantId, key)', () => {
+  test('a super admin cannot create a second row for an occupied key in another namespace', async ({ request }) => {
+    const token = await superAdminToken(request);
+
+    // The seeded, SYSTEM-tenant `enable-local-raw-capture` row lives in
+    // namespace `feature-flags`; this asks for the same key in another one.
+    const before = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(before.status(), 'the seeded platform row must exist for this test to mean anything').toBe(200);
+    const row = await before.json();
+    expect(row.key).toBe('enable-local-raw-capture');
+
+    const response = await request.post(SETTINGS, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        tenantId: SYSTEM_TENANT_ID,
+        namespace: 'task-932-duplicate-probe',
+        name: 'Duplicate probe',
+        key: row.key,
+        value: 'false',
+        dataType: 'Boolean',
+      },
+    });
+
+    expect(response.status(), 'a duplicate key is a 400 that NAMES the occupying namespace, never a second row').toBe(400);
+    expect(JSON.stringify(await response.json())).toContain('feature-flags');
+
+    // Nothing was written: the original row is untouched, and it is still the
+    // only one carrying that key.
+    const after = await request.get(`${SETTINGS}/${SYSTEM_ROW_ID}`, { headers: { Authorization: `Bearer ${token}` } });
+    expect((await after.json()).version).toBe(row.version);
+
+    const list = await request.get(`${SETTINGS}/tenant/${SYSTEM_TENANT_ID}?limit=200`, { headers: { Authorization: `Bearer ${token}` } });
+    const body = (await list.json()) as { data: Array<{ key: string }> };
+    expect(body.data.filter((i) => i.key === row.key)).toHaveLength(1);
+  });
+});
