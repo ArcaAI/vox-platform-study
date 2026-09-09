@@ -96,6 +96,10 @@ class AudioUtterance:
 
     samples: np.ndarray  # float32 mono, normalised [-1, 1]
     sample_rate: int
+    # Session-relative span of ``samples``. For a partial that outgrew
+    # ``partial_window_s`` this is the start of the DECODED WINDOW, not of the
+    # utterance — the tail was trimmed, and that offset is what anchors the
+    # commit policy's hypotheses to the same audio span (TASK-935).
     start_time: float  # seconds from session start
     end_time: float  # seconds from session start
     utterance_index: int  # 0-based within the session
@@ -723,6 +727,10 @@ class StreamingPreprocessor:
         The snapshot is bounded to the last
         ``partial_window_s`` seconds so per-partial decode cost stops growing
         with utterance length. Finals are unaffected (full buffer).
+
+        Once trimming starts, ``start_time`` is the window's own start rather
+        than the utterance's: it is the offset the commit policy needs to tell
+        a slid window from a revised hypothesis (TASK-935).
         """
         state = self._state
 
