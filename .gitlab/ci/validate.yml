@@ -342,7 +342,7 @@ lint-python:
   tags: [fast]
   needs: []
   script:
-    - pip install --quiet ruff
+    - pip install --quiet --retries 5 --timeout 120 ruff
     - echo "Linting Python services..."
     - ruff check apps/stt/src/ apps/stt/tests/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/text/src/ --output-format=gitlab || LINT_FAILED=1
