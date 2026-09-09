@@ -14,6 +14,7 @@ import {
   generateSummary,
   generateSummaryAsync,
   getConsultationJob,
+  getLatestPreSummary,
   getLatestSummary,
   getNamedEntities,
   getSummaryProvenance,
@@ -200,6 +201,31 @@ describe('playground consultation client', () => {
 
     installFetchMock(() => Response.json({ message: 'boom' }, { status: 503 }));
     await expect(getLatestSummary('c-1')).rejects.toMatchObject({ status: 503 });
+  });
+
+  // TASK-932 C1-2 — the REST catch-up `usePreSummaryStream` seeds from when a
+  // `presummary` SSE event published before the stream subscribes is lost.
+  it('reads the latest pre-summary', async () => {
+    const calls = installFetchMock(() =>
+      Response.json({
+        id: 'ctx-9',
+        consultationId: 'c-1',
+        type: 'pre_summary',
+        content: '- Diabetes (recorded 11-Aug-2026)',
+        updatedAt: '2026-09-09T10:00:01.000Z',
+      }),
+    );
+    const latest = await getLatestPreSummary('c-1');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/consultations/c-1/summary/pre-summary/latest']);
+    expect(latest).toMatchObject({ content: '- Diabetes (recorded 11-Aug-2026)', updatedAt: '2026-09-09T10:00:01.000Z' });
+  });
+
+  it('treats a 404 latest pre-summary as "none generated yet" (null) but rethrows other failures', async () => {
+    installFetchMock(() => Response.json({ message: 'No pre-summary found' }, { status: 404 }));
+    await expect(getLatestPreSummary('c-1')).resolves.toBeNull();
+
+    installFetchMock(() => Response.json({ message: 'boom' }, { status: 503 }));
+    await expect(getLatestPreSummary('c-1')).rejects.toMatchObject({ status: 503 });
   });
 
   it('reads aggregated named entities with the optional chain scope', async () => {
