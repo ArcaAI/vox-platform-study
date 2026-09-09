@@ -812,6 +812,16 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
   },
 ];
 
+/**
+ * The `(tenantId, key)` identity of the one `GlobalSetting` row this file
+ * writes inline (the Global tenant's `default-stt-pipeline`). Exported only so
+ * `seed-global-settings.test.ts` can fold it into the cross-seed
+ * `(tenantId, key)` uniqueness pin without duplicating the literal key.
+ */
+export const USER_GLOBAL_SETTING_IDENTITIES: ReadonlyArray<{ tenantId: string; key: string }> = [
+  { tenantId: SEED_TENANT_ID, key: 'default-stt-pipeline' },
+];
+
 export const seedUser = async (client: CorePrismaClient) => {
   console.log('Seeding users...');
 
