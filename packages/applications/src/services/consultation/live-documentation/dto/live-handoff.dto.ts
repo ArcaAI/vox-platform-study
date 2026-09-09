@@ -46,7 +46,7 @@ export class LiveHandoffResponse {
 
   @ApiProperty({
     description:
-      "Run-context additions the durable lane overlays onto its `trigger` context. Carries the clinician's EFFECTIVE DNA writing style (`dna_style_text`, `dna_style_id`) for prompt rendering, and their redaction/rewrite rules (`dna_redaction_rules` — the `{ id, type, match, pattern, replacement?, note? }` objects the harness `apply_redaction` activity takes, ABSENT rather than `[]` when the doctor authored none). All of it is resolved here from one report behind one gate — the tenant AND doctor toggles — so the seeded finalize instruction's `{{context.dna_style_text}}` resolves, and redaction applies, without either ever travelling in a caller-composed run payload where it could be supplied or spoofed.",
+      "Run-context additions the durable lane overlays onto its `trigger` context. Carries the clinician's EFFECTIVE DNA writing style (`dna_style_text`, `dna_style_id`) for prompt rendering, and their redaction/rewrite rules (`dna_redaction_rules` — the `{ id, type, match, pattern, replacement?, note? }` objects the harness `apply_redaction` activity takes, ABSENT rather than `[]` when the doctor authored none). Both are resolved here from ONE report and one decrypt, but each behind its OWN gate — the tenant's `agent.dna_style` / `agent.dna_redaction` declaration AND the doctor's toggle — so a tenant that enabled one and not the other gets exactly that, and neither half ever travels in a caller-composed run payload where it could be supplied or spoofed. Absent entirely when both gates are off or a gate cannot be read.",
     type: 'object',
     additionalProperties: true,
   })

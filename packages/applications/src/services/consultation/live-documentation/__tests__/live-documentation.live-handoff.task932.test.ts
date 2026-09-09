@@ -37,7 +37,13 @@ type Wiring = {
   status?: string;
   /** `null` ⇒ the repository is not wired at all. */
   report?: { id: string; styleText: string | null; redactionRules?: unknown } | null;
+  /** Both DNA gates at once — the common case. */
   dnaEffective?: boolean;
+  /** …or one at a time: style and redaction are two INDEPENDENT gates (L2 F-2). */
+  dnaStyleEffective?: boolean;
+  dnaRedactionEffective?: boolean;
+  /** Which gate throws, to prove a degraded read costs the WHOLE context. */
+  gateThrows?: 'style' | 'redaction';
   /** `null` ⇒ the resolver is not wired (legacy composition). */
   configResolver?: null;
   /** What a previous `stop()` left in Redis, if anything. */
@@ -95,11 +101,22 @@ function buildService(wiring: Wiring = {}) {
     })),
   };
   args[26] = dnaReportRepository;
-  args[27] =
-    wiring.configResolver === null ? undefined : { resolveEffectiveDnaStyleEnabled: vi.fn(async () => ({ effective: wiring.dnaEffective ?? true })) };
+  const gate = (kind: 'style' | 'redaction', effective: boolean) =>
+    vi.fn(async () => {
+      if (wiring.gateThrows === kind) throw new Error(`${kind} gate unreadable`);
+      return { effective };
+    });
+  const configResolver =
+    wiring.configResolver === null
+      ? undefined
+      : {
+          resolveEffectiveDnaStyleEnabled: gate('style', wiring.dnaStyleEffective ?? wiring.dnaEffective ?? true),
+          resolveEffectiveDnaRedactionEnabled: gate('redaction', wiring.dnaRedactionEffective ?? wiring.dnaEffective ?? true),
+        };
+  args[27] = configResolver;
 
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
-  return { service, cache, stored, dnaReportRepository };
+  return { service, cache, stored, dnaReportRepository, configResolver };
 }
 
 type SessionShape = { consultationId: string; tenantId: string; liveNodeOutputs?: Record<string, Record<string, unknown>> };
@@ -363,5 +380,106 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
     const answer = await service.readLiveHandoff(CID);
 
     expect(answer.context).toEqual({ dna_style_text: 'Terse.', dna_style_id: 'dna-report-1' });
+  });
+});
+
+/**
+ * TASK-932 wave 4 L2 F-2 — the two DNA gates are INDEPENDENT, and so are the two halves of the
+ * context they admit.
+ *
+ * L-3 shipped the redaction rules behind `resolveEffectiveDnaStyleEnabled` and behind the
+ * `if (!text) return {}` short-circuit, on the reasoning that on a CORE graph both gates resolve
+ * through `declaresDna` and are therefore the same gate. They are not the same gate:
+ *
+ *  - style      = an active `agent.dna_style` node (or `declaresDna`) AND the doctor's toggle;
+ *  - redaction  = an active `agent.dna_redaction` node (or `declaresDna`) AND the doctor's toggle
+ *                 UNLESS the node sets `requireDoctorOptIn: false`.
+ *
+ * Three real divergences follow, and the two that matter clinically are UNDER-application:
+ * a tenant that declares redaction but not style, and a doctor whose report carries rules but no
+ * style text, both shipped NO rules — a note the clinician expected redacted going out
+ * unredacted, with no FLAG, because `apply_redaction` never ran. (The third, a style-only tenant
+ * getting rules applied, is over-application: OD-6 catches it as a FLAG.)
+ *
+ * So each half is admitted by its OWN gate, from the same report and the same decrypt. A thrown
+ * gate still costs the WHOLE context — that is the fail-closed posture both resolvers document,
+ * and it is the one case where the two halves are not independent.
+ */
+describe('TASK-932 L2 F-2 — the style and redaction halves are gated independently', () => {
+  const RECORD = { endedAt: '2026-09-09T10:00:00.000Z', tenantId: TENANT, outputs: { n_summary: { text: 'note' } } };
+  const RULES = { rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] };
+  const REPORT = { id: 'dna-report-1', styleText: 'Terse. Abbreviates freely.', redactionRules: RULES };
+
+  it('style gate ON, redaction gate OFF → the style travels and the rules do NOT', async () => {
+    const { service } = buildService({ status: 'DRAINING', stored: RECORD, report: REPORT, dnaStyleEffective: true, dnaRedactionEffective: false });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    // A tenant whose graph declares the writing style but NOT redaction must not have its notes
+    // silently rewritten by rules it never enabled.
+    expect(answer.context).toEqual({ dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
+  });
+
+  it('redaction gate ON, style gate OFF → the rules travel and the style does NOT', async () => {
+    const { service } = buildService({ status: 'DRAINING', stored: RECORD, report: REPORT, dnaStyleEffective: false, dnaRedactionEffective: true });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    // The clinically dangerous half: gating redaction on the STYLE switch means a doctor who
+    // turned the writing style off — or a tenant that never declared one — loses redaction too.
+    expect(answer.context).toEqual({ dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+    expect('dna_style_text' in answer.context).toBe(false);
+    // The style ID names the report that SHAPED the note; nothing shaped it, so it must not travel.
+    expect('dna_style_id' in answer.context).toBe(false);
+  });
+
+  it('rules with an EMPTY style text still travel — an unstyled note is still a redacted one', async () => {
+    const { service } = buildService({
+      status: 'DRAINING',
+      stored: RECORD,
+      report: { id: 'dna-report-1', styleText: '   ', redactionRules: RULES },
+    });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    // `if (!text) return {}` returned before the rules were ever read: a doctor who authored
+    // redaction rules but never had a style generated got no redaction at all.
+    expect(answer.context).toEqual({ dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+  });
+
+  it('both gates OFF → nothing at all, and the report is never even read', async () => {
+    const { service, dnaReportRepository } = buildService({ status: 'DRAINING', stored: RECORD, report: REPORT, dnaEffective: false });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect(answer.context).toEqual({});
+    // No decrypt when neither half can be admitted — PHI is not read to be thrown away.
+    expect(dnaReportRepository!.findLatestForDoctor).not.toHaveBeenCalled();
+  });
+
+  it('resolves BOTH gates from ONE report and ONE decrypt', async () => {
+    const { service, dnaReportRepository, configResolver } = buildService({ status: 'DRAINING', stored: RECORD, report: REPORT });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect(answer.context).toMatchObject({
+      dna_style_text: 'Terse. Abbreviates freely.',
+      dna_redaction_rules: [expect.objectContaining({ id: 'r1' })],
+    });
+    expect(dnaReportRepository!.findLatestForDoctor).toHaveBeenCalledTimes(1);
+    expect(dnaReportRepository!.decryptFieldsFromEntity).toHaveBeenCalledTimes(1);
+    expect(configResolver!.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledTimes(1);
+    expect(configResolver!.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([['style'], ['redaction']] as const)('a THROWN %s gate costs the whole context — fail-closed for both halves', async (kind) => {
+    const { service } = buildService({ status: 'DRAINING', stored: RECORD, report: REPORT, gateThrows: kind });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    // Neither half rides an unreadable gate: an unresolved redaction gate must not ship rules,
+    // and an unresolved style gate must not ship a style. The note itself still hands over.
+    expect(answer.context).toEqual({});
+    expect(answer.outputs.n_summary).toEqual({ text: 'note' });
   });
 });

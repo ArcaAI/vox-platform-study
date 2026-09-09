@@ -2076,6 +2076,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // snapshot; the orphaned active-set member self-heals on the next
     // `getActiveSessions` read and via the set's TTL.
     await this.clearStats(consultationId, session?.tenantId);
+    // …and the pre-summary replay key with it. It carries the 1h `SNAPSHOT_TTL` so a late joiner
+    // of a LIVE session sees the warm start it missed; left behind, a consultation reopened
+    // inside that hour replays the PREVIOUS session's material to its next late joiner. Runs on
+    // the non-owner path too, for the same reason `clearStats` does. The whole-document `:last`
+    // key deliberately survives: its final write is the terminal `closed: true` payload below,
+    // which is exactly what a late joiner of a finished consultation should see.
+    await this.clearPreSummary(consultationId);
 
     // Tell the (possibly remote) owner to tear down, BEFORE the terminal marker so SSE
     // clients see `closed` last. Lock release is FENCED (C5-06): a stop routed to a
@@ -3490,11 +3497,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * live warm-start event whenever the note happens to be as fresh — the warm-start panel going
    * dark again for exactly the reason L-1 exists to fix. Events with no `updatedAt`, and events
    * of a kind nothing was replayed for, are relayed untouched.
+   *
+   * The `presummary` kind uses BYTE IDENTITY instead of that timestamp comparison (L2 F-8). It is
+   * not a document whose snapshot IS its state — it is a sequence of statuses (`running` →
+   * `ready`/`degraded`) stamped from a MILLISECOND clock and cached before each publish, so a
+   * successor separated only by a Redis round-trip routinely shares a millisecond with the event
+   * a late joiner was replayed, and `<=` would swallow the terminal one: the panel spinning
+   * forever on a warm start that already finished. The cached entry is a byte-identical copy of
+   * what was published, which makes identity both the exact test for "this is the replay" and
+   * the only one that cannot drop a newer event.
    */
   private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
     const kind = this.liveSummaryEventKind(raw);
     if (kind === null) return false;
     const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    if (sameKind === undefined) return false;
+    if (kind === PRE_SUMMARY_EVENT) return raw === sameKind;
     const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
     if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
@@ -4978,52 +4996,71 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The clinician's EFFECTIVE DNA writing style, as run-context additions.
+   * The clinician's EFFECTIVE DNA additions to the run context: the writing STYLE and the
+   * REDACTION rules, each admitted by its OWN gate, from ONE report and ONE decrypt.
    *
-   * `{}` — never a partial or a placeholder — whenever DNA does not apply: no consultation, no
-   * doctor, no report, the tenant/doctor gate off, or an unwired secrets backend. The seeded
-   * finalize instruction reads `{{context.dna_style_text | default("")}}`, so an absent style
-   * renders as plain clinical prose, which is exactly what "this clinician has no style on
+   * ## Two gates, not one (L2 F-2)
+   *
+   * `resolveEffectiveDnaStyleEnabled` and `resolveEffectiveDnaRedactionEnabled` answer different
+   * questions — an active `agent.dna_style` node vs an active `agent.dna_redaction` node (either
+   * satisfied by a `core.agent` that `declaresDna`), and only the redaction node can waive the
+   * doctor's opt-in with `requireDoctorOptIn: false`. Gating both halves on the STYLE switch
+   * therefore diverged three ways, and the two that matter are UNDER-application: a tenant that
+   * declares redaction but not style, and a doctor whose report carries rules but no style text
+   * (the old `if (!text) return {}`), both shipped no rules — a note the clinician expected
+   * redacted finalizing unredacted, with no FLAG, because `apply_redaction` never ran.
+   *
+   * The halves are otherwise independent: a style with no rules, rules with no style, both, or
+   * neither are all legitimate answers, and the report is read only when at least one gate
+   * admits something (PHI is not decrypted to be thrown away).
+   *
+   * ## What `{}` means
+   *
+   * `{}` — never a partial or a placeholder — whenever DNA does not apply at all: no
+   * consultation, no doctor, no report, both gates off, or an unwired secrets backend. The
+   * seeded finalize instruction reads `{{context.dna_style_text | default("")}}`, so an absent
+   * style renders as plain clinical prose, which is exactly what "this clinician has no style on
    * file" should produce.
    *
-   * Best-effort by construction: a failure to resolve a WRITING STYLE must never cost the note
-   * it would have styled.
+   * A THROWN gate or a failed decrypt is the one case where the halves are not independent: it
+   * costs the WHOLE context. That is the fail-closed posture both resolvers document — nothing
+   * rides a governance read that did not complete.
    */
   private async resolveHandoffContext(consultation: ConsultationEntity | null): Promise<Record<string, unknown>> {
     const doctorId = consultation?.doctorId;
     if (!consultation || !doctorId || !this.dnaReportRepository || !this.secretsService) return {};
     try {
-      if (this.configResolver) {
-        const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
-          tenantId: consultation.tenantId,
-          departmentId: consultation.departmentId ?? null,
-          doctorId,
-        });
-        // The doctor's own opt-out lives behind this switch — an unreadable gate drops DNA
-        // rather than applying it (`resolveEffectiveDnaStyleEnabled` fails closed internally).
-        if (!effective) return {};
-      }
+      const gateContext = { tenantId: consultation.tenantId, departmentId: consultation.departmentId ?? null, doctorId };
+      // An unwired resolver is a COMPOSITION fact (the positional constructions in background
+      // processors and legacy tests), not a degraded read, and it gates nothing — exactly as it
+      // did for the style before this method learned the second gate.
+      const [styleEnabled, redactionEnabled] = this.configResolver
+        ? await Promise.all([
+            this.configResolver.resolveEffectiveDnaStyleEnabled(gateContext).then((gate) => gate.effective),
+            this.configResolver.resolveEffectiveDnaRedactionEnabled(gateContext).then((gate) => gate.effective),
+          ])
+        : [true, true];
+      if (!styleEnabled && !redactionEnabled) return {};
+
       const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
       if (!report) return {};
       // ONE decrypt, two fields: the writing style and the doctor's redaction/rewrite rules are
-      // stored on the same report and travel together.
+      // stored on the same report, so both gates are answered by a single read.
       const { styleText, redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
-      const text = styleText?.trim();
-      if (!text) return {};
-      const rules = this.readHandoffRedactionRules(redactionRules, consultation.id);
-      // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
-      // names the report that actually shaped the note, not the one that happens to be latest
-      // when someone later reads it.
+      const text = styleEnabled ? styleText?.trim() : undefined;
+      const rules = redactionEnabled ? this.readHandoffRedactionRules(redactionRules, consultation.id) : [];
       return {
-        dna_style_text: text,
-        dna_style_id: report.id,
+        // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
+        // names the report that actually SHAPED the note — which is why it is part of the style
+        // half and absent when nothing shaped it, not a general provenance stamp.
+        ...(text ? { dna_style_text: text, dna_style_id: report.id } : {}),
         // ABSENT, never `[]`: the interpreter's finalize runs `apply_redaction` only when the
         // context carries rules, and an empty array would ask it to do nothing at some cost.
         ...(rules.length > 0 ? { dna_redaction_rules: rules } : {}),
       };
     } catch (error) {
       this.logger.warn({
-        message: 'Effective DNA writing style could not be resolved for the live handoff — finalizing without it',
+        message: 'Effective DNA style/redaction could not be resolved for the live handoff — finalizing without either',
         consultationId: consultation.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -5237,6 +5274,25 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({
         message: 'Failed to publish live-doc session stats',
         consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Drop the pre-summary late-join replay at the end of a session.
+   *
+   * Best-effort, like every other teardown write here: failing to clear a transient replay key
+   * must never fail the clinician's stop. The worst case if it does is what the TTL already
+   * bounds — one stale replay, for at most an hour.
+   */
+  private async clearPreSummary(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.del(this.preSummaryKey(consultationId));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to clear the pre-summary replay key on stop',
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
