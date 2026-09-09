@@ -42,7 +42,7 @@ from stt.pipeline.dto import AiModelConfig, AiModelFormat, DualCaptureConfig, En
 from stt.pipeline.spec import ResolvedSpecBundle, bundle_from_resolved
 from stt.storage.blob_service import BlobService
 from stt.streaming.capacity_guard import CapacityGuard
-from stt.streaming.commit_policy import LocalAgreementPolicy
+from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
 from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 from stt.streaming.denoiser import StreamingDenoiser
 from stt.streaming.engine_switch import EngineSwitchController
@@ -79,6 +79,11 @@ logger = structlog.get_logger(__name__)
 # enqueue (``_stop_inference_loop``) — short enough that a full queue degrades
 # captions (drop + log + metric) rather than stalling raw-audio ingestion.
 _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
+
+# Truncation for the partial/final handover mismatch log. A clinical
+# transcript is PHI, so the record says enough to locate the divergence and
+# no more; the final itself is persisted through the normal result path.
+_HANDOVER_LOG_CHARS = 200
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
@@ -801,6 +806,35 @@ class SessionManager:
         policy = self._commit_policies.get(session_id)
         if policy is not None:
             policy.reset()
+
+    def _check_final_handover(self, session_id: str, text: str) -> None:
+        """Reconcile the whole-buffer final with the frozen partial prefix.
+
+        OD-1 (a): text that has slid out of the partial window is settled for
+        good and is never revised mid-utterance, so the final — which decodes
+        the WHOLE buffer, not a 15 s tail — can legitimately disagree with it.
+        The final is the persisted record and wins; the discrepancy is logged so
+        the divergence is measurable rather than silent.
+
+        The frozen text is handed over by ``policy.reset()``, which runs when
+        the preprocessor closes the utterance — before the final is decoded.
+        """
+        policy = self._commit_policies.get(session_id)
+        if policy is None:
+            return
+        frozen = policy.take_handover_text()
+        if not frozen:
+            return
+        frozen_norm = normalize_for_comparison(frozen)
+        final_norm = normalize_for_comparison(text)
+        if frozen_norm and f" {frozen_norm} " in f" {final_norm} ":
+            return
+        logger.warning(
+            "stt.streaming.commit.final_mismatch",
+            session_id=session_id,
+            frozen_text=frozen[:_HANDOVER_LOG_CHARS],
+            final_text=text[:_HANDOVER_LOG_CHARS],
+        )
 
     def _resolve_endpoint_config(self, pipeline_config: Any) -> EndpointConfig | None:
         """The session's own endpoint config, or None when the agent chose ``fixed``.
@@ -2772,6 +2806,7 @@ class SessionManager:
                     if result.is_final:
                         session.add_result(result)
                         session.utterance_count = utt.utterance_index + 1
+                        self._check_final_handover(session.session_id, result.text)
                     # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
@@ -2804,6 +2839,7 @@ class SessionManager:
                             if result.is_final:
                                 session.add_result(result)
                                 session.utterance_count = utt.utterance_index + 1
+                                self._check_final_handover(session.session_id, result.text)
                         except Exception as retry_exc:
                             logger.warning(
                                 "Utterance re-run on fallback engine failed; dropping it",
@@ -2983,21 +3019,44 @@ class SessionManager:
 
                 result = await worker.process_partial(session_id, utterance)
                 if result.text.strip() and publisher is not None:
+                    window_text = result.text
                     # LocalAgreement-2: annotate the partial
                     # with the committed (stable) prefix length.
                     policy = self._commit_policies.get(session_id)
                     if policy is not None:
-                        committed, _tentative = policy.update(result.text)
+                        # The utterance's own span anchors the hypothesis: past
+                        # ``partial_window_s`` the preprocessor feeds a rolling
+                        # TAIL, and text whose audio has left that window is
+                        # frozen rather than re-decoded (OD-1 (a)). The caption
+                        # is therefore the settled prefix plus this window's
+                        # text, and ``stable_chars`` indexes all of it.
+                        committed, _tentative = policy.update(
+                            window_text,
+                            window_start_time=result.start_time,
+                            window_end_time=result.end_time,
+                        )
+                        result.text = policy.published_text
                         result.stable_chars = len(committed)
+                        slide = policy.last_slide
+                        if slide is not None:
+                            logger.debug(
+                                "stt.streaming.commit.slide",
+                                session_id=session_id,
+                                frozen_chars=slide[0],
+                                in_window_chars=slide[1],
+                            )
                     # Feed the running hypothesis to the semantic
                     # endpointer (mirrors the LocalAgreement-2 policy.update feed
                     # above). The preprocessor reads it at the silence→final cut
                     # to make a content-driven early-endpoint decision. Inert
-                    # unless endpointing is enabled (endpointer is None).
+                    # unless endpointing is enabled (endpointer is None). It sees
+                    # the WINDOW's own hypothesis, not the accumulated caption:
+                    # end-of-utterance is a judgement about what was just said,
+                    # and the frozen prefix is by definition older audio.
                     preprocessor = self._preprocessors.get(session_id)
                     endpointer = getattr(preprocessor, "endpointer", None)
                     if endpointer is not None:
-                        endpointer.observe_hypothesis(result.text)
+                        endpointer.observe_hypothesis(window_text)
                     await publisher.publish(result)
             except asyncio.CancelledError:
                 pass  # Expected when cancelled by a final utterance
@@ -3268,6 +3327,8 @@ class SessionManager:
             result = await worker.process_utterance(session.session_id, utterance)
             session.add_result(result)
             session.utterance_count = utterance.utterance_index + 1
+            if result.is_final:
+                self._check_final_handover(session.session_id, result.text)
         except Exception as exc:
             logger.warning(
                 "Inline inference failed",
