@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WorkflowRunEntity, WorkflowRunFactory, WorkflowRunStatus } from '@arcaai/domains';
 import { encodeCursor } from '../../../common/cursorPagination';
-import { WorkflowRunService, interpreterSessionId, foldStepsIntoNodeRollups } from '../workflow-run.service';
+import { WorkflowRunService, consultationDispatchSessionId, interpreterSessionId, foldStepsIntoNodeRollups } from '../workflow-run.service';
 import { AgentTrajectoryStepResponse } from '../../agent-trajectory';
 
 const TENANT = 'tenant-1';
@@ -170,6 +170,23 @@ describe('WorkflowRunService', () => {
       const { service, repository } = buildDeps();
       repository.findByRunKey.mockResolvedValueOnce(null);
       await expect(service.getRun(OTHER_TENANT, RUN_ID)).rejects.toThrow(NotFoundException);
+      // Both session keys were tried before giving up.
+      expect(repository.findByRunKey).toHaveBeenCalledTimes(2);
+    });
+
+    it('resolves a consultation-governed run recorded under the dispatcher session key (H3-5)', async () => {
+      // `ConsultationWorkflowDispatchService` anchors the governing run with
+      // `sessionId = 'wf-<runId>'`, not the exposure plane's
+      // `'workflow-interpreter-<runId>'`; before this fallback every run a
+      // consultation started answered 404 on `workflows/{slug}/runs/{runId}/…`,
+      // which is what kept ALaaS from releasing the clinician review gate.
+      const { service, repository } = buildDeps();
+      const run = buildRun({ sessionId: consultationDispatchSessionId(RUN_ID) });
+      repository.findByRunKey.mockResolvedValueOnce(null).mockResolvedValueOnce(run);
+      const dto = await service.getRun(TENANT, RUN_ID);
+      expect(dto.id).toBe(run.id);
+      expect(repository.findByRunKey).toHaveBeenNthCalledWith(1, TENANT, SESSION_ID, RUN_ID);
+      expect(repository.findByRunKey).toHaveBeenNthCalledWith(2, TENANT, 'wf-run-1', RUN_ID);
     });
   });
 
