@@ -167,6 +167,20 @@ def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
     return bundles if isinstance(bundles, dict) else {}
 
 
+def _spec_asr_slug(pipeline_config: Any) -> str | None:
+    """The registry SLUG of the session's ASR row, or ``None``.
+
+    TASK-934 — the identity to log the decode geometry AGAINST: the windows are
+    properties of that row, so a log line naming only the session cannot be
+    checked against the row an admin edited. A module function for the same
+    reason as ``_spec_bundles_of``: ``MagicMock(spec=SessionManager)`` fixtures
+    would mock a method away.
+    """
+    ref = getattr(getattr(pipeline_config, "models", None), "asr", None)
+    slug = getattr(ref, "slug", None) if ref is not None else None
+    return str(slug) if slug else None
+
+
 def _spec_model_config_of(
     manager: Any, session_id: str | None, slug: str | None
 ) -> AiModelConfig | None:
@@ -429,9 +443,18 @@ class SessionManager:
         - TASK-880 — the partial decode WINDOW follows the same rule, sourced from the
           ASR MODEL row (``models.asr.metadata.partialWindowSec`` →
           ``StreamingConfig.partial_window_s``) rather than the deleted platform key
-          ``stt.streaming.partialWindowS``. It should match the engine's force-emit
-          window so the last partial and the final decode the SAME audio, and that is a
-          property of the model, not of the box.
+          ``stt.streaming.partialWindowS``. It is a property of the model, not of
+          the box.
+        - TASK-934 — and it is INDEPENDENT of the model's ``maxDecodeWindowSec``.
+          This paragraph used to say the two "MUST match so the last partial and the
+          final decode the SAME audio"; measured on the served ml-en fine-tune they
+          want opposite things. A partial wants a LONG window — the garbage rate of a
+          partial decode is 31 % at 6 s, 10 % at 10 s and 0 % at 15 s, because a short
+          window gives the language model too little to settle on. A final wants SHORT
+          spans — Malayalam CER 0.381 at a 7 s decode window against 0.645 at 30 s.
+          So the last partial and the final deliberately decode different audio, and
+          the runtime asks for each window per call (``StreamingInferenceWorker.
+          _decode_window_kwargs``) instead of forcing one number on both.
         """
         kwargs: dict[str, Any] = {}
         spec_streaming = getattr(pipeline_config, "streaming", None) if pipeline_config else None
@@ -671,6 +694,11 @@ class SessionManager:
         hallucination_short_word_count = getattr(
             inference_cfg, "hallucination_short_word_count", None
         )
+        # TASK-934 — the model row's own decode window, handed to the worker so
+        # it can ask for it per CALL (finals split at it, partials decode in one
+        # span). Previously it only reached the engine adapter's constructor,
+        # which is what tied a window change to the adapter's lifetime (G-6).
+        max_decode_window_sec = getattr(inference_cfg, "max_decode_window_sec", None)
 
         # Opt-in English gloss (None unless enabled)
         gloss_pipeline = await self._load_gloss_pipeline(pipeline_config, session_id)
@@ -693,6 +721,19 @@ class SessionManager:
             gloss_callable=gloss_pipeline,
             embedding_service=pipeline_embedding_service,
             active_pipeline_id=active_pipeline_id,
+            max_decode_window_sec=max_decode_window_sec,
+        )
+
+        # TASK-934 — the two windows, once per session, at INFO. The 2026-09-09
+        # experiment could not tell whether a model-row edit had reached the
+        # runtime at all; this is that answer, in the log, beside the row that
+        # was supposed to supply it.
+        logger.info(
+            "stt.streaming.windows",
+            session_id=session_id,
+            model_slug=_spec_asr_slug(pipeline_config),
+            partial_window_s=preprocessor.partial_window_s,
+            max_decode_window_sec=max_decode_window_sec,
         )
 
         return _SessionRuntime(
@@ -2304,8 +2345,19 @@ class SessionManager:
             sample_rate: int,
             *,
             prompt: str | None = None,
+            max_decode_window_sec: float | None = None,
         ) -> dict[str, Any]:
-            return await asyncio.to_thread(adapter, samples, sample_rate, prompt=prompt)
+            # TASK-934 — the decode window is per CALL: the inference worker asks
+            # for the model's window on a final and for a single span on a
+            # partial (already bounded by `partialWindowSec`). `None` keeps the
+            # window this adapter was constructed with.
+            return await asyncio.to_thread(
+                adapter,
+                samples,
+                sample_rate,
+                prompt=prompt,
+                max_decode_window_sec=max_decode_window_sec,
+            )
 
         return run_whisper_cpp_inference
 

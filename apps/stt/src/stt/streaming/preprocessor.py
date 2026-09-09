@@ -292,6 +292,16 @@ class StreamingPreprocessor:
         """The attached semantic endpointer (or None)."""
         return self._endpointer
 
+    @property
+    def partial_window_s(self) -> float:
+        """Tail window (seconds) each partial is decoded from.
+
+        TASK-934 — readable so a session can LOG the window it actually got:
+        the 2026-09-09 experiment set the model row to 15 s and could not tell,
+        from outside, that the 6 s default had run instead.
+        """
+        return self._partial_window_s
+
     def drain_processed_samples(self) -> bytes:
         """Drain accumulated processed samples as int16 PCM bytes."""
         if not self._processed_samples:

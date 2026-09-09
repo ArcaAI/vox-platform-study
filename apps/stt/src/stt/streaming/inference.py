@@ -14,6 +14,7 @@ Design:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 import time
 from collections.abc import Sequence
@@ -143,6 +144,7 @@ class StreamingInferenceWorker:
         gloss_timeout_s: float | None = None,
         embedding_service: Any = None,  # per-pipeline embedding model
         active_pipeline_id: str | None = None,
+        max_decode_window_sec: float | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -218,6 +220,21 @@ class StreamingInferenceWorker:
         # and the partial task; the underlying NeMo model is not reentrant, so
         # serialize every forward through a single-slot lock.
         self._sortformer_lock = asyncio.Lock()
+        # TASK-934 — the session's own decode window
+        # (`AiModel._metadata.asr.maxDecodeWindowSec` →
+        # `InferenceConfig.max_decode_window_sec`), asked for per CALL rather
+        # than frozen into the engine adapter. `None` = the row declared
+        # nothing, so the adapter's own default stands and no window is passed.
+        self._max_decode_window_sec: float | None = (
+            float(max_decode_window_sec)
+            if isinstance(max_decode_window_sec, (int, float))
+            and not isinstance(max_decode_window_sec, bool)
+            else None
+        )
+        # Memoised "does this engine accept a per-call window?", re-probed
+        # whenever the engine-switch seam swaps `_asr_pipeline` underneath us.
+        self._window_probe_target: Any = None
+        self._window_probe_result: bool = False
         if isinstance(prev_text_context_words, int) and not isinstance(
             prev_text_context_words, bool
         ):
@@ -616,6 +633,62 @@ class StreamingInferenceWorker:
                 error=str(exc),
             )
 
+    def _decode_window_kwargs(self, utterance: AudioUtterance) -> dict[str, float]:
+        """The decode window to ask this engine for, for THIS utterance.
+
+        TASK-934 — the two windows are independent knobs and they are measured
+        apart: on the ml-en fine-tune a FINAL wants short spans (Malayalam CER
+        0.381 at 7 s against 0.645 at 30 s) while a PARTIAL wants a long one
+        (garbage rate 31 % at 6 s, 0 % at 15 s). The A5 comment that said they
+        "MUST match so the last partial and the final decode the SAME audio" is
+        therefore retired: they decode different audio on purpose, and the
+        handover is covered by `test_task934_decode_window_decoupling.py`.
+
+        * final   → the model's ``maxDecodeWindowSec``: a final carries the whole
+          utterance, which is unbounded, and this fine-tune truncates past ~7 s.
+        * partial → ``0`` (one span): the preprocessor already trimmed it to the
+          model's ``partialWindowSec``, so re-splitting it at the FINAL's window
+          would silently reimpose the short window the measurement rejected.
+
+        Empty when the row declared no window or the engine takes no such
+        argument — then the adapter's own default stands, unchanged.
+        """
+        if self._max_decode_window_sec is None:
+            return {}
+        if not self._asr_accepts_decode_window():
+            return {}
+        window = self._max_decode_window_sec if utterance.is_final else 0.0
+        if utterance.is_final:
+            logger.debug(
+                "stt.streaming.decode_window",
+                component="INFERENCE",
+                utterance_index=utterance.utterance_index,
+                audio_s=round(utterance.end_time - utterance.start_time, 2),
+                max_decode_window_sec=window,
+            )
+        return {"max_decode_window_sec": window}
+
+    def _asr_accepts_decode_window(self) -> bool:
+        """Whether the CURRENT engine callable takes ``max_decode_window_sec``.
+
+        Probed by signature rather than by catching ``TypeError``, which cannot
+        tell "this engine has no such argument" from a ``TypeError`` raised
+        inside a decode. Re-probed when the engine-switch seam swaps the
+        callable.
+        """
+        pipeline = self._asr_pipeline
+        if self._window_probe_target is not pipeline:
+            self._window_probe_target = pipeline
+            self._window_probe_result = False
+            try:
+                params = inspect.signature(pipeline).parameters
+            except (TypeError, ValueError):
+                return False
+            self._window_probe_result = "max_decode_window_sec" in params or any(
+                p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+            )
+        return self._window_probe_result
+
     async def _run_inference(self, utterance: AudioUtterance) -> _InferenceResult:
         """Run the ASR pipeline on utterance samples.
 
@@ -632,6 +705,7 @@ class StreamingInferenceWorker:
         # The ASR pipeline can be sync or async. If it's a coroutine,
         # we await it; otherwise we call it directly.
         prompt = compose_prompt(self._initial_prompt, self._previous_text or None)
+        window_kwargs = self._decode_window_kwargs(utterance)
         # Time the per-utterance ASR inference
         # (stt_streaming_inference_latency_seconds).
         _asr_start = time.monotonic()
@@ -640,6 +714,7 @@ class StreamingInferenceWorker:
                 utterance.samples,
                 utterance.sample_rate,
                 prompt=prompt,
+                **window_kwargs,
             )
         except TypeError:
             result = self._asr_pipeline(utterance.samples, utterance.sample_rate)
