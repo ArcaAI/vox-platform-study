@@ -21,7 +21,10 @@ import {
  * two suites red. Same mechanism as `resolved-asr-spec.fixture.json`.
  */
 const CONTRACT = JSON.parse(
-  readFileSync(fileURLToPath(new URL('../../../../../../apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json', import.meta.url)), 'utf8'),
+  readFileSync(
+    fileURLToPath(new URL('../../../../../../apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json', import.meta.url)),
+    'utf8',
+  ),
 ) as { policies: { id: string; directions: string[]; threshold?: { field: string; floorDirection: string; minimum: number; maximum: number } }[] };
 
 describe('guardrail policy catalogue — the cross-language contract', () => {
@@ -37,9 +40,13 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
     }
   });
 
-  it('seeds the platform default with every declared policy switched ON', () => {
+  // TASK-932 (owner decision, 2026-09-09): `response_toxicity` and `pii_leak` false-positive on
+  // clinical notes and ship OFF at the platform tier until retuned; the seed mirrors this.
+  const CALIBRATED_OFF: readonly string[] = ['response_toxicity', 'pii_leak'];
+
+  it('seeds the platform default with every declared policy switched ON, except the two clinical-text judges calibrated OFF', () => {
     for (const policy of GUARDRAIL_POLICY_CATALOGUE) {
-      expect(PLATFORM_DEFAULT_GUARDRAIL_POLICIES[policy.id]?.enabled).toBe(true);
+      expect(PLATFORM_DEFAULT_GUARDRAIL_POLICIES[policy.id]?.enabled, policy.id).toBe(!CALIBRATED_OFF.includes(policy.id));
     }
     expect(Object.keys(PLATFORM_DEFAULT_GUARDRAIL_POLICIES).sort()).toEqual(GUARDRAIL_POLICY_CATALOGUE.map((p) => p.id).sort());
   });
