@@ -214,12 +214,37 @@ export interface AsrSpecDecoding {
   sources?: Readonly<Record<string, AsrSpecDecodingSource>>;
 }
 
+/**
+ * TASK-935 (OD-2 a) — the deterministic clinical-vocabulary correction stage.
+ *
+ * Note what is NOT here: the TERMS. They are `instruction.hotwords`, which the
+ * resolver already fills (agent → the ASR row's `decoding.hotwords`) for the decoder
+ * prompt, and OD-5 (a) makes this stage the SECOND consumer of that one list rather
+ * than the owner of a second one. Duplicating them here would put two lists on one
+ * wire, free to disagree about what the tenant asked for.
+ *
+ * `maxDistance` follows the omit-when-absent rule: absent means the agent did not tune
+ * it and `LexiconCorrector`'s own default (0.34) stands — the one source of that default.
+ */
+export interface AsrSpecLexicon {
+  enabled: boolean;
+  maxDistance?: number;
+}
+
 /** §3.2 `postProcessing` — replaces `postprocessing.*`. */
 export interface AsrSpecPostProcessing {
   punctuation: { enabled: boolean };
   disfluency: boolean;
   stabilizer: boolean;
   merge: boolean;
+  /**
+   * TASK-935 — OPTIONAL on the wire with the omit-when-absent rule (`decoding.chunkLengthSec`
+   * states why). ABSENT means the agent expressed no opinion, and the runtime's default
+   * then depends on the vocabulary itself: the stage is ON exactly when the resolved
+   * hotword list is non-empty, because a term named for the decoder is a term the
+   * clinician expects to read back. An explicit `enabled: false` is a VETO and is carried.
+   */
+  lexicon?: AsrSpecLexicon;
 }
 
 /**

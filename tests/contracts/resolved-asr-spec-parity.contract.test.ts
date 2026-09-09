@@ -107,6 +107,24 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     expect((fixture.cloudWithAgentFallback as FixtureCase).expected.audioFrontEnd.vad).not.toHaveProperty('speechPadMs');
   });
 
+  it('carries the clinical-vocabulary stage, and its terms only once (TASK-935)', () => {
+    // OD-2 (a) — the stage is a per-agent choice, so it rides the wire; OD-5 (a) — its
+    // vocabulary is `instruction.hotwords` and NOTHING here, so that a term named for the
+    // decoder and a term corrected after it can never be two different lists.
+    const wired = fixture.clinicalVocabularyCorrection as FixtureCase;
+    expect(wired.expected.postProcessing.lexicon).toEqual({ enabled: true, maxDistance: 0.3 });
+    expect(wired.expected.postProcessing.lexicon).not.toHaveProperty('terms');
+    expect(wired.expected.instruction.hotwords).toEqual(['ceftriaxone', 'amoxicillin']);
+    // The stage is the agent's; the terms came from the model row. Both halves of that
+    // split have to survive, which is why this case pins them together.
+    expect(wired.expected.decoding.sources).toMatchObject({ hotwords: 'model' });
+
+    // Same omit-when-absent rule as every additive field before it — never `null`.
+    for (const name of ['platformDefault', 'cloudWithAgentFallback', 'agentOwnedStreamingBehaviour', 'modelProfileDecodeKnobs']) {
+      expect((fixture[name] as FixtureCase).expected.postProcessing).not.toHaveProperty('lexicon');
+    }
+  });
+
   it('carries no credential material anywhere', () => {
     const json = JSON.stringify(fixture);
     // The INPUT deliberately carries a provider override; the EXPECTED specs must not.
