@@ -576,7 +576,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                     <Input id="edit-tags" placeholder="key:value, key:value" value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} />
                   </div>
 
-                  <ParametersForm task={agent.task} value={draft.parameters} onChange={(parameters) => setDraft({ ...draft, parameters })} />
+                  <ParametersForm task={agent.task} value={draft.parameters} onChange={(parameters) => setDraft({ ...draft, parameters })} modelId={draft.modelId} />
                   <JsonField label="Input schema" value={draft.inputSchema} onChange={(inputSchema) => setDraft({ ...draft, inputSchema })} />
                   <JsonField label="Output schema" value={draft.outputSchema} onChange={(outputSchema) => setDraft({ ...draft, outputSchema })} />
                   <div className="flex justify-end gap-2">

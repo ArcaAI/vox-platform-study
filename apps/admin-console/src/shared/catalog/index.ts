@@ -13,6 +13,8 @@ export {
   useTextProviders,
   type CatalogContextSchema,
   type CatalogOption,
+  type CatalogueAsrProfile,
+  type CatalogueAsrProfileDecoding,
   type CatalogueModel,
   type CatalogueModelReadiness,
   type CatalogueProvider,

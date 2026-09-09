@@ -9,6 +9,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
@@ -18,7 +19,23 @@ import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
-import type { AiDeploymentKind, AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType, UpdateModelRequest } from '../api/types';
+import {
+  AI_MODEL_ASR_PROFILE_DECODING_RANGES,
+  AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS,
+  AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH,
+  AI_MODEL_ASR_PROFILE_WINDOW_RANGES,
+  ASR_TASK_TYPE,
+  type AiDeploymentKind,
+  type AiModel,
+  type AiModelAsrProfile,
+  type AiModelAsrProfileDecoding,
+  type AiModelFormat,
+  type AiModelSource,
+  type CreateModelRequest,
+  type ModelCategory,
+  type ModelType,
+  type UpdateModelRequest,
+} from '../api/types';
 import { ModelDownloadPanel } from './model-download';
 import {
   CATEGORY_OPTIONS,
@@ -72,6 +89,21 @@ interface ModelFormValues {
   /** Bucket identity — normally written by the publish job; typed only when registering weights already in the bucket. */
   bucketPrefix: string;
   primaryObject: string;
+  // ── ASR decode profile (`_metadata.asr`, TASK-934) — rendered only when
+  // `taskType` is `AUTOMATIC_SPEECH_RECOGNITION`; every field optional/blank-
+  // clearable, mirroring the rest of this form's string-input convention.
+  asrMaxDecodeWindowSec: string;
+  asrPartialWindowSec: string;
+  asrBeamSize: string;
+  asrTemperature: string;
+  asrNoSpeechThreshold: string;
+  asrCompressionRatioThreshold: string;
+  asrLogprobThreshold: string;
+  asrConditionOnPrevTokens: boolean;
+  asrNoRepeatNgramSize: string;
+  asrPrevTextContextWords: string;
+  asrHotwords: string;
+  asrInitialPrompt: string;
 }
 
 /** Pre-fill for "register from the bucket" (the inventory's unregistered prefixes). */
@@ -105,12 +137,55 @@ function toValues(model?: AiModel, seed?: ModelFormSeed): ModelFormValues {
     hfRevision: model?.hfRevision ?? '',
     bucketPrefix: model?.bucketPrefix ?? '',
     primaryObject: model?.primaryObject ?? '',
+    asrMaxDecodeWindowSec: numOrEmpty(model?.asrProfile?.maxDecodeWindowSec),
+    asrPartialWindowSec: numOrEmpty(model?.asrProfile?.partialWindowSec),
+    asrBeamSize: numOrEmpty(model?.asrProfile?.decoding?.beamSize),
+    asrTemperature: numOrEmpty(model?.asrProfile?.decoding?.temperature),
+    asrNoSpeechThreshold: numOrEmpty(model?.asrProfile?.decoding?.noSpeechThreshold),
+    asrCompressionRatioThreshold: numOrEmpty(model?.asrProfile?.decoding?.compressionRatioThreshold),
+    asrLogprobThreshold: numOrEmpty(model?.asrProfile?.decoding?.logprobThreshold),
+    asrConditionOnPrevTokens: model?.asrProfile?.decoding?.conditionOnPrevTokens ?? false,
+    asrNoRepeatNgramSize: numOrEmpty(model?.asrProfile?.decoding?.noRepeatNgramSize),
+    asrPrevTextContextWords: numOrEmpty(model?.asrProfile?.decoding?.prevTextContextWords),
+    asrHotwords: model?.asrProfile?.decoding?.hotwords?.join(', ') ?? '',
+    asrInitialPrompt: model?.asrProfile?.initialPrompt ?? '',
     ...(seed ?? {}),
   };
 }
 
+function numOrEmpty(value: number | undefined): string {
+  return value != null ? String(value) : '';
+}
+
+/** `decoding`, built from the ASR fields. `undefined` when every one is blank, so the profile omits an empty object. */
+function toAsrProfileDecoding(values: ModelFormValues): AiModelAsrProfileDecoding | undefined {
+  const decoding: AiModelAsrProfileDecoding = {};
+  if (values.asrBeamSize.trim()) decoding.beamSize = Number(values.asrBeamSize);
+  if (values.asrTemperature.trim()) decoding.temperature = Number(values.asrTemperature);
+  if (values.asrNoSpeechThreshold.trim()) decoding.noSpeechThreshold = Number(values.asrNoSpeechThreshold);
+  if (values.asrCompressionRatioThreshold.trim()) decoding.compressionRatioThreshold = Number(values.asrCompressionRatioThreshold);
+  if (values.asrLogprobThreshold.trim()) decoding.logprobThreshold = Number(values.asrLogprobThreshold);
+  if (values.asrConditionOnPrevTokens) decoding.conditionOnPrevTokens = true;
+  if (values.asrNoRepeatNgramSize.trim()) decoding.noRepeatNgramSize = Number(values.asrNoRepeatNgramSize);
+  if (values.asrPrevTextContextWords.trim()) decoding.prevTextContextWords = Number(values.asrPrevTextContextWords);
+  if (values.asrHotwords.trim()) decoding.hotwords = splitList(values.asrHotwords);
+  return Object.keys(decoding).length > 0 ? decoding : undefined;
+}
+
+/** The whole `asrProfile`. `null` when every field is blank — the PATCH semantics for "clear it". */
+function toAsrProfileRequest(values: ModelFormValues): AiModelAsrProfile | null {
+  const profile: AiModelAsrProfile = {};
+  if (values.asrMaxDecodeWindowSec.trim()) profile.maxDecodeWindowSec = Number(values.asrMaxDecodeWindowSec);
+  if (values.asrPartialWindowSec.trim()) profile.partialWindowSec = Number(values.asrPartialWindowSec);
+  const decoding = toAsrProfileDecoding(values);
+  if (decoding) profile.decoding = decoding;
+  if (values.asrInitialPrompt.trim()) profile.initialPrompt = values.asrInitialPrompt.trim();
+  return Object.keys(profile).length > 0 ? profile : null;
+}
+
 /** Optional empty fields are OMITTED so the wire payload stays minimal. */
 function toRequest(values: ModelFormValues): CreateModelRequest {
+  const asrProfile = values.taskType.trim() === ASR_TASK_TYPE ? toAsrProfileRequest(values) : null;
   return {
     name: values.name.trim(),
     slug: values.slug.trim(),
@@ -140,6 +215,7 @@ function toRequest(values: ModelFormValues): CreateModelRequest {
     ...(values.hfRevision.trim() ? { hfRevision: values.hfRevision.trim() } : {}),
     ...(values.bucketPrefix.trim() ? { bucketPrefix: values.bucketPrefix.trim() } : {}),
     ...(values.primaryObject.trim() ? { primaryObject: values.primaryObject.trim() } : {}),
+    ...(asrProfile ? { asrProfile } : {}),
   };
 }
 
@@ -167,6 +243,11 @@ function toUpdateRequest(values: ModelFormValues): UpdateModelRequest {
     hfRevision: values.hfRevision.trim(),
     bucketPrefix: values.bucketPrefix.trim(),
     primaryObject: values.primaryObject.trim(),
+    // Sent ALWAYS while the row is ASR (mirrors the fields above): a blanked
+    // section clears the stored profile (`null`) rather than leaving a stale
+    // one in place. Omitted entirely for a non-ASR row — the gateway 400s any
+    // row whose taskType isn't AUTOMATIC_SPEECH_RECOGNITION.
+    ...(values.taskType.trim() === ASR_TASK_TYPE ? { asrProfile: toAsrProfileRequest(values) } : {}),
   };
 }
 
@@ -228,6 +309,61 @@ function EnumSelect<T extends string>({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/** `true` when a non-blank value falls outside `range` (or isn't a whole number for an integer range). */
+function isOutOfRange(value: string, range: { min: number; max: number; integer?: boolean }): boolean {
+  if (!value.trim()) return false;
+  const num = Number(value);
+  if (Number.isNaN(num)) return true;
+  if (range.integer && !Number.isInteger(num)) return true;
+  return num < range.min || num > range.max;
+}
+
+/**
+ * A numeric field for the ASR decode profile (TASK-934): min/max from the SAME
+ * range table the gateway DTO validates against (`AI_MODEL_ASR_PROFILE_*_RANGES`),
+ * with the out-of-range error rendered BELOW the field (rule 11 §9) rather than
+ * only discovered on submit.
+ */
+function RangedNumberField({
+  id,
+  label,
+  value,
+  onChange,
+  range,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  range: { min: number; max: number; integer?: boolean };
+  placeholder?: string;
+}) {
+  const invalid = isOutOfRange(value, range);
+  return (
+    <Field id={id} label={label}>
+      <Input
+        id={id}
+        type="number"
+        min={range.min}
+        max={range.max}
+        step={range.integer ? 1 : 'any'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? `${id}-error` : undefined}
+      />
+      {invalid ? (
+        <p id={`${id}-error`} className="text-destructive text-sm">
+          Must be between {range.min} and {range.max}
+          {range.integer ? ' (whole number)' : ''}.
+        </p>
+      ) : null}
+    </Field>
   );
 }
 
@@ -315,6 +451,17 @@ export function ModelFormSheet({
 
   const isDirty = JSON.stringify(values) !== JSON.stringify(baseline);
   const showForm = !isEdit || (!detail.isPending && !detail.error && model !== null);
+  const hasAsrValidationError =
+    values.taskType.trim() === ASR_TASK_TYPE &&
+    (isOutOfRange(values.asrMaxDecodeWindowSec, AI_MODEL_ASR_PROFILE_WINDOW_RANGES.maxDecodeWindowSec) ||
+      isOutOfRange(values.asrPartialWindowSec, AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec) ||
+      isOutOfRange(values.asrBeamSize, AI_MODEL_ASR_PROFILE_DECODING_RANGES.beamSize) ||
+      isOutOfRange(values.asrTemperature, AI_MODEL_ASR_PROFILE_DECODING_RANGES.temperature) ||
+      isOutOfRange(values.asrNoSpeechThreshold, AI_MODEL_ASR_PROFILE_DECODING_RANGES.noSpeechThreshold) ||
+      isOutOfRange(values.asrCompressionRatioThreshold, AI_MODEL_ASR_PROFILE_DECODING_RANGES.compressionRatioThreshold) ||
+      isOutOfRange(values.asrLogprobThreshold, AI_MODEL_ASR_PROFILE_DECODING_RANGES.logprobThreshold) ||
+      isOutOfRange(values.asrNoRepeatNgramSize, AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize) ||
+      isOutOfRange(values.asrPrevTextContextWords, AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords));
 
   function set<K extends keyof ModelFormValues>(key: K, value: ModelFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -407,7 +554,7 @@ export function ModelFormSheet({
                 <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
                   Cancel
                 </Button>
-                <Button type="submit" form={formId} disabled={isPending}>
+                <Button type="submit" form={formId} disabled={isPending || hasAsrValidationError}>
                   {isPending ? <Spinner /> : null}
                   {isEdit ? 'Save changes' : 'Register model'}
                 </Button>
@@ -634,6 +781,111 @@ export function ModelFormSheet({
               <Field id={`${uid}-tags`} label="Tags (comma-separated)">
                 <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
               </Field>
+              {values.taskType.trim() === ASR_TASK_TYPE ? (
+                <fieldset className="flex flex-col gap-4 rounded-md border p-3 sm:col-span-2">
+                  <legend className="px-1 text-sm font-medium">ASR decode profile</legend>
+                  <p className="text-muted-foreground text-xs">
+                    Recommended decode geometry and thresholds for this fine-tune (TASK-934) — travels with the weights, not with
+                    whichever agent binds them. Resolved agent → this profile → engine default; a value an agent sets always wins.
+                  </p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <RangedNumberField
+                      id={`${uid}-asr-max-decode-window`}
+                      label="Max decode window (s)"
+                      value={values.asrMaxDecodeWindowSec}
+                      onChange={(value) => set('asrMaxDecodeWindowSec', value)}
+                      range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.maxDecodeWindowSec}
+                      placeholder="7"
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-partial-window`}
+                      label="Partial window (s)"
+                      value={values.asrPartialWindowSec}
+                      onChange={(value) => set('asrPartialWindowSec', value)}
+                      range={AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec}
+                      placeholder="15"
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-beam-size`}
+                      label="Beam size"
+                      value={values.asrBeamSize}
+                      onChange={(value) => set('asrBeamSize', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.beamSize}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-temperature`}
+                      label="Temperature"
+                      value={values.asrTemperature}
+                      onChange={(value) => set('asrTemperature', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.temperature}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-no-speech-threshold`}
+                      label="No-speech threshold"
+                      value={values.asrNoSpeechThreshold}
+                      onChange={(value) => set('asrNoSpeechThreshold', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noSpeechThreshold}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-compression-ratio-threshold`}
+                      label="Compression ratio threshold"
+                      value={values.asrCompressionRatioThreshold}
+                      onChange={(value) => set('asrCompressionRatioThreshold', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.compressionRatioThreshold}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-logprob-threshold`}
+                      label="Logprob threshold"
+                      value={values.asrLogprobThreshold}
+                      onChange={(value) => set('asrLogprobThreshold', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.logprobThreshold}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-no-repeat-ngram-size`}
+                      label="No-repeat n-gram size"
+                      value={values.asrNoRepeatNgramSize}
+                      onChange={(value) => set('asrNoRepeatNgramSize', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize}
+                    />
+                    <RangedNumberField
+                      id={`${uid}-asr-prev-text-context-words`}
+                      label="Previous-text context words"
+                      value={values.asrPrevTextContextWords}
+                      onChange={(value) => set('asrPrevTextContextWords', value)}
+                      range={AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                    <div className="flex flex-col">
+                      <Label htmlFor={`${uid}-asr-condition-on-prev-tokens`}>Condition on previous tokens</Label>
+                      <span className="text-muted-foreground text-xs">Feed the previous window&apos;s tokens to the decoder as context.</span>
+                    </div>
+                    <Switch
+                      id={`${uid}-asr-condition-on-prev-tokens`}
+                      checked={values.asrConditionOnPrevTokens}
+                      onCheckedChange={(checked) => set('asrConditionOnPrevTokens', checked)}
+                    />
+                  </div>
+                  <Field id={`${uid}-asr-hotwords`} label={`Hotwords (comma-separated, max ${AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS})`}>
+                    <Input
+                      id={`${uid}-asr-hotwords`}
+                      value={values.asrHotwords}
+                      onChange={(event) => set('asrHotwords', event.target.value)}
+                      placeholder="sephotrioxone, imoxicillin"
+                    />
+                  </Field>
+                  <Field id={`${uid}-asr-initial-prompt`} label="Initial prompt">
+                    <Textarea
+                      id={`${uid}-asr-initial-prompt`}
+                      value={values.asrInitialPrompt}
+                      onChange={(event) => set('asrInitialPrompt', event.target.value)}
+                      rows={2}
+                      maxLength={AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH}
+                      placeholder="Clinical consultation between a clinician and a patient. English and Malayalam medical terminology."
+                    />
+                  </Field>
+                </fieldset>
+              ) : null}
             </form>
             {/* Publish needs an id — no create-time equivalent, so this is edit-only. */}
             {isEdit && model ? <ModelDownloadPanel model={model} /> : null}

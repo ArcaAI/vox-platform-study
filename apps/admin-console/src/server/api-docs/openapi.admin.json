@@ -1786,6 +1786,94 @@
         },
         "type": "object"
       },
+      "AsrProfileDecodingRequest": {
+        "properties": {
+          "beamSize": {
+            "description": "Beam width.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "compressionRatioThreshold": {
+            "description": "Gzip compression ratio above which a decode is treated as looping and retried at a higher temperature.",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "number"
+          },
+          "conditionOnPrevTokens": {
+            "description": "Feed the previous window's tokens to the decoder as context.",
+            "type": "boolean"
+          },
+          "hotwords": {
+            "description": "Terms biased into the decode (max 64, each non-empty).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "logprobThreshold": {
+            "description": "Average token log-probability floor below which a decode is retried.",
+            "maximum": 0,
+            "minimum": -10,
+            "type": "number"
+          },
+          "noRepeatNgramSize": {
+            "description": "Block repeats of an n-gram this long within one decode (0 disables).",
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          },
+          "noSpeechThreshold": {
+            "description": "Above this no-speech probability a decoded segment is discarded.",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "prevTextContextWords": {
+            "description": "How many words of already-committed text ride as decoder context on the next window.",
+            "maximum": 200,
+            "minimum": 0,
+            "type": "number"
+          },
+          "temperature": {
+            "description": "Sampling temperature.",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "AsrProfileRequest": {
+        "properties": {
+          "decoding": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsrProfileDecodingRequest"
+              }
+            ],
+            "description": "Recommended decode knobs for this fine-tune."
+          },
+          "initialPrompt": {
+            "description": "The priming prompt this fine-tune was measured with (OD-11) — a per-model property, not an agent-wide truth.",
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "maxDecodeWindowSec": {
+            "description": "Longest audio fed to the engine in ONE decode, seconds.",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "number"
+          },
+          "partialWindowSec": {
+            "description": "Tail window of the live utterance decoded for PARTIALs, seconds.",
+            "maximum": 30,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "AssignDepartmentPromptRequest": {
         "properties": {
           "departmentId": {
@@ -2872,6 +2960,11 @@
       },
       "CatalogueModelResponse": {
         "properties": {
+          "asrProfile": {
+            "description": "Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — window geometry, decode thresholds, the priming prompt this fine-tune was measured with. Read by the agent editor's effective-value hint. `null` off an ASR row, or when the row carries none.",
+            "nullable": true,
+            "type": "object"
+          },
           "availability": {
             "description": "MEASURED presence of the weights (inventory job).",
             "enum": [
@@ -3062,6 +3155,7 @@
           "readinessCheckedAt",
           "readinessDetail",
           "capabilities",
+          "asrProfile",
           "isPlatformDefaultFor",
           "resourceStatus",
           "usable",
@@ -5632,6 +5726,14 @@
             "description": "Model architecture family",
             "example": "gemma4",
             "type": "string"
+          },
+          "asrProfile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsrProfileRequest"
+              }
+            ],
+            "description": "Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`."
           },
           "baseModel": {
             "description": "Upstream base checkpoint.",
@@ -11801,6 +11903,11 @@
             "description": "Model architecture family",
             "nullable": true,
             "type": "string"
+          },
+          "asrProfile": {
+            "description": "Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934), read the same way the gateway resolver (`parseAiModelAsrProfile`) reads it. `null` off an ASR row, or when the row carries none.",
+            "nullable": true,
+            "type": "object"
           },
           "availability": {
             "description": "MEASURED presence of the weights in the bucket (inventory job).",
@@ -21510,6 +21617,16 @@
           "architecture": {
             "description": "Model architecture family",
             "type": "string"
+          },
+          "asrProfile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AsrProfileRequest"
+              }
+            ],
+            "description": "Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`. Send `null` to clear the stored profile without touching any other `_metadata` key; omit the field to leave it untouched.",
+            "nullable": true,
+            "type": "object"
           },
           "baseModel": {
             "description": "Upstream base checkpoint. Send an empty string to clear.",

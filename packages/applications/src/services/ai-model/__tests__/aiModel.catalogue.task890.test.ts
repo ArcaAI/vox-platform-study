@@ -319,6 +319,7 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
     const keys = Object.keys(result.models[0]).sort();
     expect(keys).toEqual(
       [
+        'asrProfile',
         'availability',
         'capabilities',
         'deploymentKind',

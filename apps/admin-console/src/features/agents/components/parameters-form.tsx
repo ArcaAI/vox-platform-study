@@ -7,9 +7,10 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
-import { useModelCatalogue } from '@/shared/catalog';
+import { useModelCatalogue, type CatalogueAsrProfile } from '@/shared/catalog';
 import type { AgentTask } from '../api';
 import { JsonField } from './json-field';
+import { useTaskModelCatalogue } from './model-picker';
 
 type Schema = Record<string, unknown>;
 type Value = Record<string, unknown>;
@@ -111,17 +112,39 @@ function ModelSlugField({
   );
 }
 
-function ScalarField({ id, name, schema, value, onChange }: { id: string; name: string; schema: Schema; value: unknown; onChange: (next: unknown) => void }) {
+/**
+ * `hint` (TASK-934) — the ASR model profile's inherited value for THIS field
+ * (`useTaskModelCatalogue`'s `asrProfile`, `../model-picker`), rendered only
+ * while the agent leaves the field empty: an agent-authored value always wins
+ * (OD-3), so once one is typed the inherited value stops applying and the
+ * hint about it would be misleading.
+ */
+function ScalarField({
+  id,
+  name,
+  schema,
+  value,
+  onChange,
+  hint,
+}: {
+  id: string;
+  name: string;
+  schema: Schema;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  hint?: string;
+}) {
   const type = schema.type as string | undefined;
   const description = typeof schema.description === 'string' ? schema.description : undefined;
   const enumValues = Array.isArray(schema.enum) ? (schema.enum as Array<string | number>) : undefined;
+  const combinedDescription = hint && value === undefined ? [description, hint].filter(Boolean).join(' — ') : description;
 
   if (enumValues) {
     return (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={id}>{labelOf(name)}</Label>
         <Select value={value === undefined ? '' : String(value)} onValueChange={(next) => onChange(typeof enumValues[0] === 'number' ? Number(next) : next)}>
-          <SelectTrigger id={id} aria-describedby={description ? `${id}-desc` : undefined}>
+          <SelectTrigger id={id} aria-describedby={combinedDescription ? `${id}-desc` : undefined}>
             <SelectValue placeholder="Default" />
           </SelectTrigger>
           <SelectContent>
@@ -132,9 +155,9 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
             ))}
           </SelectContent>
         </Select>
-        {description ? (
+        {combinedDescription ? (
           <p id={`${id}-desc`} className="text-muted-foreground text-xs">
-            {description}
+            {combinedDescription}
           </p>
         ) : null}
       </div>
@@ -145,7 +168,7 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
       <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
         <div className="flex flex-col">
           <Label htmlFor={id}>{labelOf(name)}</Label>
-          {description ? <span className="text-muted-foreground text-xs">{description}</span> : null}
+          {combinedDescription ? <span className="text-muted-foreground text-xs">{combinedDescription}</span> : null}
         </div>
         <Switch id={id} checked={value === true} onCheckedChange={(checked) => onChange(checked ? true : undefined)} />
       </div>
@@ -163,12 +186,12 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
           min={typeof schema.minimum === 'number' ? schema.minimum : undefined}
           max={typeof schema.maximum === 'number' ? schema.maximum : undefined}
           step={type === 'integer' ? 1 : 'any'}
-          aria-describedby={description ? `${id}-desc` : undefined}
+          aria-describedby={combinedDescription ? `${id}-desc` : undefined}
           onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
         />
-        {description ? (
+        {combinedDescription ? (
           <p id={`${id}-desc`} className="text-muted-foreground text-xs">
-            {description}
+            {combinedDescription}
           </p>
         ) : null}
       </div>
@@ -183,7 +206,7 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
           id={id}
           value={list.join(', ')}
           placeholder="comma-separated"
-          aria-describedby={description ? `${id}-desc` : undefined}
+          aria-describedby={combinedDescription ? `${id}-desc` : undefined}
           onChange={(event) => {
             const items = event.target.value
               .split(',')
@@ -192,9 +215,9 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
             onChange(items.length ? items : undefined);
           }}
         />
-        {description ? (
+        {combinedDescription ? (
           <p id={`${id}-desc`} className="text-muted-foreground text-xs">
-            {description}
+            {combinedDescription}
           </p>
         ) : null}
       </div>
@@ -207,12 +230,12 @@ function ScalarField({ id, name, schema, value, onChange }: { id: string; name: 
         id={id}
         value={value === undefined ? '' : String(value)}
         maxLength={typeof schema.maxLength === 'number' ? schema.maxLength : undefined}
-        aria-describedby={description ? `${id}-desc` : undefined}
+        aria-describedby={combinedDescription ? `${id}-desc` : undefined}
         onChange={(event) => onChange(event.target.value === '' ? undefined : event.target.value)}
       />
-      {description ? (
+      {combinedDescription ? (
         <p id={`${id}-desc`} className="text-muted-foreground text-xs">
-          {description}
+          {combinedDescription}
         </p>
       ) : null}
     </div>
@@ -299,7 +322,22 @@ function ReasoningField({ id, value, onChange }: { id: string; value: unknown; o
   );
 }
 
-function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: string; schema: Schema; path: string[]; value: Value; onChange: (next: Value) => void }) {
+function SchemaFields({
+  idPrefix,
+  schema,
+  path,
+  value,
+  onChange,
+  fieldHints,
+}: {
+  idPrefix: string;
+  schema: Schema;
+  path: string[];
+  value: Value;
+  onChange: (next: Value) => void;
+  /** Dotted path → "inherits X from the model profile" (TASK-934); see `asrInheritHints`. */
+  fieldHints?: Record<string, string>;
+}) {
   return (
     <>
       {Object.entries(props(schema)).map(([name, child]) => {
@@ -318,7 +356,7 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
             <fieldset key={name} className="flex flex-col gap-3 rounded-md border p-3">
               <legend className="px-1 text-sm font-medium">{labelOf(name)}</legend>
               {typeof child.description === 'string' ? <p className="text-muted-foreground text-xs">{child.description}</p> : null}
-              <SchemaFields idPrefix={idPrefix} schema={child} path={childPath} value={value} onChange={onChange} />
+              <SchemaFields idPrefix={idPrefix} schema={child} path={childPath} value={value} onChange={onChange} fieldHints={fieldHints} />
               {/* TASK-891 C4 — reasoning sits inside the SAME "Generation" fieldset as the
                   schema-driven temperature/maxTokens controls, next to them per the brief,
                   rather than as a disconnected section (see ReasoningField's docblock). */}
@@ -369,23 +407,84 @@ function SchemaFields({ idPrefix, schema, path, value, onChange }: { idPrefix: s
             />
           );
         }
-        return <ScalarField key={name} id={id} name={name} schema={child} value={getPath(value, childPath)} onChange={(next) => onChange(setPath(value, childPath, next))} />;
+        return (
+          <ScalarField
+            key={name}
+            id={id}
+            name={name}
+            schema={child}
+            value={getPath(value, childPath)}
+            onChange={(next) => onChange(setPath(value, childPath, next))}
+            hint={fieldHints?.[childPath.join('.')]}
+          />
+        );
       })}
     </>
   );
 }
 
 /**
+ * TASK-934 (G-4) — the effective-value hint's summary line: what the currently
+ * assigned model's `_metadata.asr` profile contributes, in the units an admin
+ * reads directly off the ticket's own measurements ("final window 7 s ·
+ * partial window 15 s · no-speech 0.4"). Only the members the profile actually
+ * sets appear; `null`/empty ⇒ no line at all.
+ */
+function summarizeAsrProfile(profile: CatalogueAsrProfile | null): string | null {
+  if (!profile) return null;
+  const parts: string[] = [];
+  if (profile.maxDecodeWindowSec !== undefined) parts.push(`final window ${profile.maxDecodeWindowSec} s`);
+  if (profile.partialWindowSec !== undefined) parts.push(`partial window ${profile.partialWindowSec} s`);
+  if (profile.decoding?.noSpeechThreshold !== undefined) parts.push(`no-speech ${profile.decoding.noSpeechThreshold}`);
+  return parts.length > 0 ? `Model profile: ${parts.join(' · ')}` : null;
+}
+
+/**
+ * TASK-934 (OD-3/OD-4) — per-field "what this field inherits when left empty".
+ * Only `decoding.*` and `streaming.partialWindowSec` have a model-profile
+ * counterpart (`maxDecodeWindowSec` has none at the agent level — it is
+ * model-only geometry); `hotwords` is a list, not a single inherited value, so
+ * it is left off the hint (its own description already explains the fold).
+ */
+function asrInheritHints(profile: CatalogueAsrProfile | null): Record<string, string> {
+  if (!profile) return {};
+  const hints: Record<string, string> = {};
+  for (const [key, decodingValue] of Object.entries(profile.decoding ?? {})) {
+    if (decodingValue === undefined || key === 'hotwords') continue;
+    hints[`decoding.${key}`] = `inherits ${decodingValue} from the model profile`;
+  }
+  if (profile.partialWindowSec !== undefined) {
+    hints['streaming.partialWindowSec'] = `inherits ${profile.partialWindowSec} from the model profile`;
+  }
+  return hints;
+}
+
+/**
  * Schema-driven parameters form over `AGENT_PARAMETER_SCHEMAS[task]` — the same contract the
  * gateway validates against, so a value the form can express is a value the server accepts.
  * Untouched knobs stay ABSENT (the runtime default wins), never written as `undefined`.
+ *
+ * TASK-934 (G-4) — for a `SPEECH_TO_TEXT` agent, `modelId` (the currently selected primary
+ * model) resolves the model's ASR decode profile off the same catalogue `ModelPicker` reads,
+ * and shows the effective value the agent would inherit for every decode field it leaves
+ * unset (OD-3: agent → model profile → engine default).
  */
-export function ParametersForm({ task, value, onChange }: { task: AgentTask; value: Value; onChange: (next: Value) => void }) {
+export function ParametersForm({ task, value, onChange, modelId }: { task: AgentTask; value: Value; onChange: (next: Value) => void; modelId?: string }) {
   const idPrefix = useId();
   const schema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
+  const isSpeechToText = task === 'SPEECH_TO_TEXT';
+  // Called unconditionally (rules of hooks) — `task` is a prop and can change
+  // across renders, so the hook itself must not be behind an `if`.
+  const catalogue = useTaskModelCatalogue(task);
+  const selectedModel = isSpeechToText && modelId ? catalogue.models.find((model) => model.id === modelId) : undefined;
+  const asrProfile = selectedModel?.asrProfile ?? null;
+  const profileSummary = isSpeechToText ? summarizeAsrProfile(asrProfile) : null;
+  const fieldHints = isSpeechToText ? asrInheritHints(asrProfile) : undefined;
+
   return (
     <div className="flex flex-col gap-4">
-      <SchemaFields idPrefix={idPrefix} schema={schema} path={[]} value={value} onChange={onChange} />
+      {profileSummary ? <p className="text-muted-foreground text-xs">{profileSummary}</p> : null}
+      <SchemaFields idPrefix={idPrefix} schema={schema} path={[]} value={value} onChange={onChange} fieldHints={fieldHints} />
     </div>
   );
 }

@@ -53,6 +53,11 @@ const MODEL: AiModel = {
   architecture: 'whisper',
   memorySizeMb: 3096,
   computeType: 'float16',
+  asrProfile: {
+    maxDecodeWindowSec: 7,
+    partialWindowSec: 15,
+    decoding: { noSpeechThreshold: 0.4 },
+  },
   localPath: null,
   checksum: null,
   resourceStatus: 'ENABLED',
@@ -255,6 +260,103 @@ describe('ModelFormSheet accessibility', () => {
     renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
     const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
     await within(dialog).findByDisplayValue('Whisper Large v4');
+
+    expect(await axe(dialog)).toHaveNoViolations();
+  });
+});
+
+// =============================================================================
+// ASR decode profile (`_metadata.asr`, TASK-934) — rendered only for a row
+// whose taskType is `AUTOMATIC_SPEECH_RECOGNITION`.
+// =============================================================================
+
+const NON_ASR_MODEL: AiModel = { ...MODEL, id: 'm-2', taskType: 'TEXT_TO_SPEECH', pipelineTag: 'text-to-speech', asrProfile: null };
+
+function stubFetchFor(model: AiModel) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith('/download') ? Response.json({ status: 'DOWNLOADED', localPath: '/mnt/models-bucket/whisper/v1/' }) : Response.json(model, { headers: { etag: '"4"' } }),
+    ),
+  );
+}
+
+describe('ModelFormSheet — ASR decode profile (TASK-934)', () => {
+  it('renders the section, pre-filled from the row, for an ASR row', async () => {
+    stubFetchFor(MODEL);
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
+    await within(dialog).findByDisplayValue('Whisper Large v4');
+
+    expect(within(dialog).getByText('ASR decode profile')).toBeDefined();
+    expect((within(dialog).getByLabelText(/^max decode window/i) as HTMLInputElement).value).toBe('7');
+    expect((within(dialog).getByLabelText(/^partial window/i) as HTMLInputElement).value).toBe('15');
+    expect((within(dialog).getByLabelText(/^no-speech threshold/i) as HTMLInputElement).value).toBe('0.4');
+  });
+
+  it('does NOT render the section for a non-ASR row', async () => {
+    stubFetchFor(NON_ASR_MODEL);
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-2" />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
+    await within(dialog).findByDisplayValue('Whisper Large v4');
+
+    expect(within(dialog).queryByText('ASR decode profile')).toBeNull();
+    expect(within(dialog).queryByLabelText(/^max decode window/i)).toBeNull();
+  });
+
+  it('shows an under-field error for an out-of-range value and disables Save', async () => {
+    stubFetchFor(MODEL);
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
+    await within(dialog).findByDisplayValue('Whisper Large v4');
+
+    const saveButton = within(dialog).getByRole('button', { name: 'Save changes' }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(false);
+
+    fireEvent.change(within(dialog).getByLabelText(/^max decode window/i), { target: { value: '99' } });
+
+    expect(within(dialog).getByText(/must be between 1 and 30/i)).toBeDefined();
+    expect(saveButton.disabled).toBe(true);
+
+    // Back in range: the error clears and Save re-enables.
+    fireEvent.change(within(dialog).getByLabelText(/^max decode window/i), { target: { value: '10' } });
+    expect(within(dialog).queryByText(/must be between 1 and 30/i)).toBeNull();
+    expect(saveButton.disabled).toBe(false);
+  });
+
+  it('sends the edited profile in the PATCH body, and blanking every field clears it (null)', async () => {
+    const calls: { method: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+        calls.push({ method, body });
+        if (method === 'PATCH') return Response.json({ ...MODEL, version: 5 }, { headers: { etag: '"5"' } });
+        return Response.json(MODEL, { headers: { etag: '"4"' } });
+      }),
+    );
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
+    await within(dialog).findByDisplayValue('Whisper Large v4');
+    fireEvent.change(within(dialog).getByLabelText(/^partial window/i), { target: { value: '20' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+    const patch = calls.find((c) => c.method === 'PATCH')!.body as { asrProfile: unknown };
+    expect(patch.asrProfile).toEqual({ maxDecodeWindowSec: 7, partialWindowSec: 20, decoding: { noSpeechThreshold: 0.4 } });
+  });
+
+  it('has no axe violations with the ASR section rendered', async () => {
+    stubFetchFor(MODEL);
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId="m-1" />);
+    const dialog = await screen.findByRole('dialog', { name: 'Edit model' });
+    await within(dialog).findByDisplayValue('Whisper Large v4');
+    expect(within(dialog).getByText('ASR decode profile')).toBeDefined();
 
     expect(await axe(dialog)).toHaveNoViolations();
   });

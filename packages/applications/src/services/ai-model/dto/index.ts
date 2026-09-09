@@ -1,3 +1,4 @@
+export * from './asr-profile.request';
 export * from './create-model.request';
 export * from './update-model.request';
 export * from './register-discovered-model.request';
