@@ -46,7 +46,7 @@ export class LiveHandoffResponse {
 
   @ApiProperty({
     description:
-      "Run-context additions the durable lane overlays onto its `trigger` context for prompt rendering. Carries the clinician's EFFECTIVE DNA writing style (`dna_style_text`, `dna_style_id`) — resolved here, gated by the tenant AND doctor toggles, so the seeded finalize instruction's `{{context.dna_style_text}}` resolves without the style ever travelling in a caller-composed run payload.",
+      "Run-context additions the durable lane overlays onto its `trigger` context. Carries the clinician's EFFECTIVE DNA writing style (`dna_style_text`, `dna_style_id`) for prompt rendering, and their redaction/rewrite rules (`dna_redaction_rules` — the `{ id, type, match, pattern, replacement?, note? }` objects the harness `apply_redaction` activity takes, ABSENT rather than `[]` when the doctor authored none). All of it is resolved here from one report behind one gate — the tenant AND doctor toggles — so the seeded finalize instruction's `{{context.dna_style_text}}` resolves, and redaction applies, without either ever travelling in a caller-composed run payload where it could be supplied or spoofed.",
     type: 'object',
     additionalProperties: true,
   })

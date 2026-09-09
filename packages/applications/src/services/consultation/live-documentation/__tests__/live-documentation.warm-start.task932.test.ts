@@ -23,6 +23,7 @@
  *  5. an `enabled: false` warm start publishes NOTHING — the tenant switched it off, which is not
  *     the same as it having gone wrong.
  */
+import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LiveDocumentationService } from '../live-documentation.service';
@@ -35,19 +36,22 @@ const SLUG = 'arcaai-gen-consultation';
 
 /** A compiled graph with a capture node and (optionally) a warm start. */
 function compiledGraph(options: { warmStart?: { enabled?: boolean } | null } = {}) {
-  const warmStart = options.warmStart === null ? [] : [
-    {
-      nodeId: 'n_presummary',
-      type: 'core.agent',
-      config: {
-        agentRef: { slug: 'case-notes-pre-summary' },
-        execution: { lane: 'realtime', cadence: 'onStart' },
-        onError: 'degrade',
-        ...(options.warmStart?.enabled === false ? { enabled: false } : {}),
-      },
-      inputs: [],
-    },
-  ];
+  const warmStart =
+    options.warmStart === null
+      ? []
+      : [
+          {
+            nodeId: 'n_presummary',
+            type: 'core.agent',
+            config: {
+              agentRef: { slug: 'case-notes-pre-summary' },
+              execution: { lane: 'realtime', cadence: 'onStart' },
+              onError: 'degrade',
+              ...(options.warmStart?.enabled === false ? { enabled: false } : {}),
+            },
+            inputs: [],
+          },
+        ];
   return {
     slug: SLUG,
     versionNumber: 1,
@@ -56,7 +60,12 @@ function compiledGraph(options: { warmStart?: { enabled?: boolean } | null } = {
       {
         stageIndex: 1,
         nodes: [
-          { nodeId: 'n_asr', type: 'core.agent', config: { agentRef: { task: 'SPEECH_TO_TEXT' }, execution: { lane: 'realtime', cadence: 'perTurn' } }, inputs: [] },
+          {
+            nodeId: 'n_asr',
+            type: 'core.agent',
+            config: { agentRef: { task: 'SPEECH_TO_TEXT' }, execution: { lane: 'realtime', cadence: 'perTurn' } },
+            inputs: [],
+          },
           ...warmStart,
         ],
       },
@@ -101,13 +110,29 @@ function buildService(wiring: Wiring = {}) {
     if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
     return Promise.resolve({ data: { summary: 'Subjective: cough\nObjective:\nAssessment:\nPlan:' } });
   });
-  const runner = wiring.result === null ? undefined : { run: vi.fn().mockResolvedValue(wiring.result ?? { status: 'ready', content: '- Diabetes (recorded 11-Aug-2026)' }) };
+  const runner =
+    wiring.result === null
+      ? undefined
+      : { run: vi.fn().mockResolvedValue(wiring.result ?? { status: 'ready', content: '- Diabetes (recorded 11-Aug-2026)' }) };
 
   const args: unknown[] = new Array(26).fill(undefined);
   args[0] = { axiosRef: { post }, post };
   args[1] = { get: vi.fn((key: string) => (key === 'LIVE_DOC_MIN_INTERVAL_MS' ? '0' : undefined)) };
   args[2] = cache;
-  args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
+  // A per-channel Subject-backed subscriber: enough for `subscribeToLiveSummary` to relay, and
+  // it lets a test publish onto the live channel the way Redis would.
+  const channels = new Map<string, Subject<string>>();
+  const channelSubject = (channel: string): Subject<string> => {
+    const existing = channels.get(channel);
+    if (existing) return existing;
+    const created = new Subject<string>();
+    channels.set(channel, created);
+    return created;
+  };
+  args[3] = {
+    subscribeToChannel: vi.fn(async (channel: string) => channelSubject(channel).asObservable()),
+    unsubscribeFromChannel: vi.fn(),
+  };
   args[6] = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) };
   args[9] = {
     resolveEffective: vi.fn(async (key: string) =>
@@ -120,7 +145,7 @@ function buildService(wiring: Wiring = {}) {
   args[25] = runner;
 
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
-  return { service, published, runner, post, cache };
+  return { service, published, runner, post, cache, channelSubject };
 }
 
 /** Every `presummary` event published, in order. */
@@ -231,10 +256,127 @@ describe('TASK-932 D-9 — the warm start runs once when the session opens', () 
 
     // The events DID publish…
     expect(preSummaryEvents(published)).toHaveLength(2);
-    // …through `safeChannelPublish`, which writes no snapshot. `safePublish` (the whole-document
-    // path) writes one, and a client reconnecting mid-consultation asks that cache for the NOTE —
-    // answering with a pre-summary would replace the clinician's document with its background
-    // material.
-    expect(cache.setex).not.toHaveBeenCalled();
+    // …through `safeChannelPublish`, which writes no WHOLE-DOCUMENT snapshot. `safePublish` (the
+    // whole-document path) writes one, and a client reconnecting mid-consultation asks that cache
+    // for the NOTE — answering with a pre-summary would replace the clinician's document with its
+    // background material. The pre-summary gets its own key instead (L-1, below); what must never
+    // happen is a write to `:last`.
+    expect(cache.setex.mock.calls.map((call) => call[0])).not.toContain(`consultation:live-summary:${CID}:last`);
+  });
+});
+
+/**
+ * TASK-932 wave 4 L-1 — the warm start must survive a LATE JOIN.
+ *
+ * `publishPreSummary` deliberately does not touch the whole-document snapshot cache (the test
+ * directly above pins that), and until this item it wrote no cache at all — so a `running` /
+ * `degraded` event published before the console's SSE stream subscribed was lost forever. That is
+ * not hypothetical: on the merged wave-3 tree the warm start degraded at **+29 ms** and the
+ * console subscribed at **+56 ms**, and the panel never appeared.
+ *
+ * The fix is a companion key, `…:presummary:last`, on the same `SNAPSHOT_TTL` as the note
+ * snapshot, replayed to a late joiner AFTER the whole-document snapshot. Order matters: the note
+ * is the primary document and must paint first; the pre-summary is its background material.
+ */
+describe('TASK-932 L-1 — a pre-summary published before the stream opens is replayed on late join', () => {
+  const PRESUMMARY_KEY = `consultation:live-summary:${CID}:presummary:last`;
+  const SNAPSHOT_KEY = `consultation:live-summary:${CID}:last`;
+  const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('`publishPreSummary` caches the event under `:presummary:last` alongside the publish', async () => {
+    const { service, cache, published } = buildService();
+
+    await startAndSettle(service);
+
+    const cached = cache.setex.mock.calls.filter((call) => call[0] === PRESUMMARY_KEY);
+    // One write per published event — the LAST one is what a late joiner is owed.
+    expect(cached).toHaveLength(2);
+    // 1h, the same TTL the note snapshot carries: a transient late-join aid, never a store.
+    expect(cached[0]![1]).toBe(3600);
+    // Byte-identical to what went on the wire — a late joiner and a live one see the same JSON.
+    expect(cached.map((call) => call[2])).toEqual(preSummaryEvents(published).map((event) => JSON.stringify(event)));
+  });
+
+  it('a late subscriber is replayed the last pre-summary event', async () => {
+    const { service, cache } = buildService();
+    const cached: Record<string, string> = {};
+    cache.setex.mockImplementation(async (key: string, _ttl: number, value: string) => {
+      cached[key] = value;
+    });
+    cache.get.mockImplementation(async (key: string) => cached[key] ?? null);
+
+    await startAndSettle(service);
+
+    const events: Array<{ data: string }> = [];
+    const sub = service.subscribeToLiveSummary(CID).subscribe((event: unknown) => events.push(event as { data: string }));
+    await tick();
+
+    expect(events.map((event) => JSON.parse(event.data) as Record<string, unknown>)).toEqual([
+      expect.objectContaining({ event: 'presummary', status: 'ready', content: '- Diabetes (recorded 11-Aug-2026)' }),
+    ]);
+    sub.unsubscribe();
+  });
+
+  it('a late subscriber sees the whole-document snapshot FIRST, then the pre-summary', async () => {
+    const { service, cache } = buildService();
+    const cached: Record<string, string> = {};
+    cache.setex.mockImplementation(async (key: string, _ttl: number, value: string) => {
+      cached[key] = value;
+    });
+    cache.get.mockImplementation(async (key: string) => cached[key] ?? null);
+    // A note snapshot already exists — the clinician has been recording for a while.
+    cached[SNAPSHOT_KEY] = JSON.stringify({
+      consultationId: CID,
+      runningSummary: 'S: cough',
+      sections: [],
+      entities: [],
+      updatedAt: '2026-09-09T00:00:00.000Z',
+    });
+
+    await startAndSettle(service);
+
+    const events: Array<{ data: string }> = [];
+    const sub = service.subscribeToLiveSummary(CID).subscribe((event: unknown) => events.push(event as { data: string }));
+    await tick();
+
+    const parsed = events.map((event) => JSON.parse(event.data) as Record<string, unknown>);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toMatchObject({ runningSummary: 'S: cough' });
+    expect(parsed[0]!.event).toBeUndefined();
+    expect(parsed[1]).toMatchObject({ event: 'presummary', status: 'ready' });
+    sub.unsubscribe();
+  });
+
+  it('an absent cache replays NOTHING — a consultation with no warm start opens on an empty stream', async () => {
+    const { service, cache } = buildService();
+    cache.get.mockResolvedValue(null);
+
+    const events: Array<{ data: string }> = [];
+    const sub = service.subscribeToLiveSummary(CID).subscribe((event: unknown) => events.push(event as { data: string }));
+    await tick();
+
+    expect(events).toEqual([]);
+    sub.unsubscribe();
+  });
+
+  it('a LIVE pre-summary is not dropped as a duplicate of a same-instant note snapshot — the dedupe is per event kind', async () => {
+    const { service, cache, channelSubject } = buildService();
+    const at = '2026-09-09T00:00:05.000Z';
+    cache.get.mockImplementation(async (key: string) =>
+      key === SNAPSHOT_KEY ? JSON.stringify({ consultationId: CID, runningSummary: 'note', sections: [], entities: [], updatedAt: at }) : null,
+    );
+    const events: Array<{ data: string }> = [];
+    const sub = service.subscribeToLiveSummary(CID).subscribe((event: unknown) => events.push(event as { data: string }));
+    await tick();
+
+    // Same `updatedAt` as the note snapshot, but a DIFFERENT kind of event. Dedupe keyed on the
+    // snapshot alone would silently swallow it, which is the warm-start panel going dark again.
+    channelSubject(`consultation:live-summary:${CID}`).next(
+      JSON.stringify({ event: 'presummary', consultationId: CID, status: 'ready', content: 'x', updatedAt: at }),
+    );
+    await tick();
+
+    expect(events.map((event) => (JSON.parse(event.data) as { event?: string }).event)).toEqual([undefined, 'presummary']);
+    sub.unsubscribe();
   });
 });
