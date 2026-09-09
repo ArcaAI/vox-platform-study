@@ -904,7 +904,13 @@ def _redaction_rules(trigger: Any) -> tuple[list[Any] | None, str | None]:
     * ``(rules, None)`` — a usable set; the deterministic engine runs.
     * ``(None, reason)`` — rules ARE configured but this lane cannot build them. Something was
       meant to be removed and will not be, which is the same clinical situation as an engine
-      that could not run, so OD-6 applies rather than a silent fall-through to the audit.
+      that could not run, so OD-6 applies rather than a silent fall-through to the audit. The
+      reason NAMES the offending rule ids (never the pydantic message — see below), because
+      OD-6 turns it into a forced clinical review someone has to be able to act on.
+
+    The cross-field rule that most often rejects a set the GATEWAY accepted is ``RedactionRule``'s
+    own: ``type: "rewrite"`` with ``match: "literal"|"regex"`` and no ``replacement``.
+    ``validateRedactionRuleSet`` checks the two closed vocabularies but not that pair.
 
     The gateway holds the set as ``{ rules: [...] }`` (``RedactionRuleSet``); both that and the
     bare list are accepted, because they are the same object with and without its envelope.
@@ -920,10 +926,23 @@ def _redaction_rules(trigger: Any) -> tuple[list[Any] | None, str | None]:
         return None, None
     if not isinstance(raw, list):
         return None, f"`dna_redaction_rules` is a {type(raw).__name__}, not a list of rules"
-    try:
-        return [RedactionRule.model_validate(rule) for rule in raw], None
-    except ValidationError as exc:
-        return None, f"the configured redaction rules did not parse ({exc.error_count()} invalid)"
+    parsed: list[Any] = []
+    rejected: list[str] = []
+    for index, rule in enumerate(raw):
+        try:
+            parsed.append(RedactionRule.model_validate(rule))
+        except ValidationError:
+            # The rule ID, and NEVER the pydantic message: that message echoes the offending
+            # INPUT, and a rule's `pattern` is precisely the identifier the doctor asked to have
+            # removed. The reason is published on `SummaryMeta.redactionManifest`, the one column
+            # documented to carry no removed PHI plaintext. An ID is the doctor's own label.
+            rule_id = rule.get("id") if isinstance(rule, dict) else None
+            rejected.append(rule_id if isinstance(rule_id, str) and rule_id else f"#{index}")
+    if rejected:
+        # Named, because OD-6 turns this into a forced clinical review: a doctor has to be able
+        # to see which of their own rules stopped the transform and fix it.
+        return None, f"these configured redaction rules did not parse: {', '.join(rejected)}"
+    return parsed, None
 
 
 async def _deterministic_redaction(
