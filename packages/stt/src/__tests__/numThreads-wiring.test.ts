@@ -70,8 +70,16 @@ describe('L-9: whisper.worker ort.env.wasm.numThreads gating', () => {
   afterEach(() => {
     // @ts-expect-error - restore
     globalThis.self = originalSelf;
-    // @ts-expect-error - restore
-    globalThis.navigator = originalNavigator;
+    // `defineProperty`, not assignment: the jsdom that Vitest 5 ships makes
+    // `navigator` an accessor with only a getter, so `globalThis.navigator = ...`
+    // throws here and fails every test in the file from its own teardown. The
+    // tests only ever redefine `hardwareConcurrency` on it, so restoring the
+    // original object reference is all this needs to do.
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      configurable: true,
+      writable: true,
+    });
     // @ts-expect-error - restore (delete crossOriginIsolated)
     delete (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated;
     vi.doUnmock('@huggingface/transformers');
