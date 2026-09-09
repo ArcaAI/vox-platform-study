@@ -24,8 +24,18 @@ overrides:
   "brace-expansion@^5.0.0": 5.0.9
   socket.io-parser: 4.2.7
   ip-address: 10.5.0
-  "fast-uri@^3.0.0": 3.1.5
-  "js-yaml@^4.0.0": 4.3.1
+  # @nestjs/platform-express pins multer 2.2.0; 3x high DoS fixed in 2.3.0.
+  multer: 2.3.0
+  # 6x high (injection/ReDoS) via @node-saml/node-saml -> xml-crypto/xml-encryption.
+  "@xmldom/xmldom": 0.8.15
+  # high auth-plugin downgrade; reached only through the prisma CLI (dev/CI).
+  mysql2: ">=3.22.0"
+  # @huggingface/transformers@4.2.0 resolves sharp 0.34.5, below the libheif
+  # floor (GHSA-g89c-p67h-r497 -- the same advisory behind the Next.js AVIF
+  # RCE). next@16.3.4 already ships 0.35.4; this lifts the transformers copy.
+  sharp: ^0.35.4
+  "fast-uri@^3.0.0": 3.1.7
+  "js-yaml@^4.0.0": 4.3.2
   "js-yaml@^5.0.0": 5.3.0
   "undici@^6.0.0": 6.28.0
   "undici@^7.0.0": 7.29.0

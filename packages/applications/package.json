@@ -96,7 +96,7 @@
     "puppeteer": "^25.7.0",
     "reflect-metadata": "^0.2.2",
     "selfsigned": "^5.5.0",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "uuidv7": "^1.2.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
