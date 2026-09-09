@@ -24,6 +24,8 @@ const CATALOGUE = '/api/v1/admin/ai-models/catalogue';
 
 /** Every key the §3.7 projection declares — asserted as an EXACT set, both ways. */
 const MODEL_KEYS = [
+  // TASK-934 — the parsed ASR decode profile the agent editor's effective-value hint reads.
+  'asrProfile',
   'availability',
   'capabilities',
   'deploymentKind',
