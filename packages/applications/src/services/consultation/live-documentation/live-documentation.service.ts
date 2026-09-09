@@ -4941,9 +4941,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!record && stillLive) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
-    const outputs = Object.fromEntries(
-      Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)),
-    );
+    const outputs = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
     return {
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
