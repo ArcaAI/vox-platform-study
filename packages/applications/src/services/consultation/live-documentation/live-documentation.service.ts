@@ -46,6 +46,7 @@ import {
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
+import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
@@ -1306,7 +1307,36 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ...(fields.agentSlug ? { agentSlug: fields.agentSlug } : {}),
       updatedAt: new Date().toISOString(),
     };
-    await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(event));
+    const serialized = JSON.stringify(event);
+    // Cached BEFORE the publish, so there is no window in which a subscriber sees the live event
+    // while a late joiner would still be told there was none.
+    await this.cachePreSummary(session.consultationId, serialized);
+    await this.safeChannelPublish(this.channel(session.consultationId), serialized);
+  }
+
+  /**
+   * Remember the last `presummary` event for late join, under its OWN key.
+   *
+   * The warm start runs in parallel with the capture session opening, so it routinely publishes
+   * before the console's SSE stream has subscribed — measured on the dev stack: `degraded` at
+   * +29 ms, subscribe at +56 ms, and the panel never appeared. `safeChannelPublish` writes no
+   * cache at all, and the whole-document `…:last` key is not available to borrow (answering a
+   * reconnect with a pre-summary would replace the clinician's document with its background
+   * material), so this is a companion key on the same TTL.
+   *
+   * Best-effort in its own right: a cache failure costs a LATE joiner its replay and must never
+   * cost a live one its event, which is why it neither throws nor short-circuits the publish.
+   */
+  private async cachePreSummary(consultationId: string, serialized: string): Promise<void> {
+    try {
+      await this.cacheService.setex(this.preSummaryKey(consultationId), this.SNAPSHOT_TTL, serialized);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to cache the pre-summary for late join (the live publish is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   isActive(consultationId: string): boolean {
@@ -3378,20 +3408,54 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   on the refcounted finalize inside `subscribeToChannel` — releasing this
    *   viewer's bridge subscription decrements the refcount and only the LAST
    *   viewer out tears the Redis subscription down.
+   *
+   * TASK-932 wave 4 added two things on top, both additive:
+   *
+   *   L-1 — the late join replays TWO cached documents, note snapshot first and then the last
+   *   warm-start `presummary`, because they live under different keys and a warm start
+   *   published before this stream subscribed is otherwise lost (measured: degraded at +29 ms,
+   *   subscribe at +56 ms).
+   *
+   *   L-2 — the SSE frame TYPE is tagged from each payload's own `event`, so a consumer
+   *   discriminates in the transport (`addEventListener('section.patch', …)`) rather than by
+   *   parsing every message. The payloads are byte-identical, and the two kinds a legacy
+   *   consumer actually folds — the snapshot and `closed` — carry no `event` and therefore stay
+   *   on the default `message` type.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
       channel: this.channel(consultationId),
       heartbeatMs: this.heartbeatMs,
-      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
-      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfLiveSummarySnapshot(raw, this.parseLiveSummaryUpdatedAt(snapshot)),
+      loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
+      isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
+      // This channel is MULTIPLEXED, so the frame says which kind it carries: `section.patch` and
+      // `presummary` become named SSE frames, and the undiscriminated whole-document snapshot and
+      // its terminal `closed: true` stay on the default `message` type. The three harness relays
+      // do not opt in, so they are untouched by construction.
+      tagFrameTypeFromPayload: true,
       isTerminal: closedFlagTerminal,
       setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }),
       logContext: { consultationId },
     });
   }
 
-  /** The `updatedAt` of a serialized live-summary snapshot; null when absent/corrupt. */
+  /**
+   * Everything a late joiner is owed, in RENDER order: the whole-document note snapshot first,
+   * then the last warm-start `presummary` event.
+   *
+   * They live under two keys because they are two documents (see {@link preSummaryKey}), and the
+   * order is the contract — the note is what the clinician is writing, the pre-summary is the
+   * background material beside it. Either may be absent; absent entries are simply not emitted.
+   */
+  private async loadLiveSummaryLateJoin(consultationId: string): Promise<string[]> {
+    const [snapshot, preSummary] = await Promise.all([
+      this.cacheService.get(this.snapshotKey(consultationId)),
+      this.cacheService.get(this.preSummaryKey(consultationId)),
+    ]);
+    return [snapshot, preSummary].filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+  }
+
+  /** The `updatedAt` of a serialized live-summary payload; null when absent/corrupt. */
   private parseLiveSummaryUpdatedAt(snapshot: string | null | undefined): string | null {
     if (!snapshot) return null;
     try {
@@ -3403,14 +3467,38 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * True when a relayed channel event carries state the just-emitted snapshot
-   * already contained (same or older `updatedAt` — ISO strings compare
-   * lexicographically). Events without an `updatedAt` are relayed untouched.
+   * The KIND of a serialized channel payload: its `event` discriminator, `''` for the
+   * undiscriminated whole-document payload, `null` when it cannot be parsed at all.
    */
-  private isDuplicateOfLiveSummarySnapshot(raw: string, snapshotUpdatedAt: string | null): boolean {
-    if (!snapshotUpdatedAt) return false;
+  private liveSummaryEventKind(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    try {
+      const event = (JSON.parse(raw) as { event?: unknown }).event;
+      return typeof event === 'string' ? event : '';
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * True when a relayed channel event carries state an entry ALREADY EMITTED to this viewer
+   * contained (same or older `updatedAt` — ISO strings compare lexicographically).
+   *
+   * Keyed on the event KIND, which is the whole point: three kinds share this channel (the
+   * undiscriminated whole-document snapshot, `section.patch`, `presummary`) and their `updatedAt`
+   * clocks are unrelated. Comparing a `presummary` against the NOTE snapshot's timestamp drops a
+   * live warm-start event whenever the note happens to be as fresh — the warm-start panel going
+   * dark again for exactly the reason L-1 exists to fix. Events with no `updatedAt`, and events
+   * of a kind nothing was replayed for, are relayed untouched.
+   */
+  private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
+    const kind = this.liveSummaryEventKind(raw);
+    if (kind === null) return false;
+    const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
+    if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
-    return updatedAt != null && updatedAt <= snapshotUpdatedAt;
+    return updatedAt != null && updatedAt <= emittedUpdatedAt;
   }
 
   // ------------------------------------------------------------------
@@ -4747,6 +4835,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return `${this.CHANNEL_PREFIX}${consultationId}:last`;
   }
 
+  /**
+   * The last `presummary` event, cached for late join beside — never inside — the whole-document
+   * snapshot. Two keys because they are two different documents: `…:last` is the clinician's
+   * running note, this is the warm-start material that precedes it.
+   */
+  private preSummaryKey(consultationId: string): string {
+    return `${this.CHANNEL_PREFIX}${consultationId}:presummary:last`;
+  }
+
   // ------------------------------------------------------------------
   // TASK-932 R-16a — the LIVE HANDOFF
   //
@@ -4910,13 +5007,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       }
       const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
       if (!report) return {};
-      const { styleText } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      // ONE decrypt, two fields: the writing style and the doctor's redaction/rewrite rules are
+      // stored on the same report and travel together.
+      const { styleText, redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
       const text = styleText?.trim();
       if (!text) return {};
+      const rules = this.readHandoffRedactionRules(redactionRules, consultation.id);
       // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
       // names the report that actually shaped the note, not the one that happens to be latest
       // when someone later reads it.
-      return { dna_style_text: text, dna_style_id: report.id };
+      return {
+        dna_style_text: text,
+        dna_style_id: report.id,
+        // ABSENT, never `[]`: the interpreter's finalize runs `apply_redaction` only when the
+        // context carries rules, and an empty array would ask it to do nothing at some cost.
+        ...(rules.length > 0 ? { dna_redaction_rules: rules } : {}),
+      };
     } catch (error) {
       this.logger.warn({
         message: 'Effective DNA writing style could not be resolved for the live handoff — finalizing without it',
@@ -4924,6 +5030,32 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         error: error instanceof Error ? error.message : String(error),
       });
       return {};
+    }
+  }
+
+  /**
+   * The doctor's redaction/rewrite rules, from the SAME decrypted report the writing style came
+   * from, validated to the persisted `{ rules: [...] }` shape.
+   *
+   * Rule OBJECTS, not strings: the harness's `RedactionRule` is `extra="forbid"` over
+   * `{ id, type, match, pattern, replacement?, note? }`, so that is what has to arrive.
+   *
+   * `[]` on absent or malformed, which mirrors `resolveRedactionRulesForHarness`'s documented
+   * fail-SAFE on the legacy path: an unusable rule set must not cost the note the STYLE it would
+   * otherwise have carried, and `apply_redaction` is the fail-CLOSED-to-FLAG authority once rules
+   * are actually present.
+   */
+  private readHandoffRedactionRules(redactionRules: unknown, consultationId: string): Record<string, unknown>[] {
+    if (!redactionRules) return [];
+    try {
+      return validateRedactionRuleSet(redactionRules).rules as unknown as Record<string, unknown>[];
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA redaction rules could not be read for the live handoff — finalizing without them (the writing style is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   }
 

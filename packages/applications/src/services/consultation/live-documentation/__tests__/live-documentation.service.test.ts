@@ -645,7 +645,9 @@ describe('LiveDocumentationService', () => {
       const redisSubscriber = makeRefcountedSubscriber();
       const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
       const snapshot = JSON.stringify({ consultationId: CID, runningSummary: 'snap', sections: [], entities: [], updatedAt: 'now' });
-      cacheService.get.mockResolvedValue(snapshot);
+      // Key-aware since L-1: the late join reads the note snapshot AND the pre-summary key, and a
+      // blanket mock would replay the note twice.
+      cacheService.get.mockImplementation(async (key: string) => (key === `${CHANNEL}:last` ? snapshot : null));
 
       const events: Array<{ data: string }> = [];
       const sub = service.subscribeToLiveSummary(CID).subscribe((e: any) => events.push(e));
@@ -747,6 +749,67 @@ describe('LiveDocumentationService', () => {
       await tick();
 
       expect(completed).toBe(true);
+      sub.unsubscribe();
+    });
+
+    /**
+     * TASK-932 wave 4 L-2 — the channel is MULTIPLEXED, and the SSE frame now says so.
+     *
+     * Three kinds of payload ride `consultation:live-summary:{id}`: the undiscriminated
+     * whole-document snapshot (and its terminal `closed: true`), per-section `section.patch`
+     * events, and the warm-start `presummary` lifecycle. Every consumer had to parse the JSON to
+     * tell them apart, and SDK 3.1.0 shipped a hook that folded ALL of them as snapshots until
+     * `e0fe26c93` added a string-`event` guard — the vanishing-NER-chips defect.
+     *
+     * Tagging the frame TYPE from the payload's own `event` moves that discrimination into the
+     * transport, where `EventSource.addEventListener('section.patch', …)` can do it. It is
+     * backward compatible by construction: SDK 3.1.0's `onmessage` handler stops SEEING the
+     * payloads it already returned early on, and still receives every payload it acts on — the
+     * snapshot and `closed`, which carry no `event` and stay on the default type.
+     */
+    it('L-2: relays `section.patch` and `presummary` as NAMED frames, and the snapshot / `closed` as the default type', async () => {
+      const redisSubscriber = makeRefcountedSubscriber();
+      const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
+      const snapshot = JSON.stringify({
+        consultationId: CID,
+        runningSummary: 'snap',
+        sections: [],
+        entities: [],
+        updatedAt: '2026-09-09T00:00:00.000Z',
+      });
+      cacheService.get.mockImplementation(async (key: string) => (key === `${CHANNEL}:last` ? snapshot : null));
+
+      const events: Array<{ data: string; type?: string }> = [];
+      const sub = service.subscribeToLiveSummary(CID).subscribe((e: any) => events.push(e));
+      await tick();
+
+      const patch = JSON.stringify({
+        event: 'section.patch',
+        consultationId: CID,
+        sectionKey: 'subjective',
+        revision: 1,
+        updatedAt: '2026-09-09T00:00:01.000Z',
+      });
+      const preSummary = JSON.stringify({
+        event: 'presummary',
+        consultationId: CID,
+        status: 'ready',
+        content: 'x',
+        updatedAt: '2026-09-09T00:00:02.000Z',
+      });
+      const closed = JSON.stringify({ consultationId: CID, closed: true, updatedAt: '2026-09-09T00:00:03.000Z' });
+      redisSubscriber.publish(CHANNEL, patch);
+      redisSubscriber.publish(CHANNEL, preSummary);
+      redisSubscriber.publish(CHANNEL, closed);
+      await tick();
+
+      expect(events.map((e) => [e.type, e.data])).toEqual([
+        [undefined, snapshot],
+        ['section.patch', patch],
+        ['presummary', preSummary],
+        [undefined, closed],
+      ]);
+
       sub.unsubscribe();
     });
   });
