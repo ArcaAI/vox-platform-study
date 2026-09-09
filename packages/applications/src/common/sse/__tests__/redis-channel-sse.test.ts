@@ -12,6 +12,15 @@
  * live: `degraded` at +29 ms, subscribe at +56 ms). A single-string caller — `harness-progress`,
  * `harness-assurance`, `harness-live-assist` — must behave EXACTLY as it did before, which is
  * what the third test asserts.
+ *
+ * **L-2 — the frame TYPE is tagged from the payload's own `event` field**, opt-in per caller.
+ * `section.patch` / `presummary` become named SSE frames; the undiscriminated whole-document
+ * snapshot and the terminal `closed: true` stay on the default `message` type. Nest's `SseStream`
+ * writes `event: <type>` for a `MessageEvent.type`, so a named frame reaches
+ * `EventSource.addEventListener('section.patch', …)` and NOT `onmessage` — which is exactly what
+ * SDK 3.1.0's hook already does with these payloads (it folds a default `message` with no string
+ * `event` as a snapshot and returns early on everything else). The JSON payload is byte-identical
+ * either way, and a caller that does not opt in relays exactly as it does today.
  */
 import { Logger, type MessageEvent } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
@@ -102,6 +111,71 @@ describe('L-1 — `loadSnapshot` may answer with several entries', () => {
     await tick();
 
     expect(seen).toEqual([[PATCH, SNAPSHOT, [SNAPSHOT, PRESUMMARY]]]);
+    sub.unsubscribe();
+  });
+});
+
+describe('L-2 — the frame type is tagged from the payload`s own `event`', () => {
+  it('tags a discriminated payload with its `event` value, leaving the JSON byte-identical', async () => {
+    const { subscriber, events, sub } = subscribe({ tagFrameTypeFromPayload: true });
+    await tick();
+
+    subscriber.publish(PATCH);
+    subscriber.publish(PRESUMMARY);
+    await tick();
+
+    expect(events.map((event) => [event.type, event.data])).toEqual([
+      ['section.patch', PATCH],
+      ['presummary', PRESUMMARY],
+    ]);
+    sub.unsubscribe();
+  });
+
+  it('leaves an UNDISCRIMINATED payload on the default `message` type — the snapshot and `closed` still reach `onmessage`', async () => {
+    const closed = JSON.stringify({ consultationId: 'c-1', closed: true, updatedAt: '2026-09-09T00:00:03.000Z' });
+    const { subscriber, events, sub } = subscribe({ tagFrameTypeFromPayload: true, loadSnapshot: async () => SNAPSHOT });
+    await tick();
+
+    subscriber.publish(closed);
+    await tick();
+
+    expect(events.map((event) => event.type)).toEqual([undefined, undefined]);
+    expect(events.map((event) => event.data)).toEqual([SNAPSHOT, closed]);
+    sub.unsubscribe();
+  });
+
+  it('tags a REPLAYED cached entry too — a late joiner`s pre-summary must arrive on the same named frame as a live one', async () => {
+    const { events, sub } = subscribe({ tagFrameTypeFromPayload: true, loadSnapshot: async () => [SNAPSHOT, PRESUMMARY] });
+    await tick();
+
+    expect(events.map((event) => [event.type, event.data])).toEqual([
+      [undefined, SNAPSHOT],
+      ['presummary', PRESUMMARY],
+    ]);
+    sub.unsubscribe();
+  });
+
+  it('never tags a non-JSON or empty-`event` message', async () => {
+    const { subscriber, events, sub } = subscribe({ tagFrameTypeFromPayload: true });
+    await tick();
+
+    subscriber.publish('not json at all');
+    subscriber.publish(JSON.stringify({ event: '', consultationId: 'c-1' }));
+    subscriber.publish(JSON.stringify({ event: 42, consultationId: 'c-1' }));
+    await tick();
+
+    expect(events.map((event) => event.type)).toEqual([undefined, undefined, undefined]);
+    sub.unsubscribe();
+  });
+
+  it('does NOT tag when the caller did not opt in — the three harness relays are untouched by construction', async () => {
+    const { subscriber, events, sub } = subscribe();
+    await tick();
+
+    subscriber.publish(PATCH);
+    await tick();
+
+    expect(events.map((event) => [event.type, event.data])).toEqual([[undefined, PATCH]]);
     sub.unsubscribe();
   });
 });
