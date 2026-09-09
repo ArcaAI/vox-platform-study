@@ -6,8 +6,13 @@
  * Every customer tenant inherits it on ABSENCE, which is how a tenant with no
  * opinion follows the platform.
  *
- * BEHAVIOUR ON UPGRADE IS UNCHANGED: every declared check is ON, which is what
- * `apps/guardrail` did before this row existed, and `pii_leak.minScore` is
+ * Every declared check is ON — what `apps/guardrail` did before this row existed —
+ * EXCEPT the two outbound judges the owner calibrated OFF for clinical text on
+ * 2026-09-09 (TASK-932): `response_toxicity` (the 300M classifier intermittently
+ * labels SOAP content such as chest pain / aspirin as toxic) and `pii_leak` (a
+ * finalized note legitimately re-states the encounter's own identifiers, which the
+ * fragment check reads as a leak). Both blocked live notes end to end; both stay
+ * off until retuned for clinical text. `pii_leak.minScore` is
  * transcribed VERBATIM from `core/policy.py::_SPECS['piiLeakMinScore']` (0.5) —
  * the same discipline the judge hyperparameters were moved under. The runtime
  * composes the availability threshold with the model row's value in the STRICT
@@ -32,7 +37,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-000000000001';
 
 /**
- * The platform default set: every check the screener declares, ON.
+ * The platform default set: every check the screener declares, ON — except the two
+ * clinical-text judges calibrated OFF (see the header).
  *
  * MIRRORS `PLATFORM_DEFAULT_GUARDRAIL_POLICIES` in
  * `packages/applications/src/services/guardrail-availability/policy-catalogue.ts`,
@@ -44,9 +50,9 @@ export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: Record<string, { enabled: 
   prompt_safety: { enabled: true },
   prompt_toxicity: { enabled: true },
   response_safety: { enabled: true },
-  response_toxicity: { enabled: true },
+  response_toxicity: { enabled: false },
   response_refusal: { enabled: true },
-  pii_leak: { enabled: true, minScore: 0.5 },
+  pii_leak: { enabled: false, minScore: 0.5 },
   containment_echo: { enabled: true },
 };
 
@@ -67,7 +73,8 @@ export const seedGuardrailAvailability = async (client: CorePrismaClient): Promi
         id: PLATFORM_GUARDRAIL_AVAILABILITY_ID,
         tenantId: SYSTEM_TENANT_ID,
         policies: PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY,
-        reason: 'Platform default: every declared screening check applies.',
+        reason:
+          'Platform default: every declared screening check applies, except response_toxicity and pii_leak — calibrated OFF for clinical text (TASK-932, owner decision 2026-09-09) until the outbound judges are retuned.',
         createdBy: SYSTEM_USER_ID,
         updatedBy: SYSTEM_USER_ID,
       },

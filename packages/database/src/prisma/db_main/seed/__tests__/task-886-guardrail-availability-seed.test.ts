@@ -14,7 +14,10 @@ import { SYSTEM_TENANT_ID } from './../00-constants';
  * the mirror cannot drift in any direction without a red suite.
  */
 const CONTRACT = JSON.parse(
-  readFileSync(fileURLToPath(new URL('../../../../../../../apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json', import.meta.url)), 'utf8'),
+  readFileSync(
+    fileURLToPath(new URL('../../../../../../../apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json', import.meta.url)),
+    'utf8',
+  ),
 ) as { policies: { id: string; threshold?: { field: string; minimum: number; maximum: number } }[] };
 
 describe('TASK-886 — the SYSTEM guardrail availability seed', () => {
@@ -22,9 +25,17 @@ describe('TASK-886 — the SYSTEM guardrail availability seed', () => {
     expect(Object.keys(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY).sort()).toEqual(CONTRACT.policies.map((p) => p.id).sort());
   });
 
-  it('switches ON every declared check — a cold database still screens with the full set', () => {
+  // TASK-932 (owner decision, 2026-09-09): the two OUTBOUND judges that false-positive on
+  // clinical notes — `response_toxicity` (the 300M classifier flags chest pain / aspirin as
+  // toxic) and `pii_leak` (a finalized note legitimately re-states the encounter's own
+  // identifiers) — ship OFF at the platform tier until they are retuned for clinical text.
+  // Every other declared check stays ON.
+  const CALIBRATED_OFF = ['response_toxicity', 'pii_leak'] as const;
+
+  it('switches ON every declared check except the two clinical-text judges the owner calibrated OFF', () => {
     for (const policy of CONTRACT.policies) {
-      expect(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY[policy.id]?.enabled).toBe(true);
+      const expected = !(CALIBRATED_OFF as readonly string[]).includes(policy.id);
+      expect(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY[policy.id]?.enabled, policy.id).toBe(expected);
     }
   });
 

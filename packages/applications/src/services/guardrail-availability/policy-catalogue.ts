@@ -161,9 +161,14 @@ export const PLATFORM_DEFAULT_GUARDRAIL_POLICIES: GuardrailPolicySelectionSet = 
   prompt_safety: { enabled: true },
   prompt_toxicity: { enabled: true },
   response_safety: { enabled: true },
-  response_toxicity: { enabled: true },
+  // TASK-932 (owner decision, 2026-09-09): the two OUTBOUND judges that false-positive on
+  // clinical notes ship OFF at the platform tier until retuned for clinical text —
+  // `response_toxicity` (the 300M classifier flags SOAP content such as chest pain / aspirin)
+  // and `pii_leak` (a finalized note re-states the encounter's own identifiers, which the
+  // fragment check reads as a leak). Mirrors `seed/18-guardrail-availability.ts`.
+  response_toxicity: { enabled: false },
   response_refusal: { enabled: true },
-  pii_leak: { enabled: true, minScore: 0.5 },
+  pii_leak: { enabled: false, minScore: 0.5 },
   containment_echo: { enabled: true },
 });
 
