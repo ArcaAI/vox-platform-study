@@ -66,6 +66,13 @@ the full 256-term ceiling — **2.0 ms** on a realistic formulary and **10.6 ms*
 on a degenerate list whose 256 terms share one phonetic key. A real hotword list
 is single digits (the served model row carries six), which is microseconds.
 
+The key is a LATIN consonant skeleton, so a Malayalam word keys to the empty
+string — and an empty key agrees with nothing, on either side. On this
+Malayalam-English platform the stage is therefore a deliberate no-op in
+Malayalam rather than an edit-distance free-for-all in a script it cannot hear:
+a Malayalam hotword still biases the decoder, it is simply never corrected after
+it. Code-switched lines correct their Latin tokens and leave the rest alone.
+
 Guards that decide what is NOT touched: a window that already IS a configured
 term (so a term is never consumed by its neighbour in the list, and the stage is
 idempotent), a token shorter than :data:`MIN_TOKEN_CHARS`, and a phrase window
