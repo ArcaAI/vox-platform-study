@@ -291,3 +291,4 @@ SYSTEM: `platform-transcription` (whisper.cpp ML/EN + CT2 turbo fallback, silero
 |---|---|
 | 2026-09-04 | Ticket created from the TASK-859 review. |
 | 2026-09-04 | Steps 1–6, 8, 9, 11 implemented on `task-863-agent-entity` (schema + migration, domain trios, contract schemas, services + resolver + invocation, routes, console Agents screen, seeds, register). Status → Review. Steps 7 (harness) / 10 (SDK) → TASK-864 / TASK-865. |
+| 2026-09-09 | **Merged into `dev-2.2` — recorded at close-out (TASK-932 branch review).** `task-863-agent-entity` (tip `5e1b1c31d`) has its exact tip tree in `dev-2.2` (`61eec2193` post-rewrite), no unmerged patch per `git cherry`; on the remote since `04708b489`. Local branch deleted after verification. |
