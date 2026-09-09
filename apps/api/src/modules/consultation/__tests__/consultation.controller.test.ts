@@ -111,13 +111,21 @@ function createMockPolicyEngine(canResult = false, cannotResult = true) {
   };
 }
 
-function createMockGlobalSettingRepo(sharingEnabled = true) {
+/**
+ * TASK-932 S2-4 — the sharing flag resolves through the settings-registry
+ * cascade (tenant row → SYSTEM row → descriptor default), not through a raw
+ * `GlobalSettingRepository.findAll` in the controller (a rule-05 violation).
+ *
+ * `TenantSettingsService.resolve` is SYNCHRONOUS — it reads the AppSettings
+ * in-memory cache and does no I/O — which is why `isSharingEnabled` no longer
+ * needs to be awaited. `source` is carried because the real resolver reports
+ * which tier answered; nothing here asserts on it, but a fixture that omitted
+ * it would let a consumer of that field pass against a shape the runtime never
+ * produces.
+ */
+function createMockTenantSettings(sharingEnabled = true) {
   return {
-    findAll: vi
-      .fn()
-      .mockResolvedValue(
-        sharingEnabled ? [{ value: 'true', key: 'enable-consultation-sharing' }] : [{ value: 'false', key: 'enable-consultation-sharing' }],
-      ),
+    resolve: vi.fn().mockReturnValue({ key: 'enable-consultation-sharing', value: sharingEnabled, source: 'tenant' }),
   };
 }
 
@@ -153,7 +161,7 @@ function buildController(
     if (action === 'manage') return policyCanManage;
     return false;
   });
-  const globalSettingRepo = createMockGlobalSettingRepo(sharingEnabled);
+  const tenantSettings = createMockTenantSettings(sharingEnabled);
 
   const controller = new ConsultationController(
     consultationService as any,
@@ -165,7 +173,7 @@ function buildController(
     timelineService as any,
     cls as any,
     policyEngine as any,
-    globalSettingRepo as any,
+    tenantSettings as any,
     // Labelled to match the constructor positionally. These were bare `{} as any`
     // placeholders, so when `harnessLiveAssistService` was inserted mid-list the
     // arity silently drifted and only `tsc` noticed — the count is the contract.
@@ -190,7 +198,7 @@ function buildController(
     timelineService,
     cls,
     policyEngine,
-    globalSettingRepo,
+    tenantSettings,
   };
 }
 
@@ -316,15 +324,17 @@ describe('ConsultationController', () => {
         await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
       });
 
-      it('should default to sharing CLOSED when globalSettingRepo throws (fail-closed)', async () => {
-        const { controller, consultationService, globalSettingRepo } = buildController({
+      it('should default to sharing CLOSED when the settings resolver throws (fail-closed)', async () => {
+        const { controller, consultationService, tenantSettings } = buildController({
           userId: DOCTOR_B,
         });
         const consultation = makeConsultation({ doctorId: DOCTOR_A });
         consultationService.getById.mockResolvedValue(consultation);
         consultationService.getByIdWithRelations.mockResolvedValue(consultation);
         consultationService.doctorHasPatientRelationship.mockResolvedValue(true);
-        globalSettingRepo.findAll.mockRejectedValue(new Error('DB error'));
+        tenantSettings.resolve.mockImplementation(() => {
+          throw new Error('settings cache not initialised');
+        });
 
         await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
         expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
@@ -533,8 +543,8 @@ describe('ConsultationController', () => {
       await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should return true when setting value is "true"', async () => {
-      const { controller, consultationService } = buildController({
+    it('grants the shared-patient fallback when the cascade resolves TRUE, and asks about the caller own tenant', async () => {
+      const { controller, consultationService, tenantSettings } = buildController({
         userId: DOCTOR_B,
         sharingEnabled: true,
       });
@@ -546,9 +556,13 @@ describe('ConsultationController', () => {
       await controller.getById(CONSULTATION_OWN);
 
       expect(consultationService.doctorHasPatientRelationship).toHaveBeenCalled();
+      // The cascade is asked about the REQUEST's tenant. Passing `null` (or
+      // another tenant) would resolve the platform lane instead, and one
+      // tenant's sharing decision would answer for everybody.
+      expect(tenantSettings.resolve).toHaveBeenCalledWith('enable-consultation-sharing', TENANT_ID);
     });
 
-    it('should return false when setting value is "false"', async () => {
+    it('refuses when the cascade resolves FALSE — a tenant that turned sharing off', async () => {
       const { controller, consultationService } = buildController({
         userId: DOCTOR_B,
         sharingEnabled: false,
@@ -560,46 +574,64 @@ describe('ConsultationController', () => {
       expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
     });
 
-    // The flag must be default-CLOSED. A missing-setting path returning
-    // `true` (default-OPEN) would silently enable shared-patient reads
-    // for tenants that had never made a sharing decision.
-    it('defaults FALSE when globalSettingRepo returns empty array (default-CLOSED)', async () => {
-      const { controller, consultationService, globalSettingRepo } = buildController({
-        userId: DOCTOR_B,
-      });
+    /**
+     * TASK-932 S2-4 — READ THIS BEFORE CHANGING EITHER OF THE NEXT TWO.
+     *
+     * The controller used to answer FALSE for a missing row AND for a failed
+     * lookup, calling both "default-CLOSED". Those are two different questions
+     * and the cascade separates them, exactly as `SettingDescriptor.failMode`
+     * declares:
+     *
+     *   ABSENCE  — no tenant row and no SYSTEM row — is answered by the
+     *              descriptor default, which is TRUE. That is not a loosening
+     *              slipped in sideways: every seeded tenant carries an explicit
+     *              `'true'` row today, and OD-1 removes those clones precisely
+     *              so tenants inherit this default instead. A `false` default
+     *              would have made that sweep withdraw continuity-of-care reads
+     *              from every tenant.
+     *   FAILURE  — the resolver raised — is NOT a value, and stays CLOSED. An
+     *              unreachable control plane must never be reported as "the
+     *              default", least of all on a path that grants access to a
+     *              clinical record.
+     */
+    it('resolves ABSENCE to the descriptor default (TRUE) — the cascade answers, not a literal in this file', async () => {
+      const { controller, consultationService, tenantSettings } = buildController({ userId: DOCTOR_B });
       const consultation = makeConsultation({ doctorId: DOCTOR_A });
       consultationService.getById.mockResolvedValue(consultation);
-      globalSettingRepo.findAll.mockResolvedValue([]);
+      consultationService.getByIdWithRelations.mockResolvedValue(consultation);
+      consultationService.doctorHasPatientRelationship.mockResolvedValue(true);
+      // What `TenantSettingsService` returns when no tier held a row: the
+      // descriptor default, reported as such.
+      tenantSettings.resolve.mockReturnValue({ key: 'enable-consultation-sharing', value: true, source: 'code-default' });
+
+      await controller.getById(CONSULTATION_OWN);
+
+      expect(consultationService.doctorHasPatientRelationship).toHaveBeenCalled();
+    });
+
+    it('fails CLOSED when the resolver THROWS — an unreachable control plane is not a default', async () => {
+      const { controller, consultationService, tenantSettings } = buildController({ userId: DOCTOR_B });
+      const consultation = makeConsultation({ doctorId: DOCTOR_A });
+      consultationService.getById.mockResolvedValue(consultation);
+      tenantSettings.resolve.mockImplementation(() => {
+        throw new Error('settings cache not initialised');
+      });
 
       await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
-      // Sharing is off → fallback short-circuits BEFORE the
-      // relationship lookup runs.
       expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
     });
 
-    it('defaults FALSE when the GlobalSetting repository throws (fail-closed)', async () => {
-      const { controller, consultationService, globalSettingRepo } = buildController({
-        userId: DOCTOR_B,
-      });
-      const consultation = makeConsultation({ doctorId: DOCTOR_A });
-      consultationService.getById.mockResolvedValue(consultation);
-      globalSettingRepo.findAll.mockRejectedValue(new Error('DB unavailable'));
-
-      await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
-      expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
-    });
-
-    it('returns FALSE for non-"true" truthy strings (strict equality)', async () => {
-      const cases = ['TRUE', '1', 'yes', 'on', ' true', ''];
-      for (const value of cases) {
-        const { controller, consultationService, globalSettingRepo } = buildController({
-          userId: DOCTOR_B,
-        });
+    it('refuses anything that is not exactly the boolean true (strict equality)', async () => {
+      // The cache parses a `Boolean` row into a real boolean, so a string here
+      // means something upstream went wrong — and a truthy string must not be
+      // read as consent to widen access. `'false'` is the one that bites.
+      for (const value of ['true', 'false', 'TRUE', 1, {}, null, undefined]) {
+        const { controller, consultationService, tenantSettings } = buildController({ userId: DOCTOR_B });
         const consultation = makeConsultation({ doctorId: DOCTOR_A });
         consultationService.getById.mockResolvedValue(consultation);
-        globalSettingRepo.findAll.mockResolvedValue([{ value, key: 'enable-consultation-sharing' }]);
+        tenantSettings.resolve.mockReturnValue({ key: 'enable-consultation-sharing', value, source: 'tenant' });
 
-        await expect(controller.getById(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+        await expect(controller.getById(CONSULTATION_OWN), `resolved value ${JSON.stringify(value)}`).rejects.toThrow(ForbiddenException);
         expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
       }
     });

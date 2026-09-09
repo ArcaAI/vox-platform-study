@@ -72,6 +72,18 @@ vi.mock('@arcaai/domains', async () => {
   };
 });
 
+/**
+ * TASK-932 S2-1 — `create` now runs TWO probes: a LIVE one (no `resourceStatus`
+ * in the where; the soft-delete extension supplies `not: DELETED`) and then the
+ * DELETED revive probe. A fixture that answers both with the same row would
+ * report the buried row as a live occupant, so it is answered per probe.
+ */
+function onlyDeletedRowExists(row: unknown): void {
+  mockGlobalSettingRepository.findFirst.mockImplementation((props: any) =>
+    props?.where?.resourceStatus === 'DELETED' ? Promise.resolve(row) : Promise.reject(new DataNotFoundException('globalSetting', '{}')),
+  );
+}
+
 describe('GlobalSettingService — revive-on-create for soft-deleted keys', () => {
   let service: GlobalSettingService;
 
@@ -99,7 +111,7 @@ describe('GlobalSettingService — revive-on-create for soft-deleted keys', () =
 
   it('revives a matching DELETED row: restore + apply request fields, same row id, no create', async () => {
     const restored = buildDeletedRow({ resourceStatus: 'ENABLED' });
-    mockGlobalSettingRepository.findFirst.mockResolvedValue(buildDeletedRow());
+    onlyDeletedRowExists(buildDeletedRow());
     mockGlobalSettingRepository.restore.mockResolvedValue(restored);
     mockGlobalSettingRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
 
@@ -111,17 +123,16 @@ describe('GlobalSettingService — revive-on-create for soft-deleted keys', () =
       dataType: ValueType.String,
     });
 
-    // The DELETED probe targeted exactly (tenantId, name, key) + DELETED.
-    expect(mockGlobalSettingRepository.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          tenantId: TENANT,
-          name: 'Task402 Revive',
-          key: 'task402.revive.key',
-          resourceStatus: 'DELETED',
-        }),
-      }),
-    );
+    // TASK-932 S2-1 — the DELETED probe targets `(tenantId, key)` + DELETED, and
+    // NOT `name`: the row that must come back is the one the `(tenantId, key)`
+    // unique index would collide with, whatever name it was buried under.
+    expect(mockGlobalSettingRepository.findFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        key: 'task402.revive.key',
+        resourceStatus: 'DELETED',
+      },
+    });
     expect(mockGlobalSettingRepository.restore).toHaveBeenCalledWith('deleted-row-1', 'admin-1');
     // Request fields were applied to the restored entity and written.
     expect(restored.value).toBe('new-value');
@@ -141,7 +152,7 @@ describe('GlobalSettingService — revive-on-create for soft-deleted keys', () =
 
   it('skips the redundant update write when the restored row already matches the request', async () => {
     const restored = buildDeletedRow({ resourceStatus: 'ENABLED', value: 'same-value', hasChanges: false });
-    mockGlobalSettingRepository.findFirst.mockResolvedValue(buildDeletedRow());
+    onlyDeletedRowExists(buildDeletedRow());
     mockGlobalSettingRepository.restore.mockResolvedValue(restored);
 
     const result = await service.create({

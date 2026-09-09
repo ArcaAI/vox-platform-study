@@ -36,6 +36,7 @@ import {
   // logic in harness).
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  EffectiveSettingsModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -89,6 +90,13 @@ import { ConsentInternalController } from './consent-internal.controller';
     PromptManagementServiceModule,
     TranscriptionJobServiceModule,
     TranscriptionRealtimeServiceModule,
+    // TASK-932 S2-4 — supplies `TenantSettingsService`, which
+    // `ConsultationController.isSharingEnabled` resolves the
+    // `enable-consultation-sharing` gate through (tenant row -> SYSTEM row ->
+    // descriptor default). It replaces the `GlobalSettingRepository` the
+    // controller used to query directly. NestJS dedupes the module instance
+    // with the AppModule / AuthModule imports.
+    EffectiveSettingsModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController, ConsentInternalController],
   // dedicated Redis subscriber connection for the
