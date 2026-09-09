@@ -21,7 +21,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import type { Observable } from 'rxjs';
 import { IConsultationJobService, JobStatusResponse } from '@arcaai/applications';
 import { TenantOwnedResource } from '../../common';
-import { Authorize, RequiredScopes } from '../../decorators';
+import { Authorize, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth';
 
 @ApiBearerAuth()
@@ -37,6 +37,12 @@ export class ConsultationJobController {
   @Get(':jobId')
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })
   @RequiredScopes('consultation:session:read')
+  // TASK-933 — the async note job is a REPORT read, which is what the machine class is granted
+  // here (`svc:consultation:report:read`); the API-key scope stays the historical
+  // `consultation:session:read` because narrowing a live key's reach is not this ticket's to do.
+  // `cancelJob` is deliberately NOT opened: it carries `scope: 'creator'`, so it is the
+  // clinician's own control over their own job, and deny-by-default keeps it that way.
+  @RequiredSvcScopes('svc:consultation:report:read')
   @ApiOperation({ summary: 'Get the current status of an async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID returned by an async summary/pre-summary/comprehensive/NER endpoint' })
   @ApiResponse({ status: 200, description: 'Job status payload', type: JobStatusResponse })
@@ -74,6 +80,7 @@ export class ConsultationJobController {
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })
   @RequiredScopes('consultation:session:read')
   @StreamScope({ namespace: 'consultation_job', param: 'jobId' })
+  @RequiredSvcScopes('svc:consultation:report:read')
   @ApiOperation({
     summary: 'Stream real-time status updates for an async consultation job via SSE',
     description:

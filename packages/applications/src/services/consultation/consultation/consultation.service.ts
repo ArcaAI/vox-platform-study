@@ -45,6 +45,7 @@ import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch
 import { readGoverningEngineMarker } from '../governing-engine';
 import { withWorkflowSelectionMarker } from './workflow-selection';
 import { withSummaryLanguage } from './summary-language';
+import { PolicyEngine } from '../../../authorization/policy.engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
@@ -100,6 +101,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // The SELECTION gate deliberately does NOT use this: authorizing a selection is dispatch
     // policy and lives with the dispatcher, which owns the palette rule.
     @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    // TASK-933 — optional + trailing (append-only DI, like every dependency above it). Answers
+    // ONE question, and only when a machine caller NAMES a clinician on `open`: "may that user
+    // own a consultation?". A route decorator expresses `action + subject` for the CALLER and
+    // cannot express it for a THIRD PARTY named in the body — the `AgentService.
+    // assertManagesAgentsIn` precedent. Absent ⇒ the question is unanswered, so the named-
+    // clinician path fails CLOSED (404); the ordinary human path never reaches it.
+    @Optional() private readonly policyEngine?: PolicyEngine,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -138,6 +146,61 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     if (refs.parentConsultationId) {
       await assertParentInScope(this.consultationRepository, refs.parentConsultationId, tenantId);
+    }
+  }
+
+  /**
+   * TASK-933 §3.2 — may the NAMED clinician own a consultation?
+   *
+   * Runs ONLY when a caller named one (`OpenConsultationRequest.clinicianUserId`, which the
+   * controller honours for a service account alone). A human caller never reaches it: their
+   * `doctorId` IS their own identity, and `@Authorize(['create','Consultation'])` already
+   * proved that ability at the guard.
+   *
+   * A machine has proved nothing of the sort about the person it names. Its own authority is
+   * exactly its `svc:*` scopes (`serviceAccountPolicyRules`) — a set that says the ACCOUNT may
+   * open consultations, not that this particular user may hold one. Without this check a
+   * service account could file a consultation against a receptionist, a nurse, a disabled
+   * account or a fellow machine, and every downstream consumer that keys off `doctorId` would
+   * inherit it.
+   *
+   * The rule is the tenant's own policy, not a role list this file invents: build the named
+   * user's ability the way the guard builds a human's, and require `create:Consultation`.
+   * `consultation-own-manage` grants it to doctors and `tenant-full-access` to tenant admins;
+   * `consultation-read-assigned` (nurses) does not — which is precisely the discrimination
+   * wanted, expressed once, in the seeded policy.
+   *
+   * EVERY failure is a `NotFoundException`, including an unwired engine and a failed build.
+   * 404-over-403 twice over: the user id space is not the caller's to probe, and "this user
+   * exists but may not own consultations" is exactly the fact not to disclose. Failing closed on
+   * an unanswered question is the same posture `AgentService.assertManagesAgentsIn` takes.
+   */
+  private async assertNamedClinicianMayOwnConsultation(tenantId: string, clinicianUserId: string): Promise<void> {
+    const notFound = new NotFoundException(`User ${clinicianUserId} not found`);
+
+    if (!this.policyEngine) {
+      this.logger.error({
+        message: 'A clinician was named on open but the authorization engine is NOT WIRED — refusing rather than accepting an unverified doctor',
+        clinicianUserId,
+      });
+      throw notFound;
+    }
+
+    const ability = await this.policyEngine.buildAbility({ userId: clinicianUserId, tenantId }).catch((err) => {
+      this.logger.error({
+        message: 'Ability build failed for the named clinician — refusing the open',
+        clinicianUserId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+
+    if (!ability?.can('create', 'Consultation')) {
+      this.logger.warn({
+        message: 'The named clinician may not own a consultation — answering 404 (the user id space is not the caller to probe)',
+        clinicianUserId,
+      });
+      throw notFound;
     }
   }
 
@@ -273,6 +336,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
       departmentId: request.departmentId,
       parentConsultationId: request.parentConsultationId,
     });
+
+    // TASK-933 §3.2 — when the DOCTOR was named by the caller rather than being the caller,
+    // membership is not enough: the named user must also be able to own a consultation. Runs
+    // AFTER the tenant guard above, so a foreign user is 404'd on tenancy before anything about
+    // their privileges is computed.
+    if (request.clinicianUserId) {
+      await this.assertNamedClinicianMayOwnConsultation(tenantId, doctorId);
+    }
 
     // point 6 — authorize the caller's workflow SELECTION here, before the
     // get-or-create branch and before any write.

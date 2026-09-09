@@ -482,6 +482,60 @@ describe('SttWsGateway', () => {
         expect(serialized).not.toContain('user-victim');
       });
 
+      // ===================================================================
+      // TASK-933 — the owner may now be a SERVICE ACCOUNT.
+      //
+      // This gateway is deliberately UNCHANGED by that ticket: its compare is a pure string
+      // equality between the ticket's `userId` and the binding's `userId`, and it does not
+      // (and must not) care which credential class produced either. What changed is upstream —
+      // `TranscriptionJobController.resolveStreamOwnerId()` now writes a machine's id into both
+      // ends instead of `''` and `null`, which is why the same equality that used to refuse
+      // every machine now admits exactly the one that owns the session.
+      //
+      // These cases pin that: the gateway's classification in `ws-gateway-owner-audit`
+      // (`enforced`) is a claim about behaviour, and this is the behaviour.
+      // ===================================================================
+      const SVC_ACCOUNT_ID = 'e0000000-0000-0000-0000-000000000001';
+
+      it('accepts a SERVICE ACCOUNT that owns the session', async () => {
+        const client = createMockSocket();
+        setTicketFor('sess-svc', SVC_ACCOUNT_ID);
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: SVC_ACCOUNT_ID });
+
+        await gateway.handleConnection(client as any, buildReq('sess-svc') as any);
+
+        expect(client.close).not.toHaveBeenCalled();
+        expect(gateway.getActiveSessionCount()).toBe(1);
+      });
+
+      it('rejects a DIFFERENT service account holding a same-tenant ticket — a machine gets no wider reach than a colleague', async () => {
+        const client = createMockSocket();
+        setTicketFor('sess-svc-hijack', 'e0000000-0000-0000-0000-0000000000ff');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: SVC_ACCOUNT_ID });
+
+        await gateway.handleConnection(client as any, buildReq('sess-svc-hijack') as any);
+
+        expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+        expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
+        expect(gateway.getActiveSessionCount()).toBe(0);
+      });
+
+      it('rejects a HUMAN presenting a ticket for a machine-owned session, and a machine for a human-owned one', async () => {
+        const humanOnMachineSession = createMockSocket();
+        setTicketFor('sess-cross-1', 'user-123');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: SVC_ACCOUNT_ID });
+        await gateway.handleConnection(humanOnMachineSession as any, buildReq('sess-cross-1') as any);
+        expect(humanOnMachineSession.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+
+        const machineOnHumanSession = createMockSocket();
+        setTicketFor('sess-cross-2', SVC_ACCOUNT_ID);
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-123' });
+        await gateway.handleConnection(machineOnHumanSession as any, buildReq('sess-cross-2') as any);
+        expect(machineOnHumanSession.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+
+        expect(gateway.getActiveSessionCount()).toBe(0);
+      });
+
       // Defence-in-depth at the rebind seam itself: even if a binding were
       // rewritten under a live session, `rebindSession` must never adopt a
       // new owner. `session.userId = stored.userId` was an unconditional
@@ -697,7 +751,15 @@ describe('SttWsGateway', () => {
 
       await gateway.handleMessage(client as any, audioMsg);
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-audio', 1, expect.any(Buffer), 16000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+        'sess-audio',
+        1,
+        expect.any(Buffer),
+        16000,
+        'pcm_s16le',
+        false,
+        TRACE_CARRIER_DISABLED,
+      );
     });
 
     it('should handle stop message by sending finalize control command', async () => {
@@ -750,7 +812,15 @@ describe('SttWsGateway', () => {
       const binaryData = Buffer.from([0x01, 0x02, 0x03, 0x04]);
       await gateway.handleMessage(client as any, binaryData as any, true);
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-bin', expect.any(Number), binaryData, 16000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+        'sess-bin',
+        expect.any(Number),
+        binaryData,
+        16000,
+        'pcm_s16le',
+        false,
+        TRACE_CARRIER_DISABLED,
+      );
     });
   });
 
@@ -769,7 +839,15 @@ describe('SttWsGateway', () => {
       await gateway.handleMessage(client as any, binaryData as any, true);
 
       expect(mockSessionBinding.lookupSessionMeta).toHaveBeenCalledWith('sess-sr-bin');
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-bin', expect.any(Number), binaryData, 48000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+        'sess-sr-bin',
+        expect.any(Number),
+        binaryData,
+        48000,
+        'pcm_s16le',
+        false,
+        TRACE_CARRIER_DISABLED,
+      );
     });
 
     it('forwards the session-negotiated sampleRate on JSON audio frames (C5)', async () => {
@@ -780,7 +858,15 @@ describe('SttWsGateway', () => {
 
       await gateway.handleMessage(client as any, JSON.stringify({ type: 'audio', seq: 7, data: 'YWJjZA==' }));
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-json', 7, expect.any(Buffer), 44100, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+        'sess-sr-json',
+        7,
+        expect.any(Buffer),
+        44100,
+        'pcm_s16le',
+        false,
+        TRACE_CARRIER_DISABLED,
+      );
     });
 
     it('defaults the sampleRate to 16000 when no session meta is bound', async () => {
@@ -1535,7 +1621,10 @@ describe('SttWsGateway', () => {
       const sent = (client.send as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => JSON.parse(c[0] as string));
       expect(sent, 'one coalesced signal for the episode, not one per drop').toHaveLength(1);
       expect(sent[0]).toMatchObject({ type: 'gap', reason: 'egress_partial_dropped', sessionId: 'sess-bp-partial' });
-      expect(sent.some((m) => m.type === 'transcript'), 'the partials themselves are still dropped').toBe(false);
+      expect(
+        sent.some((m) => m.type === 'transcript'),
+        'the partials themselves are still dropped',
+      ).toBe(false);
       gateway.handleDisconnect(client as any);
     });
 

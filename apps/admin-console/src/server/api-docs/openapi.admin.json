@@ -12682,6 +12682,12 @@
             "example": "2026-01-29",
             "type": "string"
           },
+          "clinicianUserId": {
+            "description": "The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) and refused for every other credential class, whose clinician is the authenticated caller. The named user must belong to the tenant and be able to create consultations; anything else is a 404.",
+            "example": "0192f3a1-7c4b-7d2e-9f01-2b3c4d5e6f70",
+            "format": "uuid",
+            "type": "string"
+          },
           "departmentId": {
             "description": "Department ID (from Department lookup table)",
             "type": "string"
@@ -60622,7 +60628,7 @@
     },
     "/api/v1/consultations/jobs/{jobId}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationJobController_getJob",
         "parameters": [
           {
@@ -60668,12 +60674,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/jobs/{jobId}/cancel": {
@@ -60727,7 +60736,7 @@
     },
     "/api/v1/consultations/jobs/{jobId}/stream": {
       "get": {
-        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_job:<jobId>`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_job:<jobId>`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationJobController_streamJob",
         "parameters": [
           {
@@ -60770,17 +60779,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/open": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Abilities** — `create:Consultation`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\n**Abilities** — `create:Consultation`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_open",
         "parameters": [],
         "requestBody": {
@@ -60805,7 +60817,10 @@
             "description": "Creating a ConsultationResponse"
           },
           "400": {
-            "description": "Bad request"
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller named no `clinicianUserId`; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied one."
+          },
+          "404": {
+            "description": "The named clinician is not a user of this tenant, or may not own a consultation."
           }
         },
         "security": [
@@ -60831,12 +60846,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/patient/{patientId}/date/{date}": {
@@ -61100,7 +61118,7 @@
     },
     "/api/v1/consultations/{consultationId}/workflows": {
       "get": {
-        "description": "The consultation-bound catalogue. Wider than `GET /workflows` — it also lists `consultation`-palette definitions — and it is filtered with the SAME predicate the invoke gate enforces, so a slug listed here is a slug that runs here. A graph whose every node is `lane: realtime` is excluded: the durable interpreter skips those, so invoking one would report success for work that never happened.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflows:execute`.\n\n**Abilities** — `execute:ConsultationWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The consultation-bound catalogue. Wider than `GET /workflows` — it also lists `consultation`-palette definitions — and it is filtered with the SAME predicate the invoke gate enforces, so a slug listed here is a slug that runs here. A graph whose every node is `lane: realtime` is excluded: the durable interpreter skips those, so invoking one would report success for work that never happened.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflows:execute`).\n\n**API key scopes** — `workflows:execute`.\n\n**Abilities** — `execute:ConsultationWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationWorkflowRunsController_list",
         "parameters": [
           {
@@ -61150,17 +61168,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflows:execute"
+        ]
       }
     },
     "/api/v1/consultations/{consultationId}/workflows/{slug}/runs": {
       "post": {
-        "description": "The clinical invocation entry point: the run may read and write this consultation, and nothing else. The consultation is identified by the URL and re-resolved server-side against your tenant — supplying `consultationId` (or any other reserved run-identity field) in `input` is a 400, never a silent override. `?mode=` and `Idempotency-Key` behave exactly as on `POST /workflows/{slug}/runs`, including the ~60s blocking ceiling and the guarantee that disconnecting never cancels the run.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflows:execute`.\n\n**Abilities** — `execute:ConsultationWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The clinical invocation entry point: the run may read and write this consultation, and nothing else. The consultation is identified by the URL and re-resolved server-side against your tenant — supplying `consultationId` (or any other reserved run-identity field) in `input` is a 400, never a silent override. `?mode=` and `Idempotency-Key` behave exactly as on `POST /workflows/{slug}/runs`, including the ~60s blocking ceiling and the guarantee that disconnecting never cancels the run.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflows:execute`).\n\n**API key scopes** — `workflows:execute`.\n\n**Abilities** — `execute:ConsultationWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationWorkflowRunsController_startRun",
         "parameters": [
           {
@@ -61270,17 +61291,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:workflows:execute"
+        ]
       }
     },
     "/api/v1/consultations/{id}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getById",
         "parameters": [
           {
@@ -61326,12 +61350,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       },
       "patch": {
         "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a second open tab could previously clobber an edit here silently. Drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -61623,7 +61650,7 @@
         "x-hope-service-account-scopes": []
       },
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_addContext",
         "parameters": [
           {
@@ -61693,12 +61720,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/context/case-notes": {
@@ -62511,7 +62541,7 @@
     },
     "/api/v1/consultations/{id}/harness-progress/stream": {
       "get": {
-        "description": "Server-Sent Events stream relaying the Redis channel `consultation:harness-progress:{id}`. Each event is a HarnessProgressEventDto JSON carrying the full accumulated stage list (no PHI). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_harness_progress:<id>`. The terminal event carries `closed: true` when the draft is persisted.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream relaying the Redis channel `consultation:harness-progress:{id}`. Each event is a HarnessProgressEventDto JSON carrying the full accumulated stage list (no PHI). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_harness_progress:<id>`. The terminal event carries `closed: true` when the draft is persisted.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_streamHarnessProgress",
         "parameters": [
           {
@@ -62554,12 +62584,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/highlights": {
@@ -62759,7 +62792,7 @@
     },
     "/api/v1/consultations/{id}/live-assist/stream": {
       "get": {
-        "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-assist:{id}`. Each event is a LiveAssistEventDto JSON carrying the current `suggestions` and `corrections` branches. CARRIES PHI: a correction proposal quotes the original span verbatim. Nothing on this feed has been applied to the note — `corrections.applied` is false and the clinician decides. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_assist:<id>`. The feed has no terminal event; the client closes it.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-assist:{id}`. Each event is a LiveAssistEventDto JSON carrying the current `suggestions` and `corrections` branches. CARRIES PHI: a correction proposal quotes the original span verbatim. Nothing on this feed has been applied to the note — `corrections.applied` is false and the clinician decides. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_assist:<id>`. The feed has no terminal event; the client closes it.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_streamLiveAssist",
         "parameters": [
           {
@@ -62805,17 +62838,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/live-summary/stream": {
       "get": {
-        "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-summary:{id}`. Each event is a LiveSummaryEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_summary:<id>`. The terminal event carries `closed: true` when recording stops.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-summary:{id}`. Each event is a LiveSummaryEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_summary:<id>`. The terminal event carries `closed: true` when recording stops.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_streamLiveSummary",
         "parameters": [
           {
@@ -62858,17 +62894,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/loop/stream": {
       "get": {
-        "description": "Server-Sent Events stream relaying the Redis channel `consultation:loop:{id}`. Each event is a LoopEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_loop:<id>`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream relaying the Redis channel `consultation:loop:{id}`. Each event is a LoopEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_loop:<id>`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_streamLoop",
         "parameters": [
           {
@@ -62911,12 +62950,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/named-entities": {
@@ -63061,7 +63103,7 @@
     },
     "/api/v1/consultations/{id}/recording/start": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_startRecording",
         "parameters": [
           {
@@ -63117,17 +63159,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/recording/stop": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_stopRecording",
         "parameters": [
           {
@@ -63183,12 +63228,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/recordings": {
@@ -63713,7 +63761,7 @@
     },
     "/api/v1/consultations/{id}/summary/latest": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getLatestSummary",
         "parameters": [
           {
@@ -63759,17 +63807,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/pre-summary": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_generatePreSummary",
         "parameters": [
           {
@@ -63822,17 +63873,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/pre-summary/async": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_generatePreSummaryAsync",
         "parameters": [
           {
@@ -63885,17 +63939,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/pre-summary/latest": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getLatestPreSummary",
         "parameters": [
           {
@@ -63941,12 +63998,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/{contextItemId}/approve": {
@@ -66930,7 +66990,7 @@
     },
     "/api/v1/tenants/me/context-schema": {
       "get": {
-        "description": "Returns the RESOLVED, PINNED declaration (DEPARTMENT-scoped default → TENANT-scoped default), never simply the latest published version. A tenant with no configured schema gets a 200 whose fields are null and whose ETag is `\"none\"` — deliberately NOT a 404, which a client cannot tell apart from a routing mistake.\n\nUnder API-key authentication this resolves to the key's **tenant**.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `tenant:context-schema:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the RESOLVED, PINNED declaration (DEPARTMENT-scoped default → TENANT-scoped default), never simply the latest published version. A tenant with no configured schema gets a 200 whose fields are null and whose ETag is `\"none\"` — deliberately NOT a 404, which a client cannot tell apart from a routing mistake.\n\nUnder API-key authentication this resolves to the key's **tenant**.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:tenant:context-schema:read`).\n\n**API key scopes** — `tenant:context-schema:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "MyTenantContextSchemaController_getEffective",
         "parameters": [
           {
@@ -66981,12 +67041,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:tenant:context-schema:read"
+        ]
       }
     },
     "/api/v1/tenants/me/document-template": {
