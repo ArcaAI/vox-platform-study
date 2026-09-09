@@ -134,6 +134,78 @@ class TestBindingResolution:
         assert payload["asr_engines"]["safetensor"]["batch"]["device"] == "cpu"
 
 
+class TestTask934DeclaredComputeType:
+    """TASK-934 lane O: the ASSIGNED MODEL ROW's own declared compute type
+    must win over the execution profile's precision vocabulary
+    (float16/int8/float32), which never overlaps a GGUF engine's native
+    quant vocabulary (q4_k/q5_k/q8_0/f16). Before the fix, feeding only the
+    profile's vocabulary as ``compute_pref`` never matched, and the
+    registry's soft fallback silently returned the engine's first declared
+    compute (q4_k) regardless of the weights actually loaded (e.g. a row
+    pinned to q8_0) — see README §2.2.
+    """
+
+    def test_declared_compute_type_preferred_over_profile_precision(self):
+        from stt.processors.binding import resolve_engine_binding
+
+        binding = resolve_engine_binding(
+            "asr",
+            "whisper_cpp",
+            mode="streaming",
+            platform="mps",
+            compute_pref=["float16"],
+            declared_compute_type="q8_0",
+            warn=False,
+        )
+        assert binding is not None
+        assert (binding.device, binding.compute) == ("mps", "q8_0")
+
+    def test_declared_compute_type_outside_vocabulary_falls_back_unchanged(self):
+        # A declared type the engine has never heard of (e.g. a stale quant
+        # label) must not break resolution — fall through to compute_pref
+        # and the existing soft fallback exactly as before.
+        from stt.processors.binding import resolve_engine_binding
+
+        binding = resolve_engine_binding(
+            "asr",
+            "whisper_cpp",
+            mode="streaming",
+            platform="mps",
+            compute_pref=["f16"],
+            declared_compute_type="not_a_real_quant",
+            warn=False,
+        )
+        assert binding is not None
+        assert (binding.device, binding.compute) == ("mps", "f16")
+
+    def test_faster_whisper_int8_row_resolves_as_today(self):
+        # Regression pin: an engine whose vocabulary already overlaps the
+        # profile's (CTranslate2 int8) must resolve identically whether or
+        # not declared_compute_type is supplied — the new preference is
+        # additive, not a behaviour change for engines already matching.
+        from stt.processors.binding import resolve_engine_binding
+
+        before = resolve_engine_binding(
+            "asr",
+            "faster_whisper",
+            mode="streaming",
+            platform="cuda",
+            compute_pref=["int8"],
+            warn=False,
+        )
+        after = resolve_engine_binding(
+            "asr",
+            "faster_whisper",
+            mode="streaming",
+            platform="cuda",
+            compute_pref=["int8"],
+            declared_compute_type="int8",
+            warn=False,
+        )
+        assert before is not None and after is not None
+        assert (before.device, before.compute) == (after.device, after.compute) == ("cuda", "int8")
+
+
 class TestP1ReviewFixes:
     """Regression locks for adversarial-review findings."""
 
