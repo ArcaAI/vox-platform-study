@@ -513,3 +513,59 @@ describe('TASK-934 — the agent schema and the model profile agree on every ran
     expect(schema).toMatchObject({ type: 'boolean' });
   });
 });
+
+describe('TASK-935 — postProcessing.lexicon rides the wire, its terms do not (OD-5 a)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  /** `base` with `parameters.postProcessing` merged. */
+  const withLexicon = (lexicon: Record<string, unknown> | undefined): ResolvedAgent => {
+    const parameters = base.compiledConfig.parameters as Record<string, unknown>;
+    const postProcessing = { ...(parameters.postProcessing as object), ...(lexicon === undefined ? {} : { lexicon }) };
+    return { ...base, compiledConfig: { ...base.compiledConfig, parameters: { ...parameters, postProcessing } } };
+  };
+
+  it('carries the block when the agent declared it, beside the hotwords that feed it', () => {
+    const spec = buildResolvedAsrSpec({ agent: withLexicon({ enabled: true }), fallbackAgent: null });
+    expect(spec.postProcessing.lexicon).toEqual({ enabled: true });
+    // The stage's vocabulary is `instruction.hotwords` — already resolved agent →
+    // model profile by TASK-934 — and is NEVER copied into the lexicon block.
+    expect(spec.instruction.hotwords).toEqual(['paracetamol', 'metformin']);
+    expect(spec.postProcessing.lexicon).not.toHaveProperty('terms');
+  });
+
+  it('omits the block entirely when the agent said nothing about it', () => {
+    const spec = buildResolvedAsrSpec({ agent: withLexicon(undefined), fallbackAgent: null });
+    // `apps/stt`'s mirror is `extra='forbid'`, so an unset optional is OMITTED rather
+    // than written as null — the same rule the TASK-877/934 additive fields follow.
+    expect(spec.postProcessing).not.toHaveProperty('lexicon');
+    expect(Object.keys(spec.postProcessing).sort()).toEqual(['disfluency', 'merge', 'punctuation', 'stabilizer']);
+  });
+
+  it('carries an explicit OFF — a veto is an opinion, not an absence', () => {
+    const spec = buildResolvedAsrSpec({ agent: withLexicon({ enabled: false }), fallbackAgent: null });
+    expect(spec.postProcessing.lexicon).toEqual({ enabled: false });
+  });
+
+  it('carries maxDistance only when the agent tuned it', () => {
+    expect(buildResolvedAsrSpec({ agent: withLexicon({ enabled: true, maxDistance: 0.25 }), fallbackAgent: null }).postProcessing.lexicon).toEqual({
+      enabled: true,
+      maxDistance: 0.25,
+    });
+    expect(buildResolvedAsrSpec({ agent: withLexicon({ enabled: true }), fallbackAgent: null }).postProcessing.lexicon).not.toHaveProperty('maxDistance');
+  });
+
+  it('reads a bare maxDistance as switching the stage on', () => {
+    // Tuning a stage you have not enabled is not a state worth encoding; the author
+    // who set a distance meant the stage to run at it.
+    expect(buildResolvedAsrSpec({ agent: withLexicon({ maxDistance: 0.4 }), fallbackAgent: null }).postProcessing.lexicon).toEqual({
+      enabled: true,
+      maxDistance: 0.4,
+    });
+  });
+
+  it('bounds maxDistance to the published agent schema, never to a call-site literal', () => {
+    const schema = AGENT_PARAMETER_SCHEMAS.SPEECH_TO_TEXT as { properties: Record<string, { properties: Record<string, { properties: Record<string, { minimum: number; maximum: number }> }> }> };
+    const declared = schema.properties.postProcessing.properties.lexicon.properties.maxDistance;
+    expect([declared.minimum, declared.maximum]).toEqual([0.1, 0.5]);
+  });
+});

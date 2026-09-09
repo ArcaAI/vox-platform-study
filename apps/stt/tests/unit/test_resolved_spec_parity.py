@@ -179,3 +179,77 @@ def test_punctuation_model_is_referenced_not_loaded() -> None:
     pipeline, models = pipeline_spec_from_resolved(spec)
     assert pipeline.postprocessing.punctuation.model == "cadence-punct"
     assert "cadence-punct" not in models
+
+
+class TestClinicalVocabularyCorrection:
+    """TASK-935 (OD-2 a / OD-5 a) — the lexicon stage crosses the wire; its terms don't.
+
+    The stage's vocabulary is ``instruction.hotwords``, bound to the runtime config by
+    ``pipeline_spec_from_resolved`` rather than sent a second time. That binding is the
+    contract these tests hold: one list on the wire, one stage reading it, and an agent
+    silence that resolves against the list rather than against a constant.
+    """
+
+    def test_the_configured_stage_reaches_the_runtime_with_the_hotwords_as_its_terms(
+        self,
+    ) -> None:
+        spec = ResolvedAsrSpec.model_validate(CASES["clinicalVocabularyCorrection"]["expected"])
+        pipeline, _ = pipeline_spec_from_resolved(spec)
+        lexicon = pipeline.postprocessing.lexicon
+        assert lexicon.enabled is True
+        assert lexicon.max_distance == 0.3
+        # The terms were NEVER on the wire under `postProcessing`; they are the hotwords
+        # the same spec used to prime the decoder (here supplied by the MODEL row).
+        assert lexicon.terms == ["ceftriaxone", "amoxicillin"]
+        assert spec.post_processing.lexicon is not None
+        assert not hasattr(spec.post_processing.lexicon, "terms")
+        assert lexicon.active is True
+
+    def test_an_agent_that_said_nothing_gets_the_stage_exactly_when_it_named_terms(
+        self,
+    ) -> None:
+        """Absence resolves against the vocabulary, not against a constant.
+
+        A term named for the decoder is a term the clinician expects to read back, so
+        hotwords WITHOUT an explicit block turn the stage on; no hotwords leave it off.
+        """
+        raw = json.loads(json.dumps(CASES["clinicalVocabularyCorrection"]["expected"]))
+        del raw["postProcessing"]["lexicon"]
+
+        with_terms = ResolvedAsrSpec.model_validate(raw)
+        assert with_terms.post_processing.lexicon is None
+        pipeline, _ = pipeline_spec_from_resolved(with_terms)
+        assert pipeline.postprocessing.lexicon.enabled is True
+        assert pipeline.postprocessing.lexicon.terms == ["ceftriaxone", "amoxicillin"]
+        # …and the engine default stands, because the spec never restates it.
+        assert pipeline.postprocessing.lexicon.max_distance is None
+
+        raw["instruction"]["hotwords"] = []
+        without_terms, _ = pipeline_spec_from_resolved(ResolvedAsrSpec.model_validate(raw))
+        assert without_terms.postprocessing.lexicon.enabled is False
+        assert without_terms.postprocessing.lexicon.active is False
+
+    def test_an_explicit_off_is_a_veto_that_survives_a_non_empty_hotword_list(self) -> None:
+        raw = json.loads(json.dumps(CASES["clinicalVocabularyCorrection"]["expected"]))
+        raw["postProcessing"]["lexicon"] = {"enabled": False}
+        pipeline, _ = pipeline_spec_from_resolved(ResolvedAsrSpec.model_validate(raw))
+        assert pipeline.postprocessing.lexicon.enabled is False
+        assert pipeline.postprocessing.lexicon.terms == ["ceftriaxone", "amoxicillin"]
+        assert pipeline.postprocessing.lexicon.active is False
+
+    def test_every_other_case_omits_the_block_and_still_maps(self) -> None:
+        """The omit-when-absent rule, from the consuming side."""
+        for name in sorted(CASES):
+            if name == "clinicalVocabularyCorrection":
+                continue
+            spec = ResolvedAsrSpec.model_validate(CASES[name]["expected"])
+            assert spec.post_processing.lexicon is None, name
+            pipeline, _ = pipeline_spec_from_resolved(spec)
+            assert pipeline.postprocessing.lexicon.terms == list(spec.instruction.hotwords), name
+
+    def test_a_term_list_smuggled_onto_the_wire_is_a_contract_drift(self) -> None:
+        """OD-5 (a) is enforced by the mirror, not merely documented."""
+        raw = json.loads(json.dumps(CASES["clinicalVocabularyCorrection"]["expected"]))
+        raw["postProcessing"]["lexicon"]["terms"] = ["ceftriaxone"]
+        with pytest.raises(ValidationError):
+            ResolvedAsrSpec.model_validate(raw)

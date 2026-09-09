@@ -838,6 +838,31 @@ class SegmentMergeConfig:
 
 
 @dataclass
+class LexiconConfig:
+    """TASK-935 — per-session clinical-vocabulary correction.
+
+    ``terms`` is the resolved hotword list (``ResolvedAsrSpec.instruction.hotwords``),
+    bound here by ``pipeline_spec_from_resolved`` rather than travelling twice on the
+    wire: one list, two consumers (decoder prompt bias and this stage — OD-5 a).
+
+    ``enabled`` is what the AGENT decided, already folded: when the spec omits the
+    block, the gateway's silence means "ON exactly when there are terms", and that
+    resolution happens where both halves are in hand. ``max_distance=None`` keeps
+    :data:`stt.postprocessing.lexicon.DEFAULT_MAX_DISTANCE` — the dataclass never
+    restates an engine default.
+    """
+
+    enabled: bool = False
+    max_distance: float | None = None
+    terms: list[str] = field(default_factory=list)
+
+    @property
+    def active(self) -> bool:
+        """A stage with no terms is a no-op however it was configured."""
+        return self.enabled and bool(self.terms)
+
+
+@dataclass
 class PostprocessingConfig:
     """Postprocessing configuration."""
 
@@ -847,6 +872,7 @@ class PostprocessingConfig:
     lowercase: bool = False
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
     segment_merge: SegmentMergeConfig = field(default_factory=SegmentMergeConfig)
+    lexicon: LexiconConfig = field(default_factory=LexiconConfig)
 
 
 # Valid values for streaming.commit_policy.
