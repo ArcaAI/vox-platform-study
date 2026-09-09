@@ -70,6 +70,59 @@ warm-up-base-images:
         fi
       done
       echo "All base images warm"
+
+      # ── Reclaim abandoned buildx builders ─────────────────────────────────
+      # Bumping BUILDER_REV (templates.yml, .buildx-registry-login) deliberately
+      # ORPHANS the previous builder. Each orphan keeps its OWN BuildKit state
+      # volume, and a gcpolicy only ever accounts for the usage of the builder it
+      # belongs to — so an abandoned builder's layer cache is bounded by nothing,
+      # and is invisible to the live builder's minFreeSpace.
+      #
+      # `cibuilder` (the pre-BUILDER_REV instance, created 2026-03-23) reached
+      # 98 GB that way and filled this runner's disk on 2026-09-07. A full disk
+      # truncates writes rather than refusing them, so pnpm wrote zero-length
+      # package.json files into /pnpm-store and every validate job died on
+      # ERR_PNPM_BAD_PACKAGE_JSON or hung to its 30m timeout — pipelines
+      # 1135-1152, two days of red CI whose symptom named neither Docker nor disk.
+      #
+      # This CANNOT be done with `docker buildx rm`, which is what templates.yml
+      # used to advise. buildx keeps its builder list in ~/.docker/buildx INSIDE
+      # the job container, and that dies with the job — so a later job has no
+      # record of any builder it did not itself create. `docker buildx ls` from a
+      # job, and on the host as root, both listed NONE of the orphans while their
+      # containers and volumes sat there. Only the Docker objects persist, so the
+      # Docker objects are what we remove.
+      #
+      # Two guards, because removing a builder discards a layer cache a concurrent
+      # job may still be writing to:
+      #   1. `before=$keep` — only builders strictly OLDER than the live one.
+      #      Exact and clock-free: buildx creates one container per builder, so
+      #      "older than the newest" IS "superseded".
+      #   2. the live builder must itself be >24h old — longer than any pipeline
+      #      runs (max job timeout is 90m), so during a BUILDER_REV transition the
+      #      outgoing builder is never yanked from a build still using it.
+      # Everything tolerates failure: two jobs racing here must not fail a
+      # pipeline over housekeeping.
+      #
+      # `until=` is NOT a docker ps filter (prune-only) and `date -d '24 hours
+      # ago'` is GNU-only; both were tried and both fail in this alpine image.
+      # The forms below are verified against docker 29 / busybox date.
+      before_free=$(df -h / | awk 'NR==2 {print $4}')
+      keep=$(docker ps -a --filter 'name=^buildx_buildkit_' --latest --format '{{.Names}}' 2>/dev/null || true)
+      if [ -n "$keep" ]; then
+        cutoff=$(date -u -d "@$(( $(date -u +%s) - 86400 ))" +%Y%m%d%H%M%S)
+        born=$(docker inspect -f '{{.Created}}' "$keep" 2>/dev/null | tr -dc '0-9' | cut -c1-14)
+        if [ -n "$born" ] && [ "$born" -lt "$cutoff" ]; then
+          for c in $(docker ps -a --filter 'name=^buildx_buildkit_' --filter "before=$keep" --format '{{.Names}}' 2>/dev/null || true); do
+            echo "RECLAIM  $c (+ volume ${c}_state)"
+            docker rm -f "$c" >/dev/null 2>&1 || true
+            docker volume rm "${c}_state" >/dev/null 2>&1 || true
+          done
+          echo "Builder reclaim done — kept $keep, disk free ${before_free} -> $(df -h / | awk 'NR==2 {print $4}')"
+        else
+          echo "Builder reclaim skipped — $keep is younger than 24h; a build on the previous revision may still be using its predecessor"
+        fi
+      fi
   rules:
     - !reference [.build-common-rules, rules]
     # `ALL-` already covers build-lmstudio, which is the only consumer of the
