@@ -233,10 +233,14 @@ def test_quality_metric_functions_are_correct() -> None:
     assert kp["missing"] == ["chest pain"]
 
     # --- build_scorecard composes quality + reused transport metrics -------
+    # commit_latency_ms below matches the committed streaming_thresholds.json
+    # baseline (TASK-934/M, 2026-09-09 re-capture: p50/p99_baseline 4056.7 ms) — a
+    # "clean" scorecard must sit at-or-under whatever is actually committed, or
+    # this self-check breaks every time the thresholds are re-captured.
     transport = {
         "first_partial_ms": 4920.4,
         "ttfw_ms": 4920.4,
-        "commit_latency_ms": {"count": 11, "p50": 6023.2, "p99": 7624.2},
+        "commit_latency_ms": {"count": 11, "p50": 4056.7, "p99": 4200.0},
         "partial_revision": {"partials": 1, "revisions": 0, "rate": 0.0},
         "committed_revision": {"partials": 1, "revisions": 0, "rate": 0.0},
         "loss": {"seq": {"gap_count": 0}, "audio_coverage_ratio": 0.996},
@@ -251,7 +255,7 @@ def test_quality_metric_functions_are_correct() -> None:
     assert card["quality"]["medical_wer"] == 0.0
     assert card["quality"]["keyterm_recall"] == 1.0
     assert card["quality"]["keyphrase_recall"] == 1.0
-    assert card["transport"]["commit_latency_ms"]["p50"] == 6023.2
+    assert card["transport"]["commit_latency_ms"]["p50"] == 4056.7
     assert card["transport"]["committed_revision_rate"] == 0.0  # the GATED A1 guardrail
     assert card["transport"]["partial_revision_rate"] == 0.0  # informational (ungated)
     assert card["transport"]["seq_gap_count"] == 0

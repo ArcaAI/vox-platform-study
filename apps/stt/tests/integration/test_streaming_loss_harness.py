@@ -46,13 +46,17 @@ ENV VARS
 ``STREAM_LOGIN_USER``         seeded user (default ``doctor``)
 ``STREAM_LOGIN_PASSWORD``     (default ``password123``)
 ``STREAM_LOGIN_TENANT_KEY``   (default ``__GLOBAL__``)
-``STREAM_PIPELINE_ID``        ASR pipeline id the caller OWNS. Default
-                              ``81000000-0000-0000-0001-000000000402``
-                              (``turbo-whisper-large-v3``, __GLOBAL__-owned,
-                              model ``openai/whisper-large-v3-turbo`` — cached on
-                              the offline test volume). SYSTEM ``best-practice-*``
-                              pipelines are NOT resolvable by a __GLOBAL__ caller
-                              on this path.
+``STREAM_AGENT_SLUG``         published ``SPEECH_TO_TEXT`` agent slug. Unset (the
+                              default) omits ``agentSlug`` from the session body
+                              entirely — the tenant/department
+                              ``AgentAssignment`` cascade picks the agent
+                              (TASK-865's normal path; the seeded stack resolves
+                              to ``realtime-transcription``).
+``STREAM_PIPELINE_ID``        DEPRECATED compatibility only — an ASR pipeline id
+                              the caller OWNS. Unset (the default) omits
+                              ``pipelineId`` from the session body; the retired
+                              pipeline-id path no longer resolves on this stack
+                              (TASK-861/865).
 ``STREAM_WAV_PATH``           16-bit PCM mono WAV (default the committed
                               107 s Malayalam fixture).
 ``STREAM_MAX_SECONDS``        cap on replayed audio (default 30; <=0 = full).
@@ -95,7 +99,6 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-_DEFAULT_PIPELINE_ID = "81000000-0000-0000-0001-000000000402"
 # Resolve relative to THIS file (apps/stt/tests/integration/…) so the fixture
 # is found regardless of the pytest working directory (repo root or apps/stt).
 _DEFAULT_WAV = str(
@@ -554,13 +557,22 @@ async def _login(http: Any, api_url: str) -> str | None:
 
 
 async def _create_session(http: Any, api_url: str, token: str) -> dict[str, Any] | tuple[int, str]:
+    # Agent contract (TASK-934/M): default body carries neither key — the
+    # tenant/department AgentAssignment cascade picks the agent. agentSlug is
+    # sent only when STREAM_AGENT_SLUG names a published SPEECH_TO_TEXT agent;
+    # pipelineId is DEPRECATED compatibility, sent only when STREAM_PIPELINE_ID
+    # is set explicitly (no default — the retired pipeline path 404s).
+    body: dict[str, Any] = {"sampleRate": _SAMPLE_RATE}
+    agent_slug = _env("STREAM_AGENT_SLUG", "")
+    if agent_slug:
+        body["agentSlug"] = agent_slug
+    pipeline_id = _env("STREAM_PIPELINE_ID", "")
+    if pipeline_id:
+        body["pipelineId"] = pipeline_id
     resp = await http.post(
         f"{api_url}/api/v1/audio/transcription-jobs/stream/session",
         headers={"Authorization": f"Bearer {token}"},
-        json={
-            "pipelineId": _env("STREAM_PIPELINE_ID", _DEFAULT_PIPELINE_ID),
-            "sampleRate": _SAMPLE_RATE,
-        },
+        json=body,
         timeout=30.0,
     )
     if resp.status_code != 201:
@@ -647,6 +659,59 @@ def test_metric_functions_are_correct() -> None:
     assert "p99" in st
 
 
+async def test_create_session_body_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Session bootstrap posts the agent contract (TASK-934/M) — pure, no network.
+
+    Default body carries neither ``pipelineId`` nor ``agentSlug`` — the
+    tenant/department ``AgentAssignment`` cascade picks the agent (TASK-865's
+    normal path). ``agentSlug`` is sent only when ``STREAM_AGENT_SLUG`` is set.
+    ``pipelineId`` is DEPRECATED compatibility with no default — sent only when
+    ``STREAM_PIPELINE_ID`` is set explicitly.
+    """
+
+    class _FakeResponse:
+        status_code = 201
+
+        @staticmethod
+        def json() -> dict[str, Any]:
+            return {"sessionId": "s1", "ticket": "t1"}
+
+    captured: dict[str, Any] = {}
+
+    class _FakeHttp:
+        async def post(
+            self,
+            url: str,
+            *,
+            headers: dict[str, str],
+            json: dict[str, Any],
+            timeout: float,
+        ) -> _FakeResponse:
+            captured["url"] = url
+            captured["body"] = json
+            return _FakeResponse()
+
+    monkeypatch.delenv("STREAM_AGENT_SLUG", raising=False)
+    monkeypatch.delenv("STREAM_PIPELINE_ID", raising=False)
+    await _create_session(_FakeHttp(), "http://localhost:8868", "tok")
+    assert captured["body"] == {"sampleRate": _SAMPLE_RATE}
+
+    monkeypatch.setenv("STREAM_AGENT_SLUG", "realtime-transcription")
+    await _create_session(_FakeHttp(), "http://localhost:8868", "tok")
+    assert captured["body"] == {
+        "sampleRate": _SAMPLE_RATE,
+        "agentSlug": "realtime-transcription",
+    }
+
+    monkeypatch.setenv("STREAM_PIPELINE_ID", "81000000-0000-0000-0001-000000000402")
+    await _create_session(_FakeHttp(), "http://localhost:8868", "tok")
+    assert captured["body"] == {
+        "sampleRate": _SAMPLE_RATE,
+        "agentSlug": "realtime-transcription",
+        "pipelineId": "81000000-0000-0000-0001-000000000402",
+    }
+
+
 async def test_streaming_loss_latency_harness() -> None:
     """Route audio through the WS gateway; emit the loss/latency BASELINE JSON."""
     import httpx
@@ -701,7 +766,8 @@ async def test_streaming_loss_latency_harness() -> None:
         "target": {
             "api_url": api_url,
             "ws_origin": ws_origin,
-            "pipeline_id": _env("STREAM_PIPELINE_ID", _DEFAULT_PIPELINE_ID),
+            "agent_slug": _env("STREAM_AGENT_SLUG", "") or None,
+            "pipeline_id": _env("STREAM_PIPELINE_ID", "") or None,
             "session_id": session_id,
             "warmed": warmed,
         },
@@ -761,8 +827,8 @@ async def test_streaming_loss_latency_harness() -> None:
     if metrics["counts"]["partials"] == 0 and metrics["counts"]["finals"] == 0:
         pytest.skip(
             "no transcripts produced — the offline volume may not have the ASR model cached for "
-            f"pipeline {_env('STREAM_PIPELINE_ID', _DEFAULT_PIPELINE_ID)}. Baseline not captured; "
-            f"see {report_path.resolve()}"
+            f"agent {_env('STREAM_AGENT_SLUG', '') or '(tenant/department cascade)'}. "
+            f"Baseline not captured; see {report_path.resolve()}"
         )
     assert metrics["counts"]["finals"] >= 1, (
         "no FINAL segment published — VAD likely never confirmed speech on this fixture. "
