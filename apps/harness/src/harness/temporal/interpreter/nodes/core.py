@@ -932,7 +932,6 @@ async def _deterministic_redaction(
     rules: list[Any],
     *,
     policy: HarnessPolicy | None,
-    response_format: dict[str, Any] | None,
     provider: str | None,
     model: str | None,
 ) -> tuple[str, Any, bool | None, dict[str, Any], str | None]:
@@ -948,6 +947,15 @@ async def _deterministic_redaction(
     A partially-applied transform is KEPT even when the pass fails closed (the legacy path's
     ``if redaction.changed`` adoption), because a half-redacted note is strictly better than an
     unredacted one; the FLAG is what stops it being read as clean.
+
+    ``response_format`` is NOT threaded, and that is a REAL difference from the legacy lane
+    rather than an omission. There, the text handed to ``apply_redaction`` is the whole generated
+    document, so the generation's own response format still describes it. Here the text is the
+    bare ``case_note`` STRING pulled out of that document — it has no schema, so forcing the
+    finalizer's ``{case_note, redactions}`` schema onto the semantic rewrite makes the model
+    answer with a serialized object, which ``apply_redaction`` then adopts as the note (it
+    parses as JSON, which is all its schema check asserts) and ``persist_draft`` writes in front
+    of a clinician.
     """
     from harness.temporal.activities import apply_redaction  # noqa: PLC0415
     from harness.temporal.models import ApplyRedactionInput  # noqa: PLC0415
@@ -958,7 +966,7 @@ async def _deterministic_redaction(
                 tenant_id=payload.tenant_id,
                 note_text=content,
                 rules=rules,
-                response_format=response_format,
+                response_format=None,
                 provider=provider,
                 model=model,
                 phi_enabled=policy.phi_enabled if policy else True,
@@ -997,7 +1005,6 @@ async def _persist_finalized_note(
     output: dict[str, Any],
     *,
     policy: HarnessPolicy | None = None,
-    response_format: dict[str, Any] | None = None,
     provider: str | None = None,
     model: str | None = None,
 ) -> str | None:
@@ -1046,7 +1053,6 @@ async def _persist_finalized_note(
                 content,
                 rules,
                 policy=policy,
-                response_format=response_format,
                 provider=provider,
                 model=model,
             )
@@ -1348,16 +1354,16 @@ async def _run_text_generation(
         # already completed. The note still reaches the review gate and the output node, and the
         # reason names what did not happen.
         if _is_consultation_finalizer(payload, config):
-            # The provider/model/PHI policy and the wire response format are the ones THIS
-            # generation already resolved — threaded rather than re-resolved, so the optional
-            # semantic-rewrite half of the redaction runs against the same engine that wrote
-            # the note and the transformed note still satisfies the same schema.
+            # The provider/model/PHI policy are the ones THIS generation already resolved —
+            # threaded rather than re-resolved, so the optional semantic-rewrite half of the
+            # redaction runs against the same engine that wrote the note. `wire_format` is
+            # deliberately NOT threaded: it describes the finalizer's DOCUMENT, and what the
+            # redaction transforms is the bare `case_note` string inside it.
             failure = await _persist_finalized_note(
                 payload,
                 candidate,
                 output,
                 policy=policy,
-                response_format=wire_format,
                 provider=provider,
                 model=model,
             )
