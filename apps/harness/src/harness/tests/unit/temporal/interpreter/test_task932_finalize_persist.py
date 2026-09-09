@@ -32,6 +32,7 @@ from typing import Any
 import pytest
 
 from harness.services.api_client import ApiServiceError
+from harness.services.text_client import TextGenerationResult
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import core
 
@@ -39,6 +40,7 @@ _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
 _CONSULTATION = "01a0816f-0000-7000-8000-0000000009e4"
 _CASE_NOTE = "S: Cough for three days.\nO: Afebrile.\nA: URTI.\nP: Fluids, review in 48h."
+_REWRITTEN_NOTE = "S: Cough for three days.\nO: Afebrile.\nA: URTI.\nP: Fluids, review shortly."
 
 _FINALIZER_OUTPUT = {
     "case_note": _CASE_NOTE,
@@ -128,6 +130,28 @@ class _Result:
 class _StubText:
     async def generate(self, **_kwargs: Any) -> _Result:
         return _Result()
+
+
+class _SchemaSensitiveText:
+    """A Text stub that answers the way a schema-constrained provider does.
+
+    Handed a `json_schema` response format it returns a JSON DOCUMENT; handed none, prose.
+    That IS the mechanism under test: the semantic redaction pass transforms the BARE
+    `case_note` string, so a document schema forced onto it comes back as a serialized object.
+    """
+
+    def __init__(self) -> None:
+        self.formats: list[Any] = []
+
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
+        response_format = kwargs.get("response_format")
+        self.formats.append(response_format)
+        content = (
+            json.dumps({"case_note": _REWRITTEN_NOTE, "redactions": []})
+            if response_format is not None
+            else _REWRITTEN_NOTE
+        )
+        return TextGenerationResult(content=content, model="m", finish_reason="stop")
 
 
 @pytest.fixture
@@ -442,6 +466,50 @@ class TestTheDeterministicRedaction:
         assert persisted[0].content == _CASE_NOTE
         assert persisted[0].gate_decision == "FLAG"
         assert persisted[0].redaction_manifest["failedClosed"] is True
+
+    @pytest.mark.asyncio
+    async def test_a_semantic_rewrite_persists_prose_not_a_json_document(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `rewrite` rule with no literal `replacement` runs the Text SEMANTIC pass — over the
+        bare `case_note` STRING, which has no schema of its own.
+
+        Handing that pass the finalizer's DOCUMENT response format (`{case_note, redactions}`)
+        makes the model answer with a serialized object; `apply_redaction` accepts it (parsing as
+        JSON is all its schema check asserts), adopts it as the transformed note, and
+        `persist_draft` writes it — so the clinician's note becomes
+        `{"case_note": "...", "redactions": [...]}`. `_finalized_note`'s own docstring names
+        exactly that hazard for the generation itself; the redaction pass reopened it.
+        """
+        from harness.temporal import activities as legacy_activities
+
+        text = _SchemaSensitiveText()
+        monkeypatch.setattr(legacy_activities, "_text_client", lambda _settings: text)
+        monkeypatch.setattr(legacy_activities, "_phi_redactor", lambda: None)
+        # `_idempotency_key` reads `activity.info()`, and this suite drives the node function
+        # directly rather than through an `ActivityEnvironment`. The key itself is pinned inside
+        # a real one by `test_apply_redaction_activity.py`.
+        monkeypatch.setattr(legacy_activities, "_idempotency_key", lambda *_parts: "idem-1")
+
+        persisted, result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-employer",
+                        "type": "rewrite",
+                        "match": "category",
+                        "pattern": "email",
+                        "note": "soften any employer mention",
+                    }
+                ]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        # The clinical harm first: what a doctor opens is prose, never a serialized document.
+        assert "case_note" not in persisted[0].content
+        assert persisted[0].content == _REWRITTEN_NOTE
+        assert text.formats == [None], "the bare `case_note` string carries no schema of its own"
 
     @pytest.mark.asyncio
     async def test_a_redaction_crash_persists_the_note_rather_than_losing_it(
