@@ -57,7 +57,10 @@ interface KnobSeed {
   description: string;
 }
 
-const KNOBS: KnobSeed[] = [
+// Exported (not just local) so `seed-global-settings.test.ts` can pin these
+// keys into the cross-seed `(tenantId, key)` uniqueness check — every row
+// here lands on SYSTEM_TENANT_ID.
+export const KNOBS: KnobSeed[] = [
   {
     key: 'logLevel',
     name: 'Log level',
@@ -133,7 +136,9 @@ const KNOBS: KnobSeed[] = [
  * exists to avoid. It is seeded ONLY when the operator has an
  * `API_KEY_MAX_LIFETIME_DAYS` today, i.e. when a ceiling already applies.
  */
-const CONDITIONAL_KNOBS: KnobSeed[] = [
+// Exported for the same reason as KNOBS above — seeded conditionally
+// (only when its env var is set), but the key must still never collide.
+export const CONDITIONAL_KNOBS: KnobSeed[] = [
   {
     key: 'apiKey.maxLifetimeDays',
     name: 'API key maximum lifetime (days)',

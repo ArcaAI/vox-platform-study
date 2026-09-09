@@ -245,6 +245,15 @@ describe('companion seed updates', () => {
         'feature-flags/enable-cross-chain-summary',
         'feature-flags/enable-ner-extraction',
         'feature-flags/enable-code-switching',
+        // TASK-932 wave 4 additions (2026-09-09). OD-1: the per-tenant
+        // `enable-consultation-sharing` clone is retired — the registry
+        // cascade's descriptor default now supplies the same effective value
+        // on absence. OD-8: the legacy S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET
+        // platform bucket pair — zero production consumers once
+        // `S3Service.testConnection()` stopped depending on either.
+        'feature-flags/enable-consultation-sharing',
+        'platform/S3_PRIVATE_BUCKET',
+        'platform/S3_PUBLIC_BUCKET',
       ].sort(),
     );
   });
@@ -262,12 +271,15 @@ describe('companion seed updates', () => {
     };
     const result = await retireSupersededGlobalSettings!(client as never);
 
-    // 12 = the original six superseded keys, + `smr/smr-azure-deployment`
+    // 15 = the original six superseded keys, + `smr/smr-azure-deployment`
     // (D-740-1 moved that key to the `text` namespace, so the old row must be
-    // swept too), + the five advisory `feature-flags` rows TASK-932 removed.
+    // swept too), + the five advisory `feature-flags` rows TASK-932 R-8
+    // removed, + the three TASK-932 wave-4 additions (OD-1's
+    // `enable-consultation-sharing`, OD-8's S3_PUBLIC_BUCKET/
+    // S3_PRIVATE_BUCKET).
     expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(RETIRED_GLOBAL_SETTING_KEYS!.length);
-    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(12);
-    expect(result.retired).toBe(24);
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(15);
+    expect(result.retired).toBe(30);
     updates.forEach(({ where, data }) => {
       expect(where.resourceStatus).toEqual({ not: 'DELETED' });
       expect(where.namespace).toBeTypeOf('string');
