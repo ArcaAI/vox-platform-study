@@ -114,8 +114,45 @@ class _Wire(BaseModel):
 AsrSpecModelRole = Literal["asr", "vad", "denoise", "embedding", "punctuation", "endpointing"]
 
 
+class AsrSpecModelProfileDecoding(_Wire):
+    """TASK-934 — the decode knobs an ASR ROW recommends (``AiModel._metadata.asr.decoding``).
+
+    PROVENANCE, not instruction. The EFFECTIVE values are in :class:`AsrSpecDecoding`,
+    already folded by the gateway (agent → this profile → absent, OD-3), and
+    ``decoding.sources`` names which tier won. This block is carried so one dumped
+    session spec explains itself: what the row asked for is visible beside what ran.
+
+    The runtime must never read it as an argument. Every member is optional and omitted
+    when unset, so a row that recommends one knob does not imply an opinion on the rest.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "beam_size",
+            "temperature",
+            "no_speech_threshold",
+            "compression_ratio_threshold",
+            "logprob_threshold",
+            "condition_on_prev_tokens",
+            "no_repeat_ngram_size",
+            "prev_text_context_words",
+            "hotwords",
+        }
+    )
+
+    beam_size: int | None = None
+    temperature: float | None = None
+    no_speech_threshold: float | None = None
+    compression_ratio_threshold: float | None = None
+    logprob_threshold: float | None = None
+    condition_on_prev_tokens: bool | None = None
+    no_repeat_ngram_size: int | None = None
+    prev_text_context_words: int | None = None
+    hotwords: list[str] | None = None
+
+
 class AsrSpecModelMetadata(_Wire):
-    """TASK-880 — the ``AiModel._metadata.asr`` decode geometry that rides the row.
+    """TASK-880 / TASK-934 — the ``AiModel._metadata.asr`` decode profile that rides the row.
 
     ``stt.whisperCpp.maxAudioSeconds`` and ``stt.streaming.partialWindowS`` were
     PLATFORM keys: one number applied to every session whatever engine served it, and
@@ -123,17 +160,29 @@ class AsrSpecModelMetadata(_Wire):
     fine-tune is accurate to ~6-7s, the CT2 turbo row is not — so they belong to the row,
     and a fallback chain now decodes on its own window instead of the primary's.
 
-    Both members are optional: absent means the row declared nothing and the runtime's own
-    dataclass default stands (``InferenceConfig.max_decode_window_sec``,
-    ``StreamingPreprocessor``'s partial window).
+    TASK-934 widened the same slot into the profile a registered FINE-TUNE carries: the
+    parameters it was measured with travel with its weights, so a quantisation swap can
+    never silently change decode geometry again. Two members changed meaning:
+
+    * ``partial_window_sec`` is the EFFECTIVE tail, not merely the row's — an agent that
+      sets ``parameters.streaming.partialWindowSec`` (OD-4) overrides the row and the
+      gateway resolves it HERE, so this runtime reads it exactly where it always did;
+    * ``decoding`` / ``initial_prompt`` are the row's RAW recommendation, provenance only.
+
+    ``max_decode_window_sec`` is still the row's alone (OD-3: decode geometry is a
+    property of the weights). Every member is optional: absent means nothing was declared
+    and the runtime's own dataclass default stands
+    (``InferenceConfig.max_decode_window_sec``, ``StreamingPreprocessor``'s partial window).
     """
 
     OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"max_decode_window_sec", "partial_window_sec"}
+        {"max_decode_window_sec", "partial_window_sec", "decoding", "initial_prompt"}
     )
 
     max_decode_window_sec: float | None = None
     partial_window_sec: float | None = None
+    decoding: AsrSpecModelProfileDecoding | None = None
+    initial_prompt: str | None = None
 
 
 class AsrSpecModel(_Wire):
@@ -236,7 +285,17 @@ class AsrSpecDecoding(_Wire):
     """
 
     OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"chunk_length_sec", "stride_length_sec"}
+        {
+            "chunk_length_sec",
+            "stride_length_sec",
+            "no_speech_threshold",
+            "compression_ratio_threshold",
+            "logprob_threshold",
+            "condition_on_prev_tokens",
+            "no_repeat_ngram_size",
+            "prev_text_context_words",
+            "sources",
+        }
     )
 
     language_mode: str | None
@@ -247,6 +306,24 @@ class AsrSpecDecoding(_Wire):
     vad_filter: bool
     chunk_length_sec: float | None = None
     stride_length_sec: tuple[int, int] | None = None
+    #: TASK-934 (G-2) — the six knobs that were LITERALS on :class:`InferenceConfig`
+    #: with no wire field, no agent-schema key and no settings descriptor: one number
+    #: for every agent and every tenant on the box. The gateway resolves them agent →
+    #: model profile → absent (OD-3) and sends only what it decided; ABSENT still means
+    #: "nobody spoke", so the dataclass default stands and this runtime keeps being the
+    #: one source of engine defaults.
+    no_speech_threshold: float | None = None
+    compression_ratio_threshold: float | None = None
+    logprob_threshold: float | None = None
+    condition_on_prev_tokens: bool | None = None
+    no_repeat_ngram_size: int | None = None
+    prev_text_context_words: int | None = None
+    #: TASK-934 — which TIER supplied each contested knob (``"agent"`` = the agent's
+    #: parameters, ``"model"`` = the ASR row's profile), keyed by the WIRE name. Also
+    #: covers ``hotwords``, ``initialPrompt`` and ``partialWindowSec``, which travel in
+    #: ``instruction`` / ``models.asr.metadata`` but are decided by the same precedence.
+    #: OBSERVABILITY ONLY — never branch on it; the values themselves are already folded.
+    sources: dict[str, Literal["agent", "model"]] | None = None
 
 
 class AsrSpecPunctuation(_Wire):
@@ -327,6 +404,18 @@ class ResolvedAsrSpec(AsrSpecCore):
 # ---------------------------------------------------------------------------
 
 _DENOISE_STRENGTH: dict[str, float] = {"low": 0.3, "medium": 0.5, "high": 0.8}
+
+#: TASK-934 — ``AsrSpecDecoding`` field → the ``InferenceConfig`` field it feeds. Both
+#: spellings are snake_case and identical today; the pairs are written out anyway so a
+#: rename on either side is a visible edit rather than a silently dropped knob.
+_TASK934_DECODING_FIELDS: tuple[tuple[str, str], ...] = (
+    ("no_speech_threshold", "no_speech_threshold"),
+    ("compression_ratio_threshold", "compression_ratio_threshold"),
+    ("logprob_threshold", "logprob_threshold"),
+    ("condition_on_prev_tokens", "condition_on_prev_tokens"),
+    ("no_repeat_ngram_size", "no_repeat_ngram_size"),
+    ("prev_text_context_words", "prev_text_context_words"),
+)
 
 
 def _source_from_uri(uri: str) -> AiModelSource:
@@ -499,6 +588,16 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     if decoding.temperature is not None:
         inference_kwargs["temperature"] = [decoding.temperature]
     inference_kwargs["vad_filter"] = decoding.vad_filter
+    # TASK-934 (G-2) — the six knobs that used to be literals on `InferenceConfig`. The
+    # gateway already applied the precedence (agent → the ASR row's profile → absent), so
+    # there is nothing to resolve here: forward what arrived, and forward NOTHING when a
+    # key is absent, which is what leaves the dataclass default standing as the one source
+    # of engine defaults. `decoding.sources` rides alongside as provenance and is
+    # deliberately not read — the values it explains are already folded.
+    for _wire_field, _inference_field in _TASK934_DECODING_FIELDS:
+        _value = getattr(decoding, _wire_field)
+        if _value is not None:
+            inference_kwargs[_inference_field] = _value
     if decoding.chunk_length_sec is not None:
         inference_kwargs["chunk_length_sec"] = float(decoding.chunk_length_sec)
     if decoding.stride_length_sec is not None:

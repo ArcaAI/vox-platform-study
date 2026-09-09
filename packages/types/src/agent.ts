@@ -10,6 +10,8 @@
  * the hop to the Python service.
  */
 
+import type { AiModelAsrProfile } from './asr-model-profile.js';
+
 export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
 /** Which tier supplied the provider credential — decides BYOK vs CLOUD metering (derived, never stamped). */
@@ -34,13 +36,16 @@ export type ResolvedAgentModelRole = 'primary' | 'fallback' | 'vad' | 'denoise' 
  * catalogues, label taxonomies, hub artifacts) is for other planes and is never forwarded.
  */
 export interface ResolvedAgentModelMetadata {
-  /** ASR decode geometry — replaces `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`. */
-  asr?: {
-    /** Longest audio fed to the engine in ONE decode, seconds. Absent ⇒ the engine's own default. */
-    maxDecodeWindowSec?: number;
-    /** Tail window of the live utterance decoded for PARTIALs, seconds. Absent ⇒ the preprocessor default. */
-    partialWindowSec?: number;
-  };
+  /**
+   * The ASR decode profile the row carries — TASK-880's two window members, widened by
+   * TASK-934 into the full `AiModelAsrProfile` (decode knobs + priming prompt) so the
+   * parameters a fine-tune was MEASURED with travel with its weights.
+   *
+   * Declared here as the profile TYPE and nowhere else: `buildResolvedAsrSpec` reads it
+   * through `parseAiModelAsrProfile`, which is the range/unknown-key gate, because the
+   * underlying `_metadata` is admin-editable JSON and this interface is only a claim.
+   */
+  asr?: AiModelAsrProfile;
   /**
    * Speaker-embedding geometry. `dimension` is the vector width the row emits, and it must
    * match the deployed `UserVoiceProfile.embedding` column or every enrollment fails — which
