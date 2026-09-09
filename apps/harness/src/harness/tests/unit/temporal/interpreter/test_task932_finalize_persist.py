@@ -541,6 +541,28 @@ class TestTheDeterministicRedaction:
         assert text.formats == [None], "the bare `case_note` string carries no schema of its own"
 
     @pytest.mark.asyncio
+    async def test_an_unparseable_rule_set_reports_nothing_about_a_pass_that_never_ran(
+        self, run
+    ) -> None:
+        """No deterministic pass ran on this branch, so the manifest must claim nothing about one.
+
+        Stamping `source: "deterministic"` over the finalizer's OWN `labelCounts`/`total` is the
+        exact confusion this whole change exists to end — provenance labelled as evidence —
+        reappearing on the one branch where the engine never executed. What is true here is only
+        that a configured transform did not happen, and why.
+        """
+        persisted, _result = await run(run_context=self._context(["remove the employer"]))
+
+        manifest = persisted[0].redaction_manifest
+        assert set(manifest) == {"source", "failedClosed", "reason"}
+        assert manifest["source"] == "deterministic"
+        assert manifest["failedClosed"] is True
+        # False, not None: `None` says the agent declared no redaction contract at all, and one
+        # WAS declared. The FLAG plus the named reason carry the rest.
+        assert persisted[0].redaction_applied is False
+        assert persisted[0].gate_decision == "FLAG"
+
+    @pytest.mark.asyncio
     async def test_a_redaction_crash_persists_the_note_rather_than_losing_it(
         self, run, monkeypatch: pytest.MonkeyPatch
     ) -> None:
