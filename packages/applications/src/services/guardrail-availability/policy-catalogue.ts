@@ -157,17 +157,19 @@ export type GuardrailPolicySelectionSet = Readonly<Record<string, GuardrailPolic
  * agreeing is a no-op and any future drift resolves toward more screening.
  */
 export const PLATFORM_DEFAULT_GUARDRAIL_POLICIES: GuardrailPolicySelectionSet = Object.freeze({
-  jailbreak_detection: { enabled: true },
+  jailbreak_detection: { enabled: false },
   prompt_safety: { enabled: true },
   prompt_toxicity: { enabled: true },
-  response_safety: { enabled: true },
-  // TASK-932 (owner decision, 2026-09-09): the two OUTBOUND judges that false-positive on
-  // clinical notes ship OFF at the platform tier until retuned for clinical text —
-  // `response_toxicity` (the 300M classifier flags SOAP content such as chest pain / aspirin)
-  // and `pii_leak` (a finalized note re-states the encounter's own identifiers, which the
-  // fragment check reads as a leak). Mirrors `seed/18-guardrail-availability.ts`.
+  response_safety: { enabled: false },
+  // TASK-932 (owner decisions, 2026-09-09): the five judges that false-positive on clinical
+  // text ship OFF at the platform tier until retuned — `response_toxicity` (the 300M classifier
+  // flags SOAP content such as chest pain / aspirin), `pii_leak` (a finalized note re-states the
+  // encounter's own identifiers, which the fragment check reads as a leak), `response_safety`
+  // (blocked a SOAP note), `response_refusal` and `jailbreak_detection` (both blocked a DNA
+  // redaction rewrite). `jailbreak_detection` is the one INBOUND check among them, so inbound
+  // screening rests on `prompt_safety` + `prompt_toxicity`. Mirrors `seed/18-guardrail-availability.ts`.
   response_toxicity: { enabled: false },
-  response_refusal: { enabled: true },
+  response_refusal: { enabled: false },
   pii_leak: { enabled: false, minScore: 0.5 },
   containment_echo: { enabled: true },
 });

@@ -30,9 +30,9 @@ describe('TASK-886 — the SYSTEM guardrail availability seed', () => {
   // toxic) and `pii_leak` (a finalized note legitimately re-states the encounter's own
   // identifiers) — ship OFF at the platform tier until they are retuned for clinical text.
   // Every other declared check stays ON.
-  const CALIBRATED_OFF = ['response_toxicity', 'pii_leak'] as const;
+  const CALIBRATED_OFF = ['response_toxicity', 'pii_leak', 'response_safety', 'response_refusal', 'jailbreak_detection'] as const;
 
-  it('switches ON every declared check except the two clinical-text judges the owner calibrated OFF', () => {
+  it('switches ON every declared check except the five clinical-text judges the owner calibrated OFF', () => {
     for (const policy of CONTRACT.policies) {
       const expected = !(CALIBRATED_OFF as readonly string[]).includes(policy.id);
       expect(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY[policy.id]?.enabled, policy.id).toBe(expected);
