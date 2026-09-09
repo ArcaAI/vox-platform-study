@@ -43,7 +43,7 @@ from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError
 from harness.temporal.activities import _api_client, _nlp_client, _phi_redactor, _text_client
-from harness.temporal.claim_check import open_store, should_offload, store_blob
+from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.guardrail_optout import (
     GuardrailDecision,
@@ -934,10 +934,16 @@ async def _deterministic_redaction(
     policy: HarnessPolicy | None,
     provider: str | None,
     model: str | None,
-) -> tuple[str, Any, bool | None, dict[str, Any], str | None]:
+) -> tuple[str, bool | None, dict[str, Any], str | None]:
     """Run ``apply_redaction`` over the doctor's rules and report what it did.
 
-    Returns ``(content, content_ref, applied, manifest, failed_reason)``.
+    Returns ``(content, applied, manifest, failed_reason)`` — ``content`` MATERIALIZED, never a
+    claim-check ref. ``apply_redaction`` empties the inline when its result crosses the offload
+    threshold, and the two things that read this note next cannot follow a ref: the node output
+    carries no ref field at all, and ``persist_draft`` is a direct call from here (no Temporal
+    payload boundary between them), so it would resolve exactly the same blob one frame later.
+    The un-redacted note of the same size is already inline in this activity's result, so
+    materializing costs the history budget nothing it was not already paying.
 
     This is the SAME activity the legacy ``HarnessDocWorkflow`` runs, called the same way
     ``persist_draft`` already is from here — activity-to-activity, inside the node activity that
@@ -974,8 +980,14 @@ async def _deterministic_redaction(
                 trajectory=payload.trajectory,
             )
         )
+        redacted = redaction.text
+        if redaction.changed and redaction.text_ref is not None:
+            store, _ = await open_store(get_settings().claim_check, redaction.text_ref)
+            redacted = await load_blob(redaction.text_ref, store=store)
     except Exception as exc:  # noqa: BLE001 — any failure here is OD-6, never a lost note
-        return content, None, False, {}, f"{_REDACTION_UNCONFIRMED}: {exc}"
+        # A blob that cannot be read is the same clinical situation as an engine that could not
+        # run: the transform is unconfirmable, so the ORIGINAL content is kept and flagged.
+        return content, False, {}, f"{_REDACTION_UNCONFIRMED}: {exc}"
 
     manifest = redaction.manifest
     audit: dict[str, Any] = {
@@ -987,16 +999,39 @@ async def _deterministic_redaction(
         "failedClosed": redaction.failed_closed,
     }
     if redaction.changed:
-        content, content_ref = redaction.text, redaction.text_ref
-    else:
-        content_ref = None
+        content = redacted
     return (
         content,
-        content_ref,
         manifest.applied,
         audit,
         _REDACTION_UNCONFIRMED if redaction.failed_closed else None,
     )
+
+
+def _adopt_redacted_note(output: dict[str, Any], content: str) -> None:
+    """Thread the (possibly redacted) note back onto the node output, in place.
+
+    A transform that reaches only ``persist_draft`` leaves the identifiers the doctor asked to
+    have removed travelling on the GRAPH: ``core.humanReview`` shows this output,
+    ``core.output`` DELIVERS it (``nodes/deliver.py`` reads ``value["text"]``), and any
+    downstream node binds it. The legacy lane adopts ``redaction.text`` into ``generated`` for
+    exactly this reason (``workflows.py``).
+
+    The write-back mirrors ``_finalized_note``'s own selection, so what is replaced is what was
+    read: the parsed ``data.case_note`` when the agent declared an output contract — and then
+    ``text``, which is that same document serialized, is re-emitted from it so the two copies
+    cannot disagree — else ``text`` itself. A no-op when the note did not change.
+    """
+    data = output.get("data")
+    if isinstance(data, dict) and isinstance(data.get("case_note"), str):
+        if data["case_note"] == content:
+            return
+        data["case_note"] = content
+        if isinstance(output.get("text"), str):
+            output["text"] = json.dumps(data, ensure_ascii=False)
+        return
+    if isinstance(output.get("text"), str):
+        output["text"] = content
 
 
 async def _persist_finalized_note(
@@ -1043,11 +1078,10 @@ async def _persist_finalized_note(
     # manifest replaces the self-report. When they have not, the self-report stays — absence of
     # rules is not a failed redaction.
     redaction_applied, redaction_manifest = _redaction_audit(output)
-    content_ref = None
     gate_decision: str | None = None
     rules, failed_reason = _redaction_rules(trigger)
     if rules is not None:
-        content, content_ref, redaction_applied, redaction_manifest, failed_reason = (
+        content, redaction_applied, redaction_manifest, failed_reason = (
             await _deterministic_redaction(
                 payload,
                 content,
@@ -1073,13 +1107,15 @@ async def _persist_finalized_note(
         }
         redaction_applied = bool(redaction_manifest.get("applied", False))
 
+    # The transform must reach every reader of this node, not just the clinical record.
+    _adopt_redacted_note(output, content)
+
     try:
         await persist_draft(
             PersistDraftInput(
                 consultation_id=identity.consultation_id or "",
                 tenant_id=payload.tenant_id,
                 content=content,
-                content_ref=content_ref,
                 user_id=identity.user_id,
                 job_id=identity.job_id,
                 model_name=candidate.model.source_uri or candidate.model.slug,

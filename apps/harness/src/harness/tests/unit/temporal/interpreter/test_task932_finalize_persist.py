@@ -410,6 +410,35 @@ class TestTheDeterministicRedaction:
         assert "upper respiratory tract infection" in persisted[0].content
 
     @pytest.mark.asyncio
+    async def test_the_redacted_note_is_what_travels_downstream(self, run) -> None:
+        """The transform must reach every reader of this node, not just the clinical record.
+
+        `core.humanReview` shows the node's output, `core.output` DELIVERS it (`deliver.py`
+        reads `value["text"]`), and any downstream node binds it. A redaction that only reaches
+        `persist_draft` leaves the identifiers the doctor asked to have removed travelling on
+        the graph — the legacy lane adopts `redaction.text` into `generated` for exactly this
+        reason (`workflows.py`).
+        """
+        persisted, result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-urti",
+                        "type": "rewrite",
+                        "match": "literal",
+                        "pattern": "URTI",
+                        "replacement": "upper respiratory tract infection",
+                    }
+                ]
+            )
+        )
+
+        assert result.output is not None
+        assert result.output["data"]["case_note"] == persisted[0].content
+        # `text` is the same document, so a stale copy there is the same leak by another route.
+        assert "URTI" not in json.dumps(result.output)
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "rules", [None, [], {"rules": []}], ids=["absent", "empty", "empty-set"]
     )
