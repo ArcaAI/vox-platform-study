@@ -37,7 +37,7 @@ warm-up-base-images:
   stage: build
   tags: [build]
   image: docker:28
-  timeout: 15m
+  timeout: 60m
   interruptible: true
   script:
     - |
@@ -601,7 +601,7 @@ verify-lmstudio-runtime:
   stage: build
   tags: [build]
   image: docker:28
-  timeout: 20m
+  timeout: 45m
   interruptible: true
   needs:
     - job: build-lmstudio
@@ -679,7 +679,7 @@ verify-lmstudio-runtime:
 # infrastructure/docker/vllm/Dockerfile and ticket §13.
 #
 # ── NOT IN warm-up-base-images, DELIBERATELY ────────────────────────────────
-# `vllm/vllm-openai:v0.28.0` is ~10 GB. warm-up-base-images has a 15m timeout
+# `vllm/vllm-openai:v0.28.0` is ~10 GB. warm-up-base-images has a 60m timeout
 # and pulls SIX bases sequentially; adding this one risks turning a shared
 # warm-up job into the pipeline's flakiest step for a single consumer. buildx
 # pulls it as part of this job instead, where the timeout below accounts for it.
