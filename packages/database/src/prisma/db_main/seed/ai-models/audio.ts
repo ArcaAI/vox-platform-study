@@ -132,7 +132,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // partial window widens to 15s because a SHORT partial window is where the damage
     // actually was — 6s partials measured 31% garbage on English streaming output, 15s
     // measured 0%. Live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -178,7 +178,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // on English, 15s measured 0%, and the last partial no longer needs to decode the same
     // span as the final now that the two are independent. Live proof on the merged build:
     // discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -266,7 +266,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -305,7 +305,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0', 'private-repo'],
   },
   {
