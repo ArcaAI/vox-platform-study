@@ -35,6 +35,18 @@ export function interpreterSessionId(runId: string): string {
 }
 
 /**
+ * The session key `ConsultationWorkflowDispatchService` anchors a CONSULTATION-governed run
+ * with (`wf-<runId>`). It is not the exposure plane's key above, and until the lookup below
+ * accepted both, every run a consultation started answered 404 on
+ * `workflows/{slug}/runs/{runId}/…` — the same row, unreachable by convention (TASK-933 H3-5).
+ * Declared here, next to its sibling, so the two can no longer drift apart in silence.
+ */
+export const CONSULTATION_DISPATCH_SESSION_PREFIX = 'wf-';
+export function consultationDispatchSessionId(runId: string): string {
+  return `${CONSULTATION_DISPATCH_SESSION_PREFIX}${runId}`;
+}
+
+/**
  * Mirrors `AgentTrajectoryRetentionService`'s own AppSettings keys/defaults
  * exactly (`agentic.trajectory.{enabled,retentionDays}`) — this is the SAME
  * cascade the retention cron reads, not a second copy of the decision
@@ -369,8 +381,12 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
 
   /** 404-over-403: a cross-tenant or nonexistent run id both raise `NotFoundException`. */
   private async findRunOrThrow(tenantId: string, runId: string): Promise<WorkflowRunEntity> {
-    const sessionId = interpreterSessionId(runId);
-    const entity = await this.workflowRunRepository.findByRunKey(tenantId, sessionId, runId);
+    // A run reaches this plane under one of two session keys: the exposure plane's own
+    // (`invoke` / sandbox) or the consultation dispatcher's (`wf-<runId>`). Same tenant scope,
+    // same 404-over-403 posture either way; the key is only which row the run was anchored as.
+    const entity =
+      (await this.workflowRunRepository.findByRunKey(tenantId, interpreterSessionId(runId), runId)) ??
+      (await this.workflowRunRepository.findByRunKey(tenantId, consultationDispatchSessionId(runId), runId));
     if (!entity) {
       throw new NotFoundException(`WorkflowRun ${runId} not found`);
     }

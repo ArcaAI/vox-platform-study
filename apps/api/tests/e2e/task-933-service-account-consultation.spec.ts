@@ -212,6 +212,31 @@ test.describe('TASK-933 — a service account drives a consultation for a named 
     expect(started.status(), await started.text()).toBe(200);
     expect((await started.json()).recording).toBe(true);
 
+    // GOVERNING RUN ON THE WORKFLOWS PLANE (H3-5) — `recording/start` dispatched the department's
+    // tenant workflow and stamped `metadata.governingEngine` on the row. That run is anchored
+    // under the consultation dispatcher's session key (`wf-<runId>`), which the workflows plane
+    // used to look past (404 for every consultation-governed run). The service account must be
+    // able to read it and its clinician review gate — that is what lets an integrator such as
+    // ALaaS release the gate on the clinician's behalf (owner decision OD-14, 2026-09-09).
+    const governed = await request.get(`/api/v1/consultations/${consultationId}`, { headers: svcHeaders(svcToken) });
+    expect(governed.status(), await governed.text()).toBe(200);
+    const engine = ((await governed.json()).metadata ?? {}).governingEngine as
+      { workflowRunId?: string; workflowDefinitionSlug?: string } | undefined;
+    expect(engine?.workflowRunId, 'recording/start must record the governing run').toBeTruthy();
+    expect(engine?.workflowDefinitionSlug).toBeTruthy();
+    const runStatus = await request.get(`/api/v1/workflows/${engine!.workflowDefinitionSlug}/runs/${engine!.workflowRunId}`, {
+      headers: svcHeaders(svcToken),
+    });
+    expect(runStatus.status(), await runStatus.text()).toBe(200);
+    expect((await runStatus.json()).runId).toBe(engine!.workflowRunId);
+    const gate = await request.get(`/api/v1/workflows/${engine!.workflowDefinitionSlug}/runs/${engine!.workflowRunId}/reviews/n_review`, {
+      headers: svcHeaders(svcToken),
+    });
+    expect(gate.status(), await gate.text()).toBe(200);
+    // The gate only opens after finalization; before stop it does not exist yet, and nothing
+    // here may ever read as an approval.
+    expect((await gate.json()).decided).toBe(false);
+
     // LIVE PLANE — the SSE route authenticates the service-account HEADER directly; no
     // `POST /auth/stream-ticket` is involved (that route stays closed to machines by design).
     // The assertion is that the stream OPENS, which is the authorization fact; the events
