@@ -167,6 +167,19 @@ class StreamingInferenceWorker:
         # cannot afford to redo it per utterance. `None` when the stage cannot fire
         # (disabled, or no configured terms), which is also the fast path.
         self._lexicon_corrector = self._build_lexicon_corrector(postprocessing_config)
+        # One INFO record per session naming what the stage was built with: the
+        # counter below only proves corrections that fired, and a session whose
+        # spec lost its terms upstream would otherwise be indistinguishable from a
+        # session with nothing to correct.
+        _lex = postprocessing_config.lexicon if postprocessing_config else None
+        logger.info(
+            "stt.streaming.lexicon.configured",
+            pipeline_id=active_pipeline_id,
+            enabled=bool(_lex.enabled) if _lex is not None else False,
+            term_count=len(_lex.terms) if _lex is not None else 0,
+            max_distance=_lex.max_distance if _lex is not None else None,
+            active=self._lexicon_corrector is not None,
+        )
         #: Corrections applied this session, across partials and finals. Public in the
         #: shape of `cumulative_processing_seconds` — a counter the session manager may
         #: read at teardown; nothing in this class branches on it.

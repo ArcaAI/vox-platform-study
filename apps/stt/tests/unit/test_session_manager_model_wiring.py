@@ -658,7 +658,9 @@ class TestCreateSessionModelWiring:
 
         assert session is not None
         # create_session forwards tenant_id to the config loader.
-        mgr._load_pipeline_config.assert_awaited_once_with("pipe-1", tenant_id="t-1")
+        mgr._load_pipeline_config.assert_awaited_once_with(
+            "pipe-1", tenant_id="t-1", session_id="s-1"
+        )
         mgr._load_vad_service.assert_awaited_once()
         mgr._load_asr_pipeline.assert_awaited_once()
 
