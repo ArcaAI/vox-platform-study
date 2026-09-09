@@ -20,9 +20,10 @@ export interface RedactionRule {
   match: RedactionMatchKind;
   pattern: string;
   /**
-   * For `rewrite` rules: the literal replacement. A `rewrite` rule with NO
-   * `replacement` is a *semantic* rewrite handled by the harness TEXT pass — valid
-   * here, resolved there.
+   * For `rewrite` rules: the literal replacement. It may be omitted ONLY on a
+   * `match: 'category'` rule — that is the *semantic* rewrite, resolved by the harness
+   * TEXT pass rather than by the deterministic engine. A `literal` or `regex` rewrite
+   * must carry one (see the cross-field check in {@link validateRedactionRuleSet}).
    */
   replacement?: string;
   note?: string;
@@ -44,7 +45,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Validate an arbitrary payload as a {@link RedactionRuleSet}, throwing
  * `BadRequestException` on any structural violation. Returns a normalized copy
  * (unknown keys dropped) safe to persist. A `regex`-match rule's pattern is
- * compiled to reject an invalid regex up front (so it never fails closed later).
+ * compiled to reject an invalid regex up front (so it never fails closed later), and a
+ * deterministic `rewrite` (`literal`/`regex`) must carry its `replacement` — the two
+ * shapes the harness engine refuses to construct.
  */
 export function validateRedactionRuleSet(payload: unknown): RedactionRuleSet {
   if (!isPlainObject(payload) || !Array.isArray((payload as { rules?: unknown }).rules)) {
@@ -85,6 +88,17 @@ export function validateRedactionRuleSet(payload: unknown): RedactionRuleSet {
     }
     if (replacement !== undefined && typeof replacement !== 'string') {
       throw new BadRequestException(`rule ${JSON.stringify(id)}: replacement must be a string`);
+    }
+    // Cross-field, mirroring the harness `RedactionRule` model validator
+    // (`apps/harness/src/harness/redaction/engine.py`): a DETERMINISTIC rewrite must say what it
+    // rewrites TO. Because that model is `extra="forbid"` with this same rule, such a rule cannot
+    // be parsed there at all — so persisting one bought a rule set that fails the whole
+    // `apply_redaction` activity, and under OD-6 that FLAGs every finalized note for the doctor,
+    // with nothing at the write boundary to explain why. An empty string IS a replacement (the
+    // harness rejects only a MISSING one); a `category` rewrite legitimately has none — that is
+    // the semantic rewrite the activity's TEXT pass resolves.
+    if (type === 'rewrite' && (match === 'literal' || match === 'regex') && replacement === undefined) {
+      throw new BadRequestException(`rule ${JSON.stringify(id)}: a rewrite rule matching by ${match} requires a replacement`);
     }
     if (note !== undefined && typeof note !== 'string') {
       throw new BadRequestException(`rule ${JSON.stringify(id)}: note must be a string`);
