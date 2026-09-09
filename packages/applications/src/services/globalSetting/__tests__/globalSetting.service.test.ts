@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { GlobalSettingService } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
@@ -1225,12 +1226,41 @@ describe('GlobalSettingService', () => {
       expect(mockGlobalSettingRepository.findAll.mock.calls[0][0].where).toBeUndefined();
     });
 
-    it('404s a SYSTEM row by id for a tenant admin, and audits no view of it', async () => {
+    /**
+     * TASK-932 OD-3 (owner decision, 2026-09-09) — the PLATFORM tier answers
+     * the SAME status to a read as it does to a write: 403.
+     *
+     * The three cases below are the whole rule. A SYSTEM row is a privilege
+     * refusal (its keys are declared in the registry and rendered in the
+     * catalog by name — there is no existence to hide). An id that names no row
+     * stays the repository's 404, which is what keeps a 403 from being an
+     * existence oracle. And a row belonging to another CUSTOMER tenant keeps
+     * the house 404-over-403, because THAT existence is a secret.
+     */
+    it('403s a SYSTEM row by id for a tenant admin (OD-3), and audits no view of it', async () => {
       const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
       mockGlobalSettingRepository.findById.mockResolvedValue(row);
 
-      await expect(service.fetchById('sys-1')).rejects.toBeInstanceOf(DataNotFoundException);
-      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      await expect(service.fetchById('sys-1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceViewed, expect.anything());
+    });
+
+    it('keeps an absent id a 404 — existence is resolved before privilege, so the 403 is no oracle', async () => {
+      mockGlobalSettingRepository.findById.mockRejectedValue(new DataNotFoundException('globalSetting', 'nope'));
+
+      await expect(service.fetchById('nope')).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+
+    it('keeps ANOTHER customer tenant a 404 — that existence is still a secret', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'other-1', tenantId: 'tenant-2' });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.fetchById('other-1')).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+
+    it('403s the by-tenant list for the SYSTEM tenant (OD-3), and reads nothing', async () => {
+      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
     });
 
     it('still serves the caller its OWN row by id', async () => {
@@ -1248,8 +1278,7 @@ describe('GlobalSettingService', () => {
       await expect(service.fetchById('sys-1')).resolves.toBe(row);
     });
 
-    it('404s the by-tenant list for any tenant that is not the caller own — SYSTEM included', async () => {
-      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).rejects.toBeInstanceOf(DataNotFoundException);
+    it('404s the by-tenant list for another CUSTOMER tenant (SYSTEM is the 403 above, per OD-3)', async () => {
       await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' })).rejects.toBeInstanceOf(DataNotFoundException);
       expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
     });
