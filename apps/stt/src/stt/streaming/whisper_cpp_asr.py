@@ -91,6 +91,17 @@ logger = structlog.get_logger(__name__)
 # timings, which every downstream consumer already treats as optional.
 _WORD_SPLIT_SAFE_LANGUAGES: frozenset[str] = frozenset({"en", "vi"})
 
+# TASK-934 S-5 — how far a dropped span's end is pulled back before its ONE
+# retry. The measured dead zone on the served ml-en fine-tune is ~200 ms wide
+# (a buffer truncated at 4.50-4.70 s decodes to nothing; 4.40 s and 4.80 s of
+# the same audio decode normally), so 250 ms clears it while staying small
+# enough that the following span, which picks the trimmed tail up, is barely
+# lengthened.
+_EMPTY_SPAN_RETRY_PAD_S = 0.25
+# RMS above which an empty decode is treated as a DROPPED span rather than as
+# silence. Same floor as the streaming worker's hallucination gate.
+_EMPTY_SPAN_RMS_FLOOR = 0.01
+
 
 # Substrings that mark a poisoned ggml/Metal backend in whisper.cpp's native log.
 _POISON_MARKERS = (
@@ -420,15 +431,70 @@ class WhisperCppAsrAdapter:
         )
         spans = self._split_spans(audio, sample_rate, window)
         with self._lock:
-            sub_results = [
-                self._build_result(
-                    self._decode_recover_locked(audio[s:e], prompt),
-                    audio[s:e],
-                    sample_rate,
-                )
-                for (s, e) in spans
-            ]
+            sub_results, spans = self._decode_spans_locked(audio, spans, sample_rate, prompt)
         return self._merge_results(sub_results, spans, audio, sample_rate)
+
+    def _decode_spans_locked(
+        self,
+        audio: np.ndarray,
+        spans: list[tuple[int, int]],
+        sample_rate: int,
+        prompt: str | None,
+    ) -> tuple[list[dict[str, Any]], list[tuple[int, int]]]:
+        """Decode each span, retrying once a SPAN THE ENGINE DROPPED.
+
+        TASK-934 S-5 — measured offline on the served q8_0 ml-en fine-tune with
+        `discharge_summary_01.wav`: the clip decodes fully as one buffer (WER
+        0.081) and loses its first 9.7 s at a 7 s decode window (WER 0.468, the
+        14 deletions seen live). The cause is not variance, not the prompt and
+        not any post-filter — `_split_spans` snaps the first cut to the quietest
+        frame at 4.625 s, and this fine-tune returns an EMPTY decode for a
+        buffer truncated anywhere in 4.50-4.70 s (3 of 3 repeats; 4.40 s and
+        4.80 s of the same audio decode normally). The engine drops the whole
+        SPAN, so nothing downstream can recover it — the words never exist.
+
+        So a span that carries speech and decodes to nothing is decoded once
+        more with its end pulled back by ``_EMPTY_SPAN_RETRY_PAD_S``, which is
+        wider than the measured dead zone. The FOLLOWING span's start moves to
+        the same boundary, so the partition stays exact: no audio is skipped and
+        none is decoded twice. Not applied to the last span (no following span
+        to carry the trimmed tail — that would lose audio outright) nor to a
+        span that is genuinely silent, which is entitled to decode to nothing.
+        """
+        pad = int(_EMPTY_SPAN_RETRY_PAD_S * sample_rate)
+        results: list[dict[str, Any]] = []
+        decoded: list[tuple[int, int]] = []
+        start = spans[0][0] if spans else 0
+        for index, (_, end) in enumerate(spans):
+            segments = self._decode_recover_locked(audio[start:end], prompt)
+            result = self._build_result(segments, audio[start:end], sample_rate)
+            retriable = index < len(spans) - 1 and (end - pad) > start
+            if not result["text"] and retriable and self._carries_speech(audio[start:end]):
+                logger.warning(
+                    "whisper.cpp returned nothing for a span carrying speech; "
+                    "retrying with a pulled-back boundary",
+                    model_slug=self._loaded.model_slug,
+                    span_start_s=round(start / sample_rate, 3),
+                    span_end_s=round(end / sample_rate, 3),
+                )
+                retry_end = end - pad
+                retry_segments = self._decode_recover_locked(audio[start:retry_end], prompt)
+                retry_result = self._build_result(
+                    retry_segments, audio[start:retry_end], sample_rate
+                )
+                if retry_result["text"]:
+                    result, end = retry_result, retry_end
+            results.append(result)
+            decoded.append((start, end))
+            start = end
+        return results, decoded
+
+    @staticmethod
+    def _carries_speech(audio: np.ndarray) -> bool:
+        """Whether a span has enough energy that an empty decode is suspicious."""
+        if audio.size == 0:
+            return False
+        return float(np.sqrt(np.mean(audio.astype(np.float32) ** 2))) >= _EMPTY_SPAN_RMS_FLOOR
 
     def _decode_recover_locked(self, audio: np.ndarray, prompt: str | None) -> list[Any]:
         """Decode one buffer with Metal-poison auto-recovery. Lock must be held."""

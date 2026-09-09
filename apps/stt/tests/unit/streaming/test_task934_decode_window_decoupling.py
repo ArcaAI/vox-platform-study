@@ -97,13 +97,26 @@ def _full_transcript(word_count: int = WORD_COUNT) -> str:
 
 
 class _OracleWhisperModel:
-    """A pywhispercpp stand-in that transcribes the oracle audio it is handed."""
+    """A pywhispercpp stand-in that transcribes the oracle audio it is handed.
 
-    def __init__(self) -> None:
+    ``dead_zone_s`` models a MEASURED property of the served ml-en fine-tune
+    (2026-09-09, `discharge_summary_01.wav`, q8_0 on Metal): a buffer truncated
+    anywhere in 4.50–4.70 s decodes to the EMPTY string, deterministically —
+    3 of 3 repeats — while 4.40 s and 4.80 s of the same audio decode normally.
+    The engine returns nothing at all for such a span; it is not a short or
+    garbled result that a downstream filter could catch.
+    """
+
+    def __init__(self, dead_zone_s: tuple[float, float] | None = None) -> None:
         self.calls: list[int] = []  # samples per decode
+        self._dead_zone_s = dead_zone_s
 
     def transcribe(self, audio: np.ndarray, **_kwargs: Any) -> list[SimpleNamespace]:
         self.calls.append(len(audio))
+        if self._dead_zone_s is not None:
+            low, high = self._dead_zone_s
+            if low <= len(audio) / SAMPLE_RATE <= high:
+                return []
         return [
             SimpleNamespace(text=f" {word}", t0=0, t1=0, probability=1.0)
             for word in _decode_oracle(audio)
@@ -184,6 +197,76 @@ class TestPerCallDecodeWindow:
         text = adapter(_oracle_audio(), SAMPLE_RATE)["text"]
 
         assert text.split() == _full_transcript().split()
+
+
+# ---------------------------------------------------------------------------
+# 1b. A span the engine drops entirely (S-5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEmptySpanRetry:
+    """S-5 — the opening-sentence loss, reproduced and closed.
+
+    Offline through this repo's own adapter and the real q8_0 weights
+    (2026-09-09): the discharge fixture decodes fully as ONE buffer (WER 0.081)
+    and loses its first 9.7 seconds at a 7 s decode window (WER 0.468). The
+    mechanism is not run-to-run variance and not a post-filter — `_split_spans`
+    snaps the first cut to the quietest frame at 4.625 s, and this fine-tune
+    returns an EMPTY decode for a buffer truncated anywhere in 4.50–4.70 s. The
+    span, not the sentence, is what disappears; the whole first span decoded to
+    "" and the second to Malayalam noise.
+
+    A span that carries speech and decodes to nothing is therefore retried once
+    with its boundary pulled back — and the following span's start moves with
+    it, so the audio partition stays exact: nothing skipped, nothing decoded
+    twice.
+    """
+
+    # `_split_spans` cuts the 24 s oracle buffer into 3.5 / 3.605 ×4 / 6.095 s
+    # spans at a 7 s window, so this dead zone drops the four middle ones —
+    # 40 % of the transcript — exactly as the live 4.625 s cut dropped the
+    # discharge clip's first span.
+    DEAD_ZONE = (3.55, 3.65)
+
+    def test_dropped_spans_are_retried_with_a_pulled_back_boundary(self) -> None:
+        model = _OracleWhisperModel(dead_zone_s=self.DEAD_ZONE)
+        adapter = _adapter(model, max_decode_window_sec=7.0)
+
+        text = adapter(_oracle_audio(), SAMPLE_RATE)["text"]
+
+        assert text.split() == _full_transcript().split()
+
+    def test_the_retry_neither_skips_nor_duplicates_audio(self) -> None:
+        """The pulled-back tail is picked up by the NEXT span, not dropped."""
+        model = _OracleWhisperModel(dead_zone_s=self.DEAD_ZONE)
+        adapter = _adapter(model, max_decode_window_sec=7.0)
+
+        words = adapter(_oracle_audio(), SAMPLE_RATE)["text"].split()
+
+        assert len(words) == len(set(words)) == WORD_COUNT
+
+    def test_a_silent_span_is_not_retried(self) -> None:
+        """Silence legitimately decodes to nothing; only speech is retried."""
+        model = _OracleWhisperModel(dead_zone_s=(0.0, 1e9))
+        adapter = _adapter(model, max_decode_window_sec=7.0)
+        silence = np.zeros(int(24 * SAMPLE_RATE), dtype=np.float32)
+
+        assert adapter(silence, SAMPLE_RATE)["text"] == ""
+        assert len(model.calls) == len(adapter._split_spans(silence, SAMPLE_RATE, 7.0))
+
+    def test_each_span_is_retried_at_most_once_and_never_the_last(self) -> None:
+        """One retry, never two — and the last span has no following span to
+        catch a trimmed tail, so trimming it would lose audio outright."""
+        model = _OracleWhisperModel(dead_zone_s=(0.0, 1e9))  # every decode empty
+        adapter = _adapter(model, max_decode_window_sec=7.0)
+        audio = _oracle_audio()
+
+        text = adapter(audio, SAMPLE_RATE)["text"]
+
+        span_count = len(adapter._split_spans(audio, SAMPLE_RATE, 7.0))
+        assert text == ""
+        assert len(model.calls) == span_count + (span_count - 1)
 
 
 # ---------------------------------------------------------------------------
