@@ -878,7 +878,7 @@ export class HarnessInternalController {
   @ApiOperation({
     summary: "Read the live lane's final per-node outputs for a consultation (interpreter live handoff)",
     description:
-      'Polled by the durable interpreter before it dispatches an `onEnd` node that consumes a realtime node\'s output. `ended: false` means the live session has not handed off yet. **PHI-carrying**: the response includes the running clinical note and the clinician\'s effective DNA writing style.',
+      "Polled by the durable interpreter before it dispatches an `onEnd` node that consumes a realtime node's output. `ended: false` means the live session has not handed off yet. **PHI-carrying**: the response includes the running clinical note and the clinician's effective DNA writing style.",
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of.' })
@@ -888,11 +888,7 @@ export class HarnessInternalController {
     required: false,
     description: 'Comma-separated graph node ids the caller skipped as `realtime_lane`. Omitted ⇒ every recorded node.',
   })
-  async liveHandoff(
-    @Param('id') id: string,
-    @Query('tenantId') tenantId?: string,
-    @Query('nodeIds') nodeIds?: string,
-  ): Promise<LiveHandoffResponse> {
+  async liveHandoff(@Param('id') id: string, @Query('tenantId') tenantId?: string, @Query('nodeIds') nodeIds?: string): Promise<LiveHandoffResponse> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
     }
