@@ -10,13 +10,19 @@
  *     `updateWithVersion`, broadcasting `ResourceUpdated` and appending the
  *     `SESSION_CLOSED_INCOMPLETE` WORM row — each correctly attributed to
  *     THAT row's own tenant, not a shared/ambient one;
- *   - a single row's failure never aborts the batch.
+ *   - a single row's failure never aborts the batch;
+ *   - `sweepStaleRecordings()` (TASK-932 OD-9) — the RECORDING leg: a stale
+ *     RECORDING row with no live-summary lock is stopped via the real client
+ *     path (`ConsultationService.stopRecording`); a row that still holds the
+ *     lock is left alone; a single row's failure never aborts the batch
+ *     either; the window comes from the descriptor, never a literal.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SysEventType } from '@arcaai/domains';
-import { ConsultationTimeoutSweepService } from '../consultation-timeout-sweep.service';
+import { ConsultationTimeoutSweepService, liveSummaryLockKey } from '../consultation-timeout-sweep.service';
 import {
   CONSULTATION_GATE_DEFAULTS,
+  CONSULTATION_RECORDING_STALE_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
 } from '../../consultation-gates.constants';
@@ -98,26 +104,41 @@ const createMockClsService = () => {
 
 const createMockConsultationRepository = () => ({
   findTimeoutSweepEligible: vi.fn().mockResolvedValue([]),
+  findStaleRecording: vi.fn().mockResolvedValue([]),
   updateWithVersion: vi.fn().mockImplementation(async (_id: string, entity: ConsultationEntity) => entity),
+});
+
+const createMockConsultationService = () => ({
+  stopRecording: vi.fn().mockResolvedValue({}),
+});
+
+const createMockCacheService = () => ({
+  get: vi.fn().mockResolvedValue(null),
 });
 
 const createMockHarnessAuditService = () => ({
   append: vi.fn().mockResolvedValue({}),
 });
 
-const buildService = (params: {
-  consultationRepository?: ReturnType<typeof createMockConsultationRepository>;
-  eventEmitter?: { emit: ReturnType<typeof vi.fn> };
-  clsService?: ReturnType<typeof createMockClsService>;
-  appSettingsService?: ReturnType<typeof createMockAppSettingsService>;
-  schedulerRegistry?: ReturnType<typeof createMockSchedulerRegistry>;
-  harnessAuditService?: ReturnType<typeof createMockHarnessAuditService> | undefined;
-} = {}) => {
+const buildService = (
+  params: {
+    consultationRepository?: ReturnType<typeof createMockConsultationRepository>;
+    eventEmitter?: { emit: ReturnType<typeof vi.fn> };
+    clsService?: ReturnType<typeof createMockClsService>;
+    appSettingsService?: ReturnType<typeof createMockAppSettingsService>;
+    schedulerRegistry?: ReturnType<typeof createMockSchedulerRegistry>;
+    consultationService?: ReturnType<typeof createMockConsultationService>;
+    cacheService?: ReturnType<typeof createMockCacheService>;
+    harnessAuditService?: ReturnType<typeof createMockHarnessAuditService> | undefined;
+  } = {},
+) => {
   const consultationRepository = params.consultationRepository ?? createMockConsultationRepository();
   const eventEmitter = params.eventEmitter ?? { emit: vi.fn() };
   const clsService = params.clsService ?? createMockClsService();
   const appSettingsService = params.appSettingsService ?? createMockAppSettingsService();
   const schedulerRegistry = params.schedulerRegistry ?? createMockSchedulerRegistry();
+  const consultationService = params.consultationService ?? createMockConsultationService();
+  const cacheService = params.cacheService ?? createMockCacheService();
   const harnessAuditService = 'harnessAuditService' in params ? params.harnessAuditService : createMockHarnessAuditService();
 
   const service = new ConsultationTimeoutSweepService(
@@ -126,25 +147,38 @@ const buildService = (params: {
     clsService as any,
     appSettingsService as any,
     schedulerRegistry as any,
+    consultationService as any,
+    cacheService as any,
     harnessAuditService as any,
   );
 
-  return { service, consultationRepository, eventEmitter, clsService, appSettingsService, schedulerRegistry, harnessAuditService };
+  return {
+    service,
+    consultationRepository,
+    eventEmitter,
+    clsService,
+    appSettingsService,
+    schedulerRegistry,
+    consultationService,
+    cacheService,
+    harnessAuditService,
+  };
 };
 
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe('ConsultationTimeoutSweepService', () => {
   describe('getConfig', () => {
-    it('reads cron and timeoutMinutes from AppSettingsService', () => {
+    it('reads cron, timeoutMinutes and recordingStaleMinutes from AppSettingsService', () => {
       const { service } = buildService({
         appSettingsService: createMockAppSettingsService({
           [CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY]: '0 * * * *',
           [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 60,
+          [CONSULTATION_RECORDING_STALE_MINUTES_KEY]: 45,
         }),
       });
 
-      expect(service.getConfig()).toEqual({ cron: '0 * * * *', timeoutMinutes: 60 });
+      expect(service.getConfig()).toEqual({ cron: '0 * * * *', timeoutMinutes: 60, recordingStaleMinutes: 45 });
     });
 
     it('falls back to the documented code defaults when settings are missing', () => {
@@ -153,7 +187,15 @@ describe('ConsultationTimeoutSweepService', () => {
       expect(service.getConfig()).toEqual({
         cron: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
         timeoutMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
+        recordingStaleMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
       });
+    });
+
+    it('the recordingStaleMinutes window is read from the descriptor (default 30), never a literal', () => {
+      const { service } = buildService();
+
+      expect(CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY]).toBe(30);
+      expect(service.getConfig().recordingStaleMinutes).toBe(30);
     });
   });
 
@@ -240,6 +282,31 @@ describe('ConsultationTimeoutSweepService', () => {
       expect(consultationRepository.findTimeoutSweepEligible).toHaveBeenCalledWith(new Date('2026-08-19T12:00:00.000Z'));
 
       vi.useRealTimers();
+    });
+
+    it('an explicit timeoutMinutes override takes precedence over the descriptor-resolved value (one-off cleanup script, TASK-932 O-2)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
+      const { service, consultationRepository } = buildService({
+        // Descriptor/settings say 1440 (24h) — the override must win.
+        appSettingsService: createMockAppSettingsService({ [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440 }),
+      });
+
+      await service.sweepOnce({ timeoutMinutes: 30 });
+
+      expect(consultationRepository.findTimeoutSweepEligible).toHaveBeenCalledWith(new Date('2026-09-09T11:30:00.000Z'));
+
+      vi.useRealTimers();
+    });
+
+    it('the non-positive-window safety guard still applies to an explicit override', async () => {
+      const { service, consultationRepository } = buildService();
+
+      const result = await service.sweepOnce({ timeoutMinutes: 0 });
+
+      expect(result).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+      expect(consultationRepository.findTimeoutSweepEligible).not.toHaveBeenCalled();
     });
 
     it('transitions each eligible row to CLOSED_INCOMPLETE, persists, and broadcasts ResourceUpdated attributed to ITS OWN tenant', async () => {
@@ -334,6 +401,139 @@ describe('ConsultationTimeoutSweepService', () => {
     });
   });
 
+  describe('sweepStaleRecordings (TASK-932 OD-9 — the RECORDING leg)', () => {
+    it('refuses to sweep with a non-positive recordingStaleMinutes window', async () => {
+      const { service, consultationRepository } = buildService({
+        appSettingsService: createMockAppSettingsService({ [CONSULTATION_RECORDING_STALE_MINUTES_KEY]: 0 }),
+      });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(result).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+      expect(consultationRepository.findStaleRecording).not.toHaveBeenCalled();
+    });
+
+    it('the window is read from the descriptor (default 30) not a literal', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
+      const { service, consultationRepository } = buildService();
+
+      await service.sweepStaleRecordings();
+
+      expect(consultationRepository.findStaleRecording).toHaveBeenCalledWith(new Date('2026-09-09T11:30:00.000Z'));
+
+      vi.useRealTimers();
+    });
+
+    it('an explicit recordingStaleMinutes override takes precedence over the descriptor-resolved value (one-off cleanup script, TASK-932 O-2)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
+      const { service, consultationRepository } = buildService();
+
+      await service.sweepStaleRecordings({ recordingStaleMinutes: 5 });
+
+      expect(consultationRepository.findStaleRecording).toHaveBeenCalledWith(new Date('2026-09-09T11:55:00.000Z'));
+
+      vi.useRealTimers();
+    });
+
+    it('a stale RECORDING row with no lock is stopped via ConsultationService.stopRecording', async () => {
+      const row = makeEntity({ id: 'c-rec', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([row]);
+      const cacheService = createMockCacheService();
+      cacheService.get.mockResolvedValue(null); // no lock held
+
+      const { service, consultationService, clsService } = buildService({ consultationRepository, cacheService });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(cacheService.get).toHaveBeenCalledWith(liveSummaryLockKey('c-rec'));
+      expect(consultationService.stopRecording).toHaveBeenCalledWith('c-rec');
+      expect(clsService.run).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ eligible: 1, transitioned: 1, failed: 0 });
+    });
+
+    it('a stale RECORDING row WITH a lock is left alone', async () => {
+      const row = makeEntity({ id: 'c-rec', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([row]);
+      const cacheService = createMockCacheService();
+      cacheService.get.mockResolvedValue('instance-abc'); // lock held by a live instance
+
+      const { service, consultationService } = buildService({ consultationRepository, cacheService });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(consultationService.stopRecording).not.toHaveBeenCalled();
+      expect(result).toEqual({ eligible: 1, transitioned: 0, failed: 0 });
+    });
+
+    it('a fresh RECORDING row is not considered (excluded upstream by the cutoff-scoped query)', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([]);
+      const { service, consultationService } = buildService({ consultationRepository });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(consultationService.stopRecording).not.toHaveBeenCalled();
+      expect(result).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+    });
+
+    it('a failing stop does not abort the batch', async () => {
+      const rowOk = makeEntity({ id: 'c-ok', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const rowFails = makeEntity({ id: 'c-fails', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([rowFails, rowOk]);
+      const consultationService = createMockConsultationService();
+      consultationService.stopRecording.mockImplementation(async (id: string) => {
+        if (id === 'c-fails') throw new Error('illegal transition race');
+        return {};
+      });
+
+      const { service } = buildService({ consultationRepository, consultationService });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(result).toEqual({ eligible: 2, transitioned: 1, failed: 1 });
+      expect(consultationService.stopRecording).toHaveBeenCalledWith('c-ok');
+    });
+
+    it('binds the row-owning tenant on CLS before calling stopRecording, mirroring the DRAINING leg', async () => {
+      const row = makeEntity({ id: 'c-rec', tenantId: 'tenant-Z', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([row]);
+      const clsService = createMockClsService();
+
+      const { service } = buildService({ consultationRepository, clsService });
+
+      await service.sweepStaleRecordings();
+
+      expect(clsService.set).toHaveBeenCalledWith('tenantId', 'tenant-Z');
+    });
+
+    it('a cache lookup failure is treated like any other per-row failure — never aborts the batch', async () => {
+      const rowOk = makeEntity({ id: 'c-ok', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const rowFails = makeEntity({ id: 'c-fails', tenantId: 'tenant-1', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockResolvedValue([rowFails, rowOk]);
+      const cacheService = createMockCacheService();
+      cacheService.get.mockImplementation(async (key: string) => {
+        if (key === liveSummaryLockKey('c-fails')) throw new Error('redis unavailable');
+        return null;
+      });
+
+      const { service, consultationService } = buildService({ consultationRepository, cacheService });
+
+      const result = await service.sweepStaleRecordings();
+
+      expect(result).toEqual({ eligible: 2, transitioned: 1, failed: 1 });
+      expect(consultationService.stopRecording).toHaveBeenCalledWith('c-ok');
+    });
+  });
+
   describe('handleScheduledSweep', () => {
     it('runs sweepOnce and never throws even when the sweep itself fails', async () => {
       const consultationRepository = createMockConsultationRepository();
@@ -342,6 +542,18 @@ describe('ConsultationTimeoutSweepService', () => {
       const { service } = buildService({ consultationRepository });
 
       await expect(service.handleScheduledSweep()).resolves.toBeUndefined();
+    });
+
+    it('runs the stale-recording leg too, and one leg failing never blocks the other', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockRejectedValue(new Error('db unavailable'));
+
+      const { service } = buildService({ consultationRepository });
+
+      await expect(service.handleScheduledSweep()).resolves.toBeUndefined();
+
+      expect(consultationRepository.findStaleRecording).toHaveBeenCalled();
+      expect(consultationRepository.findTimeoutSweepEligible).toHaveBeenCalled();
     });
   });
 });
