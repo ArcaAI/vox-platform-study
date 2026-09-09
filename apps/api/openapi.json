@@ -12682,6 +12682,12 @@
             "example": "2026-01-29",
             "type": "string"
           },
+          "clinicianUserId": {
+            "description": "The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) and refused for every other credential class, whose clinician is the authenticated caller. The named user must belong to the tenant and be able to create consultations; anything else is a 404.",
+            "example": "0192f3a1-7c4b-7d2e-9f01-2b3c4d5e6f70",
+            "format": "uuid",
+            "type": "string"
+          },
           "departmentId": {
             "description": "Department ID (from Department lookup table)",
             "type": "string"
@@ -53349,7 +53355,10 @@
             "description": "Creating a ConsultationResponse"
           },
           "400": {
-            "description": "Bad request"
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller named no `clinicianUserId`; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied one."
+          },
+          "404": {
+            "description": "The named clinician is not a user of this tenant, or may not own a consultation."
           }
         },
         "security": [

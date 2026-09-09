@@ -31,7 +31,7 @@
  *
  * ─── /: further derived families ─────────────────────────
  *
- * The registry now holds three families, all renamespaced from
+ * The registry now holds five families, all renamespaced from
  * `API_KEY_SCOPE_REGISTRY` and none hand-written:
  *
  * `svc:admin:<area>` — every concrete `admin:*` scope (above)
@@ -40,6 +40,11 @@
  *   `svc:<area>` — admin-plane areas whose gating scope PREDATES the
  * `admin:<area>` convention ( decision O-1,
  *                         {@link ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES})
+ *   `svc:agent:*` / `svc:workflow:*` — the agent + workflow composition plane
+ *                         (TASK-930, {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES})
+ *   `svc:consultation:*` / `svc:tenant:context-schema:read` / `svc:workflows:execute`
+ *                       — the realtime CONSULTATION plane
+ *                         (TASK-933, {@link CONSULTATION_REALTIME_SCOPE_SOURCES})
  *
  * They are kept as separate families rather than one blanket derivation of the
  * whole API-key registry because the `svc:admin:*` WILDCARD must keep meaning
@@ -47,7 +52,7 @@
  * accident is the kind of silent grant this class exists to prevent, and the
  * seeded ArcaAI account holds admin scopes explicitly for the same reason.
  * Each family therefore declares its own closed source list, and boot-audit
- * assertion D reconciles the registry against ALL THREE — a `svc:` scope
+ * assertion D reconciles the registry against ALL OF THEM — a `svc:` scope
  * belonging to none of them fails the boot rather than existing quietly.
  */
 import { API_KEY_SCOPE_REGISTRY, type ImpliedPermission, type ScopeDefinition } from '../apiKey/apikey-scopes.registry';
@@ -197,10 +202,18 @@ export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PL
  *
  * ─── What is deliberately ABSENT ────────────────────────────────────────────
  *
- * The CONSULTATION-BOUND plane (`workflows:` plural — `POST /consultations/:id/workflows/...`)
- * is not here. It writes real `ContextItem` rows against a patient's consultation, which is a
- * clinical surface, not a machine-identity one. Deny-by-default means that silence is a refusal,
- * not an oversight; opening it would be a new owner decision.
+ * Nothing beyond the five above. This family is the UNBOUND plane only.
+ *
+ * SUPERSEDED (owner decision, 2026-09-09 — TASK-933): this docblock used to record the
+ * CONSULTATION-BOUND plane (`workflows:` plural — `POST /consultations/:id/workflows/...`) as
+ * deliberately closed to machines, on the reasoning that it writes real `ContextItem` rows
+ * against a patient's consultation. The owner has since ruled that the platform service account
+ * must hold *every* permission `@arcaai/vox-node` needs to drive a realtime consultation, and
+ * that plane is one of them. It is therefore OPEN — but it is opened in
+ * {@link CONSULTATION_REALTIME_SCOPE_SOURCES}, the fifth family, and NOT here: the clinical
+ * consultation plane is a different justification from the unbound composition plane, and
+ * merging the two would make the next reader inherit a grant nobody decided. The refusal that
+ * used to live in this paragraph is now a decision recorded in the family that carries it.
  *
  * `svc:admin:*` does NOT reach these — the wildcard expands over the `svc:admin:` PREFIX — so
  * the family is granted explicitly or not at all, exactly like the other two source families.
@@ -215,6 +228,68 @@ export const AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES = [
 
 /** The renamespaced form of {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES}. */
 export const AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES: readonly string[] = AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES.map(toServiceAccountScope);
+
+/**
+ * TASK-933 §3.1 — the FIFTH `svc:` family: the REALTIME CONSULTATION plane.
+ *
+ * ─── The gap this closes ────────────────────────────────────────────────────
+ *
+ * After TASK-930 a service account could invoke a published agent and run an unbound workflow,
+ * but it could not drive a CONSULTATION — the thing the platform exists to do. Every route on
+ * that path (`POST consultations/open`, `GET consultations/:id`, recording start/stop, case-note
+ * writes, the four live SSE planes, `summary/latest`, the async job reads, the tenant's
+ * context-schema discovery bundle and the consultation-bound workflows plane) declared no
+ * `svc:*` scope at all, so `enforceServiceAccountScopes` refused every one of them by default.
+ * An external broker driving a live consultation therefore had to borrow a tenant API key bound
+ * to a human, which is precisely the delegation the machine class exists to replace.
+ *
+ * The owner opened it natively on 2026-09-09: the platform service account holds *every*
+ * permission `@arcaai/vox-node` needs for a realtime consultation.
+ *
+ * ─── Why a FIFTH family and not more lines in the fourth ────────────────────
+ *
+ * The same rule that produced families two, three and four.
+ * {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES} means "the platform's own composition
+ * plane — published content a tenant authors and a machine then calls". A realtime clinical
+ * consultation is not that: it opens a patient-bound clinical record, writes into it, and
+ * streams PHI. It needs its own justification, and a constant whose name stops describing its
+ * contents is how the NEXT scope gets mis-derived — the boot audit would then be reconciling
+ * against a lie.
+ *
+ * ─── What is in it, and the one thing that is not ───────────────────────────
+ *
+ *   `consultation:session:write` — open, recording start/stop, case notes, and the four live
+ *                                  SSE planes. The streams REUSE the write scope rather than
+ *                                  minting a `consultation:stream:read`: that would widen the
+ *                                  API-key surface too (every `svc:` scope is derived from a
+ *                                  real API-key scope), and no read-only stream consumer exists.
+ *   `consultation:session:read`   — `GET consultations/:id`.
+ *   `consultation:report:read`    — `summary/latest`, `summary/pre-summary/latest`, and the
+ *                                   async job status/stream reads.
+ *   `tenant:context-schema:read`  — `GET tenants/me/context-schema`, the discovery bundle a
+ *                                   client needs before it can build a valid case-note payload.
+ *   `workflows:execute`           — the CONSULTATION-BOUND workflows plane, opened by the same
+ *                                   owner decision (see the fourth family's superseded note).
+ *
+ * `consultation:report:write` is deliberately NOT here: it is already registered by
+ * {@link STANDALONE_FEATURE_SCOPE_SOURCES} (native + compat summarization) and one scope belongs
+ * to exactly one family. `POST auth/stream-ticket` stays closed to machines — the SSE routes
+ * authenticate the `X-Service-Account-Token` header directly and the STT ticket is auto-issued
+ * by session create/refresh, so there is nothing a machine needs it for.
+ *
+ * `svc:admin:*` does NOT reach any of these — the wildcard expands over the `svc:admin:` PREFIX
+ * — so the family is granted explicitly or not at all, exactly like the three before it.
+ */
+export const CONSULTATION_REALTIME_SCOPE_SOURCES = [
+  'consultation:session:write',
+  'consultation:session:read',
+  'consultation:report:read',
+  'tenant:context-schema:read',
+  'workflows:execute',
+] as const;
+
+/** The renamespaced form of {@link CONSULTATION_REALTIME_SCOPE_SOURCES}. */
+export const CONSULTATION_REALTIME_SVC_SCOPES: readonly string[] = CONSULTATION_REALTIME_SCOPE_SOURCES.map(toServiceAccountScope);
 
 /**
  * Renamespace one declared source family into the registry. Shared by both
@@ -255,7 +330,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
     };
   }
 
-  // The three source-list families, each derived from the SAME API-key definition
+  // The four source-list families, each derived from the SAME API-key definition
   // the human-credential path uses on the same route, so the scope and its
   // abilities can never disagree. A source name that stops existing in
   // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
@@ -264,6 +339,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
   deriveFamilyInto(registry, STANDALONE_FEATURE_SCOPE_SOURCES, 'STANDALONE_FEATURE_SCOPE_SOURCES');
   deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES');
   deriveFamilyInto(registry, AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES, 'AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES');
+  deriveFamilyInto(registry, CONSULTATION_REALTIME_SCOPE_SOURCES, 'CONSULTATION_REALTIME_SCOPE_SOURCES');
 
   // Wildcards carry `[]` and are resolved by EXPANSION in
   // `resolveServiceAccountImpliedPermissions`, never by a literal of their own —

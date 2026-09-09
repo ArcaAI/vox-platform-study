@@ -120,6 +120,19 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
     ['create', 'WorkflowRun'],
     ['update', 'WorkflowRun'],
   ],
+  // TASK-933 §3.1 — the realtime CONSULTATION plane, renamespaced from the API-key scopes whose
+  // `implies` are pinned in `apikey-scopes.registry.ts` (`CONSULTATION_REALTIME_SCOPE_SOURCES`).
+  // Every one implies an ability TENANT_ADMIN already holds, so the derivation rule admits them:
+  // `manage:Consultation` subsumes create/read, `manage:ConsultationContextSchema` subsumes the
+  // schema read, and `execute:ConsultationWorkflow` is granted outright by `tenant-full-access`.
+  'svc:consultation:session:write': [['create', 'Consultation']],
+  'svc:consultation:session:read': [['read', 'Consultation']],
+  'svc:consultation:report:read': [['read', 'Consultation']],
+  'svc:tenant:context-schema:read': [['read', 'ConsultationContextSchema']],
+  'svc:workflows:execute': [
+    ['execute', 'ConsultationWorkflow'],
+    ['create', 'WorkflowRun'],
+  ],
 };
 
 /**

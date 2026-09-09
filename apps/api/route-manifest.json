@@ -11905,7 +11905,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{consultationId}/workflows",
       "routePath": "/consultations/:consultationId/workflows",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflows:execute"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -11928,7 +11930,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{consultationId}/workflows/{slug}/runs",
       "routePath": "/consultations/:consultationId/workflows/:slug/runs",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:workflows:execute"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -11951,7 +11955,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}",
       "routePath": "/consultations/:id",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12041,7 +12047,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/context",
       "routePath": "/consultations/:id/context",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12257,7 +12265,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/harness-progress/stream",
       "routePath": "/consultations/:id/harness-progress/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12329,7 +12339,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/live-assist/stream",
       "routePath": "/consultations/:id/live-assist/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12347,7 +12359,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/live-summary/stream",
       "routePath": "/consultations/:id/live-summary/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12365,7 +12379,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/loop/stream",
       "routePath": "/consultations/:id/loop/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12419,7 +12435,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/recording/start",
       "routePath": "/consultations/:id/recording/start",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12437,7 +12455,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/recording/stop",
       "routePath": "/consultations/:id/recording/stop",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12761,7 +12781,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/summary/latest",
       "routePath": "/consultations/:id/summary/latest",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12779,7 +12801,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/summary/pre-summary",
       "routePath": "/consultations/:id/summary/pre-summary",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12797,7 +12821,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/summary/pre-summary/async",
       "routePath": "/consultations/:id/summary/pre-summary/async",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12815,7 +12841,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/summary/pre-summary/latest",
       "routePath": "/consultations/:id/summary/pre-summary/latest",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12887,7 +12915,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/jobs/{jobId}",
       "routePath": "/consultations/jobs/:jobId",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12923,7 +12953,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/jobs/{jobId}/stream",
       "routePath": "/consultations/jobs/:jobId/stream",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12941,7 +12973,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/open",
       "routePath": "/consultations/open",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -14697,7 +14731,9 @@
       "method": "GET",
       "path": "/api/v1/tenants/me/context-schema",
       "routePath": "/tenants/me/context-schema",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:tenant:context-schema:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
