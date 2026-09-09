@@ -61,6 +61,24 @@ export const WORKFLOW_EXPOSURE_ENABLED_KEY = 'workflowExposure.enabled';
 export const LIVE_DOC_GROUNDEDNESS_ENABLED_KEY = 'liveDoc.groundedness.enabled';
 
 /**
+ * TASK-932 S2-4 — the two legacy `feature-flags` `GlobalSetting` keys that were
+ * genuinely ENFORCED, adopted into the registry so they cascade and so a
+ * platform admin can see and set them in one place.
+ *
+ * THEY KEEP THEIR HYPHENATED LEGACY SPELLING, deliberately.
+ * `enable-local-raw-capture` is an SDK WIRE-CONTRACT key — `@arcaai/vox` reads
+ * it as `TENANT_CONFIG_KEYS.ENABLE_LOCAL_RAW_CAPTURE` off the synthetic row
+ * `GET /tenant/me/config` appends — so renaming it would break a published SDK
+ * for a cosmetic gain. And both keys already name SEEDED ROWS: a rename orphans
+ * those rows (they would govern nothing while the new key resolved to its code
+ * default), which is precisely the silent flip a settings registry exists to
+ * prevent. The dotted↔env 1:1 (`toEnvVarName`) does not apply to either — both
+ * are DB-addressed `global-kv` keys with no env var, like `rate-limit.enabled`.
+ */
+export const CONSULTATION_SHARING_ENABLED_KEY = 'enable-consultation-sharing';
+export const LOCAL_RAW_CAPTURE_ENABLED_KEY = 'enable-local-raw-capture';
+
+/**
  * The four CONSOLE visibility gates, named so Lane N's `useFeatureGates()` and
  * the nav config select on constants rather than on literals.
  */
@@ -131,6 +149,32 @@ const FEATURES: FeatureSpec[] = [
     description:
       'Gates the whole `/api/v1/workflows/:slug/…` public-invoke surface — a 404 (existence not disclosed) while off, the same posture as `registration.selfSignupEnabled`. MIGRATED from `WORKFLOW_EXPOSURE_ENABLED` to `global-kv`, and it gains a per-tenant row: `WorkflowExposureService` already resolves a tenant on every call, so a platform admin can withdraw the plane from ONE tenant without taking it from everyone. SHIPS ON: the original precondition ("API-key scope enforcement must be verified end-to-end before this ships enabled") was discharged by TASK-757 (`@ForbidApiKey()` enforced ahead of the scope check, plus the boot audit that refuses startup when an admin route declares an API-key scope) and TASK-776 (the route-authz matrix over every route, plus the credential-class depth suites). Left off, a fresh install 404s the entire workflow plane, which is what the pre-production posture — ship complete and ENABLED — exists to avoid. A platform admin turns it off deliberately.',
     default: true,
+  },
+  // ── Adopted from the legacy `feature-flags` namespace (TASK-932 S2-4) ─────
+  {
+    key: CONSULTATION_SHARING_ENABLED_KEY,
+    label: 'Cross-doctor consultation sharing',
+    description:
+      "Grants a clinician READ access to another clinician's consultation for a patient they already treat in the same tenant — continuity of care. " +
+      'Enforced by `ConsultationController.verifyConsultationAccess` as its LAYER 2, reached only after ownership and the CASL ability have both ' +
+      'declined, and never across tenants. This is a genuine authorisation input, NOT a console-visibility gate: turning it off withdraws reads that ' +
+      'would otherwise be granted. SHIPS ON, which is what every tenant already has — the seed wrote an explicit `true` row per tenant and OD-1 ' +
+      'removes those clones so tenants inherit this default instead. A platform admin withdraws it platform-wide, or from one tenant, from the ' +
+      'Feature availability matrix.',
+    default: true,
+  },
+  {
+    key: LOCAL_RAW_CAPTURE_ENABLED_KEY,
+    label: 'Local raw-audio dual capture (platform capability)',
+    description:
+      'The PLATFORM half of the browser raw-stream dual-capture capability. What reaches the SDK is this AND the per-tenant ' +
+      '`TenantFrontendConfig.captureRawAudio` column, computed server-side and served as the synthetic `enable-local-raw-capture` row on ' +
+      "`GET /tenant/me/config` — so `maxScope: 'system'`: the tenant half already has a home, and a tenant row here would be a second competing " +
+      'control over one boolean. Ships OFF (raw audio is PHI leaving the processed path); the seeded SYSTEM row carries the deployed posture with ' +
+      "`defaultValue: 'false'`, so a reset reverts to the fail-safe — the `pipeline.templateResync.enabled` pattern. Replaces the row-level " +
+      '`locked` flag, which said the same thing in a mechanism only this one row used (OD-2).',
+    default: false,
+    maxScope: 'system',
   },
   {
     key: LIVE_DOC_GROUNDEDNESS_ENABLED_KEY,

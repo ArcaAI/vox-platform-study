@@ -19,9 +19,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONSOLE_FEATURE_KEYS,
+  CONSULTATION_SHARING_ENABLED_KEY,
   FEATURE_AVAILABILITY_CATEGORY,
   FEATURE_AVAILABILITY_KEYS,
   LIVE_DOC_GROUNDEDNESS_ENABLED_KEY,
+  LOCAL_RAW_CAPTURE_ENABLED_KEY,
   REGISTRATION_SELF_SIGNUP_ENABLED_KEY,
   WORKFLOW_EXPOSURE_ENABLED_KEY,
 } from '../descriptors/feature-availability.descriptors';
@@ -34,7 +36,7 @@ describe('Feature Availability category', () => {
     expect(HOPE_SETTINGS_REGISTRY.list().filter((d) => d.category === 'Feature Flags')).toEqual([]);
   });
 
-  it('carries the four console gates plus the three migrated keys and the realtime graph executor', () => {
+  it('carries the four console gates, the three migrated keys, the realtime graph executor and the two adopted legacy flags', () => {
     const keys = featureRows()
       .map((d) => d.key)
       .sort();
@@ -48,6 +50,15 @@ describe('Feature Availability category', () => {
         LIVE_DOC_GROUNDEDNESS_ENABLED_KEY,
         REGISTRATION_SELF_SIGNUP_ENABLED_KEY,
         WORKFLOW_EXPOSURE_ENABLED_KEY,
+        // TASK-932 S2-4 — the two legacy `feature-flags` GlobalSetting keys that
+        // were genuinely ENFORCED (the other five had no reader and left the
+        // seed with R-8). They keep their hyphenated legacy spelling on purpose:
+        // `enable-local-raw-capture` is an SDK wire-contract key
+        // (`TENANT_CONFIG_KEYS.ENABLE_LOCAL_RAW_CAPTURE`, synthesised into
+        // `GET /tenant/me/config`), and both already name seeded rows that must
+        // keep governing rather than be orphaned by a rename.
+        CONSULTATION_SHARING_ENABLED_KEY,
+        LOCAL_RAW_CAPTURE_ENABLED_KEY,
       ].sort(),
     );
   });
@@ -74,7 +85,14 @@ describe('Feature Availability category', () => {
     // nothing — the failure mode this assertion exists to prevent.
     const byKey = Object.fromEntries(featureRows().map((d) => [d.key, d]));
     expect(byKey[REGISTRATION_SELF_SIGNUP_ENABLED_KEY]!.maxScope).toBe('system');
-    for (const key of FEATURE_AVAILABILITY_KEYS.filter((k) => k !== REGISTRATION_SELF_SIGNUP_ENABLED_KEY)) {
+    // TASK-932 S2-4 — the second exception, for the same checkable reason.
+    // `enable-local-raw-capture` is the PLATFORM half of an AND: the SDK-facing
+    // value is this capability AND `TenantFrontendConfig.captureRawAudio`, and
+    // the tenant half already lives in that column. A tenant row here would be a
+    // second, competing per-tenant control over one boolean.
+    expect(byKey[LOCAL_RAW_CAPTURE_ENABLED_KEY]!.maxScope).toBe('system');
+    const systemScoped: readonly string[] = [REGISTRATION_SELF_SIGNUP_ENABLED_KEY, LOCAL_RAW_CAPTURE_ENABLED_KEY];
+    for (const key of FEATURE_AVAILABILITY_KEYS.filter((k) => !systemScoped.includes(k))) {
       expect(byKey[key]!.maxScope, key).toBe('tenant');
     }
   });
@@ -86,6 +104,29 @@ describe('Feature Availability category', () => {
     // whole public workflow plane on the next deploy.
     expect(byKey[WORKFLOW_EXPOSURE_ENABLED_KEY]!.default).toBe(true);
     expect(byKey[LIVE_DOC_GROUNDEDNESS_ENABLED_KEY]!.default).toBe(false);
+  });
+
+  /**
+   * TASK-932 S2-4 — the two adopted legacy flags, and the ONE thing about each
+   * that a future edit must not change silently.
+   */
+  it('adopts the two enforced legacy flags at the values their rows already carry', () => {
+    const byKey = Object.fromEntries(featureRows().map((d) => [d.key, d]));
+
+    // Sharing ships ON. Every seeded tenant carries an explicit `'true'` row
+    // today, and OD-1 removes those clones so tenants INHERIT this default —
+    // so a `false` here would silently withdraw continuity-of-care reads from
+    // every tenant on the next deploy. Being default-ON it may carry no
+    // kill-switch marker (`killSwitches()` throws on a truthy default).
+    expect(byKey[CONSULTATION_SHARING_ENABLED_KEY]!.default).toBe(true);
+    expect(byKey[CONSULTATION_SHARING_ENABLED_KEY]!.killSwitch).toBeUndefined();
+
+    // Raw capture ships OFF, and the seeded SYSTEM row turns it on for dev —
+    // the `pipeline.templateResync.enabled` pattern: the descriptor default
+    // stays at the fail-safe end and a platform VALUE carries the deployed
+    // posture, so a reset reverts to OFF.
+    expect(byKey[LOCAL_RAW_CAPTURE_ENABLED_KEY]!.default).toBe(false);
+    expect(byKey[LOCAL_RAW_CAPTURE_ENABLED_KEY]!.killSwitch).toBe(true);
   });
 
   it('the four console gates default OFF and are marked kill-switches, per D-1', () => {
