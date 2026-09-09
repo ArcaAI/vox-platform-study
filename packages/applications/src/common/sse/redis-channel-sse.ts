@@ -15,13 +15,25 @@ export interface RedisChannelSseOptions {
   /** Idle keep-alive period (proxies drop silent SSE streams). */
   heartbeatMs: number;
   /**
-   * Late-join snapshot read, emitted BEFORE any relayed event. Channel events
-   * published while it is in flight are buffered and replayed after it, so the
-   * ordering stays snapshot-first and nothing is dropped.
+   * Late-join read, emitted BEFORE any relayed event. Channel events published while it is in
+   * flight are buffered and replayed after it, so the ordering stays snapshot-first and nothing
+   * is dropped.
+   *
+   * A `string[]` answer emits EVERY entry, in the order given — a lane whose late-join state
+   * lives under more than one key (the live-summary channel caches the whole-document note under
+   * `…:last` and the warm-start `presummary` event under `…:presummary:last`) owes a late joiner
+   * both, primary document first. A single `string` behaves exactly as it always has.
    */
-  loadSnapshot?: () => Promise<string | null | undefined>;
-  /** True when a relayed event carries state the emitted snapshot already had. */
-  isDuplicateOfSnapshot?: (raw: string, snapshot: string | null | undefined) => boolean;
+  loadSnapshot?: () => Promise<string | string[] | null | undefined>;
+  /**
+   * True when a relayed event carries state an emitted entry already had.
+   *
+   * `snapshot` is the FIRST emitted entry, so a single-value caller's two-argument predicate is
+   * unchanged; `emitted` is every entry, in emission order, for a caller that emits more than one
+   * and must therefore compare like with like (an event of one kind is never a duplicate of a
+   * cached event of another).
+   */
+  isDuplicateOfSnapshot?: (raw: string, snapshot: string | null | undefined, emitted: readonly string[]) => boolean;
   /** True for the terminal event — it is emitted, then the stream completes. */
   isTerminal?: (raw: string) => boolean;
   /** Serialized payload emitted (then completed) when setup fails. */
@@ -74,17 +86,20 @@ export function sseFromRedisChannel(
       bridgeSub = messages$.subscribe(bridge);
       if (releaseIfCancelled()) return;
 
-      let snapshot: string | null | undefined = null;
+      let emitted: string[] = [];
       if (loadSnapshot) {
-        snapshot = await loadSnapshot();
+        const loaded = await loadSnapshot();
         if (releaseIfCancelled()) return;
-        if (snapshot) {
-          subscriber.next({ data: snapshot } as MessageEvent);
+        // An empty entry is dropped rather than emitted as a blank frame — same as the
+        // single-value `if (snapshot)` guard this replaces.
+        emitted = (Array.isArray(loaded) ? loaded : [loaded]).filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+        for (const entry of emitted) {
+          subscriber.next({ data: entry } as MessageEvent);
         }
       }
 
       const relay$ = bridge.pipe(
-        filter((raw: string) => !(isDuplicateOfSnapshot?.(raw, snapshot) ?? false)),
+        filter((raw: string) => !(isDuplicateOfSnapshot?.(raw, emitted[0] ?? null, emitted) ?? false)),
         map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
       );
 

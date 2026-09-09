@@ -1306,7 +1306,36 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ...(fields.agentSlug ? { agentSlug: fields.agentSlug } : {}),
       updatedAt: new Date().toISOString(),
     };
-    await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(event));
+    const serialized = JSON.stringify(event);
+    // Cached BEFORE the publish, so there is no window in which a subscriber sees the live event
+    // while a late joiner would still be told there was none.
+    await this.cachePreSummary(session.consultationId, serialized);
+    await this.safeChannelPublish(this.channel(session.consultationId), serialized);
+  }
+
+  /**
+   * Remember the last `presummary` event for late join, under its OWN key.
+   *
+   * The warm start runs in parallel with the capture session opening, so it routinely publishes
+   * before the console's SSE stream has subscribed — measured on the dev stack: `degraded` at
+   * +29 ms, subscribe at +56 ms, and the panel never appeared. `safeChannelPublish` writes no
+   * cache at all, and the whole-document `…:last` key is not available to borrow (answering a
+   * reconnect with a pre-summary would replace the clinician's document with its background
+   * material), so this is a companion key on the same TTL.
+   *
+   * Best-effort in its own right: a cache failure costs a LATE joiner its replay and must never
+   * cost a live one its event, which is why it neither throws nor short-circuits the publish.
+   */
+  private async cachePreSummary(consultationId: string, serialized: string): Promise<void> {
+    try {
+      await this.cacheService.setex(this.preSummaryKey(consultationId), this.SNAPSHOT_TTL, serialized);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to cache the pre-summary for late join (the live publish is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   isActive(consultationId: string): boolean {
@@ -3383,15 +3412,31 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
       channel: this.channel(consultationId),
       heartbeatMs: this.heartbeatMs,
-      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
-      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfLiveSummarySnapshot(raw, this.parseLiveSummaryUpdatedAt(snapshot)),
+      loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
+      isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
       isTerminal: closedFlagTerminal,
       setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }),
       logContext: { consultationId },
     });
   }
 
-  /** The `updatedAt` of a serialized live-summary snapshot; null when absent/corrupt. */
+  /**
+   * Everything a late joiner is owed, in RENDER order: the whole-document note snapshot first,
+   * then the last warm-start `presummary` event.
+   *
+   * They live under two keys because they are two documents (see {@link preSummaryKey}), and the
+   * order is the contract — the note is what the clinician is writing, the pre-summary is the
+   * background material beside it. Either may be absent; absent entries are simply not emitted.
+   */
+  private async loadLiveSummaryLateJoin(consultationId: string): Promise<string[]> {
+    const [snapshot, preSummary] = await Promise.all([
+      this.cacheService.get(this.snapshotKey(consultationId)),
+      this.cacheService.get(this.preSummaryKey(consultationId)),
+    ]);
+    return [snapshot, preSummary].filter((entry): entry is string => typeof entry === 'string' && entry !== '');
+  }
+
+  /** The `updatedAt` of a serialized live-summary payload; null when absent/corrupt. */
   private parseLiveSummaryUpdatedAt(snapshot: string | null | undefined): string | null {
     if (!snapshot) return null;
     try {
@@ -3403,14 +3448,38 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * True when a relayed channel event carries state the just-emitted snapshot
-   * already contained (same or older `updatedAt` — ISO strings compare
-   * lexicographically). Events without an `updatedAt` are relayed untouched.
+   * The KIND of a serialized channel payload: its `event` discriminator, `''` for the
+   * undiscriminated whole-document payload, `null` when it cannot be parsed at all.
    */
-  private isDuplicateOfLiveSummarySnapshot(raw: string, snapshotUpdatedAt: string | null): boolean {
-    if (!snapshotUpdatedAt) return false;
+  private liveSummaryEventKind(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    try {
+      const event = (JSON.parse(raw) as { event?: unknown }).event;
+      return typeof event === 'string' ? event : '';
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * True when a relayed channel event carries state an entry ALREADY EMITTED to this viewer
+   * contained (same or older `updatedAt` — ISO strings compare lexicographically).
+   *
+   * Keyed on the event KIND, which is the whole point: three kinds share this channel (the
+   * undiscriminated whole-document snapshot, `section.patch`, `presummary`) and their `updatedAt`
+   * clocks are unrelated. Comparing a `presummary` against the NOTE snapshot's timestamp drops a
+   * live warm-start event whenever the note happens to be as fresh — the warm-start panel going
+   * dark again for exactly the reason L-1 exists to fix. Events with no `updatedAt`, and events
+   * of a kind nothing was replayed for, are relayed untouched.
+   */
+  private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
+    const kind = this.liveSummaryEventKind(raw);
+    if (kind === null) return false;
+    const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
+    if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
-    return updatedAt != null && updatedAt <= snapshotUpdatedAt;
+    return updatedAt != null && updatedAt <= emittedUpdatedAt;
   }
 
   // ------------------------------------------------------------------
@@ -4745,6 +4814,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private snapshotKey(consultationId: string): string {
     return `${this.CHANNEL_PREFIX}${consultationId}:last`;
+  }
+
+  /**
+   * The last `presummary` event, cached for late join beside — never inside — the whole-document
+   * snapshot. Two keys because they are two different documents: `…:last` is the clinician's
+   * running note, this is the warm-start material that precedes it.
+   */
+  private preSummaryKey(consultationId: string): string {
+    return `${this.CHANNEL_PREFIX}${consultationId}:presummary:last`;
   }
 
   // ------------------------------------------------------------------
