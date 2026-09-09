@@ -127,9 +127,17 @@
       # BUILDER_REV: bump this whenever the buildkitd.toml below changes. `docker
       # buildx create --config` is read ONCE, at creation, so an existing builder
       # keeps its original config forever; the revision suffix is what forces a
-      # rebuild of the instance. Old instances are left in place on purpose —
-      # removing one discards its layer cache, and a concurrent job may still be
-      # using it. Reclaim them by hand: `docker buildx rm cibuilder-r<old>`.
+      # rebuild of the instance. Old instances are left in place by this job on
+      # purpose — removing one discards its layer cache, and a concurrent job on
+      # the previous revision may still be using it.
+      #
+      # They are NOT left forever: warm-up-base-images reclaims any builder that
+      # is neither the newest nor younger than 24h. Read the comment there before
+      # changing either side. In particular, do NOT "fix" this by reclaiming with
+      # `docker buildx rm` — buildx's builder list lives in ~/.docker/buildx
+      # inside the job container and dies with it, so no later job can see, let
+      # alone remove, a builder it did not create. That is precisely how a
+      # 98 GB orphan survived five months and took CI down on 2026-09-07.
       BUILDER_REV=2
       builder="cibuilder-r${BUILDER_REV}"
 
