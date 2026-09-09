@@ -394,6 +394,13 @@ class WhisperCppAsrAdapter:
         )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
+        # TASK-934 — the profile's / agent's ``hotwords`` become decoder prompt vocabulary
+        # (whisper.cpp has no hotword API; listing the terms in the prompt is the established
+        # biasing technique). Empty entries are dropped; ``None`` means no bias.
+        raw_hotwords = getattr(inference_config, "hotwords", None) or []
+        self._hotwords: list[str] = [
+            w.strip() for w in raw_hotwords if isinstance(w, str) and w.strip()
+        ]
         self._lock = _get_model_lock(loaded_model.model_id)
         _ensure_log_capture_installed()
 
@@ -619,7 +626,9 @@ class WhisperCppAsrAdapter:
         # composed with the per-utterance carry-forward by the caller
         # (``compose_prompt``). ``""`` rather than ``None`` because the binding's
         # setter rejects None and the shared context persists params across calls.
-        effective_prompt = prompt or ""
+        effective_prompt = " ".join(
+            part for part in ((prompt or "").strip(), ", ".join(self._hotwords)) if part
+        )
         # Word-timestamp mode forces near-word-sized segments (``max_len=1``,
         # ``split_on_word``) so each segment carries its own (t0, t1). This is
         # only requested when the pipeline consumes word timings; otherwise a
