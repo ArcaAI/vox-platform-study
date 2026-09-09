@@ -43,6 +43,29 @@
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+
+/**
+ * Open an SSE route and resolve on its response HEADERS, then destroy the socket.
+ * `APIRequestContext.get` waits for the body, which an event stream never finishes.
+ */
+function openSse(path: string, headers: Record<string, string>): Promise<{ status: number; contentType: string }> {
+  const origin = new URL(process.env.API_URL ?? 'http://localhost:8968/api/v1').origin;
+  const url = new URL(path, origin);
+  const lib = url.protocol === 'https:' ? httpsRequest : httpRequest;
+  return new Promise((resolve, reject) => {
+    const req = lib(url, { method: 'GET', headers: { ...headers, Accept: 'text/event-stream' } }, (res) => {
+      const status = res.statusCode ?? 0;
+      const contentType = String(res.headers['content-type'] ?? '');
+      res.destroy();
+      resolve({ status, contentType });
+    });
+    req.on('error', reject);
+    req.setTimeout(10_000, () => req.destroy(new Error('SSE open timed out')));
+    req.end();
+  });
+}
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -163,6 +186,10 @@ test.describe('TASK-933 — a service account drives a consultation for a named 
   // ── 3. The whole lifecycle on one consultation ────────────────────────────
 
   test('drives the consultation: read, record, stream, note, stop, read the note, list workflows', async ({ request }) => {
+    // `recording/stop` runs the realtime lane's FINAL flush before it answers; with a case note
+    // on file that is a TEXT call, bounded by the platform's realtime text timeout (observed
+    // 34 s against a busy LM Studio), so this journey gets a budget beyond the 30 s default.
+    test.setTimeout(150_000);
     const opened = await request.post('/api/v1/consultations/open', {
       headers: svcHeaders(svcToken),
       data: { patientId: patientId(), clinicianUserId: ARCAAI_DOCTOR, departmentId: GEN_ARCAAI, language: 'en' },
@@ -189,13 +216,14 @@ test.describe('TASK-933 — a service account drives a consultation for a named 
     // `POST /auth/stream-ticket` is involved (that route stays closed to machines by design).
     // The assertion is that the stream OPENS, which is the authorization fact; the events
     // themselves depend on a harness that this spec does not require.
-    const stream = await request.get(`/api/v1/consultations/${consultationId}/live-summary/stream`, {
-      headers: { 'X-Service-Account-Token': svcToken, Accept: 'text/event-stream' },
-      timeout: 10_000,
+    // Playwright's request context buffers the whole body, and an SSE body never ends —
+    // so the OPEN is asserted on the response headers with a raw request that is torn down
+    // the moment they arrive.
+    const stream = await openSse(`/api/v1/consultations/${consultationId}/live-summary/stream`, {
+      'X-Service-Account-Token': svcToken,
     });
-    expect(stream.status()).toBe(200);
-    expect(stream.headers()['content-type']).toContain('text/event-stream');
-    await stream.dispose();
+    expect(stream.status).toBe(200);
+    expect(stream.contentType).toContain('text/event-stream');
 
     // CASE NOTE — a real `ContextItem` write against a patient's consultation.
     const note = await request.post(`/api/v1/consultations/${consultationId}/context`, {
