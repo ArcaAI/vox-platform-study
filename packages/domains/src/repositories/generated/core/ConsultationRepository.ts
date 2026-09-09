@@ -383,7 +383,7 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * NOT silently drop out of the gate-queue surface — this is the explicit
    * dedicated read state-machine.md/ pitfall 5 calls for, rather
    * than widening the PENDING_REVIEW filter to include TIMED_OUT.
- */
+   */
   async findTimedOutForTenant(tenantId: string): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
@@ -410,7 +410,7 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * `PENDING_REVIEW`, which has its own narrower gate-SLA path
    * (`recordEscalation` → `TIMED_OUT`), or `RECORDING`, an active capture
    * session that force-terminating live audio would wrongly interrupt.
- */
+   */
   async findTimeoutSweepEligible(cutoff: Date): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
@@ -423,6 +423,30 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
             ConsultationStatus.REOPENED,
           ],
         },
+        updatedAt: { lt: cutoff },
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ updatedAt: 'asc' }],
+    });
+  }
+
+  /**
+   *  — consultations sitting in `RECORDING`
+   * whose `updatedAt` is older than `cutoff`, oldest first. Backs the
+   * RECORDING leg of `ConsultationTimeoutSweepService`
+   * (`sweepStaleRecordings`, TASK-932 OD-9): age alone is only HALF the
+   * eligibility test — the service additionally requires the row's
+   * `consultation:live-summary:{id}:lock` key to be ABSENT before it force-
+   * stops a row, so a genuinely live capture session is never interrupted.
+   *
+   * Deliberately cross-tenant, exactly like `findTimeoutSweepEligible`: the
+   * sweep runs with no CLS tenant context (a platform-wide maintenance tick,
+   * not a per-tenant request).
+   */
+  async findStaleRecording(cutoff: Date): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        status: ConsultationStatus.RECORDING,
         updatedAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
       },
