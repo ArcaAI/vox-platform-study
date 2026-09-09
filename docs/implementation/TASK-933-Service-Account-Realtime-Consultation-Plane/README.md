@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Pending` — plan approved in principle by the owner's OD answers (2026-09-09); awaiting the explicit **go** |
+| **Status** | `In Progress` — owner said **go** (2026-09-09); wave 1 running: H1 `task-933/authz`, H2 `task-933/sdk` (worktrees `../hope-v2-task-933-{authz,sdk}`), ALaaS A1 `hope-rt/broker`, A2 `hope-rt/web-ui` |
 | **Type** | `feature` (authorization surface + SDK) |
 | **Branch** | `dev-2.2` |
 | **Consumer** | `ALaaSv3.0/apps/audio-stream-svc` (plan: `ALaaSv3.0/docs/HOPE_REALTIME_CONSULTATION_INTEGRATION_PLAN.md`) |
@@ -145,5 +145,6 @@ _Not started._
 
 | Date | Change |
 |---|---|
+| 2026-09-09 | Owner said **go**. Worktrees `../hope-v2-task-933-authz` (`task-933/authz`) and `../hope-v2-task-933-sdk` (`task-933/sdk`) created off `dev-2.2` (env files copied, `pnpm install` + `db:generate` + dependency-chain builds run by the orchestrator); ALaaS `../ALaaSv3.0-hope-rt-{broker,web-ui}` off `codeSwitchImplementation`. Writers: H1 and H2 at `opus`, A1 at `opus`, A2 `sonnet` removals + `opus` hook. Merge order H1 → H2 (gates re-run after each), then A1-real. |
 | 2026-09-09 | Owner refinement: the service account holds **every** permission the `vox-node` realtime consultation surface needs — the scope family grows to five (`svc:consultation:session:write/read`, `svc:consultation:report:read`, `svc:tenant:context-schema:read`, `svc:workflows:execute`); the consultation-bound workflows plane is opened (supersedes the registry exclusion note); `GET tenants/me/context-schema` and `vox-codegen --tenant` accept the service account so ALaaS engineering can build against the tenant's schema; §1.1 records how the ArcaAI tenant selects the workflow per session from clinician, patient, department and visit type (department assignment + visit-type selector + the `n_visit` branch — no new mechanism). `auth/stream-ticket` stays closed. Still `Pending`, awaiting go. |
 | 2026-09-09 | Ticket opened after two read-only discovery lanes (service-account plane touchpoints; consultation context schema review) requested by the ALaaS integration plan. Status `Pending` — awaiting go. |
