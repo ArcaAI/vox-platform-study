@@ -207,6 +207,37 @@ def _declared_compute_type(loaded_model: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _language_mode_for_declared_language(language: str | None) -> str | None:
+    """The catalog mode a bare ``language`` declaration names, if any.
+
+    TASK-938 — ``language`` and ``language_mode`` are two ways of saying the same
+    thing and only one of them used to survive. ``create_session`` backfilled
+    ``language_mode`` from the AGENT's own spec whenever the caller omitted it, so
+    ``_session_language_modes`` was never empty and ``_load_asr_pipeline``'s mode
+    resolution overwrote the declared language on every agent-path session — an
+    English declaration decoded unpinned, because the agent's mode is the
+    ``ml-en`` pair and a pair deliberately pins nothing. The documented
+    precedence ("``languageMode`` takes precedence over ``language``") is about
+    what the CALLER declared; a mode the spec supplied is not a declaration.
+
+    Every id in :data:`LANGUAGE_MODE_CATALOG` is an ISO 639-1 code or ``auto`` —
+    exactly the vocabulary ``language`` is documented with — so a declaration that
+    names one is PROMOTED to it rather than carried as a second, weaker channel.
+    Promoting keeps one concept downstream: it persists on ``SessionMetadata`` and
+    survives recovery (TASK-891), it is checked against the engine's capability
+    matrix (422 when no configured engine serves it), and it picks up the mode's
+    own priming prompt. A language OUTSIDE the catalog cannot become a mode; it
+    keeps the raw ``inference.language`` override instead, which now survives
+    because the spec backfill no longer runs over a declaration.
+    """
+    if not language:
+        return None
+    from stt.pipeline.language_modes import LANGUAGE_MODES_BY_ID
+
+    normalized = language.strip().lower()
+    return normalized if normalized in LANGUAGE_MODES_BY_ID else None
+
+
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
 
@@ -1005,8 +1036,12 @@ class SessionManager:
                 engine to it (create-time / auto-outage / manual triggers).
             language_mode: Optional end-user language mode id. Resolved
                 against the session's ASR engine at load time into the inference
-                config's language/code_switching/streaming_english_gloss. Takes
-                precedence over ``language``. If the primary engine cannot serve
+                config's language/code_switching/streaming_english_gloss. A mode
+                the CALLER declared takes precedence over ``language``; a bare
+                ``language`` that names a catalog mode is promoted to one, and
+                only a caller who declared neither falls back to the agent's own
+                mode (TASK-938 — see
+                :func:`_language_mode_for_declared_language`). If the primary engine cannot serve
                 the mode a configured fallback is tried; if none qualifies the
                 create raises ``LanguageModeUnsupportedError`` (mapped to 422).
             start_on: ``'primary'`` (default) or ``'fallback'``.
@@ -1069,7 +1104,15 @@ class SessionManager:
                         bundle.spec.fallback.switch_after_consecutive_failures
                     )
                 if not language_mode:
-                    language_mode = bundle.spec.decoding.language_mode
+                    # TASK-938 — the spec backfill must not run over an explicit
+                    # `language`. Promote a declaration that names a catalog mode;
+                    # keep a non-catalog one on `inference.language` below by
+                    # leaving the mode UNSET, which is what stops the resolution in
+                    # `_load_asr_pipeline` from overwriting it. Only a caller who
+                    # declared neither gets the agent's own mode.
+                    language_mode = _language_mode_for_declared_language(language)
+                    if not language_mode and not language:
+                        language_mode = bundle.spec.decoding.language_mode
 
             # Register per-tenant storage routing before any audio I/O. A
             # `storage` descriptor (multi-provider) wins and also pins the audio
