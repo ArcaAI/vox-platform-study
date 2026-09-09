@@ -21,6 +21,22 @@ const CATALOGUE_MODELS = [
   { id: 'm-1', slug: 'wespeaker-voxceleb-resnet34', name: 'WeSpeaker ResNet34', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-2', slug: 'ecapa-tdnn-voxceleb', name: 'ECAPA-TDNN', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-3', slug: 'silero-vad', name: 'Silero VAD', taskType: 'VOICE_ACTIVITY_DETECTION', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  // TASK-934 — an ASR row carrying a decode profile, for the effective-value hint.
+  {
+    id: 'm-asr',
+    slug: 'arcaai-whisper-large-ml-en-gguf-q8-0',
+    name: 'ArcaAI Whisper q8_0',
+    taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
+    providerId: 'hope',
+    provider: 'built-in',
+    providerClass: 'platform-self-host',
+    readiness: 'ready',
+    readinessCheckedAt: null,
+    readinessDetail: null,
+    usable: true,
+    unusableReason: null,
+    asrProfile: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { noSpeechThreshold: 0.4 } },
+  },
 ];
 
 function stubRegistry(models: unknown[] = CATALOGUE_MODELS) {
@@ -40,12 +56,21 @@ function stubRegistry(models: unknown[] = CATALOGUE_MODELS) {
 const render = (ui: React.ReactElement) => renderWithProviders(ui);
 
 /** A controlled host, so a cleared field really re-renders as empty (React skips a no-op change). */
-function Host({ task, onChange }: { task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH'; onChange: (next: Record<string, unknown>) => void }) {
+function Host({
+  task,
+  onChange,
+  modelId,
+}: {
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  onChange: (next: Record<string, unknown>) => void;
+  modelId?: string;
+}) {
   const [value, setValue] = useState<Record<string, unknown>>({});
   return (
     <ParametersForm
       task={task}
       value={value}
+      modelId={modelId}
       onChange={(next) => {
         setValue(next);
         onChange(next);
@@ -230,5 +255,44 @@ describe('ParametersForm', () => {
       );
       expect(await axe(enabledContainer)).toHaveNoViolations();
     });
+  });
+});
+
+/**
+ * TASK-934 (G-4) — the effective-value hint: what the currently ASSIGNED model's
+ * `_metadata.asr` decode profile contributes, shown next to the decode fields the
+ * agent leaves unset (OD-3: agent → model profile → engine default).
+ */
+describe('SPEECH_TO_TEXT effective-value hint (TASK-934)', () => {
+  it('shows the model profile summary line once the catalogue resolves the selected model', async () => {
+    render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} modelId="m-asr" />);
+    await waitFor(() => expect(screen.getByText(/^Model profile:/)).toBeTruthy());
+    expect(screen.getByText('Model profile: final window 7 s · partial window 15 s · no-speech 0.4')).toBeTruthy();
+  });
+
+  it('shows no summary line when no model is selected', () => {
+    render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} />);
+    expect(screen.queryByText(/^Model profile:/)).toBeNull();
+  });
+
+  it('shows no summary line for a non-SPEECH_TO_TEXT task even with a modelId', () => {
+    render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-asr" />);
+    expect(screen.queryByText(/^Model profile:/)).toBeNull();
+  });
+
+  it('names the inherited value on a decoding field the agent leaves empty', async () => {
+    render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} modelId="m-asr" />);
+    await waitFor(() => expect(screen.getByText(/^Model profile:/)).toBeTruthy());
+    expect(screen.getByText(/inherits 0\.4 from the model profile/)).toBeTruthy();
+  });
+
+  it('drops the inherit hint once the agent sets an explicit value for that field', async () => {
+    const onChange = vi.fn();
+    render(<Host task="SPEECH_TO_TEXT" onChange={onChange} modelId="m-asr" />);
+    await waitFor(() => expect(screen.getByText(/^Model profile:/)).toBeTruthy());
+    expect(screen.getByText(/inherits 0\.4 from the model profile/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('No Speech Threshold'), { target: { value: '0.7' } });
+    expect(screen.queryByText(/inherits 0\.4 from the model profile/)).toBeNull();
   });
 });
