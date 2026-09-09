@@ -52,20 +52,38 @@ def resolve_engine_binding(
     *,
     mode: str,
     compute_pref: Sequence[str | None] = (),
+    declared_compute_type: str | None = None,
     platform: str | None = None,
     warn: bool = True,
 ) -> HardwareBinding | None:
     """Resolve the (device, compute) binding for a processor on this host.
 
+    ``declared_compute_type`` is the ASSIGNED MODEL ROW's own compute type
+    (e.g. ``AiModel.computeType`` / ``AiModelConfig.compute_type`` — a
+    ``q4_k``/``q5_k``/``q8_0``/``f16`` GGUF quant string for whisper.cpp, an
+    ``int8``/``float16`` CTranslate2 string for faster-whisper, ...). It is
+    tried FIRST, ahead of ``compute_pref`` (typically the execution
+    profile's ``float16``/``int8``/``float32`` precision vocabulary),
+    because the two vocabularies differ per engine family and a GGUF
+    engine's never overlaps the profile's — without this, the row's actual
+    compute type never reaches resolution and the soft fallback in
+    ``ProcessorRegistry.resolve_binding`` silently returns the engine's
+    first declared compute, which can disagree with the weights actually
+    loaded (TASK-934). When ``declared_compute_type`` is unset, or is not in
+    the engine's declared vocabulary for the resolved device, resolution
+    falls through to ``compute_pref`` order and the soft-fallback default —
+    unchanged from before.
+
     Returns ``None`` (optionally warning) when the engine declares no support
     for any of the platform's devices in the requested mode.
     """
     try:
+        preferred = [c for c in (declared_compute_type, *compute_pref) if c]
         return get_registry().resolve_binding(
             kind,
             name,
             devices=platform_device_preferences(platform),
-            compute_pref=[c for c in compute_pref if c],
+            compute_pref=preferred,
             mode=mode,
         )
     except (CapabilityError, KeyError) as exc:
