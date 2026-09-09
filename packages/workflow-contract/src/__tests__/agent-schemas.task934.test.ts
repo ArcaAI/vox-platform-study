@@ -99,6 +99,6 @@ describe('TASK-934 — the ASR agent can set every decode knob (OD-4)', () => {
   it('stays a closed object, so a typo is a publish problem rather than a silently dropped knob', () => {
     expect(decoding()).toMatchObject({ additionalProperties: false });
     expect(streaming()).toMatchObject({ additionalProperties: false });
-    expect(forbiddenSchemaKeyProblems(asr, 'parameters')).toEqual([]);
+    expect(forbiddenSchemaKeyProblems(AGENT_PARAMETER_SCHEMAS)).toEqual([]);
   });
 });
