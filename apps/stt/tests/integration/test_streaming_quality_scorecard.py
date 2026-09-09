@@ -174,6 +174,20 @@ def test_quality_metric_functions_are_correct() -> None:
     # --- normalization: case/punct fold, whitespace collapse ---------------
     assert normalize_text("The  Patient's B.P. was 120/80!") == "the patient's bp was 12080"
 
+    # --- normalization: hyphen/en-dash/em-dash between alphanumerics splits
+    # to a space (a word JOIN, not punctuation to drop) — TASK-935 R-3, the
+    # discharge-fixture miss where "community-acquired" fused into one token
+    # and cost the key-term gate a false miss.
+    assert normalize_text("community-acquired pneumonia") == "community acquired pneumonia"
+    assert normalize_text("follow-up") == "follow up"
+    assert normalize_text("pre–op") == "pre op"  # en dash (–)
+    assert normalize_text("well—done") == "well done"  # em dash (—)
+    # --- normalization: a slash is a word join ONLY when it is not flanked by
+    # digits on both sides — "mg/dL" (unit ratio, a word) splits, "120/80"
+    # (a numeric reading) stays fused exactly as before.
+    assert normalize_text("mg/dL") == "mg dl"
+    assert normalize_text("120/80") == "12080"
+
     # --- medical WER: identical → 0 ----------------------------------------
     ident = medical_wer("the patient has hypertension", "the patient has hypertension")
     assert ident["wer"] == 0.0
@@ -316,6 +330,26 @@ def test_quality_metric_functions_are_correct() -> None:
     assert regression_report({"quality": {}, "transport": {}}, thresholds)["passed"] is False
     with pytest.raises(AssertionError):
         assert_no_regression({}, thresholds)
+
+
+def test_keyterm_recall_treats_hyphenated_word_joins_as_spaces() -> None:
+    """A curated key term written with spaces must still match a hyphenated
+    hypothesis surface form: "community-acquired pneumonia" is the same
+    clinical term as "community acquired pneumonia", not a miss.
+
+    This is the exact discharge-fixture regression (TASK-935 R-3): before the
+    hyphen fix, ``normalize_text`` fused the hyphen away with no space
+    ("community-acquired" -> "communityacquired"), so a key term written with
+    spaces could never match — one of the two misses behind the fixture's
+    0.667 recall against the 0.70 floor.
+    """
+    kt = keyterm_recall(["community acquired pneumonia"], "community-acquired pneumonia")
+    assert kt["recall"] == 1.0
+    assert kt["missing"] == []
+
+    # The keyphrase (subsequence) matcher gets the same benefit.
+    kp = keyphrase_recall(["community acquired pneumonia"], "community-acquired pneumonia")
+    assert kp["recall"] == 1.0
 
 
 # ===========================================================================
