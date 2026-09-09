@@ -92,8 +92,13 @@ export class S3HealthService {
           connected: isConnected,
           isMinIO,
           endpoint: minioInfo.endpoint,
-          publicBucket: this.s3Service.getPublicBucketName(),
-          privateBucket: this.s3Service.getPrivateBucketName(),
+          // publicBucket/privateBucket are deliberately NOT populated here
+          // (TASK-932 OD-8): the legacy S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET
+          // pair is retired and `IS3Service` no longer exposes a getter for
+          // either. The fields stay on `S3HealthStatus.details` (optional)
+          // only because `apps/api/src/modules/storage/storage.controller.ts`
+          // still reads them into its response — they now always resolve to
+          // `undefined` there rather than a bucket name.
           configurationKeys: configCheck,
           ...(status === 'unhealthy' && {
             error: 'S3 service is configured but connection test failed',
@@ -195,8 +200,8 @@ export class S3HealthService {
         },
         s3Config: {
           configured: await this.s3Service.isConfigured(),
-          publicBucket: this.s3Service.getPublicBucketName(),
-          privateBucket: this.s3Service.getPrivateBucketName(),
+          // publicBucket/privateBucket removed (TASK-932 OD-8): the legacy
+          // bucket pair is retired and `IS3Service` no longer has a getter.
         },
         minioInfo,
       };
@@ -216,7 +221,10 @@ export class S3HealthService {
     presignedUrl: boolean;
     errors: string[];
   }> {
-    const testBucket = bucketName || this.s3Service.getPublicBucketName();
+    // TASK-932 OD-8 — no more fallback to a legacy default bucket
+    // (`getPublicBucketName` is retired); a caller must name its own bucket,
+    // and the "no bucket configured" guard below covers the omitted case.
+    const testBucket = bucketName;
     const testKey = `health-check-${Date.now()}.txt`;
     const testContent = Buffer.from('S3 Health Check Test File', 'utf-8');
     const errors: string[] = [];

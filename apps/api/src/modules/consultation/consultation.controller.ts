@@ -52,6 +52,10 @@ import {
   RedisSubscriberService,
   // Consultation-loop lifecycle signal caller.
   LoopContextSignalService,
+  // TASK-932 S2-4 — the `global-kv` cascade (tenant row -> SYSTEM row ->
+  // descriptor default) the sharing gate resolves through.
+  CONSULTATION_SHARING_ENABLED_KEY,
+  TenantSettingsService,
 } from '@arcaai/applications';
 import {
   Controller,
@@ -84,7 +88,7 @@ import type { IActiveUserContext } from '@arcaai/applications';
 import { ChainSummaryService, sseFromRedisChannel } from '@arcaai/applications';
 import { IConsultationJobService } from '@arcaai/applications';
 import { INoteGenerationService, GenerationTrigger } from '@arcaai/applications';
-import { ConsentPurpose, GlobalSettingRepository, ResourceType } from '@arcaai/domains';
+import { ConsentPurpose, ResourceType } from '@arcaai/domains';
 
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
@@ -190,7 +194,11 @@ export class ConsultationController {
     private readonly timelineService: TimelineService,
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly policyEngine: PolicyEngine,
-    private readonly globalSettingRepository: GlobalSettingRepository,
+    // TASK-932 S2-4 — replaces the raw `GlobalSettingRepository` this controller
+    // used to read the sharing flag from directly (a rule-05 violation: a
+    // controller holds no business logic and no data access). Same position, so
+    // the positional test fixtures below keep their arity.
+    private readonly tenantSettings: TenantSettingsService,
     @Inject(ITagService)
     private readonly tagService: ITagService,
     // Clinical Workflow Playground (WS1/WS2) — per-consultation realtime watcher.
@@ -290,29 +298,45 @@ export class ConsultationController {
   }
 
   /**
-   * Check if consultation sharing is enabled for the current tenant.
-   * Reads the `enable-consultation-sharing` feature flag from GlobalSetting.
+   * Is cross-doctor consultation sharing available to the REQUEST's tenant?
    *
-   * Default-CLOSED. The flag must be EXPLICITLY set to the string `'true'`
-   * to enable shared-patient reads.
-   *   - missing row -> false
-   *   - any other value -> false
-   *   - DB error -> false (fail-closed, log for ops)
+   * TASK-932 S2-4 — resolved through the settings-registry cascade
+   * (`tenant row -> SYSTEM row -> descriptor default`), not by a
+   * `GlobalSettingRepository.findAll` issued from a controller. Three things
+   * change, and the third is the one to read carefully:
+   *
+   *  1. NO DATA ACCESS HERE. Rule 05: a controller holds no business logic and
+   *     no Prisma/repository access. `TenantSettingsService.resolve` is
+   *     SYNCHRONOUS — it reads the AppSettings in-memory cache — so this is
+   *     also strictly less work per request than the query it replaces.
+   *  2. THE VALUE CASCADES. A platform admin can now withdraw sharing from one
+   *     tenant, or platform-wide, from the Feature availability matrix; before,
+   *     only a row physically present in that tenant could say anything, and
+   *     the flag was un-writable through any governed lane.
+   *  3. ABSENCE AND FAILURE ARE NO LONGER THE SAME ANSWER.
+   *       - ABSENCE (no tenant row, no SYSTEM row) resolves the DESCRIPTOR
+   *         default, which is `true`. Every seeded tenant carries an explicit
+   *         `'true'` row today and OD-1 removes those clones so tenants inherit
+   *         that default — the sweep is behaviour-preserving precisely because
+   *         the default matches what the rows said. This IS a change for a
+   *         tenant that never had a row (runtime-created tenants: previously
+   *         closed, now open); it is the owner's decision, recorded as OD-1.
+   *       - FAILURE (the resolver raised: cache not initialised, unknown key
+   *         after a bad rename) is NOT a value and stays fail-CLOSED. An
+   *         unreachable control plane must never be reported as "the default"
+   *         on a path that grants read access to a clinical record.
+   *
+   * Still tenant-scoped and still strict: no tenant in context is closed, and
+   * only the boolean `true` opens the fallback.
    */
-  private async isSharingEnabled(): Promise<boolean> {
+  private isSharingEnabled(): boolean {
     const tenantId = this.cls.get('tenantId');
     if (!tenantId) return false;
     try {
-      const settings = await this.globalSettingRepository.findAll({
-        where: {
-          tenantId,
-          key: 'enable-consultation-sharing',
-        },
-      });
-      return settings[0]?.value === 'true';
+      return this.tenantSettings.resolve<boolean>(CONSULTATION_SHARING_ENABLED_KEY, tenantId).value === true;
     } catch (err) {
       this.logger.warn({
-        message: 'isSharingEnabled lookup failed; defaulting to CLOSED',
+        message: 'isSharingEnabled resolution failed; defaulting to CLOSED',
         tenantId,
         error: (err as Error)?.message,
       });
@@ -332,9 +356,9 @@ export class ConsultationController {
    * Layer 2 — Dynamic shared-patient fallback:
    *   If the caller is NOT the owner, check whether they have any
    *   consultation with the same patient in the same tenant AND the
-   *   `enable-consultation-sharing` feature flag is on. This is a
-   *   runtime DB lookup that cannot be expressed as a static CASL
-   *   condition.
+   *   `enable-consultation-sharing` feature gate is on for that tenant
+   *   (TASK-932 S2-4: resolved through the settings cascade). This is a
+   *   runtime lookup that cannot be expressed as a static CASL condition.
    */
   private async verifyConsultationAccess(consultationId: string): Promise<{ doctorId: string; patientId: string }> {
     const consultation = await this.consultationService.getById(consultationId);
@@ -376,8 +400,9 @@ export class ConsultationController {
       if (canRead) return consultation;
     }
 
-    // Layer 2: dynamic shared-patient check (configurable per tenant)
-    const sharingEnabled = await this.isSharingEnabled();
+    // Layer 2: dynamic shared-patient check (configurable per tenant).
+    // Not awaited: the cascade read is synchronous (see `isSharingEnabled`).
+    const sharingEnabled = this.isSharingEnabled();
     if (!sharingEnabled) {
       throw new ForbiddenException('You do not have access to this consultation');
     }

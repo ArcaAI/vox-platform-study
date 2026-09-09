@@ -70,6 +70,34 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
+   * TASK-932 OD-3 (owner decision, 2026-09-09) — the READ half of
+   * {@link assertPlatformTierWrite}. A SYSTEM-tenant row refused to a
+   * non-elevated caller answers **403**, exactly as `update` / `deleteById`
+   * already do, and not the 404 this surface first shipped with.
+   *
+   * WHY THE POSTURE FLIPPED. 404-over-403 hides the EXISTENCE of a resource
+   * whose existence is itself a secret — another CUSTOMER tenant's row, where
+   * "there is a row here" would leak that the tenant exists and what it
+   * configures. The platform tier is not that: its keys are declared in the
+   * settings registry, shipped in the source tree, and rendered in the catalog
+   * by name. There is no existence to protect, so answering 404 bought nothing
+   * and cost the two things a privilege boundary is supposed to give: the
+   * caller cannot tell "this key is not mine to see" from "I typed the id
+   * wrong", and the platform tier ends up documented as two different rules
+   * depending on the verb (403 to write, 404 to read the same row).
+   *
+   * SCOPE. This is the PLATFORM tier and nothing else. A row belonging to
+   * another customer tenant keeps the house 404, and an id that names no row
+   * at all keeps the repository's own 404 — which is why every call site loads
+   * (or resolves) FIRST and asks this second.
+   */
+  private assertPlatformTierRead(targetTenantId: string | null | undefined): void {
+    if (targetTenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Platform-wide settings are readable by super administrators only.');
+    }
+  }
+
+  /**
    * TASK-932 R-1 (D-5) — the tenant a non-elevated caller's READS are pinned to,
    * or `null` when the caller is a platform administrator.
    *
@@ -123,35 +151,79 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     }
   }
 
+  /**
+   * TASK-932 S2-1 — the one row `(tenantId, key)` may have, in ANY namespace.
+   *
+   * `null` when there is none. `DataNotFoundException` is the repository's way
+   * of saying "no match" on `findFirst`, so it is translated here rather than
+   * left to a `try` around business logic; every other failure propagates,
+   * because a probe that could not run must never be read as "the key is free".
+   *
+   * `deleted: false` passes NO `resourceStatus`, which is what makes it a LIVE
+   * probe: the soft-delete extension injects `not: 'DELETED'` whenever the
+   * caller has not pinned one (`applySoftDeleteFilter`, `packages/database`).
+   */
+  private async findByTenantAndKey(tenantId: string, key: string, deleted: boolean): Promise<GlobalSettingEntity | null> {
+    try {
+      return await this.globalSettingRepository.findFirst({
+        where: {
+          tenantId,
+          key,
+          ...(deleted ? { resourceStatus: ResourceStatusType.DELETED } : {}),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      });
+    } catch (e) {
+      if (e instanceof DataNotFoundException) return null;
+      throw e;
+    }
+  }
+
   async create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity> {
-    // (Defect 2) — revive-on-create. The DB unique index
-    // `(tenantId, name, key)` counts soft-DELETED rows, so a plain create
-    // after a soft-delete 409s (P2002) and the key can never come back.
-    // When a DELETED row matches the identity the new row would take, RESTORE
-    // it (UPDATE: ENABLED + version bump — the sanctioned resurrect path) and
-    // apply the request's fields, preserving the row's audit lineage. Follows
-    // the userRoleAssignment.service restore-on-create precedent. The tenant
-    // is resolved exactly like the write path does (explicit request tenant,
-    // else the CLS tenant the tenant-scope extension would inject); with
-    // neither, there is no unique identity to collide with — plain create.
+    // (Defect 2) — revive-on-create. The DB unique index counts soft-DELETED
+    // rows, so a plain create after a soft-delete 409s (P2002) and the key can
+    // never come back. When a DELETED row matches the identity the new row
+    // would take, RESTORE it (UPDATE: ENABLED + version bump — the sanctioned
+    // resurrect path) and apply the request's fields, preserving the row's
+    // audit lineage. Follows the userRoleAssignment.service restore-on-create
+    // precedent. The tenant is resolved exactly like the write path does
+    // (explicit request tenant, else the CLS tenant the tenant-scope extension
+    // would inject); with neither, there is no unique identity to collide with
+    // — plain create.
+    //
+    // TASK-932 S2-1 — BOTH probes are keyed on `(tenantId, key)` and NOT on
+    // `(tenantId, name, key)`. The narrower identity was the old unique index's
+    // shape, and it left the platform's real invariant unguarded: the same key
+    // under a different `name`/`namespace` is a different row to that index and
+    // a DUPLICATE to everything that reads a setting BY KEY. `AppSettingsService`
+    // rebuilds its cache keyed by key alone and refuses the whole cache when it
+    // finds two ("duplicate platform key(s) detected"), so a second row does not
+    // shadow one setting — it takes the settings cache down for the process.
+    // Lane S1 adds the DB unique index; this guard is what turns that index's
+    // P2002 (which names neither namespace) into a 400 that says which one
+    // already holds the key.
     const effectiveTenantId = request.tenantId ?? this.tenantId;
-    // TASK-890 §3.15 — before the revive probe, so a soft-deleted SYSTEM row is
+    // TASK-890 §3.15 — before the probes, so a soft-deleted SYSTEM row is
     // not a back door into the platform tier.
     this.assertPlatformTierWrite(effectiveTenantId);
     if (effectiveTenantId) {
-      try {
-        const deleted = await this.globalSettingRepository.findFirst({
-          where: {
-            tenantId: effectiveTenantId,
-            name: request.name,
-            key: request.key,
-            resourceStatus: ResourceStatusType.DELETED,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any,
-        });
+      const occupant = await this.findByTenantAndKey(effectiveTenantId, request.key, false);
+      if (occupant) {
+        throw new ArgumentInvalidException(
+          `Setting key '${request.key}' already exists for this tenant in namespace ` +
+            `'${occupant.namespace ?? '(none)'}' (name '${occupant.name}'). A tenant holds at most one live row per key — ` +
+            'update that row instead of creating a second one.',
+        );
+      }
 
+      const deleted = await this.findByTenantAndKey(effectiveTenantId, request.key, true);
+      if (deleted) {
         const restored = await this.globalSettingRepository.restore(deleted.id, this.requestUser?.id);
+        // `name` is applied with the rest since the probe no longer matches on
+        // it: a caller that asked for one identity must not silently inherit
+        // the buried row's.
         await this.updateEntity(restored, {
+          name: request.name,
           value: request.value,
           dataType: request.dataType,
           namespace: request.namespace,
@@ -167,9 +239,6 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
           data: { ...(revived.toObject() as object), revivedFromDeleted: true },
         });
         return revived;
-      } catch (e) {
-        if (!(e instanceof DataNotFoundException)) throw e;
-        // No DELETED row for this identity — fall through to a plain create.
       }
     }
 
@@ -255,12 +324,16 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // `where: { tenantId: SYSTEM }` is accepted by the shared-read merge
     // (SYSTEM is half of the `[caller, SYSTEM]` pair it allows), so without
     // this guard `GET admin/settings/tenant/00000000-…` hands a tenant admin
-    // the whole platform tier. 404 rather than 403: which tenants exist, and
-    // whether the platform tier is readable at all, are existence questions
-    // (the house 404-over-403 posture) — a foreign CUSTOMER tenant answers the
-    // same way, where the scope extension previously threw a raw 500.
+    // the whole platform tier.
+    //
+    // TASK-932 OD-3 — the PLATFORM tier answers 403 (a privilege boundary; its
+    // key names are public in the registry catalog). Any OTHER tenant keeps the
+    // house 404: which customer tenants exist is an existence question, and
+    // that is the leak 404-over-403 exists to close. The scope extension
+    // previously threw a raw 500 for both.
     const pin = this.ownTenantReadPin;
     if (pin && tenantId !== pin) {
+      this.assertPlatformTierRead(tenantId);
       throw new DataNotFoundException('globalSetting', tenantId);
     }
     // With the secretsOnly facet the tenant scope moves INSIDE the
@@ -324,14 +397,21 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
     // TASK-932 R-1 — the shared-read widening lets a tenant admin's `findById`
     // resolve a SYSTEM row, so the row has to be checked after it is loaded.
-    // A 404 (`DataNotFoundException` → the global filter's generic
-    // `Resource not found`) and NOT a 403: the answer must be byte-identical to
-    // a genuinely missing id, or an admin who can read the platform's key names
-    // out of the source tree can confirm each row's existence one request at a
-    // time. The guard precedes the audit event on purpose — a read that is
-    // refused is not a view.
+    //
+    // TASK-932 OD-3 — and it is refused with a 403, matching `update` /
+    // `deleteById` on the very same row. The earlier 404 was chosen to make the
+    // answer byte-identical to a missing id; the owner's call is that the
+    // platform tier has no existence to hide (its keys are in the registry
+    // catalog by name), and that one row answering two different postures
+    // depending on the verb is the worse outcome. EXISTENCE is still resolved
+    // first — the `findById` above 404s an unknown id, so a caller never learns
+    // which ids exist by reading a 403.
+    //
+    // Both guards precede the audit event on purpose — a read that is refused
+    // is not a view.
     const pin = this.ownTenantReadPin;
     if (pin && globalSetting.tenantId !== pin) {
+      this.assertPlatformTierRead(globalSetting.tenantId);
       throw new DataNotFoundException('globalSetting', String(id));
     }
 

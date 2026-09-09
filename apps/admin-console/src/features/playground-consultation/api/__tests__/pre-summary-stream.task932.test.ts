@@ -13,7 +13,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { foldPreSummaryEvent, type PreSummaryView } from '../hooks';
+import { foldPreSummaryEvent, reconcilePreSummaryFromLatest, type PreSummaryView } from '../hooks';
+import type { SummaryResult } from '../types';
 
 const READY: PreSummaryView = { status: 'ready', content: '- Diabetes (recorded 11-Aug-2026)', error: null, agentSlug: 'case-notes-pre-summary', updatedAt: '2026-09-09T10:00:01.000Z' };
 
@@ -62,5 +63,85 @@ describe('TASK-932 — foldPreSummaryEvent', () => {
     // Malformed JSON, and an unknown status, both leave the current view alone.
     expect(foldPreSummaryEvent(READY, 'not json')).toBe(READY);
     expect(foldPreSummaryEvent(READY, event({ status: 'thinking' }))).toBe(READY);
+  });
+});
+
+/**
+ * TASK-932 C1-2 — `usePreSummaryStream`'s REST catch-up.
+ *
+ * A `presummary` event published before the SSE stream subscribes is lost outright (observed
+ * live, a 30ms window) — there is no replay, so a late mount or a full page refresh would show
+ * nothing even though a `ready` pre-summary already landed. `getLatestPreSummary` reads the SAME
+ * persisted row a `ready` SSE event describes, so reconciling it in is a matter of never letting a
+ * REST read regress state the SSE fold has already produced.
+ */
+const latestPreSummary = (fields: Partial<SummaryResult> = {}): SummaryResult => ({
+  id: 'ctx-9',
+  consultationId: 'c-1',
+  type: 'pre_summary',
+  content: '- Diabetes (recorded 11-Aug-2026)',
+  updatedAt: '2026-09-09T10:00:01.000Z',
+  version: 1,
+  ...fields,
+});
+
+describe('TASK-932 — reconcilePreSummaryFromLatest (usePreSummaryStream REST catch-up)', () => {
+  it('seeds from the REST catch-up when no SSE event has arrived', () => {
+    const latest = latestPreSummary();
+    expect(reconcilePreSummaryFromLatest(null, latest)).toEqual({
+      status: 'ready',
+      content: latest.content,
+      error: null,
+      agentSlug: null,
+      updatedAt: latest.updatedAt,
+    });
+  });
+
+  it('a REST read is never applied once an equal-or-newer SSE event landed', () => {
+    const running: PreSummaryView = {
+      status: 'running',
+      content: null,
+      error: null,
+      agentSlug: 'case-notes-pre-summary',
+      updatedAt: '2026-09-09T10:00:02.000Z',
+    };
+    // The REST answer is OLDER than the running state's own `updatedAt`.
+    const olderLatest = latestPreSummary({ updatedAt: '2026-09-09T10:00:00.000Z' });
+    expect(reconcilePreSummaryFromLatest(running, olderLatest)).toBe(running);
+
+    // Equal `updatedAt` also does not regress — there is nothing newer to reconcile in.
+    const equalLatest = latestPreSummary({ updatedAt: running.updatedAt! });
+    expect(reconcilePreSummaryFromLatest(running, equalLatest)).toBe(running);
+  });
+
+  it('an older REST response never regresses a terminal state', () => {
+    const degraded: PreSummaryView = {
+      status: 'degraded',
+      content: null,
+      error: 'no_case_notes',
+      agentSlug: 'case-notes-pre-summary',
+      updatedAt: '2026-09-09T10:00:05.000Z',
+    };
+    const olderLatest = latestPreSummary({ updatedAt: '2026-09-09T10:00:01.000Z' });
+    expect(reconcilePreSummaryFromLatest(degraded, olderLatest)).toBe(degraded);
+    expect(reconcilePreSummaryFromLatest(READY, olderLatest)).toBe(READY);
+  });
+
+  it('upgrades a `running` state whose `updatedAt` is strictly older than the REST answer', () => {
+    const running: PreSummaryView = {
+      status: 'running',
+      content: null,
+      error: null,
+      agentSlug: 'case-notes-pre-summary',
+      updatedAt: '2026-09-09T09:59:00.000Z',
+    };
+    const latest = latestPreSummary();
+    expect(reconcilePreSummaryFromLatest(running, latest)).toEqual({
+      status: 'ready',
+      content: latest.content,
+      error: null,
+      agentSlug: 'case-notes-pre-summary',
+      updatedAt: latest.updatedAt,
+    });
   });
 });

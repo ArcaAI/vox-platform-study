@@ -113,6 +113,20 @@ export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sess
 export const CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY = 'consultation.state.sessionTimeoutSweep.cron';
 
 /**
+ *  — the RECORDING leg of the sweep (TASK-932 OD-9). A
+ * `RECORDING` row whose `updatedAt` is older than this window AND holds no
+ * `consultation:live-summary:{id}:lock` key is genuinely orphaned (the
+ * capturing tab/browser is gone, not merely between chunks): the sweep stops
+ * it through the real client path, `ConsultationService.stopRecording`,
+ * landing it in `DRAINING` — where `..sessionTimeoutMinutes` (the OTHER
+ * window, M) eventually takes over. A row that still holds the lock is left
+ * alone; the two signals (age AND absent lock) are both required. NOT a
+ * kill-switch (no on/off semantics) — a tuning knob, `failMode:
+ * open-to-default`. Documented default 30 minutes (OD-9: N = 30).
+ */
+export const CONSULTATION_RECORDING_STALE_MINUTES_KEY = 'consultation.state.recordingStaleMinutes';
+
+/**
  * the PER-TENANT rollout flag for the realtime GRAPH EXECUTOR.
  *
  * The live flush historically ran a hardcoded 11-step sequence for every
@@ -147,5 +161,6 @@ export const CONSULTATION_GATE_DEFAULTS = {
   [CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY]: false,
   [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,
   [CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY]: '*/15 * * * *',
+  [CONSULTATION_RECORDING_STALE_MINUTES_KEY]: 30,
   [CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY]: false,
 } as const;

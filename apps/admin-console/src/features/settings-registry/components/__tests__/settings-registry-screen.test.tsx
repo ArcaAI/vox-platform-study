@@ -174,7 +174,24 @@ async function openKey(key: string) {
   return screen.findByRole('dialog');
 }
 
-afterEach(() => {
+afterEach(async () => {
+  // A test that leaves the drawer open (several below never click Cancel/Save
+  // through to a close) hands `cleanup()` a mounted Radix `Sheet` mid-open.
+  // Force-unmounting it there races the next test's own mount — `cleanup()`
+  // tears down the React tree synchronously, but the Radix portal's own
+  // dismiss/unmount effects are still pending, and the NEXT test's
+  // `findByRole('dialog')` can lose that race and time out on a screen that
+  // never got the previous dialog fully torn down. Close it the way a user
+  // would (Escape) and wait for it to actually leave the DOM before
+  // `cleanup()` runs. `waitFor` (not `waitForElementToBeRemoved`) because
+  // Escape can close the dialog synchronously within the `fireEvent` itself —
+  // `waitForElementToBeRemoved` throws when the element is already gone on
+  // its first check, `waitFor` just resolves immediately in that case.
+  const dialog = screen.queryByRole('dialog');
+  if (dialog) {
+    fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  }
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -332,6 +349,28 @@ describe('SettingRegistryDrawer — type-aware controls', () => {
     expect(await within(dialog).findByText(/is not a number/)).toBeDefined();
     expect(within(dialog).getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
     expect(putCalls(calls)).toHaveLength(0);
+  });
+
+  // A regression pin for the interleaving that produced the flake: a test
+  // opens a drawer and never closes it (deliberately, below — most of the
+  // tests in this file behave exactly this way), so `afterEach` is the only
+  // thing that can leave the next test a clean slate. Order matters here —
+  // these two `it`s must run back to back — so keep them adjacent rather than
+  // relying on file order elsewhere in the suite.
+  it('leaves its drawer open on purpose, to drive the next test', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />);
+    await openKey(NUMBER_KEY);
+    // No close, no Cancel, no Save-then-close — `afterEach` inherits an open
+    // Radix `Sheet` exactly like the tests above.
+  });
+
+  it('still finds a dialog for a DIFFERENT key after the previous test left one open', async () => {
+    stubFetch();
+    renderWithProviders(<SettingsRegistryScreen />);
+
+    const dialog = await openKey(FLAG_KEY);
+    expect(within(dialog).getByText(FLAG_KEY)).toBeDefined();
   });
 });
 
