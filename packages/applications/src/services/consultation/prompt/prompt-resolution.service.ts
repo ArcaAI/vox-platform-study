@@ -505,6 +505,22 @@ function activePresummarizationNodes(graph: WorkflowGraph | null | undefined): W
   return graph.nodes.filter((node) => node.type === PRESUMMARIZATION_NODE_TYPE && !isNodeDisabled(node) && readPromptTemplateId(node) !== null);
 }
 
+/**
+ * TASK-932 — the CORE-palette form of the same declaration: an enabled `core.agent` node whose
+ * `execution.cadence` is `onStart` (the warm-start pre-summary every TASK-930 consultation graph
+ * carries). It binds no `promptTemplateId` — its prompt is the referenced AGENT's instruction,
+ * which the realtime lane runs at session start — so this legacy chain cannot serve it, but it
+ * IS the tenant's configured opinion on pre-summary, not an incomplete one.
+ */
+function corePreSummaryNodes(graph: WorkflowGraph | null | undefined): WorkflowGraphNode[] {
+  if (!graph || !Array.isArray(graph.nodes)) return [];
+  return graph.nodes.filter((node) => {
+    if (node.type !== 'core.agent' || isNodeDisabled(node)) return false;
+    const execution = (node.config as { execution?: { cadence?: unknown } } | undefined)?.execution;
+    return execution?.cadence === 'onStart';
+  });
+}
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -904,18 +920,33 @@ export class PromptResolutionService {
       const configurationError =
         `no ACTIVE ${PRESUMMARIZATION_NODE_TYPE} node with a bound prompt template is configured in this tenant's ` +
         'governing consultation workflow';
-      const governed = await this.hasGoverningConsultationGraph(tenantId);
-      trace.configurationErrors = [
-        ...(trace.configurationErrors ?? []),
-        governed ? configurationError : `${configurationError} — pre-summary is falling through to the tenant/SYSTEM default`,
-      ];
-      this.logger.error({ message: configurationError, tenantId, preSummaryVariant: variant, governed });
+      const governingGraph = await this.governingConsultationGraph(tenantId);
+      const governed = governingGraph !== null;
+      // TASK-932 — the ruling above predates the CORE palette. A graph that declares pre-summary
+      // as a `core.agent` onStart node (every TASK-930 consultation graph does) is a tenant that
+      // HAS configured it — the agent's instruction runs in the realtime lane — so it is neither
+      // absent nor incomplete, and this chain (still what `SummaryService.generatePreSummary`
+      // reads) falls through to the tenant/SYSTEM default as it always did for such tenants.
+      // Failing it closed here 503'd the warm start of every ArcaAI department journey the moment
+      // the resolvers found CORE graphs again.
+      const declaredInCore = corePreSummaryNodes(governingGraph).length > 0;
+      const note = declaredInCore
+        ? `${configurationError} — pre-summary is declared as a core.agent onStart node instead (its agent's instruction runs in the realtime lane); this chain serves the tenant/SYSTEM default`
+        : governed
+          ? configurationError
+          : `${configurationError} — pre-summary is falling through to the tenant/SYSTEM default`;
+      trace.configurationErrors = [...(trace.configurationErrors ?? []), note];
 
-      if (governed) {
-        throw new ServiceUnavailableException(
-          `${configurationError}. Add an enabled ${PRESUMMARIZATION_NODE_TYPE} node with a prompt template to the published ` +
-            'consultation workflow, or unassign the workflow to use the platform default.',
-        );
+      if (declaredInCore) {
+        this.logger.warn({ message: note, tenantId, preSummaryVariant: variant });
+      } else {
+        this.logger.error({ message: configurationError, tenantId, preSummaryVariant: variant, governed });
+        if (governed) {
+          throw new ServiceUnavailableException(
+            `${configurationError}. Add an enabled ${PRESUMMARIZATION_NODE_TYPE} node with a prompt template to the published ` +
+              'consultation workflow, or unassign the workflow to use the platform default.',
+          );
+        }
       }
     }
 
@@ -1269,17 +1300,22 @@ export class PromptResolutionService {
    * only on the MISS path, so the happy path costs nothing extra.
    *
    * TOTAL, like every other read in this service: a rejected assignment read or a rotted slug
-   * answers `false`, because an operational failure must never be reported to a tenant admin as
+   * answers `null`, because an operational failure must never be reported to a tenant admin as
    * "your graph is misconfigured".
    */
-  private async hasGoverningConsultationGraph(tenantId: string): Promise<boolean> {
-    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return false;
+  private async governingConsultationGraph(tenantId: string): Promise<WorkflowGraph | null> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
     try {
       const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, null as unknown as string);
-      if (!assignment.workflowDefinitionSlug) return false;
-      return (await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug)) !== null;
+      if (!assignment.workflowDefinitionSlug) return null;
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
+      if (!definition) return null;
+      const graph = definition.graph as unknown as WorkflowGraph | null | undefined;
+      // A published definition with no readable graph is still a governing OPINION — the
+      // fail-closed branch above must keep seeing it as governed, exactly as before.
+      return graph && Array.isArray(graph.nodes) ? graph : ({ version: 1, nodes: [], edges: [] } as unknown as WorkflowGraph);
     } catch {
-      return false;
+      return null;
     }
   }
 
