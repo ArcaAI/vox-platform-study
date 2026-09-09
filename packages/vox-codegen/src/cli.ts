@@ -1,18 +1,24 @@
 /**
  * `vox-codegen` — the `bin` entry.
  *
- * TWO modes, one per credential class, mutually exclusive by construction:
+ * TWO modes, mutually exclusive by construction:
  *
  * ```
  * npx @arcaai/vox-codegen --tenant <id> --token <jwt> [--watch] [--out <path>]
+ * npx @arcaai/vox-codegen --tenant <id> --client-id <id> --client-secret <secret> [--watch]
  * npx @arcaai/vox-codegen --api-key <key> [--agents] [--workflows] [--out <dir>]
  * ```
  *
- * The first types a tenant's consultation CONTEXT SCHEMA from a super-admin JWT — a platform
- * operator's view. The second (TASK-931) types what the tenant PUBLISHES, from the API key an
- * integrator actually holds. Mixing them is a refusal rather than a guess: they authenticate
- * differently, read different routes, and answer different questions, so "which did you mean"
- * has no safe default.
+ * The first two type a tenant's consultation CONTEXT SCHEMA; the third (TASK-931) types what the
+ * tenant PUBLISHES, from the API key an integrator actually holds. Mixing them is a refusal
+ * rather than a guess: they authenticate differently, read different routes, and answer different
+ * questions, so "which did you mean" has no safe default.
+ *
+ * The context-schema mode accepts either of TWO credential classes (TASK-933). A super-admin JWT
+ * was the original and only one, which put a HUMAN's token — with a human's expiry — in the
+ * middle of a build pipeline. A SERVICE ACCOUNT (`--client-id` / `--client-secret`, exchanged for
+ * a short-lived opaque token) is the machine credential that route now accepts, under
+ * `svc:tenant:context-schema:read`. Supplying both is a refusal, for the same reason as above.
  *
  * Zero CLI-parsing dependencies: `node:util`'s `parseArgs` (Node >= 18) is
  * enough for this flag set, and this package otherwise carries zero runtime
@@ -23,6 +29,7 @@
 import { parseArgs } from 'node:util';
 import process from 'node:process';
 import { CodegenError } from './errors';
+import { exchangeServiceAccountToken } from './exchange-service-token';
 import { runCodegenOnce } from './run';
 import { runCatalogueCodegenOnce } from './run-catalogue';
 import { watchCodegen } from './watch';
@@ -36,15 +43,20 @@ const HELP_TEXT = `vox-codegen — emit TypeScript types from a tenant's HOPE co
 
 Two modes, one per credential class. They are mutually exclusive.
 
-CONSULTATION CONTEXT SCHEMA (super-admin JWT)
+CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   vox-codegen --tenant <id> --token <jwt> [options]
+  vox-codegen --tenant <id> --client-id <id> --client-secret <secret> [options]
 
-  --tenant <id>        Tenant id to generate types for (required)
-  --token <jwt>        Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
-  --department <id>    Prefer this department's schema default, falling back to the tenant default
-  --out <path>         Output FILE path (default: ${DEFAULT_OUT_FILE})
-  --watch              Keep polling and regenerate whenever the schema changes
-  --interval <ms>      Poll interval in watch mode (default: ${DEFAULT_INTERVAL_MS})
+  --tenant <id>          Tenant id to generate types for (required)
+  --token <jwt>          Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
+  --client-id <id>       Service-account client id (or set HOPE_SVC_CLIENT_ID)
+  --client-secret <s>    Service-account secret (or set HOPE_SVC_CLIENT_SECRET). Prefer the
+                         environment variable: an argv secret is visible in \`ps\`.
+  --working-tenant <id>  Tenant to bind the service-account token to (default: --tenant)
+  --department <id>      Prefer this department's schema default, falling back to the tenant default
+  --out <path>           Output FILE path (default: ${DEFAULT_OUT_FILE})
+  --watch                Keep polling and regenerate whenever the schema changes
+  --interval <ms>        Poll interval in watch mode (default: ${DEFAULT_INTERVAL_MS})
 
 PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
   vox-codegen --api-key <key> [--agents] [--workflows] [options]
@@ -66,6 +78,9 @@ other source file; regenerate whenever the tenant changes what it publishes.
 interface ParsedArgs {
   tenant?: string;
   token?: string;
+  'client-id'?: string;
+  'client-secret'?: string;
+  'working-tenant'?: string;
   'api-key'?: string;
   agents: boolean;
   workflows: boolean;
@@ -83,6 +98,9 @@ function readArgs(argv: string[]): ParsedArgs {
     options: {
       tenant: { type: 'string' },
       token: { type: 'string' },
+      'client-id': { type: 'string' },
+      'client-secret': { type: 'string' },
+      'working-tenant': { type: 'string' },
       'api-key': { type: 'string' },
       agents: { type: 'boolean', default: false },
       workflows: { type: 'boolean', default: false },
@@ -169,6 +187,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   const tenantId = args.tenant;
   const token = args.token ?? process.env.HOPE_API_TOKEN;
+  // Env fallbacks mirror HOPE_API_KEY's, and for the secret the environment is
+  // the RECOMMENDED path: a secret passed on argv is visible in `ps` to every
+  // process on the machine for as long as the command runs.
+  const clientId = args['client-id'] ?? process.env.HOPE_SVC_CLIENT_ID;
+  const clientSecret = args['client-secret'] ?? process.env.HOPE_SVC_CLIENT_SECRET;
   const apiKey = args['api-key'] ?? process.env.HOPE_API_KEY;
   const baseUrl = args['base-url'] ?? process.env.HOPE_API_BASE_URL ?? DEFAULT_BASE_URL;
   const departmentId = args.department;
@@ -177,6 +200,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   // The two modes authenticate differently and read different routes. Refuse the combination
   // rather than pick one: a run that silently ignored half the flags would emit a file the
   // operator did not ask for, and they would find out at review time or not at all.
+  if (apiKey !== undefined && (clientId !== undefined || clientSecret !== undefined)) {
+    process.stderr.write(
+      'vox-codegen: --api-key and a service account (--client-id/--client-secret) are mutually exclusive. The API key reads the ' +
+        'published business plane; the service account reads a tenant context schema. Run one, then the other.\n',
+    );
+    return 1;
+  }
+
   if (apiKey !== undefined && tenantId !== undefined) {
     process.stderr.write(
       'vox-codegen: --api-key and --tenant are mutually exclusive. --tenant reads a consultation context schema ' +
@@ -202,8 +233,28 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     process.stderr.write('vox-codegen: --tenant <id> is required\n');
     return 1;
   }
-  if (!token) {
-    process.stderr.write('vox-codegen: a bearer token is required — pass --token or set HOPE_API_TOKEN\n');
+  // ── Which credential class reads the schema ────────────────────────────────
+  const wantsServiceAccount = clientId !== undefined || clientSecret !== undefined;
+
+  if (token && wantsServiceAccount) {
+    process.stderr.write(
+      'vox-codegen: a super-admin JWT (--token) and a service account (--client-id/--client-secret) are mutually exclusive — ' +
+        'the gateway rejects a request carrying two credential classes. Pick one credential.\n',
+    );
+    return 1;
+  }
+  if (wantsServiceAccount && (clientId === undefined || clientSecret === undefined)) {
+    process.stderr.write(
+      'vox-codegen: a service account needs BOTH halves — pass --client-id and --client-secret ' +
+        '(or set HOPE_SVC_CLIENT_ID and HOPE_SVC_CLIENT_SECRET)\n',
+    );
+    return 1;
+  }
+  if (!token && !wantsServiceAccount) {
+    process.stderr.write(
+      'vox-codegen: a credential is required — pass --token (or HOPE_API_TOKEN) for a super-admin JWT, ' +
+        'or --client-id/--client-secret (or HOPE_SVC_CLIENT_ID/HOPE_SVC_CLIENT_SECRET) for a service account\n',
+    );
     return 1;
   }
 
@@ -216,10 +267,33 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     }
   }
 
-  const common = { tenantId, token, baseUrl, departmentId, outFile };
-
   try {
+    // The exchange happens ONCE, before the (possibly long-lived) watch loop.
+    // A service-account token is short-lived by design, so a watch that outran
+    // its token would fail mid-run — see the note in the watch branch below.
+    const serviceAccountToken = wantsServiceAccount
+      ? (
+          await exchangeServiceAccountToken({
+            baseUrl,
+            clientId: clientId!,
+            clientSecret: clientSecret!,
+            // The working tenant defaults to the tenant being generated: that
+            // is what a platform account is here to read. A tenant-BOUND
+            // account may only ever act on its own tenant, and the gateway
+            // ignores the field for one, so this is harmless there.
+            workingTenantId: args['working-tenant'] ?? tenantId,
+          })
+        ).accessToken
+      : undefined;
+
+    const common = { tenantId, token, serviceAccountToken, baseUrl, departmentId, outFile };
+
     if (args.watch) {
+      // A service-account token is minted once, above, and is NOT refreshed by
+      // this loop: the gateway's default TTL is 15 minutes, so a long watch in
+      // service-account mode will eventually 401 and stop. That is deliberate
+      // for now — `--watch` is a local authoring affordance, and a build
+      // pipeline runs the one-shot form.
       process.stdout.write(`vox-codegen: watching tenant ${tenantId} every ${intervalMs}ms → ${outFile} (Ctrl+C to stop)\n`);
       const controller = new AbortController();
       process.once('SIGINT', () => controller.abort());
