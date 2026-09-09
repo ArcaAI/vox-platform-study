@@ -177,7 +177,7 @@ still pass) and `adm-zip ^0.6.0`.
 
 | Gate | Result |
 |---|---|
-| `pnpm audit` | **49 → 10** (critical **3 → 0**, high 26 → 3, moderate 16 → 4, low 4 → 3) |
+| `pnpm audit` | **49 → 5** (critical **3 → 0**, high 26 → 1, moderate 16 → 2, low 4 → 2) |
 | `pnpm turbo run typecheck` | **45/45** (was 42/45 *before* this work) |
 | `pnpm lint` | **39/39, 0 errors** |
 | `pnpm build:apps` | **21/21** |
@@ -187,23 +187,26 @@ still pass) and `adm-zip ^0.6.0`.
 | API artifact chain | all five regenerated; `api:openapi:check`, `api:portal:check`, `gen:admin:check` green |
 | **Runtime proof** | `next dev` on 16.3.4 + Turbopack: `/login` renders, **0 console errors**, all assets 200, and hydration confirmed (password toggle flips `type` and relabels) |
 
-### Remaining advisories (10) — each named, with why
+### Remaining advisories (5) — each named, with why
 
 | Sev | Package | Why it is still here |
 |---|---|---|
-| high ×2 | `semver` | via `packages/config-rollup` → `rollup-plugin-node-builtins@2.1.2` (2018) |
-| mod ×2 | `bl` | same chain |
-| low | `elliptic` | same chain |
 | high | `deepmerge-ts` <8 | via `@prisma/config`, the Prisma CLI's own dep. Dev/CLI only; an override would force Prisma internals onto an untested major |
 | mod | `uuid` | via `apps/api` → `exceljs`. Upstream must move |
 | mod | `adm-zip` | a *second* advisory (symlink extraction) with **no fixed version published**; 0.5.18 was equally affected, so Wave 5's bump is still a net win |
 | low | `esbuild` | via `@vitejs/plugin-react`. Upstream must move |
 | low | `@ai-sdk/provider-utils` | via `@scalar/api-reference-react`. Upstream must move |
 
-**Five of the ten come from one unconsumed workspace.** `@arcaai/config-rollup` is
-imported by nothing — only the root devDeps name it — and its 2018-era
-`rollup-plugin-node-builtins` is their sole source. Deleting a package is not a bump,
-so it is filed as a follow-up rather than done here.
+All five are upstream-owned: nothing in this repo can clear them without forcing a
+dependency onto a major its owner has not adopted.
+
+The other five were cleared by the follow-up below, and the shape of that finding is
+worth keeping: `@arcaai/config-rollup` is UNUSED but NOT accidental — its README calls
+it "available-but-dormant infrastructure" and `docs/archive/TASK-699` had already
+skipped bumping it for that reason. Deleting it was the obvious move and the wrong one;
+it is also `COPY`d by `apps/api/Dockerfile` and named in `.gitlab/ci/rules.yml`,
+`.github/services.json` and two rules files. **Dormant is not the same as unmaintained**
+— a package kept "available" still has to stay installable and clean.
 
 ### Pre-existing failures, NOT from this ticket
 
@@ -227,3 +230,4 @@ so it is filed as a follow-up rather than done here.
 | 2026-09-09 | `7ac96a7ae` | Wave 4 — Vitest 5 |
 | 2026-09-09 | `d1e9c98fe` | Wave 5 — remaining majors + cross-major advisory floors |
 | 2026-09-09 | — | Docs: this README; corrected the stale `preview` dist-tag claim in `.claude/rules/13-nextjs-apps.md` |
+| 2026-09-09 | — | Follow-up: replaced `rollup-plugin-node-builtins` + `rollup-plugin-node-globals` (both 2018) with `rollup-plugin-polyfill-node@0.13.0` in `@arcaai/config-rollup`. They were the sole source of 5 advisories. `pnpm audit` **10 → 5**; `createConfig()` smoke-tested; the package was NOT deleted (see above) |

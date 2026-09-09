@@ -7,8 +7,15 @@ import obfuscator from 'rollup-plugin-obfuscator';
 import json from '@rollup/plugin-json';
 import externals from 'rollup-plugin-node-externals';
 import babel from '@rollup/plugin-babel';
-import nodeGlobals from 'rollup-plugin-node-globals';
-import nodeBuiltins from 'rollup-plugin-node-builtins';
+// One maintained plugin replaces the two 2018-era ones this used to import
+// (`rollup-plugin-node-builtins` + `rollup-plugin-node-globals`, both last
+// really released in 2018). `rollup-plugin-polyfill-node` is their documented
+// successor and covers both jobs. The old pair was also the SOLE source of five
+// security advisories in this repo -- 2x semver ReDoS, 2x `bl` memory exposure
+// and an `elliptic` low -- all reached through
+// `rollup-plugin-node-builtins > browserify-fs > levelup` and
+// `> crypto-browserify > browserify-sign`.
+import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 
 /**
@@ -64,8 +71,7 @@ export function createConfig({
       extensions: ['.ts', '.js'],
       exclude: 'node_modules/**'
     }),
-    nodeBuiltins(),
-    nodeGlobals(),
+    nodePolyfills(),
   ];
 
   if (minify && !isDev) {
