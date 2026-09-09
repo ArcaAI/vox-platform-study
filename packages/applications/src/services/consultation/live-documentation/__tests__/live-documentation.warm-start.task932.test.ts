@@ -380,3 +380,74 @@ describe('TASK-932 L-1 — a pre-summary published before the stream opens is re
     sub.unsubscribe();
   });
 });
+
+/**
+ * TASK-932 wave 4 L2 F-8 — the pre-summary dedupe must not swallow a same-millisecond successor.
+ *
+ * L-1's dedupe compares `updatedAt <= emittedUpdatedAt`, which is the right rule for the
+ * whole-document note: its snapshot IS its state, so an older or equal one carries nothing new.
+ * The `presummary` lifecycle is not a document — it is a sequence of STATUSES (`running` →
+ * `ready` / `degraded`) — and `publishPreSummary` stamps `new Date().toISOString()`, a
+ * MILLISECOND clock, then caches before publishing. Two events separated only by a Redis
+ * round-trip routinely share a millisecond, and on a warm Redis the whole `running` → `degraded`
+ * pair can.
+ *
+ * The consequence is the exact defect L-1 exists to prevent, one step later: a late joiner is
+ * replayed `running`, the live terminal event is dropped as a "duplicate", and the panel spins
+ * forever on a warm start that already finished.
+ *
+ * For this kind the cache is a BYTE-IDENTICAL copy of what was published, so identity is both
+ * the correct test and an exact one: the replayed event is dropped, everything else is relayed.
+ */
+describe('TASK-932 L2 F-8 — a same-millisecond pre-summary successor is relayed, not deduped', () => {
+  const PRESUMMARY_KEY = `consultation:live-summary:${CID}:presummary:last`;
+  const CHANNEL = `consultation:live-summary:${CID}`;
+  const AT = '2026-09-09T00:00:07.000Z';
+  const RUNNING = JSON.stringify({ event: 'presummary', consultationId: CID, status: 'running', agentSlug: 'case-notes-pre-summary', updatedAt: AT });
+  const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /** A late joiner whose replay is the cached `running` event and nothing else. */
+  async function lateJoiner() {
+    const { service, cache, channelSubject } = buildService();
+    cache.get.mockImplementation(async (key: string) => (key === PRESUMMARY_KEY ? RUNNING : null));
+    const events: Array<{ data: string }> = [];
+    const sub = service.subscribeToLiveSummary(CID).subscribe((event: unknown) => events.push(event as { data: string }));
+    await tick();
+    expect(events).toHaveLength(1);
+    return { events, channelSubject, sub, tick };
+  }
+
+  it('relays a `degraded` stamped in the same millisecond as the replayed `running`', async () => {
+    const { events, channelSubject, sub } = await lateJoiner();
+
+    channelSubject(CHANNEL).next(
+      JSON.stringify({ event: 'presummary', consultationId: CID, status: 'degraded', error: 'no_case_notes', updatedAt: AT }),
+    );
+    await tick();
+
+    // Dropping this is the warm-start panel spinning forever on a run that already finished.
+    expect(events.map((event) => (JSON.parse(event.data) as { status?: string }).status)).toEqual(['running', 'degraded']);
+    sub.unsubscribe();
+  });
+
+  it('still drops the REPLAYED event when the channel re-delivers it byte for byte', async () => {
+    const { events, channelSubject, sub } = await lateJoiner();
+
+    channelSubject(CHANNEL).next(RUNNING);
+    await tick();
+
+    // The replay is what the dedupe exists for: a late joiner must not render `running` twice.
+    expect(events).toHaveLength(1);
+    sub.unsubscribe();
+  });
+
+  it('relays a `ready` that differs only in its CONTENT from the replayed event', async () => {
+    const { events, channelSubject, sub } = await lateJoiner();
+
+    channelSubject(CHANNEL).next(JSON.stringify({ event: 'presummary', consultationId: CID, status: 'running', agentSlug: 'other', updatedAt: AT }));
+    await tick();
+
+    expect(events).toHaveLength(2);
+    sub.unsubscribe();
+  });
+});
