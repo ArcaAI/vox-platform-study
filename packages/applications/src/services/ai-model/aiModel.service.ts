@@ -428,9 +428,24 @@ export class AiModelService extends BaseService implements IAiModelService {
   }
 
   /**
-   * Get model by ID
+   * TASK-932 OD-4 — the ADMIN reads assert the platform administrator, exactly
+   * as the writes do.
+   *
+   * The model registry is platform-admin-owned, SYSTEM rows only (TASK-860
+   * §3.1), and until now these four methods relied entirely on
+   * `ai-model-admin.controller.ts` carrying `manage:all` — one decorator
+   * standing between a tenant admin and the platform's whole model registry,
+   * including every row's `sourceUri`, `wireModelId` and provider wiring. The
+   * assertion is row-INDEPENDENT, so it may run first (rule 05 §Imperative
+   * Privilege Checks): there is no id space to protect, and every non-platform
+   * caller gets the same 403 whether the row exists or not.
+   *
+   * `getCatalogue` is deliberately NOT gated — it is the tenant-facing
+   * projection, and it does its own tier work.
    */
+  /** Get model by ID — the ADMIN registry read. */
   async getById(id: string): Promise<ModelResponse | null> {
+    this.assertPlatformAdmin();
     const model = await this.aiModelRepository.findById(id);
     if (!model) return null;
 
@@ -441,10 +456,9 @@ export class AiModelService extends BaseService implements IAiModelService {
     return AiModelDtoMapper.toResponse(model);
   }
 
-  /**
-   * Get model by slug — the SYSTEM catalogue.
-   */
+  /** Get model by slug — the ADMIN registry read (TASK-932 OD-4). */
   async getBySlug(slug: string): Promise<ModelResponse | null> {
+    this.assertPlatformAdmin();
     const model = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug);
     if (!model) return null;
 
@@ -473,8 +487,14 @@ export class AiModelService extends BaseService implements IAiModelService {
    * just-disabled model stays visible and re-enableable. Pinned to the SYSTEM
    * tenant explicitly: the tenant-scope extension's shared-read merge admits
    * exactly that filter whatever working tenant the caller has selected.
+   *
+   * TASK-932 OD-4 — platform administrators only, like the other three admin
+   * reads. Note the in-process caller: `AiModelDiscoveryService` invokes this
+   * from `GET admin/ai-models/discovery`, which is itself a super-admin route,
+   * so it runs under an elevated CLS principal and is unaffected.
    */
   async getAllForAdmin(): Promise<ModelResponse[]> {
+    this.assertPlatformAdmin();
     const models = await this.aiModelRepository.findAll({
       filters: {
         tenantId: SYSTEM_TENANT_ID,
@@ -491,10 +511,9 @@ export class AiModelService extends BaseService implements IAiModelService {
     return models.map(AiModelDtoMapper.toResponse);
   }
 
-  /**
-   * Get paginated list of catalogue rows
-   */
+  /** Paginated ADMIN registry rows (TASK-932 OD-4). */
   async list(page: number = 1, limit: number = 20): Promise<PaginatedModelResponse> {
+    this.assertPlatformAdmin();
     const models = await this.aiModelRepository.findAll({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
       filters: { tenantId: SYSTEM_TENANT_ID } as any,
