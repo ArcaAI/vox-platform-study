@@ -67,7 +67,8 @@ Environment variables:
 
 Run (GPU host / anywhere with the dev stack up)::
 
-    ./scripts/stt-latency-replay.sh
+    (the former ./scripts/stt-latency-replay.sh wrapper was deleted by TASK-934 OD-6;
+    run this harness directly with pytest)
     # or directly:
     conda run -n arcaenv --no-capture-output pytest \
         apps/stt/tests/integration/test_streaming_latency_harness.py -v -s
