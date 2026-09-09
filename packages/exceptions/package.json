@@ -17,12 +17,12 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@types/node": "^26.2.0",
-    "eslint": "^10.8.1",
+    "@types/node": "^26.5.0",
+    "eslint": "^10.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "nestjs-cls": "^6.2.1"
+    "nestjs-cls": "^6.3.0"
   }
 }
