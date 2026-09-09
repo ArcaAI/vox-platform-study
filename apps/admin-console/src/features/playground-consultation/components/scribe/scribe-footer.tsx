@@ -66,12 +66,38 @@ const AUTO_LANGUAGE_OPTION: SttLanguageModeOption = {
   kind: 'auto',
 };
 
+/**
+ * TASK-938 — the backend catalogue carries an auto mode of its OWN (`id: 'auto'`,
+ * "Auto-detect"), so the list above rendered TWO rows that read the same and behaved
+ * differently. That is not cosmetic:
+ *
+ * * `__auto__` declares NOTHING, so `apps/stt` keeps the session on the agent's own mode
+ *   (`ml-en` for the seeded ASR agent) — unpinned, and primed with the bilingual
+ *   code-switch prompt;
+ * * `auto` declares auto-detect, which REPLACES the agent's mode — also unpinned, but with
+ *   no prompt at all, so it is the strictly weaker of the two on whisper.cpp.
+ *
+ * An owner session picked the catalogue one believing it was the default and got the
+ * unprimed decode. The sentinel is the row that must survive: it is the OD-1 default
+ * ("undeclared", never English) and the only value that can express "no declaration" at
+ * all, since `''` cannot be a Radix item value. So every auto mode the catalogue offers is
+ * dropped here and this picker renders exactly one. Checked by `kind` AND by `id` because
+ * `kind` is optional on the option type — a catalogue entry that omits it must not slip
+ * through.
+ *
+ * The catalogue itself is untouched: `deriveSummaryLanguages` reads the same list for the
+ * SUMMARY-language axis and needs it whole.
+ */
+function withoutCatalogueAuto(modes: SttLanguageModeOption[]): SttLanguageModeOption[] {
+  return modes.filter((mode) => mode.kind !== 'auto' && mode.id !== 'auto');
+}
+
 export function ScribeFooter({ languageModes, selectedLanguageMode, onLanguageModeChange, languageModesLoading, metrics }: ScribeFooterProps) {
   return (
     <footer className="bg-card flex shrink-0 flex-wrap items-stretch gap-3 border-t p-3">
       <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
         <SttLanguageModePicker
-          modes={[AUTO_LANGUAGE_OPTION, ...languageModes]}
+          modes={[AUTO_LANGUAGE_OPTION, ...withoutCatalogueAuto(languageModes)]}
           value={selectedLanguageMode || AUTO_LANGUAGE}
           onValueChange={(next) => onLanguageModeChange(next === AUTO_LANGUAGE ? '' : next)}
           isLoading={languageModesLoading}
