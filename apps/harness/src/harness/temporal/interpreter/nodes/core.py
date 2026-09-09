@@ -1075,6 +1075,14 @@ async def _persist_finalized_note(
     The DNA style id comes from the run context the LIVE HANDOFF published, never from the node's
     config: which style applied is a fact about the clinician whose consultation this is, and the
     gateway resolved it under the tenant AND doctor gate.
+
+    KNOWN DIFFERENCE from the legacy lane, recorded rather than papered over: because the
+    redaction runs activity-to-activity from inside this one, its result is NOT an event in the
+    workflow history, so a retry of ``interpreter.core_agent`` re-runs the transform — where a
+    retry of ``HarnessDocWorkflow`` replays the recorded ``apply_redaction`` result. The
+    deterministic pass is pure, so re-running it is free; the optional SEMANTIC pass is a Text
+    call, protected only by its idempotency key (stable across an activity's retry attempts) and
+    whatever that key dedups against.
     """
     # Imported inside the function for the same reason `_run_transcription` does it.
     from harness.temporal.activities import persist_draft  # noqa: PLC0415
