@@ -98,7 +98,7 @@ class TestReplayCompatibility:
         """Forward guard for the OPTIMISTIC-delivery era.
 
         The fixture is a happy-path history recorded with the optimistic flag ON, so
-        it carries the ``optimistic-delivery`` patch marker AND the reordered
+        it carries the ``task-355-optimistic-delivery`` patch marker AND the reordered
         command sequence: early ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` ->
         ``run_inferential_sensors`` -> ``finalize_assurance`` -> gate ->
         ``record_gate_decision`` (the inferential pass moved AFTER delivery).
@@ -122,7 +122,7 @@ class TestReplayCompatibility:
 
         The fixture is a regen-if-untouched history recorded with the optimistic flag
         ON and an inferential REGEN-then-SAFE sequence, so it carries BOTH the
-        ``optimistic-delivery`` AND ``task-355-assurance-signals`` patch
+        ``task-355-optimistic-delivery`` AND ``task-355-assurance-signals`` patch
         markers plus the Slice-4b regen command sequence: early
         ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors``
         (REGEN) -> regenerate (``assemble_prompt`` -> ``generate`` ->

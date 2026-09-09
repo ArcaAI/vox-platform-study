@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
-import { HARNESS_DRAFT_PHASE } from '../dto';
+import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
 
 /**
  * `consultationRepository.findById` fixtures used to be plain
@@ -269,6 +269,13 @@ const createMockJobService = () => ({
   notifyComplete: vi.fn().mockResolvedValue(undefined),
 });
 
+// The live harness-progress feed. The interpreter's onEnd persist carries NO summary
+// `jobId` (the run payload's `jobId` is the harness run's, not a ConsultationJob's), so the
+// `notifyProgress` branch above can never fire for it and the console saw no push at all.
+const createMockProgressService = () => ({
+  reportProgress: vi.fn().mockResolvedValue({ ok: true }),
+});
+
 // Manual doctor highlights threaded into assemble.
 const createMockHighlightRepository = () => ({
   findByConsultation: vi.fn().mockResolvedValue([]),
@@ -330,6 +337,7 @@ describe('HarnessInternalService', () => {
   let promptTemplateRepository: ReturnType<typeof createMockPromptTemplateRepository>;
   let harnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
   let jobService: ReturnType<typeof createMockJobService>;
+  let progressService: ReturnType<typeof createMockProgressService>;
   let highlightRepository: ReturnType<typeof createMockHighlightRepository>;
   let assuranceService: ReturnType<typeof createMockHarnessAssuranceService>;
   let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
@@ -383,6 +391,11 @@ describe('HarnessInternalService', () => {
       policy as any,
       undefined, // mcpServerRepository
       usageLedgerService as any,
+      undefined, // notificationService
+      undefined, // providerConnectionService
+      undefined, // visitTypes
+      undefined, // aiModelRepository
+      progressService as any,
     );
   };
 
@@ -397,6 +410,7 @@ describe('HarnessInternalService', () => {
     promptTemplateRepository = createMockPromptTemplateRepository();
     harnessAuditService = createMockHarnessAuditService();
     jobService = createMockJobService();
+    progressService = createMockProgressService();
     highlightRepository = createMockHighlightRepository();
     assuranceService = createMockHarnessAssuranceService();
     contextItemVersionRepository = createMockContextItemVersionRepository();
@@ -1342,6 +1356,47 @@ describe('HarnessInternalService', () => {
       await service.persistDraft('consultation-1', body);
       expect(jobService.notifyProgress).not.toHaveBeenCalled();
       expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    // ── The jobId-less push (the interpreter's onEnd persist) ──
+    //
+    // `notifyProgress` is addressed by a ConsultationJob id. The interpreter's finalize
+    // carries none, so before this the console learned nothing when the durable note landed
+    // and had to discover it by polling. The consultation-addressed harness-progress channel
+    // is the one the console is ALREADY subscribed to, so a terminal event on it closes the
+    // feed and lets the poll retire.
+    it('publishes a terminal harness-progress event when no jobId is supplied', async () => {
+      const body = draftBody();
+      delete (body as any).jobId;
+      await service.persistDraft('consultation-1', body);
+      expect(progressService.reportProgress).toHaveBeenCalledWith('consultation-1', {
+        stage: HARNESS_PROGRESS_TERMINAL_STAGE,
+        tenantId: 'tenant-1',
+      });
+    });
+
+    it('does not publish the terminal event on the EARLY phase (assurance still pending)', async () => {
+      const body = draftBody();
+      delete (body as any).jobId;
+      (body as any).phase = HARNESS_DRAFT_PHASE.EARLY;
+      await service.persistDraft('consultation-1', body);
+      expect(progressService.reportProgress).not.toHaveBeenCalled();
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the jobId branch alone when a jobId IS supplied (no double signal)', async () => {
+      await service.persistDraft('consultation-1', draftBody());
+      expect(jobService.notifyProgress).toHaveBeenCalledWith('job-1', expect.any(Number), expect.any(String));
+      expect(progressService.reportProgress).not.toHaveBeenCalled();
+    });
+
+    it('still persists the draft when the terminal harness-progress publish throws', async () => {
+      progressService.reportProgress.mockRejectedValue(new Error('redis down'));
+      const body = draftBody();
+      delete (body as any).jobId;
+      const result = await service.persistDraft('consultation-1', body);
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
     });
 
     it('still persists the draft when the best-effort SSE notify throws', async () => {

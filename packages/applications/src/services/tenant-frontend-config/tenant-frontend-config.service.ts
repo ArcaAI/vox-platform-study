@@ -11,19 +11,23 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { LOCAL_RAW_CAPTURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { ITenantFrontendConfigService } from './ITenantFrontendConfigService';
 import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from './dto';
 import { TenantFrontendConfigDtoMapper } from './tenant-frontend-config.dto.mapper';
 import { captureModeToLocalRawCapture } from './capture-mode.translation';
 
 /**
- * Platform-capability flag for local raw-stream dual-capture. A
- * single `locked` GlobalSetting owned by `SYSTEM_TENANT_ID` (namespace
- * `feature-flags`). The `AppSettingsService` cache is keyed flat by `key`, so a
- * single platform-scoped row resolves deterministically regardless of tenant.
+ * Platform-capability flag for local raw-stream dual-capture.
+ *
+ * TASK-932 S2-4 — this is now a RE-EXPORT of the settings-registry descriptor
+ * key, so the string is spelled once. The name is kept because it is part of
+ * this module's public surface (`my-tenant.controller.ts` imports it to label
+ * the synthetic row it appends to `GET /tenant/me/config`, which is an SDK wire
+ * contract and does not change).
  */
-export const LOCAL_RAW_CAPTURE_CAPABILITY_KEY = 'enable-local-raw-capture';
+export const LOCAL_RAW_CAPTURE_CAPABILITY_KEY = LOCAL_RAW_CAPTURE_ENABLED_KEY;
 
 /**
  * Manages the per-tenant frontend CAPTURE policy.
@@ -46,8 +50,10 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     private readonly configRepository: TenantFrontendConfigRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    @Inject(IAppSettingsService)
-    private readonly appSettings: IAppSettingsService,
+    // TASK-932 S2-4 — the settings-registry PLATFORM lane, replacing the direct
+    // `IAppSettingsService` read. Same underlying cache, but the DEFAULT now
+    // comes from the descriptor instead of a literal at the call site.
+    private readonly tenantSettings: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantFrontendConfig);
   }
@@ -98,9 +104,28 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     return config.captureRawAudio === true;
   }
 
-  /** The locked platform capability (single SYSTEM_TENANT_ID GlobalSetting). */
+  /**
+   * The platform capability, resolved on the registry's PLATFORM lane
+   * (`SYSTEM row -> descriptor default`).
+   *
+   * TASK-932 S2-4 / OD-2 — the key is a `global-kv` `Feature Availability`
+   * descriptor with `maxScope: 'system'` and `globalOnly: true`, which is what
+   * now makes it platform-admin-only. The row-level `locked` flag said the same
+   * thing through a mechanism only this one row used; the descriptor gate
+   * replaces it (lane S1 clears `locked` on the seeded row).
+   *
+   * `resolvePlatform`, not `resolve`: the value is platform-scope by
+   * declaration, and the TENANT half of the raw-capture decision is the
+   * `TenantFrontendConfig.captureRawAudio` column ANDed below — not a tenant
+   * row for this key, which is why the descriptor refuses to offer one.
+   *
+   * Deliberately NOT wrapped in a try/catch. `resolve` raises only on an
+   * unregistered key — a programming error a rename would introduce — and
+   * swallowing that would turn a broken gate into a silently disabled feature.
+   * The fail-safe end is already the descriptor default (`false`).
+   */
   private platformRawCaptureCapable(): boolean {
-    return this.appSettings.getValueWithDefault<boolean>(LOCAL_RAW_CAPTURE_CAPABILITY_KEY, false);
+    return this.tenantSettings.resolvePlatform<boolean>(LOCAL_RAW_CAPTURE_ENABLED_KEY).value === true;
   }
 
   async upsert(dto: UpsertTenantFrontendConfigRequest, tenantId?: string): Promise<TenantFrontendConfigResponse> {

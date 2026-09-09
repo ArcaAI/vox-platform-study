@@ -56,18 +56,6 @@ export interface IS3Service {
   signUrl(bucketName: string, fileKey: string, command: PresignedUrlCommand): Promise<string>;
 
   /**
-   * Get the default public bucket name from configuration
-   * @returns Public bucket name
-   */
-  getPublicBucketName(): string;
-
-  /**
-   * Get the default private bucket name from configuration
-   * @returns Private bucket name
-   */
-  getPrivateBucketName(): string;
-
-  /**
    * List all S3 buckets
    * @returns Array of bucket info objects
    */

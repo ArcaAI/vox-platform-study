@@ -42,11 +42,10 @@ export class S3UsageExampleService {
         return;
       }
 
-      // 3. Get bucket information
-      const publicBucket = this.s3Service.getPublicBucketName();
-      const privateBucket = this.s3Service.getPrivateBucketName();
-      this.logger.log(`Public Bucket: ${publicBucket || 'Not configured'}`);
-      this.logger.log(`Private Bucket: ${privateBucket || 'Not configured'}`);
+      // 3. Name the bucket to exercise. TASK-932 OD-8 retired the legacy
+      // S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET platform-default pair — a real
+      // integration names its own bucket rather than relying on one.
+      const exampleBucket = 'my-app-bucket';
 
       // 4. Test connectivity
       this.logger.log('=== Connectivity Test ===');
@@ -58,17 +57,11 @@ export class S3UsageExampleService {
         return;
       }
 
-      // 5. Perform file operations if bucket is available
-      if (publicBucket) {
-        await this.demonstrateFileOperations(publicBucket);
-      } else {
-        this.logger.warn('No public bucket configured, skipping file operations');
-      }
+      // 5. Perform file operations
+      await this.demonstrateFileOperations(exampleBucket);
 
       // 6. Test all operations comprehensively
-      if (publicBucket) {
-        await this.runOperationTests(publicBucket);
-      }
+      await this.runOperationTests(exampleBucket);
 
       this.logger.log('=== S3 Usage Example Completed Successfully ===');
     } catch (error) {

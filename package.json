@@ -25,6 +25,7 @@
     "api:build": "turbo run build --filter=@arcaai/api...",
     "api:openapi": "pnpm api:build && pnpm --filter @arcaai/api openapi",
     "api:route-manifest": "pnpm api:build && pnpm --filter @arcaai/api route-manifest",
+    "api:cleanup-orphan-consultations": "pnpm api:build && NODE_ENV=development pnpm --filter @arcaai/api cleanup-orphan-consultations",
     "api:openapi:check": "tsx scripts/check-openapi-coverage.ts",
     "api:portal": "tsx scripts/gen-api-portal.ts",
     "api:portal:check": "tsx scripts/gen-api-portal.ts --check",

@@ -27,6 +27,7 @@
 import {
   CONSULTATION_GATE_DEFAULTS,
   CONSULTATION_OCR_ENABLED_KEY,
+  CONSULTATION_RECORDING_STALE_MINUTES_KEY,
   CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
@@ -184,5 +185,23 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     description:
       'Cron expression for how often `ConsultationTimeoutSweepService` checks for sweep-eligible consultations past `consultation.state.sessionTimeoutMinutes`. Default every 15 minutes.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
+  },
+  // The RECORDING leg's own staleness window (TASK-932 OD-9, N). A tuning
+  // knob, not a kill-switch: no on/off semantics, so `killSwitch` is
+  // intentionally omitted — same shape as `..sessionTimeoutMinutes` above.
+  {
+    key: CONSULTATION_RECORDING_STALE_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CONSULTATION_PIPELINE_CATEGORY,
+    label: 'Recording stale timeout (minutes)',
+    description:
+      'Minutes a consultation may sit in RECORDING with no `consultation:live-summary:{id}:lock` key before the scheduled sweep force-stops it via `ConsultationService.stopRecording` (the same path a real client uses), landing it in DRAINING where `..sessionTimeoutMinutes` eventually takes over. Both signals are required — age AND an absent lock — so an active capture session is never interrupted. Default 30 minutes (OD-9). Consumed by `ConsultationTimeoutSweepService.sweepStaleRecordings`.',
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
   },
 ];

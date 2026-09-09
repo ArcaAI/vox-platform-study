@@ -10,9 +10,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { GlobalSettingService } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
-import { DataNotFoundException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { buildSecretSettingFilter } from '../globalSetting.dto.mapper';
 
 // Define ResourceStatus locally to avoid mock issues
@@ -1164,7 +1165,6 @@ describe('GlobalSettingService', () => {
     });
   });
 
-
   /**
    * TASK-932 R-1 / D-5 — platform settings belong to the platform admin, and a
    * tenant admin must not be able to READ them.
@@ -1226,12 +1226,41 @@ describe('GlobalSettingService', () => {
       expect(mockGlobalSettingRepository.findAll.mock.calls[0][0].where).toBeUndefined();
     });
 
-    it('404s a SYSTEM row by id for a tenant admin, and audits no view of it', async () => {
+    /**
+     * TASK-932 OD-3 (owner decision, 2026-09-09) — the PLATFORM tier answers
+     * the SAME status to a read as it does to a write: 403.
+     *
+     * The three cases below are the whole rule. A SYSTEM row is a privilege
+     * refusal (its keys are declared in the registry and rendered in the
+     * catalog by name — there is no existence to hide). An id that names no row
+     * stays the repository's 404, which is what keeps a 403 from being an
+     * existence oracle. And a row belonging to another CUSTOMER tenant keeps
+     * the house 404-over-403, because THAT existence is a secret.
+     */
+    it('403s a SYSTEM row by id for a tenant admin (OD-3), and audits no view of it', async () => {
       const row = createMockGlobalSettingEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID });
       mockGlobalSettingRepository.findById.mockResolvedValue(row);
 
-      await expect(service.fetchById('sys-1')).rejects.toBeInstanceOf(DataNotFoundException);
-      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      await expect(service.fetchById('sys-1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceViewed, expect.anything());
+    });
+
+    it('keeps an absent id a 404 — existence is resolved before privilege, so the 403 is no oracle', async () => {
+      mockGlobalSettingRepository.findById.mockRejectedValue(new DataNotFoundException('globalSetting', 'nope'));
+
+      await expect(service.fetchById('nope')).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+
+    it('keeps ANOTHER customer tenant a 404 — that existence is still a secret', async () => {
+      const row = createMockGlobalSettingEntity({ id: 'other-1', tenantId: 'tenant-2' });
+      mockGlobalSettingRepository.findById.mockResolvedValue(row);
+
+      await expect(service.fetchById('other-1')).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+
+    it('403s the by-tenant list for the SYSTEM tenant (OD-3), and reads nothing', async () => {
+      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
     });
 
     it('still serves the caller its OWN row by id', async () => {
@@ -1249,8 +1278,7 @@ describe('GlobalSettingService', () => {
       await expect(service.fetchById('sys-1')).resolves.toBe(row);
     });
 
-    it('404s the by-tenant list for any tenant that is not the caller own — SYSTEM included', async () => {
-      await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: SYSTEM_TENANT_ID })).rejects.toBeInstanceOf(DataNotFoundException);
+    it('404s the by-tenant list for another CUSTOMER tenant (SYSTEM is the 403 above, per OD-3)', async () => {
       await expect(service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 'tenant-2' })).rejects.toBeInstanceOf(DataNotFoundException);
       expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
     });
@@ -1262,4 +1290,124 @@ describe('GlobalSettingService', () => {
     });
   });
 
+  /**
+   * TASK-932 S2-1 — one LIVE row per `(tenantId, key)`, whatever namespace it
+   * wears.
+   *
+   * `create` used to probe for a soft-DELETED row at the exact
+   * `(tenantId, name, key)` the new row would take, which is the shape of the
+   * OLD unique index. That left the platform's real invariant unguarded: the
+   * SAME key under a different `name`/`namespace` is a different row to that
+   * index and a DUPLICATE to everything that reads settings by key.
+   * `AppSettingsService` rebuilds its cache keyed by key alone and REFUSES the
+   * whole cache when it finds two ("duplicate platform key(s) detected"), so a
+   * second row does not shadow one setting — it takes the settings cache down
+   * for the process.
+   *
+   * Lane S1 adds the DB unique index on `(tenantId, key)`. This guard is what
+   * makes the write path say WHICH namespace already holds the key, instead of
+   * surfacing a P2002 whose message names neither.
+   */
+  describe('TASK-932 duplicate-key guard — one live row per (tenantId, key)', () => {
+    const CREATE = {
+      tenantId: 'tenant-1',
+      namespace: 'registry',
+      name: 'Consultation Sharing',
+      key: 'enable-consultation-sharing',
+      value: 'false',
+      dataType: ValueType.Boolean,
+    } as any;
+
+    /**
+     * The two probes: the LIVE one carries no `resourceStatus` (the soft-delete
+     * extension supplies `not: DELETED`), the revive probe pins `DELETED`. The
+     * fixture answers on that difference rather than on call order, so a test
+     * may drive `create` more than once.
+     */
+    function probes(live: unknown, deleted: unknown): void {
+      const answer = (result: unknown) =>
+        result === null ? Promise.reject(new DataNotFoundException('globalSetting', '{}')) : Promise.resolve(result);
+      mockGlobalSettingRepository.findFirst.mockReset();
+      mockGlobalSettingRepository.findFirst.mockImplementation((props: any) =>
+        answer(props?.where?.resourceStatus === ResourceStatus.DELETED ? deleted : live),
+      );
+    }
+
+    it('rejects a live row under a different namespace, and names the namespace that holds the key', async () => {
+      const occupant = createMockGlobalSettingEntity({
+        id: 'live-1',
+        tenantId: 'tenant-1',
+        key: 'enable-consultation-sharing',
+        namespace: 'feature-flags',
+        name: 'Consultation Sharing (legacy)',
+      });
+      probes(occupant, null);
+
+      await expect(service.create(CREATE)).rejects.toBeInstanceOf(ArgumentInvalidException);
+      await expect(service.create(CREATE)).rejects.toThrow(/feature-flags/);
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+      expect(mockGlobalSettingRepository.restore).not.toHaveBeenCalled();
+    });
+
+    it('probes for the live occupant namespace-agnostically — on (tenantId, key) alone', async () => {
+      probes(null, null);
+      mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity());
+
+      await service.create(CREATE);
+
+      const [liveProbe] = mockGlobalSettingRepository.findFirst.mock.calls[0] as [{ where: Record<string, unknown> }];
+      expect(liveProbe.where).toEqual({ tenantId: 'tenant-1', key: 'enable-consultation-sharing' });
+      // No `resourceStatus`: the soft-delete extension supplies `not: DELETED`,
+      // which is exactly "a live row" — and no `name`/`namespace`, which is
+      // exactly what the index Lane S1 adds enforces.
+      expect(liveProbe.where).not.toHaveProperty('namespace');
+      expect(liveProbe.where).not.toHaveProperty('name');
+    });
+
+    it('revives a DELETED row matching (tenantId, key) even when name and namespace differ', async () => {
+      const deleted = createMockGlobalSettingEntity({
+        id: 'dead-1',
+        tenantId: 'tenant-1',
+        key: 'enable-consultation-sharing',
+        namespace: 'feature-flags',
+        name: 'Consultation Sharing (legacy)',
+        resourceStatus: ResourceStatus.DELETED,
+      });
+      probes(null, deleted);
+      const restored = createMockGlobalSettingEntity({ id: 'dead-1', hasChanges: true, changes: { value: 'false' } });
+      mockGlobalSettingRepository.restore.mockResolvedValue(restored);
+      mockGlobalSettingRepository.update.mockResolvedValue(restored);
+
+      const result = await service.create(CREATE);
+
+      expect(mockGlobalSettingRepository.restore).toHaveBeenCalledWith('dead-1', 'current-user-id');
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+      expect(result.id).toBe('dead-1');
+      // The revived row takes the REQUEST's identity, so a caller that asked
+      // for one namespace never silently gets the buried row's.
+      expect(restored.name).toBe('Consultation Sharing');
+      expect(restored.namespace).toBe('registry');
+      const [deletedProbe] = mockGlobalSettingRepository.findFirst.mock.calls[1] as [{ where: Record<string, unknown> }];
+      expect(deletedProbe.where).toEqual({ tenantId: 'tenant-1', key: 'enable-consultation-sharing', resourceStatus: ResourceStatus.DELETED });
+    });
+
+    it('creates normally when no row exists in any namespace', async () => {
+      probes(null, null);
+      mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity({ id: 'fresh-1' }));
+
+      const result = await service.create(CREATE);
+
+      expect(result.id).toBe('fresh-1');
+      expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(1);
+      expect(mockGlobalSettingRepository.restore).not.toHaveBeenCalled();
+    });
+
+    it('propagates a non-404 repository failure from the live probe instead of creating a duplicate', async () => {
+      mockGlobalSettingRepository.findFirst.mockReset();
+      mockGlobalSettingRepository.findFirst.mockRejectedValue(new Error('connection reset'));
+
+      await expect(service.create(CREATE)).rejects.toThrow('connection reset');
+      expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
+    });
+  });
 });

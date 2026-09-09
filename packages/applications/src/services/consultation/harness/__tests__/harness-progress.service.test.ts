@@ -374,6 +374,24 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(event.stages.some((s) => s.stage === 'completed')).toBe(false);
   });
 
+  // The shape the interpreter's jobId-less finalize publishes (`harness-internal.service.ts`
+  // persistDraft step 4): a bare terminal stage, no prior snapshot, no jobId. It must close the
+  // feed WITHOUT inventing a checklist the interpreter never emitted — `useHarnessProgressStream`
+  // reads `closed` and an empty `stages` as "the harness is done here".
+  it('a stage-only terminal publish with no prior state folds to closed with no stages', async () => {
+    const { service, cacheService } = buildDeps({ snapshot: null });
+
+    const ack = await service.reportProgress(CID, { tenantId: TENANT, stage: 'completed' });
+
+    expect(ack).toEqual({ ok: true });
+    const event = lastPublished(cacheService);
+    expect(event.closed).toBe(true);
+    expect(event.stages).toEqual([]);
+    expect(event.consultationId).toBe(CID);
+    expect(event.tenantId).toBe(TENANT);
+    expect(event.jobId).toBeUndefined();
+  });
+
   it('starts fresh when the stored snapshot is corrupt (never throws)', async () => {
     const { service, cacheService } = buildDeps({ snapshot: 'not-json{{{' });
 
