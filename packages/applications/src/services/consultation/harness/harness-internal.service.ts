@@ -37,6 +37,7 @@ import { derivedLocalPath } from '../../ai-model/constants';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
+import { HarnessProgressService } from './harness-progress.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { truncatePriorVisitSummary } from './prior-visit-summary';
@@ -48,7 +49,7 @@ import { INotificationService } from '../../notification';
 import type { CreateNotificationRequest } from '../../notification/dto';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { HARNESS_DRAFT_PHASE } from './dto';
+import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_TERMINAL_STAGE } from './dto';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import type {
   HarnessAssembleRequest,
@@ -238,6 +239,12 @@ export class HarnessInternalService {
     // every resolve is a 404, which is the FAIL-CLOSED direction (model
     // SELECTION never substitutes a value for one it could not resolve).
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
+    // The consultation-addressed harness-progress feed, used by `persistDraft` ONLY
+    // when the draft carries no summary `jobId` — see step 4 there. Optional + trailing so
+    // existing positional unit fixtures keep their arity; production DI supplies it via
+    // HarnessProgressServiceModule. Absent ⇒ no push, which is the pre-existing behaviour
+    // (the console's bounded post-stop poll still finds the note).
+    @Optional() @Inject(HarnessProgressService) private readonly progressService?: HarnessProgressService,
   ) {}
 
   /**
@@ -1247,6 +1254,36 @@ export class HarnessInternalService {
             this.logger.warn({
               message: 'Harness draft SSE progress notify failed (best-effort)',
               jobId: dto.jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } else if (!isEarly) {
+          // The interpreter's `onEnd` finalize persists through this same route but carries NO
+          // summary `jobId` — the run payload's `jobId` is the harness RUN's, not a
+          // ConsultationJob's — so the branch above can never fire for it and the console
+          // learned nothing when the durable note landed. It discovered the note by polling.
+          //
+          // The push goes on the channel the console is ALREADY subscribed to for this
+          // consultation (`consultation:harness-progress:<id>`), addressed by the id the UI
+          // always knows. A terminal stage with no prior snapshot folds to
+          // `{ stages: [], closed: true }`, which is precisely "the harness is done here" —
+          // it ends the SSE relay without inventing a checklist the interpreter never emitted.
+          //
+          // Withheld on EARLY for the same reason the branch above sends 90 rather than 100:
+          // assurance is still pending, and `closed: true` would tell the console the run is
+          // over while `finalizeAssurance` is still to come.
+          //
+          // Best-effort, exactly like the jobId branch: a Redis hiccup must never lose a draft
+          // that is already committed (steps 1-3 ran).
+          try {
+            await this.progressService?.reportProgress(consultationId, {
+              stage: HARNESS_PROGRESS_TERMINAL_STAGE,
+              tenantId,
+            });
+          } catch (error) {
+            this.logger.warn({
+              message: 'Harness terminal progress publish failed (best-effort)',
+              consultationId,
               error: error instanceof Error ? error.message : String(error),
             });
           }
