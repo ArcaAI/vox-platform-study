@@ -1,4 +1,5 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
+import type { AiModelAsrProfile } from '@arcaai/types';
 
 /**
  * Shared enum mirrors + row shape for the AI-model seed catalog.
@@ -464,13 +465,15 @@ export interface AiModelSeed {
      * `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`, which
      * applied ONE number to every engine on the box; these describe a MODEL, so a
      * fallback chain now decodes on its own window instead of the primary's.
+     *
+     * This is `AiModelAsrProfile` from `@arcaai/types` BY REFERENCE, never a copy.
+     * It used to be a hand-maintained duplicate carrying only the two window
+     * members, and it drifted twice: TASK-934 added `decoding` / `initialPrompt`
+     * to the canonical type and TASK-935 seeded `decoding.hotwords`, but neither
+     * widened the duplicate — so the seed rows below stopped type-checking against
+     * their own row shape. Widen the type in `@arcaai/types`, not here.
      */
-    asr?: {
-      /** Longest audio fed to the engine in ONE decode, seconds. Absent ⇒ no split guard. */
-      maxDecodeWindowSec?: number;
-      /** Tail of the live utterance decoded for PARTIALs, seconds. Absent ⇒ the preprocessor default. */
-      partialWindowSec?: number;
-    };
+    asr?: AiModelAsrProfile;
     /**
      * TASK-880 — speaker-embedding geometry. `dimension` is the vector width the row
      * emits, and it is LOAD-BEARING: `buildResolvedAsrSpec` REFUSES an agent whose
