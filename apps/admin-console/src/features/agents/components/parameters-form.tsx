@@ -476,7 +476,8 @@ export function ParametersForm({ task, value, onChange, modelId }: { task: Agent
   // Called unconditionally (rules of hooks) — `task` is a prop and can change
   // across renders, so the hook itself must not be behind an `if`.
   const catalogue = useTaskModelCatalogue(task);
-  const asrProfile = (isSpeechToText && modelId ? (catalogue.models.find((model) => model.id === modelId)?.asrProfile ?? null) : null) ?? null;
+  const selectedModel = isSpeechToText && modelId ? catalogue.models.find((model) => model.id === modelId) : undefined;
+  const asrProfile = selectedModel?.asrProfile ?? null;
   const profileSummary = isSpeechToText ? summarizeAsrProfile(asrProfile) : null;
   const fieldHints = isSpeechToText ? asrInheritHints(asrProfile) : undefined;
 
