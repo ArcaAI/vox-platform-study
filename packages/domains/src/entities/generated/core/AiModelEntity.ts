@@ -541,9 +541,11 @@ export class AiModelEntity extends BaseTaggedEntity {
     if (this.isCloud && (!this._wireModelId || this._wireModelId.trim().length === 0)) {
       throw new BusinessException('A CLOUD model requires a wireModelId');
     }
-    // Validate slug format (lowercase, alphanumeric, hyphens only)
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(this._slug)) {
-      throw new BusinessException('Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3")');
+    // Validate slug format: lowercase alphanumeric segments joined by hyphens or underscores
+    // (TASK-934: the seeded catalogue names GGUF quantisations `…-q8_0`; the old rule made those
+    // rows un-editable through the API because update() re-validates the entity).
+    if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(this._slug)) {
+      throw new BusinessException('Model slug must be lowercase alphanumeric with hyphens (e.g., "whisper-large-v3"); an underscore may join segments (a GGUF quantisation suffix such as "q8_0")');
     }
   }
 }
