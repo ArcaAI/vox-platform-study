@@ -317,6 +317,18 @@ function ScribeWorkspace() {
     void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root });
   }, [awaitingFinalizeSince, draft.data, queryClient]);
   const progress = useHarnessProgressStream(consultationId, !!consultationId);
+  // TASK-932 OD-5 — the harness-progress stream ALSO carries the terminal signal (a
+  // `HARNESS_PROGRESS_TERMINAL_STAGE` event, folded to `snapshot.closed === true` with
+  // `stages: []`) for the case the interpreter persists a note WITHOUT a summary job. Learning
+  // it here means the poll above (now a 60s fallback, not the primary path) rarely has to fire —
+  // ref-guarded the same way, so a stop that settles via this push invalidates exactly once.
+  const harnessTerminalHandledRef = useRef(false);
+  useEffect(() => {
+    if (awaitingFinalizeSince === null || !progress.snapshot?.closed || harnessTerminalHandledRef.current) return;
+    harnessTerminalHandledRef.current = true;
+    void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.latestSummary(consultationId ?? 'none') });
+    void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root });
+  }, [awaitingFinalizeSince, progress.snapshot?.closed, consultationId, queryClient]);
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
   // W4 — the agentic loop's live activity feed (realtime summaries etc).
   const loop = useConsultationLoopStream(consultationId, !!consultationId);
@@ -427,6 +439,7 @@ function ScribeWorkspace() {
   function selectConsultation(next: ConsultationListRow | null) {
     setConsultation(next);
     finalizeSettledRef.current = false;
+    harnessTerminalHandledRef.current = false;
     setAwaitingFinalizeSince(null);
     setApproved(false);
     setSelectedCitationId(null);
@@ -550,6 +563,7 @@ function ScribeWorkspace() {
       const state = await recordingStop.mutateAsync({ consultationId: consultation.id, acceptedProposals });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
       finalizeSettledRef.current = false;
+      harnessTerminalHandledRef.current = false;
       setAwaitingFinalizeSince(Date.now());
       live.stop();
       liveAssist.close();
