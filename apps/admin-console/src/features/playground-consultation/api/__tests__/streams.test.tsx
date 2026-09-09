@@ -14,7 +14,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDocumentSectionsStream, useHarnessAssuranceStream, useHarnessProgressStream, useLiveAssistStream, useSummaryJobProgress } from '../hooks';
+import {
+  useDocumentSectionsStream,
+  useHarnessAssuranceStream,
+  useHarnessProgressStream,
+  useLiveAssistStream,
+  usePreSummaryStream,
+  useSummaryJobProgress,
+} from '../hooks';
 import type { ConsultationJobStatus } from '../types';
 
 /** Instrumented EventSource double (mirrors the use-event-stream test). */
@@ -67,8 +74,11 @@ interface RecordedCall {
   body: unknown;
 }
 
-/** Answers the ticket mint and the job-status poll; everything else throws. */
-function stubNetwork(jobStatus: () => Response = () => Response.json({})): RecordedCall[] {
+/** Answers the ticket mint, the job-status poll and the pre-summary REST catch-up; everything else throws. */
+function stubNetwork(
+  jobStatus: () => Response = () => Response.json({}),
+  preSummaryLatest: () => Response = () => new Response(null, { status: 404 }),
+): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -83,6 +93,7 @@ function stubNetwork(jobStatus: () => Response = () => Response.json({})): Recor
         return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: (call.body as { scope: string }).scope });
       }
       if (call.url.includes('/jobs/')) return jobStatus();
+      if (call.url.includes('/pre-summary/latest')) return preSummaryLatest();
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),
   );
@@ -465,6 +476,68 @@ describe('useDocumentSectionsStream (DD-3 / DD-3 — N documents)', () => {
 
     rerender({ consultationId: 'c-2' });
     expect(result.current.documents).toEqual([]);
+  });
+
+  // TASK-932 lane L now tags this frame's SSE `type` from the payload's own `event` — the
+  // relay change is additive (JSON body byte-identical), so the fold must accept it delivered
+  // as a NAMED `section.patch` event, not only on the default `message` (older-gateway shape,
+  // still covered by the tests above).
+  it('folds a section.patch delivered as a NAMED frame', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() =>
+      source.emit('section.patch', {
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 1,
+        state: 'provisional',
+        content: 'Hypertension, well controlled.',
+        updatedAt: 't1',
+      }),
+    );
+
+    expect(result.current.documents.map((d) => d.documentKey)).toEqual(['soap_note']);
+    expect(result.current.documents[0].sections[0]).toMatchObject({ sectionKey: 'assessment', revision: 1, state: 'provisional' });
+  });
+});
+
+describe('usePreSummaryStream', () => {
+  // TASK-932 lane L now tags this frame's SSE `type` from the payload's own `event` — same
+  // relay change as section.patch above, on the SAME channel.
+  it('folds a presummary delivered as a NAMED frame', async () => {
+    const calls = stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => usePreSummaryStream('c-1', true), { wrapper: Wrapper });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(calls.find((call) => call.url === '/api/auth/stream-ticket')?.body).toEqual({ scope: 'consultation_live_summary:c-1' });
+    expect(FakeEventSource.instances[0].url).toContain('/api/v1/consultations/c-1/live-summary/stream?ticket=');
+
+    const source = FakeEventSource.instances[0];
+    act(() =>
+      source.emit('presummary', {
+        event: 'presummary',
+        status: 'ready',
+        content: '- Diabetes (recorded 11-Aug-2026)',
+        agentSlug: 'case-notes-pre-summary',
+        updatedAt: '2026-09-09T10:00:01.000Z',
+      }),
+    );
+
+    await waitFor(() => expect(result.current.preSummary?.status).toBe('ready'));
+    expect(result.current.preSummary).toMatchObject({
+      status: 'ready',
+      content: '- Diabetes (recorded 11-Aug-2026)',
+      agentSlug: 'case-notes-pre-summary',
+    });
   });
 });
 
