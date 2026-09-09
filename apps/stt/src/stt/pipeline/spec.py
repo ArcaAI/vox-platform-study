@@ -588,10 +588,6 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     if decoding.temperature is not None:
         inference_kwargs["temperature"] = [decoding.temperature]
     inference_kwargs["vad_filter"] = decoding.vad_filter
-    if decoding.chunk_length_sec is not None:
-        inference_kwargs["chunk_length_sec"] = float(decoding.chunk_length_sec)
-    if decoding.stride_length_sec is not None:
-        inference_kwargs["stride_length_sec"] = tuple(decoding.stride_length_sec)
     # TASK-934 (G-2) — the six knobs that used to be literals on `InferenceConfig`. The
     # gateway already applied the precedence (agent → the ASR row's profile → absent), so
     # there is nothing to resolve here: forward what arrived, and forward NOTHING when a
@@ -602,6 +598,10 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         _value = getattr(decoding, _wire_field)
         if _value is not None:
             inference_kwargs[_inference_field] = _value
+    if decoding.chunk_length_sec is not None:
+        inference_kwargs["chunk_length_sec"] = float(decoding.chunk_length_sec)
+    if decoding.stride_length_sec is not None:
+        inference_kwargs["stride_length_sec"] = tuple(decoding.stride_length_sec)
     # TASK-880 — the ASR ROW's own decode window (`AiModel._metadata.asr`), which
     # replaces the platform key `stt.whisperCpp.maxAudioSeconds`. Absent ⇒ the
     # dataclass default (0.0 = no chunking guard); each chain is mapped separately,
