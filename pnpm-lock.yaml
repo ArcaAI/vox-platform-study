@@ -1615,20 +1615,20 @@ importers:
         specifier: ^3.0.19
         version: 3.0.19(react@19.2.8)
       '@diceui/checkbox-group':
-        specifier: ^0.7.2
-        version: 0.7.2(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.0.0
+        version: 1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@diceui/combobox':
         specifier: ^1.2.2
         version: 1.2.2(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@diceui/listbox':
-        specifier: ^0.2.0
-        version: 0.2.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.0.0
+        version: 1.0.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@diceui/mention':
-        specifier: ^0.8.0
-        version: 0.8.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.0.0
+        version: 1.0.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@diceui/tags-input':
-        specifier: ^0.7.2
-        version: 0.7.2(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^1.0.0
+        version: 1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2837,8 +2837,8 @@ packages:
   '@date-fns/tz@1.5.0':
     resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
 
-  '@diceui/checkbox-group@0.7.2':
-    resolution: {integrity: sha512-1+avyoxQo/YE/OJMDhBCPz7C2Oqc9wTD0v4Pdyku2tDv4IZpgPiS6kzGe/iKFqEIqFpP5MqGIlQhwHGP7v9nKA==}
+  '@diceui/checkbox-group@1.0.0':
+    resolution: {integrity: sha512-kP8D42dWTPeLCwxipn4s3t82zJV9EppJlrBfEy/rvux2XJmpXPahfvtDB93VKJ+ZeRevvmopolsA+8thGaf6mA==}
     peerDependencies:
       '@types/react': ^19.2.18
       '@types/react-dom': ^19.2.4
@@ -2863,8 +2863,8 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@diceui/listbox@0.2.0':
-    resolution: {integrity: sha512-Om4JSEcJ3nM5mDLotPn/ubRlb/frzajSqzSxBa5Bsp1YaMXc3r5+AkUDBMyE6FH4r1+IvItk8TpUqrbxDcdrQQ==}
+  '@diceui/listbox@1.0.0':
+    resolution: {integrity: sha512-QjGIUc8X0RXLZhURmfJRvqBT8KgZjeDAmOGDmRglz81iqlP2nM2S7XLtBodKYjhl0nNc5Uzdjz70CY+It5hfuQ==}
     peerDependencies:
       '@types/react': ^19.2.18
       '@types/react-dom': ^19.2.4
@@ -2876,8 +2876,8 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@diceui/mention@0.8.0':
-    resolution: {integrity: sha512-BHTYLG4qJA+9TJ/n5otlIHoJuLz5v13xAayYsRL7lnCnp4ik37uYrLpA+25y+uQmJ5i1W3kv2MfD2ZasvDzDDw==}
+  '@diceui/mention@1.0.0':
+    resolution: {integrity: sha512-yy08bBmZMzUCbK4rFVR7SoQVAZwzitIoFgyabAsML0lGOMWcbr7h9FbCptg3HaSmuAPPMNwn8ASrJGD6KoXeMw==}
     peerDependencies:
       '@types/react': ^19.2.18
       '@types/react-dom': ^19.2.4
@@ -2903,8 +2903,22 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@diceui/tags-input@0.7.2':
-    resolution: {integrity: sha512-QCZ7RSoTUXf7UCMruPEf+X9msHAmf4DgzupDKuyt3EfgMAhba9jGyZ+Wx0UJXxRJlycHX9/g9gIVF7rTiG04sg==}
+  '@diceui/shared@1.0.0':
+    resolution: {integrity: sha512-zs7RGEUVUBmyIKFmJWxHrsnD5kSwXV8DbFZnQmxGD0Rv0yDOlnXUpZIUdljEiTXYBMNKGb2KHET6Nks4MG0sOA==}
+    peerDependencies:
+      '@floating-ui/react': ^0.27.4
+      '@types/react': ^19.2.18
+      '@types/react-dom': ^19.2.4
+      react: 19.2.8
+      react-dom: 19.2.8
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+
+  '@diceui/tags-input@1.0.0':
+    resolution: {integrity: sha512-MvZ+rGGhwlQu/g5Q77mdITKrHhlX8ne01A1OvgnqFxCp4pZUsVZlOu/XzlGAm8G8JCpgVrsuDriUkmOqKyGYng==}
     peerDependencies:
       '@types/react': ^19.2.18
       '@types/react-dom': ^19.2.4
@@ -16437,9 +16451,9 @@ snapshots:
 
   '@date-fns/tz@1.5.0': {}
 
-  '@diceui/checkbox-group@0.7.2(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@diceui/checkbox-group@1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@diceui/shared': 0.12.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@diceui/shared': 1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     optionalDependencies:
@@ -16458,7 +16472,7 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.4(@types/react@19.2.18)
 
-  '@diceui/listbox@0.2.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@diceui/listbox@1.0.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -16466,9 +16480,9 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.4(@types/react@19.2.18)
 
-  '@diceui/mention@0.8.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@diceui/mention@1.0.0(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@diceui/shared': 0.12.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@diceui/shared': 1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@floating-ui/react': 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -16485,9 +16499,18 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.4(@types/react@19.2.18)
 
-  '@diceui/tags-input@0.7.2(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@diceui/shared@1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@diceui/shared': 0.12.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@floating-ui/react': 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+    optionalDependencies:
+      '@types/react': 19.2.18
+      '@types/react-dom': 19.2.4(@types/react@19.2.18)
+
+  '@diceui/tags-input@1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@diceui/shared': 1.0.0(@floating-ui/react@0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     optionalDependencies:
