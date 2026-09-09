@@ -451,3 +451,51 @@ describe('TASK-932 L2 F-8 — a same-millisecond pre-summary successor is relaye
     sub.unsubscribe();
   });
 });
+
+/**
+ * TASK-932 wave 4 L2 F-9 — the pre-summary replay key is a SESSION's key, and stop ends it.
+ *
+ * `…:presummary:last` carries `SNAPSHOT_TTL` (1 h) for the same reason the note snapshot does: a
+ * late joiner of a LIVE session is owed what it missed. Nothing cleared it at stop, so a
+ * consultation reopened inside that hour replayed the PREVIOUS session's warm start to its next
+ * late joiner — background material about a visit that already ended, rendered beside a note it
+ * has nothing to do with.
+ *
+ * `…:last` deliberately survives: its final write is the terminal `closed: true` payload, which
+ * is exactly what a late joiner of a CLOSED consultation should see (and what
+ * `closedFlagTerminal` needs to complete their stream). The pre-summary has no terminal form —
+ * it is only ever mid-session state — so it is deleted, not preserved.
+ */
+describe('TASK-932 L2 F-9 — stop clears the pre-summary replay key', () => {
+  const PRESUMMARY_KEY = `consultation:live-summary:${CID}:presummary:last`;
+  const SNAPSHOT_KEY = `consultation:live-summary:${CID}:last`;
+
+  it('deletes `:presummary:last` when the owning instance stops the session', async () => {
+    const { service, cache } = buildService();
+    await startAndSettle(service);
+    expect(cache.setex.mock.calls.some((call) => call[0] === PRESUMMARY_KEY)).toBe(true);
+
+    await service.stop(CID);
+
+    expect(cache.del.mock.calls.map((call) => call[0])).toContain(PRESUMMARY_KEY);
+  });
+
+  it('deletes it even when the stop is routed to an instance that owns no session', async () => {
+    // The cross-instance path: `clearStats` already runs here for the same reason, and a warm
+    // start cached by the OWNER is just as stale for the next session either way.
+    const { service, cache } = buildService();
+
+    await service.stop(CID);
+
+    expect(cache.del.mock.calls.map((call) => call[0])).toContain(PRESUMMARY_KEY);
+  });
+
+  it('leaves the whole-document `:last` snapshot alone — its terminal `closed` is what a late joiner of a finished consultation is owed', async () => {
+    const { service, cache } = buildService();
+    await startAndSettle(service);
+
+    await service.stop(CID);
+
+    expect(cache.del.mock.calls.map((call) => call[0])).not.toContain(SNAPSHOT_KEY);
+  });
+});
