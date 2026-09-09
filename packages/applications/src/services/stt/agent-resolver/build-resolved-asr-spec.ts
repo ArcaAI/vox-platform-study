@@ -16,9 +16,12 @@
  * defaults, carried over verbatim.
  */
 import type {
+  AiModelAsrProfile,
+  AiModelAsrProfileDecoding,
   AsrSpecAudioFrontEnd,
   AsrSpecCore,
   AsrSpecDecoding,
+  AsrSpecDecodingSource,
   AsrSpecFallback,
   AsrSpecInstruction,
   AsrSpecModel,
@@ -32,7 +35,7 @@ import type {
   ResolvedAgentModel,
   ResolvedAsrSpec,
 } from '@arcaai/types';
-import { ASR_SPEC_ROLE_TASK_TYPE, RESOLVED_ASR_SPEC_SCHEMA_VERSION } from '@arcaai/types';
+import { ASR_SPEC_ROLE_TASK_TYPE, RESOLVED_ASR_SPEC_SCHEMA_VERSION, parseAiModelAsrProfile } from '@arcaai/types';
 import { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
 /**
@@ -59,10 +62,25 @@ export class AsrSpecBuildError extends Error {
   }
 }
 
+/** What an ASR row's `_metadata.asr` declared that this builder could not act on. */
+export interface AsrProfileRejection {
+  modelSlug: string;
+  /** Dotted paths, from `parseAiModelAsrProfile` — an unknown key, a wrong type or an out-of-range value. */
+  rejected: string[];
+}
+
 export interface BuildResolvedAsrSpecInput {
   agent: ResolvedAgent;
   /** The resolved `parameters.fallback.agentSlug` agent, when the primary names one. */
   fallbackAgent?: ResolvedAgent | null;
+  /**
+   * TASK-934 — called once per engine chain whose ASR row declared something unusable.
+   *
+   * Tuning is `open-to-default`, so a bad member is dropped and the session proceeds; this
+   * is how it stops being SILENT. The callback keeps this module PURE — the caller
+   * (`AsrAgentResolverService`) owns the logger.
+   */
+  onProfileRejection?: (rejection: AsrProfileRejection) => void;
 }
 
 type Rec = Record<string, unknown>;
@@ -79,26 +97,41 @@ const pair = (value: unknown): readonly [number, number] | null =>
     : null;
 
 /**
- * TASK-880 — the `AiModel._metadata.asr` geometry the runtime may act on, normalised.
+ * TASK-880 / TASK-934 — the `AiModel._metadata.asr` profile the runtime may act on, normalised.
  *
- * OMITTED (never `null`, never `{}`) when the row declares nothing usable: `apps/stt`'s
- * mirror is `extra='forbid'` and treats an absent key as "no opinion, keep my own default",
- * so an empty object would be a second encoding of one state. A non-numeric member is
- * dropped rather than forwarded — the row is admin-editable JSON, and a string where the
- * runtime expects seconds must not reach a `float()`.
+ * The parsing (ranges, unknown keys, non-numeric members) belongs to
+ * `parseAiModelAsrProfile` in `@arcaai/types`, which is the ONE gate the admin API (the
+ * write side) and this builder (the read side) share. What is decided HERE is what reaches
+ * the wire:
+ *
+ * - `maxDecodeWindowSec` — the ROW's, always (OD-3: geometry is a property of the weights);
+ * - `partialWindowSec` — the EFFECTIVE value, so an agent-level override (OD-4) arrives where
+ *   `apps/stt` already reads it and no consumer had to learn a second path;
+ * - `decoding` / `initialPrompt` — the row's recommendation VERBATIM, as provenance. The
+ *   effective values live in `decoding` / `instruction`; `decoding.sources` says who won.
+ *
+ * OMITTED (never `null`, never `{}`) when nothing survives: `apps/stt`'s mirror is
+ * `extra='forbid'` and reads an absent key as "no opinion, keep my own default", so an
+ * empty object would be a second encoding of one state.
  */
-function specModelMetadata(model: ResolvedAgentModel): AsrSpecModelMetadata | undefined {
-  const asr = rec(rec(model.metaData).asr);
+function specModelMetadata(profile: AiModelAsrProfile, partialWindowSecOverride?: number): AsrSpecModelMetadata | undefined {
   const out: AsrSpecModelMetadata = {};
-  const maxDecodeWindowSec = num(asr.maxDecodeWindowSec);
-  if (maxDecodeWindowSec !== null) out.maxDecodeWindowSec = maxDecodeWindowSec;
-  const partialWindowSec = num(asr.partialWindowSec);
-  if (partialWindowSec !== null) out.partialWindowSec = partialWindowSec;
+  if (profile.maxDecodeWindowSec !== undefined) out.maxDecodeWindowSec = profile.maxDecodeWindowSec;
+  const partialWindowSec = partialWindowSecOverride ?? profile.partialWindowSec;
+  if (partialWindowSec !== undefined) out.partialWindowSec = partialWindowSec;
+  if (profile.decoding) out.decoding = profile.decoding;
+  if (profile.initialPrompt !== undefined) out.initialPrompt = profile.initialPrompt;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole): AsrSpecModel {
-  const metadata = specModelMetadata(model);
+/** The row's profile, parsed; rejections are REPORTED rather than swallowed (tuning is open-to-default). */
+function profileOf(model: ResolvedAgentModel, onProfileRejection?: (rejection: AsrProfileRejection) => void): AiModelAsrProfile {
+  const { profile, rejected } = parseAiModelAsrProfile(rec(model.metaData).asr);
+  if (rejected.length > 0) onProfileRejection?.({ modelSlug: model.slug, rejected });
+  return profile;
+}
+
+function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole, metadata = specModelMetadata(profileOf(model))): AsrSpecModel {
   return {
     role,
     slug: model.slug,
@@ -165,14 +198,48 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
   };
 }
 
-function decoding(parameters: Rec): AsrSpecDecoding {
+/**
+ * TASK-934 (OD-3) — the knobs BOTH tiers can decide, in the order they are resolved:
+ * the agent's `parameters.decoding.<key>` first, the ASR row's profile second, absence
+ * third (the engine dataclass default). They are numbers; `conditionOnPrevTokens` and
+ * `hotwords` / `initialPrompt` are resolved beside them with the same rule.
+ *
+ * `beamSize` and `temperature` predate the profile and stay REQUIRED-but-nullable on the
+ * wire; the six after them are omit-when-absent.
+ */
+const OPTIONAL_DECODING_KNOBS = [
+  'noSpeechThreshold',
+  'compressionRatioThreshold',
+  'logprobThreshold',
+  'noRepeatNgramSize',
+  'prevTextContextWords',
+] as const;
+
+type Sources = Record<string, AsrSpecDecodingSource>;
+
+function decoding(parameters: Rec, profile: AiModelAsrProfile, sources: Sources): AsrSpecDecoding {
   const d = rec(parameters.decoding);
+  const p = profile.decoding ?? {};
+  /** Agent → profile → `null`. The agent's range gate is the published agent schema; the row's is `parseAiModelAsrProfile`. */
+  const pick = (key: keyof AiModelAsrProfileDecoding): number | null => {
+    const agentValue = num(d[key]);
+    if (agentValue !== null) {
+      sources[key] = 'agent';
+      return agentValue;
+    }
+    const modelValue = p[key];
+    if (typeof modelValue === 'number') {
+      sources[key] = 'model';
+      return modelValue;
+    }
+    return null;
+  };
   const block: AsrSpecDecoding = {
     languageMode: str(d.languageMode),
     codeSwitching: bool(d.codeSwitching, false),
     wordTimestamps: bool(d.wordTimestamps, false),
-    beamSize: num(d.beamSize),
-    temperature: num(d.temperature),
+    beamSize: pick('beamSize'),
+    temperature: pick('temperature'),
     vadFilter: bool(d.vadFilter, false),
   };
   // Owner decision #9 — per-agent batch chunking. OMITTED, not `null`, when the
@@ -183,7 +250,39 @@ function decoding(parameters: Rec): AsrSpecDecoding {
   if (chunkLengthSec !== null) block.chunkLengthSec = chunkLengthSec;
   const strideLengthSec = pair(d.strideLengthSec);
   if (strideLengthSec !== null) block.strideLengthSec = strideLengthSec;
+  // TASK-934 (G-2) — the six knobs that were Python literals. Same omit-when-absent rule:
+  // neither tier spoke ⇒ the key is absent ⇒ `InferenceConfig`'s default stands.
+  for (const key of OPTIONAL_DECODING_KNOBS) {
+    const value = pick(key);
+    if (value !== null) block[key] = value;
+  }
+  const agentConditionOnPrevTokens = typeof d.conditionOnPrevTokens === 'boolean' ? d.conditionOnPrevTokens : undefined;
+  const conditionOnPrevTokens = agentConditionOnPrevTokens ?? p.conditionOnPrevTokens;
+  if (conditionOnPrevTokens !== undefined) {
+    sources.conditionOnPrevTokens = agentConditionOnPrevTokens !== undefined ? 'agent' : 'model';
+    block.conditionOnPrevTokens = conditionOnPrevTokens;
+  }
   return block;
+}
+
+/**
+ * TASK-934 (OD-4) — the partial tail, resolved.
+ *
+ * The DECODE window is the row's alone (model geometry), but the PARTIAL window is a
+ * streaming-behaviour choice the agent may take: §2.2 measured 31 % garbage partials at 6 s
+ * against 0 % at 15 s on the same weights. Agent → row → absent.
+ */
+function partialWindowSecOf(parameters: Rec, profile: AiModelAsrProfile, sources: Sources): number | undefined {
+  const agentValue = num(rec(parameters.streaming).partialWindowSec);
+  if (agentValue !== null) {
+    sources.partialWindowSec = 'agent';
+    return agentValue;
+  }
+  if (profile.partialWindowSec !== undefined) {
+    sources.partialWindowSec = 'model';
+    return profile.partialWindowSec;
+  }
+  return undefined;
 }
 
 function postProcessing(parameters: Rec): AsrSpecPostProcessing {
@@ -217,10 +316,37 @@ function streaming(parameters: Rec): AsrSpecStreaming {
   return block;
 }
 
-function instruction(agent: ResolvedAgent): AsrSpecInstruction {
+/**
+ * The decoder prompt and the hotword set, resolved agent → model profile → absent.
+ *
+ * OD-11 — a priming prompt is a per-FINE-TUNE property (§2.2: the seeded agent's prompt costs
+ * ≈0.06 CER on the Malayalam set while helping long English utterances), so the row may
+ * carry one. Both fold into `instruction`, which is where `apps/stt` already reads them:
+ * one wire path per engine field, never two.
+ *
+ * The agent's hotword list wins WHOLE, never merged — a curated set is an author's decision,
+ * and a silent union would put terms in the decode that neither tier asked for.
+ */
+function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: Sources): AsrSpecInstruction {
   const i = rec(agent.compiledConfig.instruction);
-  const hotwords = Array.isArray(i.hotwords) ? i.hotwords.filter((w): w is string => typeof w === 'string' && w.length > 0) : [];
-  return { initialPrompt: str(i.initialPrompt), hotwords };
+  const agentHotwords = Array.isArray(i.hotwords) ? i.hotwords.filter((w): w is string => typeof w === 'string' && w.length > 0) : [];
+  const agentPrompt = str(i.initialPrompt);
+  const profileHotwords = profile.decoding?.hotwords;
+
+  let initialPrompt = agentPrompt;
+  if (agentPrompt !== null) sources.initialPrompt = 'agent';
+  else if (profile.initialPrompt !== undefined) {
+    initialPrompt = profile.initialPrompt;
+    sources.initialPrompt = 'model';
+  }
+
+  let hotwords = agentHotwords;
+  if (agentHotwords.length > 0) sources.hotwords = 'agent';
+  else if (profileHotwords !== undefined && profileHotwords.length > 0) {
+    hotwords = [...profileHotwords];
+    sources.hotwords = 'model';
+  }
+  return { initialPrompt, hotwords };
 }
 
 /**
@@ -251,49 +377,76 @@ function assertDiarizationRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontE
   );
 }
 
-/** One engine chain for `agent`, optionally with its primary ASR model swapped (model-level fallback). */
-export function buildAsrSpecCore(agent: ResolvedAgent, override?: { asr: ResolvedAgentModel; runtimeKey: string }): AsrSpecCore {
+/**
+ * One engine chain for `agent`, optionally with its primary ASR model swapped (model-level fallback).
+ *
+ * TASK-934 — the chain resolves against ITS OWN ASR row's profile, which is the point of
+ * putting the profile on the row: a fallback engine gets its own decode parameters instead
+ * of inheriting the primary's.
+ */
+export function buildAsrSpecCore(
+  agent: ResolvedAgent,
+  override?: { asr: ResolvedAgentModel; runtimeKey: string },
+  onProfileRejection?: (rejection: AsrProfileRejection) => void,
+): AsrSpecCore {
   const parameters = rec(agent.compiledConfig.parameters);
-  const models: AsrSpecModels = { asr: toSpecModel(override?.asr ?? primaryOf(agent), 'asr'), ...auxModels(agent) };
+  const asrModel = override?.asr ?? primaryOf(agent);
+  const profile = profileOf(asrModel, onProfileRejection);
+  // One map, written by the three resolvers below and attached to `decoding` at the end —
+  // observability only, so a live session can be explained without re-deriving precedence.
+  const sources: Sources = {};
+  const partialWindowSec = partialWindowSecOf(parameters, profile, sources);
+  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', specModelMetadata(profile, partialWindowSec)), ...auxModels(agent) };
   const front = audioFrontEnd(parameters, models);
   assertDiarizationRunnable(agent, front, models.embedding);
+  const decodingBlock = decoding(parameters, profile, sources);
+  const instructionBlock = instruction(agent, profile, sources);
+  if (Object.keys(sources).length > 0) decodingBlock.sources = sources;
   return {
     runtimeKey: override?.runtimeKey ?? agent.agentVersionId,
     agent: { slug: agent.slug, versionId: agent.agentVersionId, versionNumber: agent.versionNumber, tenantId: agent.tenantId, source: agent.source },
     models,
     audioFrontEnd: front,
-    decoding: decoding(parameters),
+    decoding: decodingBlock,
     postProcessing: postProcessing(parameters),
     streaming: streaming(parameters),
-    instruction: instruction(agent),
+    instruction: instructionBlock,
   };
 }
 
-function fallbackOf(agent: ResolvedAgent, fallbackAgent: ResolvedAgent | null | undefined): AsrSpecFallback {
+function fallbackOf(
+  agent: ResolvedAgent,
+  fallbackAgent: ResolvedAgent | null | undefined,
+  onProfileRejection?: (rejection: AsrProfileRejection) => void,
+): AsrSpecFallback {
   const f = rec(rec(agent.compiledConfig.parameters).fallback);
   const governance = {
     autoSwitch: bool(f.autoSwitch, AGENT_FALLBACK_DEFAULTS.autoSwitch),
     switchAfterConsecutiveFailures: num(f.switchAfterConsecutiveFailures) ?? AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
   };
   if (fallbackAgent) {
-    return { kind: 'agent', ...governance, spec: buildAsrSpecCore(fallbackAgent) };
+    return { kind: 'agent', ...governance, spec: buildAsrSpecCore(fallbackAgent, undefined, onProfileRejection) };
   }
   const chain = agent.models.filter((m) => m.role === 'fallback').sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   const first = chain[0];
   if (first) {
     const runtimeKey = `${agent.agentVersionId}:fallback:${first.slug}`;
-    return { kind: 'model', ...governance, spec: buildAsrSpecCore(agent, { asr: first, runtimeKey }) };
+    return { kind: 'model', ...governance, spec: buildAsrSpecCore(agent, { asr: first, runtimeKey }, onProfileRejection) };
   }
   return { kind: 'none', ...governance, spec: null };
 }
 
 export function buildResolvedAsrSpec(input: BuildResolvedAsrSpecInput): ResolvedAsrSpec {
-  const { agent, fallbackAgent } = input;
+  const { agent, fallbackAgent, onProfileRejection } = input;
   if (agent.task !== 'SPEECH_TO_TEXT') {
     throw new AsrSpecBuildError(`Agent '${agent.slug}' is a ${agent.task} agent; an ASR spec needs SPEECH_TO_TEXT.`);
   }
   if (fallbackAgent && fallbackAgent.task !== 'SPEECH_TO_TEXT') {
     throw new AsrSpecBuildError(`Fallback agent '${fallbackAgent.slug}' is a ${fallbackAgent.task} agent; an ASR fallback needs SPEECH_TO_TEXT.`);
   }
-  return { schemaVersion: RESOLVED_ASR_SPEC_SCHEMA_VERSION, ...buildAsrSpecCore(agent), fallback: fallbackOf(agent, fallbackAgent) };
+  return {
+    schemaVersion: RESOLVED_ASR_SPEC_SCHEMA_VERSION,
+    ...buildAsrSpecCore(agent, undefined, onProfileRejection),
+    fallback: fallbackOf(agent, fallbackAgent, onProfileRejection),
+  };
 }
