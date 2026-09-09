@@ -6,7 +6,7 @@
 | **Type** | `feature` (authorization surface + SDK) |
 | **Branch** | `dev-2.2` |
 | **Consumer** | `ALaaSv3.0/apps/audio-stream-svc` (plan: `ALaaSv3.0/docs/HOPE_REALTIME_CONSULTATION_INTEGRATION_PLAN.md`) |
-| **Owner decisions in force** | OD-1 **native** service-account plane ("system-to-system"), not delegation · OD-2 realtime socket lives in `@arcaai/vox-node` · OD-4/5/6 the four identity details (clinician user, patient, department, visit type) are REQUIRED on open; the tenant context schema was reviewed and is NOT the vehicle (§2.3) |
+| **Owner decisions in force** | OD-1 **native** service-account plane ("system-to-system"), not delegation · OD-2 realtime socket lives in `@arcaai/vox-node` · OD-4/5/6 the four identity details (clinician user, patient, department, visit type) are REQUIRED on open; the tenant context schema was reviewed and is NOT the vehicle (§2.3) · **2026-09-09 (later):** the service account must hold **every permission `vox-node` needs for a realtime consultation**, including **fetching the tenant's context-schema definition** (so ALaaS engineering can build against it) and the consultation-bound **workflows plane** — this supersedes the registry's recorded exclusion of that plane · the ArcaAI tenant must select the correct workflow per session from clinician user id, patient id, department and visit type (§1.1) |
 
 ## 1. Requirement Analysis
 
@@ -16,9 +16,26 @@ An external system (`audio-stream-svc`) authenticated as a HOPE **service accoun
 2. start recording; create an STT streaming session it **owns**; stream PCM16 audio over `/ws/stt/stream`; receive transcript segments;
 3. subscribe the live plane (`live-summary` snapshot + `section.patch` + `presummary`, `live-assist`, `harness-progress`, `loop`);
 4. add case notes; stop recording; read the finalized note (`summary/latest`, with `structuredData.dnaStyleId`);
-5. do all of it through typed `@arcaai/vox-node` methods, including a Node realtime STT socket.
+5. do all of it through typed `@arcaai/vox-node` methods, including a Node realtime STT socket;
+6. **fetch the tenant's context-schema definition** (`GET tenants/me/context-schema`, the discovery bundle `vox-codegen --tenant` types) as the service account, so ALaaS engineering can generate types and build case-note payloads against the tenant's declared kinds;
+7. reach the consultation-bound **workflows plane** (`GET :id/workflows`, `POST :id/workflows/:slug/runs`, run streams) as the service account — the owner's "all permissions" ruling (2026-09-09) supersedes the registry's earlier exclusion note (`service-account-scopes.registry.ts:198-203`).
 
-Non-goals: opening the consultation-bound **workflows** plane (`:id/workflows*`) to service accounts (the registry records it as a separate owner decision; this flow does not need it — the platform dispatches the run at open); a machine ever being recorded as the clinician; per-request tenant override.
+Non-goals: a machine ever being recorded as the clinician; per-request tenant override; opening `POST auth/stream-ticket` to machines (not needed: the service-account header authenticates SSE directly and the STT ticket is auto-issued by session create/refresh).
+
+### 1.1 Workflow selection per session (what the ArcaAI tenant already does, and what ALaaS must send)
+
+HOPE selects the governing workflow at `open` from the four details — no new mechanism is needed beyond the open contract in §3.2:
+
+| Detail on `open` | Selection effect today |
+|---|---|
+| `departmentId` | `WorkflowAssignmentService.resolve(tenant, 'core', departmentId, tags)` walks DEPARTMENT → TENANT tiers (`workflow-assignment.service.ts:78-107`); ArcaAI seeds one department assignment per department (`arcaai-gen-consultation`, `arcaai-surg-consultation`, … — 11 rows, `seed/28-workflow-library.ts`) and the department-scoped SOAP shape + context schema (`07f-arcaai-department-context-schemas.ts`) |
+| `parentConsultationId` (absent = new visit, present = revisit) | `VisitTypeService.forConsultation` → selector tag `visit-type:new-visit` / `visit-type:revisit` (`consultation-workflow-dispatch.service.ts:335-350`); inside the graph the `n_visit` `core.condition` routes to `n_summary_new` / `n_summary_revisit` (TASK-932, realtime lane honours it) and the revisit path carries the prior visit's context |
+| `clinicianUserId` → `Consultation.doctorId` | DNA writing style + redaction gate and the doctor's report at finalize (`ConfigResolver.resolveEffectiveDnaStyleEnabled`, `resolveHandoffContext`), preferred prompt template, audit |
+| `patientId` | case notes / previous-visit history for the warm-start pre-summary (`findCaseNotes`, `getPatientHistory`), consent |
+| `language` | summary language of the finalized note |
+| `workflowDefinitionSlug` (optional, exists) | an explicit override validated by `assertWorkflowSelectionAllowed` against the cascade — ALaaS should NOT send it; the department decides |
+
+ALaaS therefore needs a mapping from its own department ids and consultant ids to HOPE `departmentId`s and user ids (resolved once through `hope.admin.department.list` / `hope.admin.user.list`, cached), and must pass the prior HOPE consultation id for a revisit.
 
 ## 2. Current State Evaluation (code-verified 2026-09-09; two read-only lanes)
 
@@ -45,9 +62,9 @@ DNA style/redaction and the DNA report key off `Consultation.doctorId` (`config-
 
 ### 3.1 Scopes (registry + seed)
 
-- New source family `CONSULTATION_REALTIME_SCOPE_SOURCES = ['consultation:session:write', 'consultation:session:read', 'consultation:report:read']` in `service-account-scopes.registry.ts`, derived like the existing families → `svc:consultation:session:write`, `svc:consultation:session:read`, `svc:consultation:report:read`. Boot audit D reconciles it; assertion G leaves business-plane routes exempt from fixture registration.
+- New source family `CONSULTATION_REALTIME_SCOPE_SOURCES = ['consultation:session:write', 'consultation:session:read', 'consultation:report:read', 'tenant:context-schema:read', 'workflows:execute']` in `service-account-scopes.registry.ts`, derived like the existing families → `svc:consultation:session:write`, `svc:consultation:session:read`, `svc:consultation:report:read`, `svc:tenant:context-schema:read`, `svc:workflows:execute`. Boot audit D reconciles it; assertion G leaves business-plane routes exempt from fixture registration. The registry's note excluding the consultation-bound workflows plane (`:198-203`) is rewritten to record the owner decision that opens it.
 - SSE streams reuse `svc:consultation:session:write` (mirrors today's API-key gating; a dedicated `consultation:stream:read` would widen the API-key surface too — recommended: reuse, revisit if a read-only stream consumer appears).
-- Seed the three on the ArcaAI platform service account (`94-service-account.ts`); optional `svc:tenant:context-schema:read` for discovery.
+- Seed all five on the ArcaAI platform service account (`94-service-account.ts`), beside the existing `svc:consultation:report:write` and `svc:stt:transcription:write` — the account then holds every permission the `vox-node` realtime consultation surface needs.
 
 ### 3.2 Consultation controller/service — acting for a named clinician
 
@@ -55,7 +72,8 @@ DNA style/redaction and the DNA report key off `Consultation.doctorId` (`config-
 - `ConsultationController.resolveActingClinicianId(request)`: `cls.user.id` for a human; for a service account the validated `clinicianUserId`. Validation in the service: `assertUserBelongsToTenant` (existing, `tenant-guards.ts:164-207`) **plus** the named user must be able to own a consultation — build their CASL ability and require `can('create', 'Consultation')` (no new role list; the tenant's policy decides). Foreign/unknown user → 404 (404-over-403).
 - Every subsequent call reads the clinician from the ROW: `verifyConsultationAccess`/`verifyConsultationOwnership` gain a service-account branch that asserts tenant + scope only (a machine has no doctor equality to check); `startRecording` passes `userId: consultation.doctorId` to `liveDocumentationService.start` for a machine caller. `Consultation.doctorId` never names a service account.
 - `@RequiredSvcScopes` on: `open` (`session:write`), `getById` (`session:read`), `recording/start|stop` (`session:write`), `context` (`session:write`), `summary/latest` (`report:read`), `summary/pre-summary[/async]` (`report:write`, exists), `live-summary/stream`, `live-assist/stream`, `harness-progress/stream`, `loop/stream` (`session:write`), `consultations/jobs/:jobId/stream` (`report:read`; tenant-scoped already).
-- Not opened: `:id/workflows*` (separate owner decision), `POST auth/stream-ticket` (not needed).
+- `@RequiredSvcScopes('svc:workflows:execute')` on `ConsultationWorkflowRunsController.list/startRun` (`apps/api/src/modules/workflows/consultation-workflow-runs.controller.ts:66-132`) and the run stream/ticket routes of that plane; `@RequiredSvcScopes('svc:tenant:context-schema:read')` on `MyTenantContextSchemaController` (`apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts:180-227`).
+- Not opened: `POST auth/stream-ticket` (not needed by a server-side client).
 
 ### 3.3 STT session ownership for a machine principal
 
@@ -65,7 +83,8 @@ DNA style/redaction and the DNA report key off `Consultation.doctorId` (`config-
 
 - `hope.consultations.open(request)` (`clinicianUserId` typed), `.recording.start(id, { sessionId? })`, `.recording.stop(id, opts)`, `.streams.liveSummary(id, handlers)` (SSE off `response.body`, header auth, discriminates `section.patch` / `presummary` events), `.streams.liveAssist/harnessProgress/loop`, `.jobs.stream(jobId)`, `.summaries.latest` (exists), `.addContext` doc updated.
 - `hope.stt.createStreamSession(req)` (wraps `POST audio/transcription-jobs/stream/session`, returns `{ sessionId, wsUrl, ticket, ticketExpiresAt }`), `hope.stt.refreshTicket(sessionId)`, `hope.stt.close(sessionId)`, and `RealtimeSttSocket` (`globalThis.WebSocket`, Node ≥ 22): `connect()`, `sendPcm16(frame)`, `stop()`, `close()`, `resume(lastSeq)`, events `transcript` (`WsTranscriptResult`), `status`, `error`, `resumed`; ticket refresh before expiry. Zero runtime dependencies preserved; README §"no audio stack" amended to "no audio pipeline: this is a socket client".
-- `ConsultationWorkflowsResource` keeps its strict credential check (plane not opened).
+- `hope.tenants.contextSchema()` → `GET tenants/me/context-schema` (the discovery bundle: kinds, outputs, pinned version, checksum), typed like `vox-codegen`'s fetch; and `@arcaai/vox-codegen --tenant` gains a **service-account mode** (`--client-id/--client-secret` or `HOPE_SVC_CLIENT_ID/SECRET`, `--tenant` bound at exchange) beside the super-admin JWT mode, so ALaaS engineering can generate the consultation-context types without a human token.
+- `ConsultationWorkflowsResource` widens its inherited `assertCredentialClass()` to accept a service account (mirroring `WorkflowsResource`, `workflows.ts:566`) now that the plane is opened; `addContext`'s doc comment (`consultations.ts:99-103`) is rewritten.
 
 ### 3.5 TDD list (RED first, each lane)
 
@@ -78,14 +97,16 @@ DNA style/redaction and the DNA report key off `Consultation.doctorId` (`config-
 | 5 | SSE routes reachable with the service-account header; foreign tenant 404 | e2e `task-776-credential-classes` additions |
 | 6 | `vox-node`: open/recording/streams/stt methods hit the right routes with the right headers; `RealtimeSttSocket` frames PCM16, honours stop/close/resume, refreshes the ticket | `packages/vox-node` unit tests (fetch/WebSocket doubles) |
 | 7 | route-authz matrix: regenerated manifest carries the new `svcScopes`; boot audits D/G green | existing suites |
+| 8 | `GET tenants/me/context-schema` as a service account returns the tenant's pinned bundle; a foreign tenant's schema is never visible; `vox-codegen --tenant` in service-account mode emits the same types as the JWT mode | controller e2e + `packages/vox-codegen` tests |
+| 9 | `GET :id/workflows` and `POST :id/workflows/:slug/runs` as a service account holding `svc:workflows:execute` (and 403 without it); `vox-node` `consultations.workflows.*` no longer throws `CredentialClassError` for a service account | e2e + `packages/vox-node` tests |
 
 ### 3.6 Files (creation/modification order)
 
 1. `packages/applications/src/services/serviceAccount/service-account-scopes.registry.ts` (+ tests), `seed/94-service-account.ts`.
 2. `packages/applications/src/services/consultation/consultation/dto/open-consultation.request.ts`, `consultation.service.ts` (clinician validation), `packages/applications/src/common/tenant-guards.ts` (ability check helper if needed).
-3. `apps/api/src/modules/consultation/consultation.controller.ts`, `consultation-job.controller.ts`, `apps/api/src/common/tenant-owned-resource.interceptor.ts`, `apps/api/src/modules/streaming/transcription-job.controller.ts`.
+3. `apps/api/src/modules/consultation/consultation.controller.ts`, `consultation-job.controller.ts`, `apps/api/src/common/tenant-owned-resource.interceptor.ts`, `apps/api/src/modules/streaming/transcription-job.controller.ts`, `apps/api/src/modules/workflows/consultation-workflow-runs.controller.ts`, `apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts` (`MyTenantContextSchemaController`).
 4. Regenerate the five artifacts: `pnpm api:build && pnpm api:route-manifest && pnpm api:openapi && pnpm api:portal && pnpm --filter @arcaai/vox-node gen:admin` (in a worktree — never in the primary checkout while the watch API runs).
-5. `packages/vox-node/src/resources/consultations.ts`, `consultation-streams.ts` (new), `stt.ts` (new), `core/realtime-stt-socket.ts` (new), README, `docs/architecture/vox-node-gateway-gaps.md`, `.claude/rules/08-vox-sdk.md`.
+5. `packages/vox-node/src/resources/consultations.ts`, `consultation-streams.ts` (new), `stt.ts` (new), `tenants.ts` (context-schema discovery), `workflows.ts` (widened credential class), `core/realtime-stt-socket.ts` (new), README, `docs/architecture/vox-node-gateway-gaps.md`, `.claude/rules/08-vox-sdk.md`; `packages/vox-codegen/src/{cli,fetch-schema}.ts` (service-account mode).
 6. e2e: `apps/api/tests/e2e/task-933-service-account-consultation.spec.ts`; an integration script replaying `apps/admin-console/tests/e2e/fixtures/audio/cardiology_consult_01.wav` through `RealtimeSttSocket` against the dev gateway.
 
 ### 3.7 Lanes and tiers (rule 14)
@@ -112,7 +133,9 @@ H2 can start against the pinned contracts while H1 lands; merge H1 first, then H
 | OD-4/5/6 | Identity on the open request → row; context schema unchanged — **recommended by the review**, owner to confirm at go |
 | OQ-3 | Who may be named as clinician: any tenant user holding `create:Consultation` (no new role list) — **recommended** |
 | OQ-4 | SSE scope: reuse `svc:consultation:session:write` — **recommended** |
-| OQ-1 / OQ-2 | `auth/stream-ticket` and `:id/workflows*` stay closed to service accounts — **recommended** |
+| OQ-1 | `auth/stream-ticket` stays closed to service accounts (not needed) — **recommended** |
+| OQ-2 | the consultation-bound workflows plane (`:id/workflows*`) is **opened** to the service account under `svc:workflows:execute` — **taken** (owner, 2026-09-09: "all permissions for vox-node to handle realtime consultation"); supersedes the registry note |
+| OD-7′ | the service account also fetches the tenant context-schema definition (`svc:tenant:context-schema:read`) and `vox-codegen --tenant` gains a service-account mode — **taken** (owner, same message) |
 
 ## 5. Implementation Summary
 
@@ -122,4 +145,5 @@ _Not started._
 
 | Date | Change |
 |---|---|
+| 2026-09-09 | Owner refinement: the service account holds **every** permission the `vox-node` realtime consultation surface needs — the scope family grows to five (`svc:consultation:session:write/read`, `svc:consultation:report:read`, `svc:tenant:context-schema:read`, `svc:workflows:execute`); the consultation-bound workflows plane is opened (supersedes the registry exclusion note); `GET tenants/me/context-schema` and `vox-codegen --tenant` accept the service account so ALaaS engineering can build against the tenant's schema; §1.1 records how the ArcaAI tenant selects the workflow per session from clinician, patient, department and visit type (department assignment + visit-type selector + the `n_visit` branch — no new mechanism). `auth/stream-ticket` stays closed. Still `Pending`, awaiting go. |
 | 2026-09-09 | Ticket opened after two read-only discovery lanes (service-account plane touchpoints; consultation context schema review) requested by the ALaaS integration plan. Status `Pending` — awaiting go. |
