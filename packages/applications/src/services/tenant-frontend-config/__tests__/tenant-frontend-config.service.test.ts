@@ -30,10 +30,22 @@ const mockConfigRepository = {
 };
 // The service reads the platform capability (a single SYSTEM_TENANT_ID
 // `GlobalSetting`) from the boot-time AppSettings cache, keyed flat by `key`.
-const mockAppSettings = { getValueWithDefault: vi.fn() };
+/**
+ * TASK-932 S2-4 — the platform raw-capture capability resolves through the
+ * settings-registry PLATFORM lane (`SYSTEM row -> descriptor default`), not
+ * through `appSettings.getValueWithDefault(key, false)` with the fallback
+ * written as a literal at the call site. The literal WAS the descriptor default;
+ * having it in two places is how the two drift.
+ */
+const mockTenantSettings = { resolvePlatform: vi.fn() };
+
+/** Set the platform capability the way the cascade reports it. */
+function platformRawCapture(value: boolean): void {
+  mockTenantSettings.resolvePlatform.mockReturnValue({ key: 'enable-local-raw-capture', value, source: value ? 'system' : 'code-default' });
+}
 
 function makeService(): TenantFrontendConfigService {
-  return new TenantFrontendConfigService(mockConfigRepository as any, mockEventEmitter as any, mockClsService as any, mockAppSettings as any);
+  return new TenantFrontendConfigService(mockConfigRepository as any, mockEventEmitter as any, mockClsService as any, mockTenantSettings as any);
 }
 
 /** Default CLS: a tenant admin pinned to tenant-1. */
@@ -69,7 +81,7 @@ describe('TenantFrontendConfigService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Default: platform capability OFF unless a test opts in.
-    mockAppSettings.getValueWithDefault.mockReturnValue(false);
+    platformRawCapture(false);
     asTenantAdmin();
     service = makeService();
   });
@@ -213,7 +225,7 @@ describe('TenantFrontendConfigService', () => {
       expect(created.captureRawAudio).toBe(true);
 
       vi.clearAllMocks();
-      mockAppSettings.getValueWithDefault.mockReturnValue(false);
+      platformRawCapture(false);
       asTenantAdmin();
       mockConfigRepository.findByTenant.mockResolvedValue(null);
       mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
@@ -238,13 +250,13 @@ describe('TenantFrontendConfigService', () => {
       const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
       const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: true });
       mockConfigRepository.findByTenant.mockResolvedValue(entity);
-      mockAppSettings.getValueWithDefault.mockReturnValue(true);
+      platformRawCapture(true);
 
       const result = await service.getByTenant();
 
       expect(result!.captureRawAudio).toBe(true);
       expect(result!.platformRawCaptureCapable).toBe(true);
-      expect(mockAppSettings.getValueWithDefault).toHaveBeenCalledWith('enable-local-raw-capture', false);
+      expect(mockTenantSettings.resolvePlatform).toHaveBeenCalledWith('enable-local-raw-capture');
     });
 
     describe('resolveEffectiveLocalRawCapture — platformCapability AND tenantToggle', () => {
@@ -255,7 +267,7 @@ describe('TenantFrontendConfigService', () => {
         { platform: false, tenant: false, expected: false },
       ])('platform=$platform tenant=$tenant -> $expected', async ({ platform, tenant, expected }) => {
         const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
-        mockAppSettings.getValueWithDefault.mockReturnValue(platform);
+        platformRawCapture(platform);
         mockConfigRepository.findByTenant.mockResolvedValue(
           TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: tenant }),
         );
@@ -266,14 +278,14 @@ describe('TenantFrontendConfigService', () => {
       });
 
       it('is false when the tenant has no config row yet (even if platform-capable)', async () => {
-        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        platformRawCapture(true);
         mockConfigRepository.findByTenant.mockResolvedValue(null);
 
         expect(await service.resolveEffectiveLocalRawCapture('tenant-1')).toBe(false);
       });
 
       it('short-circuits the DB read when the platform capability is OFF', async () => {
-        mockAppSettings.getValueWithDefault.mockReturnValue(false);
+        platformRawCapture(false);
 
         const effective = await service.resolveEffectiveLocalRawCapture('tenant-1');
 
@@ -363,7 +375,7 @@ describe('TenantFrontendConfigService', () => {
         { captureMode: 'NONE', expected: false },
       ])('derives the local raw flag from captureMode=$captureMode → $expected (ignoring captureRawAudio)', async ({ captureMode, expected }) => {
         const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
-        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        platformRawCapture(true);
         mockConfigRepository.findByTenant.mockResolvedValue(
           // captureRawAudio is the OPPOSITE of the derived value to prove captureMode wins.
           TenantFrontendConfigFactory.CreateTenantFrontendConfig({
@@ -378,7 +390,7 @@ describe('TenantFrontendConfigService', () => {
 
       it('falls back to the legacy captureRawAudio column when captureMode is null', async () => {
         const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
-        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        platformRawCapture(true);
         mockConfigRepository.findByTenant.mockResolvedValue(
           TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: true, captureMode: null }),
         );
@@ -388,7 +400,7 @@ describe('TenantFrontendConfigService', () => {
 
       it('still returns false when the platform capability is OFF even with captureMode=RAW_ONLY', async () => {
         const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
-        mockAppSettings.getValueWithDefault.mockReturnValue(false);
+        platformRawCapture(false);
         mockConfigRepository.findByTenant.mockResolvedValue(
           TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureMode: CaptureMode.RAW_ONLY }),
         );
