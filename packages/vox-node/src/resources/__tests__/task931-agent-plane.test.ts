@@ -15,7 +15,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { HopeClient } from '../../client';
-import { CredentialClassError } from '../../core/errors';
 import type { NamedEntityRecognitionOutput } from '../../types/agent';
 
 function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
@@ -30,6 +29,14 @@ function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; cal
   });
   return { fetch: impl as unknown as typeof fetch, calls };
 }
+
+/** The 202 handle a started run answers with. */
+const RUN_HANDLE = {
+  runId: 'run-1',
+  status: 'started' as const,
+  statusUrl: '/api/v1/workflows/triage/runs/run-1',
+  streamUrl: '/api/v1/workflows/triage/runs/run-1/stream',
+};
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -135,13 +142,24 @@ describe('TASK-931 — a service account reaches the workflow invocation plane',
     expect(calls[2]!.url).toBe('http://localhost:8868/api/v1/workflows/triage/runs/run-1/reviews/n1/decide');
   });
 
-  it('still REFUSES the consultation-bound plane, which gained no service-account scope', async () => {
-    const { fetch, calls } = stubFetch([TOKEN_EXCHANGE]);
+  /**
+   * AMENDED TASK-933. This case pinned the opposite: the consultation-bound plane gained no
+   * service-account scope under TASK-930, so the SDK refused it at the call site.
+   *
+   * The owner reversed that on 2026-09-09 (TASK-933 OQ-2) — the realtime consultation surface
+   * gets every permission `vox-node` needs, `svc:workflows:execute` included — so the refusal
+   * would now be a client-side veto over a grant the platform issued. The assertion is inverted
+   * rather than deleted, because "which credential classes reach this plane" is exactly the fact
+   * a reader comes to this file for.
+   */
+  it('now REACHES the consultation-bound plane, which gained `svc:workflows:execute`', async () => {
+    const { fetch, calls } = stubFetch([TOKEN_EXCHANGE, () => json([]), () => json(RUN_HANDLE, 202)]);
     const hope = serviceAccountClient(fetch);
 
-    await expect(hope.consultations.workflows.list('c1')).rejects.toBeInstanceOf(CredentialClassError);
-    await expect(hope.consultations.workflows.run('c1', 'triage', { input: {} })).rejects.toBeInstanceOf(CredentialClassError);
-    // Refused at the call site: nothing reached the network, not even the token exchange.
-    expect(calls).toHaveLength(0);
+    await expect(hope.consultations.workflows.list('c1')).resolves.toEqual([]);
+    await hope.consultations.workflows.run('c1', 'triage', { input: {} });
+
+    expect(calls[1]!.url).toBe('http://localhost:8868/api/v1/consultations/c1/workflows');
+    expect(calls[2]!.url).toBe('http://localhost:8868/api/v1/consultations/c1/workflows/triage/runs');
   });
 });

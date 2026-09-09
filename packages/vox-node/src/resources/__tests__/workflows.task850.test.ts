@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HopeClient } from '../../client';
 import { GatewayTimeoutError, HopeAPIError, NotFoundError, PermissionError, ReservedRunIdentityError } from '../../core/errors';
 import { RESERVED_RUN_IDENTITY_KEYS } from '../../core/run-identity';
+import { assertApiKeyPlane } from '../workflows';
 
 /** Build a `fetch` double that answers each call from `responses`, recording every request. */
 function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
@@ -120,7 +121,16 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   });
 
   it('runAndWait sends ?mode=blocking and returns the terminal status', async () => {
-    const terminal = { runId: 'run-1', slug: 'visit-summary', workflowVersionNumber: 3, status: 'COMPLETED', stages: [], startedAt: null, endedAt: null, resultRef: { outputs: { text: 'ok' } } };
+    const terminal = {
+      runId: 'run-1',
+      slug: 'visit-summary',
+      workflowVersionNumber: 3,
+      status: 'COMPLETED',
+      stages: [],
+      startedAt: null,
+      endedAt: null,
+      resultRef: { outputs: { text: 'ok' } },
+    };
     const { fetch, calls } = stubFetch([() => json(terminal, 200)]);
 
     const result = await client(fetch).workflows.runAndWait('visit-summary', { input: {} });
@@ -132,7 +142,9 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   it('runAndWait maps the 504 blocking ceiling to GatewayTimeoutError, not a generic failure', async () => {
     const { fetch } = stubFetch([() => json({ message: "Run 'run-1' did not finish within 60s." }, 504)]);
 
-    const error = await client(fetch).workflows.runAndWait('visit-summary', { input: {} }).catch((e: unknown) => e);
+    const error = await client(fetch)
+      .workflows.runAndWait('visit-summary', { input: {} })
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(GatewayTimeoutError);
     expect((error as GatewayTimeoutError).status).toBe(504);
@@ -141,7 +153,16 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   });
 
   it('reads a run status and cancels a run on the shipped paths', async () => {
-    const status = { runId: 'run-1', slug: 'visit-summary', workflowVersionNumber: 3, status: 'RUNNING', stages: [], startedAt: null, endedAt: null, resultRef: null };
+    const status = {
+      runId: 'run-1',
+      slug: 'visit-summary',
+      workflowVersionNumber: 3,
+      status: 'RUNNING',
+      stages: [],
+      startedAt: null,
+      endedAt: null,
+      resultRef: null,
+    };
     const { fetch, calls } = stubFetch([() => json(status), () => json({ runId: 'run-1', status: 'cancel_requested' })]);
     const hope = client(fetch);
 
@@ -226,10 +247,22 @@ describe('ConsultationWorkflowsResource — the consultation-bound plane', () =>
 });
 
 describe('Streaming — snapshot-then-delta, with real resume', () => {
-  const snapshot = frame('workflow.run.progress', { runId: 'run-1', slug: 'visit-summary', status: 'RUNNING', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3 });
+  const snapshot = frame('workflow.run.progress', {
+    runId: 'run-1',
+    slug: 'visit-summary',
+    status: 'RUNNING',
+    stages: [],
+    startedAt: null,
+    endedAt: null,
+    workflowVersionNumber: 3,
+  });
   const nodeA = frame('workflow.node.started', { runId: 'run-1', nodeId: 'n1' }, '1699999999-0');
   const nodeB = frame('workflow.node.completed', { runId: 'run-1', nodeId: 'n1' }, '1699999999-1');
-  const done = frame('workflow.run.completed', { runId: 'run-1', slug: 'visit-summary', status: 'COMPLETED', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3 }, '1699999999-2');
+  const done = frame(
+    'workflow.run.completed',
+    { runId: 'run-1', slug: 'visit-summary', status: 'COMPLETED', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3 },
+    '1699999999-2',
+  );
 
   it('yields every frame and exposes the snapshot as having NO resume token', async () => {
     const { fetch, calls } = stubFetch([() => sse([snapshot, nodeA, done])]);
@@ -255,12 +288,7 @@ describe('Streaming — snapshot-then-delta, with real resume', () => {
     expect(calls).toHaveLength(2);
     expect(new Headers(calls[0]!.init.headers).get('Last-Event-ID')).toBeNull();
     expect(new Headers(calls[1]!.init.headers).get('Last-Event-ID')).toBe('1699999999-0');
-    expect(seen.map((e) => e.type)).toEqual([
-      'workflow.run.progress',
-      'workflow.node.started',
-      'workflow.node.completed',
-      'workflow.run.completed',
-    ]);
+    expect(seen.map((e) => e.type)).toEqual(['workflow.run.progress', 'workflow.node.started', 'workflow.node.completed', 'workflow.run.completed']);
   });
 
   it('stops resuming once the run is terminal — a completed run is not reconnected to', async () => {
@@ -319,7 +347,9 @@ describe('Error surfaces a developer actually sees', () => {
   it('400 → HopeAPIError carrying the gateway message about the reserved field', async () => {
     const { fetch } = stubFetch([() => json({ message: "Reserved run-identity field 'consultationId' is not accepted." }, 400)]);
 
-    const error = await client(fetch).workflows.getRun('s', 'r').catch((e: unknown) => e);
+    const error = await client(fetch)
+      .workflows.getRun('s', 'r')
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(HopeAPIError);
     expect((error as HopeAPIError).status).toBe(400);
@@ -328,31 +358,41 @@ describe('Error surfaces a developer actually sees', () => {
 
   it('403 → PermissionError (scope/ability), distinct from 404', async () => {
     const { fetch } = stubFetch([() => json({ message: 'Forbidden' }, 403)]);
-    const error = await client(fetch).workflows.list().catch((e: unknown) => e);
+    const error = await client(fetch)
+      .workflows.list()
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(PermissionError);
   });
 
   it('404 → NotFoundError whose message states the 404-over-403 tenancy posture', async () => {
     const { fetch } = stubFetch([() => json({ message: 'Not Found' }, 404)]);
-    const error = await client(fetch).workflows.getRun('s', 'r').catch((e: unknown) => e);
+    const error = await client(fetch)
+      .workflows.getRun('s', 'r')
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(NotFoundError);
     expect((error as Error).message).toMatch(/different tenant/i);
   });
 });
 
 /**
- * AMENDED TASK-931. This suite pinned "the workflow plane is API-key-only": every route recorded
- * `svcScopes: []`, so a service-account client was refused at the call site rather than left to
- * collect a 403 no role grant could fix.
+ * AMENDED TWICE, and the history is the point.
  *
- * TASK-930 §3 declares the scopes, so half of that is no longer true. What survives is the
- * CONSULTATION-bound plane, which gained none — running a workflow that writes into a clinical
- * record stays a human-credential power. The refusal below is now that plane's alone; the reach
- * of the unbound plane is pinned in `task931-agent-plane.test.ts`.
+ * This suite originally pinned "the workflow plane is API-key-only": every route recorded
+ * `svcScopes: []`, so a service-account client was refused at the CALL SITE rather than left to
+ * collect a 403 no role grant could fix. TASK-930 §3 declared the scopes for the unbound plane,
+ * leaving the refusal to the CONSULTATION-bound one. TASK-933 (owner, 2026-09-09, OQ-2) declared
+ * `svc:workflows:execute` there too, so nothing in this package refuses a service account on a
+ * workflow plane any more.
+ *
+ * `assertApiKeyPlane` is still exported and still tested for its message, because an integrator
+ * on an older SDK hits it by name — but no plane in this package calls it today.
  */
-describe('The consultation-bound workflow plane is API-key-only — a service-account client is refused early', () => {
-  it('throws a plane-specific error instead of letting the gateway answer a confusing 403', async () => {
-    const { fetch, calls } = stubFetch([() => json(HANDLE, 202)]);
+describe('The consultation-bound workflow plane accepts a service account (TASK-933)', () => {
+  it('reaches the route instead of refusing locally', async () => {
+    const { fetch, calls } = stubFetch([
+      () => json({ accessToken: 'svc-token', tokenType: 'Bearer', expiresIn: 900, scopes: [], tenantId: 't-1' }),
+      () => json(HANDLE, 202),
+    ]);
     const hope = new HopeClient({
       baseUrl: 'http://localhost:8868',
       serviceAccount: { clientId: 'svc', clientSecret: 's3cret' },
@@ -360,24 +400,18 @@ describe('The consultation-bound workflow plane is API-key-only — a service-ac
       maxRetries: 0,
     });
 
-    const error = await hope.consultations.workflows.run('con-1', 'visit-summary', { input: {} }).catch((e: unknown) => e);
+    const handle = await hope.consultations.workflows.run('con-1', 'visit-summary', { input: {} });
 
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toMatch(/service account/i);
-    expect((error as Error).message).toMatch(/api key/i);
-    // Not even the token exchange should have been attempted.
-    expect(calls).toHaveLength(0);
+    expect(handle.runId).toBe('run-1');
+    // The exchange first, then the consultation-bound route with the service-account header.
+    expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/auth/service-token');
+    expect(calls[1]!.url).toBe('http://localhost:8868/api/v1/consultations/con-1/workflows/visit-summary/runs');
+    expect(new Headers(calls[1]!.init.headers).get('x-service-account-token')).toBe('svc-token');
   });
 
-  it('applies to listing and to streaming a run started on it', async () => {
-    const { fetch } = stubFetch([() => json(HANDLE, 202)]);
-    const hope = new HopeClient({ baseUrl: 'http://localhost:8868', serviceAccount: { clientId: 'a', clientSecret: 'b' }, fetch, maxRetries: 0 });
-
-    await expect(hope.consultations.workflows.list('con-1')).rejects.toThrow(/service account/i);
-    await expect(
-      (async () => {
-        for await (const _ of hope.consultations.workflows.runAndStream('con-1', 's', { input: {} })) void _;
-      })(),
-    ).rejects.toThrow(/service account/i);
+  it('still refuses by NAME when `assertApiKeyPlane` is applied — the helper is kept for older callers', () => {
+    expect(() => assertApiKeyPlane(true, 'A hypothetical API-key-only plane')).toThrow(/service account/i);
+    expect(() => assertApiKeyPlane(true, 'A hypothetical API-key-only plane')).toThrow(/api key/i);
+    expect(() => assertApiKeyPlane(false, 'A hypothetical API-key-only plane')).not.toThrow();
   });
 });

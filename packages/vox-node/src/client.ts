@@ -20,6 +20,7 @@ import {
   AgentsResource,
   ConsultationsResource,
   JobsResource,
+  SttResource,
   SummarizationResource,
   TenantsResource,
   WorkflowsResource,
@@ -95,10 +96,28 @@ export interface HopeClientOptions {
 export class HopeClient {
   /** P0 — stateless, v1-compat pre-summary/summary (`POST /api/smr/api/v1/{presummary,summary/sync}`). */
   readonly summarization: SummarizationResource;
-  /** P0.5 — minimal consultation read + consultation-bound summarization (`.summaries`). */
+  /**
+   * The CONSULTATION plane: `open` a consultation, drive its `recording`, read
+   * its four live `streams`, write `addContext` items, and read its
+   * `summaries`. `workflows` runs a published workflow against it.
+   *
+   * TASK-933 turned this from a read into the realtime lifecycle. A
+   * service-account client must name the clinician it acts for on `open` — see
+   * {@link ConsultationsResource.open}.
+   */
   readonly consultations: ConsultationsResource;
-  /** P0.5 — async job get/cancel/stream/waitFor. */
+  /** P0.5 — async job get/cancel/stream/subscribe/waitFor. */
   readonly jobs: JobsResource;
+  /**
+   * The STT STREAMING-SESSION plane (TASK-933): open a session, keep its
+   * single-use ticket fresh, close it, and build the
+   * {@link RealtimeSttSocket} that streams PCM16 to `/ws/stt/stream`.
+   *
+   * This is a socket client for a wire protocol, NOT an audio pipeline: no
+   * capture, no VAD, no denoise, no model. Which ASR runs is the tenant's
+   * published `SPEECH_TO_TEXT` agent, resolved by the gateway.
+   */
+  readonly stt: SttResource;
   /**
    * The caller's OWN tenant (`/api/v1/tenants/me/*`) — read-only, business
    * plane. Today: consultation context-schema discovery, the bundle a
@@ -200,6 +219,7 @@ export class HopeClient {
     this.summarization = new SummarizationResource(transport);
     this.consultations = new ConsultationsResource(transport, isServiceAccount);
     this.jobs = new JobsResource(transport);
+    this.stt = new SttResource(transport);
     this.tenants = new TenantsResource(transport);
     this.workflows = new WorkflowsResource(transport, isServiceAccount);
     this.agents = new AgentsResource(transport);

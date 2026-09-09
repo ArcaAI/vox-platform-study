@@ -14,6 +14,8 @@
 
 import { encodePathSegment } from '../core/url';
 import { parseSseStream } from '../core/sse';
+import { subscribeToSse } from '../core/sse-subscription';
+import type { StreamHandle, StreamHandlers, SubscribeOptions } from '../core/sse-subscription';
 import type { Transport } from '../core/transport';
 import type { AsyncJobResponse, JobStatusResponse, JobStatusType, JobStreamEvent } from '../types/consultation';
 
@@ -109,6 +111,37 @@ export class JobsResource {
     for await (const frame of parseSseStream(response.body, { signal: options.signal })) {
       yield JSON.parse(frame.data) as JobStreamEvent;
     }
+  }
+
+  /**
+   * The HANDLER form of {@link stream} — `GET …/jobs/:jobId/stream` delivered
+   * to callbacks instead of an async iterator, and ended for you when the job
+   * reaches a terminal status (TASK-933).
+   *
+   * Reach for it when the job is one of SEVERAL things you are watching at once
+   * (the shape a realtime consultation is in), and for {@link stream} when the
+   * job is the thing you are waiting on. `waitFor` remains the right answer when
+   * all you want is the result.
+   *
+   * Two deliberate differences from {@link stream}: this one has no per-request
+   * timeout (a subscription is open-ended by nature; `stream` keeps the
+   * transport's 60-second default it has always had), and a frame that is not
+   * JSON is skipped rather than thrown.
+   */
+  subscribe(jobId: string, handlers: StreamHandlers<JobStreamEvent>, options: SubscribeOptions = {}): StreamHandle {
+    return subscribeToSse(
+      this.transport,
+      {
+        path: `${jobPath(jobId)}/stream`,
+        dispatch: (payload) => {
+          const event = payload as JobStreamEvent;
+          handlers.onEvent(event);
+          return isJobStatusResponse(event) && isTerminalJobStatus(event.status);
+        },
+      },
+      handlers,
+      options,
+    );
   }
 
   /**

@@ -48,12 +48,19 @@ export class TenantsResource {
    * `etag` is `"none"`. Branch on it (`bundle.schemaId !== null`); this method
    * does not throw for that case, because it is not an error.
    *
-   * **Reachable by a user JWT and by an API key holding
-   * `tenant:context-schema:read`.** A service account cannot reach it — the
-   * route declares no `@RequiredSvcScopes`, and an absent scope declaration is
-   * a deny-by-default 403 for the machine classes. Under API-key auth, `me`
-   * resolves to the KEY'S TENANT (not to the key's bound user, the way
-   * `users/me/*` does).
+   * **Reachable by a user JWT, by an API key holding
+   * `tenant:context-schema:read`, and — since TASK-933 — by a SERVICE ACCOUNT
+   * holding `svc:tenant:context-schema:read`.** The route previously declared
+   * no `@RequiredSvcScopes`, which is a deny-by-default 403 for both machine
+   * classes; the owner opened it so an integrator building against a tenant's
+   * declared kinds can generate types with a machine credential rather than a
+   * human's token.
+   *
+   * `me` resolves to the CALLER'S TENANT under every class — the API key's
+   * tenant, or the tenant bound to the service-account token at exchange (never
+   * an `X-Tenant-Id` header, which a service-account request does not carry).
+   * Note that is the key's tenant, not the key's bound user, the way
+   * `users/me/*` resolves.
    *
    * Note the PLURAL path. `tenant/me/context-schema` (singular) still exists as
    * a 308 redirect shim and is not what this SDK calls.

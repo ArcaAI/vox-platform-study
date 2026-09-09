@@ -1,14 +1,23 @@
 /**
- * Minimal consultation read (id validation for the P0.5 summarization flow
- * NOT consultation CRUD; out of day-1 scope) plus the
- * `.summaries` sub-resource and the context-item WRITE (`addContext`).
+ * `hope.consultations.*` — opening a consultation, driving its recording,
+ * reading its live planes, and writing context items into it.
  *
  * Backed by `apps/api/src/modules/consultation/consultation.controller.ts`.
+ *
+ * TASK-933 grew this from a minimal READ (id validation for the summarization
+ * flow) into the realtime LIFECYCLE a machine integration actually needs:
+ * `open` → `recording.start` → `streams.*` → `recording.stop` →
+ * `summaries.latest`. What it is still NOT is consultation CRUD — there is no
+ * update, no delete, and no listing here, because none of those is part of
+ * running a consultation.
  */
 
 import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
+import type { ConsultationOpenResponse, OpenConsultationRequest } from '../types/consultation-realtime';
+import { ConsultationRecordingResource } from './consultation-recording';
+import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
 import { ConsultationWorkflowsResource } from './workflows';
 
@@ -33,9 +42,10 @@ export interface AddContextOptions extends ConsultationRequestOptions {
    *
    * The gateway ignores the header entirely when `request.kindKey` is absent.
    *
-   * This SDK does not fetch discovery for you — there is no typed
-   * business-plane read for `tenants/me/context-schema` yet, so the caller owns
-   * reading the bundle and threading its `contextSchemaVersionId` through here.
+   * Read the bundle with `hope.tenants.contextSchema()` and thread its
+   * `contextSchemaVersionId` through here; this SDK does not fetch discovery
+   * implicitly, because which version a long-lived integration pins is a
+   * decision it must make once and keep, not one to re-derive per write.
    */
   contextSchemaVersionId?: string;
 }
@@ -52,6 +62,18 @@ export class ConsultationsResource {
    * request body.
    */
   readonly workflows: ConsultationWorkflowsResource;
+  /**
+   * The RECORDING lifecycle — `hope.consultations.recording.start/stop`
+   * (TASK-933).
+   *
+   * A sub-resource rather than two methods on this class, because the pair is
+   * one state machine with one invariant worth keeping visible: an STT
+   * streaming session is created FIRST and its id handed to `start`, so the
+   * live-documentation layer can subscribe to that session's results directly.
+   */
+  readonly recording: ConsultationRecordingResource;
+  /** The four LIVE SSE planes — `hope.consultations.streams.*` (TASK-933). */
+  readonly streams: ConsultationStreamsResource;
 
   constructor(
     private readonly transport: Transport,
@@ -59,6 +81,50 @@ export class ConsultationsResource {
   ) {
     this.summaries = new ConsultationSummariesResource(transport);
     this.workflows = new ConsultationWorkflowsResource(transport, isServiceAccount);
+    this.recording = new ConsultationRecordingResource(transport);
+    this.streams = new ConsultationStreamsResource(transport);
+  }
+
+  /**
+   * `POST /api/v1/consultations/open` — GET-OR-CREATE the consultation for
+   * `(patientId, clinician, appointmentDate)`.
+   *
+   * Read {@link ConsultationOpenResponse.isNew} to tell which happened; calling
+   * this twice for the same visit is the intended way to re-attach to a
+   * consultation you already opened, not an error.
+   *
+   * **A service-account caller MUST name `clinicianUserId`, and a human caller
+   * must not** (TASK-933). The named clinician lands on `Consultation.doctorId`
+   * and is what every downstream consumer reads — the DNA writing style, the
+   * redaction gate, the doctor's report, the prompt tier and the audit trail.
+   * A machine is never recorded as the clinician; it is recorded as the ACTOR,
+   * beside the clinician it acted for.
+   *
+   * The other three identity details all matter at open and only at open:
+   * `departmentId` selects the governing workflow and the department's SOAP
+   * shape, `parentConsultationId` IS the visit-type signal (absent = new visit,
+   * present = revisit), and `language` fixes the language the note is written
+   * in. None of them can be supplied later.
+   *
+   * **Never retried.** The route accepts no idempotency key, and get-or-create
+   * makes a retry harmless in principle — but `core/retry.ts` does not retry a
+   * bare POST, and this method does not special-case itself out of that rule.
+   *
+   * @throws TypeError — locally, before any request is issued, for an empty
+   * `patientId`. The gateway answers that with a 400; it is a programming
+   * error, not a server condition.
+   */
+  async open(request: OpenConsultationRequest, options: ConsultationRequestOptions = {}): Promise<ConsultationOpenResponse> {
+    if (typeof request.patientId !== 'string' || request.patientId.trim() === '') {
+      throw new TypeError('open: `patientId` is required and must be a non-empty string — a consultation is always about a patient.');
+    }
+
+    return this.transport.request<ConsultationOpenResponse>({
+      method: 'POST',
+      path: 'consultations/open',
+      body: request,
+      signal: options.signal,
+    });
   }
 
   /**
@@ -96,10 +162,13 @@ export class ConsultationsResource {
    * non-idempotent POST is left un-retried by `core/retry.ts#shouldRetry` — a
    * duplicated clinical note is a worse outcome than a surfaced 503.
    *
-   * **Credential classes.** Reachable by a user JWT and by an API key holding
-   * `consultation:session:write`. A service account CANNOT reach it: the route
-   * declares no `@RequiredSvcScopes`, and an absent scope declaration is a
-   * deny-by-default 403 for the machine classes.
+   * **Credential classes.** Reachable by a user JWT, by an API key holding
+   * `consultation:session:write`, and — since TASK-933 — by a SERVICE ACCOUNT
+   * holding `svc:consultation:session:write`. The earlier text here said a
+   * service account could not reach it, which was true of the route as it stood:
+   * it declared no `@RequiredSvcScopes`, and an absent scope declaration is a
+   * deny-by-default 403 for both machine classes. The realtime plane declared
+   * them.
    *
    * @throws TypeError — locally, before any request is issued, when `payload` is
    * supplied without `kindKey`. The gateway answers that combination with a 400
