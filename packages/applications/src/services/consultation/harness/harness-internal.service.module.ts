@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HarnessInternalService } from './harness-internal.service';
 import { HarnessAssuranceServiceModule } from './harness-assurance.service.module';
+import { HarnessProgressServiceModule } from './harness-progress.service.module';
 import { HarnessAuditServiceModule } from '../../harness-audit';
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -69,6 +70,10 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // here is what makes the tenant → SYSTEM cascade actually reachable from a
     // Temporal activity.
     AiProviderConnectionServiceModule,
+    // Supplies HarnessProgressService so `persistDraft` can push the terminal
+    // harness-progress event on the interpreter's jobId-less finalize (the `notifyProgress`
+    // branch is addressed by a ConsultationJob id the interpreter never has).
+    HarnessProgressServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],
