@@ -640,6 +640,68 @@ class TestTheHandoffRuleContract:
         assert "URTI" not in draft.content
         assert "Afebrile" not in draft.content
 
+    @pytest.mark.parametrize("match", ["literal", "regex"])
+    def test_a_deterministic_rewrite_must_carry_its_replacement(self, match: str) -> None:
+        """The CROSS-FIELD rule, pinned so the gateway's validator can be asserted against it.
+
+        `type: "rewrite"` + `match: "literal"|"regex"` + no `replacement` is REJECTED: a
+        deterministic rewrite has nothing to write. The same triple with `match: "category"` is
+        accepted and means something else entirely — the Text SEMANTIC pass
+        (`_needs_semantic_rewrite`), which infers the replacement instead of being given one.
+
+        `validateRedactionRuleSet` (`packages/applications/.../redaction-rules.ts`) checks the
+        two closed vocabularies but not this pair, so a rule set it accepts can still be one this
+        model refuses — and under OD-6 a refusal FLAGS every finalized note. The mirror belongs
+        on the gateway; this is the shape it has to mirror.
+        """
+        from pydantic import ValidationError
+
+        from harness.redaction.engine import RedactionRule
+
+        with pytest.raises(ValidationError) as caught:
+            RedactionRule(id="r-bad", type="rewrite", match=match, pattern="Jane Doe")
+        assert "requires a 'replacement'" in str(caught.value)
+
+        # ...and the same shape with a category match is the SEMANTIC rewrite, which is valid.
+        assert RedactionRule(id="r-sem", type="rewrite", match="category", pattern="email")
+
+    @pytest.mark.asyncio
+    async def test_the_reason_names_the_rule_that_did_not_parse(self, run) -> None:
+        """OD-6 flags the note; the reason has to say WHICH rule caused it, or the clinician's
+        review is unexplainable and the doctor cannot fix their own rule set.
+
+        The rule ID is the doctor's own label and is safe to name. The pydantic message is NOT:
+        it echoes the offending INPUT, and a rule's `pattern` is precisely the identifier they
+        asked to have removed — which would put PHI in `SummaryMeta.redactionManifest`, the one
+        column documented to hold none.
+        """
+        persisted, result = await run(
+            run_context={
+                "trigger": {
+                    "consultationId": _CONSULTATION,
+                    "dna_redaction_rules": [
+                        {"id": "r-ok", "type": "remove", "match": "literal", "pattern": "Cough"},
+                        # rewrite + literal + no replacement — rejected by `RedactionRule`
+                        {
+                            "id": "r-bad",
+                            "type": "rewrite",
+                            "match": "literal",
+                            "pattern": "Jane Doe",
+                        },
+                    ],
+                },
+                "vars": {},
+                "nodes": {},
+            }
+        )
+
+        assert result.status == "SUCCEEDED"
+        reason = persisted[0].redaction_manifest["reason"]
+        assert "r-bad" in reason
+        assert "r-ok" not in reason
+        assert "Jane Doe" not in reason
+        assert persisted[0].gate_decision == "FLAG"
+
     def test_the_rule_vocabulary_matches_the_gateway_validator(self) -> None:
         """`RULE_TYPES` / `MATCH_KINDS` in `redaction-rules.ts` are the same two closed sets."""
         from typing import get_args
