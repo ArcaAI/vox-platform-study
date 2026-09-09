@@ -21,8 +21,16 @@
  * override.
  */
 
-/** The decode knobs a fine-tune may recommend. Every member optional; absent ⇒ no opinion. */
-export interface AiModelAsrProfileDecoding {
+/**
+ * The decode knobs a fine-tune may recommend. Every member optional; absent ⇒ no opinion.
+ *
+ * A `type`, not an `interface`, and deliberately so: this and {@link AiModelAsrProfile}
+ * are the SHAPE OF STORED JSON (`AiModel._metadata.asr`). TypeScript gives a type alias an
+ * implicit index signature but withholds one from an interface, so an interface here is
+ * not assignable to Prisma's `InputJsonValue` and every seed row writing the column fails
+ * to compile. Keep both as type aliases.
+ */
+export type AiModelAsrProfileDecoding = {
   /** Beam width. `InferenceConfig.beam_size`. */
   beamSize?: number;
   /** Sampling temperature. `InferenceConfig.temperature` (wrapped into the engine's list). */
@@ -49,7 +57,7 @@ export interface AiModelAsrProfileDecoding {
  * `maxDecodeWindowSec` / `partialWindowSec` predate this ticket (TASK-880) and keep their
  * meaning; `decoding` and `initialPrompt` are TASK-934's additions (OD-4, OD-11).
  */
-export interface AiModelAsrProfile {
+export type AiModelAsrProfile = {
   /** Longest audio fed to the engine in ONE decode, seconds. */
   maxDecodeWindowSec?: number;
   /** Tail window of the live utterance decoded for PARTIALs, seconds. */

@@ -54,6 +54,10 @@ describe('TASK-935 — postProcessing.lexicon (OD-2 a)', () => {
   });
 
   it('carries no forbidden schema keys', () => {
-    expect(forbiddenSchemaKeyProblems(asr, 'SPEECH_TO_TEXT')).toEqual([]);
+    // Keyed by node type on purpose: the key IS the label `forbiddenSchemaKeyProblems`
+    // prefixes onto every problem it reports, and scanning the one schema this ticket
+    // touches keeps the assertion scoped to TASK-935 (the sibling tests pass the whole
+    // `AGENT_PARAMETER_SCHEMAS` record and cover the rest).
+    expect(forbiddenSchemaKeyProblems({ SPEECH_TO_TEXT: asr })).toEqual([]);
   });
 });
