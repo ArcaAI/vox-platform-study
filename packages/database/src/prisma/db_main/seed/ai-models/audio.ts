@@ -112,6 +112,12 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
+    // TASK-938 (owner directive 2026-09-09): the election follows the row the seeded
+    // `realtime-transcription` agent SERVES as primary — TASK-934 OD-2's own rule — and this
+    // ticket moves the agent back to F16. Quantisation is near-free on accuracy either way
+    // (q8_0 0.381 CER @ 7s vs f16 0.386 @ 7s, TASK-934), so this is a revert of the ROW, not
+    // a claim that q8_0 measured worse.
+    isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT],
     provider: 'built-in',
     architecture: 'whisper',
     memorySizeMb: 1700,
@@ -132,7 +138,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // partial window widens to 15s because a SHORT partial window is where the damage
     // actually was — 6s partials measured 31% garbage on English streaming output, 15s
     // measured 0%. Live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -156,13 +162,6 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
-    // TASK-934 (OD-2): the platform default must be the row the seeded `realtime-
-    // transcription` agent actually SERVES as primary (`25-agents.ts`'s `modelSlug`), not
-    // the row it merely falls back to — TASK-930 made this row the agent's primary and
-    // left the election on the f16 row above, which is the drift this ticket's lane D
-    // closes. Quantisation costs nothing on accuracy here (q8_0 0.381 CER @ 7s vs f16
-    // 0.386 @ 7s, TASK-934 measurement), so there is no accuracy reason to keep it on f16.
-    isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT],
     provider: 'built-in',
     architecture: 'whisper',
     memorySizeMb: 900,
@@ -178,7 +177,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // on English, 15s measured 0%, and the last partial no longer needs to decode the same
     // span as the final now that the two are independent. Live proof on the merged build:
     // discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -266,7 +265,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -305,7 +304,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // (lane S) — the partial window widens to 15s because a short partial window is where
     // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
     // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0', 'private-repo'],
   },
   {

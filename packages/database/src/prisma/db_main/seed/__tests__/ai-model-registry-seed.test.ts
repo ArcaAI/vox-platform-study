@@ -99,11 +99,13 @@ const TASK_860_RETIRED_SLUGS = [
   'indic-f5',
 ] as const;
 
-/** README §3.6 — the platform-default elections. TASK-934 (OD-2) moved SPEECH_TO_TEXT
- * from the f16 row to q8_0 — the row the seeded `realtime-transcription` agent serves
- * as primary, not merely a fallback. */
+/** README §3.6 — the platform-default elections. TASK-934 (OD-2) fixed the RULE — the
+ * election follows the row the seeded `realtime-transcription` agent serves as primary,
+ * not one it merely falls back to — and moved it to q8_0 because that was the primary
+ * then. TASK-938 moves the agent back to the f16 row, so the same rule moves the election
+ * with it. The rule is the invariant here; the slug is just where it currently points. */
 const PLATFORM_DEFAULTS: Record<string, string> = {
-  SPEECH_TO_TEXT: 'arcaai-whisper-large-ml-en-gguf-q8_0',
+  SPEECH_TO_TEXT: 'arcaai-whisper-large-ml-en-gguf',
   TEXT_TO_SPEECH: 'kokoro',
   NAMED_ENTITY_RECOGNITION: 'medical-ner',
   PII_DETECTION: 'gliner2-privacy-filter-pii-multi',
@@ -249,15 +251,19 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
     // 30s DOUBLES this fine-tune's CER relative to 7s (0.381 -> 0.645), so 7s remains every
     // whisper.cpp row's accuracy window for the FINAL decode. The "MUST match" rule itself
     // was also wrong — lane S decoupled `partialWindowSec` from `maxDecodeWindowSec` into
-    // two independent knobs, and the PARTIAL window widens to 15s because that is where
-    // the real streaming damage was: a 6s partial window measured 31% garbage on English,
-    // 15s measured 0%. Every WHISPER_CPP row now carries the same measured `{7, 15}` pair
-    // (OD-1) — live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
+    // two independent knobs.
+    //
+    // TASK-938 (owner directive 2026-09-09) returns `partialWindowSec` to 6, the value in
+    // place before the 2026-09-06 baseline. TASK-934's 15s came from an OFFLINE fixture
+    // measurement (31% garbage at 6s, 0% at 15s on English clips); the owner's live console
+    // sessions on the 15s build were materially worse, and a 15s partial decodes 8s of audio
+    // beyond this fine-tune's own 7s accuracy window on every tick. `maxDecodeWindowSec`
+    // stays 7 — that number was measured on CER directly and is not in dispute.
     const whisperCpp = catalog.filter((m) => m.format === AiModelFormat.WHISPER_CPP);
     expect(whisperCpp.length).toBeGreaterThan(0);
     whisperCpp.forEach((m) => {
       expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(7);
-      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(15);
+      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(6);
     });
   });
 

@@ -145,47 +145,62 @@ def test_whisper_cpp_code_switch_via_prompt() -> None:
     assert AiModelFormat.WHISPER_CPP.value in engines_supporting_mode("vi-en")
 
 
-def test_resolve_whisper_cpp_pair_unpinned_prompt_disabled() -> None:
-    # Priming prompt is TEMPORARILY disabled (WHISPER_CPP_PRIMING_PROMPT_ENABLED
-    # is False): the pair still resolves (no cloud fallback) but emits NO prompt —
-    # the native code-switch GGUF handles the mix. Pair: do NOT pin a language.
+def test_resolve_whisper_cpp_pair_unpinned_but_primed() -> None:
+    """A pair NEVER pins a language; with the switch on it is primed instead.
+
+    TASK-938 turned the pair switch ON, which matters precisely because of the
+    first assertion: pinning the primary of a pair would bias the secondary's
+    script, so the bilingual prompt is the ONLY bias correction a code-switch
+    session gets. With it off (the state through 2026-09-09) the decoder had no
+    language signal at all and re-ran its own LID per decode window."""
     resolved = resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
     assert resolved.language is None
     assert resolved.code_switching is False
     assert resolved.streaming_english_gloss is False
-    assert resolved.initial_prompt is None
+    assert resolved.initial_prompt is not None
+    assert "Malayalam" in resolved.initial_prompt
+    assert "English" in resolved.initial_prompt
 
     vi = resolve_mode_for_engine("vi-en", AiModelFormat.WHISPER_CPP)
     assert vi.language is None
-    assert vi.initial_prompt is None
+    assert vi.initial_prompt is not None
+    assert "Vietnamese" in vi.initial_prompt
 
 
-def test_resolve_whisper_cpp_single_pins_prompt_disabled() -> None:
-    # Single: pin the chosen language; no priming prompt while disabled.
+def test_resolve_whisper_cpp_single_pins_and_primes() -> None:
+    """A single mode pins its language AND (TASK-938) carries its own prompt.
+
+    The pin is what the mode is for; the prompt tells a code-switch fine-tune to
+    stay in the pinned language rather than drifting into the other one. ``auto``
+    is neither pinned nor primed — it is the deliberate "let the model decide"."""
     en = resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert en.language == "en"
-    assert en.initial_prompt is None
+    assert en.initial_prompt is not None
+    assert "English" in en.initial_prompt
+    assert "Malayalam" not in en.initial_prompt
 
     ml = resolve_mode_for_engine("ml", AiModelFormat.WHISPER_CPP)
     assert ml.language == "ml"
-    assert ml.initial_prompt is None
+    assert ml.initial_prompt is not None
+    assert "Malayalam" in ml.initial_prompt
 
     auto = resolve_mode_for_engine("auto", AiModelFormat.WHISPER_CPP)
     assert auto.language is None
     assert auto.initial_prompt is None
 
 
-def test_task891_both_priming_prompts_default_off() -> None:
-    """TASK-891 A3 — the ONE kill-switch became TWO, and both still default OFF.
+def test_task938_both_priming_prompts_default_on() -> None:
+    """TASK-891 A3 made the ONE kill-switch TWO; TASK-938 turned both ON.
 
-    The pair prompt is code-switch's only bias correction (a pair pins no
-    language), and the single prompt is redundant on top of a pinned language.
-    They are therefore evaluated separately, which the single flag made
-    impossible — flipping it moved both at once."""
+    They stay two switches for the reason A3 gave — the pair prompt and the
+    single-language prompt are different experiments and must be flippable apart
+    (the two tests below prove they still are). This assertion is the SHIPPED
+    state, deliberately pinned so a change of decode behaviour is a visible test
+    edit and not a silent one."""
     import stt.pipeline.language_modes as lm
 
-    assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is False
-    assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is False
+    assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is True
+    assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is True
 
 
 def test_task891_pair_priming_prompt_is_independently_switchable(
@@ -195,6 +210,7 @@ def test_task891_pair_priming_prompt_is_independently_switchable(
     import stt.pipeline.language_modes as lm
 
     monkeypatch.setattr(lm, "WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED", True)
+    monkeypatch.setattr(lm, "WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED", False)
 
     pair = lm.resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
     assert pair.language is None
@@ -216,6 +232,7 @@ def test_task891_single_priming_prompt_is_independently_switchable(
     import stt.pipeline.language_modes as lm
 
     monkeypatch.setattr(lm, "WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED", True)
+    monkeypatch.setattr(lm, "WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED", False)
 
     single = lm.resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert single.language == "en"

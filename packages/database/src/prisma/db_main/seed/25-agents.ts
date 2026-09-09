@@ -8,7 +8,7 @@
  * (INTERFACES §6.1) stamps, so a seeded promotion and a real one are indistinguishable. ArcaAI
  * receives the SYSTEM set through phase 26 and adds its own department agents in phase 29.
  *
- *   realtime-transcription          SPEECH_TO_TEXT            arcaai-whisper-large-ml-en-gguf-q8_0 (+ gguf, + faster-whisper CT2)
+ *   realtime-transcription          SPEECH_TO_TEXT            arcaai-whisper-large-ml-en-gguf (+ gguf-q8_0, + faster-whisper CT2)
  *   medical-ner                     NAMED_ENTITY_RECOGNITION  medical-ner (TOKEN_CLASSIFICATION, built-in)         INTERFACES §2
  *   case-notes-pre-summary          TEXT_GENERATION           gemma + the platform pre-summary template, guards ON  TASK-932 D-9
  *   general-medicine-summarization  TEXT_GENERATION           gemma + the General Medicine summary template, guards ON
@@ -176,7 +176,8 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
 // ----------------------------------------------------------------------------------------------
 
 /**
- * Today's `platform-transcription` parameters (TASK-891 A4: `wordTimestamps: false`).
+ * Today's `platform-transcription` parameters (TASK-938: `wordTimestamps: true`, guarded by
+ * the adapter's own pinned-language refusal rather than by this flag).
  *
  * `minSpeechMs: 100` (TASK-934, OD-5): was 250, which re-imposed a value the engine author
  * had already retired (`dto.py:589-593`) — at 250ms a spoken yes/no (~150-250ms) is
@@ -187,7 +188,12 @@ export const ASR_PARAMETERS = {
   audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
   // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
-  decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: false, beamSize: 5, temperature: 0 },
+  // TASK-938 (owner directive 2026-09-09): `wordTimestamps` back to true. It is no longer the
+  // script-corrupting setting TASK-891 A4 turned off — that ticket also made the adapter REFUSE
+  // the `max_len=1, split_on_word=True` decode unless the language is pinned to a space-delimited
+  // one (`_WORD_SPLIT_SAFE_LANGUAGES`), so an unpinned or Malayalam session silently keeps the
+  // clean sentence-level decode and only a declared `en`/`vi` session pays for word splitting.
+  decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' }, disfluency: true, stabilizer: true },
   streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
@@ -336,10 +342,14 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       tenantId,
       slug: 'realtime-transcription',
       name: 'Realtime transcription (whisper.cpp ML/EN)',
-      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (Q8_0), Silero VAD gating, Cadence punctuation; the F16 GGUF and the CTranslate2 turbo as fallbacks.',
+      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (F16), Silero VAD gating, Cadence punctuation; the Q8_0 GGUF and the CTranslate2 turbo as fallbacks.',
       task: 'SPEECH_TO_TEXT',
-      modelSlug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
-      fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf', 'faster-whisper-large-v3-turbo-int8'],
+      // TASK-938 (owner directive 2026-09-09): back to the F16 row, reverting TASK-930's move to
+      // Q8_0. The two measured within 0.005 CER of each other (TASK-934), so this is not an
+      // accuracy claim — it restores the weights that were serving before the 2026-09-06 baseline
+      // so the live A/B has one variable fewer. Q8_0 stays first in the fallback chain.
+      modelSlug: 'arcaai-whisper-large-ml-en-gguf',
+      fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf-q8_0', 'faster-whisper-large-v3-turbo-int8'],
       instruction: ASR_INSTRUCTION,
       parameters: ASR_PARAMETERS,
       outputSchema: null,
