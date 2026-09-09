@@ -41,6 +41,14 @@ model GlobalSetting {
 
   // indexing
   @@unique([tenantId, name, key], name: "GlobalSetting_tenantId_name_key_unique")
+  // TASK-932 S1-1 — identity is (tenantId, key); `name` is a human label, not
+  // identity, so the sibling constraint above allowed two rows to share a
+  // (tenantId, key) as long as their `name` differed (the `rate-limit.enabled`
+  // duplicate `pickBackingRow` had to defend against). `map:` this time, not
+  // `name:` — the sibling's `name:` argument never reached Postgres (it is the
+  // DB name `GlobalSetting_tenantId_name_key_key`, not `..._unique`), which is
+  // exactly the trap `02-database-prisma.md` calls out.
+  @@unique([tenantId, key], map: "GlobalSetting_tenantId_key_unique")
   @@index(tenantId, name: "GlobalSetting_tenantId_idx")
   @@index([tenantId, name, key], name: "GlobalSetting_tenantId_key_idx")
   @@schema("core")

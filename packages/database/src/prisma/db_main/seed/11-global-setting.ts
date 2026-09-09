@@ -143,7 +143,6 @@ function tenantSettings(
     genMaxConcurrentSessions: string;
     genDefaultLanguage: string;
     genSessionTimeout: string;
-    ffConsultationSharing: string;
     sttModel: string;
     sttVad: string;
     textAzureDeployment: string;
@@ -191,11 +190,11 @@ function tenantSettings(
       description: 'Idle session timeout in minutes before automatic logout',
     },
 
-    // ── feature-flags (1) ───────────────────────────────────────────
+    // ── feature-flags (0) ───────────────────────────────────────────
     //
-    // TASK-932 R-8 -- FIVE ROWS WERE REMOVED FROM HERE, and they are listed in
+    // TASK-932 R-8 removed FIVE advisory rows from here (listed in
     // `RETIRED_GLOBAL_SETTING_KEYS` below so an already-provisioned database
-    // sweeps its copies to DELETED rather than keeping them ENABLED forever:
+    // sweeps its copies to DELETED rather than keeping them ENABLED forever):
     //
     //   enable-transcription  enable-dna-style  enable-cross-chain-summary
     //   enable-ner-extraction  enable-code-switching
@@ -210,20 +209,16 @@ function tenantSettings(
     // an admin that a toggle did nothing, and a toggle that needs that warning
     // should not exist. That marker is deleted with these rows.
     //
-    // `enable-consultation-sharing` STAYS: it is genuinely enforced, by
-    // `ConsultationController.isSharingEnabled()`, which gates cross-doctor
-    // shared-patient reads.
-    {
-      id: ids.ffConsultationSharing,
-      tenantId,
-      namespace: 'feature-flags',
-      name: 'Consultation Sharing',
-      key: 'enable-consultation-sharing',
-      value: 'true',
-      defaultValue: 'true',
-      dataType: ValueType.Boolean,
-      description: 'Enable cross-doctor read-only access to consultations for shared patients (continuity of care)',
-    },
+    // TASK-932 wave 4 owner decision OD-1 (2026-09-09) now ALSO stops cloning
+    // `enable-consultation-sharing` per tenant, the last row this block ever
+    // carried. It is genuinely enforced (`ConsultationController
+    // .isSharingEnabled()`), but the enforcement is moving onto the settings
+    // registry cascade (lane S2): a `maxScope: 'tenant'` descriptor with
+    // `default: true` now supplies the SAME effective value on absence, so a
+    // per-tenant explicit `true` clone is redundant with the descriptor
+    // default rather than an override of it. The existing clones are swept to
+    // DELETED by `RETIRED_GLOBAL_SETTING_KEYS` below so every tenant inherits
+    // the descriptor default instead of keeping a now-redundant explicit row.
 
     // ── stt (2) ─────────────────────────────────────────────────────
     {
@@ -379,7 +374,6 @@ export const ALL_SETTINGS: SettingDef[] = [
     genMaxConcurrentSessions: IDS.GLOBAL_MAX_CONCURRENT_SESSIONS,
     genDefaultLanguage: IDS.GLOBAL_DEFAULT_LANGUAGE,
     genSessionTimeout: IDS.GLOBAL_SESSION_TIMEOUT,
-    ffConsultationSharing: IDS.GLOBAL_FF_CONSULTATION_SHARING,
     sttModel: IDS.GLOBAL_STT_MODEL,
     sttVad: IDS.GLOBAL_STT_VAD,
     textAzureDeployment: IDS.GLOBAL_TEXT_AZURE_DEPLOYMENT,
@@ -394,7 +388,6 @@ export const ALL_SETTINGS: SettingDef[] = [
     genMaxConcurrentSessions: IDS.ARCAAI_MAX_CONCURRENT_SESSIONS,
     genDefaultLanguage: IDS.ARCAAI_DEFAULT_LANGUAGE,
     genSessionTimeout: IDS.ARCAAI_SESSION_TIMEOUT,
-    ffConsultationSharing: IDS.ARCAAI_FF_CONSULTATION_SHARING,
     sttModel: IDS.ARCAAI_STT_MODEL,
     sttVad: IDS.ARCAAI_STT_VAD,
     textAzureDeployment: IDS.ARCAAI_TEXT_AZURE_DEPLOYMENT,
@@ -411,11 +404,10 @@ export const ALL_SETTINGS: SettingDef[] = [
 // Platform-owned settings (SYSTEM_TENANT_ID)
 //
 // The local raw-stream dual-capture capability is a PLATFORM gate,
-// not a per-tenant flag: a single `locked` row owned by SYSTEM_TENANT_ID. The
+// not a per-tenant flag: a single row owned by SYSTEM_TENANT_ID. The
 // `AppSettingsService` cache is keyed flat by `key`, so one platform-scoped row
 // resolves deterministically (the key is unique, so it never trips the
-// boot-time duplicate-key invariant). Only SUPER_ADMIN can flip it
-// (enforced by the `GlobalSettingService` locked write-guard). Default OFF.
+// boot-time duplicate-key invariant). Default OFF.
 // =============================================================================
 export const PLATFORM_SETTINGS: SettingDef[] = [
   {
@@ -427,13 +419,18 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     // Clinical Workflow Playground — platform capability turned ON so
     // the Global demo tenant's `TenantFrontendConfig.captureRawAudio = true`
     // becomes effective (GET /tenant/me/config returns the AND of the two).
-    // `defaultValue` stays 'false' so a reset reverts to the locked default.
+    // `defaultValue` stays 'false' so a reset reverts to the fail-safe default.
     value: 'true',
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      'Platform capability for local raw-stream dual-capture . The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
-    locked: true,
+      "Platform capability for local raw-stream dual-capture. The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. SUPER_ADMIN-only — gated by the registry descriptor's `globalOnly`, not a row-level lock.",
+    // TASK-932 wave 4 owner decision OD-2 (2026-09-09) — retired the
+    // row-level lock now that lane S2's registry descriptor for this key
+    // (`maxScope: 'system'`, `globalOnly: true`) is the SUPER_ADMIN-only
+    // gate. One mechanism, not two: `locked` used to be this row's own
+    // enforcement; the descriptor now owns it end to end.
+    locked: false,
   },
   // Turn the nightly SYSTEM-template resync sweep ON.
   //
@@ -557,6 +554,24 @@ export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key
   // migrated — per owner decision D-A there is no production data, so this is a clean
   // cutover rather than a migration.
   { namespace: 'smr', key: 'smr-azure-deployment' },
+  // TASK-932 wave 4 owner decision OD-1 (2026-09-09) — stop cloning
+  // `enable-consultation-sharing` into every tenant. The registry cascade
+  // (lane S2's `maxScope: 'tenant'` descriptor, `default: true`) now supplies
+  // the SAME effective value on absence, so the per-tenant explicit `true`
+  // clone this file used to seed (see `tenantSettings()` above) is
+  // superseded rather than lost — every tenant still resolves `true` unless
+  // it writes its own opinion through the governed lane.
+  { namespace: 'feature-flags', key: 'enable-consultation-sharing' },
+  // TASK-932 wave 4 owner decision OD-8 (2026-09-09) — retire the legacy
+  // `S3_PUBLIC_BUCKET`/`S3_PRIVATE_BUCKET` platform bucket pair
+  // (`06-stt.ts`'s `DEFAULT_STT_SETTINGS`, namespace `platform`). Zero
+  // production consumers besides `S3Service.testConnection()`, which no
+  // longer reads them (it now probes with an account-level
+  // `ListBucketsCommand` instead of listing a named legacy bucket that dev
+  // MinIO never provisioned) — the false "MinIO unreachable" health reading
+  // this caused is the defect OD-8 closes.
+  { namespace: 'platform', key: 'S3_PUBLIC_BUCKET' },
+  { namespace: 'platform', key: 'S3_PRIVATE_BUCKET' },
 ];
 
 /**

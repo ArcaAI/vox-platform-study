@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../prisma/db_main/seed/00-constants';
-import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../prisma/db_main/seed/00-constants';
+import { ALL_SETTINGS, PLATFORM_SETTINGS, RETIRED_GLOBAL_SETTING_KEYS } from '../prisma/db_main/seed/11-global-setting';
+import { DEFAULT_STT_SETTINGS } from '../prisma/db_main/seed/06-stt';
+import { DNA_REGEN_SETTINGS } from '../prisma/db_main/seed/08-dna-writing-style';
+import { GATES as CONSULTATION_GATE_SETTINGS } from '../prisma/db_main/seed/11c-consultation-gate-settings';
+import {
+  KNOBS as PLATFORM_KNOB_SETTINGS,
+  CONDITIONAL_KNOBS as PLATFORM_CONDITIONAL_KNOB_SETTINGS,
+} from '../prisma/db_main/seed/11a-platform-knob-settings';
+import { RATE_LIMIT_SETTINGS } from '../prisma/db_main/seed/12-rate-limit-settings';
+import { ENTITLEMENTS_GLOBAL_SETTING_IDENTITIES } from '../prisma/db_main/seed/15-entitlements';
+import { USER_GLOBAL_SETTING_IDENTITIES } from '../prisma/db_main/seed/91-user';
 
 const UUID_REGEX = /^85000000-/;
 
@@ -15,7 +25,10 @@ const CORE_SUFFIXES = [
   // they are no longer emitted and `RETIRED_GLOBAL_SETTING_KEYS` sweeps the
   // copies an already-provisioned database holds. Their ids stay reserved in
   // `00-constants.ts`, like every other retired block.
-  'FF_CONSULTATION_SHARING',
+  //
+  // FF_CONSULTATION_SHARING moved to `RETIRED_CORE_SUFFIXES` below by TASK-932
+  // wave 4 OD-1 — the per-tenant clone is retired (the registry cascade
+  // supplies the same default on absence), so it is no longer emitted either.
   'STT_MODEL',
   'STT_VAD',
   // TEXT Azure deployment-name (032), seeded for every tenant.
@@ -85,8 +98,20 @@ const SYSTEM_WIDE_KEYS = [
  * under. `TOTAL_IDS` therefore counts them, and `suffixesFor` does not — the two
  * questions ("which ids exist" and "which rows are seeded") stopped having the
  * same answer when TASK-932 R-8 removed the five advisory feature flags.
+ *
+ * FF_CONSULTATION_SHARING joined this list in TASK-932 wave 4 (OD-1): its
+ * per-tenant clone is retired (the registry cascade's descriptor default now
+ * supplies the same effective value on absence), so the feature-flags
+ * namespace emits ZERO per-tenant rows.
  */
-const RETIRED_CORE_SUFFIXES = ['FF_TRANSCRIPTION', 'FF_DNA_STYLE', 'FF_CROSS_CHAIN', 'FF_NER', 'FF_CODE_SWITCHING'] as const;
+const RETIRED_CORE_SUFFIXES = [
+  'FF_TRANSCRIPTION',
+  'FF_DNA_STYLE',
+  'FF_CROSS_CHAIN',
+  'FF_NER',
+  'FF_CODE_SWITCHING',
+  'FF_CONSULTATION_SHARING',
+] as const;
 
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix) ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES] : [...CORE_SUFFIXES];
@@ -227,16 +252,21 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(generalKeys).toEqual(['default-language', 'max-concurrent-sessions', 'session-timeout']);
         });
 
-        // TASK-932 R-8 — the ONE `feature-flags` row left is the one that is
-        // actually read (`ConsultationController.isSharingEnabled`). The five
-        // advisory rows are asserted ABSENT rather than merely not asserted
-        // present: a toggle that changes nothing is worse than no toggle, and
-        // this is what stops one being re-added by copy-paste.
-        it('emits enable-consultation-sharing and no other feature flag', () => {
+        // TASK-932 R-8 removed five advisory `feature-flags` rows with no
+        // runtime consumer, leaving exactly one:
+        // `enable-consultation-sharing` (actually read by
+        // `ConsultationController.isSharingEnabled`). Wave 4 OD-1 then
+        // retired ITS per-tenant clone too — the registry cascade's
+        // `maxScope: 'tenant'` descriptor default now supplies the same
+        // effective value on absence — so the namespace emits NO rows at
+        // all. Asserted ABSENT rather than merely not asserted present: a
+        // control surface that changes nothing is worse than none, and this
+        // is what stops one being re-added by copy-paste.
+        it('emits NO feature-flags namespace settings (retired by TASK-932 R-8 + OD-1)', () => {
           const flags = settingsForTenant(tenantId)
             .filter((s) => s.namespace === 'feature-flags')
             .map((s) => s.key);
-          expect(flags).toEqual(['enable-consultation-sharing']);
+          expect(flags).toEqual([]);
         });
 
         // The guardrail namespace is RETIRED (superseded
@@ -265,5 +295,124 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       const counts = SETTING_PREFIXES.map((p) => settingsForTenant(TENANT_ID_BY_PREFIX[p]).length);
       expect(new Set(counts).size).toBe(1);
     });
+  });
+});
+
+// =============================================================================
+// TASK-932 S1-1 — cross-seed (tenantId, key) uniqueness.
+//
+// `GlobalSetting` only ever enforced `(tenantId, name, key)` uniqueness, so
+// two rows could share the SAME (tenantId, key) as long as their `name`
+// differed — exactly what happened historically to `rate-limit.enabled`
+// (see `settings-registry-write.service.ts`'s `pickBackingRow` doc: a
+// duplicate SYSTEM row made `AppSettingsService` refuse to build its
+// boot-time cache at all). A new DB-level unique index
+// (`GlobalSetting_tenantId_key_unique`, this ticket's migration) now makes a
+// collision impossible at the database layer; THIS test is the static,
+// no-database pin that every seed FILE agrees with that constraint before a
+// migration ever runs.
+//
+// `identityOf` isolates the (tenantId, key) pair regardless of a seed
+// array's other fields, and `findDuplicateKeys` is unit-pinned below with a
+// fabricated collision before it is trusted against the real seed data — the
+// same discipline as any other pure function.
+// =============================================================================
+
+interface GlobalSettingIdentity {
+  tenantId: string;
+  key: string;
+}
+
+/** Every group of size > 1 is a real (tenantId, key) collision; returns one entry per colliding pair, annotated with how many rows share it. */
+function findDuplicateKeys(rows: readonly GlobalSettingIdentity[]): Array<{ tenantId: string; key: string; count: number }> {
+  const counts = new Map<string, { tenantId: string; key: string; count: number }>();
+  for (const row of rows) {
+    const id = `${row.tenantId}::${row.key}`;
+    const existing = counts.get(id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      counts.set(id, { tenantId: row.tenantId, key: row.key, count: 1 });
+    }
+  }
+  return [...counts.values()].filter((entry) => entry.count > 1);
+}
+
+describe('(tenantId, key) uniqueness across every seed source', () => {
+  describe('findDuplicateKeys (the pin itself)', () => {
+    it('flags a fabricated (tenantId, key) collision', () => {
+      const duplicates = findDuplicateKeys([
+        { tenantId: SYSTEM_TENANT_ID, key: 'rate-limit.enabled' },
+        { tenantId: SYSTEM_TENANT_ID, key: 'rate-limit.enabled' },
+      ]);
+      expect(duplicates).toEqual([{ tenantId: SYSTEM_TENANT_ID, key: 'rate-limit.enabled', count: 2 }]);
+    });
+
+    it('does not flag the same key under two different tenants', () => {
+      const duplicates = findDuplicateKeys([
+        { tenantId: SEED_TENANT_ID, key: 'session-timeout' },
+        { tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI, key: 'session-timeout' },
+      ]);
+      expect(duplicates).toEqual([]);
+    });
+  });
+
+  describe('the real seed data', () => {
+    // Every array/loop across the repo that writes a `GlobalSetting` row,
+    // flattened to its (tenantId, key) identity. A file whose settings all
+    // land on one fixed tenant (the platform-knob/rate-limit/consultation-gate
+    // registries) is zipped with that constant here rather than exported with
+    // a redundant `tenantId` field on every row.
+    const ALL_SEEDED_IDENTITIES: GlobalSettingIdentity[] = [
+      ...ALL_SETTINGS.map((s) => ({ tenantId: s.tenantId, key: s.key })),
+      ...PLATFORM_SETTINGS.map((s) => ({ tenantId: s.tenantId, key: s.key })),
+      ...DEFAULT_STT_SETTINGS.map((s) => ({ tenantId: s.tenantId, key: s.key })),
+      ...DNA_REGEN_SETTINGS.map((s) => ({ tenantId: s.tenantId, key: s.key })),
+      ...CONSULTATION_GATE_SETTINGS.map((s) => ({ tenantId: SYSTEM_TENANT_ID, key: s.key })),
+      ...PLATFORM_KNOB_SETTINGS.map((s) => ({ tenantId: SYSTEM_TENANT_ID, key: s.key })),
+      ...PLATFORM_CONDITIONAL_KNOB_SETTINGS.map((s) => ({ tenantId: SYSTEM_TENANT_ID, key: s.key })),
+      ...RATE_LIMIT_SETTINGS.map((s) => ({ tenantId: SYSTEM_TENANT_ID, key: s.key })),
+      ...ENTITLEMENTS_GLOBAL_SETTING_IDENTITIES,
+      ...USER_GLOBAL_SETTING_IDENTITIES,
+    ];
+
+    it('no two seeded rows share a (tenantId, key) pair', () => {
+      expect(findDuplicateKeys(ALL_SEEDED_IDENTITIES)).toEqual([]);
+    });
+
+    it('is actually checking something (the combined seed set is non-trivial)', () => {
+      // A guard against the check silently checking nothing (e.g. every
+      // import above resolving to `undefined` and `.map` throwing would be
+      // caught by the test runner anyway, but an accidental empty array from
+      // a bad import would not be).
+      expect(ALL_SEEDED_IDENTITIES.length).toBeGreaterThan(50);
+    });
+  });
+});
+
+// =============================================================================
+// TASK-932 S1-4, owner decision OD-8 — legacy S3_PUBLIC_BUCKET /
+// S3_PRIVATE_BUCKET retirement.
+//
+// `06-stt.ts`'s `DEFAULT_STT_SETTINGS` no longer seeds these two keys into a
+// fresh database; this pins that an already-provisioned database still gets
+// them swept to DELETED via `RETIRED_GLOBAL_SETTING_KEYS`
+// (`retireSupersededGlobalSettings`, run on every `db:seed`).
+// =============================================================================
+describe('S3_PUBLIC_BUCKET / S3_PRIVATE_BUCKET retirement (TASK-932 OD-8)', () => {
+  it('both legacy platform bucket keys are in the retired-keys sweep', () => {
+    const retired = RETIRED_GLOBAL_SETTING_KEYS.filter((k) => k.namespace === 'platform');
+    expect(retired).toEqual(
+      expect.arrayContaining([
+        { namespace: 'platform', key: 'S3_PRIVATE_BUCKET' },
+        { namespace: 'platform', key: 'S3_PUBLIC_BUCKET' },
+      ]),
+    );
+  });
+
+  it('neither key is seeded by DEFAULT_STT_SETTINGS any more', () => {
+    const keys = DEFAULT_STT_SETTINGS.map((s) => s.key);
+    expect(keys).not.toContain('S3_PUBLIC_BUCKET');
+    expect(keys).not.toContain('S3_PRIVATE_BUCKET');
   });
 });

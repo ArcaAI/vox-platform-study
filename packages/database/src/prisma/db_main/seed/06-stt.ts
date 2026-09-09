@@ -122,28 +122,17 @@ export const DEFAULT_STT_SETTINGS = [
     dataType: ValueType.String,
     description: 'S3 region',
   },
-  {
-    id: '82000000-0000-0000-0003-000000000014',
-    tenantId: DEFAULT_TENANT_ID,
-    namespace: 'platform',
-    name: 's3',
-    key: 'S3_PRIVATE_BUCKET',
-    value: 'hope-private',
-    defaultValue: 'hope-private',
-    dataType: ValueType.String,
-    description: 'Private bucket for voice samples and sensitive files',
-  },
-  {
-    id: '82000000-0000-0000-0003-000000000015',
-    tenantId: DEFAULT_TENANT_ID,
-    namespace: 'platform',
-    name: 's3',
-    key: 'S3_PUBLIC_BUCKET',
-    value: 'hope-public',
-    defaultValue: 'hope-public',
-    dataType: ValueType.String,
-    description: 'Public bucket for shared assets',
-  },
+  // ids 0014 (S3_PRIVATE_BUCKET) / 0015 (S3_PUBLIC_BUCKET) RETIRED (TASK-932
+  // OD-8, 2026-09-09): a legacy platform-wide bucket pair nothing provisions
+  // (dev MinIO never carried `hope-public`/`hope-private`) and the ONLY
+  // reader was `S3Service.testConnection()`'s health probe, which listed
+  // objects in whichever of the two existed — so a real MinIO carrying
+  // neither answered `NoSuchBucket` and the health check reported
+  // "unreachable" while MinIO was healthy. `testConnection()` now probes
+  // with an account-level `ListBucketsCommand` instead and needs no named
+  // bucket at all. Ids stay reserved; `RETIRED_GLOBAL_SETTING_KEYS`
+  // (`seed/11-global-setting.ts`) sweeps the copies an already-provisioned
+  // database holds to `resourceStatus: DELETED`.
   {
     id: '82000000-0000-0000-0003-000000000016',
     tenantId: DEFAULT_TENANT_ID,
