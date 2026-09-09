@@ -63,7 +63,12 @@ def _wire() -> dict[str, Any]:
         "compiledConfig": {
             "task": "TEXT_GENERATION",
             "service": "llm",
-            "model": {"id": "m-1", "slug": "lms-gemma", "provider": "lm-studio", "taskType": "TEXT_GENERATION"},
+            "model": {
+                "id": "m-1",
+                "slug": "lms-gemma",
+                "provider": "lm-studio",
+                "taskType": "TEXT_GENERATION",
+            },
             "fallbacks": [],
             "instruction": {"systemPrompt": "Finalize the case note."},
             "resolvedPrompt": {"source": "inline", "content": "Finalize the case note."},
@@ -254,7 +259,11 @@ class TestTheRedactionAudit:
         persisted, _result = await run()
 
         manifest = persisted[0].redaction_manifest
-        assert manifest == {"source": "core.agent", "labelCounts": {"NAME": 2, "PHONE": 1}, "total": 3}
+        assert manifest == {
+            "source": "core.agent",
+            "labelCounts": {"NAME": 2, "PHONE": 1},
+            "total": 3,
+        }
         serialized = json.dumps(manifest)
         for identifier in ("Jane Doe", "John Smith", "07700 900461"):
             assert identifier not in serialized
@@ -305,3 +314,154 @@ class TestWhenThePersistFails:
         assert "the finalized note was not persisted" in (result.reason or "")
         assert result.output is not None
         assert result.output["data"]["case_note"] == _CASE_NOTE
+
+
+class TestTheDeterministicRedaction:
+    """The manifest is a claim about a TRANSFORM, so a transform has to have run.
+
+    `_redaction_audit` reports what the FINALIZER SAID it redacted. That is the model's own
+    account of its own output — useful provenance, but it is not evidence, and
+    `SummaryMeta.redactionApplied` read `false` on every interpreter-persisted note because no
+    deterministic pass existed on this lane at all.
+
+    The legacy `HarnessDocWorkflow` has always run the real thing: `apply_redaction` over the
+    doctor's DNA rules, before persist, with a fail-closed posture. `persist_draft` is already
+    called activity-to-activity from here, so the same transform runs the same way — one
+    activity, no new workflow command, no patch era.
+
+    OD-6 governs the failure: a note the doctor expected redacted must never persist silently
+    as a clean draft, and an undocumented encounter is the worse clinical outcome — so it
+    persists WITH the forced review flag the legacy gate uses (`gate_decision = FLAG`) and a
+    named degraded reason on the manifest.
+    """
+
+    @staticmethod
+    def _context(rules: Any) -> dict[str, Any]:
+        return {
+            "trigger": {
+                "consultationId": _CONSULTATION,
+                "dna_style_id": "dna-report-1",
+                "dna_redaction_rules": rules,
+            },
+            "vars": {},
+            "nodes": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_configured_rules_run_the_deterministic_engine_before_persist(self, run) -> None:
+        """The manifest names the RULE that fired — not a label the model volunteered."""
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-afebrile", "type": "remove", "match": "literal", "pattern": "Afebrile"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        assert draft.redaction_applied is True
+        assert draft.redaction_manifest["hitsByRule"] == {"r-afebrile": 1}
+        assert draft.redaction_manifest["ruleIds"] == ["r-afebrile"]
+        assert draft.redaction_manifest["totalHits"] == 1
+        assert draft.redaction_manifest["failedClosed"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_persisted_note_is_the_redacted_text(self, run) -> None:
+        """The whole point: the clinical record must hold the TRANSFORMED note, not the one the
+        transform was computed against."""
+        persisted, _result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-urti",
+                        "type": "rewrite",
+                        "match": "literal",
+                        "pattern": "URTI",
+                        "replacement": "upper respiratory tract infection",
+                    }
+                ]
+            )
+        )
+
+        assert "URTI" not in persisted[0].content
+        assert "upper respiratory tract infection" in persisted[0].content
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "rules", [None, [], {"rules": []}], ids=["absent", "empty", "empty-set"]
+    )
+    async def test_no_rules_configured_falls_back_to_the_self_reported_audit(
+        self, run, rules
+    ) -> None:
+        """Absence is not a failure. With no rules the doctor configured nothing to enforce, so
+        the finalizer's own account stays the provenance — exactly today's behaviour."""
+        persisted, result = await run(run_context=self._context(rules))
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].redaction_manifest == {
+            "source": "core.agent",
+            "labelCounts": {"NAME": 2, "PHONE": 1},
+            "total": 3,
+        }
+        assert persisted[0].gate_decision is None
+
+    @pytest.mark.asyncio
+    async def test_a_fail_closed_redaction_persists_with_the_forced_review_flag(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OD-6. The note is KEPT — dropping it loses the encounter — but it is flagged with the
+        same mechanism the legacy gate uses, so no clinician sees it as a clean draft."""
+        from harness.temporal import activities as legacy_activities
+        from harness.temporal.models import ApplyRedactionResult
+
+        async def _fails_closed(payload: Any) -> Any:
+            return ApplyRedactionResult(text=payload.note_text, changed=False, failed_closed=True)
+
+        monkeypatch.setattr(legacy_activities, "apply_redaction", _fails_closed)
+
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-name", "type": "remove", "match": "category", "pattern": "email"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        assert draft.content == _CASE_NOTE  # never dropped
+        assert draft.gate_decision == "FLAG"
+        assert draft.redaction_applied is False
+        assert draft.redaction_manifest["failedClosed"] is True
+        assert draft.redaction_manifest["reason"]
+
+    @pytest.mark.asyncio
+    async def test_an_unusable_rule_set_also_fails_closed(self, run) -> None:
+        """Rules the doctor configured but this lane cannot parse are the same clinical situation
+        as an engine that could not run: something was meant to be removed and was not."""
+        persisted, result = await run(run_context=self._context(["remove the employer"]))
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].content == _CASE_NOTE
+        assert persisted[0].gate_decision == "FLAG"
+        assert persisted[0].redaction_manifest["failedClosed"] is True
+
+    @pytest.mark.asyncio
+    async def test_a_redaction_crash_persists_the_note_rather_than_losing_it(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unexpected exception is still OD-6: keep the note, flag it, name the reason."""
+        from harness.temporal import activities as legacy_activities
+
+        async def _boom(_payload: Any) -> Any:
+            raise RuntimeError("PHI redactor unavailable")
+
+        monkeypatch.setattr(legacy_activities, "apply_redaction", _boom)
+
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-x", "type": "remove", "match": "literal", "pattern": "Cough"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].content == _CASE_NOTE
+        assert persisted[0].gate_decision == "FLAG"
+        assert "PHI redactor unavailable" in persisted[0].redaction_manifest["reason"]
