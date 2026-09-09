@@ -123,35 +123,79 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     }
   }
 
+  /**
+   * TASK-932 S2-1 — the one row `(tenantId, key)` may have, in ANY namespace.
+   *
+   * `null` when there is none. `DataNotFoundException` is the repository's way
+   * of saying "no match" on `findFirst`, so it is translated here rather than
+   * left to a `try` around business logic; every other failure propagates,
+   * because a probe that could not run must never be read as "the key is free".
+   *
+   * `deleted: false` passes NO `resourceStatus`, which is what makes it a LIVE
+   * probe: the soft-delete extension injects `not: 'DELETED'` whenever the
+   * caller has not pinned one (`applySoftDeleteFilter`, `packages/database`).
+   */
+  private async findByTenantAndKey(tenantId: string, key: string, deleted: boolean): Promise<GlobalSettingEntity | null> {
+    try {
+      return await this.globalSettingRepository.findFirst({
+        where: {
+          tenantId,
+          key,
+          ...(deleted ? { resourceStatus: ResourceStatusType.DELETED } : {}),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      });
+    } catch (e) {
+      if (e instanceof DataNotFoundException) return null;
+      throw e;
+    }
+  }
+
   async create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity> {
-    // (Defect 2) — revive-on-create. The DB unique index
-    // `(tenantId, name, key)` counts soft-DELETED rows, so a plain create
-    // after a soft-delete 409s (P2002) and the key can never come back.
-    // When a DELETED row matches the identity the new row would take, RESTORE
-    // it (UPDATE: ENABLED + version bump — the sanctioned resurrect path) and
-    // apply the request's fields, preserving the row's audit lineage. Follows
-    // the userRoleAssignment.service restore-on-create precedent. The tenant
-    // is resolved exactly like the write path does (explicit request tenant,
-    // else the CLS tenant the tenant-scope extension would inject); with
-    // neither, there is no unique identity to collide with — plain create.
+    // (Defect 2) — revive-on-create. The DB unique index counts soft-DELETED
+    // rows, so a plain create after a soft-delete 409s (P2002) and the key can
+    // never come back. When a DELETED row matches the identity the new row
+    // would take, RESTORE it (UPDATE: ENABLED + version bump — the sanctioned
+    // resurrect path) and apply the request's fields, preserving the row's
+    // audit lineage. Follows the userRoleAssignment.service restore-on-create
+    // precedent. The tenant is resolved exactly like the write path does
+    // (explicit request tenant, else the CLS tenant the tenant-scope extension
+    // would inject); with neither, there is no unique identity to collide with
+    // — plain create.
+    //
+    // TASK-932 S2-1 — BOTH probes are keyed on `(tenantId, key)` and NOT on
+    // `(tenantId, name, key)`. The narrower identity was the old unique index's
+    // shape, and it left the platform's real invariant unguarded: the same key
+    // under a different `name`/`namespace` is a different row to that index and
+    // a DUPLICATE to everything that reads a setting BY KEY. `AppSettingsService`
+    // rebuilds its cache keyed by key alone and refuses the whole cache when it
+    // finds two ("duplicate platform key(s) detected"), so a second row does not
+    // shadow one setting — it takes the settings cache down for the process.
+    // Lane S1 adds the DB unique index; this guard is what turns that index's
+    // P2002 (which names neither namespace) into a 400 that says which one
+    // already holds the key.
     const effectiveTenantId = request.tenantId ?? this.tenantId;
-    // TASK-890 §3.15 — before the revive probe, so a soft-deleted SYSTEM row is
+    // TASK-890 §3.15 — before the probes, so a soft-deleted SYSTEM row is
     // not a back door into the platform tier.
     this.assertPlatformTierWrite(effectiveTenantId);
     if (effectiveTenantId) {
-      try {
-        const deleted = await this.globalSettingRepository.findFirst({
-          where: {
-            tenantId: effectiveTenantId,
-            name: request.name,
-            key: request.key,
-            resourceStatus: ResourceStatusType.DELETED,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any,
-        });
+      const occupant = await this.findByTenantAndKey(effectiveTenantId, request.key, false);
+      if (occupant) {
+        throw new ArgumentInvalidException(
+          `Setting key '${request.key}' already exists for this tenant in namespace ` +
+            `'${occupant.namespace ?? '(none)'}' (name '${occupant.name}'). A tenant holds at most one live row per key — ` +
+            'update that row instead of creating a second one.',
+        );
+      }
 
+      const deleted = await this.findByTenantAndKey(effectiveTenantId, request.key, true);
+      if (deleted) {
         const restored = await this.globalSettingRepository.restore(deleted.id, this.requestUser?.id);
+        // `name` is applied with the rest since the probe no longer matches on
+        // it: a caller that asked for one identity must not silently inherit
+        // the buried row's.
         await this.updateEntity(restored, {
+          name: request.name,
           value: request.value,
           dataType: request.dataType,
           namespace: request.namespace,
@@ -167,9 +211,6 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
           data: { ...(revived.toObject() as object), revivedFromDeleted: true },
         });
         return revived;
-      } catch (e) {
-        if (!(e instanceof DataNotFoundException)) throw e;
-        // No DELETED row for this identity — fall through to a plain create.
       }
     }
 
