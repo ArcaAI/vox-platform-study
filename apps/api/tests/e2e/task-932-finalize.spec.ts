@@ -58,6 +58,21 @@
  * `n_summary_new` / `n_summary_revisit` (`in` ← `n_ner.out`) → `n_finalize` (`in` ←
  * `n_summary_*.out`). With no audio, `pendingGraphTranscript` is `''`.
  *
+ * That empties the ASR/NER half of that chain. It does NOT empty the chain, and an earlier
+ * revision of this header claiming otherwise was wrong (corrected 2026-09-09, adversarial
+ * review of lane H). Measured in the code that runs it:
+ *
+ *  * `runFlush` proceeds on transcript OR notes — `if (!transcript && !notes) return null`;
+ *  * the executor has no skip-on-empty-input rule, and `CoreAgentHandler`'s TEXT_GENERATION
+ *    branch does not short-circuit on an empty `sourceText`;
+ *  * `buildTextUserPrompt` folds the case notes in as their own block, through the
+ *    `buildPrompt` closure `runGraphLane` is handed — independently of how the graph is wired.
+ *
+ * So `n_summary_*` produces output from the CASE_NOTE adds alone, `persistDurableSnapshot`
+ * writes it, the handoff carries it, and `n_finalize` has an input. Which means: a failure of
+ * this spec under `HARNESS_E2E_API` is a REAL DEFECT, not a limitation of the plane. Do not
+ * soften one into the other.
+ *
  * So the assertions below are written to state what they actually observed. Where the realtime
  * chain produced nothing on this plane, the spec FAILS with that named — it never synthesises a
  * handoff record from persisted items and never posts a node's output on a node's behalf, both
@@ -194,9 +209,10 @@ test.describe('TASK-932 R-16a — stop finalizes the consultation note', () => {
 
     // Give the live lane a bounded window to flush at least once, so there is something to hand
     // off — polled rather than slept, so a fast stack does not pay for a slow one's worst case
-    // and a slow one is not cut off at an arbitrary 15s. Coming back empty is a legitimate
-    // outcome on this plane (see the header: no transcript roots the seeded graph's chain), so
-    // this is a wait, never an assertion.
+    // and a slow one is not cut off at an arbitrary 15s. The notes alone are enough to drive a
+    // flush (see the header), so coming back empty is a real signal rather than this plane's
+    // normal. It is still a wait and not an assertion, because the finalized note below is the
+    // assertion that matters and failing there keeps the diagnosis at the end of the journey.
     const live = await waitForLatestSummary(request, doctorToken, consultationId, LIVE_FLUSH_TIMEOUT_MS);
     liveSnapshot = live?.content ?? null;
 
@@ -211,8 +227,9 @@ test.describe('TASK-932 R-16a — stop finalizes the consultation note', () => {
       summary,
       `no finalized note appeared within ${FINALIZE_TIMEOUT_MS}ms — the consultation is stuck with an empty final note. ` +
         'Check, in order: the harness worker is running and connected to Temporal; the run reached `n_finalize`; ' +
-        'and whether the live handoff carried an `n_summary_*` output at all (the header explains why an API-only ' +
-        'plane cannot root that chain in a transcript).',
+        'and whether the live handoff carried an `n_summary_*` output at all. This plane supplies no transcript, ' +
+        'but it does supply the case notes the generation node is prompted with (see the header), so an empty ' +
+        'handoff here is a defect to chase — not the plane.',
     ).not.toBeNull();
     expect(summary!.content.trim().length, 'the finalized note must not be empty').toBeGreaterThan(0);
   });
