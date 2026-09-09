@@ -13,6 +13,62 @@ export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANS
 export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
 /** Large gateway enum (46 values) — keep open for forward compatibility. */
 export type ModelTaskType = string;
+/** The one `ModelTaskType` value the ASR decode profile (below) applies to. */
+export const ASR_TASK_TYPE = 'AUTOMATIC_SPEECH_RECOGNITION';
+
+// =============================================================================
+// ASR decode profile (`AiModel._metadata.asr`, TASK-934) — mirrors
+// `AiModelAsrProfile` / `AiModelAsrProfileDecoding` (`@arcaai/types`) and the
+// range tables the gateway DTO (`AsrProfileRequest`) validates against. The
+// console has no dependency on `@arcaai/types` (every wire type in this file
+// is a hand-mirrored copy, per the existing convention — see `TextProviderModel`
+// in `@/shared/catalog`), so the ranges are copied here rather than imported.
+// =============================================================================
+
+export interface AiModelAsrProfileDecoding {
+  beamSize?: number;
+  temperature?: number;
+  noSpeechThreshold?: number;
+  compressionRatioThreshold?: number;
+  logprobThreshold?: number;
+  conditionOnPrevTokens?: boolean;
+  noRepeatNgramSize?: number;
+  prevTextContextWords?: number;
+  hotwords?: string[];
+}
+
+export interface AiModelAsrProfile {
+  maxDecodeWindowSec?: number;
+  partialWindowSec?: number;
+  decoding?: AiModelAsrProfileDecoding;
+  initialPrompt?: string;
+}
+
+interface AsrProfileRange {
+  readonly min: number;
+  readonly max: number;
+  readonly integer?: boolean;
+}
+
+/** Mirrors `AI_MODEL_ASR_PROFILE_WINDOW_RANGES` (`@arcaai/types`). */
+export const AI_MODEL_ASR_PROFILE_WINDOW_RANGES: Readonly<Record<'maxDecodeWindowSec' | 'partialWindowSec', AsrProfileRange>> = {
+  maxDecodeWindowSec: { min: 1, max: 30 },
+  partialWindowSec: { min: 1, max: 30 },
+};
+
+/** Mirrors `AI_MODEL_ASR_PROFILE_DECODING_RANGES` (`@arcaai/types`). */
+export const AI_MODEL_ASR_PROFILE_DECODING_RANGES: Readonly<Record<keyof Omit<AiModelAsrProfileDecoding, 'conditionOnPrevTokens' | 'hotwords'>, AsrProfileRange>> = {
+  beamSize: { min: 1, max: 10, integer: true },
+  temperature: { min: 0, max: 1 },
+  noSpeechThreshold: { min: 0, max: 1 },
+  compressionRatioThreshold: { min: 1, max: 10 },
+  logprobThreshold: { min: -10, max: 0 },
+  noRepeatNgramSize: { min: 0, max: 10, integer: true },
+  prevTextContextWords: { min: 0, max: 200, integer: true },
+};
+
+export const AI_MODEL_ASR_PROFILE_HOTWORDS_MAX_ITEMS = 64;
+export const AI_MODEL_ASR_PROFILE_INITIAL_PROMPT_MAX_LENGTH = 1000;
 /** MEASURED presence of a row's weights in `s3://hope-models` (TASK-860 R-2). */
 export type AiModelAvailability = 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
 export type AiDeploymentKind = 'SELF_HOSTED' | 'CLOUD';
@@ -72,6 +128,12 @@ export interface AiModel {
   architecture?: string | null;
   memorySizeMb?: number | null;
   computeType?: string | null;
+  /**
+   * Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — the
+   * SAME validated shape the gateway resolver reads with, never the raw stored JSON. `null`
+   * off an ASR row, or when the row carries none.
+   */
+  asrProfile?: AiModelAsrProfile | null;
   /**
    * DERIVED by the gateway from `bucketPrefix` (+ `primaryObject`); never typed
    * and never sent on a write.
@@ -137,6 +199,8 @@ export interface CreateModelRequest extends ModelRegistryFields {
   computeType?: string;
   tags?: string[];
   isPlatformDefaultFor?: AiTaskKind[];
+  /** ASR-only (`taskType: 'AUTOMATIC_SPEECH_RECOGNITION'`); a 400 on any other row. */
+  asrProfile?: AiModelAsrProfile;
 }
 
 /** PATCH /admin/ai-models/:id body (expectedVersion added by the client). Empty strings clear the nullable fields. */
@@ -156,6 +220,8 @@ export interface UpdateModelRequest extends Partial<ModelRegistryFields> {
   memorySizeMb?: number;
   computeType?: string;
   tags?: string[];
+  /** ASR-only; `null` clears the stored profile. Omit to leave it untouched. */
+  asrProfile?: AiModelAsrProfile | null;
 }
 
 /** PATCH /admin/ai-models/:id/platform-default body. */
