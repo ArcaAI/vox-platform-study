@@ -70,6 +70,34 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
+   * TASK-932 OD-3 (owner decision, 2026-09-09) — the READ half of
+   * {@link assertPlatformTierWrite}. A SYSTEM-tenant row refused to a
+   * non-elevated caller answers **403**, exactly as `update` / `deleteById`
+   * already do, and not the 404 this surface first shipped with.
+   *
+   * WHY THE POSTURE FLIPPED. 404-over-403 hides the EXISTENCE of a resource
+   * whose existence is itself a secret — another CUSTOMER tenant's row, where
+   * "there is a row here" would leak that the tenant exists and what it
+   * configures. The platform tier is not that: its keys are declared in the
+   * settings registry, shipped in the source tree, and rendered in the catalog
+   * by name. There is no existence to protect, so answering 404 bought nothing
+   * and cost the two things a privilege boundary is supposed to give: the
+   * caller cannot tell "this key is not mine to see" from "I typed the id
+   * wrong", and the platform tier ends up documented as two different rules
+   * depending on the verb (403 to write, 404 to read the same row).
+   *
+   * SCOPE. This is the PLATFORM tier and nothing else. A row belonging to
+   * another customer tenant keeps the house 404, and an id that names no row
+   * at all keeps the repository's own 404 — which is why every call site loads
+   * (or resolves) FIRST and asks this second.
+   */
+  private assertPlatformTierRead(targetTenantId: string | null | undefined): void {
+    if (targetTenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Platform-wide settings are readable by super administrators only.');
+    }
+  }
+
+  /**
    * TASK-932 R-1 (D-5) — the tenant a non-elevated caller's READS are pinned to,
    * or `null` when the caller is a platform administrator.
    *
@@ -296,12 +324,16 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // `where: { tenantId: SYSTEM }` is accepted by the shared-read merge
     // (SYSTEM is half of the `[caller, SYSTEM]` pair it allows), so without
     // this guard `GET admin/settings/tenant/00000000-…` hands a tenant admin
-    // the whole platform tier. 404 rather than 403: which tenants exist, and
-    // whether the platform tier is readable at all, are existence questions
-    // (the house 404-over-403 posture) — a foreign CUSTOMER tenant answers the
-    // same way, where the scope extension previously threw a raw 500.
+    // the whole platform tier.
+    //
+    // TASK-932 OD-3 — the PLATFORM tier answers 403 (a privilege boundary; its
+    // key names are public in the registry catalog). Any OTHER tenant keeps the
+    // house 404: which customer tenants exist is an existence question, and
+    // that is the leak 404-over-403 exists to close. The scope extension
+    // previously threw a raw 500 for both.
     const pin = this.ownTenantReadPin;
     if (pin && tenantId !== pin) {
+      this.assertPlatformTierRead(tenantId);
       throw new DataNotFoundException('globalSetting', tenantId);
     }
     // With the secretsOnly facet the tenant scope moves INSIDE the
@@ -365,14 +397,21 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
     // TASK-932 R-1 — the shared-read widening lets a tenant admin's `findById`
     // resolve a SYSTEM row, so the row has to be checked after it is loaded.
-    // A 404 (`DataNotFoundException` → the global filter's generic
-    // `Resource not found`) and NOT a 403: the answer must be byte-identical to
-    // a genuinely missing id, or an admin who can read the platform's key names
-    // out of the source tree can confirm each row's existence one request at a
-    // time. The guard precedes the audit event on purpose — a read that is
-    // refused is not a view.
+    //
+    // TASK-932 OD-3 — and it is refused with a 403, matching `update` /
+    // `deleteById` on the very same row. The earlier 404 was chosen to make the
+    // answer byte-identical to a missing id; the owner's call is that the
+    // platform tier has no existence to hide (its keys are in the registry
+    // catalog by name), and that one row answering two different postures
+    // depending on the verb is the worse outcome. EXISTENCE is still resolved
+    // first — the `findById` above 404s an unknown id, so a caller never learns
+    // which ids exist by reading a 403.
+    //
+    // Both guards precede the audit event on purpose — a read that is refused
+    // is not a view.
     const pin = this.ownTenantReadPin;
     if (pin && globalSetting.tenantId !== pin) {
+      this.assertPlatformTierRead(globalSetting.tenantId);
       throw new DataNotFoundException('globalSetting', String(id));
     }
 
