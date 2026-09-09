@@ -18,16 +18,12 @@ describe('S3HealthService', () => {
     config: Partial<{
       isConfigured: boolean;
       testConnectionResult: boolean;
-      publicBucket: string;
-      privateBucket: string;
       isMinIO: boolean;
     }> = {},
   ): IS3Service =>
     ({
       isConfigured: vi.fn().mockResolvedValue(config.isConfigured ?? true),
       testConnection: vi.fn().mockResolvedValue(config.testConnectionResult ?? true),
-      getPublicBucketName: vi.fn().mockReturnValue(config.publicBucket ?? 'public-bucket'),
-      getPrivateBucketName: vi.fn().mockReturnValue(config.privateBucket ?? 'private-bucket'),
       isMinIOConfigured: vi.fn().mockReturnValue(config.isMinIO ?? false),
       getMinIOInfo: vi.fn().mockReturnValue({
         isMinIO: config.isMinIO ?? false,
@@ -120,11 +116,16 @@ describe('S3HealthService', () => {
       expect(health.details.connected).toBe(false);
     });
 
-    it('should include bucket information', async () => {
+    // TASK-932 OD-8 — the legacy S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET pair is
+    // retired: `IS3Service` no longer has a getter for either, so
+    // `checkHealth()` never populates these fields. Health reports healthy
+    // purely on reachability (`testConnection()`), with no bucket required.
+    it('reports healthy without any bucket configured, and does not populate publicBucket/privateBucket', async () => {
       const health = await service.checkHealth();
 
-      expect(health.details.publicBucket).toBe('public-bucket');
-      expect(health.details.privateBucket).toBe('private-bucket');
+      expect(health.status).toBe('healthy');
+      expect(health.details.publicBucket).toBeUndefined();
+      expect(health.details.privateBucket).toBeUndefined();
     });
 
     it('should include MinIO information when applicable', async () => {
@@ -195,11 +196,11 @@ describe('S3HealthService', () => {
       expect(details).toHaveProperty('minioInfo');
     });
 
-    it('should include s3Config with bucket names', async () => {
+    it('does not include publicBucket/privateBucket (legacy bucket pair retired, TASK-932 OD-8)', async () => {
       const details = await service.getConfigurationDetails();
 
-      expect(details.s3Config.publicBucket).toBe('public-bucket');
-      expect(details.s3Config.privateBucket).toBe('private-bucket');
+      expect(details.s3Config).not.toHaveProperty('publicBucket');
+      expect(details.s3Config).not.toHaveProperty('privateBucket');
     });
 
     it('should include MinIO info', async () => {
@@ -214,7 +215,7 @@ describe('S3HealthService', () => {
 
   describe('testOperations', () => {
     it('should test all S3 operations', async () => {
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results).toHaveProperty('upload');
       expect(results).toHaveProperty('download');
@@ -230,7 +231,7 @@ describe('S3HealthService', () => {
       // Mock listFiles to return the test file
       (mockS3Service.listFiles as Mock).mockResolvedValue([{ key: 'health-check-123.txt' }]);
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.upload).toBe(true);
       expect(results.download).toBe(true);
@@ -242,7 +243,7 @@ describe('S3HealthService', () => {
     it('should return failure for upload when it fails', async () => {
       (mockS3Service.putFile as Mock).mockRejectedValue(new Error('Put failed'));
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.upload).toBe(false);
       expect(results.errors.some((e) => e.includes('Upload failed'))).toBe(true);
@@ -251,7 +252,7 @@ describe('S3HealthService', () => {
     it('should return failure for download when it fails', async () => {
       (mockS3Service.getFile as Mock).mockRejectedValue(new Error('Get failed'));
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.download).toBe(false);
       expect(results.errors.some((e) => e.includes('Download failed'))).toBe(true);
@@ -260,7 +261,7 @@ describe('S3HealthService', () => {
     it('should return failure for list when it fails', async () => {
       (mockS3Service.listFiles as Mock).mockRejectedValue(new Error('List failed'));
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.list).toBe(false);
       expect(results.errors.some((e) => e.includes('List failed'))).toBe(true);
@@ -269,7 +270,7 @@ describe('S3HealthService', () => {
     it('should return failure for delete when it fails', async () => {
       (mockS3Service.deleteFile as Mock).mockRejectedValue(new Error('Delete failed'));
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.delete).toBe(false);
       expect(results.errors.some((e) => e.includes('Delete failed'))).toBe(true);
@@ -278,14 +279,14 @@ describe('S3HealthService', () => {
     it('should return failure for presignedUrl when it fails', async () => {
       (mockS3Service.signUrl as Mock).mockRejectedValue(new Error('Sign failed'));
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.presignedUrl).toBe(false);
       expect(results.errors.some((e) => e.includes('Presigned URL failed'))).toBe(true);
     });
 
     it('should use test bucket for operations', async () => {
-      await service.testOperations();
+      await service.testOperations('test-bucket');
 
       expect(mockS3Service.putFile).toHaveBeenCalledWith(
         expect.any(String),
@@ -296,15 +297,16 @@ describe('S3HealthService', () => {
     });
 
     it('should clean up test file after operations', async () => {
-      await service.testOperations();
+      await service.testOperations('test-bucket');
 
       expect(mockS3Service.deleteFile).toHaveBeenCalled();
     });
 
+    // TASK-932 OD-8 — `testOperations` no longer falls back to a
+    // service-level default bucket (the legacy `getPublicBucketName` is
+    // retired), so omitting a bucket name IS "no bucket configured" now —
+    // no special mock setup needed to reach this branch.
     it('should return error when no bucket is configured', async () => {
-      mockS3Service = createMockS3Service({ publicBucket: '' });
-      service = new S3HealthService(mockS3Service, mockAppSettingsService);
-
       const results = await service.testOperations();
 
       expect(results.errors).toContain('No bucket configured for testing');
@@ -361,8 +363,10 @@ describe('S3HealthService', () => {
       expect(health.details).toHaveProperty('configured');
       expect(health.details).toHaveProperty('connected');
       expect(health.details).toHaveProperty('timestamp');
-      expect(health.details).toHaveProperty('publicBucket');
-      expect(health.details).toHaveProperty('privateBucket');
+      // publicBucket/privateBucket are deliberately ABSENT now (TASK-932
+      // OD-8) — the legacy bucket pair is retired.
+      expect(health.details).not.toHaveProperty('publicBucket');
+      expect(health.details).not.toHaveProperty('privateBucket');
     });
 
     it('should return ISO timestamp in details', async () => {
@@ -384,7 +388,7 @@ describe('S3HealthService', () => {
       (mockS3Service.deleteFile as Mock).mockResolvedValue(undefined);
       (mockS3Service.signUrl as Mock).mockResolvedValue('https://url.com');
 
-      const results = await service.testOperations();
+      const results = await service.testOperations('test-bucket');
 
       expect(results.upload).toBe(true);
       expect(results.download).toBe(false);
@@ -398,7 +402,7 @@ describe('S3HealthService', () => {
       (mockS3Service.deleteFile as Mock).mockResolvedValue(undefined);
       (mockS3Service.signUrl as Mock).mockRejectedValue(new Error('Failed'));
 
-      await service.testOperations();
+      await service.testOperations('test-bucket');
 
       // Delete should still be called for cleanup
       expect(mockS3Service.deleteFile).toHaveBeenCalled();
