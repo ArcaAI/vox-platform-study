@@ -1,11 +1,16 @@
-"""TASK-935 — the model profile's ``hotwords`` do NOT enter the whisper.cpp prompt.
+"""TASK-934 / TASK-938 — the model profile's ``hotwords`` ARE the decoder prompt vocabulary.
 
-TASK-934 appended the list to the decoder prompt (whisper.cpp has no hotword API). That code
-never ran on a live session until TASK-935 fixed the per-session spec lookup, and the first
-real run showed why it must not: on the discharge fixture the ml-en fine-tune's decode
-collapsed into script garbage with the terms in the prompt — with six terms exactly as with
-twenty. The list stays on the wire for the lexicon stage and for engines with a native
-hotword parameter; the ONE prompt channel here is the agent's ``instruction.initialPrompt``.
+whisper.cpp has no hotword API, so TASK-934 appended the list to the ``initial_prompt`` —
+the established biasing technique. TASK-935 removed it again after the first live run (only
+possible once TASK-935 fixed the per-session spec lookup) collapsed the ml-en fine-tune's
+decode into script garbage on the discharge fixture, with six terms exactly as badly as
+twenty. TASK-938 restores it by owner directive as one arm of a live A/B alongside both
+priming-prompt switches.
+
+These tests pin the WIRING, not the verdict on it: the terms reach the decoder, appended
+after the agent's own ``instruction.initialPrompt``, and blank entries never do. If the A/B
+sends this back off, that is a one-line change here and in the adapter — TASK-937 R-4 turns
+it into a per-model ``decoding.hotwordsInPrompt`` switch so it stops being global at all.
 """
 
 from __future__ import annotations
@@ -42,20 +47,20 @@ def _adapter(hotwords: list[str] | None) -> tuple[WhisperCppAsrAdapter, _Capturi
     return WhisperCppAsrAdapter(loaded, inference_config=config), model
 
 
-def test_hotwords_never_enter_the_decoder_prompt() -> None:
+def test_hotwords_are_appended_after_the_agents_prompt() -> None:
     adapter, model = _adapter(["ceftriaxone", "amoxicillin"])
     adapter(np.zeros(SAMPLE_RATE, dtype=np.float32), SAMPLE_RATE, prompt="Clinical consultation.")
     assert model.calls, "the adapter did not decode"
-    assert model.calls[-1]["initial_prompt"] == "Clinical consultation."
+    assert model.calls[-1]["initial_prompt"] == "Clinical consultation. ceftriaxone, amoxicillin"
 
 
-def test_hotwords_without_a_prompt_leave_the_prompt_empty() -> None:
+def test_hotwords_without_a_prompt_stand_alone() -> None:
     adapter, model = _adapter(["troponin"])
     adapter(np.zeros(SAMPLE_RATE, dtype=np.float32), SAMPLE_RATE, prompt=None)
-    assert model.calls[-1]["initial_prompt"] == ""
+    assert model.calls[-1]["initial_prompt"] == "troponin"
 
 
-def test_the_prompt_is_the_agents_initial_prompt_alone() -> None:
+def test_absent_or_blank_hotwords_leave_the_agents_prompt_alone() -> None:
     adapter, model = _adapter(None)
     adapter(np.zeros(SAMPLE_RATE, dtype=np.float32), SAMPLE_RATE, prompt="Clinical consultation.")
     assert model.calls[-1]["initial_prompt"] == "Clinical consultation."

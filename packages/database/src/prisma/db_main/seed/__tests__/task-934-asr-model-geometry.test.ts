@@ -10,12 +10,16 @@
  *   - a 30s decode window doubles Malayalam-English CER relative to 7s, on both
  *     quantisations of the ml-en fine-tune (0.381 @ 7s vs 0.645 @ 30s) — TASK-891 A5's
  *     `{30, 30}` on the f16 row is reverted;
- *   - 6s partial windows are 31% garbage on English streaming output, 15s is 0% — lane S
- *     decoupled `partialWindowSec` from `maxDecodeWindowSec` (they are independent knobs,
- *     not a matched pair), so every whisper.cpp fine-tune row now carries
- *     `{ maxDecodeWindowSec: 7, partialWindowSec: 15 }`;
+ *   - lane S decoupled `partialWindowSec` from `maxDecodeWindowSec` (they are independent
+ *     knobs, not a matched pair). TASK-934 then set the partial window to 15s on an OFFLINE
+ *     fixture measurement (6s = 31% garbage on English, 15s = 0%); TASK-938 (owner
+ *     directive 2026-09-09) returns it to 6s after live console sessions on the 15s build
+ *     were materially worse, so every whisper.cpp fine-tune row carries
+ *     `{ maxDecodeWindowSec: 7, partialWindowSec: 6 }`. The 7s FINAL-decode window is
+ *     unchanged — that one was measured on CER directly;
  *   - the platform-default ASR row must BE the row the seeded `realtime-transcription`
- *     agent actually serves (q8_0), not a row the agent only falls back to;
+ *     agent actually serves, not a row the agent only falls back to. That INVARIANT is what
+ *     the tests below assert, so it survives TASK-938 moving the agent back to f16;
  *   - the engine author's VAD default is `minSpeechMs: 100` (a spoken yes/no is
  *     ~150-250ms; at 250ms the whole word was discarded before reaching ASR) — the agent
  *     seed no longer overrides it back up to 250.
@@ -50,10 +54,10 @@ describe('TASK-934 — ASR decode-geometry profile (OD-1)', () => {
     expect(whisperCppAsrRows.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('gives every whisper.cpp ASR row the measured { 7, 15 } decode geometry', () => {
+  it('gives every whisper.cpp ASR row the { 7, 6 } decode geometry', () => {
     whisperCppAsrRows.forEach((m) => {
       expect(m.metaData?.asr?.maxDecodeWindowSec, `${m.slug} maxDecodeWindowSec`).toBe(7);
-      expect(m.metaData?.asr?.partialWindowSec, `${m.slug} partialWindowSec`).toBe(15);
+      expect(m.metaData?.asr?.partialWindowSec, `${m.slug} partialWindowSec`).toBe(6);
     });
   });
 });

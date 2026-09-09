@@ -223,12 +223,21 @@ def build_single_language_prompt(language: str) -> str:
 #   token, so it is largely redundant and mostly adds the risk that Whisper
 #   transcribes the instruction text into the output.
 #
-# Both still default OFF: turning either on is a DECODE-QUALITY change and needs
-# a measured A/B on held-out English AND Malayalam recordings on this exact
-# ml-en fine-tune — which is why they were switched off in the first place.
-# Flip one at a time; the behaviour of each is covered by its own test.
-WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False
-WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = False
+# TASK-938 (owner directive 2026-09-09) — BOTH are ON. This is the deliberate
+# A/B the note above asked for, run against the live console rather than the
+# offline scorecard: the committed CER baseline
+# (`mlen_scorecard_baseline.json`) was captured with both flags false AND with
+# no agent `initialPrompt` applied, so "prompt off is better" was never measured
+# against the configuration production actually runs. Turning them on gives the
+# unpinned `ml-en` pair its only bias correction back, and gives a pinned single
+# language a prompt that tells a code-switch fine-tune to stay in it.
+#
+# These remain DECODE-QUALITY switches: a capture that turns them on needs its
+# own baseline entry (window_s alone does not distinguish prompt state — see the
+# scorecard's own `_note`). Flip one at a time when measuring; the behaviour of
+# each is covered by its own test.
+WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = True
+WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = True
 
 
 def _is_pair_prompt_capable(engine: AiModelFormat) -> bool:
