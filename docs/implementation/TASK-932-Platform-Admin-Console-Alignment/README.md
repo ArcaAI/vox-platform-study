@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Review` — all sixteen requirements proven live on the dev stack (2026-09-09); owner decision taken: the dev-tier guardrail calibration (`response_toxicity`, `pii_leak` OFF at the platform tier) is KEPT and now shipped by the seed and the catalogue; remaining follow-ups in §6.3 |
+| **Status** | `In Progress` — wave 4 (the fifteen §6.3 follow-ups) running since 2026-09-09 under §8; owner decisions OD-1…OD-11 recorded |
 | **Branch** | `dev-2.2` (merge target for every lane) |
 | **Classification** | `feature` + `bugfix` + `refactor` (console, gateway, applications, seeds, e2e) |
 | **Owner request** | 2026-09-09 — the sixteen items in §1.1, then start the dev stack, reset the dev DB (consent given for `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`), and prove everything in a browser, including ≥5 seeded ArcaAI consultation workflows in the playground |
@@ -334,7 +334,7 @@ The microphone journey (`task-932-consultation-audio.spec.ts`, `chromium-audio` 
 | 2026-09-09 | Owner said **go**. Plan committed at `46aedc4f3`; five worktrees `../hope-v2-task-932-{nav,settings,providers,storage,seeds}` on `task-932/*` off `dev-2.2`, env files copied, `pnpm install` run by the orchestrator. R-6 reproduced live (§2.7) before Lane S started. |
 | 2026-09-09 | Ticket opened. Eight read-only discovery lanes (`sonnet`) mapped nav, settings registry, platform-ops, providers/weight store, seeds/prompts v3, playground/realtime lane, dev-stack/e2e harness, and prior owner statements (2026-08-24, 2026-09-05 transcripts; TASK-890 OD-A/B/L/P; TASK-891 OD-1…OD-5). Plan §3–§5 written; status `Review` pending the owner's go-ahead. |
 
-## 8. Follow-up completion plan — wave 4 (proposed 2026-09-09, awaiting owner go)
+## 8. Follow-up completion plan — wave 4 (owner go 2026-09-09; decisions recorded in §8.4)
 
 Scope: every §6.3 item, closed inside this ticket so it can move to `docs/archive/` with nothing deferred. Five read-only discovery lanes (`sonnet`) mapped the fifteen items on the current tree; their findings changed the picture in four places, stated first because they change priorities:
 
@@ -382,19 +382,19 @@ Contracts fixed before spawning: the terminal progress event is the existing `HA
 
 ### 8.4 Owner decisions — answer before "go" (recommendation first)
 
-| OD | Question | Recommendation |
-|---|---|---|
-| OD-1 | `enable-consultation-sharing`: soft-delete every tenant's seeded explicit `true` clone so tenants inherit the descriptor default, or re-namespace the rows into `registry` as explicit overrides? | Soft-delete (clean cascade model; a tenant that wants `false` writes it through the governed lane) |
-| OD-2 | `enable-local-raw-capture`: retire the row-level `locked: true` in favour of the descriptor's `globalOnly` gate, or keep both? | Retire the row lock once the descriptor gates it (one mechanism) |
-| OD-3 | Tenant admin's READ of a SYSTEM `GlobalSetting` row: 403 (match the write side, OD-P doctrine) or make PATCH/DELETE 404 (match the read side)? If the latter, does `create` targeting SYSTEM become 404 too? | 403 on read — smaller blast radius, consistent with rule 05's platform-tier row |
-| OD-4 | `AiModelService` admin reads: add the platform-admin assertion (reverses the "reads stay open" test; tenant catalogue stays open) or keep guard-only? | Add it on the admin read methods only |
-| OD-5 | After the push signal ships, keep the bounded post-stop poll as a fallback (shorter, 60 s) or remove it? | Keep for one release, shorten |
-| OD-6 | Interpreter finalize when deterministic redaction fails closed: degrade with no note, or persist the un-redacted note with a forced review flag as the legacy gate does? | Persist with a forced review flag + named degraded reason — an undocumented encounter is the worse clinical outcome, and `n_review` already gates it |
-| OD-7 | Finalize API spec: drive the real realtime lane with a `TRANSCRIPT` context add through the existing write path (if reachable by an authenticated doctor) or a test-only internal route? Lighter `HARNESS_E2E_API` gate? | Option (i); a scoped allowance only if `TRANSCRIPT` is STT-internal today; gate on `HARNESS_E2E_API` (TEXT + NLP, no audio) |
-| OD-8 | Retire the legacy `S3_PUBLIC_BUCKET` / `S3_PRIVATE_BUCKET` concept now (zero consumers besides the probe), or provision a real public/private pair? | Retire now |
-| OD-9 | Consent to close the 43 orphaned dev consultations now through legal transitions (script calling `stopRecording` / `applyTransition`), and the reaper windows: RECORDING-without-lock N minutes, DRAINING-without-handoff M? | Yes; N = 30, keep M = 1440 (today's sweep) — no new state |
-| OD-10 | SDK `useArcaLiveSummary` registers the named events in the same 3.1.x release (additive) or defers to an R4-style cleanup? | Same release, additive; the string-`event` guard stays |
-| OD-11 | (informational) Are any production `HarnessDocWorkflow` executions from before 4 September still in flight? The id restore is safe either way; this only decides whether a drain is worth checking on the cluster. | Check via the Temporal UI on the cluster before the harness image rolls |
+| OD | Question | Recommendation | Owner decision (2026-09-09) |
+|---|---|---|---|
+| OD-1 | `enable-consultation-sharing`: soft-delete every tenant's seeded explicit `true` clone so tenants inherit the descriptor default, or re-namespace the rows into `registry` as explicit overrides? | Soft-delete (clean cascade model; a tenant that wants `false` writes it through the governed lane) | soft-delete the seeded explicit `true` clones; tenants inherit the default |
+| OD-2 | `enable-local-raw-capture`: retire the row-level `locked: true` in favour of the descriptor's `globalOnly` gate, or keep both? | Retire the row lock once the descriptor gates it (one mechanism) | retire the row-level `locked` once the descriptor gates it |
+| OD-3 | Tenant admin's READ of a SYSTEM `GlobalSetting` row: 403 (match the write side, OD-P doctrine) or make PATCH/DELETE 404 (match the read side)? If the latter, does `create` targeting SYSTEM become 404 too? | 403 on read — smaller blast radius, consistent with rule 05's platform-tier row | 403 on read |
+| OD-4 | `AiModelService` admin reads: add the platform-admin assertion (reverses the "reads stay open" test; tenant catalogue stays open) or keep guard-only? | Add it on the admin read methods only | add the assertion, admin reads only |
+| OD-5 | After the push signal ships, keep the bounded post-stop poll as a fallback (shorter, 60 s) or remove it? | Keep for one release, shorten | keep the poll, shortened to 60 s |
+| OD-6 | Interpreter finalize when deterministic redaction fails closed: degrade with no note, or persist the un-redacted note with a forced review flag as the legacy gate does? | Persist with a forced review flag + named degraded reason — an undocumented encounter is the worse clinical outcome, and `n_review` already gates it | persist with a forced review flag + named degraded reason |
+| OD-7 | Finalize API spec: drive the real realtime lane with a `TRANSCRIPT` context add through the existing write path (if reachable by an authenticated doctor) or a test-only internal route? Lighter `HARNESS_E2E_API` gate? | Option (i); a scoped allowance only if `TRANSCRIPT` is STT-internal today; gate on `HARNESS_E2E_API` (TEXT + NLP, no audio) | `TRANSCRIPT` context add through the existing write path; lighter `HARNESS_E2E_API` gate |
+| OD-8 | Retire the legacy `S3_PUBLIC_BUCKET` / `S3_PRIVATE_BUCKET` concept now (zero consumers besides the probe), or provision a real public/private pair? | Retire now | retire the legacy bucket pair now |
+| OD-9 | Consent to close the 43 orphaned dev consultations now through legal transitions (script calling `stopRecording` / `applyTransition`), and the reaper windows: RECORDING-without-lock N minutes, DRAINING-without-handoff M? | Yes; N = 30, keep M = 1440 (today's sweep) — no new state | yes — close the 43 now through legal transitions; N = 30 min, M unchanged (1440) |
+| OD-10 | SDK `useArcaLiveSummary` registers the named events in the same 3.1.x release (additive) or defers to an R4-style cleanup? | Same release, additive; the string-`event` guard stays | same 3.1.x release, additive |
+| OD-11 | (informational) Are any production `HarnessDocWorkflow` executions from before 4 September still in flight? The id restore is safe either way; this only decides whether a drain is worth checking on the cluster. | Check via the Temporal UI on the cluster before the harness image rolls | yes — every environment must be production-grade so QA can run the e2e suites anywhere; check the cluster Temporal for in-flight `HarnessDocWorkflow` before the harness image rolls |
 
 ### 8.5 Verification criteria (definition of done for the wave)
 
