@@ -156,3 +156,26 @@ class TestIdempotence:
     @pytest.mark.parametrize("text", ["", "   ", "123 456"])
     def test_degenerate_input_is_returned_unchanged(self, text: str) -> None:
         assert _correct(text) == text
+
+
+class TestCodeSwitchedText:
+    """The platform's ASR is Malayalam-English; the stage must be safe in both.
+
+    The phonetic key is a Latin consonant skeleton, so a Malayalam word produces an
+    EMPTY key — and an empty key never agrees with anything, on either side. The
+    stage is therefore a deliberate no-op on Malayalam rather than an edit-distance
+    free-for-all in a script it cannot hear. Recorded here as a known property: a
+    Malayalam term in the hotword list will bias the decoder (TASK-934) but will not
+    be corrected after it.
+    """
+
+    def test_a_malayalam_hypothesis_is_never_rewritten(self) -> None:
+        corrector = LexiconCorrector(["രോഗിയുടെ"])
+        text, corrections = corrector.correct("രോഗിക്ക് പനി ഉണ്ട്")
+        assert text == "രോഗിക്ക് പനി ഉണ്ട്"
+        assert corrections == []
+
+    def test_a_code_switched_line_corrects_only_the_latin_token(self) -> None:
+        text, corrections = LexiconCorrector(CEFTRIAXONE).correct("രോഗിക്ക് septrioxone നൽകി")
+        assert text == "രോഗിക്ക് ceftriaxone നൽകി"
+        assert [c.original for c in corrections] == ["septrioxone"]
