@@ -395,6 +395,53 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           description:
             "TASK-877 (owner decision #9) — `[left, right]` overlap in seconds around each chunk. TASK-880 corrected the type: the wire field, `buildResolvedAsrSpec`'s reader and the committed contract fixture have always been a PAIR, so a scalar here made the value an agent could author and the value the runtime consumes different things. Optional.",
         }),
+        // TASK-934 (gap G-2, owner decision OD-4) — the six knobs that decided transcription
+        // quality from a Python literal in `InferenceConfig`: no wire field, no schema key, no
+        // settings descriptor, one number for every agent and every tenant on the box. They are
+        // settable at BOTH tiers now — here, and on the assigned model's `_metadata.asr` decode
+        // profile — resolved agent → model profile → engine default (OD-3). The ranges below are
+        // the literal mirror of `AI_MODEL_ASR_PROFILE_DECODING_RANGES` in `@arcaai/types`: two
+        // tiers feeding one engine field must accept exactly the same values.
+        noSpeechThreshold: Object.freeze({
+          type: 'number',
+          minimum: 0,
+          maximum: 1,
+          description:
+            'TASK-934 — above this no-speech probability a decoded segment is discarded. Raise it when the model hallucinates over silence, lower it when quiet speech is dropped. Optional; unset ⇒ the assigned model`s profile, then the engine default (0.6).',
+        }),
+        compressionRatioThreshold: Object.freeze({
+          type: 'number',
+          minimum: 1,
+          maximum: 10,
+          description:
+            'TASK-934 — gzip compression ratio above which a decode is treated as looping and retried at a higher temperature. Optional; unset ⇒ the assigned model`s profile, then the engine default (2.4).',
+        }),
+        logprobThreshold: Object.freeze({
+          type: 'number',
+          minimum: -10,
+          maximum: 0,
+          description:
+            'TASK-934 — average token log-probability floor below which a decode is retried. Optional; unset ⇒ the assigned model`s profile, then the engine default (-1.0).',
+        }),
+        conditionOnPrevTokens: Object.freeze({
+          type: 'boolean',
+          description:
+            'TASK-934 — feed the previous window`s tokens to the decoder as context. Improves continuity across windows and is the classic Whisper repetition-loop risk, which is why it is a per-agent (and per-fine-tune) choice. Optional; unset ⇒ the assigned model`s profile, then the engine default (false).',
+        }),
+        noRepeatNgramSize: Object.freeze({
+          type: 'integer',
+          minimum: 0,
+          maximum: 10,
+          description:
+            'TASK-934 — block repeats of an n-gram this long within one decode (0 disables). Optional; unset ⇒ the assigned model`s profile, then the engine default (3).',
+        }),
+        prevTextContextWords: Object.freeze({
+          type: 'integer',
+          minimum: 0,
+          maximum: 200,
+          description:
+            'TASK-934 — how many words of already-committed text ride as decoder context on the next window. Optional; unset ⇒ the assigned model`s profile, then the engine default (50).',
+        }),
       }),
     }),
     postProcessing: Object.freeze({
@@ -419,6 +466,18 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
       additionalProperties: false,
       properties: Object.freeze({
         partialIntervalMs: Object.freeze({ type: 'integer', minimum: 100, maximum: 5000 }),
+        // TASK-934 (OD-4) — how much of the live utterance's TAIL is re-decoded for each partial.
+        // Distinct from the model row's `maxDecodeWindowSec`, which bounds a FINAL decode and stays
+        // model geometry (OD-3): §2.2 measured 31 % garbage partials at a 6 s tail against 0 % at
+        // 15 s on the same weights, so the partial window is a streaming-behaviour choice an agent
+        // may take. Set here it OVERRIDES the assigned model's `partialWindowSec`.
+        partialWindowSec: Object.freeze({
+          type: 'number',
+          minimum: 1,
+          maximum: 30,
+          description:
+            'TASK-934 — seconds of the live utterance`s tail re-decoded for each partial. Longer settles the language model (fewer garbage partials) at the cost of decode time. Optional; unset ⇒ the assigned model`s `partialWindowSec`, then the runtime default.',
+        }),
         endpointing: Object.freeze({ type: 'string', enum: Object.freeze(['fixed', 'semantic']) }),
         maxUtteranceSec: Object.freeze({ type: 'integer', minimum: 1, maximum: 600 }),
         semantic: Object.freeze({

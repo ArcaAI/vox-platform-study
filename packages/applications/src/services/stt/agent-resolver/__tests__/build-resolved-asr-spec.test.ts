@@ -8,6 +8,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
+import { AI_MODEL_ASR_PROFILE_DECODING_RANGES, AI_MODEL_ASR_PROFILE_WINDOW_RANGES } from '@arcaai/types';
+import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
 import { describe, expect, it } from 'vitest';
 import { AsrSpecBuildError, buildResolvedAsrSpec } from '../build-resolved-asr-spec';
 
@@ -469,5 +471,45 @@ describe('buildResolvedAsrSpec — AiModelAsrProfile precedence (OD-3)', () => {
     const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
     expect(spec.decoding.noSpeechThreshold).toBe(0.4);
     expect(spec.fallback.spec?.decoding.noSpeechThreshold).toBe(0.7);
+  });
+});
+
+/**
+ * TASK-934 — the two tiers must accept the SAME values.
+ *
+ * The agent's decode block is range-gated by `SPEECH_TO_TEXT_PARAMETERS` at publish
+ * (`@arcaai/workflow-contract`); the model row's profile is range-gated by
+ * `parseAiModelAsrProfile` at resolve (`@arcaai/types`). They feed ONE engine field, so a
+ * value one tier accepts and the other refuses would make the effective value depend on
+ * which tier happened to supply it — and the difference would only ever show up as a
+ * quality regression on somebody's consultation.
+ *
+ * `@arcaai/workflow-contract` has zero dependencies by design, so its own suite pins the
+ * ranges as literals. THIS is where the two tables are compared, because this package is
+ * the only one that imports both.
+ */
+describe('TASK-934 — the agent schema and the model profile agree on every range', () => {
+  it.each(Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES))('decoding.%s', (key) => {
+    const range = AI_MODEL_ASR_PROFILE_DECODING_RANGES[key];
+    const schema = ((AGENT_PARAMETER_SCHEMAS.SPEECH_TO_TEXT.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>).decoding.properties ?? {})[key];
+    expect(schema, `SPEECH_TO_TEXT_PARAMETERS.decoding.${key} is missing`).toBeDefined();
+    expect(schema).toMatchObject({ type: range.integer ? 'integer' : 'number', minimum: range.min, maximum: range.max });
+  });
+
+  it('streaming.partialWindowSec matches the profile’s window range', () => {
+    const schema = (AGENT_PARAMETER_SCHEMAS.SPEECH_TO_TEXT.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>).streaming.properties
+      .partialWindowSec;
+    expect(schema).toMatchObject({
+      type: 'number',
+      minimum: AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec.min,
+      maximum: AI_MODEL_ASR_PROFILE_WINDOW_RANGES.partialWindowSec.max,
+    });
+  });
+
+  it('conditionOnPrevTokens is a boolean at BOTH tiers (it is a switch, not a threshold)', () => {
+    expect(AI_MODEL_ASR_PROFILE_DECODING_RANGES).not.toHaveProperty('conditionOnPrevTokens');
+    const schema = (AGENT_PARAMETER_SCHEMAS.SPEECH_TO_TEXT.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>).decoding.properties
+      .conditionOnPrevTokens;
+    expect(schema).toMatchObject({ type: 'boolean' });
   });
 });
