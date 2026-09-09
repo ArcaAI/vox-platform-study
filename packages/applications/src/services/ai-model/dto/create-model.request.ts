@@ -49,8 +49,8 @@ export class CreateModelRequest {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(100)
-  @Matches(/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/, {
-    message: 'Slug must be lowercase alphanumeric with hyphens',
+  @Matches(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, {
+    message: 'Slug must be lowercase alphanumeric with hyphens (an underscore may join segments, e.g. q8_0)',
   })
   slug: string;
 
