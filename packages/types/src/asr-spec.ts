@@ -21,6 +21,7 @@
  * dataclass defaults (one source of truth per default).
  */
 
+import type { AiModelAsrProfileDecoding } from './asr-model-profile.js';
 import type { ResolvedAgent } from './agent.js';
 
 export const RESOLVED_ASR_SPEC_SCHEMA_VERSION = 1 as const;
@@ -66,10 +67,26 @@ export const ASR_SPEC_ROLE_TASK_TYPE: Readonly<Record<AsrSpecModelRole, string>>
  * Python half): absent means the row declared nothing and the runtime's own default stands.
  */
 export interface AsrSpecModelMetadata {
-  /** Longest audio fed to the engine in ONE decode, seconds. */
+  /** Longest audio fed to the engine in ONE decode, seconds. The ROW alone decides it (TASK-934 OD-3). */
   maxDecodeWindowSec?: number | null;
-  /** Tail window of the live utterance decoded for PARTIALs, seconds. */
+  /**
+   * Tail window of the live utterance decoded for PARTIALs, seconds.
+   *
+   * TASK-934 (OD-4) — this is the EFFECTIVE value: an agent that sets
+   * `parameters.streaming.partialWindowSec` overrides the row here, so the number arrives
+   * where the runtime already reads it and no consumer had to learn a second path.
+   * `decoding.sources.partialWindowSec` names which tier supplied it.
+   */
   partialWindowSec?: number | null;
+  /**
+   * TASK-934 — the ROW's own decode recommendation, verbatim, EVEN WHERE THE AGENT OVERRODE IT.
+   * This is provenance, not instruction: the effective values are in `decoding`, and
+   * `decoding.sources` says who won. Carried so one dumped session spec explains itself
+   * (§2.2 spent a day on a value that "did not take effect").
+   */
+  decoding?: AiModelAsrProfileDecoding;
+  /** TASK-934 (OD-11) — the priming prompt this fine-tune was measured with, verbatim. */
+  initialPrompt?: string;
 }
 
 /** One resolved registry row — the fields `apps/stt`'s `AiModelConfig` consumes. */
@@ -146,6 +163,9 @@ export interface AsrSpecAudioFrontEnd {
   normalize: boolean;
 }
 
+/** TASK-934 — the tier a resolved knob came from (OD-3: agent → model profile → engine default). */
+export type AsrSpecDecodingSource = 'agent' | 'model';
+
 /** §3.2 `decoding` — replaces `inference.*`. `languageMode` is resolved per engine by `apps/stt`. */
 export interface AsrSpecDecoding {
   languageMode: string | null;
@@ -165,6 +185,33 @@ export interface AsrSpecDecoding {
   chunkLengthSec?: number | null;
   /** `[left, right]` context seconds around each chunk. Same optionality as `chunkLengthSec`. */
   strideLengthSec?: readonly [number, number] | null;
+  /**
+   * TASK-934 (G-2 / OD-4) — the six decode knobs that were Python literals in
+   * `InferenceConfig` with no wire, no agent-schema key and no descriptor: one number for
+   * every agent and every tenant on the box. They are now settable at BOTH tiers, agent
+   * first, model profile second (OD-3).
+   *
+   * All six follow the omit-when-absent rule (`chunkLengthSec` above states why): ABSENT
+   * means neither tier spoke and `apps/stt`'s dataclass default stands — the one source of
+   * engine defaults. `null` is never written here.
+   */
+  noSpeechThreshold?: number;
+  compressionRatioThreshold?: number;
+  logprobThreshold?: number;
+  conditionOnPrevTokens?: boolean;
+  noRepeatNgramSize?: number;
+  prevTextContextWords?: number;
+  /**
+   * TASK-934 — which TIER supplied each knob whose value two tiers could have decided
+   * (`'agent'` = the agent's `parameters`, `'model'` = the ASR row's `_metadata.asr`
+   * profile). Covers this block's knobs plus `hotwords`, `initialPrompt` and
+   * `partialWindowSec`, which travel in `instruction` / `models.asr.metadata` but are
+   * decided by the same precedence.
+   *
+   * OBSERVABILITY ONLY — the runtime must never branch on it. Omitted (never `{}`) when
+   * neither tier decided anything, per the omit-when-absent rule.
+   */
+  sources?: Readonly<Record<string, AsrSpecDecodingSource>>;
 }
 
 /** §3.2 `postProcessing` — replaces `postprocessing.*`. */

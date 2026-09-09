@@ -13,5 +13,6 @@
     "target": "ES2022"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "//exclude": "TASK-934 — `src/**/__tests__/**` is excluded because this package emits PER-FILE with tsc (unlike the tsup-bundled packages), so an included suite would ship compiled test JS inside the published `dist/`. The suites still run: the root vitest `workspace` project discovers `packages/types/**/*.test.ts`.",
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**"]
 }
