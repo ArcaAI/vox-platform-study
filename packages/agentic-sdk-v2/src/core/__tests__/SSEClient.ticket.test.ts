@@ -77,6 +77,11 @@ let eventSourceCtorSpy: ReturnType<typeof vi.fn<(url: string, init?: EventSource
 let lsSetItemSpy: ReturnType<typeof vi.fn>;
 let ssSetItemSpy: ReturnType<typeof vi.fn>;
 
+/** Swap a Storage global that the DOM exposes as a getter-only accessor. */
+function defineStorage(key: 'localStorage' | 'sessionStorage', value: unknown): void {
+  Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+}
+
 beforeEach(() => {
   lastMockES = null;
   eventSourceCtorSpy = vi.fn<(url: string, init?: EventSourceInit) => void>();
@@ -90,14 +95,18 @@ beforeEach(() => {
 
   lsSetItemSpy = vi.fn();
   ssSetItemSpy = vi.fn();
-  (globalThis as any).localStorage = { ...originalLocalStorage, setItem: lsSetItemSpy };
-  (globalThis as any).sessionStorage = { ...originalSessionStorage, setItem: ssSetItemSpy };
+  // `defineProperty`, not assignment: the jsdom Vitest 5 ships exposes
+  // localStorage/sessionStorage as accessors with only a getter, so a plain
+  // `globalThis.sessionStorage = ...` throws and takes every test in the file
+  // down from the hook rather than from an assertion.
+  defineStorage('localStorage', { ...originalLocalStorage, setItem: lsSetItemSpy });
+  defineStorage('sessionStorage', { ...originalSessionStorage, setItem: ssSetItemSpy });
 });
 
 afterEach(() => {
   globalThis.EventSource = originalEventSource;
-  (globalThis as any).localStorage = originalLocalStorage;
-  (globalThis as any).sessionStorage = originalSessionStorage;
+  defineStorage('localStorage', originalLocalStorage);
+  defineStorage('sessionStorage', originalSessionStorage);
   lastMockES = null;
 });
 
