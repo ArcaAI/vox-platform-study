@@ -19,11 +19,14 @@ export type { HopeClientOptions, HopeLogger } from './client';
 export {
   AGENT_PLANE_ROUTES,
   AgentsResource,
+  ConsultationRecordingResource,
+  ConsultationStreamsResource,
   ConsultationSummariesResource,
   ConsultationsResource,
   ConsultationWorkflowsResource,
   isTerminalJobStatus,
   JobsResource,
+  SttResource,
   SummarizationResource,
   TenantsResource,
   WORKFLOW_PLANE_ROUTES,
@@ -38,13 +41,43 @@ export type {
   ConsultationSummaryRequestOptions,
   GenerateSummaryOptions,
   JobRequestOptions,
+  LiveSummaryHandlers,
+  RecordingRequestOptions,
   StartRunOptions,
   StreamRunOptions,
+  SttRequestOptions,
+  SttSocketOptions,
   SummarizationRequestOptions,
   SummarizationStream,
   UpdateSummaryOptions,
   WaitForOptions,
 } from './resources';
+
+/**
+ * The SUBSCRIPTION shape of an SSE read (TASK-933) — what
+ * `hope.consultations.streams.*` and `hope.jobs.subscribe` hand back, and the
+ * handler contracts they take. Exported so an integrator can hold a
+ * {@link StreamHandle} in its own session bookkeeping and type the handlers it
+ * passes; `subscribeToSse` itself stays internal, like the transport it builds
+ * on.
+ */
+export type { StreamCloseReason, StreamHandle, StreamHandlers, StreamHandlersBase, SubscribeOptions } from './core/sse-subscription';
+
+/**
+ * The realtime STT socket (TASK-933, owner decision OD-2). Exported as a CLASS
+ * because a server-side integrator legitimately constructs one directly — from
+ * a session another process opened, say — rather than only through
+ * `hope.stt.socket(session)`. It needs a ticket refresher either way: the
+ * ticket it is handed is consumed at the first handshake.
+ */
+export { RealtimeSttSocket } from './core/realtime-stt-socket';
+export type {
+  RealtimeSttCloseEvent,
+  RealtimeSttEventName,
+  RealtimeSttSocketEvents,
+  RealtimeSttSocketOptions,
+  RealtimeSttSocketSession,
+} from './core/realtime-stt-socket';
 
 /**
  * The reserved run-identity keys a workflow `input` may never carry
@@ -128,8 +161,47 @@ export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } f
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
 export type {
+  AcceptedCorrectionProposal,
   AddContextRequest,
   AsyncJobResponse,
+  ConsultationOpenResponse,
+  CreateStreamSessionRequest,
+  HarnessProgressEvent,
+  HarnessProgressStage,
+  LiveAssistEvent,
+  LiveSummaryEntity,
+  LiveSummaryEvent,
+  LiveSummaryGroundedness,
+  LiveSummaryGroundednessSegment,
+  LiveSummarySection,
+  LiveSummaryStreamEvent,
+  LiveSummaryVitals,
+  LoopEvent,
+  OpenConsultationRequest,
+  PreSummaryEvent,
+  PreSummaryStatus,
+  RecordingStateResponse,
+  SectionAnnotation,
+  SectionAnnotationKind,
+  SectionPatchEvent,
+  SectionProvenance,
+  StartRecordingRequest,
+  StopRecordingRequest,
+  StreamSessionResponse,
+  StreamTicketRefreshResponse,
+  StreamingSessionStatus,
+  SttAudioFrame,
+  SttClientMessage,
+  SttCloseMessage,
+  SttErrorMessage,
+  SttResumeFailedMessage,
+  SttResumeRequest,
+  SttResumedMessage,
+  SttServerMessage,
+  SttStatusMessage,
+  SttStopMessage,
+  SttTranscriptResult,
+  SttWordTimestamp,
   ConsultationContextSchemaDefinition,
   ConsultationGetResponse,
   ConsultationSchemaBundle,

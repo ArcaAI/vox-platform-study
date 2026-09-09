@@ -378,12 +378,24 @@ export class CredentialClassError extends Error {
  * would reproduce the exact symptom they switched away from, with nothing in the logs to say so.
  */
 export class SocketUnavailableError extends Error {
-  constructor() {
+  /**
+   * @param surface Names the caller that needed the socket, so the message
+   * points at the thing the integrator actually wrote. Defaults to the workflow
+   * run lane, which was the only socket surface before TASK-933 added
+   * `hope.stt.socket`.
+   * @param remedy What to do instead. The workflow lane has an SSE alternative;
+   * the realtime STT protocol has none — it is a socket protocol — so the
+   * remedy there is the runtime, and saying otherwise would send an integrator
+   * looking for a fallback that does not exist.
+   */
+  constructor(
+    surface = "`transport: 'socket'`",
+    remedy = "Upgrade the runtime, or stay on the default SSE lane (`transport: 'sse'`), which is also the only lane that resumes with `Last-Event-ID`.",
+  ) {
     super(
-      "`transport: 'socket'` needs a global `WebSocket`, and this runtime has none. That means Node 22 or newer (the release that " +
+      `${surface} needs a global \`WebSocket\`, and this runtime has none. That means Node 22 or newer (the release that ` +
         'added it), or any of Bun / Deno / an edge runtime. `@arcaai/vox-node` has zero runtime dependencies and will not import a ' +
-        "polyfill on your behalf. Upgrade the runtime, or stay on the default SSE lane (`transport: 'sse'`), which is also the only " +
-        'lane that resumes with `Last-Event-ID`.',
+        `polyfill on your behalf. ${remedy}`,
     );
     this.name = 'SocketUnavailableError';
     Object.setPrototypeOf(this, new.target.prototype);

@@ -41,6 +41,53 @@ export type {
   JobStreamEvent,
 } from './consultation';
 
+/** The consultation REALTIME lifecycle — open, recording, and the live planes (TASK-933). */
+export type {
+  AcceptedCorrectionProposal,
+  ConsultationOpenResponse,
+  HarnessProgressEvent,
+  HarnessProgressStage,
+  LiveAssistEvent,
+  LiveSummaryEntity,
+  LiveSummaryEvent,
+  LiveSummaryGroundedness,
+  LiveSummaryGroundednessSegment,
+  LiveSummarySection,
+  LiveSummaryStreamEvent,
+  LiveSummaryVitals,
+  LoopEvent,
+  OpenConsultationRequest,
+  PreSummaryEvent,
+  PreSummaryStatus,
+  RecordingStateResponse,
+  SectionAnnotation,
+  SectionAnnotationKind,
+  SectionPatchEvent,
+  SectionProvenance,
+  StartRecordingRequest,
+  StopRecordingRequest,
+} from './consultation-realtime';
+
+/** The STT streaming session and the `/ws/stt/stream` wire protocol (TASK-933). */
+export type {
+  CreateStreamSessionRequest,
+  SttAudioFrame,
+  SttClientMessage,
+  SttCloseMessage,
+  SttErrorMessage,
+  SttResumeFailedMessage,
+  SttResumeRequest,
+  SttResumedMessage,
+  SttServerMessage,
+  SttStatusMessage,
+  SttStopMessage,
+  SttTranscriptResult,
+  SttWordTimestamp,
+  StreamSessionResponse,
+  StreamTicketRefreshResponse,
+  StreamingSessionStatus,
+} from './stt';
+
 export { CONTEXT_PRIMITIVES } from './consultation-context-schema';
 
 export type {

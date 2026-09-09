@@ -175,13 +175,17 @@ function reviewPath(slug: string, runId: string, nodeId: string): string {
  * ignorant of which plane a path belongs to. Which credential class a route
  * accepts is a property of the ROUTE.
  *
- * Since TASK-930 the only caller is the CONSULTATION-bound plane
- * (`/consultations/{id}/workflows*`), which still records `svcScopes: []`: running
- * a workflow that writes into a clinical record is not a power the platform hands
- * a machine identity. The unbound plane's routes now declare their `svc:*` scopes,
- * so {@link WorkflowsResource} overrides the check away rather than explaining a
- * refusal the gateway would not make. Still exported: an integrator switching
- * credential classes catches this by name.
+ * As of TASK-933 it has NO caller inside this package: TASK-930 opened the
+ * unbound invocation plane to a service account, and TASK-933 opened the
+ * CONSULTATION-bound one (`svc:workflows:execute`), so both subclasses override
+ * the check away rather than explain a refusal the gateway would not make.
+ *
+ * Deliberately kept, not deleted. It is the one place that states the rule —
+ * which credential class a route accepts is a property of the ROUTE, checked in
+ * the resource and never in the transport — and the next plane that is
+ * credential-restricted will need it. It is also exported, so an integrator who
+ * hits a credential-class refusal in an older version can still catch it by
+ * name.
  */
 export function assertApiKeyPlane(isServiceAccount: boolean, surface: string): void {
   if (!isServiceAccount) return;
@@ -729,6 +733,25 @@ export class ConsultationWorkflowsResource extends WorkflowInvocationBase {
   protected surfaceName(): string {
     return 'The consultation workflow plane (`hope.consultations.workflows`)';
   }
+
+  /**
+   * Both machine credential classes reach this plane since TASK-933.
+   *
+   * It used to refuse a service account, and the reasoning was sound for the
+   * gateway as it stood: the consultation-bound routes recorded `svcScopes: []`,
+   * so the request would have met a 403 no role grant could fix, and the owner
+   * decision of the day held that running a workflow which writes into a
+   * clinical record is not a machine-identity power.
+   *
+   * The owner reversed that on 2026-09-09 for the realtime consultation plane
+   * (TASK-933 OQ-2, "all permissions for vox-node to handle realtime
+   * consultation"): the routes now declare `svc:workflows:execute`, so the
+   * refusal would be a client-side veto over a grant the platform actually
+   * issued. Overridden to a no-op rather than deleted from the base, exactly as
+   * {@link WorkflowsResource} does — {@link assertApiKeyPlane} stays exported so
+   * an integrator switching credential classes can still catch it by name.
+   */
+  protected override assertCredentialClass(): void {}
 
   protected listPath(consultationId?: string): string {
     return `consultations/${encodePathSegment(consultationId ?? '')}/workflows`;

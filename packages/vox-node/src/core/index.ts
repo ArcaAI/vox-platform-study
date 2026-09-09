@@ -39,6 +39,18 @@ export { Transport } from './transport';
 export type { ParseSseStreamOptions, SseFrame } from './sse';
 export { parseSseStream } from './sse';
 
+export type { SseSubscriptionSpec, StreamCloseReason, StreamHandle, StreamHandlers, StreamHandlersBase, SubscribeOptions } from './sse-subscription';
+export { subscribeToSse } from './sse-subscription';
+
+export type {
+  RealtimeSttCloseEvent,
+  RealtimeSttEventName,
+  RealtimeSttSocketEvents,
+  RealtimeSttSocketOptions,
+  RealtimeSttSocketSession,
+} from './realtime-stt-socket';
+export { RealtimeSttSocket } from './realtime-stt-socket';
+
 export type { GenerateUuidV7Options } from './idempotency';
 export { generateUuidV7 } from './idempotency';
 
