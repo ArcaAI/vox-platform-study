@@ -20,6 +20,8 @@ import {
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES,
   AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
+  CONSULTATION_REALTIME_SCOPE_SOURCES,
+  CONSULTATION_REALTIME_SVC_SCOPES,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   STANDALONE_FEATURE_SCOPE_SOURCES,
   STANDALONE_FEATURE_SVC_SCOPES,
@@ -50,7 +52,8 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
       adminScopes.length +
         STANDALONE_FEATURE_SVC_SCOPES.length +
         ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length +
-        AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES.length,
+        AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES.length +
+        CONSULTATION_REALTIME_SVC_SCOPES.length,
     );
   });
 
@@ -359,8 +362,105 @@ describe('TASK-930 §3 — the agent/workflow business-plane family', () => {
     expect(hasServiceAccountScope(['svc:*'], 'svc:agent:invocation:write')).toBe(true);
   });
 
-  // The consultation-bound plural plane stays closed.
-  it('does not admit the consultation-bound workflows: plane', () => {
+  // The consultation-bound plural plane is opened by the FIFTH family below
+  // (owner decision, 2026-09-09) under `svc:workflows:execute` and NOTHING else: no other
+  // `workflows:` string is registered, so the plural namespace confers exactly the one scope
+  // that was granted on purpose.
+  it('admits the consultation-bound workflows: plane only through svc:workflows:execute', () => {
+    expect(SERVICE_ACCOUNT_SCOPE_REGISTRY['svc:workflows:execute']).toBeDefined();
     expect(SERVICE_ACCOUNT_SCOPE_REGISTRY['svc:workflows:run:write']).toBeUndefined();
+    expect(SERVICE_ACCOUNT_SCOPE_REGISTRY['svc:workflows:*']).toBeUndefined();
+  });
+});
+
+/**
+ * TASK-933 §3.1 — the FIFTH family: the REALTIME CONSULTATION plane.
+ *
+ * A service account could invoke agents and run unbound workflows (the fourth family) but could
+ * not drive a CONSULTATION: open one for a named clinician, read it back, stream its live planes,
+ * read the finalized note, discover the tenant's context schema, or reach the consultation-bound
+ * workflows plane. Every one of those routes declared no `svc:*` scope, so
+ * `enforceServiceAccountScopes` denied by default.
+ *
+ * Kept as its own family for the reason every family before it is: the constants above mean
+ * "standalone SDK/compat features", "an admin area whose scope predates the convention" and
+ * "the agent/workflow composition plane". A realtime clinical consultation is none of those, and
+ * a constant whose name stops describing its contents is how the NEXT scope gets mis-derived.
+ *
+ * This family SUPERSEDES the fourth family's recorded exclusion of the consultation-bound
+ * `workflows:` (plural) plane — an owner decision of 2026-09-09, not a refactor.
+ */
+describe('TASK-933 §3.1 — the realtime-consultation family', () => {
+  it('names exactly the five realtime-consultation scopes', () => {
+    expect([...CONSULTATION_REALTIME_SCOPE_SOURCES]).toEqual([
+      'consultation:session:write',
+      'consultation:session:read',
+      'consultation:report:read',
+      'tenant:context-schema:read',
+      'workflows:execute',
+    ]);
+  });
+
+  it('every declared source is a real API-key scope — the family is DERIVED, never invented', () => {
+    for (const source of CONSULTATION_REALTIME_SCOPE_SOURCES) {
+      expect(API_KEY_SCOPE_REGISTRY[source], `${source} must exist in API_KEY_SCOPE_REGISTRY`).toBeDefined();
+    }
+  });
+
+  it('registers each one under the svc: namespace with the SAME abilities the API-key scope carries', () => {
+    for (const source of CONSULTATION_REALTIME_SCOPE_SOURCES) {
+      const svc = toServiceAccountScope(source);
+      expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[svc], `${svc} must be registered`).toBeDefined();
+      expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[svc].implies).toEqual(API_KEY_SCOPE_REGISTRY[source].implies);
+    }
+  });
+
+  // The trap the whole file exists for: a registered scope with no ability passes
+  // `hasServiceAccountScope` and is then refused by CASL.
+  it('resolves every one to at least one ability, on BOTH halves', () => {
+    for (const svc of CONSULTATION_REALTIME_SVC_SCOPES) {
+      expect(resolveServiceAccountImpliedPermissions(svc).length, `${svc} resolves to no ability`).toBeGreaterThan(0);
+      expect(serviceAccountPolicyRules([svc]).length, `${svc} contributes no CASL rule`).toBeGreaterThan(0);
+    }
+  });
+
+  // `svc:admin:*` expands over the `svc:admin:` PREFIX, not over "everything a machine may do".
+  it('is NOT reachable through the svc:admin:* wildcard', () => {
+    for (const svc of CONSULTATION_REALTIME_SVC_SCOPES) {
+      expect(hasServiceAccountScope(['svc:admin:*'], svc), `svc:admin:* must not cover ${svc}`).toBe(false);
+      expect(hasServiceAccountScope(['svc:*'], svc), `svc:* must cover ${svc}`).toBe(true);
+    }
+  });
+
+  it('is disjoint from every other family — one scope, one family, one justification', () => {
+    for (const svc of CONSULTATION_REALTIME_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(svc);
+      expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(svc);
+      expect(AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES).not.toContain(svc);
+      expect(svc.startsWith('svc:admin:')).toBe(false);
+    }
+  });
+
+  it('is DISJOINT from the API-key registry in both directions', () => {
+    for (const svc of CONSULTATION_REALTIME_SVC_SCOPES) {
+      expect(isValidScope(svc), `${svc} must NOT be a valid API-key scope`).toBe(false);
+      expect(isValidServiceAccountScope(svc), `${svc} must be a valid service-account scope`).toBe(true);
+    }
+  });
+
+  // The singular `workflow:` family and the plural `workflows:` plane must not leak into one
+  // another through `hasServiceAccountScope`'s parent-prefix rule.
+  it('svc:workflows:execute is not reachable from the singular svc:workflow family, or vice versa', () => {
+    expect(hasServiceAccountScope(['svc:workflow'], 'svc:workflows:execute')).toBe(false);
+    expect(hasServiceAccountScope(['svc:workflow:run:write'], 'svc:workflows:execute')).toBe(false);
+    expect(hasServiceAccountScope(['svc:workflows:execute'], 'svc:workflow:run:write')).toBe(false);
+  });
+
+  // Reading a consultation must never confer writing one: the read scopes carry `read` alone.
+  it('the read scopes never imply a create ability', () => {
+    for (const svc of ['svc:consultation:session:read', 'svc:consultation:report:read']) {
+      const implied = resolveServiceAccountImpliedPermissions(svc);
+      expect(implied.every((p) => p.action === 'read')).toBe(true);
+    }
   });
 });

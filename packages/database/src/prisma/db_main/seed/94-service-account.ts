@@ -1,7 +1,12 @@
 import { createHmac, randomBytes } from 'crypto';
 import type { CorePrismaClient } from '../../../client';
 import { getNodeEnv, type Environment } from '../../../env';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_CLIENT_IDS, SEED_SERVICE_ACCOUNT_DEV_SECRETS, SEED_SERVICE_ACCOUNT_IDS } from './00-constants';
+import {
+  SEED_CUSTOMER_TENANT_IDS,
+  SEED_SERVICE_ACCOUNT_CLIENT_IDS,
+  SEED_SERVICE_ACCOUNT_DEV_SECRETS,
+  SEED_SERVICE_ACCOUNT_IDS,
+} from './00-constants';
 import { resolveApiKeyPepper } from './api-key-pepper';
 
 /**
@@ -219,6 +224,22 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:workflow:definition:read', // → list:WorkflowDefinition
   'svc:workflow:run:read', // → read:WorkflowRun
   'svc:workflow:run:write', // → create:WorkflowRun, update:WorkflowRun
+  // TASK-933 §3.1 — the REALTIME CONSULTATION plane. With these five the account holds every
+  // permission `@arcaai/vox-node` needs to drive a consultation end to end for a NAMED clinician
+  // (owner decision, 2026-09-09): open + read the session, start/stop recording, write case
+  // notes, subscribe the four live SSE planes, read the finalized note and the async job status,
+  // discover the tenant's context schema, and reach the consultation-bound workflows plane.
+  // Renamespaced from the API-key scopes of the same name (`CONSULTATION_REALTIME_SCOPE_SOURCES`
+  // in `service-account-scopes.registry.ts`); each implies an ability TENANT_ADMIN already
+  // holds, so the derivation rule above still admits them.
+  //
+  // `svc:stt:transcription:write` (above) already covers the STT streaming session, and
+  // `svc:consultation:report:write` (above) the summarization writes — neither is repeated here.
+  'svc:consultation:session:write', // → create:Consultation (open, recording, context, streams)
+  'svc:consultation:session:read', // → read:Consultation (GET /consultations/:id)
+  'svc:consultation:report:read', // → read:Consultation (summary/latest, async job reads)
+  'svc:tenant:context-schema:read', // → read:ConsultationContextSchema (discovery bundle)
+  'svc:workflows:execute', // → execute:ConsultationWorkflow, create:WorkflowRun
 ] as const;
 
 /**
@@ -285,7 +306,9 @@ export function resolveBootstrapServiceAccountSecret(env: NodeJS.ProcessEnv = pr
  * shape here would seed a verifier the gateway can never reproduce.
  */
 export function computeSecretVerifier(clientSecret: string, pepper?: string): string {
-  return createHmac('sha256', pepper ?? 'hope-service-account').update(clientSecret).digest('hex');
+  return createHmac('sha256', pepper ?? 'hope-service-account')
+    .update(clientSecret)
+    .digest('hex');
 }
 
 export const SEEDED_SERVICE_ACCOUNTS = [

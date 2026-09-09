@@ -25,6 +25,9 @@
  *   - `ConsultationJob`   — `jobService.getJobStatus(jobId)`; status struct
  *                           carries `tenantId` after W3.3. Assert
  *                           `status.tenantId === cls.tenantId`.
+ *   - `StreamSession`     — `sessionId -> { tenantId, userId }` binding; assert BOTH, where
+ *                           `userId` is the acting principal (a user OR, since TASK-933, a
+ *                           service account — `resolveCallerPrincipalId`).
  *   - `UserVoiceProfile`  — repo.findById(id); the entity is user-scoped
  *                           (no tenantId), so we assert
  *                           `entity.userId === cls.user.id` — the same
@@ -124,6 +127,27 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     await this.assertOwnership(opts, paramValue, callerTenantId);
   }
 
+  /**
+   * TASK-933 — the ACTING PRINCIPAL's id, for the two branches that assert an intra-tenant OWNER
+   * rather than a tenant.
+   *
+   * A service account is on CLS `serviceAccount` and never on `user` (`UnifiedAuthGuard`: a
+   * machine's actions must not be recorded against a person), so reading `user` alone answered
+   * "no principal" for a machine and 404'd it on a session it had itself just created. This is
+   * the READ half of the pair; the WRITE half is `TranscriptionJobController.
+   * resolveStreamOwnerId()`, and the two must always resolve the same way or the owner recorded
+   * at create can never be matched at use.
+   *
+   * Returns `undefined` when there is no principal at all, which both callers treat as a refusal
+   * — unchanged, and the same fail-closed posture an ownerless legacy row already gets.
+   */
+  private resolveCallerPrincipalId(): string | undefined {
+    const userId = this.cls.get('user')?.id;
+    if (typeof userId === 'string' && userId.length > 0) return userId;
+    const serviceAccountId = (this.cls.get('serviceAccount') as { id?: string } | undefined)?.id;
+    return typeof serviceAccountId === 'string' && serviceAccountId.length > 0 ? serviceAccountId : undefined;
+  }
+
   private async assertOwnership(opts: TenantOwnedResourceOptions, paramValue: string, callerTenantId: string): Promise<void> {
     switch (opts.modelName) {
       case 'TenantBucket':
@@ -175,6 +199,10 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
    * ROLLOUT note) is "owner unproven" and denied, mirroring how a legacy
    * `ConsultationJob` row with no `userId` is handled under `scope: 'creator'`.
    *
+   * TASK-933 — the owner is the acting PRINCIPAL, which may be a service account. That widens
+   * WHO can be an owner, never how the comparison is made: a different machine, a colleague,
+   * another tenant and an ownerless binding are all still 404.
+   *
    * There is deliberately no super-admin bypass: a live clinical audio socket
    * is precisely the surface where a silent extra listener is the harm.
    */
@@ -183,8 +211,8 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     if (binding === null || binding.tenantId !== callerTenantId) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
-    const callerUserId = this.cls.get('user')?.id;
-    if (!callerUserId || typeof callerUserId !== 'string' || !binding.userId || binding.userId !== callerUserId) {
+    const callerPrincipalId = this.resolveCallerPrincipalId();
+    if (!callerPrincipalId || !binding.userId || binding.userId !== callerPrincipalId) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
   }
@@ -229,11 +257,12 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     // `userId` as a mismatch keeps the 404 shape uniform and avoids leaking
     // the legacy-row distinction.
     if (opts.scope === 'creator') {
-      const callerUserId = this.cls.get('user')?.id;
-      if (!callerUserId || typeof callerUserId !== 'string') {
+      // TASK-933 — the creator may be a machine; same resolution as the StreamSession branch.
+      const callerPrincipalId = this.resolveCallerPrincipalId();
+      if (!callerPrincipalId) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);
       }
-      if (!status.userId || status.userId !== callerUserId) {
+      if (!status.userId || status.userId !== callerPrincipalId) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);
       }
     }

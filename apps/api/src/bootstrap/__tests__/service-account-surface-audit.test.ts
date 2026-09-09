@@ -21,6 +21,7 @@ import {
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
+  CONSULTATION_REALTIME_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
@@ -152,22 +153,33 @@ describe('D — svc:* scope coverage', () => {
   // instead, so a future hand-added entry that breaks one is caught here as well
   // as at boot.
   // TASK-930 §3 added a THIRD non-admin family — the agent/workflow business plane.
-  it('the non-admin svc: scopes are exactly the three declared source families', () => {
+  // TASK-933 §3.1 added a FOURTH — the realtime consultation plane.
+  it('the non-admin svc: scopes are exactly the four declared source families', () => {
     const nonAdmin = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)
       .filter((s) => !s.endsWith(':*') && !s.startsWith('svc:admin:'))
       .sort();
     expect(nonAdmin).toEqual(
-      [...STANDALONE_FEATURE_SVC_SCOPES, ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES, ...AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES].sort(),
+      [
+        ...STANDALONE_FEATURE_SVC_SCOPES,
+        ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
+        ...AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
+        ...CONSULTATION_REALTIME_SVC_SCOPES,
+      ].sort(),
     );
   });
 
-  it('the three non-admin families are disjoint — every scope has exactly one justification', () => {
+  it('the four non-admin families are disjoint — every scope has exactly one justification', () => {
     for (const scope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
       expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
     }
     for (const scope of AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES) {
       expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
       expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(scope);
+    }
+    for (const scope of CONSULTATION_REALTIME_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
+      expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(scope);
+      expect(AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES).not.toContain(scope);
     }
   });
 
@@ -689,7 +701,9 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
     expect(conditional, 'fixture should still mark at least one conditionally-registered controller').toBeDefined();
 
     const lines = offenderLines(() =>
-      auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ [conditional.controllerClass]: { scopes: ['svc:admin:department:manage'] } }))),
+      auditAdminControllersDeclareCorrectSvcScope(
+        fakeApp(sweptAdminPlane({ [conditional.controllerClass]: { scopes: ['svc:admin:department:manage'] } })),
+      ),
     );
 
     expect(lines).toHaveLength(1);

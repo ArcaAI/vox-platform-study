@@ -10,7 +10,7 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Po
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { Authorize, RequiredScopes } from '../../decorators';
+import { Authorize, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 import { deliverRun } from './deliver-run';
 import { WorkflowStreamService } from './workflow-stream.service';
@@ -51,6 +51,15 @@ import { WorkflowStreamService } from './workflow-stream.service';
  *   * `@RequiredScopes('workflows:execute')` — the SCOPE, bound to the credential. Deliberately
  *     NOT under the `workflow:` prefix the other three workflow scopes share: scope matching is
  *     by prefix, so a key holding bare `workflow` would otherwise inherit this plane for free.
+ *   * `@RequiredSvcScopes('svc:workflows:execute')` — the same scope for the MACHINE class.
+ *     Added by TASK-933 on an explicit owner decision (2026-09-09): the platform service account
+ *     holds every permission `@arcaai/vox-node` needs to drive a realtime consultation, and this
+ *     plane is one of them. It SUPERSEDES the recorded refusal in
+ *     `service-account-scopes.registry.ts` (fourth family), whose reasoning — "it writes real
+ *     `ContextItem` rows against a patient's consultation" — remains TRUE and is exactly why the
+ *     grant is its own named scope in its own family rather than a side effect of any other.
+ *     The plural/singular split above does the same work for the machine namespace: a
+ *     `svc:workflow:*` holder does NOT reach `svc:workflows:execute`.
  *
  * Cross-tenant `consultationId` or `slug` -> 404, never 403 (rule 05 §Errors).
  */
@@ -66,6 +75,7 @@ export class ConsultationWorkflowRunsController {
   @Get()
   @Authorize(['execute', 'ConsultationWorkflow'])
   @RequiredScopes('workflows:execute')
+  @RequiredSvcScopes('svc:workflows:execute')
   @ApiOperation({
     summary: 'The published workflows runnable AGAINST a consultation.',
     description:
@@ -91,6 +101,7 @@ export class ConsultationWorkflowRunsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @Authorize(['execute', 'ConsultationWorkflow'])
   @RequiredScopes('workflows:execute')
+  @RequiredSvcScopes('svc:workflows:execute')
   // Same `heavy` tier as the unbound plane — each call starts a durable Temporal workflow.
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({

@@ -185,6 +185,13 @@ const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the 
 // cannot build a valid consultation-context payload, which makes the whole
 // consultation surface unusable from a key. Resolves to the key's tenant.
 @RequiredScopes('tenant:context-schema:read')
+// SVC-NOTE (TASK-933 §3.2, owner decision 2026-09-09): the SAME argument for the MACHINE class,
+// and it is the reason this scope is in the realtime-consultation family at all. A broker that
+// writes case notes has to know the tenant's declared kinds first — that is what
+// `@arcaai/vox-codegen --tenant` types — and without this it would have to be handed a human's
+// token to generate them. `me` here is the ACCOUNT'S WORKING TENANT, bound at token exchange, so
+// there is no cross-tenant surface: another tenant's schema is not addressable from this route.
+@RequiredSvcScopes('svc:tenant:context-schema:read')
 export class MyTenantContextSchemaController {
   constructor(
     @Inject(IConsultationContextSchemaService)

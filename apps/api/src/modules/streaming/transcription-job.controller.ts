@@ -88,19 +88,28 @@ import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 // `stt:transcription:write` above (`STANDALONE_FEATURE_SCOPE_SOURCES`), so a
 // machine identity reaches exactly the routes a scoped tenant key does.
 //
-// SVC-NOTE — four routes on this class stay 404 for a machine, BY DESIGN.
-// `stream/session/:sessionId/{DELETE,refresh-ticket,switch-to-fallback,
-// switch-to-primary}` carry `@TenantOwnedResource('StreamSession')`, whose
-// `assertStreamSessionOwnership` requires a CLS `user.id` and compares it to
-// the session's owning clinician (fail-closed on an ownerless
-// binding). A service-account principal deliberately sets no CLS `user` — the
-// whole point of the class is that a machine's actions are not recorded against
-// a person — so it can never satisfy that check, and the WS handshake refuses
-// the socket for the same reason (`stt-ws.gateway.ts`: ticket user must equal
-// the binding owner). Creating a session and driving BATCH transcription work;
-// the live WebSocket lifecycle does not. Giving machines an owner identity is
-// an owner decision, recorded in the README, not something to paper
-// over here.
+// SVC-NOTE — AMENDED BY TASK-933 §3.3 (owner decision, 2026-09-09). This note used to record
+// that four routes — `stream/session/:sessionId/{DELETE,refresh-ticket,switch-to-fallback,
+// switch-to-primary}` — stayed 404 for a machine by design, because
+// `assertStreamSessionOwnership` compared the session's owner to a CLS `user.id` that a service
+// account deliberately never has. The consequence was that a machine could CREATE a streaming
+// session and then not connect to it, refresh it or close it: it minted a ticket owned by `''`
+// and a binding owned by `null`, which the WS handshake then correctly refused.
+//
+// The rule is now: **the session owner is the ACTING PRINCIPAL** — `cls.user?.id` for a human,
+// `cls.serviceAccount?.id` for a machine — resolved once by `resolveStreamOwnerId()` and used by
+// every link in the chain (session record, ticket, binding, and the interceptor's ownership
+// check). A session is NEVER created ownerless: the `?? ''` / `?? null` fallbacks are gone, and
+// a caller with no principal at all is a 400 rather than a session nobody can open.
+//
+// `SttWsGateway` is untouched on purpose. Its handshake is a pure string equality between the
+// ticket's user and the binding's owner, so it needs no notion of WHICH class the principal
+// belongs to — it keeps refusing every id that is not the owner, machine or human, and its
+// `ws-gateway-owner-audit` classification stays `enforced`.
+//
+// What did NOT change: a machine is still never recorded as a CLINICIAN. `Consultation.doctorId`
+// and every job's `userId` come from the consultation row (TASK-933 §3.2); the id below owns a
+// SOCKET, which is a transport fact, not a clinical one.
 @RequiredSvcScopes('svc:stt:transcription:write')
 export class TranscriptionJobController {
   private readonly logger = new Logger(TranscriptionJobController.name);
@@ -254,6 +263,31 @@ export class TranscriptionJobController {
       throw new BadRequestException('User context is required. Ensure you are authenticated.');
     }
     return user.id;
+  }
+
+  /**
+   * TASK-933 §3.3 — WHO owns a live streaming session.
+   *
+   * A session is a socket, a ticket and a binding, and all three must name the same principal or
+   * the WS handshake refuses the connection. A human is their CLS `user`; a service account is
+   * on its own CLS key by design (`UnifiedAuthGuard` never writes a machine onto `user`), so the
+   * resolution has to ask for both.
+   *
+   * THROWS rather than defaulting. The previous `?? ''` (ticket) and `?? null` (binding) turned
+   * "no principal" into a session that existed and could never be opened — a failure that
+   * surfaced two calls later, at the WebSocket, as a generic auth close. `UnifiedAuthGuard`
+   * cannot actually deliver an authenticated request with neither key, so reaching this throw is
+   * a bug; making it loud and immediate is the point.
+   *
+   * This id owns a TRANSPORT. It is never written to `Consultation.doctorId` and never becomes a
+   * job's clinician — see the SVC-NOTE above.
+   */
+  private resolveStreamOwnerId(): string {
+    const ownerId = this.cls.get('user')?.id ?? (this.cls.get('serviceAccount') as { id?: string } | undefined)?.id;
+    if (!ownerId || typeof ownerId !== 'string') {
+      throw new BadRequestException('A streaming session must have an owner. Ensure you are authenticated as a user or a service account.');
+    }
+    return ownerId;
   }
 
   /**
@@ -695,7 +729,9 @@ export class TranscriptionJobController {
   async createStreamSession(@Body() body: CreateStreamSessionRequest, @Res({ passthrough: true }) res?: Response): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
-    const user = this.cls.get('user');
+    // TASK-933 — resolved ONCE, up front, and used by all three writes below. Resolving it here
+    // also means an ownerless caller is refused BEFORE any STT or bucket I/O runs.
+    const ownerId = this.resolveStreamOwnerId();
     const sampleRate = body.sampleRate ?? 16000;
     // TASK-861 — the agent path is the default; the deprecated `pipelineId`
     // path is taken ONLY when the caller sends one (and answers with the
@@ -778,7 +814,7 @@ export class TranscriptionJobController {
       sampleRate,
       language: body.language,
       languageMode: body.languageMode,
-      userId: user?.id,
+      userId: ownerId,
       audioBucketName,
       storage,
       ...(providerOverrides ? { providerOverrides } : {}),
@@ -812,14 +848,14 @@ export class TranscriptionJobController {
     //    open and rejects (4401) every subsequent attempt.
     const [issuedTicket] = await Promise.all([
       this.streamTicketService.issueTicket({
-        userId: user?.id ?? '',
+        userId: ownerId,
         tenantId,
         scope: `stt_session:${result.sessionId}`,
       }),
       // The binding records the OWNING USER as well as the tenant: a live
       // session belongs to one clinician, and every gate downstream (ticket
       // mint, refresh-ticket, WS handshake, close/switch) compares against it.
-      this.streamSessionTenantBinding.bind(result.sessionId, tenantId, user?.id ?? null),
+      this.streamSessionTenantBinding.bind(result.sessionId, tenantId, ownerId),
       this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, { sampleRate }),
     ]);
 
@@ -902,10 +938,11 @@ export class TranscriptionJobController {
     }
 
     const tenantId = this.getTenantId();
-    const user = this.cls.get('user');
 
     const issued = await this.streamTicketService.issueTicket({
-      userId: user?.id ?? '',
+      // TASK-933 — the SAME resolution the binding was written with, so the reconnect handshake
+      // compares like with like. The interceptor has already proved this caller owns the session.
+      userId: this.resolveStreamOwnerId(),
       tenantId,
       scope: `stt_session:${sessionId}`,
     });

@@ -8,6 +8,7 @@ import { HarnessAuditServiceModule } from '../../harness-audit';
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsentServiceModule } from '../../consent/consent-grant.service.module';
+import { AuthorizationModule } from '../../../authorization/authorization.module';
 
 @Module({
   // HarnessAuditServiceModule resolves the @Optional
@@ -27,6 +28,12 @@ import { ConsentServiceModule } from '../../consent/consent-grant.service.module
     // ConsentServiceModule imports neither this module nor anything that leads
     // back to it.
     ConsentServiceModule,
+    // TASK-933 — `PolicyEngine`, which is what lets `getOrCreate` answer "may the NAMED
+    // clinician own a consultation?" from the service. The module is @Global, but it is named
+    // here for the same reason `AgentServiceModule` names it: the dependency is load-bearing
+    // (absent ⇒ every service-account open is a 404) and an implicit global is not a record of
+    // that. No cycle: `AuthorizationModule` imports CoreDatabase, Redis and ApiKey only.
+    AuthorizationModule,
   ],
   providers: [
     ConsultationService,
