@@ -27,6 +27,7 @@ import structlog
 from stt.core.initial_prompt import compose_prompt
 from stt.core.metrics import observe_streaming_inference
 from stt.pipeline.dto import InferenceConfig, PostprocessingConfig
+from stt.postprocessing.lexicon import LexiconCorrector
 from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS
 from stt.streaming.preprocessor import AudioUtterance
 from stt.streaming.redis_streams import ResultPublisher
@@ -161,6 +162,15 @@ class StreamingInferenceWorker:
         self._punctuation_config = (
             postprocessing_config.punctuation if postprocessing_config else None
         )
+        # TASK-935 (OD-2 a) — the clinical-vocabulary corrector, built ONCE per session:
+        # construction is where every term is keyed and masked, and the partial path
+        # cannot afford to redo it per utterance. `None` when the stage cannot fire
+        # (disabled, or no configured terms), which is also the fast path.
+        self._lexicon_corrector = self._build_lexicon_corrector(postprocessing_config)
+        #: Corrections applied this session, across partials and finals. Public in the
+        #: shape of `cumulative_processing_seconds` — a counter the session manager may
+        #: read at teardown; nothing in this class branches on it.
+        self.lexicon_correction_count: int = 0
         # Direct Cadence-Fast punctuation (finals-only,
         # time-boxed, raw-text fallback).
         self._uses_cadence_fast: bool = self._resolve_uses_cadence_fast()
@@ -247,6 +257,50 @@ class StreamingInferenceWorker:
         # real-time factor. Only successful `_run_inference` calls add to it
         # (a raised exception never reaches that call's own timing code).
         self.cumulative_processing_seconds: float = 0.0
+
+    @staticmethod
+    def _build_lexicon_corrector(
+        postprocessing_config: PostprocessingConfig | None,
+    ) -> LexiconCorrector | None:
+        """Build the session's clinical-vocabulary corrector, or ``None``.
+
+        TASK-935 — the terms are the resolved hotwords (``instruction.hotwords``,
+        bound onto the config by ``pipeline_spec_from_resolved``), so a session with
+        no configured vocabulary builds nothing and pays nothing.
+        """
+        lexicon = postprocessing_config.lexicon if postprocessing_config else None
+        if lexicon is None or not lexicon.active:
+            return None
+        if lexicon.max_distance is not None:
+            return LexiconCorrector(lexicon.terms, max_distance=lexicon.max_distance)
+        return LexiconCorrector(lexicon.terms)
+
+    def _apply_lexicon(self, text: str, session_id: str, utterance: AudioUtterance) -> str:
+        """Snap configured clinical terms in *text*; log every change.
+
+        The stage returns its corrections rather than logging them (it has no session
+        id), so this is where they become observable. DEBUG per correction is
+        deliberate: on a busy consultation the stage fires on most utterances, and an
+        INFO line per corrected drug name would drown the streaming log.
+        """
+        corrector = self._lexicon_corrector
+        if corrector is None or not text.strip():
+            return text
+        corrected, corrections = corrector.correct(text)
+        if not corrections:
+            return text
+        self.lexicon_correction_count += len(corrections)
+        for correction in corrections:
+            logger.debug(
+                "stt.postprocessing.lexicon.correction",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                is_final=utterance.is_final,
+                original=correction.original,
+                replacement=correction.replacement,
+                score=round(correction.score, 4),
+            )
+        return corrected
 
     def _resolve_uses_cadence_fast(self) -> bool:
         """Does the session's punctuation model resolve to the direct-load
@@ -451,6 +505,13 @@ class StreamingInferenceWorker:
             from stt.postprocessing.disfluency import remove_disfluencies
 
             text = remove_disfluencies(text)
+
+        # Step 2c: clinical-vocabulary correction. LAST of the
+        # text-editing stages, and after disfluency removal on purpose: the corrector
+        # must see the words that will actually publish, not tokens a later pass will
+        # delete. Lowercasing still runs after it, so a case-folding pipeline folds the
+        # correction too.
+        text = self._apply_lexicon(text, session_id, utterance)
 
         # Lowercase postprocessing
         if self._postprocessing_config and self._postprocessing_config.lowercase:
@@ -1211,6 +1272,13 @@ class StreamingInferenceWorker:
 
         if self._is_hallucination(text, utterance):
             text = ""
+
+        # TASK-935 (OD-2 a) — the correction runs on partials too. A partial is
+        # what the clinician is reading while the utterance is still open, so
+        # leaving it mis-heard until the final lands (option (c)) leaves the live
+        # view wrong for exactly as long as anyone is watching it. Punctuation and
+        # disfluency stay finals-only above; this stage does not.
+        text = self._apply_lexicon(text, session_id, utterance)
 
         # NOTE: Do NOT update self._previous_text for partials
 
