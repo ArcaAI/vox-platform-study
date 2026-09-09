@@ -1091,6 +1091,12 @@ async def _persist_finalized_note(
                 model=model,
             )
         )
+    elif failed_reason is not None:
+        # Rules WERE configured and this lane could not build them, so no deterministic pass
+        # ran — and a manifest must not report on one that did not. Carrying the finalizer's
+        # own `labelCounts`/`total` under `source: "deterministic"` would label provenance as
+        # evidence, which is the confusion the deterministic pass exists to end.
+        redaction_applied, redaction_manifest = False, {}
     if failed_reason is not None:
         # OD-6 — persist, do NOT drop: an undocumented encounter is the worse clinical outcome,
         # and `n_review` already gates what lands here. The forced review flag is the legacy
