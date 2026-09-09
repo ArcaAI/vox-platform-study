@@ -10,6 +10,7 @@ import {
   ModelType,
   ResourceStatusType,
 } from '@arcaai/domains';
+import type { AiModelAsrProfile } from '@arcaai/types';
 import { AI_MODEL_LIBRARIES, AI_MODEL_SERVED_BY } from '../constants';
 
 export class ModelResponse {
@@ -117,6 +118,14 @@ export class ModelResponse {
 
   @ApiPropertyOptional({ description: 'Compute type' })
   computeType?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934), read the same way the gateway resolver ' +
+      '(`parseAiModelAsrProfile`) reads it. `null` off an ASR row, or when the row carries none.',
+    nullable: true,
+  })
+  asrProfile?: AiModelAsrProfile | null;
 
   @ApiPropertyOptional({
     description:

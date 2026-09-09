@@ -18,6 +18,7 @@ import {
 } from '@arcaai/domains';
 import { IAiModelService } from './IAiModelService';
 import {
+  AsrProfileRequest,
   CatalogueModelResponse,
   CatalogueProviderResponse,
   CreateModelRequest,
@@ -245,6 +246,35 @@ export class AiModelService extends BaseService implements IAiModelService {
   }
 
   /**
+   * TASK-934 (G-1/G-3) — fold a write's `asrProfile` into the row's `_metadata.asr`,
+   * preserving every OTHER `_metadata` key. `null` clears the `asr` key without
+   * touching the rest of `_metadata`; the caller only invokes this when the field
+   * was actually present on the DTO (`undefined` means "leave it untouched" and is
+   * never passed in). The profile only makes sense on the row that has the ASR
+   * weights it describes (R-3), so any other `taskType` — including a clear
+   * attempt — is a 400 naming the field, not a silent no-op.
+   */
+  private mergeAsrProfile(
+    taskType: ModelTaskType,
+    metaData: Record<string, unknown> | undefined,
+    asrProfile: AsrProfileRequest | null,
+  ): Record<string, unknown> | undefined {
+    if (taskType !== ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION) {
+      throw new BadRequestException('asrProfile may only be set on an AUTOMATIC_SPEECH_RECOGNITION model row.');
+    }
+    const next: Record<string, unknown> = { ...(metaData ?? {}) };
+    if (asrProfile === null) {
+      delete next.asr;
+    } else {
+      // Plain-JSON round-trip: drops `undefined` members so the stored profile
+      // carries only what the caller actually set (mirrors what
+      // `parseAiModelAsrProfile` reads back at resolve time).
+      next.asr = JSON.parse(JSON.stringify(asrProfile));
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+  }
+
+  /**
    * Register a catalogue row. SYSTEM tenant, super admin only.
    */
   async create(dto: CreateModelRequest): Promise<ModelResponse> {
@@ -256,6 +286,8 @@ export class AiModelService extends BaseService implements IAiModelService {
       throw new BadRequestException('A CLOUD model requires a wireModelId');
     }
     this.assertEngineServedWireId(dto.provider, dto.deploymentKind, dto.wireModelId);
+
+    const metaData = dto.asrProfile !== undefined ? this.mergeAsrProfile(dto.taskType, undefined, dto.asrProfile) : undefined;
 
     // Slug uniqueness is a SYSTEM-catalogue invariant now, not a per-tenant one.
     const existing = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, dto.slug, tx);
@@ -291,6 +323,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       architecture: dto.architecture,
       memorySizeMb: dto.memorySizeMb,
       computeType: dto.computeType,
+      metaData,
       tags: dto.tags,
       createdBy: userId ?? undefined,
     });
@@ -357,6 +390,13 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.computeType !== undefined) existing.computeType = dto.computeType;
     if (dto.checksum !== undefined) existing.checksum = dto.checksum;
     if (dto.tags !== undefined) existing.tags = dto.tags;
+
+    // TASK-934 (G-1) — reads the CURRENT taskType, which already reflects a
+    // `dto.taskType` change applied above, so a row moved OUT of ASR in the same
+    // PATCH cannot also pick up a profile in the same write.
+    if (dto.asrProfile !== undefined) {
+      existing.metaData = this.mergeAsrProfile(existing.taskType, existing.metaData, dto.asrProfile);
+    }
 
     // The bucket IDENTITY is the only thing stored; `localPath` is derived from
     // it on every read (TASK-890 §3.11). Clearing the prefix therefore clears the

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiDeploymentKind, AiModelAvailability, AiTaskKind, ModelTaskType, ResourceStatusType } from '@arcaai/domains';
+import type { AiModelAsrProfile } from '@arcaai/types';
 import { MODEL_READINESS_STATES } from '../../ai-readiness/inference-readiness.types';
 import type { ModelReadiness } from '../../ai-readiness/inference-readiness.types';
 import type { ProviderClass, ProviderGroup } from '../../ai-provider-connection/constants';
@@ -69,6 +70,15 @@ export class CatalogueModelResponse {
   @ApiProperty({ description: 'Non-secret detail behind the readiness verdict.', nullable: true }) readinessDetail: string | null;
   @ApiProperty({ description: 'What the model accepts, for the authoring form.', type: Object })
   capabilities: { supportedGenerationParams?: string[]; supportsSsml?: boolean };
+  @ApiProperty({
+    description:
+      'Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — window geometry, decode thresholds, ' +
+      "the priming prompt this fine-tune was measured with. Read by the agent editor's effective-value hint. `null` off an ASR " +
+      'row, or when the row carries none.',
+    type: Object,
+    nullable: true,
+  })
+  asrProfile: AiModelAsrProfile | null;
   @ApiProperty({ description: 'Tasks this row is the platform default for.', enum: AiTaskKind, isArray: true }) isPlatformDefaultFor: AiTaskKind[];
   @ApiProperty({ enum: ResourceStatusType }) resourceStatus: ResourceStatusType;
   @ApiProperty({ description: 'Whether an agent bound to this model could publish and run today.' }) usable: boolean;
