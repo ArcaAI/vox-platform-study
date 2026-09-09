@@ -3490,11 +3490,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * live warm-start event whenever the note happens to be as fresh — the warm-start panel going
    * dark again for exactly the reason L-1 exists to fix. Events with no `updatedAt`, and events
    * of a kind nothing was replayed for, are relayed untouched.
+   *
+   * The `presummary` kind uses BYTE IDENTITY instead of that timestamp comparison (L2 F-8). It is
+   * not a document whose snapshot IS its state — it is a sequence of statuses (`running` →
+   * `ready`/`degraded`) stamped from a MILLISECOND clock and cached before each publish, so a
+   * successor separated only by a Redis round-trip routinely shares a millisecond with the event
+   * a late joiner was replayed, and `<=` would swallow the terminal one: the panel spinning
+   * forever on a warm start that already finished. The cached entry is a byte-identical copy of
+   * what was published, which makes identity both the exact test for "this is the replay" and
+   * the only one that cannot drop a newer event.
    */
   private isDuplicateOfLiveSummarySnapshot(raw: string, emitted: readonly string[]): boolean {
     const kind = this.liveSummaryEventKind(raw);
     if (kind === null) return false;
     const sameKind = emitted.find((entry) => this.liveSummaryEventKind(entry) === kind);
+    if (sameKind === undefined) return false;
+    if (kind === PRE_SUMMARY_EVENT) return raw === sameKind;
     const emittedUpdatedAt = this.parseLiveSummaryUpdatedAt(sameKind);
     if (!emittedUpdatedAt) return false;
     const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
