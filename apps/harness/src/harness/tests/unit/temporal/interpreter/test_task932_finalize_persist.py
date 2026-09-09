@@ -465,3 +465,67 @@ class TestTheDeterministicRedaction:
         assert persisted[0].content == _CASE_NOTE
         assert persisted[0].gate_decision == "FLAG"
         assert "PHI redactor unavailable" in persisted[0].redaction_manifest["reason"]
+
+
+class TestTheHandoffRuleContract:
+    """The cross-language shape of `dna_redaction_rules`, pinned on the consumer side.
+
+    The gateway publishes it from `LiveDocumentationService.readHandoffRedactionRules`, which
+    normalises the doctor's decrypted report through `validateRedactionRuleSet` and emits a BARE
+    LIST of rule OBJECTS — `{ id, type, match, pattern, replacement?, note? }` — omitting the key
+    entirely rather than sending `[]` when the doctor configured none.
+
+    `RedactionRule` is `extra="forbid"`, so this contract is exact on both ends: a key the
+    gateway adds and this model does not declare is a hard parse failure, which under OD-6 would
+    FLAG every finalized note rather than fail visibly at the boundary. Pinning the full shape
+    here is what turns that into a test failure instead.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_full_gateway_rule_shape_parses_and_runs(self, run) -> None:
+        persisted, result = await run(
+            run_context={
+                "trigger": {
+                    "consultationId": _CONSULTATION,
+                    "dna_style_id": "dna-report-1",
+                    "dna_redaction_rules": [
+                        # every optional the gateway's normaliser can emit
+                        {
+                            "id": "r-full",
+                            "type": "rewrite",
+                            "match": "literal",
+                            "pattern": "URTI",
+                            "replacement": "upper respiratory tract infection",
+                            "note": "spell it out for the patient copy",
+                        },
+                        # and the minimal form it emits when both optionals are absent
+                        {
+                            "id": "r-min",
+                            "type": "remove",
+                            "match": "literal",
+                            "pattern": "Afebrile",
+                        },
+                    ],
+                },
+                "vars": {},
+                "nodes": {},
+            }
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        # Parsed AND applied — not merely accepted.
+        assert draft.gate_decision is None, "a well-formed gateway rule set must not fail closed"
+        assert draft.redaction_manifest["failedClosed"] is False
+        assert sorted(draft.redaction_manifest["ruleIds"]) == ["r-full", "r-min"]
+        assert "URTI" not in draft.content
+        assert "Afebrile" not in draft.content
+
+    def test_the_rule_vocabulary_matches_the_gateway_validator(self) -> None:
+        """`RULE_TYPES` / `MATCH_KINDS` in `redaction-rules.ts` are the same two closed sets."""
+        from typing import get_args
+
+        from harness.redaction.engine import MatchKind, RuleType
+
+        assert set(get_args(RuleType)) == {"remove", "rewrite"}
+        assert set(get_args(MatchKind)) == {"literal", "regex", "category"}
