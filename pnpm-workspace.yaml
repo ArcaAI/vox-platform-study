@@ -61,3 +61,11 @@ overrides:
   #
   # Dev-only (the vitest DOM environment); nothing ships it. Lift when upstream fixes it.
   happy-dom: 20.11.2
+  # Cross-major advisory floors (TASK-936 D-4): the fix exists only over a major,
+  # and each reaches us through a package we do not control.
+  #   linkify-it  <=5.0.1  2x high ReDoS, via the UNMAINTAINED ansi-to-react@6.2.6
+  #                        (pinned at 3.0.3; no newer release exists).
+  #   adm-zip     <0.6.0   high, crafted ZIP forces a 4 GB allocation, via
+  #                        onnxruntime-node <- @huggingface/transformers.
+  linkify-it: ^5.0.2
+  adm-zip: ^0.6.0
