@@ -2,6 +2,7 @@ import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Opti
 import { ConsultationRepository, generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
+import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
@@ -16,11 +17,6 @@ import {
   DispatchForConsultationInput,
   IConsultationWorkflowDispatchService,
 } from './IConsultationWorkflowDispatchService';
-
-/** Mirrors `interpreterSessionId` in the exposure plane. */
-function interpreterSessionId(runId: string): string {
-  return `wf-${runId}`;
-}
 
 /**
  * Dispatches a tenant-authored `consultation`-palette workflow at consultation open,
@@ -204,7 +200,9 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       );
 
       const runId = generateId();
-      const sessionId = interpreterSessionId(runId);
+      // NOT the exposure plane's `interpreterSessionId` — this prefix is what `findRunOrThrow`
+      // falls back to, so a consultation-governed run resolves on `workflows/{slug}/runs/…`.
+      const sessionId = consultationDispatchSessionId(runId);
 
       // Ownership anchor BEFORE dispatch — same ordering rule as `WorkflowExposureService.invoke`:
       // a durable row for a run that fails to start is recoverable; a started run nothing can
