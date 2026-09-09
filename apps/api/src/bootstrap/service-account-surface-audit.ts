@@ -62,6 +62,7 @@ import {
   API_KEY_SCOPE_REGISTRY,
   AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
+  CONSULTATION_REALTIME_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   serviceAccountPolicyRules,
@@ -245,10 +246,13 @@ export function auditSvcScopeCoverage(): void {
   const missingPreConvention = ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
   // TASK-930 §3 — the fourth family (the agent/workflow business plane) is closed the same way.
   const missingBusinessPlane = AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
+  // TASK-933 §3.1 — the fifth family (the realtime consultation plane) is closed the same way.
+  const missingConsultationRealtime = CONSULTATION_REALTIME_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
   const declaredNonAdmin = new Set([
     ...STANDALONE_FEATURE_SVC_SCOPES,
     ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
     ...AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
+    ...CONSULTATION_REALTIME_SVC_SCOPES,
   ]);
   const unexpectedNonAdmin = svcNonAdminScopes.filter((s) => !declaredNonAdmin.has(s));
   const abilityless = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => resolveServiceAccountImpliedPermissions(s).length === 0);
@@ -261,12 +265,15 @@ export function auditSvcScopeCoverage(): void {
     problems.push(`declared admin-plane pre-convention scopes missing from the registry: ${missingPreConvention.join(', ')}`);
   if (missingBusinessPlane.length > 0)
     problems.push(`declared agent/workflow business-plane scopes missing from the registry: ${missingBusinessPlane.join(', ')}`);
+  if (missingConsultationRealtime.length > 0)
+    problems.push(`declared realtime-consultation scopes missing from the registry: ${missingConsultationRealtime.join(', ')}`);
   if (unexpectedNonAdmin.length > 0)
     problems.push(
-      `non-admin svc:* scopes declared in none of STANDALONE_FEATURE_SCOPE_SOURCES, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES or ` +
-        `AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES: ${unexpectedNonAdmin.join(', ')}. ` +
+      `non-admin svc:* scopes declared in none of STANDALONE_FEATURE_SCOPE_SOURCES, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, ` +
+        `AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES or CONSULTATION_REALTIME_SCOPE_SOURCES: ${unexpectedNonAdmin.join(', ')}. ` +
         `Add the source scope to the family it actually belongs to — standalone BUSINESS-plane features, an ADMIN-plane area whose gating scope ` +
-        `predates the admin:<area> convention, or the agent/workflow composition plane — so the ability mapping is derived, never hand-written.`,
+        `predates the admin:<area> convention, the agent/workflow composition plane, or the realtime consultation plane — so the ability mapping ` +
+        `is derived, never hand-written.`,
     );
   if (abilityless.length > 0)
     problems.push(

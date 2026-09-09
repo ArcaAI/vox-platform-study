@@ -64,6 +64,7 @@ import {
   Inject,
   Query,
   Headers,
+  BadRequestException,
   ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
@@ -79,7 +80,7 @@ import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOp
 import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced note-content
 // PATCH/POST routes on this controller.
-import { ApiEndpoint, Authorize, RequiredScopes, RequiresIfMatch, ExpectedVersion, RequiresConsent } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiredScopes, RequiredSvcScopes, RequiresIfMatch, ExpectedVersion, RequiresConsent } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
@@ -236,6 +237,62 @@ export class ConsultationController {
     return user.id;
   }
 
+  /**
+   * TASK-933 — the MACHINE principal, when the caller is one.
+   *
+   * `UnifiedAuthGuard` puts a service account on its OWN CLS key and never on `user`, precisely
+   * so that no `requestUser?.id` read records a machine's action against a person. Every helper
+   * below therefore has to ASK rather than infer: a null `user` means "not a human", not
+   * "unauthenticated".
+   */
+  private getServiceAccountId(): string | undefined {
+    const principal = this.cls.get('serviceAccount') as { id?: string } | undefined;
+    return typeof principal?.id === 'string' ? principal.id : undefined;
+  }
+
+  /**
+   * TASK-933 §3.2 — WHO this consultation is for.
+   *
+   * `Consultation.doctorId` names a person, always. A human caller is that person. A service
+   * account is not a person at all, so it NAMES the clinician it acts for and the service
+   * validates that name (tenant membership + the named user's own `create:Consultation`).
+   *
+   * The two 400s are deliberate and are opposite refusals of the same field:
+   *
+   *   · `CLINICIAN_REQUIRED` — a machine that named nobody. Defaulting to the account itself
+   *     would write a machine id into `doctorId`, which every downstream consumer (DNA style,
+   *     the redaction gate, the doctor's report, the prompt tier, the audit trail) reads as a
+   *     clinician. There is no safe default, so there is no default.
+   *   · `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human that named someone. Their clinician
+   *     IS their authenticated identity; honouring a body field here would be impersonation
+   *     with no gate, and silently ignoring it would be worse (the caller would believe it took
+   *     effect). 400 says so out loud.
+   */
+  private resolveActingClinicianId(request: OpenConsultationRequest): string {
+    const serviceAccountId = this.getServiceAccountId();
+
+    if (serviceAccountId) {
+      if (!request.clinicianUserId) {
+        throw new BadRequestException({
+          message:
+            'A service account has no clinician of its own. Name the clinician this consultation belongs to with `clinicianUserId`; a service account is never recorded as the doctor.',
+          code: 'CLINICIAN_REQUIRED',
+        });
+      }
+      return request.clinicianUserId;
+    }
+
+    if (request.clinicianUserId) {
+      throw new BadRequestException({
+        message:
+          '`clinicianUserId` is honoured only for a service-account caller. Your consultation is opened for the authenticated user; remove the field.',
+        code: 'CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER',
+      });
+    }
+
+    return this.getDoctorId();
+  }
+
   private getUserAbility(): AppAbility | undefined {
     return this.cls.get('userAbility') as AppAbility | undefined;
   }
@@ -303,17 +360,34 @@ export class ConsultationController {
    *   (TASK-932 S2-4: resolved through the settings cascade). This is a
    *   runtime lookup that cannot be expressed as a static CASL condition.
    */
-  private async verifyConsultationAccess(consultationId: string): Promise<void> {
+  private async verifyConsultationAccess(consultationId: string): Promise<{ doctorId: string; patientId: string }> {
     const consultation = await this.consultationService.getById(consultationId);
     if (!consultation) {
       throw new NotFoundException(`Consultation ${consultationId} not found`);
+    }
+
+    // TASK-933 §3.3 — Layer 0: the MACHINE branch. Tenant + scope, and nothing else.
+    //
+    // A service account's authority is exactly its `svc:*` scopes, which the guard has already
+    // required to reach this handler, plus the tenant it bound at token EXCHANGE. What it is
+    // NOT is a doctor: there is no `doctorId` equality to evaluate, no CASL `userAbility` to
+    // consult (that CLS key is only ever written for a human, and reading it here would widen a
+    // machine to whatever the last human in this process held), and no shared-patient
+    // relationship to look up.
+    //
+    // The TENANT boundary is already closed twice over by the time we get here, which is why
+    // there is nothing left to assert: `ConsultationService.getById` runs `assertEqualTenants`
+    // against the CLS tenant, and `Consultation` is in `TENANT_SCOPED_MODELS` so the extended
+    // Prisma client scopes the read in the first place. Both answer 404, never 403.
+    if (this.getServiceAccountId()) {
+      return consultation;
     }
 
     const doctorId = this.getDoctorId();
 
     // Layer 1: owner check (matches CASL `consultation-own-manage` policy)
     if (consultation.doctorId === doctorId) {
-      return;
+      return consultation;
     }
 
     // Layer 1b: CASL ability check for non-owner read (e.g., tenant-admin, dept-head)
@@ -323,7 +397,7 @@ export class ConsultationController {
         tenantId: this.cls.get('tenantId'),
         doctorId: consultation.doctorId,
       } as Record<string, unknown>);
-      if (canRead) return;
+      if (canRead) return consultation;
     }
 
     // Layer 2: dynamic shared-patient check (configurable per tenant).
@@ -345,6 +419,8 @@ export class ConsultationController {
       consultationId,
       patientId: consultation.patientId,
     });
+
+    return consultation;
   }
 
   /**
@@ -355,15 +431,22 @@ export class ConsultationController {
    *
    * Shared-patient doctors NEVER get write access.
    */
-  private async verifyConsultationOwnership(consultationId: string): Promise<void> {
+  private async verifyConsultationOwnership(consultationId: string): Promise<{ doctorId: string; patientId: string }> {
     const consultation = await this.consultationService.getById(consultationId);
     if (!consultation) {
       throw new NotFoundException(`Consultation ${consultationId} not found`);
     }
 
+    // TASK-933 §3.3 — the MACHINE branch, same shape and same reasoning as the read check
+    // above: the account was granted `svc:consultation:session:write` on purpose, the tenant
+    // boundary is closed before this line, and the ROW supplies the clinician.
+    if (this.getServiceAccountId()) {
+      return consultation;
+    }
+
     const doctorId = this.getDoctorId();
     if (consultation.doctorId === doctorId) {
-      return;
+      return consultation;
     }
 
     // Allow admin/dept-head with broad `manage` permission
@@ -373,7 +456,7 @@ export class ConsultationController {
         tenantId: this.cls.get('tenantId'),
         doctorId: consultation.doctorId,
       } as Record<string, unknown>);
-      if (canManage) return;
+      if (canManage) return consultation;
     }
 
     throw new ForbiddenException('Only the assigned doctor can modify this consultation');
@@ -399,10 +482,19 @@ export class ConsultationController {
     method: HttpMethod.POST,
     path: 'open',
   })
+  // TASK-933 §3.2 — the realtime consultation plane, opened to the machine class. The account's
+  // authority is exactly this scope plus the ability it implies (`create:Consultation`); the
+  // CLINICIAN it acts for is named on the body and validated in the service.
   @Authorize(['create', 'Consultation'])
-  @ApiResponse({ status: 400, description: 'Bad request' })
+  @RequiredSvcScopes('svc:consultation:session:write')
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request. `CLINICIAN_REQUIRED` — a service-account caller named no `clinicianUserId`; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied one.',
+  })
+  @ApiResponse({ status: 404, description: 'The named clinician is not a user of this tenant, or may not own a consultation.' })
   async open(@Body() request: OpenConsultationRequest): Promise<ConsultationResponse> {
-    return this.consultationService.getOrCreate(request, this.getDoctorId());
+    return this.consultationService.getOrCreate(request, this.resolveActingClinicianId(request));
   }
 
   /**
@@ -439,8 +531,13 @@ export class ConsultationController {
    *     `…:read`: a key scoped only to read cannot open a consultation, so the set would be
    *     useless to it, while a key that CAN open would be unable to discover. The reachable set
    *     is exactly the set that can act on the answer;
-   *   * no `@RequiredSvcScopes`, so service accounts are refused (deny-by-default) exactly as
-   *     they are on `open`.
+   *   * no `@RequiredSvcScopes`, so service accounts are refused (deny-by-default). AMENDED
+   *     BY TASK-933: `open` itself IS now reachable by a machine, so this clause no longer
+   *     mirrors it — and that asymmetry is the decision, not an oversight. A broker names the
+   *     clinician, the patient and the DEPARTMENT, and the department's own assignment picks
+   *     the workflow (§1.1); it has no business enumerating the tenant's authored workflows to
+   *     override that pick. If a machine ever needs the selectable set, opening this route is
+   *     a one-line decision to take on purpose.
    * Cross-tenant does not arise: `tenantId` comes from CLS, never from the request, so there is
    * no foreign identifier to answer 404 for. A privilege failure inside the caller's own tenant
    * is a 403.
@@ -468,6 +565,7 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
   @RequiredScopes('consultation:session:read')
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getById(@Param('id') id: string): Promise<ConsultationResponse> {
     await this.verifyConsultationAccess(id);
     const result = await this.consultationService.getByIdWithRelations(id);
@@ -733,13 +831,18 @@ export class ConsultationController {
   // Consent & ABAC. Capture start is one of the four gated
   // stages named in flow.
   @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
+  @RequiredSvcScopes('svc:consultation:session:write')
   async startRecording(@Param('id') id: string, @Body() request: StartRecordingRequest): Promise<RecordingStateResponse> {
-    await this.verifyConsultationOwnership(id);
+    // TASK-933 — the live session belongs to the CLINICIAN, which the row records. For a human
+    // caller that is the caller; for a machine there is no caller-as-person at all, and writing
+    // the service-account id here would put a machine into the clinician's live-documentation
+    // session (and, through it, into the DNA-style and prompt resolution that reads it).
+    const owned = await this.verifyConsultationOwnership(id);
     const consultation = await this.consultationService.startRecording(id);
     this.liveDocumentationService.start({
       consultationId: id,
       tenantId: this.cls.get('tenantId') ?? '',
-      userId: this.getDoctorId(),
+      userId: owned.doctorId,
       sessionId: request?.sessionId,
     });
     return {
@@ -765,6 +868,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @RequiredSvcScopes('svc:consultation:session:write')
   async stopRecording(@Param('id') id: string, @Body() request: StopRecordingRequest): Promise<RecordingStateResponse> {
     await this.verifyConsultationOwnership(id);
     await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
@@ -795,6 +899,12 @@ export class ConsultationController {
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
   @StreamScope({ namespace: 'consultation_live_summary', param: 'id' })
+  // TASK-933 — the four live planes REUSE the session write scope rather than minting a
+  // read-only stream scope: every `svc:` scope is derived from a real API-key scope, so a new
+  // one would widen the API-key surface too, and no read-only stream consumer exists. A machine
+  // presents its own `X-Service-Account-Token` header here; the single-use `?ticket=` lane is a
+  // JWT-side convenience it never needs.
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({
     summary: 'Stream the running live summary for an in-progress consultation via SSE',
     description:
@@ -822,6 +932,7 @@ export class ConsultationController {
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
   @StreamScope({ namespace: 'consultation_live_assist', param: 'id' })
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({
     summary: 'Stream interpreter suggestions and proposed corrections for a consultation via SSE',
     description:
@@ -843,6 +954,7 @@ export class ConsultationController {
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
   @StreamScope({ namespace: 'consultation_harness_progress', param: 'id' })
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({
     summary: 'Stream live harness draft-generation progress for a consultation via SSE',
     description:
@@ -909,6 +1021,7 @@ export class ConsultationController {
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
   @StreamScope({ namespace: 'consultation_loop', param: 'id' })
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({
     summary: 'Stream consultation-loop workflow events for a consultation via SSE',
     description:
@@ -956,6 +1069,7 @@ export class ConsultationController {
       "payload validates against THIS version rather than the tenant's current pin — a client on an older schema version is " +
       'never silently upgraded (or broken) by a publish that lands mid-consultation. Ignored when `kindKey` is absent.',
   })
+  @RequiredSvcScopes('svc:consultation:session:write')
   async addContext(
     @Param('id') id: string,
     @Body() request: AddContextRequest,
@@ -1338,6 +1452,9 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @RequiredScopes('consultation:report:write')
+  // TASK-933 — `svc:consultation:report:write` already existed (the standalone summarization
+  // family) and was seeded; it simply had no consultation route declaring it.
+  @RequiredSvcScopes('svc:consultation:report:write')
   async generatePreSummary(@Param('id') id: string, @Body() request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
     await this.verifyConsultationOwnership(id);
     return this.summaryService.generatePreSummary(id, request);
@@ -1351,6 +1468,7 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or no summary has been generated yet.' })
   @RequiredScopes('consultation:report:read')
+  @RequiredSvcScopes('svc:consultation:report:read')
   async getLatestSummary(@Param('id') id: string): Promise<SummaryResponse> {
     await this.verifyConsultationAccess(id);
     const summary = await this.summaryService.getLatestSummary(id);
@@ -1366,6 +1484,7 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or no pre-summary has been generated yet.' })
   @RequiredScopes('consultation:report:read')
+  @RequiredSvcScopes('svc:consultation:report:read')
   async getLatestPreSummary(@Param('id') id: string): Promise<SummaryResponse> {
     await this.verifyConsultationAccess(id);
     const preSummary = await this.summaryService.getLatestPreSummary(id);
@@ -1626,10 +1745,14 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @RequiredScopes('consultation:report:write')
+  @RequiredSvcScopes('svc:consultation:report:write')
   async generatePreSummaryAsync(@Param('id') consultationId: string, @Body() request: GeneratePreSummaryRequest): Promise<AsyncJobResponseDto> {
-    await this.verifyConsultationOwnership(consultationId);
+    const owned = await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
-    const userId = this.getDoctorId();
+    // TASK-933 — the job's owner is the CLINICIAN from the row, so a machine-initiated
+    // pre-summary is still the doctor's job (and `scope: 'creator'` on the job reads still
+    // resolves to a person). Never the service-account id.
+    const userId = owned.doctorId;
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const job = await this.consultationJobService.createPreSummaryJob(
       consultationId,
