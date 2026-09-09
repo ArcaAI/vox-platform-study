@@ -134,6 +134,34 @@ export interface CatalogueProvider {
   modelCount: number;
 }
 
+/**
+ * `AiModel._metadata.asr` parsed (TASK-934) — mirrors `AiModelAsrProfileDecoding`
+ * (`@arcaai/types`). A second hand-copy of the same shape as
+ * `features/ai-models/api/types.ts#AiModelAsrProfileDecoding`: this module is
+ * `shared/`, features never import each other or `shared` back into a feature,
+ * so the narrower picker-shaped projection carries its own copy (the existing
+ * `TextProviderModel` precedent above).
+ */
+export interface CatalogueAsrProfileDecoding {
+  beamSize?: number;
+  temperature?: number;
+  noSpeechThreshold?: number;
+  compressionRatioThreshold?: number;
+  logprobThreshold?: number;
+  conditionOnPrevTokens?: boolean;
+  noRepeatNgramSize?: number;
+  prevTextContextWords?: number;
+  hotwords?: string[];
+}
+
+/** `AiModel._metadata.asr` parsed (TASK-934) — mirrors `AiModelAsrProfile`. */
+export interface CatalogueAsrProfile {
+  maxDecodeWindowSec?: number;
+  partialWindowSec?: number;
+  decoding?: CatalogueAsrProfileDecoding;
+  initialPrompt?: string;
+}
+
 /** `GET admin/ai-models/catalogue` model row — mirrors `CatalogueModelResponse`. */
 export interface CatalogueModel {
   id: string;
@@ -149,6 +177,12 @@ export interface CatalogueModel {
   readinessDetail: string | null;
   usable: boolean;
   unusableReason?: string | null;
+  /**
+   * Parsed ASR decode profile (TASK-934) — the agent editor's effective-value
+   * hint reads this off the currently selected model. `null` off an ASR row,
+   * or when the row carries none.
+   */
+  asrProfile?: CatalogueAsrProfile | null;
 }
 
 export interface ModelCatalogue {

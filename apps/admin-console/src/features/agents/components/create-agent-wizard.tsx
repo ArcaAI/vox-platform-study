@@ -452,7 +452,9 @@ export function CreateAgentWizard({
         </div>
       ) : null}
 
-      {step === 'Parameters' ? <ParametersForm task={state.task} value={state.parameters} onChange={(parameters) => patch({ parameters })} /> : null}
+      {step === 'Parameters' ? (
+        <ParametersForm task={state.task} value={state.parameters} onChange={(parameters) => patch({ parameters })} modelId={state.modelId} />
+      ) : null}
 
       {step === 'Schemas' ? (
         <div className="flex flex-col gap-4">
