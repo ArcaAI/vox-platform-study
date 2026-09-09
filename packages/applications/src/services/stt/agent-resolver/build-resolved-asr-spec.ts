@@ -287,12 +287,25 @@ function partialWindowSecOf(parameters: Rec, profile: AiModelAsrProfile, sources
 
 function postProcessing(parameters: Rec): AsrSpecPostProcessing {
   const p = rec(parameters.postProcessing);
-  return {
+  const block: AsrSpecPostProcessing = {
     punctuation: { enabled: bool(rec(p.punctuation).enabled, true) },
     disfluency: bool(p.disfluency, false),
     stabilizer: bool(p.stabilizer, false),
     merge: bool(p.merge, false),
   };
+  // TASK-935 (OD-2 a) — the clinical-vocabulary correction stage. OMITTED, not `null` and
+  // not defaulted, when the agent said nothing: `apps/stt`'s mirror is `extra='forbid'`,
+  // and absence is also what lets the runtime apply the conditional default (ON exactly
+  // when the resolved hotwords are non-empty) that no single value here could express.
+  // The terms are NOT copied in — they are `instruction.hotwords`, one list (OD-5 a).
+  const lexicon = rec(p.lexicon);
+  const enabled = typeof lexicon.enabled === 'boolean' ? lexicon.enabled : null;
+  const maxDistance = num(lexicon.maxDistance);
+  if (enabled !== null || maxDistance !== null) {
+    // A bare `maxDistance` is an author tuning a stage they meant to run.
+    block.lexicon = { enabled: enabled ?? true, ...(maxDistance !== null ? { maxDistance } : {}) };
+  }
+  return block;
 }
 
 function streaming(parameters: Rec): AsrSpecStreaming {
