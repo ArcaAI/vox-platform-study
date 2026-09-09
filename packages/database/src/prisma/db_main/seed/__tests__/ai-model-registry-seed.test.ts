@@ -99,9 +99,11 @@ const TASK_860_RETIRED_SLUGS = [
   'indic-f5',
 ] as const;
 
-/** README §3.6 — the platform-default elections. */
+/** README §3.6 — the platform-default elections. TASK-934 (OD-2) moved SPEECH_TO_TEXT
+ * from the f16 row to q8_0 — the row the seeded `realtime-transcription` agent serves
+ * as primary, not merely a fallback. */
 const PLATFORM_DEFAULTS: Record<string, string> = {
-  SPEECH_TO_TEXT: 'arcaai-whisper-large-ml-en-gguf',
+  SPEECH_TO_TEXT: 'arcaai-whisper-large-ml-en-gguf-q8_0',
   TEXT_TO_SPEECH: 'kokoro',
   NAMED_ENTITY_RECOGNITION: 'medical-ner',
   PII_DETECTION: 'gliner2-privacy-filter-pii-multi',
@@ -236,21 +238,26 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
   it('gives every whisper.cpp row the decode geometry that used to be a platform key (TASK-880)', () => {
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` applied ONE
     // number to every engine on the box. They are model facts — so they ride the row and
-    // travel on `ResolvedAsrSpec.models.asr.metadata`. Every WHISPER_CPP row must declare
-    // a MATCHED pair (maxDecodeWindowSec === partialWindowSec — session_manager.py's own
-    // comment: "so the last partial and the final decode the SAME audio"), or that engine
-    // silently loses its split guard when the key goes.
+    // travel on `ResolvedAsrSpec.models.asr.metadata`.
     //
-    // TASK-891 (A5) raised `arcaai-whisper-large-ml-en-gguf` specifically from 7/6 to
-    // 30/30 — matched, and toward the model's real 30s context — because the 7s window was
-    // measurably truncating long clinical utterances into blind fragments. Every other
-    // WHISPER_CPP row is untouched at 7/6.
+    // TASK-891 (A5) raised `arcaai-whisper-large-ml-en-gguf` specifically from 7/6 to a
+    // MATCHED 30/30 pair — `maxDecodeWindowSec === partialWindowSec` was believed required
+    // ("so the last partial and the final decode the SAME audio") — because the 7s window
+    // was measurably truncating long clinical utterances into blind fragments.
+    //
+    // TASK-934 measured that decision against live Malayalam-English CER and reverted it:
+    // 30s DOUBLES this fine-tune's CER relative to 7s (0.381 -> 0.645), so 7s remains every
+    // whisper.cpp row's accuracy window for the FINAL decode. The "MUST match" rule itself
+    // was also wrong — lane S decoupled `partialWindowSec` from `maxDecodeWindowSec` into
+    // two independent knobs, and the PARTIAL window widens to 15s because that is where
+    // the real streaming damage was: a 6s partial window measured 31% garbage on English,
+    // 15s measured 0%. Every WHISPER_CPP row now carries the same measured `{7, 15}` pair
+    // (OD-1) — live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
     const whisperCpp = catalog.filter((m) => m.format === AiModelFormat.WHISPER_CPP);
     expect(whisperCpp.length).toBeGreaterThan(0);
     whisperCpp.forEach((m) => {
-      const [expectedMax, expectedPartial] = m.slug === 'arcaai-whisper-large-ml-en-gguf' ? [30, 30] : [7, 6];
-      expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(expectedMax);
-      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(expectedPartial);
+      expect(m.metaData?.asr?.maxDecodeWindowSec, m.slug).toBe(7);
+      expect(m.metaData?.asr?.partialWindowSec, m.slug).toBe(15);
     });
   });
 
