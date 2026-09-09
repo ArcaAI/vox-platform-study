@@ -35,8 +35,6 @@ export type PresignedUrlCommand = 'get' | 'list';
  * - S3_REGION: S3 region (default: 'us-east-1')
  * - S3_ACCESS_KEY: S3 access key
  * - S3_SECRET_KEY: S3 secret key
- * - S3_PUBLIC_BUCKET: Default public bucket name
- * - S3_PRIVATE_BUCKET: Default private bucket name
  * - S3_FORCE_PATH_STYLE: Force path-style URLs (default: true for MinIO compatibility)
  * - S3_REJECT_UNAUTHORIZED: Reject unauthorized SSL certificates (default: false)
  * - S3_PRESIGNED_URL_EXPIRY: Presigned URL expiry in seconds (default: 3600)
@@ -317,11 +315,12 @@ export class S3Service implements IS3Service, OnModuleInit {
       endpoint,
       region: this.appSettingsService.getValueWithDefault('S3_REGION', isMinIO ? 'us-east-1' : 'us-east-1'),
       // Secrets resolve via SecretsService cache-only sync
-      // path; non-secrets (S3_REGION, S3_PUBLIC_BUCKET, etc.) stay on AppSettings.
+      // path; non-secrets (S3_REGION, etc.) stay on AppSettings. The legacy
+      // S3_PUBLIC_BUCKET/S3_PRIVATE_BUCKET pair was retired (TASK-932 OD-8):
+      // zero production consumers once testConnection() stopped depending on
+      // them for its health probe.
       accessKey: this.secretsService?.getSecretSync('S3_ACCESS_KEY') ?? '',
       secretKey: this.secretsService?.getSecretSync('S3_SECRET_KEY') ?? '',
-      publicBucket: this.appSettingsService.getValueWithDefault('S3_PUBLIC_BUCKET', ''),
-      privateBucket: this.appSettingsService.getValueWithDefault('S3_PRIVATE_BUCKET', ''),
       // MinIO requires forcePathStyle: true, AWS S3 can use either
       forcePathStyle: this.appSettingsService.getValueWithDefault('S3_FORCE_PATH_STYLE', isMinIO ? true : true),
       // MinIO often runs with self-signed certificates in development
@@ -421,36 +420,6 @@ export class S3Service implements IS3Service, OnModuleInit {
     }
 
     return this.s3Client;
-  }
-
-  /**
-   * Get the default public bucket name
-   */
-  public getPublicBucketName(): string {
-    if (!this.appSettingsService.getCacheStats().isInitialized) {
-      this.logger.warn({
-        message: 'AppSettings not initialized',
-        action: 'returning_empty_bucket_name',
-        bucketType: 'public',
-      });
-      return '';
-    }
-    return this.appSettingsService.getValueWithDefault('S3_PUBLIC_BUCKET', '');
-  }
-
-  /**
-   * Get the default private bucket name
-   */
-  public getPrivateBucketName(): string {
-    if (!this.appSettingsService.getCacheStats().isInitialized) {
-      this.logger.warn({
-        message: 'AppSettings not initialized',
-        action: 'returning_empty_bucket_name',
-        bucketType: 'private',
-      });
-      return '';
-    }
-    return this.appSettingsService.getValueWithDefault('S3_PRIVATE_BUCKET', '');
   }
 
   /**
@@ -830,42 +799,23 @@ export class S3Service implements IS3Service, OnModuleInit {
   }
 
   /**
-   * Test S3 connectivity by attempting to list buckets
+   * Test S3 connectivity with an account-level bucket listing.
+   *
+   * TASK-932 OD-8 — this USED TO list objects in `S3_PUBLIC_BUCKET` /
+   * `S3_PRIVATE_BUCKET` (a legacy platform-wide bucket pair nothing
+   * provisions), so a real MinIO carrying neither bucket answered
+   * `NoSuchBucket` and this health probe reported "unreachable" while MinIO
+   * was healthy. `ListBucketsCommand` needs no bucket at all (only the
+   * account-level `ListAllMyBuckets` permission the dev/prod credential
+   * already carries), so the probe is now identical for MinIO and AWS S3 and
+   * never depends on a specific bucket existing.
    */
   public async testConnection(): Promise<boolean> {
     try {
       const s3 = await this.ensureInitialized();
       const config = this.getS3Configuration();
 
-      // For MinIO, try a simple HEAD operation first
-      if (config.isMinIO) {
-        const bucketName = this.getPublicBucketName() || this.getPrivateBucketName();
-        if (bucketName) {
-          // Test with existing bucket
-          await s3.send(
-            new ListObjectsV2Command({
-              Bucket: bucketName,
-              MaxKeys: 1,
-            }),
-          );
-        } else {
-          // If no buckets configured, try to list with a common test bucket name
-          await s3.send(
-            new ListObjectsV2Command({
-              Bucket: 'test-bucket',
-              MaxKeys: 1,
-            }),
-          );
-        }
-      } else {
-        // For AWS S3, use standard test
-        await s3.send(
-          new ListObjectsV2Command({
-            Bucket: this.getPublicBucketName() || 'test-bucket',
-            MaxKeys: 1,
-          }),
-        );
-      }
+      await s3.send(new ListBucketsCommand({}));
 
       this.logger.debug({
         message: 'S3 connection test successful',
