@@ -23,5 +23,8 @@ export * from './agent.js';
 // TASK-861 — the gateway-resolved ASR runtime contract (gateway → apps/stt), replacing AsrPipeline.configYaml.
 export * from './asr-spec.js';
 
+// TASK-934 — the per-model ASR decode profile (`AiModel._metadata.asr`) the spec builder folds in.
+export * from './asr-model-profile.js';
+
 // TASK-879 — the gateway-resolved TTS runtime contract (gateway → apps/tts), replacing the TenantTtsConfig fold.
 export * from './tts-spec.js';
