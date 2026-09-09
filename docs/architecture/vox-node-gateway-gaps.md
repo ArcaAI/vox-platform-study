@@ -52,3 +52,52 @@ them from a changelog:
   ~30s, scope `workflow_run:<runId>`, compared by strict equality). SSE remains the default and
   the only lane that RESUMES — the socket ticket is single-use, so a dropped socket ends the
   read where SSE reconnects with `Last-Event-ID` and loses nothing.
+
+### 2026-09-09 (TASK-933) — the realtime consultation plane, and what it changes about the gateway
+
+The owner opened the CONSULTATION surface to HOPE's machine identity (OD-1: a
+NATIVE service-account plane, not delegation). Four facts a reader of this file
+needs, none of which is a gap:
+
+- **A service account can now run a consultation.** The realtime routes declare
+  `svc:consultation:session:write`, `svc:consultation:session:read`,
+  `svc:consultation:report:read`, `svc:tenant:context-schema:read` and
+  `svc:workflows:execute`. Before this they declared none, and an absent scope
+  declaration is a deny-by-default 403 for both machine classes — so the plane
+  was unreachable rather than restricted.
+- **The consultation-bound WORKFLOW plane is no longer machine-refused.** The
+  2026-09-08 addendum above records the opposite ("running a workflow that writes
+  into a clinical record is not a machine-identity power"), and that was true of
+  the gateway as it stood. OQ-2 reverses it for this plane under
+  `svc:workflows:execute`. `assertApiKeyPlane` and `CredentialClassError` remain
+  exported, but **no plane in `@arcaai/vox-node` calls the check any more**.
+- **A machine names the clinician; it never becomes one.** `POST /consultations/open`
+  gained `clinicianUserId`, REQUIRED for a service-account caller and refused for
+  a human one. It lands on `Consultation.doctorId`, which is the column every
+  downstream consumer already reads (DNA writing style, redaction gate, the
+  doctor's report, prompt tier). Audit stays principal-correct — the service
+  account is the actor, the named clinician is the doctor.
+- **An STT streaming session is owned by whichever principal opened it**,
+  service accounts included. The session's ticket mint, refresh, WS handshake and
+  close all compare against that owner, so a second client — even on the same
+  tenant — gets 404, the ordinary 404-over-403 posture rather than a broken id.
+
+Two SDK-side consequences worth writing down here, because they are properties of
+the gateway that the SDK only mirrors:
+
+1. **The live-summary SSE channel is MULTIPLEXED and discriminates inside the
+   JSON.** Three payload kinds ride `GET :id/live-summary/stream` — the legacy
+   whole-document snapshot, `section.patch`, and `presummary` — and every one of
+   them is relayed as a default `message` frame. The `event` field is a property
+   of the payload, not the SSE frame, and the legacy snapshot carries none at all.
+   A consumer that switches on the SSE `event:` line sees one undifferentiated
+   stream.
+2. **The STT stream ticket is single-use, so a WebSocket reconnect is not a
+   retry.** It is consumed at the handshake; reconnecting means minting a fresh
+   ticket (`POST …/stream/session/:id/refresh-ticket`) and then sending
+   `{type:'resume', sessionId, lastSeq}` on the new socket. The server replays
+   only `seq > lastSeq`, from a bounded buffer — `resume_failed` with
+   `buffer_overflow` is a REAL transcript gap, not a retryable condition. This is
+   the mirror image of the workflow run socket recorded above, where SSE is the
+   only lane that resumes: here the socket resumes and there is no SSE lane at
+   all.

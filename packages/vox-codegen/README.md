@@ -1,11 +1,12 @@
 # @arcaai/vox-codegen
 
 Build-time TypeScript codegen CLI for a tenant's HOPE configuration. **Two
-modes, one per credential class, mutually exclusive:**
+modes, mutually exclusive:**
 
 | Mode | Credential | Emits |
 |---|---|---|
 | `--tenant <id> --token <jwt>` | SUPER_ADMIN JWT | the tenant's consultation CONTEXT SCHEMA (TASK-668) |
+| `--tenant <id> --client-id <id> --client-secret <secret>` | SERVICE ACCOUNT (TASK-933) | the same context schema, with a MACHINE credential |
 | `--api-key <key> [--agents] [--workflows]` | tenant API key | what the tenant PUBLISHES: `Agent_<Slug>_Input` / `_Output`, `Workflow_<Slug>_Input` / `_Output` (TASK-931) |
 
 Both emit named TS types from the SAME data the runtime reads, and both are an
@@ -87,15 +88,20 @@ migrate onto it.
 ```
 vox-codegen — emit TypeScript types from a tenant's HOPE configuration
 
-CONSULTATION CONTEXT SCHEMA (super-admin JWT)
+CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   vox-codegen --tenant <id> --token <jwt> [options]
+  vox-codegen --tenant <id> --client-id <id> --client-secret <secret> [options]
 
-  --tenant <id>        Tenant id to generate types for (required)
-  --token <jwt>        Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
-  --department <id>    Prefer this department's schema default, falling back to the tenant default
-  --out <path>         Output FILE path (default: ./consultation-context-schema.generated.ts)
-  --watch              Keep polling and regenerate whenever the schema changes
-  --interval <ms>      Poll interval in watch mode (default: 5000)
+  --tenant <id>          Tenant id to generate types for (required)
+  --token <jwt>          Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
+  --client-id <id>       Service-account client id (or set HOPE_SVC_CLIENT_ID)
+  --client-secret <s>    Service-account secret (or set HOPE_SVC_CLIENT_SECRET). Prefer the
+                         environment variable: an argv secret is visible in `ps`.
+  --working-tenant <id>  Tenant to bind the service-account token to (default: --tenant)
+  --department <id>      Prefer this department's schema default, falling back to the tenant default
+  --out <path>           Output FILE path (default: ./consultation-context-schema.generated.ts)
+  --watch                Keep polling and regenerate whenever the schema changes
+  --interval <ms>        Poll interval in watch mode (default: 5000)
 
 PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
   vox-codegen --api-key <key> [--agents] [--workflows] [options]
@@ -145,14 +151,39 @@ and compares its `etag`, while a published catalogue is N definitions with no
 aggregate validator, so a watch would be an N-request poll that cannot tell
 "unchanged" from "not read yet".
 
-**Auth.** The CLI calls `GET /tenants/me/context-schema` as a super-admin
-"manage as tenant" request: `Authorization: Bearer <token>` for a
-SUPER_ADMIN whose JWT carries an empty tenant binding, plus
-`X-Tenant-Id: <tenantId>` — the same elevation path
-`resolve-active-tenant.ts` implements for the admin-console BFF's "working
-tenant" header. `--token`/`HOPE_API_TOKEN` is expected to be such a token
-(e.g. minted via `packages/tools/src/gen-dev-token` locally, or a real login
-in CI).
+**Auth — two credential classes, exactly one per run.**
+
+The CLI calls `GET /tenants/me/context-schema` either way; what differs is the
+header, and the difference is not cosmetic.
+
+- **Super-admin JWT** (`--token` / `HOPE_API_TOKEN`) — a "manage as tenant"
+  request: `Authorization: Bearer <token>` for a SUPER_ADMIN whose JWT carries an
+  empty tenant binding, plus `X-Tenant-Id: <tenantId>`, the same elevation path
+  `resolve-active-tenant.ts` implements for the admin-console BFF's "working
+  tenant" header. Mint one via `packages/tools/src/gen-dev-token` locally, or a
+  real login in CI.
+- **Service account** (`--client-id` + `--client-secret`, TASK-933) — the CLI
+  exchanges the pair at `POST /auth/service-token` for a short-lived opaque token
+  and sends it as `X-Service-Account-Token`. It sends **no `X-Tenant-Id`**: a
+  service-account token carries its working tenant, bound at the exchange, so a
+  per-request header would be a second and conflicting statement of tenancy.
+  `--working-tenant` defaults to `--tenant`; `--tenant` itself then only names
+  the subject of the generated file.
+
+This is the mode a BUILD PIPELINE wants. A super-admin JWT is a human's token
+with a human's expiry, and the account behind it is a person; the service account
+is the platform's machine identity, holds `svc:tenant:context-schema:read`, and
+is revocable on its own. Supplying both classes is a refusal, not a preference —
+the gateway rejects a request carrying two.
+
+The client secret never appears in an error message this tool emits. Pass it
+through `HOPE_SVC_CLIENT_SECRET` rather than argv where you can: an argv secret
+is visible in `ps` to every process on the machine for as long as the run lasts.
+
+**`--watch` does not refresh a service-account token.** It is minted once, before
+the loop, and the gateway's default TTL is 15 minutes — so a long watch in
+service-account mode will eventually 401 and stop. `--watch` is a local authoring
+affordance; a pipeline runs the one-shot form.
 
 **Committed output, not fetched at boot.** The generated file is meant to be
 committed by the integrator, like any other source file, and regenerated
