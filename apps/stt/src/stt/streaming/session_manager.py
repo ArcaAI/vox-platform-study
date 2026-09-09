@@ -191,6 +191,17 @@ def _spec_model_config_of(
     return bundle.model_configs.get(slug) if bundle is not None else None
 
 
+def _declared_compute_type(loaded_model: Any) -> str | None:
+    """The assigned model row's own compute type, as recorded by its loader
+    (``LoadedModel.extra["compute_type"]``, TASK-934) — fed to the engine binding
+    resolver ahead of the execution profile's precision vocabulary so the
+    ``ASR engine binding resolved`` log names the quantisation that actually
+    loaded (a q8_0 GGUF row used to log ``q4_k``)."""
+    extra = getattr(loaded_model, "extra", None)
+    value = extra.get("compute_type") if isinstance(extra, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
 
@@ -2216,6 +2227,7 @@ class SessionManager:
                 engine_name,
                 mode="streaming",
                 compute_pref=[getattr(profile, "asr_compute_type", None)],
+                declared_compute_type=_declared_compute_type(loaded_model),
             )
             if binding is not None:
                 logger.info(

@@ -115,6 +115,9 @@ class WhisperCppLoader(BaseModelLoader):
                 "provider": "whisper_cpp",
                 "model_path": gguf_path,
                 "num_threads": num_threads,
+                # The row's own quantisation (TASK-934): the engine binding log
+                # reads it so it reports the weights that actually loaded.
+                "compute_type": model_config.compute_type,
             },
         )
 
