@@ -65,8 +65,12 @@ export function useScopingDepartments() {
  * workflow the interpreter's `n_finalize` persists the note tens of seconds after the stop
  * call returns, through a gateway write that carries no summary-job id — so no SSE reaches this
  * screen and a plain query that 404'd at open would never be asked again.
+ *
+ * TASK-932 OD-5 — the harness-progress stream now pushes the same terminal signal
+ * (`consultation-demo-screen.tsx`'s `harnessTerminalHandledRef` effect), so this poll is a
+ * fallback for one release rather than the primary path; shortened from 180s accordingly.
  */
-export const FINALIZE_SETTLE_WINDOW_MS = 180_000;
+export const FINALIZE_SETTLE_WINDOW_MS = 60_000;
 export const FINALIZE_POLL_MS = 5_000;
 
 export interface UseLatestSummaryOptions {
