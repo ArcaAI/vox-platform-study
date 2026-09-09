@@ -10,6 +10,10 @@
         "incremental": true,
         "module": "commonjs",
         "moduleResolution": "node",
+        // NOTE: `moduleResolution: node` IS node10, deprecated in TS 6 and REMOVED in
+        // TS 7 (TS5107). base.json carries the `ignoreDeprecations` that tolerates it.
+        // Nest compiles to CommonJS and its DI resolves against this algorithm, so
+        // moving to node16/bundler is a migration with its own blast radius.
         "noFallthroughCasesInSwitch": false,
         "noImplicitAny": false,
         "removeComments": true,

@@ -1,7 +1,6 @@
 {
   "extends": "@arcaai/config-ts/react-library.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "outDir": "dist",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable", "ESNext.Intl"],

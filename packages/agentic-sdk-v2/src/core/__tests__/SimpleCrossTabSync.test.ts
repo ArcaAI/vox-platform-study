@@ -558,7 +558,9 @@ describe('SimpleCrossTabSync', () => {
     type Res = { id: string; ok: true; result: ArrayBuffer | boolean | null } | { id: string; ok: false; error: string };
 
     class MockSharedWorkerImpl {
-      private secret: Uint8Array | null = null;
+      // Pinned to an ArrayBuffer backing buffer: under TS 6 a bare `Uint8Array` is
+      // `Uint8Array<ArrayBufferLike>`, which `crypto.getRandomValues` no longer accepts.
+      private secret: Uint8Array<ArrayBuffer> | null = null;
       private keyPromise: Promise<CryptoKey> | null = null;
       private async getKey(): Promise<CryptoKey> {
         if (this.keyPromise === null) {

@@ -21,7 +21,12 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    // This config is standalone (it does not extend @arcaai/config-ts/base.json),
+    // so it needs its own copy: tsup INJECTS `baseUrl` when generating .d.ts and
+    // TS 6 turns that deprecation into an error, failing the DTS step and shipping
+    // the package with no types.
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

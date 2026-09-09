@@ -57,7 +57,11 @@ export function getTrackFeatures(track: MediaStreamTrack): Map<AudioFeature, boo
 
   // Check each feature from track settings
   features.set(AudioFeature.AUTO_GAIN_CONTROL, settings.autoGainControl ?? false);
-  features.set(AudioFeature.ECHO_CANCELLATION, settings.echoCancellation ?? false);
+  // TS 6 ships the newer DOM lib, where `echoCancellation` is `boolean | string`:
+  // the spec grew echo-cancellation MODES ("all", "remote-only") beyond the original
+  // on/off. This map is a feature-ENABLED map, and any mode means enabled, so coerce
+  // rather than narrow — `?? false` alone no longer types as boolean.
+  features.set(AudioFeature.ECHO_CANCELLATION, Boolean(settings.echoCancellation ?? false));
   features.set(AudioFeature.NOISE_SUPPRESSION, settings.noiseSuppression ?? false);
 
   // Voice isolation is experimental

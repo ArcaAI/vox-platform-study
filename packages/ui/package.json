@@ -225,7 +225,7 @@
     "storybook": "^10.6.0",
     "tailwindcss": "^4.3.3",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11",
     "vitest-axe": "^0.1.0"
   }

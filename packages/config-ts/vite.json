@@ -16,7 +16,10 @@
         "resolveJsonModule": true,
         "skipLibCheck": false,
         "target": "ESNext",
+        // Re-states "node" because `types` REPLACES the inherited array rather than
+        // merging with base.json's. Dropping it costs `process` / `node:*` globals.
         "types": [
+            "node",
             "vite/client"
         ]
     }
