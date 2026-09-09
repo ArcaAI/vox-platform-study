@@ -175,9 +175,16 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
 // Shared configuration (exported so phase 29 builds the ArcaAI department agents the same way)
 // ----------------------------------------------------------------------------------------------
 
-/** Today's `platform-transcription` parameters (TASK-891 A4: `wordTimestamps: false`). */
+/**
+ * Today's `platform-transcription` parameters (TASK-891 A4: `wordTimestamps: false`).
+ *
+ * `minSpeechMs: 100` (TASK-934, OD-5): was 250, which re-imposed a value the engine author
+ * had already retired (`dto.py:589-593`) — at 250ms a spoken yes/no (~150-250ms) is
+ * discarded before it ever reaches ASR. 100ms is the engine's own default; this seed no
+ * longer overrides it upward.
+ */
 export const ASR_PARAMETERS = {
-  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 250, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
+  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
   // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
   decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: false, beamSize: 5, temperature: 0 },

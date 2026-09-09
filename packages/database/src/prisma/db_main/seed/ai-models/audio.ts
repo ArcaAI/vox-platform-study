@@ -99,7 +99,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF)',
     slug: 'arcaai-whisper-large-ml-en-gguf',
     description:
-      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding. Platform default for speech-to-text.',
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding. First fallback behind the q8_0 platform default.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -112,7 +112,6 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
-    isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT],
     provider: 'built-in',
     architecture: 'whisper',
     memorySizeMb: 1700,
@@ -121,20 +120,19 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS` — model facts,
     // not box facts, so they ride the row and travel on `ResolvedAsrSpec.models.asr.metadata`.
     //
-    // TASK-891 (A5) raises both from 7/6 to 30/30, matched. The original 7s figure was this
-    // fine-tune's measured accuracy window; in production it means a 19s clinical utterance
-    // decodes as THREE blind, independently language-auto-detected 7s fragments —
-    // `session_manager.py:430-435`'s own comment says `partialWindowSec` and
-    // `maxDecodeWindowSec` MUST match "so the last partial and the final decode the SAME
-    // audio", and 6≠7 broke that. 30s is the model's REAL context: whisper's encoder always
-    // processes a fixed 30s mel-spectrogram window regardless of the actual audio length
-    // (shorter input is zero-padded to it), so raising the window to 30s does not add a
-    // meaningful per-decode cost — it lets one continuous utterance decode in ONE pass
-    // instead of several arbitrarily-truncated ones. Measured over the 87 stored
-    // `TranscriptSegment` rows from the diagnosed session, longer utterances lost 65-80% of
-    // their words to the 7s split (idx 4: 16.99s -> 4.1 chars/s; idx 36: 6.08s -> 0.8
-    // chars/s) — this is the mechanical fix for that, not merely a number bump.
-    metaData: { asr: { maxDecodeWindowSec: 30, partialWindowSec: 30 } },
+    // TASK-891 (A5) raised both to 30/30, matched, reasoning that whisper's encoder always
+    // processes a fixed 30s mel-spectrogram window so a longer window costs nothing extra.
+    // TASK-934 measured that reasoning against live Malayalam-English CER and reverted it:
+    // 30s DOUBLES this fine-tune's CER relative to 7s (0.381 -> 0.645, both quantisations) —
+    // the encoder's context length is not the same thing as this model's ACCURACY window,
+    // which stays 7s. `partialWindowSec` and `maxDecodeWindowSec` are no longer required to
+    // match ("so the last partial and the final decode the SAME audio" — the old
+    // `session_manager.py` comment): TASK-934 lane S decoupled them into two independent
+    // knobs. The final decode stays at this fine-tune's measured 7s accuracy window; the
+    // partial window widens to 15s because a SHORT partial window is where the damage
+    // actually was — 6s partials measured 31% garbage on English streaming output, 15s
+    // measured 0%. Live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -145,7 +143,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF q8_0)',
     slug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
     description:
-      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding.',
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding. Platform default for speech-to-text — the row the seeded realtime-transcription agent actually serves.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -158,6 +156,13 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     baseModel: 'openai/whisper-large-v3-turbo',
     languages: ['ml', 'en'],
+    // TASK-934 (OD-2): the platform default must be the row the seeded `realtime-
+    // transcription` agent actually SERVES as primary (`25-agents.ts`'s `modelSlug`), not
+    // the row it merely falls back to — TASK-930 made this row the agent's primary and
+    // left the election on the f16 row above, which is the drift this ticket's lane D
+    // closes. Quantisation costs nothing on accuracy here (q8_0 0.381 CER @ 7s vs f16
+    // 0.386 @ 7s, TASK-934 measurement), so there is no accuracy reason to keep it on f16.
+    isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT],
     provider: 'built-in',
     architecture: 'whisper',
     memorySizeMb: 900,
@@ -165,12 +170,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // TASK-880 — the decode geometry that used to be the platform keys
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
     // ONE number to every engine on the box; they describe THIS runtime, so they ride
-    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
-    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
-    // not segment continuous clinical speech); 6s is the matching force-emit window, so
-    // the last partial and the final decode the SAME audio and the final stops visibly
-    // rephrasing the partial.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. TASK-934 measured the
+    // two windows independently (lane S decoupled them from the earlier "MUST match"
+    // rule): 7s remains this fine-tune's accuracy window for the FINAL decode (Malayalam
+    // CER doubles at 30s: 0.381 -> 0.645); the PARTIAL window widens to 15s because that is
+    // where the streaming damage actually was — a 6s partial window measured 31% garbage
+    // on English, 15s measured 0%, and the last partial no longer needs to decode the same
+    // span as the final now that the two are independent. Live proof on the merged build:
+    // discharge-clip WER 0.274 -> 0.081.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -251,12 +259,14 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // TASK-880 — the decode geometry that used to be the platform keys
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
     // ONE number to every engine on the box; they describe THIS runtime, so they ride
-    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
-    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
-    // not segment continuous clinical speech); 6s is the matching force-emit window, so
-    // the last partial and the final decode the SAME audio and the final stops visibly
-    // rephrasing the partial.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s stays this fine-tune
+    // family's accuracy window for the FINAL decode. TASK-934 (OD-1) applies the measured
+    // ml-en profile to every whisper.cpp fine-tune row uniformly and drops the earlier
+    // "MUST match" rule: `partialWindowSec` and `maxDecodeWindowSec` are independent knobs
+    // (lane S) — the partial window widens to 15s because a short partial window is where
+    // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
+    // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -288,12 +298,14 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // TASK-880 — the decode geometry that used to be the platform keys
     // `stt.whisperCpp.maxAudioSeconds` and `stt.streaming.partialWindowS`. Both applied
     // ONE number to every engine on the box; they describe THIS runtime, so they ride
-    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s is the accuracy
-    // window of the ml-en fine-tune (it truncates or garbles beyond ~6-7s, and VAD does
-    // not segment continuous clinical speech); 6s is the matching force-emit window, so
-    // the last partial and the final decode the SAME audio and the final stops visibly
-    // rephrasing the partial.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6 } },
+    // the row and travel on `ResolvedAsrSpec.models.asr.metadata`. 7s stays this fine-tune
+    // family's accuracy window for the FINAL decode. TASK-934 (OD-1) applies the measured
+    // ml-en profile to every whisper.cpp fine-tune row uniformly and drops the earlier
+    // "MUST match" rule: `partialWindowSec` and `maxDecodeWindowSec` are independent knobs
+    // (lane S) — the partial window widens to 15s because a short partial window is where
+    // the streaming damage measured on the sibling ml-en fine-tune actually was (31%
+    // garbage at 6s, 0% at 15s), while the final decode keeps its own 7s accuracy window.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 15 } },
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0', 'private-repo'],
   },
   {
