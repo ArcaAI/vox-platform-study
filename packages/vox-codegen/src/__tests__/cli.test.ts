@@ -51,15 +51,29 @@ describe('cli main()', () => {
     expect(stderr.join('')).toContain('--tenant <id> is required');
   });
 
-  it('requires a token (flag or HOPE_API_TOKEN)', async () => {
-    const previous = process.env.HOPE_API_TOKEN;
+  /**
+   * AMENDED TASK-933: the context-schema mode now accepts a SERVICE ACCOUNT as
+   * well as a super-admin JWT, so the refusal names both classes rather than
+   * only the bearer token. What is being pinned is unchanged — no credential is
+   * a refusal, never an anonymous read.
+   */
+  it('requires a credential — a JWT or a service-account pair, from a flag or the environment', async () => {
+    const previousToken = process.env.HOPE_API_TOKEN;
+    const previousId = process.env.HOPE_SVC_CLIENT_ID;
+    const previousSecret = process.env.HOPE_SVC_CLIENT_SECRET;
     delete process.env.HOPE_API_TOKEN;
+    delete process.env.HOPE_SVC_CLIENT_ID;
+    delete process.env.HOPE_SVC_CLIENT_SECRET;
     try {
       const code = await main(['--tenant', 'tenant-1']);
       expect(code).toBe(1);
-      expect(stderr.join('')).toContain('bearer token is required');
+      expect(stderr.join('')).toContain('a credential is required');
+      expect(stderr.join('')).toContain('--token');
+      expect(stderr.join('')).toContain('--client-id');
     } finally {
-      if (previous !== undefined) process.env.HOPE_API_TOKEN = previous;
+      if (previousToken !== undefined) process.env.HOPE_API_TOKEN = previousToken;
+      if (previousId !== undefined) process.env.HOPE_SVC_CLIENT_ID = previousId;
+      if (previousSecret !== undefined) process.env.HOPE_SVC_CLIENT_SECRET = previousSecret;
     }
   });
 

@@ -17,6 +17,8 @@ export class FakeWebSocket {
   readonly url: string;
   closed = false;
   closeCode: number | undefined;
+  /** Everything the code under test sent, in order — binary frames as-is, control frames as JSON strings. */
+  readonly sent: unknown[] = [];
   private readonly listeners = new Map<string, Set<Listener>>();
 
   constructor(url: string) {
@@ -51,9 +53,17 @@ export class FakeWebSocket {
     this.listeners.get(type)?.delete(listener);
   }
 
+  send(data: unknown): void {
+    this.sent.push(data);
+  }
+
   close(code?: number): void {
     this.closed = true;
     this.closeCode = code;
+  }
+
+  emitOpen(): void {
+    this.dispatch('open', {});
   }
 
   emitMessage(data: string): void {
