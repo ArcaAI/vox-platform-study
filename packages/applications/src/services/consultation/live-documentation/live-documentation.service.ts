@@ -46,6 +46,7 @@ import {
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
+import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
@@ -5006,13 +5007,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       }
       const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
       if (!report) return {};
-      const { styleText } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      // ONE decrypt, two fields: the writing style and the doctor's redaction/rewrite rules are
+      // stored on the same report and travel together.
+      const { styleText, redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
       const text = styleText?.trim();
       if (!text) return {};
+      const rules = this.readHandoffRedactionRules(redactionRules, consultation.id);
       // `dna_style_id` travels beside the text so the persisted `SummaryMeta.dnaWritingStyleId`
       // names the report that actually shaped the note, not the one that happens to be latest
       // when someone later reads it.
-      return { dna_style_text: text, dna_style_id: report.id };
+      return {
+        dna_style_text: text,
+        dna_style_id: report.id,
+        // ABSENT, never `[]`: the interpreter's finalize runs `apply_redaction` only when the
+        // context carries rules, and an empty array would ask it to do nothing at some cost.
+        ...(rules.length > 0 ? { dna_redaction_rules: rules } : {}),
+      };
     } catch (error) {
       this.logger.warn({
         message: 'Effective DNA writing style could not be resolved for the live handoff — finalizing without it',
@@ -5020,6 +5030,32 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         error: error instanceof Error ? error.message : String(error),
       });
       return {};
+    }
+  }
+
+  /**
+   * The doctor's redaction/rewrite rules, from the SAME decrypted report the writing style came
+   * from, validated to the persisted `{ rules: [...] }` shape.
+   *
+   * Rule OBJECTS, not strings: the harness's `RedactionRule` is `extra="forbid"` over
+   * `{ id, type, match, pattern, replacement?, note? }`, so that is what has to arrive.
+   *
+   * `[]` on absent or malformed, which mirrors `resolveRedactionRulesForHarness`'s documented
+   * fail-SAFE on the legacy path: an unusable rule set must not cost the note the STYLE it would
+   * otherwise have carried, and `apply_redaction` is the fail-CLOSED-to-FLAG authority once rules
+   * are actually present.
+   */
+  private readHandoffRedactionRules(redactionRules: unknown, consultationId: string): Record<string, unknown>[] {
+    if (!redactionRules) return [];
+    try {
+      return validateRedactionRuleSet(redactionRules).rules as unknown as Record<string, unknown>[];
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA redaction rules could not be read for the live handoff — finalizing without them (the writing style is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   }
 

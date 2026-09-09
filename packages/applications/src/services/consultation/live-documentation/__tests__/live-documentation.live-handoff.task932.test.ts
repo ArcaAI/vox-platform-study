@@ -36,7 +36,7 @@ const DOCTOR = 'doctor-handoff-1';
 type Wiring = {
   status?: string;
   /** `null` ⇒ the repository is not wired at all. */
-  report?: { id: string; styleText: string | null } | null;
+  report?: { id: string; styleText: string | null; redactionRules?: unknown } | null;
   dnaEffective?: boolean;
   /** `null` ⇒ the resolver is not wired (legacy composition). */
   configResolver?: null;
@@ -70,7 +70,11 @@ function buildService(wiring: Wiring = {}) {
       ? undefined
       : {
           findLatestForDoctor: vi.fn(async () => wiring.report ?? { id: 'dna-report-1', styleText: 'Terse. Abbreviates freely.' }),
-          decryptFieldsFromEntity: vi.fn(async (entity: { styleText: string | null }) => ({ styleText: entity.styleText })),
+          // ONE decrypt, both fields — the same call the legacy harness path makes.
+          decryptFieldsFromEntity: vi.fn(async (entity: { styleText: string | null; redactionRules?: unknown }) => ({
+            styleText: entity.styleText,
+            redactionRules: entity.redactionRules ?? null,
+          })),
         };
 
   const args: unknown[] = new Array(28).fill(undefined);
@@ -92,9 +96,7 @@ function buildService(wiring: Wiring = {}) {
   };
   args[26] = dnaReportRepository;
   args[27] =
-    wiring.configResolver === null
-      ? undefined
-      : { resolveEffectiveDnaStyleEnabled: vi.fn(async () => ({ effective: wiring.dnaEffective ?? true })) };
+    wiring.configResolver === null ? undefined : { resolveEffectiveDnaStyleEnabled: vi.fn(async () => ({ effective: wiring.dnaEffective ?? true })) };
 
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
   return { service, cache, stored, dnaReportRepository };
@@ -264,5 +266,102 @@ describe('TASK-932 R-16a — the DNA writing style on the handoff', () => {
     const { service } = buildService({ status: 'DRAINING', stored: RECORD, report: null });
 
     await expect(service.readLiveHandoff(CID)).resolves.toMatchObject({ ended: true, context: {} });
+  });
+});
+
+/**
+ * TASK-932 wave 4 L-3 — the doctor's REDACTION rules ride the same handoff.
+ *
+ * The interpreter's finalize (lane H, OD-6) applies deterministic redaction as a plain
+ * activity-to-activity `apply_redaction` call when the handoff context carries the rules. They
+ * come from the SAME decrypted DNA report the style text does, behind the SAME gate, so this adds
+ * no lookup, no second decrypt and no new trust boundary — and, exactly like the style, the rules
+ * are resolved HERE rather than stamped into a run payload at dispatch, so a caller can neither
+ * supply nor spoof them.
+ *
+ * The rules are RULE OBJECTS (`{ id, type, match, pattern, replacement?, note? }`), not strings:
+ * the harness's `RedactionRule` is `extra="forbid"` over exactly those fields, and a `string[]`
+ * could not round-trip one.
+ *
+ * Fail posture mirrors `ConsultationEventHandler.resolveRedactionRulesForHarness` deliberately: a
+ * malformed rule set yields NO rules rather than costing the note the style it would have carried,
+ * and `apply_redaction` remains the fail-CLOSED-to-FLAG authority once rules are actually present.
+ */
+describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
+  const RECORD = { endedAt: '2026-09-09T10:00:00.000Z', tenantId: TENANT, outputs: { n_summary: { text: 'note' } } };
+  const RULES = {
+    rules: [
+      { id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' },
+      { id: 'r2', type: 'rewrite', match: 'regex', pattern: '\\bpt\\b', replacement: 'patient', note: 'expand' },
+    ],
+  };
+
+  it('carries `dna_redaction_rules` alongside `dna_style_text`, from the same report and the same decrypt', async () => {
+    const { service, dnaReportRepository } = buildService({
+      status: 'DRAINING',
+      stored: RECORD,
+      report: { id: 'dna-report-1', styleText: 'Terse. Abbreviates freely.', redactionRules: RULES },
+    });
+
+    const answer = await service.readLiveHandoff(CID, ['n_summary']);
+
+    expect(answer.context).toEqual({
+      dna_style_text: 'Terse. Abbreviates freely.',
+      dna_style_id: 'dna-report-1',
+      dna_redaction_rules: [
+        { id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' },
+        { id: 'r2', type: 'rewrite', match: 'regex', pattern: '\\bpt\\b', replacement: 'patient', note: 'expand' },
+      ],
+    });
+    // One report, one decrypt — the rules are a second field of the answer, not a second lookup.
+    expect(dnaReportRepository!.findLatestForDoctor).toHaveBeenCalledTimes(1);
+    expect(dnaReportRepository!.decryptFieldsFromEntity).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the key entirely when the doctor authored no rules — absent, never an empty array', async () => {
+    const { service } = buildService({ status: 'DRAINING', stored: RECORD });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect(answer.context).toEqual({ dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
+    expect('dna_redaction_rules' in answer.context).toBe(false);
+  });
+
+  it('omits the key for an EMPTY rule set — nothing to apply is the same as nothing authored', async () => {
+    const { service } = buildService({
+      status: 'DRAINING',
+      stored: RECORD,
+      report: { id: 'dna-report-1', styleText: 'Terse.', redactionRules: { rules: [] } },
+    });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect('dna_redaction_rules' in answer.context).toBe(false);
+  });
+
+  it('carries NOTHING at all when the gate is off — rules nobody enabled must not touch a note', async () => {
+    const { service, dnaReportRepository } = buildService({
+      status: 'DRAINING',
+      stored: RECORD,
+      dnaEffective: false,
+      report: { id: 'dna-report-1', styleText: 'Terse.', redactionRules: RULES },
+    });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect(answer.context).toEqual({});
+    expect(dnaReportRepository!.findLatestForDoctor).not.toHaveBeenCalled();
+  });
+
+  it('drops a MALFORMED rule set without costing the note its style', async () => {
+    const { service } = buildService({
+      status: 'DRAINING',
+      stored: RECORD,
+      report: { id: 'dna-report-1', styleText: 'Terse.', redactionRules: { rules: [{ id: 'r1', type: 'delete', match: 'literal', pattern: 'x' }] } },
+    });
+
+    const answer = await service.readLiveHandoff(CID);
+
+    expect(answer.context).toEqual({ dna_style_text: 'Terse.', dna_style_id: 'dna-report-1' });
   });
 });
