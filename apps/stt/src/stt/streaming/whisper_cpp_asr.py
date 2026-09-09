@@ -394,13 +394,15 @@ class WhisperCppAsrAdapter:
         )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
-        # TASK-934 — the profile's / agent's ``hotwords`` become decoder prompt vocabulary
-        # (whisper.cpp has no hotword API; listing the terms in the prompt is the established
-        # biasing technique). Empty entries are dropped; ``None`` means no bias.
-        raw_hotwords = getattr(inference_config, "hotwords", None) or []
-        self._hotwords: list[str] = [
-            w.strip() for w in raw_hotwords if isinstance(w, str) and w.strip()
-        ]
+        # TASK-935 — ``InferenceConfig.hotwords`` is deliberately NOT read here. TASK-934
+        # appended the list to the decoder prompt (whisper.cpp has no hotword API), but that
+        # code never actually ran on a live session until TASK-935 fixed the per-session spec
+        # lookup; the first real run showed the append collapses this ml-en fine-tune's
+        # decode into script garbage on the discharge fixture, with SIX terms as with twenty.
+        # The list stays on the wire for the consumers that can use it — the lexicon stage
+        # (``StreamingInferenceWorker``) and engines with a native hotword parameter. The
+        # ONE prompt channel for this engine is the agent's ``instruction.initialPrompt``;
+        # an admin who wants prompt vocabulary writes it there, explicitly.
         self._lock = _get_model_lock(loaded_model.model_id)
         _ensure_log_capture_installed()
 
@@ -626,9 +628,7 @@ class WhisperCppAsrAdapter:
         # composed with the per-utterance carry-forward by the caller
         # (``compose_prompt``). ``""`` rather than ``None`` because the binding's
         # setter rejects None and the shared context persists params across calls.
-        effective_prompt = " ".join(
-            part for part in ((prompt or "").strip(), ", ".join(self._hotwords)) if part
-        )
+        effective_prompt = (prompt or "").strip()
         # Word-timestamp mode forces near-word-sized segments (``max_len=1``,
         # ``split_on_word``) so each segment carries its own (t0, t1). This is
         # only requested when the pipeline consumes word timings; otherwise a

@@ -14,13 +14,14 @@
 
 | Id | Requirement | Kind |
 |---|---|---|
-| R-1 | A streaming session must build its ASR pipeline from **its own** resolved spec, never a sibling session's stale bundle that happens to share the agent-version runtime key | bugfix (correctness/PHI: a session could decode with another resolve's config) |
+| R-1 | ~~A streaming session must build its ASR pipeline from **its own** resolved spec~~ — **FIXED IN TASK-935** (2026-09-09): it turned out to be the LIVE cause of the ceftriaxone miss surviving every restart, not a latent defect — startup recovery registered the bundles of stale Redis session records (pre-hotword specs) before deciding not to recover them, and the runtime-key scan served them to every new session. `_load_pipeline_config` now prefers the requesting session's own bundle, and a recovery that bails out drops the bundle it registered (`test_task935_spec_bundle_freshness.py`). Kept here for the record; nothing left to do | bugfix (done) |
 | R-2 | The lexicon terms (and every decode-config knob) must reach the **fallback** engine chain too, so a session that fails over from the primary keeps correcting clinical vocabulary (OD-5: one hotwords list, all chains) | bugfix |
 | R-3 | The streaming **settled (committed) prefix** must stay stable through a long utterance on real (jittery) audio, not only on the deterministic oracle — the caption is whole-utterance since TASK-935 lane C, but `stable_chars` still largely collapses at the first window slide on real speech | feature (streaming UX) |
+| R-4 | **Prompt vocabulary as a per-model decision.** TASK-935 removed the whisper.cpp hotwords→`initial_prompt` append after the first live run of it collapsed the ml-en fine-tune's decode into script garbage (six terms as badly as twenty). A stock whisper.cpp model may still want the classic prompt-vocabulary technique, so the decision belongs on the ASR profile — `decoding.hotwordsInPrompt` (or equivalent), engine default OFF for whisper.cpp, native hotwords only where the engine has the parameter (faster-whisper/CT2) — with a measurement per served model before it is turned on | feature (config surface) |
 
 ## 2. Current State (verified 2026-09-09 on `dev-2.2`, from the TASK-935 debugger + lane C)
 
-### 2.1 R-1 — `_load_pipeline_config` returns the first bundle matching the runtime key, not the session's own
+### 2.1 R-1 — RESOLVED in TASK-935 — `_load_pipeline_config` returned the first bundle matching the runtime key, not the session's own
 `apps/stt/src/stt/streaming/session_manager.py:1767`:
 ```python
 for bundle in _spec_bundles_of(self).values():
@@ -40,11 +41,12 @@ TASK-935 lane C froze out-of-window text and re-anchored the two hypotheses on t
 
 | Lane | Scope | Tests first (RED) | Tier |
 |---|---|---|---|
-| **B — bundle freshness (R-1)** | `session_manager.py` `_load_pipeline_config` gains the requesting `session_id` (threaded from its three callers) and looks up `_spec_bundles_of(self).get(session_id)` first, falling back to the scan only when the session has no own bundle (recovery paths), then the deprecated reader; `apps/stt/tests/unit/streaming/**` | two sessions on one runtime key with DIFFERENT specs (one carrying hotwords, one not) each get their OWN spec — RED today (both get the first-registered) | `opus` (shared session-manager path, PHI-adjacent) |
+| ~~**B — bundle freshness (R-1)**~~ DONE in TASK-935 | `session_manager.py` `_load_pipeline_config` gains the requesting `session_id` (threaded from its three callers) and looks up `_spec_bundles_of(self).get(session_id)` first, falling back to the scan only when the session has no own bundle (recovery paths), then the deprecated reader; `apps/stt/tests/unit/streaming/**` | two sessions on one runtime key with DIFFERENT specs (one carrying hotwords, one not) each get their OWN spec — RED today (both get the first-registered) | `opus` (shared session-manager path, PHI-adjacent) |
 | **F — failover lexicon (R-2)** | `build-resolved-asr-spec.ts` resolves the hotword/term list ONCE (agent → primary model profile) and applies it to the fallback chain's `instruction.hotwords` too; parity fixture + resolver tests | a fallback spec's `instruction.hotwords` equals the resolved terms — RED today (`[]`) | `sonnet` |
 | **C2 — commit continuity on real audio (R-3)** | `commit_policy.py` commit rule: commit on N-of-M agreement across a sliding window (not strict 2-consecutive-prefix), so real jitter still settles a growing prefix; re-capture `committed_revision_rate` after | an oracle-with-injected-jitter utterance keeps `stable_chars` monotone and ≥ some floor committed before the final — RED today | `opus` |
+| **P — prompt vocabulary switch (R-4)** | `packages/types/src/asr-model-profile.ts` (`decoding.hotwordsInPrompt`), resolver + wire + `spec.py` mirror + parity fixture, `whisper_cpp_asr.py` honours it (default OFF), the admin model-form field; measured per served model with the streaming scorecard before any row turns it on | a profile with the switch ON reaches the adapter's prompt; OFF (and absent) leaves the prompt untouched — RED today (no field) | `sonnet` |
 
-Order: B and F in parallel (disjoint: STT session-manager vs the TS resolver), then C2; the orchestrator restarts the STT, re-runs the streaming scorecard N=3 (all three fixtures, key-term AND keyphrase ≥ 0.70), re-captures the thresholds, and confirms a failover session still corrects (force the primary to fail).
+Order: F and P in parallel (disjoint: the TS resolver vs the profile type + adapter — coordinate the shared `build-resolved-asr-spec.ts` hunk) (disjoint: STT session-manager vs the TS resolver), then C2; the orchestrator restarts the STT, re-runs the streaming scorecard N=3 (all three fixtures, key-term AND keyphrase ≥ 0.70), re-captures the thresholds, and confirms a failover session still corrects (force the primary to fail).
 
 ## 4. Decisions — answer before "go" (recommendation first)
 
@@ -66,4 +68,5 @@ _Pending._
 ## 7. Change History
 | Date | Change |
 |---|---|
+| 2026-09-09 | R-1 closed by TASK-935 itself: the stale-bundle scan was the live cause of the lexicon miss (startup recovery registered pre-hotword bundles from stale Redis session records and never dropped them). R-4 added: TASK-935 removed the whisper.cpp hotword prompt-append after its first real run collapsed the fine-tune's decode; a per-model switch is the follow-up. Lane B struck, lane P added. |
 | 2026-09-09 | Opened as the TASK-935 follow-up. R-1 (cross-session bundle staleness, `session_manager.py:1767`) and R-2 (fallback chain lexicon, `build-resolved-asr-spec.ts`) were found by the TASK-935 lane-V live debugger; R-3 (LocalAgreement settled-prefix collapse on real audio) is lane C's recorded OD-12 residual. Anchors verified on `dev-2.2`. |

@@ -52,7 +52,7 @@ def _make_manager() -> MagicMock:
     # assembled first.
     mgr._loaded_pipeline_ids = []
 
-    async def _load_cfg(pid, tenant_id=None):
+    async def _load_cfg(pid, tenant_id=None, **_kw: object):
         mgr._loaded_pipeline_ids.append(pid)
         return MagicMock()
 

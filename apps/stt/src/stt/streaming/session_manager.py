@@ -1144,7 +1144,7 @@ class SessionManager:
             # never None; the "else" branch is the required str `pipeline_id`.
             assert initial_pipeline_id is not None  # narrowed by started_on_fallback
             pipeline_config = await self._load_pipeline_config(
-                initial_pipeline_id, tenant_id=tenant_id
+                initial_pipeline_id, tenant_id=tenant_id, session_id=session_id
             )
 
             if language is not None and pipeline_config:
@@ -1200,7 +1200,7 @@ class SessionManager:
                         error=str(primary_exc),
                     )
                     pipeline_config = await self._load_pipeline_config(
-                        fallback_pipeline_id, tenant_id=tenant_id
+                        fallback_pipeline_id, tenant_id=tenant_id, session_id=session_id
                     )
                     if language is not None and pipeline_config:
                         pipeline_config.inference.language = language
@@ -1746,7 +1746,9 @@ class SessionManager:
         bundles[session_id] = bundle
         return bundle
 
-    async def _load_pipeline_config(self, pipeline_id: str, tenant_id: str | None = None) -> Any:
+    async def _load_pipeline_config(
+        self, pipeline_id: str, tenant_id: str | None = None, *, session_id: str | None = None
+    ) -> Any:
         """Load the ``PipelineSpec`` for a runtime key.
 
         TASK-861: a key registered by any spec-driven session (runtime keys are
@@ -1764,7 +1766,19 @@ class SessionManager:
         RuntimeError
             If the pipeline cannot be loaded (missing config, DB error, etc.).
         """
-        for bundle in _spec_bundles_of(self).values():
+        bundles = _spec_bundles_of(self)
+        # TASK-935 — the requesting session's OWN bundle wins. Runtime keys are agent
+        # VERSION ids, so every session on one agent shares a key, and the specs
+        # behind that key are only identical while the model row stands still: a
+        # bundle registered earlier (a sibling session, or a session recovered from
+        # Redis at startup) carries whatever the row said THEN. The scan below is
+        # reached only when the session has no bundle of its own.
+        own = bundles.get(session_id) if session_id else None
+        if own is not None:
+            spec = own.pipeline_specs.get(pipeline_id)
+            if spec is not None:
+                return copy.deepcopy(spec)
+        for bundle in bundles.values():
             spec = bundle.pipeline_specs.get(pipeline_id)
             if spec is not None:
                 return copy.deepcopy(spec)
@@ -1813,7 +1827,9 @@ class SessionManager:
         try:
             from stt.vad.silero_service import get_vad_service
 
-            vad_service = get_vad_service(model_path=self._spec_vad_local_path(session_id, pipeline_config))
+            vad_service = get_vad_service(
+                model_path=self._spec_vad_local_path(session_id, pipeline_config)
+            )
             if not vad_service.is_loaded:
                 await vad_service.initialize()
 
@@ -4014,6 +4030,10 @@ class SessionManager:
 
         return {
             "session_id": session.session_id,
+            # TASK-935 — corrections the lexicon stage applied this session (partials + finals).
+            "lexicon_correction_count": (
+                worker.lexicon_correction_count if worker is not None else 0
+            ),
             "tenant_id": session.tenant_id,
             "consultation_id": session.consultation_id,
             "user_id": session.metadata.user_id,
@@ -4308,7 +4328,9 @@ class SessionManager:
                             recovered_bundle = self._register_resolved_spec(
                                 meta.session_id, json.loads(meta.resolved_spec_json)
                             )
-                        except Exception as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
+                        except (
+                            Exception
+                        ) as spec_exc:  # noqa: BLE001 — recovery must not crash the sweep
                             logger.warning(
                                 "Cannot recover session — persisted resolved spec is invalid",
                                 session_id=meta.session_id,
@@ -4316,13 +4338,19 @@ class SessionManager:
                             )
                             continue
 
-                    # Only recover active sessions assigned to this worker (or unassigned)
+                    # Only recover active sessions assigned to this worker (or unassigned).
+                    # TASK-935 — a session this sweep does NOT recover must not leave its
+                    # bundle behind: runtime keys are shared per agent version, and a
+                    # stale bundle under a live key is what other sessions' key lookups
+                    # would find (see `_load_pipeline_config`).
                     if meta.status != SessionStatus.ACTIVE:
+                        _spec_bundles_of(self).pop(meta.session_id, None)
                         continue
                     if meta.worker_id and meta.worker_id != self._worker_id:
                         # Check if the other worker is still alive
                         other_alive = await self._redis.exists(worker_key(meta.worker_id))
                         if other_alive:
+                            _spec_bundles_of(self).pop(meta.session_id, None)
                             continue  # another worker owns this session
 
                     # Claim the session
@@ -4334,6 +4362,7 @@ class SessionManager:
                             "Cannot recover session — at capacity",
                             session_id=meta.session_id,
                         )
+                        _spec_bundles_of(self).pop(meta.session_id, None)
                         continue
                     acquired_capacity_slot = True
 
@@ -4358,7 +4387,7 @@ class SessionManager:
                     # Propagate the session's tenant so a
                     # crash-restart still applies the tenant filter.
                     pipeline_config = await self._load_pipeline_config(
-                        meta.pipeline_id, tenant_id=meta.tenant_id
+                        meta.pipeline_id, tenant_id=meta.tenant_id, session_id=meta.session_id
                     )
 
                     # One shared assembly for creation AND
@@ -4454,6 +4483,9 @@ class SessionManager:
                     if acquired_capacity_slot:
                         sid = session_id_for_cleanup or key_str.rsplit(":", 1)[-1]
                         await self.remove_session(sid)
+                    elif session_id_for_cleanup:
+                        # Registered a bundle, then failed before claiming a slot.
+                        _spec_bundles_of(self).pop(session_id_for_cleanup, None)
 
             if cursor == 0:
                 break
