@@ -88,7 +88,19 @@ export class AsrAgentResolverService {
 
     let spec: ResolvedAsrSpec;
     try {
-      spec = buildResolvedAsrSpec({ agent, fallbackAgent });
+      spec = buildResolvedAsrSpec({
+        agent,
+        fallbackAgent,
+        // TASK-934 — a decode profile the row declared but this gateway cannot act on
+        // (unknown key, wrong type, out of range) is DROPPED, because tuning is
+        // `open-to-default` and a session must not fail on it. This is what stops it
+        // being silent: §2.2 spent a day on a profile value that never took effect.
+        onProfileRejection: ({ modelSlug, rejected }) =>
+          this.logger.warn(
+            `ASR model '${modelSlug}' declares _metadata.asr members this runtime ignored: ${rejected.join(', ')}. ` +
+              `Fix them on the model row — the engine default applies until then.`,
+          ),
+      });
     } catch (error) {
       // TASK-880 — `code` is the error's own now, so an embedding-space mismatch is
       // distinguishable from "this agent resolved no primary model" by a caller that
