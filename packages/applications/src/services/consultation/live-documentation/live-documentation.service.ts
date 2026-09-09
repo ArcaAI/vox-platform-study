@@ -3407,6 +3407,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   on the refcounted finalize inside `subscribeToChannel` — releasing this
    *   viewer's bridge subscription decrements the refcount and only the LAST
    *   viewer out tears the Redis subscription down.
+   *
+   * TASK-932 wave 4 added two things on top, both additive:
+   *
+   *   L-1 — the late join replays TWO cached documents, note snapshot first and then the last
+   *   warm-start `presummary`, because they live under different keys and a warm start
+   *   published before this stream subscribed is otherwise lost (measured: degraded at +29 ms,
+   *   subscribe at +56 ms).
+   *
+   *   L-2 — the SSE frame TYPE is tagged from each payload's own `event`, so a consumer
+   *   discriminates in the transport (`addEventListener('section.patch', …)`) rather than by
+   *   parsing every message. The payloads are byte-identical, and the two kinds a legacy
+   *   consumer actually folds — the snapshot and `closed` — carry no `event` and therefore stay
+   *   on the default `message` type.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
@@ -3414,6 +3427,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       heartbeatMs: this.heartbeatMs,
       loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
       isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
+      // This channel is MULTIPLEXED, so the frame says which kind it carries: `section.patch` and
+      // `presummary` become named SSE frames, and the undiscriminated whole-document snapshot and
+      // its terminal `closed: true` stay on the default `message` type. The three harness relays
+      // do not opt in, so they are untouched by construction.
+      tagFrameTypeFromPayload: true,
       isTerminal: closedFlagTerminal,
       setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }),
       logContext: { consultationId },
