@@ -67,17 +67,60 @@ MEDICAL_SYNONYMS: dict[str, str] = {
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
+# Hyphen, en dash (–), em dash (—) or slash sitting BETWEEN two alphanumeric
+# characters — a candidate word JOIN rather than punctuation to discard. Uses
+# zero-width lookaround (not consuming groups) so adjacent separators
+# ("10/12/2020", "a-b-c") each get evaluated independently without the match
+# for one separator eating the shared alphanumeric neighbor of the next.
+_ALNUM_SEPARATOR_RE = re.compile(r"(?<=[a-z0-9])[\-–—/](?=[a-z0-9])")
+
+
+def _split_alnum_separator(match: re.Match[str]) -> str:
+    """``_ALNUM_SEPARATOR_RE`` callback: decide space-split vs stay-fused.
+
+    A hyphen/en-dash/em-dash between alphanumerics is always a word join
+    ("community-acquired" -> "community acquired") and becomes a space. A
+    slash is the same UNLESS both neighbors are digits, where it is a numeric
+    ratio/range ("120/80") and stays fused, matching the legacy behavior.
+    """
+    separator = match.group(0)
+    if separator == "/":
+        before = match.string[match.start() - 1]
+        after = match.string[match.end()]
+        if before.isdigit() and after.isdigit():
+            return separator  # left for the generic punctuation strip below
+    return " "
+
 
 def normalize_text(text: str) -> str:
-    """Lowercase, strip punctuation, collapse whitespace, trim.
+    """Lowercase, split word-join separators, strip punctuation, collapse whitespace, trim.
 
-    Mirrors ``normalizeText`` in ``wer.ts``: disallowed chars (anything not a
-    letter, number, whitespace, or apostrophe) are REMOVED (not spaced), then
-    whitespace is collapsed — so ``"B.P."`` → ``"bp"`` and ``"120/80"`` →
-    ``"12080"`` exactly as the TS gate does.
+    A hyphen, en dash (``–``) or em dash (``—``) BETWEEN two alphanumeric
+    characters becomes a SPACE — these are word joins, not punctuation to
+    drop, so ``"community-acquired pneumonia"`` -> ``"community acquired
+    pneumonia"`` and ``"follow-up"`` -> ``"follow up"``. A slash between two
+    alphanumerics does the same UNLESS both neighbors are digits: ``"mg/dL"``
+    -> ``"mg dl"`` (a unit ratio, a word join) but ``"120/80"`` -> ``"12080"``
+    (a numeric reading, stays fused) exactly as before.
+
+    Every other disallowed character (anything not a letter, number,
+    whitespace, or apostrophe) is REMOVED, not spaced, so ``"B.P."`` ->
+    ``"bp"`` still holds.
+
+    THIS is the single source of truth for this normalization. The docstring
+    used to claim it "mirrors ``normalizeText`` in ``wer.ts``" — that TS gate
+    historically shipped at ``apps/ui-playground/e2e/helpers/wer.ts`` and was
+    deleted with ``apps/ui-playground`` (TASK-669); grepping ``normalizeText``
+    and ``wer.ts`` across the sibling ARCAAI repos on 2026-09-09 (ALaaSv3.0,
+    ALaaSv3.0-hope-rt-web-ui, ALaaSv3.0-hope-rt-broker, hope-v2-deployment,
+    INTRAPAC) found no equivalent mirror — the only substring hits were an
+    unrelated ``normalizeTextForAI`` (a generic AI-prompt text cleaner in the
+    ALaaS ``audio-stream-svc``, not a WER/metric normalizer). No TS mirror to
+    keep in sync exists anywhere; this function is the sole implementation.
     """
     lowered = text.lower()
-    filtered = "".join(c for c in lowered if c.isalnum() or c.isspace() or c == "'")
+    split_joins = _ALNUM_SEPARATOR_RE.sub(_split_alnum_separator, lowered)
+    filtered = "".join(c for c in split_joins if c.isalnum() or c.isspace() or c == "'")
     return _WHITESPACE_RE.sub(" ", filtered).strip()
 
 
