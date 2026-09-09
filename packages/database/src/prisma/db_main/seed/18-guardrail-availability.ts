@@ -7,12 +7,16 @@
  * opinion follows the platform.
  *
  * Every declared check is ON — what `apps/guardrail` did before this row existed —
- * EXCEPT the two outbound judges the owner calibrated OFF for clinical text on
- * 2026-09-09 (TASK-932): `response_toxicity` (the 300M classifier intermittently
- * labels SOAP content such as chest pain / aspirin as toxic) and `pii_leak` (a
+ * EXCEPT the five judges the owner calibrated OFF for clinical text (TASK-932, owner
+ * decisions 2026-09-09): `response_toxicity` (the 300M classifier intermittently
+ * labels SOAP content such as chest pain / aspirin as toxic), `pii_leak` (a
  * finalized note legitimately re-states the encounter's own identifiers, which the
- * fragment check reads as a leak). Both blocked live notes end to end; both stay
- * off until retuned for clinical text. `pii_leak.minScore` is
+ * fragment check reads as a leak), `response_safety` (blocked a SOAP note),
+ * `response_refusal` and `jailbreak_detection` (both blocked a DNA redaction
+ * rewrite of a clinical note). Each blocked live notes end to end; all five stay
+ * off until retuned for clinical text. `jailbreak_detection` is the one INBOUND
+ * check in the set, so prompt-injection screening now rests on `prompt_safety` and
+ * `prompt_toxicity` alone. `pii_leak.minScore` is
  * transcribed VERBATIM from `core/policy.py::_SPECS['piiLeakMinScore']` (0.5) —
  * the same discipline the judge hyperparameters were moved under. The runtime
  * composes the availability threshold with the model row's value in the STRICT
@@ -37,7 +41,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-000000000001';
 
 /**
- * The platform default set: every check the screener declares, ON — except the two
+ * The platform default set: every check the screener declares, ON — except the five
  * clinical-text judges calibrated OFF (see the header).
  *
  * MIRRORS `PLATFORM_DEFAULT_GUARDRAIL_POLICIES` in
@@ -46,12 +50,12 @@ export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-00000
  * `apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json`.
  */
 export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: Record<string, { enabled: boolean; minScore?: number }> = {
-  jailbreak_detection: { enabled: true },
+  jailbreak_detection: { enabled: false },
   prompt_safety: { enabled: true },
   prompt_toxicity: { enabled: true },
-  response_safety: { enabled: true },
+  response_safety: { enabled: false },
   response_toxicity: { enabled: false },
-  response_refusal: { enabled: true },
+  response_refusal: { enabled: false },
   pii_leak: { enabled: false, minScore: 0.5 },
   containment_echo: { enabled: true },
 };
@@ -74,7 +78,7 @@ export const seedGuardrailAvailability = async (client: CorePrismaClient): Promi
         tenantId: SYSTEM_TENANT_ID,
         policies: PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY,
         reason:
-          'Platform default: every declared screening check applies, except response_toxicity and pii_leak — calibrated OFF for clinical text (TASK-932, owner decision 2026-09-09) until the outbound judges are retuned.',
+          'Platform default: every declared screening check applies, except response_toxicity, pii_leak, response_safety, response_refusal and jailbreak_detection — calibrated OFF for clinical text (TASK-932, owner decisions 2026-09-09) until the judges are retuned.',
         createdBy: SYSTEM_USER_ID,
         updatedBy: SYSTEM_USER_ID,
       },
