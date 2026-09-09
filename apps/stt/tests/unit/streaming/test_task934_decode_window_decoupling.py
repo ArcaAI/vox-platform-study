@@ -406,43 +406,51 @@ class TestPartialToFinalHandover:
         assert occurrences == [0]
 
     @pytest.mark.asyncio
-    async def test_a_sliding_window_wipes_the_settled_prefix(self) -> None:
-        """A finding, pinned rather than fixed here — it needs a live gate.
+    async def test_the_settled_prefix_survives_the_sliding_window(self) -> None:
+        """TASK-935 lane C — the contract that replaced this TASK-934 finding.
 
         `LocalAgreementPolicy` commits the agreed PREFIX of consecutive
-        hypotheses, which assumes a GROWING buffer. The preprocessor feeds it a
-        rolling TAIL. While the utterance is still shorter than
-        `partial_window_s` the two agree and the settled region grows normally;
-        the moment the tail starts sliding, every hypothesis begins at a
-        different word, the policy reads that as a contradiction inside its own
-        committed region, and the settled prefix collapses to ZERO and never
-        recovers for the rest of the utterance.
+        hypotheses, which assumes a GROWING buffer; the preprocessor feeds it a
+        rolling TAIL. Until TASK-935 the first slide read as a contradiction
+        inside the policy's own committed region, so the settled prefix
+        collapsed to ZERO and never recovered — the `stable=0` of the live frame
+        dump, for the whole tail of every utterance longer than
+        `partial_window_s`, and a second reason a longer partial window measured
+        better (at 15 s the collapse happened 9 s later than at 6 s).
 
-        That is the `stable=0` of the live frame dump, and it is a second,
-        independent reason a longer partial window measured better: at 15 s the
-        collapse happens 9 s later than at 6 s. The fix (aligning hypotheses by
-        content when the window slides, rather than by prefix) changes what the
-        clinician sees mid-utterance, so it belongs behind the streaming quality
-        gate, not in this lane.
+        Owner decision OD-1 (a): the policy now anchors each hypothesis to the
+        audio span it decoded, FREEZES the text whose audio has left the window
+        (never re-decoded, never rolled back) and runs LocalAgreement-2 on the
+        overlap. Driven here through the REAL preprocessor windowing and the
+        oracle decoder over the 24 s clip at a 15 s window.
         """
         model = _OracleWhisperModel()
         worker = _worker(_adapter(model, max_decode_window_sec=0.0), max_decode_window_sec=7.0)
         policy = LocalAgreementPolicy()
         audio = _oracle_audio()
-        settled_before_slide: list[int] = []
-        settled_after_slide: list[int] = []
+        settled_chars: list[int] = []
+        sliding_frames = 0
 
         for partial in _partials_from_preprocessor(audio, partial_window_s=15.0):
             result = await worker.process_partial("s-934", partial)
-            committed, _ = policy.update(result.text)
-            sliding = partial.start_time > 0.5  # the tail has left the utterance start
-            (settled_after_slide if sliding else settled_before_slide).append(
-                len(committed.split())
+            committed, _ = policy.update(
+                result.text,
+                window_start_time=partial.start_time,
+                window_end_time=partial.end_time,
             )
+            settled_chars.append(len(committed))
+            if partial.start_time > 0.5:  # the tail has left the utterance start
+                sliding_frames += 1
 
-        assert settled_before_slide == sorted(settled_before_slide)
-        assert max(settled_before_slide) > 30
-        assert settled_after_slide and set(settled_after_slide) == {0}
+        assert sliding_frames > 0, "the window never slid — check the geometry"
+        # OD-1 (a): monotone through the utterance; no collapse at the slide.
+        assert settled_chars == sorted(settled_chars), settled_chars
+        # ≥ 80 % of the clip is settled before the final arrives.
+        assert len(policy.committed_text.split()) >= int(0.8 * WORD_COUNT)
+        # The frozen region is the clip's own opening words, in order.
+        frozen = policy.frozen_text.split()
+        assert frozen, "nothing was frozen even though the window slid"
+        assert frozen == _full_transcript().split()[: len(frozen)]
 
 
 # ---------------------------------------------------------------------------
