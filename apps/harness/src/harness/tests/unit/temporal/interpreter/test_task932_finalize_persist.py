@@ -32,6 +32,7 @@ from typing import Any
 import pytest
 
 from harness.services.api_client import ApiServiceError
+from harness.services.text_client import TextGenerationResult
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import core
 
@@ -39,6 +40,7 @@ _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
 _CONSULTATION = "01a0816f-0000-7000-8000-0000000009e4"
 _CASE_NOTE = "S: Cough for three days.\nO: Afebrile.\nA: URTI.\nP: Fluids, review in 48h."
+_REWRITTEN_NOTE = "S: Cough for three days.\nO: Afebrile.\nA: URTI.\nP: Fluids, review shortly."
 
 _FINALIZER_OUTPUT = {
     "case_note": _CASE_NOTE,
@@ -63,7 +65,12 @@ def _wire() -> dict[str, Any]:
         "compiledConfig": {
             "task": "TEXT_GENERATION",
             "service": "llm",
-            "model": {"id": "m-1", "slug": "lms-gemma", "provider": "lm-studio", "taskType": "TEXT_GENERATION"},
+            "model": {
+                "id": "m-1",
+                "slug": "lms-gemma",
+                "provider": "lm-studio",
+                "taskType": "TEXT_GENERATION",
+            },
             "fallbacks": [],
             "instruction": {"systemPrompt": "Finalize the case note."},
             "resolvedPrompt": {"source": "inline", "content": "Finalize the case note."},
@@ -123,6 +130,28 @@ class _Result:
 class _StubText:
     async def generate(self, **_kwargs: Any) -> _Result:
         return _Result()
+
+
+class _SchemaSensitiveText:
+    """A Text stub that answers the way a schema-constrained provider does.
+
+    Handed a `json_schema` response format it returns a JSON DOCUMENT; handed none, prose.
+    That IS the mechanism under test: the semantic redaction pass transforms the BARE
+    `case_note` string, so a document schema forced onto it comes back as a serialized object.
+    """
+
+    def __init__(self) -> None:
+        self.formats: list[Any] = []
+
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
+        response_format = kwargs.get("response_format")
+        self.formats.append(response_format)
+        content = (
+            json.dumps({"case_note": _REWRITTEN_NOTE, "redactions": []})
+            if response_format is not None
+            else _REWRITTEN_NOTE
+        )
+        return TextGenerationResult(content=content, model="m", finish_reason="stop")
 
 
 @pytest.fixture
@@ -254,7 +283,11 @@ class TestTheRedactionAudit:
         persisted, _result = await run()
 
         manifest = persisted[0].redaction_manifest
-        assert manifest == {"source": "core.agent", "labelCounts": {"NAME": 2, "PHONE": 1}, "total": 3}
+        assert manifest == {
+            "source": "core.agent",
+            "labelCounts": {"NAME": 2, "PHONE": 1},
+            "total": 3,
+        }
         serialized = json.dumps(manifest)
         for identifier in ("Jane Doe", "John Smith", "07700 900461"):
             assert identifier not in serialized
@@ -305,3 +338,375 @@ class TestWhenThePersistFails:
         assert "the finalized note was not persisted" in (result.reason or "")
         assert result.output is not None
         assert result.output["data"]["case_note"] == _CASE_NOTE
+
+
+class TestTheDeterministicRedaction:
+    """The manifest is a claim about a TRANSFORM, so a transform has to have run.
+
+    `_redaction_audit` reports what the FINALIZER SAID it redacted. That is the model's own
+    account of its own output — useful provenance, but it is not evidence, and
+    `SummaryMeta.redactionApplied` read `false` on every interpreter-persisted note because no
+    deterministic pass existed on this lane at all.
+
+    The legacy `HarnessDocWorkflow` has always run the real thing: `apply_redaction` over the
+    doctor's DNA rules, before persist, with a fail-closed posture. `persist_draft` is already
+    called activity-to-activity from here, so the same transform runs the same way — one
+    activity, no new workflow command, no patch era.
+
+    OD-6 governs the failure: a note the doctor expected redacted must never persist silently
+    as a clean draft, and an undocumented encounter is the worse clinical outcome — so it
+    persists WITH the forced review flag the legacy gate uses (`gate_decision = FLAG`) and a
+    named degraded reason on the manifest.
+    """
+
+    @staticmethod
+    def _context(rules: Any) -> dict[str, Any]:
+        return {
+            "trigger": {
+                "consultationId": _CONSULTATION,
+                "dna_style_id": "dna-report-1",
+                "dna_redaction_rules": rules,
+            },
+            "vars": {},
+            "nodes": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_configured_rules_run_the_deterministic_engine_before_persist(self, run) -> None:
+        """The manifest names the RULE that fired — not a label the model volunteered."""
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-afebrile", "type": "remove", "match": "literal", "pattern": "Afebrile"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        assert draft.redaction_applied is True
+        assert draft.redaction_manifest["hitsByRule"] == {"r-afebrile": 1}
+        assert draft.redaction_manifest["ruleIds"] == ["r-afebrile"]
+        assert draft.redaction_manifest["totalHits"] == 1
+        assert draft.redaction_manifest["failedClosed"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_persisted_note_is_the_redacted_text(self, run) -> None:
+        """The whole point: the clinical record must hold the TRANSFORMED note, not the one the
+        transform was computed against."""
+        persisted, _result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-urti",
+                        "type": "rewrite",
+                        "match": "literal",
+                        "pattern": "URTI",
+                        "replacement": "upper respiratory tract infection",
+                    }
+                ]
+            )
+        )
+
+        assert "URTI" not in persisted[0].content
+        assert "upper respiratory tract infection" in persisted[0].content
+
+    @pytest.mark.asyncio
+    async def test_the_redacted_note_is_what_travels_downstream(self, run) -> None:
+        """The transform must reach every reader of this node, not just the clinical record.
+
+        `core.humanReview` shows the node's output, `core.output` DELIVERS it (`deliver.py`
+        reads `value["text"]`), and any downstream node binds it. A redaction that only reaches
+        `persist_draft` leaves the identifiers the doctor asked to have removed travelling on
+        the graph — the legacy lane adopts `redaction.text` into `generated` for exactly this
+        reason (`workflows.py`).
+        """
+        persisted, result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-urti",
+                        "type": "rewrite",
+                        "match": "literal",
+                        "pattern": "URTI",
+                        "replacement": "upper respiratory tract infection",
+                    }
+                ]
+            )
+        )
+
+        assert result.output is not None
+        assert result.output["data"]["case_note"] == persisted[0].content
+        # `text` is the same document, so a stale copy there is the same leak by another route.
+        assert "URTI" not in json.dumps(result.output)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "rules", [None, [], {"rules": []}], ids=["absent", "empty", "empty-set"]
+    )
+    async def test_no_rules_configured_falls_back_to_the_self_reported_audit(
+        self, run, rules
+    ) -> None:
+        """Absence is not a failure. With no rules the doctor configured nothing to enforce, so
+        the finalizer's own account stays the provenance — exactly today's behaviour."""
+        persisted, result = await run(run_context=self._context(rules))
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].redaction_manifest == {
+            "source": "core.agent",
+            "labelCounts": {"NAME": 2, "PHONE": 1},
+            "total": 3,
+        }
+        assert persisted[0].gate_decision is None
+
+    @pytest.mark.asyncio
+    async def test_a_fail_closed_redaction_persists_with_the_forced_review_flag(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OD-6. The note is KEPT — dropping it loses the encounter — but it is flagged with the
+        same mechanism the legacy gate uses, so no clinician sees it as a clean draft."""
+        from harness.temporal import activities as legacy_activities
+        from harness.temporal.models import ApplyRedactionResult
+
+        async def _fails_closed(payload: Any) -> Any:
+            return ApplyRedactionResult(text=payload.note_text, changed=False, failed_closed=True)
+
+        monkeypatch.setattr(legacy_activities, "apply_redaction", _fails_closed)
+
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-name", "type": "remove", "match": "category", "pattern": "email"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        assert draft.content == _CASE_NOTE  # never dropped
+        assert draft.gate_decision == "FLAG"
+        assert draft.redaction_applied is False
+        assert draft.redaction_manifest["failedClosed"] is True
+        assert draft.redaction_manifest["reason"]
+
+    @pytest.mark.asyncio
+    async def test_an_unusable_rule_set_also_fails_closed(self, run) -> None:
+        """Rules the doctor configured but this lane cannot parse are the same clinical situation
+        as an engine that could not run: something was meant to be removed and was not."""
+        persisted, result = await run(run_context=self._context(["remove the employer"]))
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].content == _CASE_NOTE
+        assert persisted[0].gate_decision == "FLAG"
+        assert persisted[0].redaction_manifest["failedClosed"] is True
+
+    @pytest.mark.asyncio
+    async def test_a_semantic_rewrite_persists_prose_not_a_json_document(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `rewrite` rule with no literal `replacement` runs the Text SEMANTIC pass — over the
+        bare `case_note` STRING, which has no schema of its own.
+
+        Handing that pass the finalizer's DOCUMENT response format (`{case_note, redactions}`)
+        makes the model answer with a serialized object; `apply_redaction` accepts it (parsing as
+        JSON is all its schema check asserts), adopts it as the transformed note, and
+        `persist_draft` writes it — so the clinician's note becomes
+        `{"case_note": "...", "redactions": [...]}`. `_finalized_note`'s own docstring names
+        exactly that hazard for the generation itself; the redaction pass reopened it.
+        """
+        from harness.temporal import activities as legacy_activities
+
+        text = _SchemaSensitiveText()
+        monkeypatch.setattr(legacy_activities, "_text_client", lambda _settings: text)
+        monkeypatch.setattr(legacy_activities, "_phi_redactor", lambda: None)
+        # `_idempotency_key` reads `activity.info()`, and this suite drives the node function
+        # directly rather than through an `ActivityEnvironment`. The key itself is pinned inside
+        # a real one by `test_apply_redaction_activity.py`.
+        monkeypatch.setattr(legacy_activities, "_idempotency_key", lambda *_parts: "idem-1")
+
+        persisted, result = await run(
+            run_context=self._context(
+                [
+                    {
+                        "id": "r-employer",
+                        "type": "rewrite",
+                        "match": "category",
+                        "pattern": "email",
+                        "note": "soften any employer mention",
+                    }
+                ]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        # The clinical harm first: what a doctor opens is prose, never a serialized document.
+        assert "case_note" not in persisted[0].content
+        assert persisted[0].content == _REWRITTEN_NOTE
+        assert text.formats == [None], "the bare `case_note` string carries no schema of its own"
+
+    @pytest.mark.asyncio
+    async def test_an_unparseable_rule_set_reports_nothing_about_a_pass_that_never_ran(
+        self, run
+    ) -> None:
+        """No deterministic pass ran on this branch, so the manifest must claim nothing about one.
+
+        Stamping `source: "deterministic"` over the finalizer's OWN `labelCounts`/`total` is the
+        exact confusion this whole change exists to end — provenance labelled as evidence —
+        reappearing on the one branch where the engine never executed. What is true here is only
+        that a configured transform did not happen, and why.
+        """
+        persisted, _result = await run(run_context=self._context(["remove the employer"]))
+
+        manifest = persisted[0].redaction_manifest
+        assert set(manifest) == {"source", "failedClosed", "reason"}
+        assert manifest["source"] == "deterministic"
+        assert manifest["failedClosed"] is True
+        # False, not None: `None` says the agent declared no redaction contract at all, and one
+        # WAS declared. The FLAG plus the named reason carry the rest.
+        assert persisted[0].redaction_applied is False
+        assert persisted[0].gate_decision == "FLAG"
+
+    @pytest.mark.asyncio
+    async def test_a_redaction_crash_persists_the_note_rather_than_losing_it(
+        self, run, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unexpected exception is still OD-6: keep the note, flag it, name the reason."""
+        from harness.temporal import activities as legacy_activities
+
+        async def _boom(_payload: Any) -> Any:
+            raise RuntimeError("PHI redactor unavailable")
+
+        monkeypatch.setattr(legacy_activities, "apply_redaction", _boom)
+
+        persisted, result = await run(
+            run_context=self._context(
+                [{"id": "r-x", "type": "remove", "match": "literal", "pattern": "Cough"}]
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert persisted[0].content == _CASE_NOTE
+        assert persisted[0].gate_decision == "FLAG"
+        assert "PHI redactor unavailable" in persisted[0].redaction_manifest["reason"]
+
+
+class TestTheHandoffRuleContract:
+    """The cross-language shape of `dna_redaction_rules`, pinned on the consumer side.
+
+    The gateway publishes it from `LiveDocumentationService.readHandoffRedactionRules`, which
+    normalises the doctor's decrypted report through `validateRedactionRuleSet` and emits a BARE
+    LIST of rule OBJECTS — `{ id, type, match, pattern, replacement?, note? }` — omitting the key
+    entirely rather than sending `[]` when the doctor configured none.
+
+    `RedactionRule` is `extra="forbid"`, so this contract is exact on both ends: a key the
+    gateway adds and this model does not declare is a hard parse failure, which under OD-6 would
+    FLAG every finalized note rather than fail visibly at the boundary. Pinning the full shape
+    here is what turns that into a test failure instead.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_full_gateway_rule_shape_parses_and_runs(self, run) -> None:
+        persisted, result = await run(
+            run_context={
+                "trigger": {
+                    "consultationId": _CONSULTATION,
+                    "dna_style_id": "dna-report-1",
+                    "dna_redaction_rules": [
+                        # every optional the gateway's normaliser can emit
+                        {
+                            "id": "r-full",
+                            "type": "rewrite",
+                            "match": "literal",
+                            "pattern": "URTI",
+                            "replacement": "upper respiratory tract infection",
+                            "note": "spell it out for the patient copy",
+                        },
+                        # and the minimal form it emits when both optionals are absent
+                        {
+                            "id": "r-min",
+                            "type": "remove",
+                            "match": "literal",
+                            "pattern": "Afebrile",
+                        },
+                    ],
+                },
+                "vars": {},
+                "nodes": {},
+            }
+        )
+
+        assert result.status == "SUCCEEDED"
+        draft = persisted[0]
+        # Parsed AND applied — not merely accepted.
+        assert draft.gate_decision is None, "a well-formed gateway rule set must not fail closed"
+        assert draft.redaction_manifest["failedClosed"] is False
+        assert sorted(draft.redaction_manifest["ruleIds"]) == ["r-full", "r-min"]
+        assert "URTI" not in draft.content
+        assert "Afebrile" not in draft.content
+
+    @pytest.mark.parametrize("match", ["literal", "regex"])
+    def test_a_deterministic_rewrite_must_carry_its_replacement(self, match: str) -> None:
+        """The CROSS-FIELD rule, pinned so the gateway's validator can be asserted against it.
+
+        `type: "rewrite"` + `match: "literal"|"regex"` + no `replacement` is REJECTED: a
+        deterministic rewrite has nothing to write. The same triple with `match: "category"` is
+        accepted and means something else entirely — the Text SEMANTIC pass
+        (`_needs_semantic_rewrite`), which infers the replacement instead of being given one.
+
+        `validateRedactionRuleSet` (`packages/applications/.../redaction-rules.ts`) checks the
+        two closed vocabularies but not this pair, so a rule set it accepts can still be one this
+        model refuses — and under OD-6 a refusal FLAGS every finalized note. The mirror belongs
+        on the gateway; this is the shape it has to mirror.
+        """
+        from pydantic import ValidationError
+
+        from harness.redaction.engine import RedactionRule
+
+        with pytest.raises(ValidationError) as caught:
+            RedactionRule(id="r-bad", type="rewrite", match=match, pattern="Jane Doe")
+        assert "requires a 'replacement'" in str(caught.value)
+
+        # ...and the same shape with a category match is the SEMANTIC rewrite, which is valid.
+        assert RedactionRule(id="r-sem", type="rewrite", match="category", pattern="email")
+
+    @pytest.mark.asyncio
+    async def test_the_reason_names_the_rule_that_did_not_parse(self, run) -> None:
+        """OD-6 flags the note; the reason has to say WHICH rule caused it, or the clinician's
+        review is unexplainable and the doctor cannot fix their own rule set.
+
+        The rule ID is the doctor's own label and is safe to name. The pydantic message is NOT:
+        it echoes the offending INPUT, and a rule's `pattern` is precisely the identifier they
+        asked to have removed — which would put PHI in `SummaryMeta.redactionManifest`, the one
+        column documented to hold none.
+        """
+        persisted, result = await run(
+            run_context={
+                "trigger": {
+                    "consultationId": _CONSULTATION,
+                    "dna_redaction_rules": [
+                        {"id": "r-ok", "type": "remove", "match": "literal", "pattern": "Cough"},
+                        # rewrite + literal + no replacement — rejected by `RedactionRule`
+                        {
+                            "id": "r-bad",
+                            "type": "rewrite",
+                            "match": "literal",
+                            "pattern": "Jane Doe",
+                        },
+                    ],
+                },
+                "vars": {},
+                "nodes": {},
+            }
+        )
+
+        assert result.status == "SUCCEEDED"
+        reason = persisted[0].redaction_manifest["reason"]
+        assert "r-bad" in reason
+        assert "r-ok" not in reason
+        assert "Jane Doe" not in reason
+        assert persisted[0].gate_decision == "FLAG"
+
+    def test_the_rule_vocabulary_matches_the_gateway_validator(self) -> None:
+        """`RULE_TYPES` / `MATCH_KINDS` in `redaction-rules.ts` are the same two closed sets."""
+        from typing import get_args
+
+        from harness.redaction.engine import MatchKind, RuleType
+
+        assert set(get_args(RuleType)) == {"remove", "rewrite"}
+        assert set(get_args(MatchKind)) == {"literal", "regex", "category"}
