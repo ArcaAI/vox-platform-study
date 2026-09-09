@@ -1,6 +1,7 @@
 import { AiModelEntity } from '@arcaai/domains';
 import { ModelResponse } from './dto';
 import { MODEL_TASK_TYPE_TO_PIPELINE_TAG, derivedLocalPath } from './constants';
+import { asrProfileOf } from './asr-profile.util';
 
 export class AiModelDtoMapper {
   static toResponse(entity: AiModelEntity): ModelResponse {
@@ -37,6 +38,7 @@ export class AiModelDtoMapper {
       architecture: entity.architecture ?? null,
       memorySizeMb: entity.memorySizeMb,
       computeType: entity.computeType,
+      asrProfile: asrProfileOf(entity),
       // DERIVED from the bucket identity (TASK-890 §3.11): the stored column is
       // gone, and with it the fallback that used to read it. The three download
       // bookkeeping fields left the DTO with their columns — a publish job's

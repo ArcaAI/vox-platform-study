@@ -2,6 +2,7 @@ import { AiModelEntity } from '@arcaai/domains';
 import type { ProviderClass } from '../ai-provider-connection/constants';
 import { MODEL_TASK_TYPE_TO_PIPELINE_TAG } from './constants';
 import type { CatalogueModelResponse, ModelReadiness } from './dto/model-catalogue.response';
+import { asrProfileOf } from './asr-profile.util';
 
 /** Everything the catalogue DECIDES about a row, as opposed to what the row itself carries. */
 export interface CatalogueModelContext {
@@ -62,6 +63,7 @@ export function toCatalogueModel(entity: AiModelEntity, context: CatalogueModelC
     readinessCheckedAt: context.readinessCheckedAt,
     readinessDetail: context.readinessDetail,
     capabilities: capabilitiesOf(entity),
+    asrProfile: asrProfileOf(entity),
     isPlatformDefaultFor: entity.isPlatformDefaultFor ?? [],
     resourceStatus: entity.resourceStatus,
     usable: context.usable,

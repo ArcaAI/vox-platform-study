@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 424 component schemas the generated surface transitively
+ * Only the 426 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -392,6 +392,38 @@ export interface ApprovePromptTemplateRequest {
   reason?: string;
 }
 
+export interface AsrProfileDecodingRequest {
+  /** Beam width. */
+  beamSize?: number;
+  /** Gzip compression ratio above which a decode is treated as looping and retried at a higher temperature. */
+  compressionRatioThreshold?: number;
+  /** Feed the previous window's tokens to the decoder as context. */
+  conditionOnPrevTokens?: boolean;
+  /** Terms biased into the decode (max 64, each non-empty). */
+  hotwords?: string[];
+  /** Average token log-probability floor below which a decode is retried. */
+  logprobThreshold?: number;
+  /** Block repeats of an n-gram this long within one decode (0 disables). */
+  noRepeatNgramSize?: number;
+  /** Above this no-speech probability a decoded segment is discarded. */
+  noSpeechThreshold?: number;
+  /** How many words of already-committed text ride as decoder context on the next window. */
+  prevTextContextWords?: number;
+  /** Sampling temperature. */
+  temperature?: number;
+}
+
+export interface AsrProfileRequest {
+  /** Recommended decode knobs for this fine-tune. */
+  decoding?: AsrProfileDecodingRequest;
+  /** The priming prompt this fine-tune was measured with (OD-11) — a per-model property, not an agent-wide truth. */
+  initialPrompt?: string;
+  /** Longest audio fed to the engine in ONE decode, seconds. */
+  maxDecodeWindowSec?: number;
+  /** Tail window of the live utterance decoded for PARTIALs, seconds. */
+  partialWindowSec?: number;
+}
+
 export interface AssignDepartmentPromptRequest {
   /** Department ID to assign prompts to */
   departmentId: string;
@@ -667,6 +699,8 @@ export interface CapabilityUsageRow {
 }
 
 export interface CatalogueModelResponse {
+  /** Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — window geometry, decode thresholds, the priming prompt this fine-tune was measured with. Read by the agent editor's effective-value hint. `null` off an ASR row, or when the row carries none. */
+  asrProfile: Record<string, unknown> | null;
   /** MEASURED presence of the weights (inventory job). */
   availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
   /** What the model accepts, for the authoring form. */
@@ -1360,6 +1394,8 @@ export interface CreateMcpServerRequest {
 export interface CreateModelRequest {
   /** Model architecture family */
   architecture?: string;
+  /** Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`. */
+  asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. */
   baseModel?: string;
   /** Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
@@ -3116,6 +3152,8 @@ export interface ModelInventoryRow {
 export interface ModelResponse {
   /** Model architecture family */
   architecture?: string | null;
+  /** Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934), read the same way the gateway resolver (`parseAiModelAsrProfile`) reads it. `null` off an ASR row, or when the row carries none. */
+  asrProfile?: Record<string, unknown> | null;
   /** MEASURED presence of the weights in the bucket (inventory job). */
   availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
   /** When the inventory last measured this row. */
@@ -5838,6 +5876,8 @@ export interface UpdateMcpServerRequest {
 export interface UpdateModelRequest {
   /** Model architecture family */
   architecture?: string;
+  /** Decode profile for an `AUTOMATIC_SPEECH_RECOGNITION` row (`_metadata.asr`, TASK-934) — window geometry, decode thresholds and the priming prompt this fine-tune was measured with. 400 on any other row's `taskType`. Send `null` to clear the stored profile without touching any other `_metadata` key; omit the field to leave it untouched. */
+  asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. Send an empty string to clear. */
   baseModel?: string;
   /** Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
