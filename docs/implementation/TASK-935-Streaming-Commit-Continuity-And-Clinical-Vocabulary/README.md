@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Pending` — plan and owner decisions (§4) ready; no code written. Ticket number TASK-935 assigned by the highest-existing-number rule (TASK-934 is the highest in `docs/implementation` and `docs/archive`). |
+| **Status** | `In Progress` — owner go 2026-09-09 ("go with all recommendations, align agents by tiers and complete all lanes"): OD-1 (a) frozen out-of-window text, OD-2 (a) configured terms only on partials and finals, OD-3 (a) grep for the mirror else docstring, OD-4 (a) start the fine-tune round, OD-5 (a) one hotwords list, OD-6 TASK-935 confirmed. Lanes N, C, V in parallel worktrees; F prepares and smoke-tests in the training repo, the long run launched after the live proofs. |
 | **Branch** | `dev-2.2` |
 | **Classification** | `bugfix` (streaming commit policy) + `feature` (clinical-vocabulary correction) + `refactor` (metric normalisation) |
 | **Owner request** | 2026-09-09 — "open a follow-up ticket for OD-12 and the ceftriaxone miss" (both recorded as residuals at the TASK-934 close-out, §6.3 items 1–2) |
