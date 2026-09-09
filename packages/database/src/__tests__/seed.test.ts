@@ -1396,8 +1396,9 @@ describe('STT Seed Data', () => {
         },
       );
 
-      it('should include the ArcaAI ML-EN whisper.cpp fine-tune as the platform ASR default', () => {
-        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf');
+      it('should include the ArcaAI ML-EN whisper.cpp fine-tune (q8_0, the row the seeded agent serves) as the platform ASR default', () => {
+        // TASK-934 OD-2: the platform default is the quantisation the seeded realtime-transcription agent binds.
+        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf-q8_0');
         expect(row).toBeDefined();
         expect(row?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
         expect(row?.source).toBe(AiModelSource.HUGGINGFACE);
