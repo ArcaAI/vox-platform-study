@@ -185,6 +185,24 @@ export async function getLatestSummary(consultationId: string): Promise<SummaryR
 }
 
 /**
+ * TASK-932 C1-2 — the persisted pre-summary, for `usePreSummaryStream`'s REST
+ * catch-up. A `presummary` event published before the SSE stream subscribes
+ * is lost outright (observed live, a 30ms window), so a late mount or a full
+ * refresh must be able to recover a `ready` pre-summary some other way than
+ * waiting for a frame that already came and went. Same 404-is-absence shape
+ * as `getLatestSummary`.
+ */
+export async function getLatestPreSummary(consultationId: string): Promise<SummaryResult | null> {
+  try {
+    const preSummary = await getJson<SummaryResult | undefined>(consultationPath(consultationId, 'summary/pre-summary/latest'));
+    return preSummary ?? null;
+  } catch (error) {
+    if (error instanceof GatewayError && error.isNotFound) return null;
+    throw error;
+  }
+}
+
+/**
  * W1 — the clinician's SOAP edit, under RFC 7232 optimistic concurrency.
  *
  * `If-Match` is MANDATORY on this route (`@RequiresIfMatch()`); omitting it is
