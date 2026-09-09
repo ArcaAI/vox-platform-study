@@ -441,6 +441,10 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
   const stream = useEventStream({
     path: consultationId ? liveSummaryStreamPath(consultationId) : null,
     scope: consultationId ? `consultation_live_summary:${consultationId}` : null,
+    // TASK-932 lane L relay: the gateway now tags this frame's SSE `type` from the payload's own
+    // `event` instead of multiplexing it onto the default `message`. The `patch.event` check
+    // above stays as defense-in-depth for an older gateway still on `message`.
+    eventNames: ['section.patch'],
     onEvent: handleEvent,
     enabled: enabled && !!consultationId,
   });
@@ -571,6 +575,10 @@ export function usePreSummaryStream(consultationId: string | null, enabled = tru
   const stream = useEventStream({
     path: consultationId ? liveSummaryStreamPath(consultationId) : null,
     scope: consultationId ? `consultation_live_summary:${consultationId}` : null,
+    // TASK-932 lane L relay: the gateway now tags this frame's SSE `type` from the payload's own
+    // `event` instead of multiplexing it onto the default `message`. The `event.event` check in
+    // `foldPreSummaryEvent` stays as defense-in-depth for an older gateway still on `message`.
+    eventNames: ['presummary'],
     onEvent: handleEvent,
     enabled: enabled && !!consultationId,
   });

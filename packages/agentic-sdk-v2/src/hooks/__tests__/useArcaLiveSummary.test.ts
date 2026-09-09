@@ -20,7 +20,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 /* eslint-disable @typescript-eslint/no-explicit-any -- SSE + store doubles model only the consumed surface */
 let mockSSEInstance: any;
 let sseConstructorSpy: ReturnType<typeof vi.fn<(...args: unknown[]) => void>>;
-let handlers: { message?: (data: string) => void; open?: () => void; error?: (event: Event) => void };
+let handlers: { message?: (data: string) => void; open?: () => void; error?: (event: Event) => void; named: Record<string, (data: string) => void> };
 
 vi.mock('../../core/SSEClient', () => {
   const MockSSEClient = function (this: any, ...args: unknown[]) {
@@ -41,11 +41,13 @@ describe('useArcaLiveSummary', () => {
 
   beforeEach(() => {
     sseConstructorSpy = vi.fn<(...args: unknown[]) => void>();
-    handlers = {};
+    handlers = { named: {} };
     mockSSEInstance = {
       connect: vi.fn(),
       disconnect: vi.fn(),
-      onEvent: vi.fn(),
+      onEvent: vi.fn((name: string, cb: (data: string) => void) => {
+        handlers.named[name] = cb;
+      }),
       onError: vi.fn((cb: (event: Event) => void) => {
         handlers.error = cb;
       }),
@@ -115,6 +117,43 @@ describe('useArcaLiveSummary', () => {
       ),
     );
     act(() => handlers.message?.(JSON.stringify({ event: 'presummary', consultationId: 'c-1', status: 'degraded' })));
+
+    expect(result.current.snapshot).toEqual(full);
+    expect(result.current.status).toBe('open');
+  });
+
+  // TASK-932 OD-10 — the gateway relay now ALSO tags these as NAMED SSE frames
+  // (`section.patch`, `presummary`) instead of only multiplexing them onto the default
+  // `message`. Additive, same 3.1.x release: this hook still models only the whole-document
+  // snapshot, so both names are registered as deliberate no-ops rather than left unbound.
+  it('registers named listeners for section.patch and presummary', () => {
+    const { result } = renderHook(() => useArcaLiveSummary());
+    act(() => result.current.start('c-1'));
+
+    expect(mockSSEInstance.onEvent).toHaveBeenCalledWith('section.patch', expect.any(Function));
+    expect(mockSSEInstance.onEvent).toHaveBeenCalledWith('presummary', expect.any(Function));
+  });
+
+  it('a section.patch delivered on its named event never touches the snapshot', () => {
+    const { result } = renderHook(() => useArcaLiveSummary());
+    act(() => result.current.start('c-1'));
+    act(() => handlers.open?.());
+    const full = snapshot({ runningSummary: 'S: productive cough' });
+    act(() => handlers.message?.(JSON.stringify(full)));
+
+    act(() =>
+      handlers.named['section.patch']?.(
+        JSON.stringify({
+          event: 'section.patch',
+          consultationId: 'c-1',
+          documentKey: 'soap',
+          sectionKey: 'plan',
+          revision: 1,
+          content: 'rest',
+          updatedAt: 'later',
+        }),
+      ),
+    );
 
     expect(result.current.snapshot).toEqual(full);
     expect(result.current.status).toBe('open');
