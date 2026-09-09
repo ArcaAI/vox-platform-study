@@ -148,20 +148,44 @@ describe('AiModelService — platform-admin only (403)', () => {
     ['update', (s: AiModelService) => s.update('row-1', { expectedVersion: 3 } as UpdateModelRequest)],
     ['setPlatformDefaultFor', (s: AiModelService) => s.setPlatformDefaultFor('row-1', { tasks: [AiTaskKind.SPEECH_TO_TEXT] })],
     ['delete', (s: AiModelService) => s.delete('row-1')],
+    // TASK-932 OD-4 — the four ADMIN READS. They were safe only because
+    // `ai-model-admin.controller.ts` carries `manage:all`, which is one
+    // decorator away from being the whole boundary; the model registry is
+    // platform-admin-owned (TASK-860 §3.1), so the service says so itself.
+    ['getById (admin read)', (s: AiModelService) => s.getById('row-1')],
+    ['getBySlug (admin read)', (s: AiModelService) => s.getBySlug('medical-ner')],
+    ['getAllForAdmin', (s: AiModelService) => s.getAllForAdmin()],
+    ['list (admin read)', (s: AiModelService) => s.list(1, 20)],
   ])('%s throws ForbiddenException for a tenant admin, before touching the repository', async (_name, call) => {
     const { service, repo } = makeService(makeCls({ roles: ['TENANT_ADMIN'] }));
     await expect(call(service)).rejects.toBeInstanceOf(ForbiddenException);
     expect(repo.create).not.toHaveBeenCalled();
     expect(repo.updateWithVersion).not.toHaveBeenCalled();
     expect(repo.findById).not.toHaveBeenCalled();
+    expect(repo.findBySlug).not.toHaveBeenCalled();
+    expect(repo.findAll).not.toHaveBeenCalled();
   });
 
-  it('reads stay open to any caller (tenants read the catalogue)', async () => {
-    const { service, repo } = makeService(makeCls({ roles: ['TENANT_ADMIN'] }));
-    repo.findEnabledModels.mockResolvedValue([makeRow()]);
-    const rows = await service.getAll();
-    expect(rows).toHaveLength(1);
-    expect(repo.findEnabledModels).toHaveBeenCalledWith(SYSTEM_TENANT_ID);
+  /**
+   * TASK-932 OD-4 — the line the assertion above must NOT cross.
+   *
+   * `getCatalogue` is the TENANT-facing projection behind
+   * `ai-model-catalogue.controller.ts`: it is how a tenant admin discovers which
+   * models it may select, and it already does its own tier work (SYSTEM rows
+   * bounded by the plan, the tenant's OWN BYO rows unbounded). Locking it to the
+   * platform admin would take the model picker away from every tenant, which is
+   * the opposite of what OD-4 asks for. Reads that project the ADMIN's registry
+   * are gated; the read that projects the tenant's own choices is not.
+   */
+  it('the tenant CATALOGUE stays open; the admin reads require the platform admin', async () => {
+    const { service, repo } = makeService(makeCls({ roles: ['TENANT_ADMIN'], tenantId: 'tenant-a' }));
+
+    const catalogue = await service.getCatalogue();
+    expect(catalogue).toBeDefined();
+    expect(repo.findAll).toHaveBeenCalled();
+
+    // ...and the same caller cannot reach the admin projection of the same rows.
+    await expect(service.getAllForAdmin()).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
