@@ -46,3 +46,18 @@ overrides:
   # PluginConfig types resolve against the workspace shiki 4, so the dual copies
   # make `plugins={{ code }}` fail dts/typecheck (BundledLanguage / HighlightOptions).
   shiki: 4.4.3
+  # happy-dom 20.14.0 drops a subtree out of the ACCESSIBILITY tree that 20.11.2
+  # keeps in it. Measured on packages/ui's workflow-canvas suite: the React Flow
+  # node subtree renders (5 <button> elements in the DOM, the remove button among
+  # them, visibility: visible) but `getByRole('button')` sees only the 4 outside
+  # the flow viewport -- `{ hidden: true }` finds all 5. So it is an inaccessibility
+  # verdict, not a render or a timing failure.
+  #
+  # This is NOT caused by any version this repo chose: with pristine manifests and
+  # pristine ranges, deleting the lockfile and re-resolving reproduces it, because
+  # `^20.11.2` floats to 20.14.0. An override is the only fix that holds -- pinning
+  # the declaration in packages/ui leaves a SECOND copy at 20.14.0, and that is the
+  # one vitest loads.
+  #
+  # Dev-only (the vitest DOM environment); nothing ships it. Lift when upstream fixes it.
+  happy-dom: 20.11.2

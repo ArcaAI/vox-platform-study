@@ -1,11 +1,15 @@
 {
   "extends": "@arcaai/config-ts/nestjs.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "outDir": "./dist",
     "rootDir": "./src",
+    // TS 6 no longer auto-discovers @types/*, and these two AUGMENT GLOBALS rather
+    // than being imported: @types/express declares the `Express` namespace and
+    // @types/multer adds `Express.Multer.File` to it (20x TS2694 without them).
+    // Packages imported by name need no entry here.
+    "types": ["node", "express", "multer"],
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

@@ -9,6 +9,10 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
+    // Standalone config (no extends), so TS 6's empty `types` default applies here
+    // too: `fs` / `path` in src/generate-prisma-index.ts stop resolving and
+    // `pnpm db:generate` dies before Prisma is regenerated.
+    "types": ["node"],
     "sourceMap": true,
     // `packages/` — not `./src` — because src/utils/loadEnv.ts imports the
     // dependency-free env-file resolver from

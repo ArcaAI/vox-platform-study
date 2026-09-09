@@ -305,8 +305,13 @@ export class WebSocketClient {
       return;
     }
 
-    // Convert to Uint8Array if needed
-    let bytes: Uint8Array;
+    // Convert to Uint8Array if needed.
+    // The `<ArrayBuffer>` argument is load-bearing under TS 6: typed arrays are now
+    // generic over their backing buffer, and `WebSocket.send` takes a `BufferSource`,
+    // which a SharedArrayBuffer-backed view is NOT. Both constructed branches below
+    // already produce ArrayBuffer-backed arrays; only the caller's own array can be
+    // shared-backed, and that one case is re-wrapped rather than asserted away.
+    let bytes: Uint8Array<ArrayBuffer>;
     if (audio instanceof Float32Array) {
       // Convert float32 to int16 PCM
       const int16 = new Int16Array(audio.length);
@@ -318,7 +323,9 @@ export class WebSocketClient {
     } else if (audio instanceof ArrayBuffer) {
       bytes = new Uint8Array(audio);
     } else {
-      bytes = audio;
+      // Pass through the common ArrayBuffer-backed case with no copy; only a
+      // SharedArrayBuffer-backed view (unsendable as-is) pays for a re-wrap.
+      bytes = audio.buffer instanceof ArrayBuffer ? (audio as Uint8Array<ArrayBuffer>) : new Uint8Array(audio);
     }
 
     // Send as binary for efficiency

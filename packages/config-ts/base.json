@@ -15,7 +15,25 @@
         "noUnusedParameters": false,
         "preserveWatchOutput": true,
         "skipLibCheck": true,
-        "strict": true
+        "strict": true,
+        // TS 6 turns its deprecation warnings into ERRORS, and two of them fire on
+        // options this tree does not set itself:
+        //   * tsup INJECTS `baseUrl` when it generates .d.ts, so every tsup package
+        //     failed its DTS step (TS5101) and shipped no types -- which is what
+        //     turned one deprecation into ~400 implicit-any errors downstream.
+        //   * `moduleResolution: node` (node10) in nestjs.json (TS5107).
+        // Both are prerequisites for TypeScript 7, which REMOVES the options rather
+        // than warning; each needs its own migration, so acknowledge them here and
+        // keep the tree green in the meantime.
+        "ignoreDeprecations": "6.0",
+        // TS 6 defaults `types` to [] — @types/* are no longer auto-discovered from
+        // node_modules. Every package here reaches for Node globals somewhere
+        // (`__dirname`, `node:fs`, `process`), and before TS 6 they were picked up
+        // implicitly, so naming "node" restores the behaviour the tree was written
+        // against. Add further entries per package, never by widening this one.
+        "types": [
+            "node"
+        ]
     },
     "exclude": [
         "node_modules"

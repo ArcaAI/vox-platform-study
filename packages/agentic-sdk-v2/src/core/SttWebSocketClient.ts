@@ -427,7 +427,11 @@ export class SttWebSocketClient {
    * `ws.bufferedAmount` exceeds the configured high-watermark. Returns
    * `false` when the frame was dropped, `true` otherwise.
    */
-  sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
+  // `ArrayBufferView<ArrayBuffer>`, not a bare `ArrayBufferView`: TS 6 makes the view
+  // generic over its backing buffer and defaults it to `ArrayBufferLike`, which is NOT
+  // a `BufferSource`. The narrowing only makes the signature honest — a
+  // SharedArrayBuffer-backed view was never sendable over a WebSocket at runtime.
+  sendAudioFrame(data: ArrayBuffer | ArrayBufferView<ArrayBuffer>): boolean {
     this.requireConnection();
     if (this.shouldDropForBufferedAmount()) {
       this.dropFrameDueToBackpressure('buffered_amount_high');
