@@ -155,6 +155,13 @@ function pathnameOf(call: RecordedCall): string {
   return new URL(call.url, 'http://test.local').pathname;
 }
 
+/** Open a Radix `Select` by its trigger's accessible name and pick an option. */
+async function chooseSelectOption(triggerLabel: string, optionName: string): Promise<void> {
+  const trigger = await screen.findByRole('combobox', { name: triggerLabel });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(await screen.findByRole('option', { name: optionName }));
+}
+
 /** Read/write paths through the proxy that every test starts from. */
 function defaultHandler(call: RecordedCall): Response | undefined {
   const path = pathnameOf(call);
@@ -511,7 +518,9 @@ describe('MyDnaStyleScreen', () => {
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Erase report' }));
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-0')).toBe(true));
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-0')).toBe(true),
+    );
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Erased 1 report and 3 versions'));
   });
 
@@ -558,6 +567,58 @@ describe('MyDnaStyleScreen', () => {
       expect(body.redactionRules?.rules?.[0]).toMatchObject({ type: 'remove', match: 'literal', pattern: 'employer' });
     });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Redaction rules saved'));
+  });
+
+  it('requires a replacement for a literal/regex rewrite rule, blocks Save until filled, then saves the typed value', async () => {
+    const calls = stubDna((call) => {
+      if (call.method === 'GET' && pathnameOf(call) === '/api/hope/dna-writing-styles/my-style/redaction-rules') {
+        return Response.json({ rules: [] });
+      }
+      if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-1') {
+        return Response.json(report({ version: 4 }), { headers: { etag: '"4"' } });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    const toggle = (await screen.findByRole('switch', { name: 'Enable redaction rules' })) as HTMLButtonElement;
+    await waitFor(() => expect(toggle.getAttribute('data-state')).toBe('unchecked'));
+    fireEvent.click(toggle);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add rule' }));
+
+    // Default is `remove` / `literal` — no replacement involved yet. Switch the
+    // action to `rewrite`; `match` stays `literal`, so a replacement is now required.
+    await chooseSelectOption('Rule 1 action', 'rewrite');
+    fireEvent.change(screen.getByLabelText('Pattern'), { target: { value: 'employer' } });
+
+    // The label's required-marker asterisk is `aria-hidden` (excluded from the real
+    // accessible name), so match by prefix rather than the exact rendered label text.
+    const replacement = screen.getByLabelText(/^Replacement/) as HTMLInputElement;
+    expect(replacement.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByRole('alert').textContent).toMatch(/replacement is required/i);
+
+    const save = screen.getByRole('button', { name: 'Save rules' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
+
+    // Filling the replacement clears the error and unblocks Save.
+    fireEvent.change(replacement, { target: { value: 'their workplace' } });
+    expect(replacement.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(save.disabled).toBe(false);
+
+    fireEvent.click(save);
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-1');
+      const body = patch?.body as { redactionRules?: { rules?: Array<Record<string, unknown>> } };
+      expect(body?.redactionRules?.rules?.[0]).toMatchObject({
+        type: 'rewrite',
+        match: 'literal',
+        pattern: 'employer',
+        replacement: 'their workplace',
+      });
+    });
   });
 
   it('has no axe violations (light theme) with the redaction editor mounted', async () => {
