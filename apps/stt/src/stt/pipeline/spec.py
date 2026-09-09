@@ -95,7 +95,9 @@ class _Wire(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+    def _omit_unset_optionals(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
         dumped: dict[str, object] = handler(self)
         if not self.OPTIONAL_FIELDS:
             return dumped
