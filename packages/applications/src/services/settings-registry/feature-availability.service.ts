@@ -234,6 +234,14 @@ export class FeatureAvailabilityService {
       // platform row is rewritten and never removed.
       const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(cell.key);
       const value = cell.value === null ? descriptor.default : cell.value;
+      // TASK-932 — idempotent: a platform row that already holds the target value is left
+      // alone. The governed lane refuses a write that changes nothing (400 "No changes to
+      // write to."), and the matrix surfaced that as a FAILED reset on a cell that was already
+      // right. Read the row the way the matrix itself reads it (fresh, unscoped, de-duplicated),
+      // so the decision matches what the caller was shown.
+      const { rows } = await this.readUnscoped([cell.key]);
+      const current = rows.get(rowKey(cell.key, SYSTEM_TENANT_ID));
+      if (current && current.value === value) return;
       await this.writeService.write(cell.key, value, {
         scope: 'system',
         ...(cell.expectedVersion === undefined ? {} : { expectedVersion: cell.expectedVersion }),

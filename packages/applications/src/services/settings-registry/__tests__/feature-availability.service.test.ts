@@ -283,3 +283,39 @@ describe('applyMatrix', () => {
     expect(result.cells).toEqual([{ key: 'console.mlflow.enabled', tenantId: ARCAAI, value: true, version: 9 }]);
   });
 });
+
+// TASK-932 — "back to the default" on the PLATFORM column is idempotent. The governed lane's
+// no-change guard answers 400 ("No changes to write to.") for a write that changes nothing, and
+// the matrix reported that as a FAILED reset on a cell that was already right (API e2e
+// `null on the PLATFORM column rewrites the row to the descriptor default`, once earlier runs
+// had left the row at its default).
+describe('applyMatrix — an idempotent platform reset (TASK-932)', () => {
+  const GATE = 'console.mlflow.enabled';
+
+  it('leaves a platform row that already holds the descriptor default alone — no write, no error', async () => {
+    const { svc, writeService } = makeService({ rows: [{ key: GATE, tenantId: SYSTEM, parsedValue: false, version: 3 }] });
+
+    const result = await svc.applyMatrix([{ key: GATE, tenantId: PLATFORM_COLUMN, value: null, expectedVersion: 3 }]);
+
+    expect(result.errors).toEqual([]);
+    expect(writeService.write).not.toHaveBeenCalled();
+  });
+
+  it('still rewrites a platform row that holds something else', async () => {
+    const { svc, writeService } = makeService({ rows: [{ key: GATE, tenantId: SYSTEM, parsedValue: true, version: 3 }] });
+
+    const result = await svc.applyMatrix([{ key: GATE, tenantId: PLATFORM_COLUMN, value: null, expectedVersion: 3 }]);
+
+    expect(result.errors).toEqual([]);
+    expect(writeService.write).toHaveBeenCalledWith(GATE, false, { scope: 'system', expectedVersion: 3 });
+  });
+
+  it('an explicit platform value equal to the stored one is a no-op too', async () => {
+    const { svc, writeService } = makeService({ rows: [{ key: GATE, tenantId: SYSTEM, parsedValue: true, version: 3 }] });
+
+    const result = await svc.applyMatrix([{ key: GATE, tenantId: PLATFORM_COLUMN, value: true, expectedVersion: 3 }]);
+
+    expect(result.errors).toEqual([]);
+    expect(writeService.write).not.toHaveBeenCalled();
+  });
+});
