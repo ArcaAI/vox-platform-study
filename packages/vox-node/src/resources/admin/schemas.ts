@@ -3006,10 +3006,14 @@ export interface LiveDocRealtimeNodeResponse {
 export interface LiveDocSessionStatsResponse {
   /** Consultation under live documentation */
   consultationId: string;
+  /** TASK-946 D6 — WHY the flush failed, as a code from the closed vocabulary (`no_case_notes`, `context_overflow`, `text_unavailable`, `timeout`, `generation_failed`, or an executor reason code such as `disabled_by_config` / `superseded_after_completion`). ABSENT on a healthy flush. Never a transport string: it used to be `${status}: ${message}`, so this surface carried `degraded: Request failed with status code 502` — the HTTP client`s words on the field whose job is to explain what happened to the note, and the one place a model`s refusal text could reach a PHI-safe surface. */
+  degradeReason?: string;
   /** Number of medical entities in the last published summary */
   entityCount: number;
   /** Number of flushes published so far */
   flushCount: number;
+  /** TASK-946 D6 — true when this flush produced NO note: the document generation did not succeed, or an `onError: "fail"` node stopped the lane. Distinct from both neighbours, which is why it exists: `turnDegraded` is a QUALITY signal about a flush that succeeded (the turn contract fell back to a whole-document rewrite) and `textFailed` names one stage, so before this field a reader of the snapshot had nothing that said the flush failed — the 2026-09-10 trial`s three empty consultations read as ordinary sessions. */
+  flushFailed: boolean;
   /** Monotonic flush generation id of the last flush */
   generation: number;
   /** ISO-8601 timestamp of the last published flush */
