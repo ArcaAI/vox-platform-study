@@ -98,6 +98,43 @@ export {
 } from './template';
 export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } from './template';
 
+// TASK-947 — a TEXT_GENERATION instruction's three forms read in ONE place (`agent-instruction`),
+// and prompt COMPOSITION (`prompt-composition`): which fragments of a composite artifact run
+// over the one render scope, rendered per fragment and joined. Mirrored in Python by the
+// harness's `prompt_composition.py` and held to `tests/contracts/prompt-composition.fixture.json`.
+export {
+  AGENT_PROMPT_CONDITION_MAX_LENGTH,
+  AGENT_PROMPT_FRAGMENT_KEY_PATTERN,
+  AGENT_PROMPT_FRAGMENT_MAX,
+  agentInstructionForm,
+  boundTemplateRefs,
+  isCompositeInstruction,
+  mapBoundTemplateRefs,
+  primaryTemplateId,
+  readPromptFragments,
+} from './agent-instruction';
+export type { AgentInstructionForm, AgentPromptFragment, BoundTemplateRef, BoundTemplateRewrite } from './agent-instruction';
+export {
+  AGENT_CONDITION_ROOTS,
+  PROMPT_COMPOSITION_JOIN,
+  PromptCompositionEmptyError,
+  composePrompt,
+  conditionRootProblems,
+  selectPromptFragments,
+  staticProjection,
+} from './prompt-composition';
+export type {
+  ComposableResolvedPrompt,
+  ComposePromptOptions,
+  ComposedPrompt,
+  CompositeResolvedPrompt,
+  FragmentExclusion,
+  FragmentExclusionReason,
+  InlineResolvedPrompt,
+  ResolvedPromptFragment,
+  TemplateResolvedPrompt,
+} from './prompt-composition';
+
 // TASK-890 §3.14 (OD-R clause 3) — the guardrail opt-out's ONE precedence function
 // (node > workflow > agent > `true`), mirrored in Python by the harness's `guardrail_optout.py`
 // and held to `tests/contracts/guardrail-optout.fixture.json`. Guardrail POLICY is untouched:

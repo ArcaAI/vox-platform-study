@@ -1,0 +1,202 @@
+{
+  "_comment": "TASK-947 §4.1 — the CROSS-LANGUAGE parity fixture for prompt COMPOSITION: which fragments of a composite `compiledConfig.resolvedPrompt` are selected over a render scope, how each is rendered, and how they are joined. Asserted from BOTH tests/contracts/prompt-composition-parity.contract.test.ts (TypeScript — `composePrompt` in @arcaai/workflow-contract, used by the invocation route, the draft bench and the realtime core.agent lane) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_prompt_composition_parity.py (Python — `compose_prompt`, the durable lane). Each case names a resolvedPrompt, the scope (the ONE render scope of TASK-890 §3.3 — the `when` sees exactly what the template sees), and EITHER the expected `{ prompt, selected, excluded }` OR `error`. `excluded` entries are compared on `key` + `reason` only: the `detail` string is the evaluator's own message and is deliberately NOT pinned across languages. The grammar of fragment CONTENT is the prompt-template fixture's; the grammar of `when` is the expressions fixture's; this file pins only how the two meet.",
+  "cases": [
+    {
+      "name": "null-prompt",
+      "resolvedPrompt": null,
+      "scope": { "context": { "visit_type": "revisit" } },
+      "expected": { "prompt": null, "selected": [], "excluded": [] }
+    },
+    {
+      "name": "single-template-unchanged",
+      "resolvedPrompt": { "source": "template", "promptTemplateId": "t1", "promptVersionNumber": 3, "content": "Language: {{context.language}}." },
+      "scope": { "context": { "language": "en" } },
+      "expected": { "prompt": "Language: en.", "selected": [], "excluded": [] }
+    },
+    {
+      "name": "inline-unchanged",
+      "resolvedPrompt": { "source": "inline", "content": "Be {{vars.tone}}." },
+      "scope": { "vars": { "tone": "concise" } },
+      "expected": { "prompt": "Be concise.", "selected": [], "excluded": [] }
+    },
+    {
+      "name": "base-only",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [{ "key": "base", "source": "inline", "content": "Base.", "when": null }]
+      },
+      "scope": { "context": {} },
+      "expected": { "prompt": "Base.", "selected": ["base"], "excluded": [] }
+    },
+    {
+      "name": "condition-true",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "template", "promptTemplateId": "t1", "promptVersionNumber": 3, "content": "Base.", "when": null },
+          {
+            "key": "revisit",
+            "source": "template",
+            "promptTemplateId": "t2",
+            "promptVersionNumber": 5,
+            "content": "Revisit: compare with the prior note.",
+            "when": "context.visit_type == 'revisit'"
+          }
+        ]
+      },
+      "scope": { "context": { "visit_type": "revisit" } },
+      "expected": { "prompt": "Base.\n\nRevisit: compare with the prior note.", "selected": ["base", "revisit"], "excluded": [] }
+    },
+    {
+      "name": "condition-false",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "revisit", "source": "inline", "content": "Revisit.", "when": "context.visit_type == 'revisit'" }
+        ]
+      },
+      "scope": { "context": { "visit_type": "new-visit" } },
+      "expected": { "prompt": "Base.", "selected": ["base"], "excluded": [{ "key": "revisit", "reason": "condition_false" }] }
+    },
+    {
+      "name": "condition-error-excluded",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "revisit", "source": "inline", "content": "Revisit.", "when": "context.visit_type == 'revisit'" }
+        ]
+      },
+      "scope": { "context": { "language": "en" } },
+      "expected": { "prompt": "Base.", "selected": ["base"], "excluded": [{ "key": "revisit", "reason": "condition_error" }] }
+    },
+    {
+      "name": "has-guard",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "revisit", "source": "inline", "content": "Revisit.", "when": "has(context.visit_type) && context.visit_type == 'revisit'" }
+        ]
+      },
+      "scope": { "context": { "language": "en" } },
+      "expected": { "prompt": "Base.", "selected": ["base"], "excluded": [{ "key": "revisit", "reason": "condition_false" }] }
+    },
+    {
+      "name": "order-preserved",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "peds", "source": "inline", "content": "Minor.", "when": "context.patient_age < 18" },
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "closing", "source": "inline", "content": "Close.", "when": "context.patient_age < 18" }
+        ]
+      },
+      "scope": { "context": { "patient_age": 12 } },
+      "expected": { "prompt": "Minor.\n\nBase.\n\nClose.", "selected": ["peds", "base", "closing"], "excluded": [] }
+    },
+    {
+      "name": "per-fragment-render-no-cross-boundary",
+      "_why": "Each fragment is rendered on its own and only then joined. `{{{{` is the escape for a literal `{{`; `vars.tone}}` alone is plain text. Joined BEFORE rendering they would form `{{\\n\\nvars.tone}}`, which the grammar refuses — so a passing case proves the per-fragment pass.",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "open", "source": "inline", "content": "{{{{", "when": null },
+          { "key": "close", "source": "inline", "content": "vars.tone}}", "when": null }
+        ]
+      },
+      "scope": { "vars": { "tone": "concise" } },
+      "expected": { "prompt": "{{\n\nvars.tone}}", "selected": ["open", "close"], "excluded": [] }
+    },
+    {
+      "name": "inline-and-template-mixed",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Note in {{context.language}}.",
+        "join": "\n\n",
+        "fragments": [
+          {
+            "key": "base",
+            "source": "template",
+            "promptTemplateId": "t1",
+            "promptVersionNumber": 1,
+            "content": "Note in {{context.language}}.",
+            "when": null
+          },
+          { "key": "tone", "source": "inline", "content": "Tone: {{tone | default(\"neutral\")}}.", "when": "has(vars.strict) && vars.strict" }
+        ]
+      },
+      "scope": { "context": { "language": "ml" }, "vars": { "strict": true } },
+      "expected": { "prompt": "Note in ml.\n\nTone: neutral.", "selected": ["base", "tone"], "excluded": [] }
+    },
+    {
+      "name": "bound-name-is-string",
+      "_why": "A `{ path }` binding is resolved THROUGH the template grammar, so the bare name is always a string (TASK-890 §3.3). A numeric comparison must read the ROOT, not the bare name — pinned so an author learns it from the bench, not from production.",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "bare", "source": "inline", "content": "Bare.", "when": "age > 65" },
+          { "key": "root", "source": "inline", "content": "Root.", "when": "context.patient_age > 65" }
+        ]
+      },
+      "scope": { "context": { "patient_age": 67 }, "age": "67", "variables": { "age": "67" } },
+      "expected": { "prompt": "Base.\n\nRoot.", "selected": ["base", "root"], "excluded": [{ "key": "bare", "reason": "condition_error" }] }
+    },
+    {
+      "name": "input-root",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+          { "key": "base", "source": "inline", "content": "Base.", "when": null },
+          { "key": "long", "source": "inline", "content": "Summarise.", "when": "size(input.text) > 5" }
+        ]
+      },
+      "scope": { "input": { "text": "hello world" } },
+      "expected": { "prompt": "Base.\n\nSummarise.", "selected": ["base", "long"], "excluded": [] }
+    },
+    {
+      "name": "join-missing-defaults",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "A\n\nB",
+        "fragments": [
+          { "key": "a", "source": "inline", "content": "A", "when": null },
+          { "key": "b", "source": "inline", "content": "B", "when": null }
+        ]
+      },
+      "scope": {},
+      "expected": { "prompt": "A\n\nB", "selected": ["a", "b"], "excluded": [] }
+    },
+    {
+      "name": "empty-raises",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "",
+        "join": "\n\n",
+        "fragments": [{ "key": "only", "source": "inline", "content": "X", "when": "context.patient_age > 99" }]
+      },
+      "scope": { "context": { "patient_age": 12 } },
+      "error": "PromptCompositionEmpty"
+    }
+  ]
+}
