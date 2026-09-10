@@ -521,6 +521,38 @@ function corePreSummaryNodes(graph: WorkflowGraph | null | undefined): WorkflowG
   });
 }
 
+/**
+ * TASK-946 OD-5 — every ACTIVE per-turn `core.agent` node of the graph, in authored order.
+ *
+ * The realtime lane's own admission predicate, transcribed from `isRealtimeNode` /`cadenceOf`
+ * (`live-documentation/realtime/realtime-lane.ts`) rather than imported, for the reason
+ * {@link corePreSummaryNodes} states about its own copy: this file reads the AUTHORED
+ * `WorkflowDefinition.graph`, while that one reads a COMPILED lane, and the two have different
+ * shapes. What must not drift is the RULE, which is stated here in one place and in one form:
+ * a `core.agent` joins the per-turn lane by `execution.lane === 'realtime'` and any cadence
+ * except `onStart` (the warm start, which {@link corePreSummaryNodes} owns).
+ *
+ * Only the slug FORM is admitted. `agentRef: { task }` is the code-built platform lane saying
+ * "the tenant's assigned agent for this task" — there is no row to read a template off until the
+ * assignment cascade runs, which is a resolution this tier deliberately does not make.
+ */
+function realtimePerTurnAgentNodes(graph: WorkflowGraph | null | undefined): { node: WorkflowGraphNode; agentSlug: string }[] {
+  if (!graph || !Array.isArray(graph.nodes)) return [];
+  const out: { node: WorkflowGraphNode; agentSlug: string }[] = [];
+  for (const node of graph.nodes) {
+    if (node.type !== 'core.agent' || isNodeDisabled(node)) continue;
+    const execution = nodeConfig(node).execution;
+    if (typeof execution !== 'object' || execution === null || Array.isArray(execution)) continue;
+    const { lane, cadence } = execution as { lane?: unknown; cadence?: unknown };
+    if (lane !== 'realtime' || cadence === 'onStart') continue;
+    const ref = nodeConfig(node).agentRef;
+    if (typeof ref !== 'object' || ref === null || Array.isArray(ref)) continue;
+    const slug = (ref as { slug?: unknown }).slug;
+    if (typeof slug === 'string' && slug.length > 0) out.push({ node, agentSlug: slug });
+  }
+  return out;
+}
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -1047,6 +1079,24 @@ export class PromptResolutionService {
           agentId: nodeResolution.nodeId,
         };
       }
+
+      // TASK-946 OD-5 — the same tier, second source: the per-turn `core.agent` node's AGENT.
+      // Consulted only when no node carried its own `promptTemplateId`, so a graph that pins one
+      // keeps resolving exactly as it did. `agentId` is the AGENT's id here rather than the node
+      // id — that is what this source resolved, and it is the identity the live console names —
+      // matching the other agent-binding tier (`resolveTagSelectedPrompt`).
+      const agentResolution = await this.resolveAgentNodePrompt(tenantId, params.departmentId);
+      if (agentResolution) {
+        trace.agentId = agentResolution.agentId;
+        trace.agentVersionNumber = agentResolution.versionNumber;
+        return {
+          promptId: agentResolution.templateId,
+          tier: 'agent',
+          content: agentResolution.content,
+          versionNumber: agentResolution.versionNumber,
+          agentId: agentResolution.agentId,
+        };
+      }
     }
 
     // Tier 2 — the seeded SYSTEM live default (readable cross-tenant since the
@@ -1283,6 +1333,104 @@ export class PromptResolutionService {
   }
 
   /**
+   * TASK-946 OD-5 — tier 1a's SECOND source: the per-turn `core.agent` node's AGENT.
+   *
+   * ## Why a second source rather than a wider selector
+   *
+   * `resolveNodePrompt` selects on a `promptTemplateId` carried BY THE NODE. Since TASK-893 the
+   * per-turn nodes of every published ArcaAI graph are `core.agent` + `agentRef: { slug }` and
+   * the template lives on the AGENT, so that selector matched nothing on the surface it was
+   * written for: tier 2 served the SYSTEM "Live SOAP Running Note" while the telemetry reported
+   * `selection_source: 'agent'`. Both sources have to exist, because a node pin is a real (and
+   * stronger) binding that some graphs still carry — hence the ORDER at the call site: the node
+   * binding first, this second.
+   *
+   * ## WHICH node
+   *
+   * The first per-turn agent node, in authored order, whose agent is a `TEXT_GENERATION` one
+   * that binds an APPROVED template. The task test is what separates the running-note node from
+   * the ASR and NER nodes beside it in the same lane — a node-id convention would not survive a
+   * graph authored anywhere but the seed.
+   *
+   * It is deliberately NOT branch-aware. A graph that splits its summary by visit type has two
+   * candidates and this takes the first, which on every seeded graph is the new-visit one. Making
+   * it follow the branch needs two things this resolver does not have: the COMPILED lane (the
+   * authored graph carries `edges`, not the `branchGuards` `resolveBranchHandles` reads) and the
+   * consultation's visit type (the live chain's `promptType` is `'live'` — it carries no visit
+   * axis, by design since TASK-882). It is also not the surface that decides the running note in
+   * GRAPH mode: there the flush renders the resolved `core.agent` node's own instruction
+   * (`callTextCandidate`), branch and all. What this chain governs is the LEGACY flush's prompt
+   * and the session's reported agent identity, and for those the department's own template is
+   * still enormously better than the platform's generic one.
+   *
+   * ## Governance, unchanged
+   *
+   * The same approval + snapshot discipline `resolveGraphNodePrompt` applies: an UNAPPROVED
+   * template is skipped so resolution falls through to the approved default, and the served
+   * content is the `PromptVersion` snapshot at the node's pin ?? the agent's pin ??
+   * `approvedVersionNumber` ?? latest — never the mutable template row.
+   *
+   * TOTAL BY CONSTRUCTION, like every read in this service: every failure answers `null`.
+   */
+  private async resolveAgentNodePrompt(
+    tenantId: string,
+    departmentId: string,
+  ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string; agentId: string } | null> {
+    if (!this.agentRepository) return null;
+
+    try {
+      const candidates = realtimePerTurnAgentNodes(await this.governingConsultationGraph(tenantId, departmentId));
+
+      for (const { node, agentSlug } of candidates) {
+        const agent = await this.agentRepository.findPublishedActiveBySlug(tenantId, agentSlug);
+        if (!agent || String(agent.task) !== String(AgentTask.TEXT_GENERATION)) continue;
+
+        const instruction = agent.instruction as Record<string, unknown> | null | undefined;
+        const templateId = instruction && typeof instruction === 'object' ? instruction.promptTemplateId : undefined;
+        if (typeof templateId !== 'string' || templateId.length === 0) continue;
+
+        const template = await this.promptTemplateRepository.findById(templateId);
+        if (!template || template.status !== 'APPROVED') {
+          this.logger.warn({
+            message: 'The per-turn agent binds a template that is not APPROVED — falling through to the ordinary live chain',
+            tenantId,
+            departmentId,
+            nodeId: node.id,
+            agentSlug,
+            templateId,
+          });
+          continue;
+        }
+
+        // A pin ON THE NODE wins over the agent's own: the node is the more specific binding,
+        // and it is the one an author edits to hold a single graph at a version.
+        const agentPin = instruction?.promptVersionNumber;
+        const targetVersionNumber =
+          readPromptVersionPin(node) ??
+          (typeof agentPin === 'number' && Number.isInteger(agentPin) && agentPin > 0 ? agentPin : null) ??
+          template.approvedVersionNumber ??
+          null;
+        const version =
+          targetVersionNumber !== null
+            ? await this.promptVersionRepository.findByVersionNumber(template.id, targetVersionNumber)
+            : await this.promptVersionRepository.findLatestVersion(template.id);
+        if (!version || version.content === null || version.content === undefined) continue;
+
+        return { templateId: template.id, content: version.content, versionNumber: version.versionNumber, nodeId: node.id, agentId: agent.id };
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve the governing workflow’s per-turn agent — skipping the agent-node tier',
+        tenantId,
+        departmentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * The shared body of every NODE tier: assignment cascade -> published definition -> a caller
    * supplied node SELECTION -> that node's DD-11 prompt binding, under the approval + snapshot
    * discipline described on `resolveNodePrompt`.
@@ -1303,10 +1451,10 @@ export class PromptResolutionService {
    * answers `null`, because an operational failure must never be reported to a tenant admin as
    * "your graph is misconfigured".
    */
-  private async governingConsultationGraph(tenantId: string): Promise<WorkflowGraph | null> {
+  private async governingConsultationGraph(tenantId: string, departmentId: string | null = null): Promise<WorkflowGraph | null> {
     if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
     try {
-      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, null as unknown as string);
+      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId as unknown as string);
       if (!assignment.workflowDefinitionSlug) return null;
       const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
       if (!definition) return null;

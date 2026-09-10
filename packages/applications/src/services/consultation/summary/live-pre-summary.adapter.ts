@@ -26,6 +26,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 
 import type { IActiveUserContext } from '../../../interfaces';
+import { PRE_SUMMARY_DEGRADE_FALLBACK, degradeCode } from '../live-documentation/degrade-codes';
 import type { ILivePreSummaryRunner, LivePreSummaryInput, LivePreSummaryResult } from '../live-documentation/live-pre-summary.port';
 import { SummaryService } from './summary.service';
 
@@ -36,12 +37,14 @@ import { SummaryService } from './summary.service';
  * only a short reason code ever leaves this function. `no_case_notes` is separated out because it
  * is the ordinary case, not a fault: a first-ever visit has no prior record to summarise, and the
  * console renders that differently from "the model timed out".
+ *
+ * TASK-946 D6(a) — it used to answer `error.name`, which put `AxiosError` on the clinician's feed:
+ * a fact about the HTTP client, not about the consultation. The classification now lives in
+ * {@link degradeCode}, shared with the flush, so the two surfaces cannot report the same failure
+ * under two different names.
  */
 function degradeReason(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/no case notes/i.test(message)) return 'no_case_notes';
-  if (error instanceof Error && error.name) return error.name;
-  return 'pre_summary_failed';
+  return degradeCode(error, PRE_SUMMARY_DEGRADE_FALLBACK);
 }
 
 @Injectable()

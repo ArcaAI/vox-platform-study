@@ -33,6 +33,28 @@ const TENANT = 'tenant-handoff';
 const CID = 'consultation-handoff-001';
 const DOCTOR = 'doctor-handoff-1';
 
+/**
+ * TASK-946 OD-3 — the CLINICAL half every handoff context now carries, beside the DNA half this
+ * suite was written for. It is what the durable lane's `n_visit` condition reads; without it the
+ * condition evaluated against an absent `visit_type` and every graph took `else`.
+ *
+ * These are the values THIS fixture produces: no department repository is wired (so
+ * `current_department` takes `buildPreSummaryVariables`' declared `General`), the row carries no
+ * `parentConsultationId` (so `new-visit`) and no declared language (so `English` / `''`).
+ */
+const CLINICAL = {
+  current_department: 'General',
+  visit_type: 'new-visit',
+  safe_age: 'Unknown',
+  safe_dob: 'Unknown',
+  safe_gender: 'Unknown',
+  safe_vitals: 'Not available',
+  formatted_test_results: '',
+  formatted_previous_visits: '',
+  language_name: 'English',
+  language: '',
+};
+
 type Wiring = {
   status?: string;
   /** `null` ⇒ the repository is not wired at all. */
@@ -257,7 +279,7 @@ describe('TASK-932 R-16a — the DNA writing style on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID, ['n_summary']);
 
-    expect(answer.context).toEqual({ dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
     expect(dnaReportRepository!.findLatestForDoctor).toHaveBeenCalledWith(DOCTOR);
   });
 
@@ -266,7 +288,7 @@ describe('TASK-932 R-16a — the DNA writing style on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({});
+    expect(answer.context).toEqual(CLINICAL);
     expect(dnaReportRepository!.findLatestForDoctor).not.toHaveBeenCalled();
   });
 
@@ -275,14 +297,18 @@ describe('TASK-932 R-16a — the DNA writing style on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({});
+    expect(answer.context).toEqual(CLINICAL);
     expect(answer.outputs.n_summary).toEqual({ text: 'note' });
   });
 
   it('carries NOTHING when the repository is unwired, rather than failing the handoff', async () => {
     const { service } = buildService({ status: 'DRAINING', stored: RECORD, report: null });
 
-    await expect(service.readLiveHandoff(CID)).resolves.toMatchObject({ ended: true, context: {} });
+    // TASK-946 OD-3 — an EXACT assertion, not `toMatchObject({ context: {} })`: a partial match
+    // on an empty object matches anything, so it stopped proving the DNA half was absent the
+    // moment the clinical half started travelling.
+    await expect(service.readLiveHandoff(CID)).resolves.toMatchObject({ ended: true });
+    await expect(service.readLiveHandoff(CID).then((answer) => answer.context)).resolves.toEqual(CLINICAL);
   });
 });
 
@@ -323,6 +349,7 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
     const answer = await service.readLiveHandoff(CID, ['n_summary']);
 
     expect(answer.context).toEqual({
+      ...CLINICAL,
       dna_style_text: 'Terse. Abbreviates freely.',
       dna_style_id: 'dna-report-1',
       dna_redaction_rules: [
@@ -340,7 +367,7 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({ dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
     expect('dna_redaction_rules' in answer.context).toBe(false);
   });
 
@@ -366,7 +393,7 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({});
+    expect(answer.context).toEqual(CLINICAL);
     expect(dnaReportRepository!.findLatestForDoctor).not.toHaveBeenCalled();
   });
 
@@ -379,7 +406,7 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({ dna_style_text: 'Terse.', dna_style_id: 'dna-report-1' });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_style_text: 'Terse.', dna_style_id: 'dna-report-1' });
   });
 });
 
@@ -417,7 +444,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // A tenant whose graph declares the writing style but NOT redaction must not have its notes
     // silently rewritten by rules it never enabled.
-    expect(answer.context).toEqual({ dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
   });
 
   it('redaction gate ON, style gate OFF → the rules travel and the style does NOT', async () => {
@@ -427,7 +454,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // The clinically dangerous half: gating redaction on the STYLE switch means a doctor who
     // turned the writing style off — or a tenant that never declared one — loses redaction too.
-    expect(answer.context).toEqual({ dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
     expect('dna_style_text' in answer.context).toBe(false);
     // The style ID names the report that SHAPED the note; nothing shaped it, so it must not travel.
     expect('dna_style_id' in answer.context).toBe(false);
@@ -444,7 +471,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // `if (!text) return {}` returned before the rules were ever read: a doctor who authored
     // redaction rules but never had a style generated got no redaction at all.
-    expect(answer.context).toEqual({ dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
   });
 
   it('both gates OFF → nothing at all, and the report is never even read', async () => {
@@ -452,7 +479,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     const answer = await service.readLiveHandoff(CID);
 
-    expect(answer.context).toEqual({});
+    expect(answer.context).toEqual(CLINICAL);
     // No decrypt when neither half can be admitted — PHI is not read to be thrown away.
     expect(dnaReportRepository!.findLatestForDoctor).not.toHaveBeenCalled();
   });
@@ -479,7 +506,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // Neither half rides an unreadable gate: an unresolved redaction gate must not ship rules,
     // and an unresolved style gate must not ship a style. The note itself still hands over.
-    expect(answer.context).toEqual({});
+    expect(answer.context).toEqual(CLINICAL);
     expect(answer.outputs.n_summary).toEqual({ text: 'note' });
   });
 });
