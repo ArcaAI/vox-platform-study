@@ -12,11 +12,21 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config-ts/package.json ./packages/config-ts/
+# @arcaai/types is a RUNTIME dependency of @arcaai/database (declared in its
+# package.json). Under `--frozen-lockfile` pnpm trusts the lockfile and does NOT
+# abort when a referenced workspace project is absent from the context — it just
+# never links it, so the failure surfaces two layers later as
+# `TS2307: Cannot find module '@arcaai/types'` from
+# src/prisma/db_main/seed/ai-models/shared.ts. That is exactly how build-database
+# failed in pipeline 1161. Guarded by
+# packages/database/src/__tests__/dockerfile-workspace-deps.test.ts.
+COPY packages/types/package.json ./packages/types/
 COPY packages/database/package.json ./packages/database/
 
 RUN pnpm install --frozen-lockfile
 
 COPY packages/config-ts/ ./packages/config-ts/
+COPY packages/types/ ./packages/types/
 COPY packages/database/ ./packages/database/
 COPY prisma.config.ts ./
 # Both prisma.config.ts files import the dependency-free env-file resolver by
@@ -26,6 +36,12 @@ COPY prisma.config.ts ./
 # dependency (@arcaai/applications depends on @arcaai/database, never the
 # reverse), so no install is needed — just the one file at its expected path.
 COPY packages/applications/src/common/env ./packages/applications/src/common/env
+
+# @arcaai/types resolves through its package.json `types` field
+# (./dist/index.d.ts), so it must be emitted BEFORE `tsc` runs over the seed
+# sources. `.dockerignore` excludes **/*.tsbuildinfo precisely so this
+# `tsc --build` cannot trust a host-stale buildinfo and skip the emit.
+RUN pnpm --filter @arcaai/types build
 
 # `prisma generate` (codegen) + `tsc`, run directly — NOT `pnpm db:generate`.
 # db:generate additionally runs `@arcaai/tools generate-prisma-index`, which
@@ -50,6 +66,11 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config-ts/package.json ./packages/config-ts/
+# Same workspace-graph reason as the builder stage. No `dist` is carried over:
+# the only reference to @arcaai/types in this package is `import type`, which tsc
+# erases, so nothing in dist/ resolves it at runtime — the manifest alone keeps
+# the prod install's workspace link honest.
+COPY packages/types/package.json ./packages/types/
 COPY packages/database/package.json ./packages/database/
 
 RUN npm install -g pnpm && \

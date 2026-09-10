@@ -384,6 +384,16 @@ build-harness:
     DOCKERFILE: apps/harness/Dockerfile
     BUILD_TARGET: production
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
+  # 90m, not the .build-template default of 30m. This is the only Python service
+  # whose builder installs an apt toolchain (build-essential + cmake, for the
+  # `atomic-fact` extra's llama-cpp-python, which has no wheel and compiles
+  # llama.cpp from source). A COLD build pays ~28m of apt download at this
+  # runner's ~60 KB/s public egress before cmake starts, so 30m could not
+  # complete one — it timed out at exactly 1800s in pipeline 1161. The apt cache
+  # mount now actually retains its .debs (apps/harness/Dockerfile), so a warm
+  # build is minutes; this budget is what survives a cold one — after a
+  # BUILDER_REV bump, a builder reclaim, or the 168h cachemount GC.
+  timeout: 90m
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^HARNESS-/ || $CI_COMMIT_TAG =~ /^ALL-/
@@ -405,6 +415,16 @@ build-harness-worker:
     # PROCESS, not a separate codebase (06-python-services.md §Temporal).
     BUILD_TARGET: worker
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
+  # 90m, not the .build-template default of 30m. This is the only Python service
+  # whose builder installs an apt toolchain (build-essential + cmake, for the
+  # `atomic-fact` extra's llama-cpp-python, which has no wheel and compiles
+  # llama.cpp from source). A COLD build pays ~28m of apt download at this
+  # runner's ~60 KB/s public egress before cmake starts, so 30m could not
+  # complete one — it timed out at exactly 1800s in pipeline 1161. The apt cache
+  # mount now actually retains its .debs (apps/harness/Dockerfile), so a warm
+  # build is minutes; this budget is what survives a cold one — after a
+  # BUILDER_REV bump, a builder reclaim, or the 168h cachemount GC.
+  timeout: 90m
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^HARNESS-/ || $CI_COMMIT_TAG =~ /^ALL-/

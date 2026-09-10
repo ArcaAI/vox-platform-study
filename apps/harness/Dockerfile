@@ -30,8 +30,21 @@ FROM ${BASE_IMAGE} AS builder
 # has no usable prebuilt wheel and compiles a native llama.cpp from source;
 # hope-python-base intentionally ships no C/C++ toolchain. Its own layer so it
 # caches independently of the dependency sync below.
+#
+# The two cache mounts below retained NOTHING until 2026-09-10: every Debian
+# image ships /etc/apt/apt.conf.d/docker-clean, which deletes
+# /var/cache/apt/archives/*.deb in a DPkg::Post-Invoke hook and disables the
+# package cache outright. So each build re-downloaded all 99 MB of toolchain from
+# deb.debian.org, and this runner's egress to the public internet runs at
+# ~60 KB/s (the same throttle documented for registry pulls in
+# .claude/rules/09-infrastructure-devops.md) — 28 minutes of download before
+# cmake compiles a line, which is how build-harness / build-harness-worker
+# burned their 30m budget in pipeline 1161. Removing docker-clean is what makes
+# `--mount=type=cache,target=/var/cache/apt` mean anything.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-downloaded-packages && \
     apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cmake
