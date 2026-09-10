@@ -112,7 +112,21 @@ export type SectionWriteRefusal =
 
 export type SectionWriteResult =
   | { readonly applied: true; readonly patch: SectionPatchDto; readonly section: DocumentSectionEntity }
-  | { readonly applied: false; readonly reason: SectionWriteRefusal };
+  | {
+      readonly applied: false;
+      readonly reason: SectionWriteRefusal;
+      /**
+       * TASK-939 R10 — the section's AUTHORITATIVE body, when the refusal was
+       * `confirmed-no-overwrite`.
+       *
+       * The row was already read to reach that verdict, so returning it costs nothing and closes a
+       * real defect: the flush's own `lastPayload` is what the NEXT turn's prompt is built from, and
+       * it carried the MACHINE's version of a section the clinician had since rewritten. The model
+       * was therefore shown its own superseded text and kept re-proposing over the clinician's
+       * edit — the DB row was protected while the conversation with the model was not.
+       */
+      readonly current?: string;
+    };
 
 const STATE_WIRE: Readonly<Record<DocumentSectionState, SectionPatchDto['state']>> = Object.freeze({
   [DocumentSectionState.EMPTY]: 'empty',
@@ -150,6 +164,56 @@ export class DocumentSectionStore {
     private readonly repository?: DocumentSectionRepository,
     private readonly secrets?: SectionSecretsLike,
   ) {}
+
+  /**
+   * TASK-939 R9 — read one document's PERSISTED sections back, in the template's authored order.
+   *
+   * A `LiveSession` is an in-process object: `stop()` deletes it, a lost owner lock tears it down,
+   * and a pod restart or an ownership handoff starts a new one with `lastPayload` undefined. The
+   * next flush then saw an EMPTY prior note and `buildTextUserPrompt` switched to its first-turn
+   * instruction — so a second recording segment, or a reconnect after a restart, silently RESTARTED
+   * the note instead of continuing it. Nothing in the service read the persisted note back:
+   * `findLiveSnapshotRow` deliberately touches only `_metadata`.
+   *
+   * The `DocumentSection` rows are the right source rather than the durable blob, because they are
+   * what the turn contract folds onto AND they carry the clinician's confirmed text.
+   *
+   * `null` means "nothing to resume" — no repository, no rows, or a read that failed. Never throws:
+   * this sits on the live flush path and a failed resume must degrade to today's behaviour (a fresh
+   * note) rather than failing the flush.
+   */
+  async readDocument(
+    tenantId: string,
+    consultationId: string,
+    documentKey: string,
+    order: readonly { readonly key: string; readonly title: string }[],
+  ): Promise<{ title: string; content: string }[] | null> {
+    if (!this.repository) return null;
+    try {
+      const rows = await this.repository.findByDocument(tenantId, consultationId, documentKey);
+      if (rows.length === 0) return null;
+
+      const byKey = new Map(rows.map((row) => [row.sectionKey, row]));
+      const sections: { title: string; content: string }[] = [];
+      for (const entry of order) {
+        const row = byKey.get(entry.key);
+        // `content` has no column — `encryptedContent` is the only persisted form — so a row read
+        // back out of the database carries no body until it is decrypted.
+        const content = row ? ((await this.decrypt(row)) ?? row.content ?? '') : '';
+        sections.push({ title: row?.title ?? entry.title, content });
+      }
+      return sections;
+    } catch (error) {
+      this.logger.warn({ message: 'Section resume read failed', consultationId, error: this.reason(error) });
+      return null;
+    }
+  }
+
+  /** Decrypt a row's body when an encryptor is wired; plaintext fixtures pass through. */
+  private async decrypt(section: DocumentSectionEntity): Promise<string | null> {
+    if (!this.repository || !this.secrets) return null;
+    return this.repository.decryptContentFromEntity(section, this.secrets);
+  }
 
   /** Drop a finished session's staleness bookkeeping. */
   forget(consultationId: string): void {
@@ -199,7 +263,9 @@ export class DocumentSectionStore {
     if (section && !section.isWritable()) return { applied: false, reason: 'locked' };
     // REPLACE only. An append leaves the clinician's text in place, so there is nothing here for
     // this guard to protect — see the method doc.
-    if (!appending && section && !section.machineMayOverwrite()) return { applied: false, reason: 'confirmed-no-overwrite' };
+    if (!appending && section && !section.machineMayOverwrite()) {
+      return { applied: false, reason: 'confirmed-no-overwrite', current: section.content ?? '' };
+    }
 
     // A deletion must name what contradicts the removed content. Note the guard is
     // on the TRANSITION (had content -> has none), not on emptiness itself: a

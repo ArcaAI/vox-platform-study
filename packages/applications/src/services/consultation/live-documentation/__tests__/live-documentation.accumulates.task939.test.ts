@@ -22,6 +22,7 @@ import { LiveDocumentationService } from '../live-documentation.service';
 import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gates.constants';
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
 import type { SectionPatchDto } from '../realtime';
+import { DocumentSectionFactory } from '@arcaai/domains';
 
 const CID = 'consultation-939';
 const TENANT = 'tenant-939';
@@ -335,5 +336,229 @@ describe('TASK-939 R7 — the churn metric makes the defect measurable', () => {
     );
 
     expect(stats.at(-1)!.turnDegraded).toBe(true);
+  });
+});
+
+describe('TASK-939 R9/R10 — continuity across sessions and with a clinician', () => {
+  /**
+   * A populated, clinician-CONFIRMED row, as a resumed session would find it. `content` is set
+   * directly because these doubles carry no encryptor: in production `encryptedContent` is the only
+   * persisted form and `readDocument` decrypts, which the store's own unit tests cover.
+   */
+  function rowFor(sectionKey: string, title: string, idx: number, content: string, confirmed = false) {
+    const entity = DocumentSectionFactory.CreateDocumentSection({
+      tenantId: TENANT,
+      consultationId: CID,
+      documentKey: 'soap_note',
+      sectionKey,
+      title,
+      idx,
+      documentTemplateVersionId: null,
+      createdBy: null,
+    });
+    if (confirmed) entity.applyClinicianContent(content, 'doctor-1');
+    else entity.applyMachineContent(content);
+    return entity;
+  }
+
+  function repositoryWith(entities: ReturnType<typeof rowFor>[]) {
+    const repo = sectionRepositoryDouble();
+    for (const entity of entities) {
+      repo.rows.set(`${entity.documentKey}::${entity.sectionKey}`, {
+        documentKey: entity.documentKey,
+        sectionKey: entity.sectionKey,
+        entity,
+      });
+    }
+    return Object.assign(repo, {
+      findByDocument: vi.fn(async () => entities as never),
+      // `readDocument` decrypts every row it reads back, because `content` has no column and
+      // `encryptedContent` is the only persisted form. These fixtures hold plaintext, so the
+      // decryptor hands the body straight back.
+      decryptContentFromEntity: vi.fn(async (entity: { content?: string | null }) => entity.content ?? null),
+    });
+  }
+
+  it('R9: a NEW session on an existing consultation CONTINUES the note instead of restarting it', async () => {
+    const cache = cacheMock();
+    const sections = repositoryWith([rowFor('subjective', 'Subjective', 0, 'Cough for three days.')]);
+    const { service, prompts } = buildService(cache, [turn({ subjective: { addition: 'Now reports fever.' } })], sections as never);
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+    service.ingestSegment(CID, { text: 'and now a fever', isFinal: true, segmentId: 's1' });
+    await service.flush(CID, { force: true });
+    const final = await service.stop(CID, { persistSnapshot: false });
+
+    // The prompt carries the note the PREVIOUS session wrote …
+    expect(prompts[0]).toContain('Cough for three days.');
+    // … and it is an UPDATE turn, not a first turn.
+    expect(prompts[0]).not.toContain('This is the first turn');
+    // … and the published note accumulates onto it rather than replacing it.
+    expect(final!.runningSummary).toContain('Cough for three days.');
+    expect(final!.runningSummary).toContain('Now reports fever.');
+  });
+
+  it('R9: a consultation with NO persisted rows still starts cleanly as a first turn', async () => {
+    const cache = cacheMock();
+    const sections = Object.assign(sectionRepositoryDouble(), { findByDocument: vi.fn(async () => [] as never) });
+    const { service, prompts } = buildService(cache, [turn({ subjective: { addition: 'Cough.' } })], sections as never);
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+    service.ingestSegment(CID, { text: 'cough', isFinal: true, segmentId: 's1' });
+    await service.flush(CID, { force: true });
+    await service.stop(CID, { persistSnapshot: false });
+
+    expect(prompts[0]).toContain('This is the first turn');
+  });
+
+  it('R9: the resume read happens ONCE, not on every flush', async () => {
+    const cache = cacheMock();
+    const sections = repositoryWith([rowFor('subjective', 'Subjective', 0, 'Cough.')]);
+    const { service } = buildService(cache, [turn({ subjective: { addition: 'Fever.' } }), turn({ objective: { addition: 'Temp 38.' } })], sections as never);
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+    service.ingestSegment(CID, { text: 'fever', isFinal: true, segmentId: 's1' });
+    await service.flush(CID, { force: true });
+    service.ingestSegment(CID, { text: 'temp', isFinal: true, segmentId: 's2' });
+    await service.flush(CID, { force: true });
+    await service.stop(CID, { persistSnapshot: false });
+
+    expect(sections.findByDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('R10: a clinician-CONFIRMED section is what the NEXT turn’s prompt shows, not the machine’s version', async () => {
+    const cache = cacheMock();
+    const confirmed = rowFor('objective', 'Objective', 1, 'Temp 39.1 — corrected by me.', true);
+    const sections = repositoryWith([confirmed]);
+    const { service, prompts } = buildService(
+      cache,
+      [
+        // The model tries to restate the confirmed section WITH a contradiction, so the store is
+        // asked for a replace — and refuses, because a clinician owns it.
+        turn({ objective: { revision: 'Temp 37.8.', contradiction: 'Model believes it misheard.' } }),
+        turn({ subjective: { addition: 'Anything, to force a second prompt.' } }),
+      ],
+      sections as never,
+    );
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+    service.ingestSegment(CID, { text: 'first', isFinal: true, segmentId: 's1' });
+    await service.flush(CID, { force: true });
+    service.ingestSegment(CID, { text: 'second', isFinal: true, segmentId: 's2' });
+    await service.flush(CID, { force: true });
+    await service.stop(CID, { persistSnapshot: false });
+
+    // The SECOND prompt must show the clinician's text. Before this fix it showed the machine's
+    // refused rewrite, so the model kept re-proposing over the edit.
+    expect(prompts[1]).toContain('Temp 39.1 — corrected by me.');
+    expect(prompts[1]).not.toContain('Temp 37.8.');
+  });
+});
+
+describe('TASK-939 R11 — a superseded flush never strands the transcript it consumed', () => {
+  /**
+   * The race: the cursor used to advance the moment TEXT returned, while the NLP call (and, on the
+   * graph lane, the degrade publish) still stood between that point and the final `isStale()`. A
+   * `stop()`-forced flush superseding inside that window returned through `dropStale` WITHOUT ever
+   * reaching `session.lastPayload = payload` — so the generation's content was discarded while the
+   * cursor stayed advanced past the transcript that produced it, and that stretch of the encounter
+   * never reached any note again.
+   *
+   * Observable form: the superseding flush's prompt must still carry the FIRST segment's transcript,
+   * because no generation ever successfully consumed it.
+   *
+   * Driven on the LEGACY lane deliberately. That is where the window is: the legacy branch writes the
+   * cursor as soon as TEXT parses and only re-checks staleness after the NLP call, whereas the graph
+   * lane runs NLP INSIDE `runGraphLane` and writes the cursor after the whole lane returns. Running
+   * this in graph mode cannot reproduce the bug — verified by mutation, an earlier version of this
+   * test did and passed with the fix reverted.
+   */
+  it('re-sends a delta whose generation was dropped after TEXT but before publishing', async () => {
+    const cache = cacheMock();
+    const sections = sectionRepositoryDouble();
+    const prompts: string[] = [];
+
+    let nlpCalls = 0;
+    let releaseNlp: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      releaseNlp = resolve;
+    });
+
+    const post = vi.fn(async (url: string, body: { prompt?: string }) => {
+      if (url.includes('/classify/tokens')) {
+        nlpCalls += 1;
+        // The FIRST generation hangs in NLP — after its TEXT call has already returned.
+        if (nlpCalls === 1) await blocked;
+        return { data: { entities: [] } };
+      }
+      if (url.includes('/generate')) {
+        prompts.push(body?.prompt ?? '');
+        return { data: { summary: turn({ subjective: { addition: `Note ${prompts.length}.` } }) } };
+      }
+      return { data: {} };
+    });
+
+    const configService = { get: vi.fn().mockImplementation((k: string) => ({ LIVE_DOC_MIN_INTERVAL_MS: '0' })[k]) };
+    // LEGACY lane: the graph gate resolves to nothing, so `ensureLaneResolved` yields null.
+    const effectiveSettings = { resolveEffective: vi.fn(async () => ({ value: undefined, sourceScope: 'code-default' })) };
+    const service = new LiveDocumentationService(
+      { axiosRef: { post }, post } as never,
+      configService as never,
+      cache as never,
+      { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() } as never,
+      undefined,
+      undefined,
+      { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) } as never,
+      { encrypt: vi.fn(async () => 'cipher'), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
+      undefined,
+      effectiveSettings as never,
+      { resolveDefault: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
+      { run: vi.fn((cb: () => unknown) => cb()), set: vi.fn(), get: vi.fn() } as never,
+      { resolveForSession: vi.fn().mockResolvedValue(snapshot()) } as never,
+      undefined,
+      undefined,
+      { findById: vi.fn(async () => ({ id: CID, metadata: null })) } as never,
+      undefined,
+      undefined,
+      sections as never,
+    );
+
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    service.ingestSegment(CID, { text: 'FIRST SEGMENT', isFinal: true, segmentId: 's1' });
+    const stale = service.flush(CID); // generation 1 — reaches NLP and blocks there
+
+    // Wait until generation 1 is ACTUALLY inside the NLP call, i.e. its TEXT has already returned.
+    // A fixed number of microtask ticks does not reproduce the race: if generation 2 computes its
+    // delta before generation 1 has returned from TEXT, the cursor has not moved yet and the test
+    // passes whether the bug is present or not. (Verified by mutation — an earlier version of this
+    // test did exactly that and could not catch it.)
+    while (nlpCalls === 0) await new Promise((resolve) => setImmediate(resolve));
+
+    service.ingestSegment(CID, { text: 'SECOND SEGMENT', isFinal: true, segmentId: 's2' });
+    // Index of the SUPERSEDING generation's prompt. Not `prompts.at(-1)`: `stop()` below runs its
+    // own final forced flush, so the last prompt belongs to that one. (Also verified by mutation —
+    // asserting on the last prompt could not catch the bug, because the stop flush re-sends the
+    // stranded delta anyway and so looks correct.)
+    const supersedingIdx = prompts.length;
+    const fresh = service.flush(CID, { force: true }); // generation 2 — supersedes
+    await fresh;
+
+    releaseNlp?.();
+    await stale;
+    await service.stop(CID, { persistSnapshot: false });
+
+    // The superseding generation's prompt must carry BOTH segments: generation 1 consumed the first
+    // one but never published, so its delta has to be re-sent rather than skipped past.
+    const superseding = prompts[supersedingIdx]!;
+    expect(superseding).toContain('SECOND SEGMENT');
+    expect(superseding, 'the first segment was stranded — its generation was dropped but the cursor had already advanced').toContain(
+      'FIRST SEGMENT',
+    );
   });
 });

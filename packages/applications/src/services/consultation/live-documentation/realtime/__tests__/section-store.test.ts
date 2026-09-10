@@ -81,7 +81,7 @@ describe('task 8 — per-section state and per-section OCC', () => {
 
     const refused = await store.applyFlushPatch(write({ content: 'Model changed its mind.', generation: 2 }));
 
-    expect(refused).toEqual({ applied: false, reason: 'confirmed-no-overwrite' });
+    expect(refused).toMatchObject({ applied: false, reason: 'confirmed-no-overwrite' });
     expect(repo.rows.get('soap_note::assessment')?.content).toBe('Clinician: bacterial sinusitis.');
   });
 

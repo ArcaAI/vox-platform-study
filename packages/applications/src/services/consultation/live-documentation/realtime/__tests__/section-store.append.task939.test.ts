@@ -101,7 +101,9 @@ describe('TASK-939 — append mode', () => {
 
     // The replace is still refused …
     const replaced = await store.applyFlushPatch(write({ generation: 2, content: 'Something else entirely.' }));
-    expect(replaced).toEqual({ applied: false, reason: 'confirmed-no-overwrite' });
+    // R10 — the refusal hands back the AUTHORITATIVE body, so the caller can correct the note it
+    // feeds the next prompt from. The row was already read to reach this verdict.
+    expect(replaced).toEqual({ applied: false, reason: 'confirmed-no-overwrite', current: confirmed });
 
     // … and the append is not.
     const appended = await store.applyFlushPatch(write({ mode: 'append', generation: 3, content: 'Now also reports chills.' }));
