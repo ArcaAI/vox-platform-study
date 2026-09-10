@@ -11993,7 +11993,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/chain",
       "routePath": "/consultations/:id/chain",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12029,7 +12031,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/context",
       "routePath": "/consultations/:id/context",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12139,7 +12143,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/context/case-notes",
       "routePath": "/consultations/:id/context/case-notes",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12175,7 +12181,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/context/transcriptions",
       "routePath": "/consultations/:id/context/transcriptions",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12193,7 +12201,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/documents/{documentKey}/sections",
       "routePath": "/consultations/:id/documents/:documentKey/sections",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12211,7 +12221,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey}",
       "routePath": "/consultations/:id/documents/:documentKey/sections/:sectionKey",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12247,7 +12259,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/documents/sections",
       "routePath": "/consultations/:id/documents/sections",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12417,7 +12431,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/named-entities",
       "routePath": "/consultations/:id/named-entities",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12547,7 +12563,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/summary",
       "routePath": "/consultations/:id/summary",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12879,7 +12897,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/timeline",
       "routePath": "/consultations/:id/timeline",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12915,7 +12935,9 @@
       "method": "GET",
       "path": "/api/v1/consultations/{id}/workflow",
       "routePath": "/consultations/:id/workflow",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [

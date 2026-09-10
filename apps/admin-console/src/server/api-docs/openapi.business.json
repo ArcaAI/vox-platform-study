@@ -29170,7 +29170,7 @@
     },
     "/api/v1/consultations/{id}/chain": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getChain",
         "parameters": [
           {
@@ -29227,12 +29227,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/close": {
@@ -29312,7 +29315,7 @@
     },
     "/api/v1/consultations/{id}/context": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getContextItems",
         "parameters": [
           {
@@ -29369,12 +29372,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       },
       "post": {
         "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -29460,7 +29466,7 @@
     },
     "/api/v1/consultations/{id}/context/case-notes": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getCaseNotes",
         "parameters": [
           {
@@ -29517,12 +29523,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/context/shared": {
@@ -29594,7 +29603,7 @@
     },
     "/api/v1/consultations/{id}/context/transcriptions": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getTranscriptions",
         "parameters": [
           {
@@ -29651,12 +29660,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/context/{contextId}": {
@@ -29961,7 +29973,7 @@
     },
     "/api/v1/consultations/{id}/documents/sections": {
       "get": {
-        "description": "The DISCOVERY read. The route below can only be asked about a `documentKey` the caller already holds, and nothing else in this API enumerates them — so a client that reloads mid-encounter could not reach the durable view at all until a `section.patch` happened to name a key, which is exactly the window the SSE lane does not cover (it only emits while a flush is running). This returns the same items that route does, for EVERY document, ordered by `(documentKey, idx)`: alphabetical by document, render order within it. A consultation whose documents have not been written yet is an empty array, not a 404.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The DISCOVERY read. The route below can only be asked about a `documentKey` the caller already holds, and nothing else in this API enumerates them — so a client that reloads mid-encounter could not reach the durable view at all until a `section.patch` happened to name a key, which is exactly the window the SSE lane does not cover (it only emits while a flush is running). This returns the same items that route does, for EVERY document, ordered by `(documentKey, idx)`: alphabetical by document, render order within it. A consultation whose documents have not been written yet is an empty array, not a 404.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_listAllDocumentSections",
         "parameters": [
           {
@@ -30021,17 +30033,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/documents/{documentKey}/sections": {
       "get": {
-        "description": "Returns every section of `documentKey` for this consultation in render order (`idx` ascending), with decrypted content. This is the DURABLE view: the `section.patch` SSE lane only emits while a flush is running, so a client that reloads mid-encounter reads its state here. Each item carries `version` — the value that section requires as its `If-Match`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns every section of `documentKey` for this consultation in render order (`idx` ascending), with decrypted content. This is the DURABLE view: the `section.patch` SSE lane only emits while a flush is running, so a client that reloads mid-encounter reads its state here. Each item carries `version` — the value that section requires as its `If-Match`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_listDocumentSections",
         "parameters": [
           {
@@ -30100,17 +30115,20 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey}": {
       "get": {
-        "description": "Returns the section with its content decrypted. The response carries `version`, which the `ETagInterceptor` also emits as a strong `ETag` — that validator is what the PATCH below requires as `If-Match`. Note `version` and `revision` are different numbers doing different jobs: `revision` orders the SSE stream, `version` is the concurrency precondition.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the section with its content decrypted. The response carries `version`, which the `ETagInterceptor` also emits as a strong `ETag` — that validator is what the PATCH below requires as `If-Match`. Note `version` and `revision` are different numbers doing different jobs: `revision` orders the SSE stream, `version` is the concurrency precondition.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getDocumentSection",
         "parameters": [
           {
@@ -30174,12 +30192,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       },
       "patch": {
         "description": "Writes the clinician-authored body of one section and transitions it to `confirmed`, after which a flush may append but will never overwrite it. Optimistic concurrency is enforced per SECTION: `If-Match` (RFC 7232) is REQUIRED and is compare-and-set against that row's `_version`, so an edit composed against a stale render LOSES to a flush that landed in between. When the header is present it OVERRIDES the body `expectedVersion`. A section the endpoint stage has finalized is `locked` and returns 409 — that is a state conflict, not a stale precondition, so re-reading and retrying cannot help. Unlike a flush, a clinician emptying a section needs no transcript contradiction.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -30760,7 +30781,7 @@
     },
     "/api/v1/consultations/{id}/named-entities": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getNamedEntities",
         "parameters": [
           {
@@ -30815,12 +30836,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/prime": {
@@ -31241,7 +31265,7 @@
     },
     "/api/v1/consultations/{id}/summary": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:read`).\n\n**API key scopes** — `consultation:report:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getSummaries",
         "parameters": [
           {
@@ -31298,12 +31322,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:read"
+        ]
       },
       "post": {
         "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -32491,7 +32518,7 @@
     },
     "/api/v1/consultations/{id}/timeline": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getTimeline",
         "parameters": [
           {
@@ -32546,12 +32573,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/consultations/{id}/trajectory/stream": {
@@ -32609,7 +32639,7 @@
     },
     "/api/v1/consultations/{id}/workflow": {
       "get": {
-        "description": "`governed: false` means the platform default consultation loop governs — the outcome for every consultation with no workflow assignment and no selection at open, and also the fallback when dispatch of a selected workflow could not proceed. `inputSchema` is always null: no per-definition input schema is declared anywhere in the substrate yet, and the field is present so declaring one later is additive rather than a new field to discover.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "`governed: false` means the platform default consultation loop governs — the outcome for every consultation with no workflow assignment and no selection at open, and also the fallback when dispatch of a selected workflow could not proceed. `inputSchema` is always null: no per-definition input schema is declared anywhere in the substrate yet, and the field is present so declaring one later is additive rather than a new field to discover.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:read`).\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_getGoverningWorkflow",
         "parameters": [
           {
@@ -32658,12 +32688,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:read"
+        ]
       }
     },
     "/api/v1/dna-writing-styles/doctor/{doctorId}": {
