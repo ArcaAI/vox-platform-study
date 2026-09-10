@@ -848,6 +848,23 @@ export function scanSourceForTests(raw: string, file: string): Set<string> {
     const HELPER = new RegExp(`\\b(?:${TS_ENV_HELPERS.join('|')})\\(\\s*(['"\`])([A-Z][A-Z0-9_]{1,})\\1`, 'g');
     while ((match = HELPER.exec(source)) !== null) found.add(match[2] as string);
 
+    // …and reads through an injected ConfigService (see `TS_CONFIG_SERVICE_READERS`).
+    // The receiver must literally be named `configService` and the key must be
+    // SCREAMING_SNAKE, so `sessions.get('X')` and `get('some.dotted.key')` are
+    // both excluded by construction — not by a deny-list.
+    const CONFIG_SERVICE = new RegExp(
+        `\\bconfigService\\.(?:${TS_CONFIG_SERVICE_READERS.join('|')})(?:<[^>()]*>)?\\(\\s*(['"\`])([A-Z][A-Z0-9_]{1,})\\1`,
+        'g',
+    );
+    while ((match = CONFIG_SERVICE.exec(source)) !== null) found.add(match[2] as string);
+
+    // …and through a helper that takes the ConfigService first and the key second.
+    const CONFIG_SERVICE_HELPER = new RegExp(
+        `\\b(?:${TS_CONFIG_SERVICE_KEY_SECOND_HELPERS.join('|')})\\(\\s*[^,()]*,\\s*(['"\`])([A-Z][A-Z0-9_]{1,})\\1`,
+        'g',
+    );
+    while ((match = CONFIG_SERVICE_HELPER.exec(source)) !== null) found.add(match[2] as string);
+
     return found;
 }
 
@@ -870,6 +887,49 @@ export function scanSourceForTests(raw: string, file: string): Set<string> {
  * reading `process.env` directly at the call site, which needs no list.
  */
 const TS_ENV_HELPERS = ['getEnvString', 'getEnvBoolean', 'getEnvNumber'] as const;
+
+/**
+ * TASK-940 — env reads that go through a `ConfigService` instead of `process.env`.
+ *
+ * Nest's `ConfigService` IS the process environment wearing an injectable: every
+ * `this.configService.get('LIVE_DOC_HEARTBEAT_MS')` is as much a read as
+ * `process.env.LIVE_DOC_HEARTBEAT_MS`, and HOPE's own `IConfigService`
+ * (`getConfigValue`) resolves the same names. Neither shape contains the token
+ * `process.env`, so `scanTypeScriptReads()` could not see any of them.
+ *
+ * That blind spot hid 21 real reads across THREE unrelated subsystems while
+ * `env:sync --check` reported OK: 18 in `LiveDocumentationService`,
+ * `HARNESS_BASE_URL` in the harness-ops client, and the two
+ * `TENANT_IDP_*_ENABLED` directory-sync kill-switches. A gate that cannot fail
+ * is worse than no gate, because it is evidence.
+ *
+ * ## Why the name filter is the whole safety mechanism
+ *
+ * `.get()` is also how you read a Map, a cache, a header bag and the settings
+ * registry itself. Matching it by receiver NAME (`configService`) and by a
+ * SCREAMING_SNAKE key (`[A-Z][A-Z0-9_]+`, the same filter the `process.env`
+ * regex uses) is what keeps `this.sessions.get('X')` and a dotted control-plane
+ * key like `agentic.context.transcript.mode` out of the turbo cache key. Both
+ * exclusions are pinned by tests — widening either one hashes unrelated values
+ * into every task's key.
+ *
+ * Adding a METHOD here is for a genuine env-resolving accessor only. It is not
+ * a place to route a read you would rather not declare.
+ */
+const TS_CONFIG_SERVICE_READERS = ['get', 'getConfigValue'] as const;
+
+/**
+ * TASK-940 — helpers that take the `ConfigService` FIRST and the key SECOND.
+ *
+ * Distinct from {@link TS_ENV_HELPERS}, whose members take the key as their
+ * first argument. `readNumericEnv(this.configService, 'LIVE_DOC_DEBOUNCE_MS')`
+ * is the shape that hid seven of live-documentation's eighteen names — the
+ * existing helper regex anchors on the key being argument one, so it could not
+ * match. Same named-list rationale as `TS_ENV_HELPERS`: there are exactly two,
+ * they live in one file, and the alternative (reading through `configService`
+ * directly at the call site) needs no list at all.
+ */
+const TS_CONFIG_SERVICE_KEY_SECOND_HELPERS = ['readNumericEnv', 'readBooleanEnv'] as const;
 
 export function scanTypeScriptReads(): Set<string> {
     const listed = execSync('git ls-files "*.ts" "*.tsx" "*.mts" "*.cts" "*.mjs" "*.js"', { cwd: ROOT, encoding: 'utf8' })
@@ -943,6 +1003,13 @@ export function scanPythonReads(): Set<string> {
  */
 function computeGlobalEnv(): string[] {
     const names = new Set<string>(declaredSurface.map((v) => v.name));
+    // TASK-940 — a governed key's legacy env OVERRIDE is a read, so it belongs in
+    // the cache key, whatever tier owns the VALUE. `declaredSurface` deliberately
+    // carries only the env-supplied tiers (rendering a control-plane key into an
+    // operator-facing `.env.sample` is the drift this generator removes), which
+    // left eight real `global-kv` overrides hashed into nothing at all.
+    // Reads here, declarations nowhere else — see `SettingDescriptor.envOverride`.
+    for (const d of HOPE_SETTINGS_REGISTRY.list()) for (const name of d.envOverride ?? []) names.add(name);
     for (const name of scanTypeScriptReads()) names.add(name);
     for (const name of pythonAllNames) names.add(name);
     for (const name of scanPythonReads()) names.add(name);

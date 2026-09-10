@@ -15,7 +15,7 @@
  *   • the files on disk match the generator (the drift gate, as a unit test)
  */
 
-import { BOOTSTRAP_ENV_SETTINGS, toEnvVarName } from '@arcaai/applications';
+import { BOOTSTRAP_ENV_SETTINGS, HOPE_SETTINGS_REGISTRY, toEnvVarName } from '@arcaai/applications';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -259,6 +259,159 @@ describe('env:sync — rendered documentation is not a read', () => {
     // hide the doc snippets would lose this — the exclusion is scoped to
     // documentation trees precisely so it cannot.
     expect(scanTypeScriptReads().has('JWT_SECRET_KEY')).toBe(true);
+  });
+});
+
+/**
+ * TASK-940 Lane 1a — `ConfigService` reads are reads.
+ *
+ * `LiveDocumentationService` read 18 distinct env names through
+ * `this.configService.get('NAME')` and through two local helpers that take the
+ * key as their SECOND argument. Neither shape contains the token `process.env`,
+ * so the scanner could not see any of them and `turbo.json#globalEnv` declared
+ * none of them — while `env:sync --check` reported OK. A gate that cannot fail
+ * is the defect; these tests are what make it able to fail.
+ */
+describe('env:sync — ConfigService reads (TASK-940)', () => {
+  it('detects `configService.get(\'NAME\')`, with or without a type argument', () => {
+    const source = [
+      "const a = this.configService.get('LIVE_DOC_PROBE_PLAIN');",
+      "const b = this.configService.get<string>('LIVE_DOC_PROBE_TYPED');",
+      "const c = configService.get('LIVE_DOC_PROBE_BARE');",
+    ].join('\n');
+
+    const found = scanSourceForTests(source, 'packages/applications/src/probe.ts');
+
+    expect(found.has('LIVE_DOC_PROBE_PLAIN')).toBe(true);
+    expect(found.has('LIVE_DOC_PROBE_TYPED')).toBe(true);
+    expect(found.has('LIVE_DOC_PROBE_BARE')).toBe(true);
+  });
+
+  it('detects a read through a helper that takes the key as its SECOND argument', () => {
+    // `readNumericEnv(this.configService, 'LIVE_DOC_SEGMENT_THRESHOLD')` — the
+    // existing TS_ENV_HELPERS list only matched the key as the FIRST argument,
+    // which is why these seven stayed invisible.
+    const source = [
+      "this.a = readNumericEnv(this.configService, 'LIVE_DOC_PROBE_NUMERIC');",
+      "this.b = readBooleanEnv(this.configService, 'LIVE_DOC_PROBE_BOOLEAN');",
+    ].join('\n');
+
+    const found = scanSourceForTests(source, 'packages/applications/src/probe.ts');
+
+    expect(found.has('LIVE_DOC_PROBE_NUMERIC')).toBe(true);
+    expect(found.has('LIVE_DOC_PROBE_BOOLEAN')).toBe(true);
+  });
+
+  it('does NOT mistake a dotted settings key for an env name', () => {
+    // The settings registry's own keys flow through the same `.get()`-shaped
+    // calls in places. An env name is SCREAMING_SNAKE by construction, so the
+    // `[A-Z][A-Z0-9_]+` filter is what keeps a control-plane key out of the
+    // turbo cache key.
+    const source = [
+      "const a = this.effectiveSettings.get('agentic.context.liveFlush.idleMs');",
+      "const b = this.configService.get('agentic.context.transcript.mode');",
+    ].join('\n');
+
+    expect([...scanSourceForTests(source, 'packages/applications/src/probe.ts')]).toEqual([]);
+  });
+
+  it('does NOT treat an unrelated `.get()` receiver as a config read', () => {
+    // A Map/cache/Redis `.get('SOME_KEY')` is not a configuration input, and
+    // declaring one would hash an unrelated value into every task's cache key.
+    const source = [
+      "const a = this.sessions.get('NOT_A_CONFIG_KEY');",
+      "const b = cache.get('ALSO_NOT_CONFIG');",
+      "const c = headers.get('X_REQUEST_ID');",
+    ].join('\n');
+
+    expect([...scanSourceForTests(source, 'packages/applications/src/probe.ts')]).toEqual([]);
+  });
+
+  it('sees the real live-documentation reads in the repo, by both shapes', () => {
+    const found = scanTypeScriptReads();
+    // direct `.get()` …
+    for (const name of ['LIVE_DOC_HEARTBEAT_MS', 'LIVE_DOC_ENABLED', 'LIVE_DOC_STATS_TTL_SEC', 'LIVE_DOC_TEXT_MAX_TOKENS']) {
+      expect(found.has(name), `${name} must be detected`).toBe(true);
+    }
+    // … and second-argument helper indirection.
+    for (const name of ['LIVE_DOC_SEGMENT_THRESHOLD', 'LIVE_DOC_DEBOUNCE_MS', 'LIVE_DOC_MIN_INTERVAL_MS']) {
+      expect(found.has(name), `${name} must be detected`).toBe(true);
+    }
+  });
+
+  it('sees the three undeclared reads that were NOT in live-documentation', () => {
+    // The generator's blindness spanned three unrelated subsystems, not one
+    // service. `HARNESS_BASE_URL` is the proof it hid ordinary topology too,
+    // not only control-plane knobs that arguably should not be env at all.
+    const found = scanTypeScriptReads();
+    expect(found.has('HARNESS_BASE_URL')).toBe(true);
+    expect(found.has('TENANT_IDP_GOOGLE_DIRECTORY_ENABLED')).toBe(true);
+    expect(found.has('TENANT_IDP_MS_GRAPH_ENABLED')).toBe(true);
+  });
+
+  it('registers every one of them in turbo.json#globalEnv', () => {
+    const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
+    const missing = [...scanTypeScriptReads()].filter((name) => !globalEnv.includes(name));
+    expect(missing, 'a detected read that reaches no cache key is the original defect').toEqual([]);
+  });
+});
+
+/**
+ * TASK-940 Lane 1b — a governed key's legacy env OVERRIDE is a declared fact.
+ *
+ * Eight live-documentation names were already governed by a registry descriptor
+ * with env deliberately kept as an override. None reached `globalEnv` anyway,
+ * because the generator folds only `ENV_SUPPLIED_TIERS` ({env, vault-kv}) into
+ * the declared surface and all eight descriptors are `global-kv` — correctly so,
+ * since rendering a control-plane key into `.env.sample` is the drift this
+ * generator exists to remove.
+ *
+ * `envOverride` closes that without re-opening it: the name reaches the turbo
+ * cache key (it IS read, so its value changes behaviour) and stays out of every
+ * operator-facing env file (its home is the control plane). It also makes the
+ * pairing queryable, which is what lets the override be RETIRED on purpose
+ * later — today the pairing exists only as a comment in a constructor.
+ */
+describe('env:sync — descriptor envOverride (TASK-940)', () => {
+  const overridesInRegistry = HOPE_SETTINGS_REGISTRY.list().flatMap((d) => [...(d.envOverride ?? [])]);
+
+  it('declares the live-documentation overrides on their governing descriptors', () => {
+    expect(overridesInRegistry.length).toBeGreaterThan(0);
+    for (const name of [
+      'LIVE_DOC_SEGMENT_THRESHOLD',
+      'LIVE_DOC_DEBOUNCE_MS',
+      'LIVE_DOC_MIN_INTERVAL_MS',
+      'AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS',
+      'AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN',
+      'AGENTIC_CONTEXT_TRANSCRIPT_MODE',
+      'LIVE_DOC_TEXT_TIMEOUT_MS',
+      'LIVE_DOC_GROUNDEDNESS_ENABLED',
+    ]) {
+      expect(overridesInRegistry, `${name} must be declared as an envOverride`).toContain(name);
+    }
+  });
+
+  it('folds every envOverride into turbo.json#globalEnv regardless of tier', () => {
+    const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
+    const missing = overridesInRegistry.filter((name) => !globalEnv.includes(name));
+    expect(missing, 'an override that is read but hashed into no cache key').toEqual([]);
+  });
+
+  it('keeps every envOverride OUT of the operator-facing env files', () => {
+    // The value's home is the control plane. Rendering it as an env line would
+    // invite an operator to set a value the registry then overrules.
+    for (const path of GENERATED_ENV_ARTIFACTS) {
+      const declared = new Set(keysOf(artifact(path)));
+      const leaked = overridesInRegistry.filter((name) => declared.has(name));
+      expect(leaked, `${path} must not declare a control-plane override`).toEqual([]);
+    }
+  });
+
+  it('never declares an override on a descriptor that is already env-tier', () => {
+    // An `env`-tier key's name IS its declaration — a second one would be two
+    // spellings of the same fact, and the drift this generator removes.
+    const contradictory = HOPE_SETTINGS_REGISTRY.list().filter((d) => (d.envOverride?.length ?? 0) > 0 && (d.tier === 'env' || d.tier === 'vault-kv')).map((d) => d.key);
+    expect(contradictory).toEqual([]);
   });
 });
 

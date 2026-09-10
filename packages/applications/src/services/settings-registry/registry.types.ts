@@ -160,6 +160,35 @@ export interface SettingDescriptor {
    */
   targetTier?: StorageTier;
   /**
+   * Legacy environment-variable name(s) that still act as an OVERRIDE for this
+   * key, in addition to the registry cascade. Declared here so the pairing is a
+   * queryable fact rather than a comment in a consumer's constructor.
+   *
+   * Why this field has to exist (TASK-940). `scripts/env-sync.mts` folds only
+   * `tier: 'env' | 'vault-kv'` descriptors into the declared surface, because
+   * rendering a control-plane key into `.env.sample` would invite an operator to
+   * set a value the registry then overrules. But a name a process genuinely
+   * READS must reach `turbo.json#globalEnv` regardless of which tier owns the
+   * VALUE — `globalEnv` is a cache-correctness declaration, and an undeclared
+   * read means changing it invalidates no cached task. Before this field there
+   * was no mechanism by which a `global-kv` descriptor's env override could
+   * reach the cache key, and eight live-documentation overrides reached it not
+   * at all while `env:sync --check` reported OK.
+   *
+   * The generator therefore treats these names as READS (into `globalEnv`) and
+   * never as DECLARATIONS (never rendered into any `.env.sample`). Both halves
+   * are pinned by `scripts/__tests__/env-sync.test.ts`.
+   *
+   * Never set this on an `env`/`vault-kv` descriptor: there the key's own name
+   * IS its declaration, and a second spelling of the same fact is the drift the
+   * generator exists to remove (also pinned by a test).
+   *
+   * Absent ⇒ the registry cascade is the only way to set this key. That is the
+   * target state for every entry here, so removing a name from this list — once
+   * the consumer stops reading it — is the point, not a loss.
+   */
+  envOverride?: readonly string[];
+  /**
    * The deployable(s) that receive this key over
    * `GET /api/v1/internal/effective-config?service=<name>`. Naming a service
    * here is the ONLY step needed to put a key on that wire: the read service
