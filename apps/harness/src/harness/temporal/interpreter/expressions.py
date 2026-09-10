@@ -334,6 +334,8 @@ def expression_problems(source: Any) -> list[str]:
         parse_expression(source)
     except ExpressionSyntaxError as exc:
         return [f"expression does not parse: {exc}"]
+    except RecursionError:
+        return ["expression is too deeply nested"]
     return []
 
 
@@ -632,6 +634,11 @@ def evaluate_expression(source: str, context: dict[str, Any]) -> EvaluationResul
         ast = parse_expression(source)
     except ExpressionSyntaxError as exc:
         return EvaluationResult(error=str(exc))
+    except RecursionError:
+        # TASK-947 R1 #2 — the parser recurses too; ~120 nested parentheses (244 characters,
+        # under the authoring length cap) escaped as a raw RecursionError through
+        # `compose_prompt` and the `core.agent` activity. TOTAL means the parse as well.
+        return EvaluationResult(error="expression too deeply nested")
     try:
         return EvaluationResult(value=_eval(ast, context))
     except _EvalError as exc:

@@ -269,4 +269,17 @@ describe('OD-9 — the per-turn `core.agent` tier reads a COMPOSITE instruction 
     expect(resolved.promptId).toBe(BASE_TEMPLATE);
     expect(resolved.resolvedVersionNumber).toBe(FRAGMENT_PIN);
   });
+
+  it('R1 #3 / R2 L-3 — when two fragments bind the SAME template, the pin is the UNCONDITIONAL fragment`s, not the first one`s', async () => {
+    const resolved = await resolveLiveWith(
+      compositeInstruction([
+        { key: 'revisit', promptTemplateId: BASE_TEMPLATE, promptVersionNumber: 2, when: REVISIT },
+        { key: 'base', promptTemplateId: BASE_TEMPLATE, promptVersionNumber: FRAGMENT_PIN },
+      ]),
+    );
+
+    expect(resolved.promptId).toBe(BASE_TEMPLATE);
+    expect(resolved.resolvedVersionNumber).toBe(FRAGMENT_PIN);
+    expect(resolved.content).toBe(`v${FRAGMENT_PIN} body of ${BASE_TEMPLATE}`);
+  });
 });

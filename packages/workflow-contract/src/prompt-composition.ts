@@ -124,22 +124,32 @@ export function selectPromptFragments(
   // inputs and rendered strings), which is what the evaluator's `ExpressionValue` names.
   const context = scope as unknown as { [key: string]: ExpressionValue };
   for (const fragment of fragments) {
+    // R1 #4/#5 — a malformed artifact composes or refuses BY NAME, exactly like the Python mirror:
+    // a non-object entry is skipped, a non-string key is stringified (the type says `string[]`
+    // all the way into telemetry).
+    if (typeof fragment !== 'object' || fragment === null) continue;
+    const key = String(fragment.key);
     if (fragment.when === null || fragment.when === undefined) {
-      selected.push(fragment);
+      selected.push({ ...fragment, key });
       continue;
     }
     const verdict = evaluateCondition(fragment.when, context);
     if (verdict.error !== undefined) {
-      excluded.push({ key: fragment.key, reason: 'condition_error', detail: verdict.error });
+      excluded.push({ key, reason: 'condition_error', detail: verdict.error });
       continue;
     }
     if (!verdict.taken) {
-      excluded.push({ key: fragment.key, reason: 'condition_false' });
+      excluded.push({ key, reason: 'condition_false' });
       continue;
     }
-    selected.push(fragment);
+    selected.push({ ...fragment, key });
   }
   return { selected, excluded };
+}
+
+/** A fragment's content, or the empty string for a malformed artifact that carries none (R1 #4). */
+function contentOf(holder: { readonly content?: unknown }): string {
+  return typeof holder.content === 'string' ? holder.content : '';
 }
 
 /** The §4.1 algorithm. Throws only what `renderTemplate` throws, plus `PromptCompositionEmptyError`. */
@@ -152,7 +162,7 @@ export function composePrompt(
   const templateRef = options.templateRef ?? null;
 
   if (resolvedPrompt.source !== 'composite') {
-    const prompt = renderTemplate(resolvedPrompt.content, scope, templateRef === null ? undefined : { templateRef });
+    const prompt = renderTemplate(contentOf(resolvedPrompt), scope, templateRef === null ? undefined : { templateRef });
     return { prompt, selected: [], excluded: [] };
   }
 
@@ -165,7 +175,7 @@ export function composePrompt(
 
   const join = typeof resolvedPrompt.join === 'string' ? resolvedPrompt.join : PROMPT_COMPOSITION_JOIN;
   const parts = selected.map((fragment) =>
-    renderTemplate(fragment.content, scope, { templateRef: templateRef === null ? `#${fragment.key}` : `${templateRef}#${fragment.key}` }),
+    renderTemplate(contentOf(fragment), scope, { templateRef: templateRef === null ? `#${fragment.key}` : `${templateRef}#${fragment.key}` }),
   );
   return { prompt: parts.join(join), selected: selected.map((fragment) => fragment.key), excluded };
 }
@@ -173,8 +183,8 @@ export function composePrompt(
 /** The unconditional fragments' RAW content joined — what publish stamps as `content` (OD-3). */
 export function staticProjection(fragments: readonly ResolvedPromptFragment[], join: string = PROMPT_COMPOSITION_JOIN): string {
   return fragments
-    .filter((fragment) => fragment.when === null || fragment.when === undefined)
-    .map((fragment) => fragment.content)
+    .filter((fragment) => typeof fragment === 'object' && fragment !== null && (fragment.when === null || fragment.when === undefined))
+    .map((fragment) => contentOf(fragment))
     .join(join);
 }
 

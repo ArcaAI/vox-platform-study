@@ -62,7 +62,7 @@ describe('readPromptFragments', () => {
   it('returns the fragments of a composite instruction with their fields typed', () => {
     const fragments = readPromptFragments(composite);
     expect(fragments).toHaveLength(4);
-    expect(fragments[1]).toEqual({ key: 'base', promptTemplateId: T1, promptVersionNumber: 3 });
+    expect(fragments[1]).toEqual({ key: 'base', index: 1, promptTemplateId: T1, promptVersionNumber: 3 });
     expect(fragments[0]?.when).toContain('has(');
   });
 
@@ -77,8 +77,8 @@ describe('readPromptFragments', () => {
       fragments: [{ key: 'ok', systemPrompt: 'x' }, 'junk', { promptTemplateId: T1, promptVersionNumber: '3' }],
     });
     expect(fragments).toEqual([
-      { key: 'ok', systemPrompt: 'x' },
-      { key: '', promptTemplateId: T1 },
+      { key: 'ok', index: 0, systemPrompt: 'x' },
+      { key: '', index: 2, promptTemplateId: T1 },
     ]);
   });
 });

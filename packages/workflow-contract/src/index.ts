@@ -103,14 +103,17 @@ export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } fro
 // over the one render scope, rendered per fragment and joined. Mirrored in Python by the
 // harness's `prompt_composition.py` and held to `tests/contracts/prompt-composition.fixture.json`.
 export {
+  AGENT_PROMPT_CONDITION_MAX_DEPTH,
   AGENT_PROMPT_CONDITION_MAX_LENGTH,
   AGENT_PROMPT_FRAGMENT_KEY_PATTERN,
   AGENT_PROMPT_FRAGMENT_MAX,
   agentInstructionForm,
   boundTemplateRefs,
+  conditionNestingDepth,
   isCompositeInstruction,
   mapBoundTemplateRefs,
   primaryTemplateId,
+  primaryTemplateRef,
   readPromptFragments,
 } from './agent-instruction';
 export type { AgentInstructionForm, AgentPromptFragment, BoundTemplateRef, BoundTemplateRewrite } from './agent-instruction';
