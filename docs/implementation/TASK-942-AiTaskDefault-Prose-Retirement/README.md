@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — 1 owner decision (OD-1); work-ready on a go |
+| **Status** | In Progress — OD-1 answered 2026-09-10 (keep the provenance); executing |
 | **Type** | docs / refactor |
 | **Branch** | `dev-2.2` |
 | **Base** | `ef8c64117` |
@@ -118,14 +118,73 @@ and that no comment describes current behaviour through the dead facade.
 
 | Id | Question | Recommendation |
 |---|---|---|
-| **OD-1** | The `@ApiProperty` on `create-ai-routing-policy.request.ts` (`configJson`) says "absorbed from `AiTaskDefault.configJson`", and that string ships in the public `openapi.json` + both console copies. Rewrite it, or keep it as provenance? | **Keep it.** It is the same shape as the four hits TASK-941 R4 preserved: it explains why the field exists, and an integrator reading "absorbed from X" learns something true about the schema's history. Rewriting it would delete the absorption record from the one place an external consumer can see it. This reverses the advice I gave at TASK-941's close — I had called it the first thing to fix, before reading it properly. If you would rather the public document name no retired entity at all, that is a defensible alternative and it is a one-line change plus the five-artifact regeneration |
+| **OD-1** | The `@ApiProperty` on `create-ai-routing-policy.request.ts` (`configJson`) says "absorbed from `AiTaskDefault.configJson`", and that string ships in the public `openapi.json` + both console copies. Rewrite it, or keep it as provenance? | **ANSWERED 2026-09-10 — KEEP the provenance.** Recommendation below stands as written. Consequence: no `@ApiProperty` is touched, so the five-artifact regeneration chain is NOT triggered and `openapi*.json` stays byte-identical. **Keep it.** It is the same shape as the four hits TASK-941 R4 preserved: it explains why the field exists, and an integrator reading "absorbed from X" learns something true about the schema's history. Rewriting it would delete the absorption record from the one place an external consumer can see it. This reverses the advice I gave at TASK-941's close — I had called it the first thing to fix, before reading it properly. If you would rather the public document name no retired entity at all, that is a defensible alternative and it is a one-line change plus the five-artifact regeneration |
 
 ## 5. Implementation Summary
 
-Not started.
+### Orchestration — three read-only classifiers, one writer
+
+Rule `14-multi-agent-worktrees.md` §3 is categorical: "Two agents must never edit the same
+checkout." Three worktrees would each need their own `pnpm install` in a monorepo this size, for
+a change that edits only comments — so the partition is **read-only fan-out** instead, which §3
+explicitly says needs no worktree. Each agent reads its own package's hits, judges keep-vs-repoint,
+and returns exact `OLD`/`NEW` patches; **the orchestrator is the single writer** and reviews every
+patch before applying it.
+
+That split also puts the expensive part where it belongs. The cost here is reading ~160 hits with
+enough surrounding code to tell provenance from stale description — genuinely read-heavy fan-out
+whose intermediate output does not belong in the orchestrator's context, which is §1's own test
+for when to delegate. The mechanical part (applying a patch) is cheap and centralising it removes
+the collision risk entirely.
+
+| Agent | Partition | Hits | Tier | Why this tier |
+|---|---|---|---|---|
+| A | `apps/api` | 20 | **sonnet** | The successor rule is already decided and stated in the brief (`AiRoutingPolicy` for non-agent tasks, the assigned `Agent` for text generation), so this is standard coding judgement over supplied context — §1's "moderate" row. Small volume, tight brief |
+| B | `packages/applications` + `packages/domains` | 89 | **opus** | The hard stage, and deliberately not downshifted. It works INSIDE the tree of the plane that absorbed the dead one, where most mentions are provenance to preserve — so the expensive judgement is "keep or repoint", exactly the discrimination §1 reserves the top tier for. A cheap tier here would rename the absorption record away |
+| C | `packages/database` | 51 | **sonnet** | Mostly already-historical count notes in seed/extension tests; the judgement is classification against a stated rule. Not haiku: a wrong KEEP→REPOINT here deletes a migration record, and §1 says a cheap tier needs a tighter brief than this volume of varied prose allows |
+
+Per §1, tier is chosen per STAGE: these three are PROPOSAL stages, and the stage whose verdict
+actually lands — reviewing and applying each patch — stays with the orchestrator. Every brief
+carries the ticket, the file boundary it owns, the successor rule, the four buckets, what it must
+not touch (`@ApiProperty`, generated files, committed migrations, assertion strings) and an exact
+return contract, per §2. Each was told to prefer **KEEP** when torn, because deleting the
+absorption record is the worse error.
+
+### Hard guard — forward only, never a revert (owner, 2026-09-10)
+
+> "870 is an old ticket, do NOT revert any things since we are all aligned the retired and
+> deprecated implementation and removed some."
+
+TASK-870 and its descendants are HISTORY, not a specification. Nothing in this ticket may
+un-retire, restore or re-reference a removed implementation, and no old ticket's prose is
+evidence that something should come back. Three ways that is enforced here:
+
+1. **The agents are READ-ONLY.** They hold no write tool, so a revert is not mechanically
+   possible from the fan-out. The only residual risk is WORDING — a patch that phrases a
+   retired entity as if it were live — and that is caught at orchestrator review, which is why
+   every patch is read before it is applied rather than applied in bulk.
+2. **KEEP-history is a bucket, not an afterthought.** Every brief says that a sentence recording
+   a removal is CORRECT and must survive, and that when torn between KEEP and REPOINT the answer
+   is KEEP because deleting the record is the worse error. A sweep that erased "TASK-881 dropped
+   the table" would be destroying exactly the alignment this guard protects.
+3. **Prose-only, by construction.** No code path, route, schema, descriptor or migration is
+   touched, so the sweep cannot restore a capability even by accident. The verification below
+   treats any behavioural diff as a failure, not as a surprise.
+
+For the record, nothing earlier in this chain reverted a removal either: TASK-940 DELETED two
+dead env reads, TASK-941 R1 retired five stale rows, R3 retired three token fields (and left
+`service_token` alone because it is LIVE — scope discipline, not restoration), R4 repointed prose
+while keeping four historical notes. Where R3's regeneration dropped `STT_BENCH_*` and corrected
+`apps/nlp/.env.sample`, it COMPLETED removals someone else had made without regenerating — the
+opposite of a revert.
+
+### Results
+
+_Pending the three agents._
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-10 | Filed at the owner's request from TASK-941's close. Inventory measured rather than carried over, which corrected the handoff twice: **238** source hits across 134 files (not the "~25" I quoted — that was the `apps/api` subset alone), and the OpenAPI hit I had recommended fixing FIRST is provenance that should probably be KEPT (OD-1). Classified: 78 untouchable (live `ResourceType` enum member, 35 committed-migration lines, generated entities/`vox-node`), 50 absorption/retirement record to keep, 110 candidates across 70 files — a filter count, not a verified defect count, with the 14 `apps/api` hits identified as the genuinely misleading core. No code changed. |
+| 2026-09-10 | OD-1 answered: KEEP the OpenAPI provenance — so no `@ApiProperty` is touched and `openapi*.json` stays byte-identical (no five-artifact regeneration). Owner guard recorded: TASK-870 is history, not a spec; nothing may un-retire or restore a removed implementation. Execution begun as three read-only classifiers (sonnet / opus / sonnet) with the orchestrator as single writer — rationale and tier choices in §5. |
