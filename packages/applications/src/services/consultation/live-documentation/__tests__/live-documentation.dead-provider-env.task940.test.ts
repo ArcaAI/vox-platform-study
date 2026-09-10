@@ -94,7 +94,10 @@ describe('LiveDocumentationService — retired provider/model env reads (TASK-94
     const consulted = configService.get.mock.calls.map(([key]) => key);
 
     expect(consulted).toContain('LIVE_DOC_ENABLED');
-    expect(consulted).toContain('LIVE_DOC_HEARTBEAT_MS');
+    // `LIVE_DOC_HEARTBEAT_MS` would have served here until Lane 3 retired it;
+    // these two are the surviving neighbours of the deleted lines.
+    expect(consulted).toContain('LIVE_DOC_TEXT_TIMEOUT_MS');
+    expect(consulted).toContain('LIVE_DOC_TEXT_MAX_TOKENS');
   });
 
   it('holds no provider/model field for an env value to land in', () => {

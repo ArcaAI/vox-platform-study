@@ -158,6 +158,23 @@ replaced it, stored the artifact but streamed nothing — so the audio half of t
 been silently lost with the node type. The emission is ported into `_run_speech` and measured by
 `test_task849_audio_two_lane_split.py`.
 
+## Environment variables (TASK-940)
+
+| Item | Ticket | Marked in | Remove in | Replacement | Status |
+|---|---|---|---|---|---|
+| `LIVE_DOC_TEXT_PROVIDER`, `LIVE_DOC_TEXT_MODEL` | TASK-940 | — (**removed outright**) | — | the tenant's assigned `TEXT_GENERATION` agent, via `HarnessPolicyService.resolveTextSelection` | **REMOVED 2026-09-10.** Not deprecated, because there was nothing live to deprecate: all three TEXT call sites overwrote both values from `resolveTextSelection`, and `live-documentation.service.module.ts` imports `HarnessPolicyServiceModule`, so the `@Optional()` resolver was always present and the env seed was unreachable in every deployed path. They also contradicted TASK-876's rule (and `09-infrastructure-devops.md` §"No hardcoded configuration") that an engine or model id is not an env var. Pinned by `live-documentation.dead-provider-env.task940.test.ts` from both directions — the retired names are never consulted, and the surviving neighbours still are |
+| `LIVE_DOC_HEARTBEAT_MS` | TASK-940 | — (**removed outright**) | — | `consultation.realtime.heartbeatMs` (`global-kv`) | **REMOVED 2026-09-10.** No deployment set it (`.env.dev` / `.env.test` / every `.env.sample`, and `hope-v2-deployment`'s `base/config/api.env` + dev overlay, which set exactly one `LIVE_DOC_*` and it is `LIVE_DOC_TEXT_TIMEOUT_MS`) and no test fixture set it either, so there was no value to migrate. NOTE the governed granularity: read once per SSE subscription in `subscribeToLiveSummary` (synchronous, no tenant in hand), so a registry write reaches subscriptions opened after the next flush refreshes the mirror — governed, but not per-flush, and the descriptor says so |
+| `LIVE_DOC_STATS_TTL_SEC` | TASK-940 | — (**removed outright**) | — | `consultation.realtime.statsTtlSec` (`global-kv`) | **REMOVED 2026-09-10.** Same evidence as `LIVE_DOC_HEARTBEAT_MS`: unset in every deployment and every fixture. Resolved per flush |
+| `LIVE_DOC_DURABLE_SNAPSHOT_MS`, `LIVE_DOC_TEXT_MAX_TOKENS`, `LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS`, `LIVE_DOC_GROUNDEDNESS_MAX_RETRIES`, `LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS` | TASK-940 | R3 | R4 | `consultation.realtime.{durableSnapshotMs,textMaxTokens,groundedness.timeoutMs,groundedness.maxRetries,groundedness.retryBackoffMs}` | **marked** — each is declared as `SettingDescriptor.envOverride` on its governing descriptor and still honoured as a PRE-RESOLUTION seed (stored row wins, env loses), the same contract `consultation.realtime.textTimeoutMs` has carried since TASK-891. `LIVE_DOC_DURABLE_SNAPSHOT_MS` was slated for outright removal and kept on evidence: three test fixtures set it — one to `0`, a meaningful value that disables periodic durable writes — through a harness that wires NO settings facade, so retiring it would have left the knob with no lane at all rather than one fewer. `envOverride` is what makes this list queryable instead of a comment in a constructor, so removal in R4 is a deliberate act rather than an archaeology exercise |
+| `LIVE_DOC_SEGMENT_THRESHOLD`, `LIVE_DOC_DEBOUNCE_MS`, `LIVE_DOC_MIN_INTERVAL_MS`, `AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS`, `AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN`, `AGENTIC_CONTEXT_TRANSCRIPT_MODE`, `LIVE_DOC_TEXT_TIMEOUT_MS`, `LIVE_DOC_GROUNDEDNESS_ENABLED` | TASK-891 / 932 / 939, declared TASK-940 | R3 | R4 | the `agentic.context.*` / `consultation.realtime.*` / `liveDoc.groundedness.*` descriptors that already govern them | **marked** — these were already overrides before TASK-940; what it added is the DECLARATION (`envOverride`), because a `global-kv` descriptor's env name previously reached `turbo.json#globalEnv` by no mechanism at all and so invalidated no cached task |
+
+**Why env names are in a deprecation register at all.** An undeclared env read is not a
+dormant surface, it is a live one with no gate over it: `turbo.json#globalEnv` hashes each
+declared name's VALUE into every task's cache key, so a read nobody declared means changing
+that value rebuilds nothing. TASK-940 found 21 such reads across three subsystems while
+`pnpm env:sync --check` reported OK. Retiring a name is therefore a cache-key change as well
+as an API change, and belongs on the same ledger as any other removal.
+
 ## Admin console routes and features
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

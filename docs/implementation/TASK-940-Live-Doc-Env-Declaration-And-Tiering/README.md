@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Pending — plan awaiting owner go |
+| **Status** | Completed |
 | **Type** | refactor / infrastructure |
 | **Branch** | `dev-2.2` |
 | **Base** | `8320ea15c` |
 | **Ancestry** | TASK-939 OD-6 ("declare the rest in `turbo.json#globalEnv` and leave the migration to a config-governance ticket"); TASK-870 Configuration Governance Program (Review) |
-| **Owner decisions** | 5 open — §4. Nothing is implemented until they are answered |
+| **Owner decisions** | 5, all answered as recommended (2026-09-10). ONE evidence-driven deviation on OD-3 — §4 |
 
 ## 1. Requirement Analysis
 
@@ -294,17 +294,182 @@ Per `01-development-workflow.md` §Test Scope Exclusions, failures from `package
 |---|---|---|
 | **OD-1** | **Sequencing against the still-active TASK-939 lane** (§2.4 — the two files this ticket needs went clean mid-survey, but that lane is still writing elsewhere in this checkout). Options: (a) Lane 1 first, then 2-3, re-checking the tree before each; (b) all four lanes now; (c) wait for TASK-939 to close entirely | **(a)**. Not primarily for collision reasons any more — `live-documentation.service.ts` is clean — but because Lane 1 is where the actual defect is (a gate that cannot fail) and it lands the declaration mechanism Lanes 2-3 then consume. Doing Lane 3 first would mean declaring knobs by a mechanism that does not exist yet |
 | **OD-2** | **Do the 7 freezes become governed, or stay declared env?** Governing them is the rule-correct answer, but three of them (`heartbeatMs`, `durableSnapshotMs`, `statsTtl`) have no per-flush resolution point and would take effect only on the next session | Govern all 7, with the honest granularity: per-flush for the 4 that have one, next-session for the 3 that do not, each documented on its descriptor. A knob that changes on the next consultation is still a redeploy avoided |
-| **OD-3** | **Does a governed knob keep its env name as an override?** The existing precedent (`minIntervalMs`, `textTimeoutMs`, `groundednessEnabled`) keeps it, seeded in the constructor so the value before the first resolve matches what that resolve would return | Keep it for the 4 with per-flush resolution (consistency with the precedent, and it is genuinely useful pre-first-flush); **retire** it for the 3 next-session ones, where a `start()`-time read makes the env seed redundant. Net +4 rather than +7 names |
+| **OD-3** | **Does a governed knob keep its env name as an override?** The existing precedent (`minIntervalMs`, `textTimeoutMs`, `groundednessEnabled`) keeps it, seeded in the constructor so the value before the first resolve matches what that resolve would return | Accepted as recommended (keep 4, retire 3) — **implemented as keep 5, retire 2.** See the deviation note below |
+
+### Deviation from OD-3 (evidence-driven, 2026-09-10)
+
+The accepted answer retired `LIVE_DOC_DURABLE_SNAPSHOT_MS` along with `LIVE_DOC_HEARTBEAT_MS`
+and `LIVE_DOC_STATS_TTL_SEC`, on my evidence that "nothing sets any of the 7". **That evidence
+was incomplete: it scanned env files and the cluster manifests, not test fixtures.** Retiring the
+name broke two tests in `live-documentation.service.test.ts`, which is how it surfaced.
+
+Three fixtures set `LIVE_DOC_DURABLE_SNAPSHOT_MS` — `live-documentation.service.test.ts` ×2 at
+`'1000'` to exercise the throttle, and `live-documentation.governed-graph-mode.task858.test.ts`
+at `'0'`, which is a MEANINGFUL value here (it disables periodic durable writes). Decisively,
+the harness they use passes `undefined` for `effectiveSettings`, so retiring the env name would
+have left that knob with **no lane at all**, not one fewer — and "the fallback for an unwired
+settings graph" is the exact reason the `textTimeoutMs` exemplar kept its own env var.
+
+So `durableSnapshotMs` keeps its override and the split is 5/2. `heartbeatMs` and `statsTtlSec`
+are set by no deployment **and** no fixture, and were retired as decided. Net effect on the
+estimate: 503 entries rather than 502.
+
+Flagging rather than silently absorbing this, because it changes an answer the owner gave — and
+because the lesson generalises: a "nothing reads this" claim about an env var has to include
+fixtures, or it is a claim about production only.
 | **OD-4** | **Scope of the Lane 1a scanner change.** Measured: the scanner change surfaces **21** undeclared reads, **3 outside live-documentation** (§2.1a). Fix all of them here, or declare them and file the tiering separately? | **Declare all 21 here** — leaving a known undeclared read is exactly how this defect survived a passing gate. But only live-documentation gets *tiered* in this ticket: `HARNESS_BASE_URL` is already correctly env-tier and needs nothing but a declaration, and the two `TENANT_IDP_*` kill-switches are `redis-flag`-shaped, which is a separate decision on a separate subsystem — file that under TASK-870 |
 | **OD-5** | **Ticket identity.** TASK-940 standalone, or a lane inside TASK-870 (Configuration Governance Program, status Review)? | **TASK-940 standalone.** TASK-870 is in Review and its scope is the 341-descriptor model, not generator detection. TASK-939 OD-6 explicitly deferred this to "a config-governance ticket" — this is it, cross-referenced both ways |
 
 ## 5. Implementation Summary
 
-Not started — awaiting the OD round.
+All four lanes landed. `globalEnv` **486 → 503**.
+
+| Commit | Lane |
+|---|---|
+| `60ba17662` | 1 — the generator sees `ConfigService` reads; `SettingDescriptor.envOverride` |
+| `f22b20732` | 2 — the two dead provider/model reads deleted |
+| (this commit) | 3 + 4 — the seven freezes tiered; deprecation register |
+
+### What changed, by lane
+
+**Lane 1a — the scanner.** `TS_CONFIG_SERVICE_READERS` (`get`, `getConfigValue`) matches on
+receiver NAME plus a SCREAMING_SNAKE key, and `TS_CONFIG_SERVICE_KEY_SECOND_HELPERS`
+(`readNumericEnv`, `readBooleanEnv`) covers the shape where the key is argument TWO — which is
+why the pre-existing `TS_ENV_HELPERS` list, anchored on argument ONE, never rescued these. The
+name filter is the safety mechanism, not a deny-list: tests pin that `sessions.get('X')` and a
+dotted `agentic.context.*` key both stay out of the cache key. `getConfigValue` added **zero**
+names (all 8 of its SCREAMING_SNAKE keys were already declared) and is in as a backstop.
+
+**Lane 1b — `SettingDescriptor.envOverride`.** Folded into `computeGlobalEnv()` for every tier,
+rendered into no `.env.sample`: reads there, declarations nowhere else. A test forbids it on an
+`env`/`vault-kv` descriptor, where the key's own name already IS the declaration.
+
+**Lane 2 — deletion, not declaration.** `LIVE_DOC_TEXT_PROVIDER` / `LIVE_DOC_TEXT_MODEL` gone,
+with the three call sites now declaring `let provider: string | undefined` so an unwired resolver
+leaves selection to TEXT's own default instead of a pinned engine.
+
+**Lane 3 — seven `consultation.realtime.*` descriptors.** Built through one `budget()` mapper so
+the shared half (tier, scope, `failMode`) is identical by construction, and resolved as one batch
+by `resolveRealtimeBudgets(tenantId)` on the flush path beside the `textTimeoutMs` /
+`groundednessEnabled` siblings. Assigned once per flush, so no consumer can observe a
+half-updated set. Defaults are byte-identical to the constructor literals they replace.
+
+Two implementation details worth recording:
+
+- **The groundedness trio is mutated in place**, not re-passed. `LiveToolRegistry` captures its
+  dependency bundle by identity in a session's frozen tool plan, so reassigning a field on the
+  service would never reach a plan already built — the same mechanism `toolEnvDefaults` already
+  uses for the groundedness GATE. First attempt passed getters and failed to typecheck against
+  the registry's `number` contract, which is what surfaced the constraint.
+- **`??` is load-bearing on `durableSnapshotMs`.** `0` is a meaningful value (it disables periodic
+  durable writes) and a fixture passes it, so `||` anywhere on that path would silently promote
+  an explicit "never" to the 30 s default. Pinned by its own test.
+
+### Corrections to this ticket's own analysis
+
+Three, all found by implementing it:
+
+1. **The declared-surface ceiling needed no bump.** §2.3 predicted one. It was wrong:
+   `envOverride` enters READS, not declarations, so the TS surface stayed at 142 against the
+   `<= 155` ceiling. No test was touched for it.
+2. **`durableSnapshotMs` and `statsTtlSec` are consulted per flush**, not at session start as
+   §2.2(b) implied — only `heartbeatMs` is bound per SSE subscription. Its descriptor documents
+   that narrower granularity rather than claiming per-flush.
+3. **OD-3's 4-keep/3-retire split became 5-keep/2-retire** — see §4.
+
+### A self-inflicted diff, reverted before commit
+
+Running `prettier --write` over the touched files to clear three `prettier/prettier`
+warnings I had introduced also reformatted **pre-existing** code — most destructively
+`scripts/env-sync.mts`, which is written with 4-space indentation and long single-line
+descriptors: prettier reindented the whole file, turning a ~70-line change into 657 lines
+of noise.
+
+The gate scoping settles which style is correct, and it differs by directory:
+
+| Tree | Prettier enforced? | Resolution |
+|---|---|---|
+| `packages/applications/**` | YES — `prettier/prettier` runs as an ESLint rule under `pnpm lint` | keep prettier's formatting; leaving my own 3 warnings would fail the "no new lint errors" gate |
+| `scripts/**` | NO — no `eslint.config.*`, no `package.json` (so outside `turbo run lint`), and every `*:format:check` script targets `apps/*` / `packages/*` only | restore the file's own 4-space style |
+
+So `scripts/env-sync.mts` and `scripts/__tests__/env-sync.test.ts` were restored from the
+Lane 1 commit and the Lane 3 test correction re-applied by hand in the file's own idiom.
+Verified whitespace-only before reverting (`git diff -w` showed the churn was entirely
+re-wrapping, no semantic change), and re-verified green afterwards. `_karpathy.md` §3:
+"Match existing style, even if you'd do it differently" — and `pnpm format` writing
+`**/*.ts` is not the same thing as a gate requiring it.
+
+### Cache-key outcome (measured, vs. §2.3's estimate of ~505)
+
+| Step | Entries |
+|---|---|
+| Baseline | 486 |
+| Lane 1 (+21 detected reads) | 507 |
+| Lane 2 (−2 dead) | 505 |
+| Lane 3 (−2 retired) | **503** |
+
+A CI cache cold-start on the first pipeline after merge is expected and is the point: until now,
+changing `LIVE_DOC_HEARTBEAT_MS` invalidated nothing.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `scripts/env-sync.mts` | two reader lists + two scanner shapes; `envOverride` folded into `computeGlobalEnv()` |
+| `scripts/__tests__/env-sync.test.ts` | 12 new tests across two describes |
+| `packages/applications/.../registry.types.ts` | `SettingDescriptor.envOverride` |
+| `.../descriptors/agentic-context.descriptors.ts` | 6 `envOverride` declarations |
+| `.../descriptors/consultation-realtime.descriptors.ts` | 7 new keys + defaults + descriptors + `CONSULTATION_REALTIME_KEYS` |
+| `.../descriptors/feature-availability.descriptors.ts` | `envOverride` on the groundedness gate, forwarded through `FeatureSpec` |
+| `.../live-documentation/live-documentation.service.ts` | 9 constructor reads removed; `RealtimeBudgets` + `resolveRealtimeBudgets`; 11 consumers repointed |
+| `.../__tests__/live-documentation.dead-provider-env.task940.test.ts` | new (3 tests) |
+| `.../__tests__/live-documentation.realtime-budgets.task940.test.ts` | new (8 tests) |
+| `turbo.json`, `env-surface.generated.md` | generated |
+| `docs/operations/deprecation-register.md` | new §"Environment variables (TASK-940)" |
+
+### Verification (actual output)
+
+```
+$ pnpm env:sync:check
+env:sync --check OK — 12 artifacts match their declarations
+  (142 TS keys + 308 Python fields · 503 globalEnv entries);
+  no unread keys in 7 operator-facing files.
+
+$ npx vitest run scripts/__tests__/env-sync.test.ts
+Test Files  1 passed (1)      Tests  51 passed (51)
+
+$ npx vitest run packages/applications/src/services/consultation/live-documentation/
+Test Files  52 passed (52)    Tests  540 passed (540)
+
+$ pnpm --filter @arcaai/applications build
+(tsc, no output)
+
+$ pnpm --filter @arcaai/applications test
+Test Files  1 failed | 752 passed | 1 skipped (754)
+Tests  12673 passed | 6 skipped (12679)
+
+$ pnpm typecheck:all
+Tasks:    44 successful, 44 total
+(+ mypy: text 81, nlp 64, guardrail 45, harness 150, tts 42 — no issues)
+
+$ pnpm --filter @arcaai/applications lint
+✖ 182 problems (0 errors, 182 warnings)      # baseline 187; none in a TASK-940 file
+```
+
+**The one failing file is out of scope and is infra, not this change.**
+`agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts` fails in its
+own `beforeAll` fixture — `PrismaClientKnownRequestError` on `unscoped.tenant.upsert` and
+`unscoped.department.deleteMany` against the **test** database, which is not running (only the dev
+compose stack is up; the isolated test infra on ports 5433/6380 is down). Its two actual tests
+report **skipped**, and it exercises `runInTenantContext` over `Tenant`/`Department` — no Prisma
+model, table or service this ticket touched. The root `vitest.config.ts` excludes
+`**/integration/**`; the package's own `test:unit` does not, which is why it appears here and not
+in the scoped runs above.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-10 | **Completed.** Lanes 1-4 landed; globalEnv 486 → 503. Three corrections to this ticket's own analysis (no ceiling bump needed; `durableSnapshotMs`/`statsTtlSec` are per-flush not session-start; OD-3 became 5-keep/2-retire on fixture evidence). Full gate output in §5. |
 | 2026-09-10 | Base moved `cbbe5c257` → `8320ea15c`: the TASK-939 R7 `minIntervalMs` migration landed mid-survey, clearing the collision on `live-documentation.service.ts` and putting the cited precedent in `HEAD`. §2.4 and OD-1 revised. |
 | 2026-09-10 | Ticket opened. Generator hypothesis confirmed and found to be two mechanisms, not one (§2.1); blast radius measured at 21 undeclared reads across 3 subsystems (§2.1a); all 18 live-doc names classified (§2.2); 2 found dead against a stated rule (§2.2(d)); cache-key cost quantified (§2.3); plan + 5 owner decisions. No code changed. |
