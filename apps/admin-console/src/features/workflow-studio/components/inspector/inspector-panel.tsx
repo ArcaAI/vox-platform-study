@@ -76,7 +76,7 @@ import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
 import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
-import { AgentPickerField } from './agent-picker-field';
+import { AgentPickerField, agentTaskLabel } from './agent-picker-field';
 import { AgentSummarySection } from './agent-summary-section';
 import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
@@ -105,6 +105,21 @@ const CONTEXT_SCHEMA_PATH = 'contextSchema';
 const GUARDRAIL_PATH = 'guardrail';
 /** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
+/**
+ * TASK-949 L2 — the TEXT_GENERATION-shaped half of `CORE_AGENT_SCHEMA`.
+ *
+ * `CORE_AGENT_SCHEMA` is one static shape, so an ASR or NER node was offered prompt variables,
+ * seven generation hyper-parameters, re-visit carry-forward, the DNA writing-style switch and a
+ * document binding. Every one of those is about GENERATING TEXT — `dna` reads "when this agent
+ * generates", `carryForward` "into this prompt", `promptVariables` "the agent's
+ * instruction-template variables" — and none is reachable from a `SPEECH_TO_TEXT` /
+ * `NAMED_ENTITY_RECOGNITION` / `TEXT_TO_SPEECH` agent at run time.
+ *
+ * Split in two because the mechanisms differ: `withheld` filters the top-level descriptor list
+ * and cannot reach inside a group, so the three `overrides.*` fields go through `fieldOverrides`.
+ */
+const LLM_ONLY_TOP_LEVEL_PATHS = ['dna', 'documentTemplateId', 'documentTemplateSlug', 'documentVersionNumber'] as const;
+const LLM_ONLY_NESTED_PATHS = [PROMPT_VARIABLES_PATH, 'overrides.generation', 'overrides.carryForward'] as const;
 /** Namespace for a secondary input's DOM id and its finding path. Not a config key: the binding
  *  itself is an edge (see the note above `SecondaryInputsSection`), so nothing is written here. */
 const SECONDARY_INPUTS_ROOT = 'inputs';
@@ -201,6 +216,29 @@ function normalizeFindingPath(path: string | undefined): string {
     .split('/')
     .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
     .join('.');
+}
+
+/**
+ * TASK-949 D-6 — LLM-only config already written on a node whose agent cannot read it.
+ *
+ * Hiding such a field silently would strand its value: the author could neither see it nor clear
+ * it, and it would still ride along in the published graph. So the paths are named instead, and
+ * an object is expanded to its leaf keys — "temperature", not just "generation".
+ */
+function strandedLlmOnlyValues(config: Record<string, unknown>): string[] {
+  const stranded: string[] = [];
+  for (const path of [...LLM_ONLY_NESTED_PATHS, ...LLM_ONLY_TOP_LEVEL_PATHS]) {
+    const value = getAtPath(config, path);
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const keys = Object.keys(value as Record<string, unknown>);
+      if (keys.length === 0) continue;
+      stranded.push(...keys.map((key) => `${path}.${key}`));
+      continue;
+    }
+    stranded.push(path);
+  }
+  return stranded;
 }
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
@@ -392,6 +430,11 @@ export function InspectorPanel({
   const contextSchemaVersions = useContextSchemaVersions(isCoreAgentNode ? (triggerContextBinding?.schemaId ?? null) : null);
   // TASK-890 J4-F6 — the agent's bound template, read only when the agent declares no variables
   // of its own. `usePromptTemplateQuickView` is the shared picker's own cached read.
+  // TASK-949 L2 — the referenced agent's task decides which of the schema's fields apply.
+  // UNKNOWN suppresses NOTHING: while the list is loading, or when the slug resolves to nothing
+  // visible, the surface fails OPEN to what it has always shown rather than making fields vanish.
+  const referencedTask = referencedAgentForNode?.task;
+  const suppressLlmOnlyFields = isCoreAgentNode && referencedTask !== undefined && referencedTask !== 'TEXT_GENERATION';
   const agentDeclaresVariables = Object.keys(referencedAgentForNode?.instruction?.variables ?? {}).length > 0;
   const boundTemplate = usePromptTemplateQuickView(
     isCoreAgentNode && !agentDeclaresVariables ? (referencedAgentForNode?.instruction?.promptTemplateId ?? null) : null,
@@ -449,11 +492,12 @@ export function InspectorPanel({
     const withheld = new Set<string>([
       ...DOCUMENT_BINDING_PATHS,
       ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
+      ...(suppressLlmOnlyFields ? LLM_ONLY_TOP_LEVEL_PATHS : []),
       ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
       ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
     ]);
     const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
-    const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
+    const hasDocumentBinding = !suppressLlmOnlyFields && allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
     // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
     const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
     const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
@@ -478,8 +522,15 @@ export function InspectorPanel({
     // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
     // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
     // recurses into the `overrides` group.
+    // TASK-949 L2 — `withheld` cannot reach a field nested inside a group, so the three
+    // `overrides.*` fields are suppressed here instead. Rendering `null` removes the control;
+    // any value already written is reported once, below, rather than disappearing with it.
+    const llmOnlySuppression = suppressLlmOnlyFields
+      ? Object.fromEntries(LLM_ONLY_NESTED_PATHS.map((path) => [path, () => null]))
+      : {};
     const fieldOverrides = isCoreAgent
       ? {
+          ...llmOnlySuppression,
           [PROMPT_VARIABLES_PATH]: ({ errors: fieldErrors }: FieldRenderContext) => (
             <PromptVariablesField
               idPrefix={node.id}
@@ -493,6 +544,9 @@ export function InspectorPanel({
               disabled={readOnly}
             />
           ),
+          // Re-applied AFTER the named entry above, so suppression wins over it: the spread order
+          // would otherwise hand `overrides.promptVariables` back to a non-LLM node.
+          ...llmOnlySuppression,
         }
       : undefined;
 
@@ -565,6 +619,15 @@ export function InspectorPanel({
             fieldOverrides={fieldOverrides}
           />
         ))}
+        {/* TASK-949 D-6 — LLM-only values on a node whose agent cannot read them. Named, not
+            dropped: a hidden field's value still rides along in the published graph. */}
+        {suppressLlmOnlyFields && strandedLlmOnlyValues(node.config).length > 0 ? (
+          <div data-testid="inapplicable-overrides" role="status" className="border-warning/40 bg-warning/10 text-foreground rounded-md border p-2 text-xs">
+            This node sets <span className="font-mono">{strandedLlmOnlyValues(node.config).join(', ')}</span>, which a{' '}
+            {agentTaskLabel(referencedTask).toLowerCase()} agent does not use — the values are kept but not applied. Clear them, or point this node at a
+            text generation agent.
+          </div>
+        ) : null}
         {hasDocumentBinding ? (
           <DocumentBindingField
             idPrefix={node.id}
