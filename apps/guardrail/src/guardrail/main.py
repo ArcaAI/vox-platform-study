@@ -125,7 +125,7 @@ async def _config_invalidation_listener(app: FastAPI) -> None:
     * the gateway's JSON ``{"key", "scope", "tenantId"}`` — drops everything;
     * ``"*"`` — drops everything;
     * ``"<tenant_id>"`` / ``"<tenant_id>|<task_key>"`` — the narrow legacy form,
-      kept so a future per-tenant publisher (the `AiTaskDefault` / `AiModel` write
+      kept so a future per-tenant publisher (the `AiRoutingPolicy` / `AiModel` write
       lanes, which are NOT this channel's publisher yet) can target one tenant.
 
     The listener never fails the service: a Redis outage degrades propagation back
@@ -322,7 +322,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # No engine providers are initialized here. Guardrail hosts no LLM
     # medical validation delegates to `apps/text`'s judge
     # lane through a per-request client built from the tenant's own
-    # `AiTaskDefault` selection, so there is nothing process-wide to construct —
+    # `AiRoutingPolicy` selection, so there is nothing process-wide to construct —
     # and no env-configured engine to fall back to.
 
     # No aux models are loaded here either. Phases 3 & 6 moved the GLiNER

@@ -416,8 +416,9 @@ class AzureOpenAIProvider:
     async def get_info(self) -> ProviderInfo:
         """Adapter capabilities only.
 
-        The MODEL listing and the default model come from `AiModel` /
-        `AiTaskDefault` on the gateway, which is where they have always been
+        The MODEL listing and the default model come from `AiModel` and the
+        gateway's resolved selection (`Agent`, or `AiRoutingPolicy` for a
+        non-agent task), which is where they have always been
         authoritative — this adapter used to echo an env var
         (``TEXT_AZURE_DEFAULT_MODEL``) that no generation path ever read.
         """

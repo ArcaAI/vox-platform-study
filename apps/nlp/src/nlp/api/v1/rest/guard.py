@@ -89,7 +89,7 @@ def _require(
             status_code=503,
             detail=(
                 f"{what} model selection is unresolved. apps/nlp names no model of its own — "
-                "the caller resolves it from AiTaskDefault (fail-closed)."
+                "the caller resolves it from AiRoutingPolicy (fail-closed)."
             ),
         )
     return model_name  # type: ignore[return-value]

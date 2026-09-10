@@ -36,7 +36,7 @@ class TestOllamaProviderInit:
         """`TEXT_OLLAMA_DEFAULT_MODEL` is gone, and nothing replaced it in-process.
 
         Its only reader was `get_info()`; the model arrives with the request,
-        resolved from `AiTaskDefault` upstream. An adapter-held default would be
+        resolved upstream by the gateway. An adapter-held default would be
         a hardcoded SELECTION."""
         from text.providers.ollama import OllamaProvider
 

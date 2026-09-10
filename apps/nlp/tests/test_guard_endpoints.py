@@ -7,7 +7,7 @@ NER / token- or text-classification calls `apps/nlp`").
 
 `apps/nlp` is the EXECUTOR only. Every one of these routes receives its model
 id AND its label taxonomy from the caller — guardrail resolves both from
-`AiTaskDefault` ⋈ `AiModel` tenant-first and owns the policy. Nothing here
+`AiRoutingPolicy` ⋈ `AiModel` tenant-first and owns the policy. Nothing here
 carries a model id, a label set or a threshold of its own.
 """
 

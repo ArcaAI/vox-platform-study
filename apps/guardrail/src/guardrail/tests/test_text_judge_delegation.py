@@ -14,7 +14,7 @@ Two guarantees are load-bearing and both are asserted here:
   `/generate` on this verdict, so a permissive default ships an unmoderated
   clinical prompt.
 * **No credential, endpoint or model literal in guardrail.** Selection comes from
-  `AiTaskDefault` (tenant row first) and the tenant's key travels as an opaque
+  `AiRoutingPolicy` (tenant row first) and the tenant's key travels as an opaque
   `provider_overrides` pass-through that guardrail never decrypts, stores or logs.
 """
 
@@ -129,7 +129,7 @@ async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers(
     assert call["headers"]["X-Service-Token"] == "tok"
     assert call["headers"]["X-Tenant-Id"] == "11111111-1111-1111-1111-111111111111"
     body = call["json"]
-    # Selection is resolved by guardrail (AiTaskDefault, tenant row first) and sent
+    # Selection is resolved by guardrail (AiRoutingPolicy, tenant row first) and sent
     # explicitly — `text` never picks a model for the safety plane.
     assert body["provider"] == "lm-studio"
     assert body["model"] == "guardian-1"

@@ -1,5 +1,5 @@
 """Unit tests for per-tenant guardrail config resolution, resolved against
-the AiTaskDefault ⋈ AiModel registry.
+the AiRoutingPolicy ⋈ AiModel registry.
 
 The DB is fully mocked — no live database is required. Two seams are used:
 ``_load_from_db`` (subclassed to return canned per-tenant rows, for the TTL
@@ -397,7 +397,7 @@ def test_the_client_targets_the_isolated_judge_lane() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DB layer: AiTaskDefault ⋈ AiModel row preference + field mapping.
+# DB layer: AiRoutingPolicy ⋈ AiModel row preference + field mapping.
 # The SQLAlchemy session is faked; rows mimic the labeled columns the real
 # query selects (default_tenant_id, model_tenant_id, provider, source_uri,
 # meta_data).
@@ -457,7 +457,7 @@ def _db_resolver(rows: list | None = None, exc: Exception | None = None) -> Tena
 @pytest.mark.asyncio
 async def test_db_tenant_task_default_wins_over_system_row() -> None:
     # Tenant-first resolution ( fix): TENANT_A's own ENABLED
-    # AiTaskDefault row wins over the SYSTEM row for the same task key — the
+    # AiRoutingPolicy row wins over the SYSTEM row for the same task key — the
     # defect this ticket fixes (previously the query pinned to SYSTEM only).
     rows = [
         _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),

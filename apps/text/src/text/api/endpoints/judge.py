@@ -101,7 +101,7 @@ class JudgeRequest(BaseModel):
 
     ``provider`` and ``model`` are both REQUIRED — selection is fail-closed
     across this service, and the caller (guardrail) has already resolved them
-    from ``AiTaskDefault``, tenant row first.
+    from ``AiRoutingPolicy``, tenant row first.
     """
 
     prompt: str = Field(..., min_length=1, max_length=200_000)

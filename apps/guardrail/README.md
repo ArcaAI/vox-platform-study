@@ -5,7 +5,7 @@ AI-powered content safety and medical context validation service. Guardrail owns
 **no LLM of its own**: medical-context judgement is delegated to `apps/text`'s isolated
 judge lane (`POST {TEXT_URL}/api/v1/generate/internal/judge`), which owns the provider
 adapters, the BYOK credential plane and the circuit breakers. Provider and model come from
-`AiTaskDefault` (`guardrail.validate`), tenant row first and SYSTEM as the platform
+`AiRoutingPolicy` (`guardrail.validate`), tenant row first and SYSTEM as the platform
 fallback.
 
 ## Features
@@ -227,7 +227,7 @@ Guardrail declares no engine. `/medical/validate` resolves the tenant's
 | --- | --- |
 | Criteria, thresholds, verdict shape, fail-closed posture | `apps/guardrail` |
 | Provider adapters, pools, circuit breakers, BYOK credential resolution | `apps/text` (`/generate/internal/judge`) |
-| Which provider + model runs | `AiTaskDefault` ⋈ `AiModel`, tenant row → SYSTEM row |
+| Which provider + model runs | `AiRoutingPolicy` ⋈ `AiModel`, tenant row → SYSTEM row |
 | Temperature / max tokens / timeout | provider-level `AiRuntimeProfile`, else the judge policy defaults |
 
 The judge lane is deliberately OUTSIDE `text`'s own moderation gate and runs on its own
@@ -241,7 +241,7 @@ the user-facing traffic it protects.
 ## Per-Tenant Engine Configuration (Admin-Configurable, TASK-338 / TASK-506)
 
 The provider/model are resolved **per tenant at request time** from the AI model registry
-(`core."AiTaskDefault"` ⋈ `core."AiModel"`), tenant row over SYSTEM row. This is the ONLY
+(`core."AiRoutingPolicy"` ⋈ `core."AiModel"`), tenant row over SYSTEM row. This is the ONLY
 source of a selection: TASK-735 deleted the env engines that used to serve as a fallback,
 so an unresolved (or tenant-VETOED) selection is a 503, never a substituted default.
 
@@ -265,12 +265,12 @@ GUARDRAIL_CONFIG_CACHE_TTL_S=60
 `GUARDRAIL_DB_CONFIG_ENABLED` defaults to **true** (TASK-506). Set it to `false` and the
 service never touches the DB and behaves exactly as the env-only configuration above.
 
-### How resolution works (TASK-506: `AiTaskDefault` ⋈ `AiModel`)
+### How resolution works (TASK-506: `AiRoutingPolicy` ⋈ `AiModel`)
 
 1. The caller (TEXT) forwards the consultation tenant as the **`X-Tenant-Id`** request header
    to `POST /api/medical/validate`.
 2. The service reads (SQLAlchemy + asyncpg, read-only, mirroring STT) the ENABLED
-   `core."AiTaskDefault"` row with `taskKey = 'guardrail.validate'` for
+   `core."AiRoutingPolicy"` row with `taskKey = 'guardrail.validate'` for
    `[tenant, SYSTEM]`, joined to the ENABLED `core."AiModel"` row matching its
    `modelSlug` in the same scope (tenant task-default preferred over SYSTEM's; the
    tenant's own model copy preferred over the SYSTEM catalog row):
@@ -324,7 +324,7 @@ See `.env.sample` for all available configuration options.
 
 ## Model Configuration
 
-- **Judgement model**: the `AiTaskDefault` row for `guardrail.validate` — the tenant's own
+- **Judgement model**: the `AiRoutingPolicy` row for `guardrail.validate` — the tenant's own
   row when it has one, the SYSTEM row otherwise. Unresolved ⇒ 503.
 - **Aux models**: `guardrail.safety` (GLiNER) and `guardrail.groundedness` (MiniCheck),
   resolved the same way and loaded lazily behind an idle-TTL cache.

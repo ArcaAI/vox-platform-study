@@ -310,7 +310,7 @@ class OpenAIProvider:
 
         A BYOK provider has no process-level connection to reach, so there is
         nothing here to contact. The MODEL listing and the default model come
-        from `AiModel` / `AiTaskDefault` on the gateway, which is where they were
+        from `AiModel` and the gateway's resolved selection, which is where they were
         already authoritative: this adapter used to echo ``TEXT_OPENAI_DEFAULT_
         MODEL``, an env var no generation path ever read.
         """

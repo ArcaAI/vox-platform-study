@@ -12,7 +12,7 @@ in the roster and they differ by CAPABILITY, not by call shape:
   ``response_safety``, ``response_toxicity``, ``response_refusal``).
 
 NO id appears here, and none may: each arrives per request, resolved by the
-caller from ``AiTaskDefault`` ⋈ ``AiModel`` tenant-first, with the capability
+caller from ``AiRoutingPolicy`` ⋈ ``AiModel`` tenant-first, with the capability
 envelope declared on ``AiModel._metadata``. This module knows only how to DRIVE
 the ``gliner2`` runtime — it never branches on which checkpoint it holds.
 ``tests/test_no_hardcoded_model_ids_task778.py`` enforces that.

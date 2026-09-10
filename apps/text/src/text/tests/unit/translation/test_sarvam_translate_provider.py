@@ -8,7 +8,7 @@ The MODEL is the part worth stating plainly. Unlike every other ``*_MODEL`` in
 this service — which only decorated the `/providers` listing — Sarvam's reaches
 the wire as the request's ``model`` field, so ``TEXT_SARVAM_MODEL`` was a
 process-wide model SELECTION for every tenant. Selection is ``failMode: closed``,
-so it resolves from `AiTaskDefault` and an unresolved value RAISES rather than
+so it resolves from `AiRoutingPolicy` and an unresolved value RAISES rather than
 letting the vendor pick its own default.
 
 Verifies the wire call, the three fail-closed paths (no connection, no key, no
@@ -142,7 +142,7 @@ async def test_override_without_key_raises_credential_error():
 
 @pytest.mark.asyncio
 async def test_connection_without_a_model_fails_closed():
-    """Model selection is fail-closed: no `AiTaskDefault` resolved ⇒ raise.
+    """Model selection is fail-closed: no `AiRoutingPolicy` selection resolved ⇒ raise.
 
     Omitting the field instead would hand the choice of translation model to
     Sarvam's own default — a silent change of clinical behaviour on a vendor-side

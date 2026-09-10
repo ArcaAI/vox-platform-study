@@ -17,7 +17,7 @@ is NOT a literal in code and is NOT an env var"):
   `NLP_LINKER_*` env fields).
 
 Where it lives now: `AiModel._metadata.clinicalTaxonomy` on the row the
-`nlp.ner` `AiTaskDefault` selects — beside `_metadata.labelTaxonomy`, which the
+`nlp.ner` `AiRoutingPolicy` selects — beside `_metadata.labelTaxonomy`, which the
 guardrail plane already treats as load-bearing configuration for exactly the
 same reason. The gateway resolves it (`resolveNerModelInjection`, SYSTEM-pinned
 per decision D-4: nlp models are PLATFORM-SHARED) and injects it into the

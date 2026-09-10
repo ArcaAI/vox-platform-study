@@ -16,7 +16,7 @@ listing — this one REACHED THE WIRE as the request's ``model`` field. A
 process-wide value therefore chose the translation model for every tenant, which
 is precisely a model SELECTION, and selection is ``failMode: closed``
 (`.claude/rules/09-infrastructure-devops.md` §Configuration Tiers): it resolves
-through `AiTaskDefault` tenant → SYSTEM, and an unresolved selection raises
+through `AiRoutingPolicy` tenant → SYSTEM, and an unresolved selection raises
 rather than letting the vendor pick a default nobody chose.
 
 Security invariant: the ``api-subscription-key`` is passed in the request header
@@ -127,7 +127,7 @@ class SarvamTranslateProvider:
         )
 
     def _resolve_model(self, overrides: ProviderOverride | None) -> str:
-        """The model from the resolved `AiTaskDefault` selection. Fail-closed.
+        """The model from the resolved `AiRoutingPolicy` selection. Fail-closed.
 
         Sarvam's ``model`` goes on the wire, so an unresolved selection raises
         instead of omitting the field and letting the vendor pick — which would
@@ -137,7 +137,7 @@ class SarvamTranslateProvider:
             return overrides.model
         raise SarvamModelError(
             "No Sarvam translation model selected. Model selection is "
-            "fail-closed: configure an AiTaskDefault for the translate task "
+            "fail-closed: configure an AiRoutingPolicy for the translate task "
             "(tenant, or the SYSTEM-tenant platform default). Text substitutes "
             "no model of its own."
         )

@@ -8,7 +8,7 @@ burst that triggered it. Warm load moves that cost to boot.
 Two constraints shape the design:
 
 * the WARM SET is configuration — it names model ids, so it can only come from
-  the control plane (`AiTaskDefault` ⋈ `AiModel`, served through
+  the control plane (`AiRoutingPolicy` ⋈ `AiModel`, served through
   `/internal/effective-config`), never from an env var or a Python literal;
 * warming must NOT block or fail boot. A gateway outage, or a model that cannot
   load, leaves the service up and lazy — exactly the earlier behaviour.

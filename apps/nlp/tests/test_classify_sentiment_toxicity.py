@@ -4,12 +4,12 @@ Per the ticket : sentiment and toxicity are FIXED-taxonomy
 classification tasks that the existing generic `/classify/text` endpoint
 already serves — it is model-agnostic (`model_name`/`model_path` select the
 model; the handler carries zero task-specific logic). This ticket adds NO new
-`apps/nlp` endpoint for these two task types, only new `AiTaskDefault` rows
+`apps/nlp` endpoint for these two task types, only new `AiRoutingPolicy` rows
 (`nlp.sentiment`, `nlp.toxicity`) pointing at a sentiment/toxicity-labeled
 model. This test proves that claim rather than assuming it: it drives
 `/classify/text` with a fixture sentiment model and a fixture toxicity model
 (via `model_name`, exactly as the gateway would inject after Task 2's
-`AiTaskDefault` rows are configured) and asserts the SAME generic
+`AiRoutingPolicy` rows are configured) and asserts the SAME generic
 `TextClassificationResponse` shape serves both.
 
 Mirrors `test_model_override_routes.py`'s fixture-model pattern — imitate,

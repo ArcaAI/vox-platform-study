@@ -7,7 +7,7 @@ local filesystem path, and the catalog must not constrain it to a hub-id
 pattern: a super admin (SYSTEM tier) and a tenant admin (tenant tier) may
 legitimately configure either.
 
-Resolution order is unchanged and lives in the CALLER: `AiTaskDefault` ⋈
+Resolution order is unchanged and lives in the CALLER: `AiRoutingPolicy` ⋈
 `AiModel`, request tenant → SYSTEM, two tiers, fail closed (503) when
 unresolved. This module answers only the last question — "given the resolved
 row, what string do I hand the loader?"
@@ -150,7 +150,7 @@ def resolve_guard_weights_source(model_name: str, model_path: str | None) -> str
     if not model_id:
         raise GuardModelReferenceError(
             "guard model reference is empty; selection is resolved by the caller "
-            "from AiTaskDefault ⋈ AiModel and is fail-closed."
+            "from AiRoutingPolicy ⋈ AiModel and is fail-closed."
         )
 
     staged = (model_path or "").strip()

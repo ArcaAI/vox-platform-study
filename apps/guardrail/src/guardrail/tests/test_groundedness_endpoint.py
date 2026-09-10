@@ -78,7 +78,7 @@ def _app(
     # Hermetic: no DB. With no resolver wired, a gate that IS enabled fails
     # closed on SELECTION (503) — the same outcome the retired
     # `db_config_enabled=False` flag produced — so these tests exercise the
-    # scorer degrade/verdict contracts without a live AiTaskDefault registry.
+    # scorer degrade/verdict contracts without a live AiRoutingPolicy registry.
     app.state.tenant_config_resolver = None
     if seed_stub_scorer:
         app.state.groundedness_verifier = GroundednessNliVerifier(

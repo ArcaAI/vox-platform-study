@@ -8,7 +8,7 @@ answered with the platform's, and the substitution was silent.
   SYSTEM unconditionally, so a tenant with its own connection still ran on the
   platform's tuning and the platform's catalog row. The mandated order is
   request tenant → SYSTEM, widening on ABSENCE only, exactly as the
-  `AiTaskDefault` selection already resolves.
+  `AiRoutingPolicy` selection already resolves.
 * **F-08** — a DB error was mapped to `{}` and negative-cached, and `resolve()`
   reads `{}` as "no tenant opinion" and widens. Because a tenant may only
   TIGHTEN relative to SYSTEM, a tenant that chose a stricter safety posture was
