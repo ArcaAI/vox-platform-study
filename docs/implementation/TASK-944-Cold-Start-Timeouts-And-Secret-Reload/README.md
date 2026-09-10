@@ -321,11 +321,75 @@ embedding model that actually loads; diarization and voice profiles restored) ra
 than eliminating them. Lane A is what makes the cold start survivable — do not assume
 Lane B alone brings it under any particular budget.
 
+## Post-deploy verification (2026-09-10, pipeline #1169 -> Argo `a752c9b2`)
+
+Measured on `hope-v2-dev` after the merge shipped. Gateway `0.0.0-dev-2-2.db85eff1`.
+
+**Lane A — CONFIRMED FIXED, with a live before/after.**
+
+| | cold streaming-session create |
+|---|---|
+| before (hardcoded 15 000 ms) | STT answered `201` at **16 870 ms**; gateway aborted at 15 000 ms -> `503` |
+| after (`sttStreaming.sessionCreateTimeoutMs`, 60 000) | **`201` in 17 340 ms** through the public gateway |
+
+The first request after an STT restart now succeeds. This is the whole point of
+the lane: the same request, the same latency, a survivable budget.
+
+**Lane C — CONFIRMED FIXED.** Login + an authenticated call both `200` against
+the freshly restarted gateway, i.e. sign and verify agree through
+`resolveJwtSecret()` in production.
+
+**Lane B — PARTIALLY fixed. The import bug is gone; diarization is still off.**
+
+The `AutoProcessor` error no longer appears, and `build-stt` passed on the real
+runner (439 s), so the `[ml]`/`[nemo]` ABI conflict is genuinely resolved. The
+warm now gets FURTHER — far enough to attempt the actual model load — and fails
+there instead:
+
+```
+stt.diarization.embedding_service  "Could not resolve the platform HuggingFace token; continuing unauthenticated"
+embedding_service.py:57  RuntimeWarning: coroutine 'resolve_hf_token' was never awaited
+stt.streaming.session_manager  "Failed to warm embedding model for streaming pipeline"
+  Failed to load HuggingFace model wespeaker-voxceleb-resnet34: We couldn't connect
+  to 'https://huggingface.co' ... couldn't find them in the cached files.
+```
+
+Two distinct follow-on defects, both pinned:
+
+1. **`asyncio.run()` inside a running event loop.**
+   `apps/stt/src/stt/diarization/embedding_service.py:52` calls
+   `asyncio.run(_resolve(None))` from async request context. It raises, the
+   coroutine is never awaited (hence the `RuntimeWarning`), and the bare `except`
+   swallows it into "continuing unauthenticated" — so the platform HF token is
+   NEVER resolved, whatever it is set to. `HF_TOKEN` is present in the pod env.
+
+2. **The model identifier does not match the cached repo.**
+   The mount is wired correctly — `HF_HOME=/mnt/models-bucket/hf`,
+   `HF_HUB_CACHE=/mnt/models-bucket/hf/hub`, `HF_HUB_OFFLINE=1` — and the weights
+   ARE published:
+   `/mnt/models-bucket/hf/hub/models--pyannote--wespeaker-voxceleb-resnet34-LM`.
+   But the `AiModel` row is `slug = wespeaker-voxceleb-resnet34`,
+   `provider = built-in`, and its `_metadata` is only
+   `{"embedding": {"dimension": 256}}` — it carries NO HuggingFace repo id. The
+   loader therefore asks for the bare slug, which matches neither the Hub nor the
+   cached directory (`pyannote/wespeaker-voxceleb-resnet34-LM`).
+
+Consequence: ~16.6 s of the 17.3 s cold start is now this failed load, and speaker
+embedding / diarization / voice profiles remain disabled. **Cold start did not
+shrink** — the implementing agent predicted the seconds would become productive
+rather than disappear; they are not yet productive either. Lane A is what carries
+the cold start today.
+
+Neither defect is a regression from this ticket: (2) predates it, and (1) was
+previously masked because the import died before the token was ever needed.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-10 | Ticket opened from live-cluster verification evidence (three lanes). |
+| 2026-09-10 | Lanes A/B/C implemented; merged to `dev-2.2` as `9135b324f`. |
+| 2026-09-10 | Post-deploy verification on `hope-v2-dev`: A and C confirmed fixed with live measurements; B partially fixed — import bug resolved, two follow-on defects pinned above. |
 | 2026-09-10 | Implementation plan written into this file before any code (branch `task-944-cold-start-timeouts`). |
 | 2026-09-10 | Lane A: `sttStreaming.sessionCreateTimeoutMs` descriptor (`global-kv`, system scope, `open-to-default`, default 60000); `StreamingSessionService` resolves it per call. Lane B: root cause identified as the ML image installing `stt[ml-gpu]` and `stt[nemo]` — extras the root pyproject DECLARES as conflicting — into one venv; the nemo install and its `transformers==5.5.4` override removed, guarded by a hermetic Dockerfile/pyproject contract test. Commit `2eeae45cd`. |
 | 2026-09-10 | Lane C: `resolveJwtSecret()` becomes the one source for sign and verify (`JwtStrategy` moves to `secretOrKeyProvider`); OIDC's hard-coded fallback removed; `SecretsInvalidationSubscriber` wired, which answers the ticket's open question — `arca:secrets:invalidate` had NO production subscriber at all. A latent circular import (`config.service` → the `../secrets` barrel) surfaced and was fixed. Rotation contract documented in `docs/operations/jwt-secret-rotation.md`; the Vault runbook's inaccurate claim corrected. Commit `34603b4a8`. |
