@@ -108,6 +108,10 @@ class NodeActivityResult(BaseModel):
     # node carrying a `branchGuards` entry only when one of its guards names a taken handle.
     # `None` for every non-router node.
     taken_handle: str | None = None
+    # TASK-947 OD-11, additive-optional. The KEYS of the prompt fragments that composed the
+    # system prompt a `core.agent` step actually ran with — keys only, never a condition string
+    # and never a fragment body. `None` for a non-composite instruction and for every other node.
+    prompt_fragments: list[str] | None = None
 
 
 class NodeResult(BaseModel):
@@ -480,15 +484,47 @@ class ResolvedAgentModel(BaseModel):
     checksum: str | None = None
 
 
-class ResolvedPrompt(BaseModel):
-    """``compiledConfig.resolvedPrompt`` — the instruction text the gateway already resolved: a
-    pinned, approved template version's content, or the inline system prompt. The activity
-    interpolates it; it never re-resolves a template itself."""
+class ResolvedPromptFragment(BaseModel):
+    """TASK-947 §4.1 (OD-3) — one fragment of a COMPOSITE instruction, frozen at publish.
+
+    ``when`` is the authored CEL condition, or ``None`` for an unconditional fragment. The
+    ``promptTemplateId`` / ``promptVersionNumber`` of a ``template`` fragment are PROVENANCE:
+    the activity renders ``content`` and never re-resolves the template (the TASK-890 freeze,
+    per fragment).
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
+    key: str
     source: Literal["template", "inline"]
     content: str
+    when: str | None = None
+    prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
+    prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+
+
+class ResolvedPrompt(BaseModel):
+    """``compiledConfig.resolvedPrompt`` — the instruction text the gateway already resolved: a
+    pinned, approved template version's content, the inline system prompt, or (TASK-947, OD-3)
+    a COMPOSITE of ordered fragments each carrying an optional CEL ``when``.
+
+    The activity interpolates it; it never re-resolves a template itself.
+
+    For a composite, ``content`` is the STATIC PROJECTION — the unconditional fragments joined —
+    so a reader that predates this ticket renders the base prompt rather than none at all. A
+    reader that DOES understand fragments must compose them (``prompt_composition.py``);
+    rendering the projection would mean a conditional fragment silently never runs.
+
+    ``join`` and ``fragments`` are absent from every artifact published before TASK-947, which
+    is why both default rather than being required.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    source: Literal["template", "inline", "composite"]
+    content: str
+    join: str | None = None
+    fragments: list[ResolvedPromptFragment] = Field(default_factory=list)
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
 
