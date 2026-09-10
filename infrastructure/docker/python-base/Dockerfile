@@ -41,8 +41,20 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # libgomp1: required at runtime by onnxruntime (guardrail, stt, nlp).
 # curl: used by container HEALTHCHECKs.
+#
+# The docker-clean removal is what makes the cache mounts below real. Every
+# Debian image ships /etc/apt/apt.conf.d/docker-clean, whose DPkg::Post-Invoke
+# hook deletes /var/cache/apt/archives/*.deb after each install — so a mount at
+# that path retained nothing and every build re-downloaded from deb.debian.org
+# over this runner's ~60 KB/s public egress. It cost little HERE (two small
+# packages, and this image's layers come back from the registry cache), but the
+# same two lines are load-bearing in apps/harness/Dockerfile, where the toolchain
+# is 99 MB and their absence timed out build-harness in pipeline 1161. Kept
+# identical in both so neither drifts into looking like the exception.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-downloaded-packages && \
     apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         curl
