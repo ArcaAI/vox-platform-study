@@ -419,4 +419,10 @@ describe('the two pre-947 forms are untouched', () => {
     const findings = await validateFindings({ promptTemplateId: 'tpl-gone' });
     expect(findings).toContainEqual(expect.objectContaining({ code: 'TEMPLATE_NOT_FOUND', path: 'instruction.promptTemplateId' }));
   });
+
+  it('R1 #6 — the path names the AUTHORED index even when a non-object entry sits ahead of the fragment', async () => {
+    const findings = await validateFindings({ fragments: [null, { key: 'gone', promptTemplateId: 'tpl-gone' }] });
+    expect(findings).toContainEqual(expect.objectContaining({ code: 'TEMPLATE_NOT_FOUND', path: 'instruction.fragments[1].promptTemplateId' }));
+    expect(findings).not.toContainEqual(expect.objectContaining({ code: 'TEMPLATE_NOT_FOUND', path: 'instruction.fragments[0].promptTemplateId' }));
+  });
 });

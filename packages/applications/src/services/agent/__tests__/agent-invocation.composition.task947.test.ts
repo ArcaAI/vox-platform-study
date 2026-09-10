@@ -14,7 +14,7 @@
  *  5. the two pre-947 shapes still render exactly as they did, and carry `promptFragments: null`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import type { AgentCompiledPromptFragment, ResolvedAgent } from '@arcaai/types';
 import { AgentInvocationService } from '../agent-invocation.service';
 
@@ -203,5 +203,48 @@ describe('the two pre-947 shapes are untouched', () => {
 
     expect(sentBody()).not.toHaveProperty('system_prompt');
     expect(result.promptFragments).toBeNull();
+  });
+});
+
+/**
+ * TASK-947 R2 M-1 — an exclusion on the invocation lane left NO server-side record, so a safety
+ * fragment dropped by a wrong-typed caller input was unreconstructible. The live and durable lanes
+ * already logged; this lane now does too — a `condition_error` at WARN (always an authoring or
+ * contract defect), a `condition_false` at DEBUG (ordinary traffic) — keys and reasons only.
+ */
+describe('R2 M-1 — exclusions are recorded, keys and reasons only', () => {
+  it('warns on a condition_error naming the agent and the key, never the detail', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    await service().invokeText(
+      composite([inline('base', 'BASE'), inline('peds_safety', 'MINOR', 'context.patient_age < 18')]),
+      TENANT,
+      { text: 't', context: { patient_age: 'seven' } },
+      'blocking',
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    const entry = warn.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(entry).toMatchObject({ agentSlug: 'discharge-writer', excluded: [{ key: 'peds_safety', reason: 'condition_error' }] });
+    expect(JSON.stringify(entry)).not.toContain('no such overload');
+    expect(JSON.stringify(entry)).not.toContain('seven');
+    expect(debug).not.toHaveBeenCalled();
+    warn.mockRestore();
+    debug.mockRestore();
+  });
+
+  it('a condition_false is debug-level; a single-body agent logs nothing', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    await service().invokeText(
+      composite([inline('base', 'BASE'), inline('revisit', 'REVISIT', "context.visit_type == 'revisit'")]),
+      TENANT,
+      { text: 't', context: { visit_type: 'new' } },
+      'blocking',
+    );
+    expect(warn).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledTimes(1);
+    expect(debug.mock.calls[0]?.[0]).toMatchObject({ excluded: [{ key: 'revisit', reason: 'condition_false' }] });
+    warn.mockRestore();
+    debug.mockRestore();
   });
 });

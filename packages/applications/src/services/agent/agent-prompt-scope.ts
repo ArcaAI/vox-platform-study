@@ -42,8 +42,17 @@ export interface AgentPromptScopeInput {
    * shapes and the resolver is a safe superset of "use it verbatim".
    */
   readonly variables?: Readonly<Record<string, unknown>>;
-  /** The run payload (workflow) or the request `context` (invocation). Also published as `context`. */
+  /** The run payload (workflow) or the request `context` (invocation). Also published as `context` unless `context` is given. */
   readonly trigger?: Readonly<Record<string, unknown>> | null;
+  /**
+   * TASK-947 R1 #1 — the CONTEXT VIEW of the trigger when the caller has already applied the J3-5
+   * single-kind unwrap (`unwrapSingleKindContextPayload(payloadSchema, trigger)`). The durable
+   * lane's `_prompt_scope` publishes `trigger` verbatim and `context` unwrapped; a TypeScript lane
+   * whose trigger IS the run payload (`{ context: {...} }`) passes the unwrapped object here so
+   * `context.visit_type` means the same thing on every renderer. Absent ⇒ `context` aliases
+   * `trigger`, exactly as before.
+   */
+  readonly context?: Readonly<Record<string, unknown>> | null;
   /** The invocation body validated against the agent's `inputSchema`. */
   readonly input?: Readonly<Record<string, unknown>> | null;
   /** Merged `core.variable` outputs. */
@@ -65,6 +74,9 @@ export function buildAgentPromptScope(input: AgentPromptScopeInput): Record<stri
     scope.trigger = input.trigger;
     scope.context = input.trigger;
   }
+  // The explicit view wins over the alias; it is bound BEFORE the bare names for the same reason
+  // the alias is (an agent that declares a variable called `context` still wins its own name).
+  if (isRecord(input.context)) scope.context = input.context;
   if (isRecord(input.input)) scope.input = input.input;
   if (isRecord(input.vars)) scope.vars = input.vars;
   if (isRecord(input.nodes)) scope.nodes = input.nodes;

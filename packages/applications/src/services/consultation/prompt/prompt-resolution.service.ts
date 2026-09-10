@@ -102,9 +102,9 @@ import {
 // TEXT_GENERATION instruction's three forms. Both tiers below read an agent as a POINTER to a
 // governed template, and a hand-rolled `instruction.promptTemplateId` sees only form 1.
 import {
-  boundTemplateRefs,
   CORE_PALETTE_KEY,
   primaryTemplateId,
+  primaryTemplateRef,
   WORKFLOW_NODE_REGISTRY,
   type WorkflowGraph,
   type WorkflowGraphNode,
@@ -1402,7 +1402,11 @@ export class PromptResolutionService {
         // TASK-947 OD-9 — the same POINTER rule as the tag-selected tier (see
         // `resolveTagSelectedPrompt`): form 1's bound id, form 3's first unconditional TEMPLATE
         // fragment, else `null` and this candidate is skipped like any agent binding no template.
-        const templateId = primaryTemplateId(instruction);
+        // TASK-947 R1 #3 / R2 L-3 — the REF, so the pin below is THIS fragment's: a lookup by
+        // template id found the first fragment binding the id, which need not be the unconditional
+        // one (ids may repeat across fragments; only keys are unique).
+        const primaryRef = primaryTemplateRef(instruction);
+        const templateId = primaryRef?.templateId ?? null;
         if (templateId === null) continue;
 
         const template = await this.promptTemplateRepository.findById(templateId);
@@ -1425,7 +1429,7 @@ export class PromptResolutionService {
         // it is that FRAGMENT's `promptVersionNumber`, not an instruction-root field a form-3
         // instruction does not have. `boundTemplateRefs` already normalises "a pin, or `null` for
         // follow-the-approved-version", which is exactly the guard this line used to spell out.
-        const agentPin = boundTemplateRefs(instruction).find((ref) => ref.templateId === templateId)?.versionNumber ?? null;
+        const agentPin = primaryRef?.versionNumber ?? null;
         const targetVersionNumber = readPromptVersionPin(node) ?? agentPin ?? template.approvedVersionNumber ?? null;
         const version =
           targetVersionNumber !== null

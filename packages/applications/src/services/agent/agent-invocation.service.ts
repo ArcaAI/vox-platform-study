@@ -187,6 +187,20 @@ export class AgentInvocationService {
     });
     const systemPrompt = composed.prompt ?? undefined;
     const promptFragments = compiled.resolvedPrompt?.source === 'composite' ? { selected: [...composed.selected] } : null;
+    // TASK-947 R2 M-1 — an exclusion left NO server-side record on this lane, so a safety fragment
+    // dropped by a wrong-typed caller input was unreconstructible. Keys and reasons only (never the
+    // evaluator's detail, which can echo a scope value): a `condition_error` is always an authoring
+    // or contract defect and gets WARN; a `condition_false` is ordinary traffic and gets DEBUG.
+    if (composed.excluded.length > 0) {
+      const entry = {
+        message: 'Composite instruction: fragments excluded for this call',
+        agentSlug: resolved.slug,
+        agentVersionId: resolved.agentVersionId,
+        excluded: composed.excluded.map(({ key, reason }) => ({ key, reason })),
+      };
+      if (composed.excluded.some((exclusion) => exclusion.reason === 'condition_error')) this.logger.warn(entry);
+      else this.logger.debug(entry);
+    }
 
     // TASK-890 F9 — what goes on the wire is the ROUTED id (`AiModel.wireModelId`), never the
     // catalogue slug. Resolved BEFORE the body is built so an unroutable row is a named refusal
