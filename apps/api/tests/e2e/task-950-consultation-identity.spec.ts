@@ -175,7 +175,24 @@ test.describe('TASK-950 — a service account opens a consultation for a clinici
       data: { definition, changeReason: 'TASK-950 e2e' },
     });
     expect(publish.status(), await publish.text()).toBe(201);
-    expect((await publish.json()).pinnedVersionNumber).toBeGreaterThan(originalPinnedVersion);
+
+    // Re-runnable against a PERSISTENT database: a previous run's afterAll pinned the original
+    // back while leaving the marked version in the list, so an identical republish is a checksum
+    // no-op that moves nothing (`publish` is idempotent). Find the version that carries the marker
+    // and PIN it explicitly — the same operation afterAll uses to roll back.
+    const after = await request.get(`//versions`, { headers: adminHeaders(adminJwt) });
+    expect(after.status(), await after.text()).toBe(200);
+    const marked = ((await after.json()) as Array<{ versionNumber: number; definition: { kinds?: Array<Record<string, unknown>> } }>)
+      .filter((version) =>
+        (version.definition.kinds ?? []).some((declared) => (declared.userIdentity as { field?: string } | undefined)?.field === IDENTITY_FIELD),
+      )
+      .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+    expect(marked, 'a version carrying the identity marker').toBeTruthy();
+    expect(marked!.versionNumber).toBeGreaterThan(originalPinnedVersion);
+    if ((await publish.json()).pinnedVersionNumber !== marked!.versionNumber) {
+      const pin = await request.post(`//pin`, { headers: adminHeaders(adminJwt), data: { versionNumber: marked!.versionNumber } });
+      expect(pin.status(), await pin.text()).toBe(201);
+    }
   });
 
   test.afterAll(async ({ request }) => {

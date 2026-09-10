@@ -240,7 +240,8 @@ export class AgentController {
   })
   @ApiResponse({
     status: 503,
-    description: 'The identity resolver is not configured, so a request that names a clinician cannot be honoured (`USER_IDENTITY_RESOLVER_UNAVAILABLE`).',
+    description:
+      'The identity resolver is not configured, so a request that names a clinician cannot be honoured (`USER_IDENTITY_RESOLVER_UNAVAILABLE`).',
   })
   @ApiResponse({
     status: 429,
