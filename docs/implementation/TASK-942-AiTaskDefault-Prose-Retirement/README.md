@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — OD-1 answered 2026-09-10 (keep the provenance); executing |
+| **Status** | **Completed** 2026-09-10 |
 | **Type** | docs / refactor |
 | **Branch** | `dev-2.2` |
 | **Base** | `ef8c64117` |
@@ -180,7 +180,78 @@ opposite of a revert.
 
 ### Results
 
-_Pending the three agents._
+**66 repointed, 110 kept, 238 → 176 survivors.** Every survivor is now a committed migration (35),
+a generated file (43), or a deliberate record/assertion (98).
+
+| Agent | Tier | Proposed | Applied | Orchestrator corrections |
+|---|---|---|---|---|
+| A — `apps/api` | sonnet | 12 REPOINT / 8 KEEP | 12 | **1 wrong patch caught** |
+| B — `applications` + `domains` | opus | 31 REPOINT / 58 KEEP | 31 | **1 wrong patch caught** |
+| C — `database` | sonnet | 23 REPOINT / 28 KEEP | 23 | 0 — and it volunteered a find outside its list |
+
+The keep-heavy ratio was the prediction in §2.2 and it held: B kept 58 of 89 in the absorbing
+plane's own tree, exactly because most mentions there are provenance.
+
+### Two wrong patches, caught by verifying rather than trusting
+
+Rule 14 §2 — "never let an agent's own output authorise the next step" — earned its place twice:
+
+1. **Agent A** proposed repointing the `SUPER_ADMIN_ONLY_TASK_PREFIXES` precedent to
+   `AiRoutingPolicyService`, which would have made the sentence self-referential ("enforced
+   IMPERATIVELY in `AiRoutingPolicyService` — see the precedent in `AiRoutingPolicyService`").
+   The constant is declared at `ai-routing-policy/constants.ts:187`, so the applied patch names
+   the module.
+2. **Agent B** proposed `AiTaskDefault.provider` → `AiModel.provider` on the stated reason that
+   "`AiRoutingPolicy` has no `provider` column". It does — `ai-routing-policy.prisma:77`. Since
+   the comment lists SELECTION-table naming examples and `AiRoutingPolicy` is the table that
+   absorbed `AiTaskDefault`, the applied patch names `AiRoutingPolicy.provider`.
+
+Three other substantive claims were checked and all held: `applyTextModelSelection` really calls
+only `resolveTextSelection` (`:320`/`:327`); `constants.ts:8-16` confirms TASK-881 REMOVED the five
+`text.*` keys with text generation now selecting via the assigned `TEXT_GENERATION` agent; and
+`AiRoutingPolicyServiceModule` is genuinely imported in `summary.service.module.ts:15`.
+
+### One edit is DATA, not prose — flagged rather than slipped in
+
+`seed/ai-models/nlp.ts:18` is an `AiModel.description` **seed value**, not a comment, and
+`06-ai-models.ts:69-74` writes `description` on its UPDATE path — so the corrected text reaches
+existing databases on the next `db:seed`. It was applied because it is the same defect in a more
+visible place (the catalogue was telling operators a dropped table is the default mechanism for
+`nlp.ner`) and the correction is forward-only, but it is the one change in this ticket that is not
+strictly prose and it belongs on the record as such. Verified first that no test asserts the string.
+
+### Two things the agents correctly refused to touch
+
+`usage-ledger.prisma:191` is a `///` Prisma doc comment — those land in the GENERATED client, so
+editing one would change generated output and require `db:generate` plus the drift gates. Agent C
+classified it KEEP and edited the `//` line at `:73` instead. Confirmed after applying: the
+generated client is byte-identical and `prisma validate` passes.
+
+Agent C also reported, unprompted and outside its hit list, that
+`tenant-nlp-task-instructions.prisma` still names the deleted path
+`ai-task-default/constants.ts` — invisible to a case-sensitive `AiTaskDefault` grep. Left untouched
+as it reported, and recorded here as the one known remainder.
+
+### Verification
+
+```
+prisma validate                    schemas valid; generated client BYTE-IDENTICAL
+apps/api          build clean · 289 files / 4327 tests · lint 65 = baseline
+applications      build clean · 12680 passed / 6 skipped · lint 182 = baseline
+domains+database  249 files / 3642 passed · lint 14 / clean = baseline
+openapi*.json     untouched (OD-1 held; no five-artifact regeneration)
+```
+
+Every lint count is EXACTLY its pre-change baseline — the point of a prose change. The single
+failing file is the same out-of-scope `membership-bounded-sync.integration.test.ts` that needs a
+test database which is not running.
+
+### Forward-only guard: verified, not assumed
+
+Exactly **one** added line anywhere in the diff mentions `AiTaskDefault`, and it is past tense:
+`service itself (\`resolveDefault\` — TASK-881 absorbed \`AiTaskDefault\`)`. That edit ADDS to the
+record. Nothing was un-retired, restored or re-referenced as live, and all 110 KEEP decisions left
+the retirement record byte-for-byte intact.
 
 ## 6. Change History
 
@@ -188,3 +259,4 @@ _Pending the three agents._
 |---|---|
 | 2026-09-10 | Filed at the owner's request from TASK-941's close. Inventory measured rather than carried over, which corrected the handoff twice: **238** source hits across 134 files (not the "~25" I quoted — that was the `apps/api` subset alone), and the OpenAPI hit I had recommended fixing FIRST is provenance that should probably be KEPT (OD-1). Classified: 78 untouchable (live `ResourceType` enum member, 35 committed-migration lines, generated entities/`vox-node`), 50 absorption/retirement record to keep, 110 candidates across 70 files — a filter count, not a verified defect count, with the 14 `apps/api` hits identified as the genuinely misleading core. No code changed. |
 | 2026-09-10 | OD-1 answered: KEEP the OpenAPI provenance — so no `@ApiProperty` is touched and `openapi*.json` stays byte-identical (no five-artifact regeneration). Owner guard recorded: TASK-870 is history, not a spec; nothing may un-retire or restore a removed implementation. Execution begun as three read-only classifiers (sonnet / opus / sonnet) with the orchestrator as single writer — rationale and tier choices in §5. |
+| 2026-09-10 | **Completed.** 66 repointed / 110 kept; 238 → 176 survivors, all of them committed migrations (35), generated files (43) or deliberate record/assertion (98). Two wrong agent patches caught by verification (a self-referential precedent citation, and a false "`AiRoutingPolicy` has no `provider` column" claim — it does, at `ai-routing-policy.prisma:77`). One edit flagged as DATA rather than prose: a seed `AiModel.description` that the seed's UPDATE path propagates. Generated Prisma client byte-identical, `openapi*.json` untouched, every lint count exactly at baseline. |

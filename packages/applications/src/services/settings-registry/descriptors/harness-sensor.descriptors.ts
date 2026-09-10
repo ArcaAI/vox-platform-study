@@ -126,7 +126,7 @@ export const HARNESS_SENSOR_SETTINGS: SettingDescriptor[] = (Object.keys(HARNESS
   (key) => ({
     key,
     // D-2: `global-kv` is the one tier with a complete read + write + cascade +
-    // invalidate loop. These are not a row on `AiProviderConnection`/`AiTaskDefault`/
+    // invalidate loop. These are not a row on `AiProviderConnection`/`AiRoutingPolicy`/
     // `AiModel`, so `db-config` does not apply and a bespoke table would be the third
     // home D-2 exists to forbid.
     tier: 'global-kv',

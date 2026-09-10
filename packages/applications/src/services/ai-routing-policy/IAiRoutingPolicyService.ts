@@ -77,7 +77,7 @@ export interface ResolveDefaultOptions {
  * X for tenant T right now": the ELECTED default (`isDefault`) of the winning
  * tier, and the catalogue model its FK names.
  *
- * This is the ONE resolution `AiTaskDefaultService` (now a facade) and every
+ * This is the ONE resolution every non-agent caller and every
  * former `AiTaskDefault` reader stand on. `source` names the tier that won;
  * `policy` is null when neither tier holds a live configuration; `model` is
  * null when the row names no ENABLED catalogue model.

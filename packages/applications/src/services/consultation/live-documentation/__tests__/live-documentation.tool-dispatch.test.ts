@@ -35,7 +35,7 @@ const NOTE = 'Subjective: patient reports cough and takes aspirin\nObjective:\nA
 
 /**
  * Fail-CLOSED `nlp.ner` selection (`resolveNerModelInjection`) means any fixture
- * reaching the NER hop must wire BOTH a resolvable AiTaskDefault row and a CLS
+ * reaching the NER hop must wire BOTH a resolvable AiRoutingPolicy row and a CLS
  * scope to pin the SYSTEM-only read to — an absent either is a 503, not a
  * silent post without `model_name`.
  */

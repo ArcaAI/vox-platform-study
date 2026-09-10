@@ -70,7 +70,7 @@ model AiUsageEvent {
   capability AiCapability
   // Bounded operation vocabulary (string rather than an enum so a new emitter
   // ships without a migration — the same call the codebase makes for
-  // `AiTaskDefault.taskKey` and `AiProviderConnection.provider`):
+  // `AiRoutingPolicy.taskKey` and `AiProviderConnection.provider`):
   //   transcribe.stream · transcribe.batch · generate · generate.stream ·
   //   presummarize · guardrail.validate · ner.extract · tts.synthesize ·
   //   harness.step · embed

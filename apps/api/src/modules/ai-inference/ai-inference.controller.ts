@@ -39,7 +39,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * are stateless inference calls over caller-supplied text — no tenant-owned
  * resource is read, so there is no by-id/tenancy surface here.
  *
- * The NLP routes resolve the SYSTEM `AiTaskDefault`
+ * The NLP routes resolve the SYSTEM `AiRoutingPolicy`
  * (`nlp.ner` for NER / `nlp.diagnosis` for diagnosis suggestions) and inject it
  * as the upstream `model_name` (the AiModel row's `sourceUri`, an HF id) when the
  * caller supplies none. Resolution FAILS CLOSED: missing/failed SYSTEM default →

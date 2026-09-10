@@ -22,7 +22,7 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SE
  *
  * The text default-provider/default-model keys, the ad-hoc
  * `text-provider-models` UI catalog and the entire `guardrail` namespace are
- * RETIRED (superseded by the `AiTaskDefault` table + registry-backed provider
+ * RETIRED (superseded by the `AiRoutingPolicy` table + registry-backed provider
  * listings). They are removed from the seeded arrays and swept to
  * resourceStatus DELETED by `retireSupersededGlobalSettings` below.
  *
@@ -272,7 +272,7 @@ function tenantSettings(
     // ── guardrail (0) — RETIRED ──────────────────────────
     // The guardrail namespace (default-guardrail-provider /
     // default-guardrail-model / guardrail-azure-deployment) is superseded
-    // by the AiTaskDefault table (`guardrail.validate` key, GLOBAL-ADMIN-
+    // by the AiRoutingPolicy table (`guardrail.validate` key, GLOBAL-ADMIN-
     // ONLY writes) + the AiModel registry. Existing rows are swept to
     // DELETED by retireSupersededGlobalSettings.
 
@@ -517,7 +517,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
 // =============================================================================
 // Superseded GlobalSetting keys (soft-retire sweep)
 //
-// These six keys are replaced by the AiTaskDefault table + registry-backed
+// These six keys are replaced by the AiRoutingPolicy table + registry-backed
 // provider listings in this same ticket. `retireSupersededGlobalSettings`
 // sweeps EVERY tenant's copy to resourceStatus DELETED (idempotent; rows stay
 // recoverable). NOTE: `default-stt-pipeline` and all other keys are untouched.

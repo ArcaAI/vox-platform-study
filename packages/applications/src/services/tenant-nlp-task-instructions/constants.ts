@@ -6,7 +6,7 @@
  * that list governs MODEL/PROVIDER selection (super-admin-only for every
  * `nlp.*` key); this one governs tenant-authored INSTRUCTION CONTENT only,
  * and both `nlp.topic`/`nlp.intent` model selection still resolves through
- * `AiTaskDefault` under its unmodified lock — this table never carries a
+ * `AiRoutingPolicy` under its unmodified lock — this table never carries a
  * `modelSlug`.
  */
 export const TENANT_NLP_INSTRUCTION_TASK_KEYS = ['nlp.topic', 'nlp.intent'] as const;

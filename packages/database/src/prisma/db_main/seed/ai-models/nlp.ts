@@ -15,7 +15,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Medical NER',
     slug: 'medical-ner',
-    description: 'blaze999/Medical-NER — medical named-entity recognition (token classification). Platform default for nlp.ner (AiTaskDefault).',
+    description: 'blaze999/Medical-NER — medical named-entity recognition (token classification). Platform default for nlp.ner (AiRoutingPolicy).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TOKEN_CLASSIFICATION,
     modelType: ModelType.FINETUNED_MODEL,
@@ -796,7 +796,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
   // guardrail groundedness sensor; modelled as TEXT_CLASSIFICATION (the
   // closest existing ModelTaskType for a sequence-pair entailment head — there
   // is no dedicated NLI task type). Default for the `guardrail.groundedness`
-  // AiTaskDefault. GGUF served by `apps/nlp` ( moved it out of `apps/guardrail`, which now hosts no weights).
+  // AiRoutingPolicy. GGUF served by `apps/nlp` ( moved it out of `apps/guardrail`, which now hosts no weights).
   {
     id: '80000000-0000-0000-0007-000000000018',
     tenantId: SYSTEM_TENANT_ID,

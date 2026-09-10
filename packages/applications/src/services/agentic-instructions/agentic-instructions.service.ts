@@ -112,10 +112,10 @@ export class AgenticInstructionsService extends BaseService {
         // no engine detail from here. This used to report
         // `${policy.safetyProvider}/${policy.safetyModel}`, two HarnessPolicy columns that
         // selected nothing and have now been dropped: `apps/guardrail` resolves the guardrail
-        // engine and model itself from the `guardrail.safety` AiTaskDefault (tenant -> SYSTEM,
+        // engine and model itself from the `guardrail.safety` AiRoutingPolicy (tenant -> SYSTEM,
         // fail-closed). Reporting a column no backend consulted made this inventory claim a
         // selection it could not observe. Resolving the REAL one belongs to whichever ticket
-        // wires `AiTaskDefaultService` in here and decides what this row shows when the
+        // wires `IAiRoutingPolicyService` in here and decides what this row shows when the
         // selection is unresolved — a fail-closed key must not degrade into a label.
         detail: null,
       },

@@ -34,7 +34,7 @@ const CORE_SUFFIXES = [
   // TEXT Azure deployment-name (032), seeded for every tenant.
   // TEXT_PROVIDER/TEXT_MODEL (030/031), the guardrail namespace
   // (033/034/035) and UX_TEXT_PROVIDER_MODELS (043) were RETIRED (superseded
-  // by HarnessPolicy + AiTaskDefault + the AiModel registry); their ids stay
+  // by HarnessPolicy + AiRoutingPolicy + the AiModel registry); their ids stay
   // reserved but are no longer declared or emitted.
   'TEXT_AZURE_DEPLOYMENT',
   'UX_LOCAL_ASR_MODELS',
@@ -270,7 +270,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
         });
 
         // The guardrail namespace is RETIRED (superseded
-        // by AiTaskDefault + the AiModel registry); nothing is emitted and
+        // by AiRoutingPolicy + the AiModel registry); nothing is emitted and
         // `retireSupersededGlobalSettings` sweeps existing rows to DELETED.
         it('emits NO guardrail namespace settings (retired by)', () => {
           const guardrail = settingsForTenant(tenantId).filter((s) => s.namespace === 'guardrail');

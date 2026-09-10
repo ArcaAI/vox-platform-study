@@ -1586,7 +1586,7 @@ describe('STT Seed Data', () => {
 // =============================================================================
 // DEFAULT MODEL WIRING
 //   (a) TEXT → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
-//   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
+//   (b) Guardrail → granite-guardian-4.1-8b via AiRoutingPolicy (keys RETIRED)
 //   (c) STT → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
 

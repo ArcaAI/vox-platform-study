@@ -18,7 +18,7 @@
  * `liveLlm` was `DepartmentAgent.llmOverrides.live`, frozen to a
  * `{provider, model}` pair. Its successor is a per-node `llmBinding`
  * which has not landed. `null` here is not a gap: it puts the
- * session on the per-flush tenant `text.live` `AiTaskDefault`, which is the
+ * session on the per-flush assigned `TEXT_GENERATION` agent, which is the
  * tenant → SYSTEM cascade and was already the behaviour for every session whose
  * agent carried no override. The fail-OPEN posture that made the override safe
  * on the live path is preserved by construction — there is nothing left to fail.

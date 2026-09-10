@@ -159,11 +159,11 @@ describe('HarnessPolicyService', () => {
 
   // ── LLM-as-judge selection surfaced on the effective policy ──
   describe('getEffectivePolicy — judge selection', () => {
-    it('defaults judgeProvider/judgeModel to null when the AiTaskDefault service is not wired', async () => {
+    it('defaults judgeProvider/judgeModel to null when the routing-policy service is not wired', async () => {
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
 
-      // `service` (4-arg) has no AiTaskDefault service injected.
+      // `service` (4-arg) has no routing-policy service injected.
       const result = await service.getEffectivePolicy();
 
       expect(result.judgeProvider).toBeNull();
@@ -433,7 +433,7 @@ describe('HarnessPolicyService', () => {
    * `KNOB_KEYS` derives from `HARNESS_POLICY_DEFAULTS`, so a stale key there would put a
    * dropped column back into every merge / apply / WORM snapshot the service writes — the
    * shape that would 500 against the migrated table. Nothing read either value (Phase 2,
-   * mutation-proven); the guardrail selection lives in the `guardrail.safety` AiTaskDefault,
+   * mutation-proven); the guardrail selection lives in the `guardrail.safety` AiRoutingPolicy,
    * resolved by apps/guardrail tenant-first.
  */
   describe('the retired safety selection knobs', () => {

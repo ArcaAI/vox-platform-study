@@ -6,7 +6,7 @@ import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsReque
  * `tenantId` is optional on every method: when omitted the CLS request
  * tenant is used; a super admin may target another tenant explicitly (the
  * controller resolves `?tenantId=` via `resolveScopedTenantId`). Unlike
- * `AiTaskDefault` there is no SYSTEM-tenant platform default and no
+ * `AiRoutingPolicy` there is no SYSTEM-tenant platform default and no
  * super-admin-only write lock — an ordinary tenant admin owns these rows.
  */
 export interface ITenantNlpTaskInstructionsService {

@@ -11,7 +11,7 @@ import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery
  * (`manage:all`, the super-admin registry plane). Thin by
  * rule 05: the TEXT fetch and the merge live in `AiModelDiscoveryService`.
  *
- * The registry stays authoritative for task routing (`AiTaskDefault` reads the
+ * The registry stays authoritative for task routing (`AiRoutingPolicy` reads the
  * DB only). Discovery is an OPERATOR AFFORDANCE — it never mutates rows, and
  * the only way a discovered model enters governance is the explicit, audited
  * `POST discovery/register` below.

@@ -19,7 +19,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * row GET/PUT shape, but deliberately WITHOUT its `getEffective`/`getOptions`
  * routes and super-admin-only write lock — this is a plain tenant-writable
  * resource (a SEPARATE subject, `TenantNlpTaskInstructions`, from
- * `AiTaskDefault`; see `01-policy.ts`'s tenant-full-access grant).
+ * `AiRoutingPolicy`; see `01-policy.ts`'s tenant-full-access grant).
  *
  * Model/provider SELECTION for `nlp.topic`/`nlp.intent` is untouched — it
  * still resolves through `/admin/ai-task-defaults` under the existing

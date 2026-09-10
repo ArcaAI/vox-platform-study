@@ -135,7 +135,7 @@ interface TextCallPayload {
   /**
    * The session agent's frozen `llmOverrides.finalize`
    * selection, when it named one. Takes precedence over the tenant's
-   * `text.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
+   * assigned `TEXT_GENERATION` agent; the A4 fallback retry stays tenant-configured.
    */
   agentLlm?: { provider: string; model: string } | null;
   /**
@@ -254,7 +254,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // the session agent's `llmOverrides.finalize` slug, and the AiModel catalog
     // row it names. Optional + trailing so existing positional test fixtures
     // compile; unwired ⇒ no override is ever applied and the tenant
-    // `text.finalize` AiTaskDefault decides exactly as before.
+    // assigned `TEXT_GENERATION` agent decides exactly as before.
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
     // seam. `generatePreSummary` calls `noteGenerationService.generate`
     // (PRE_SUMMARY has no harness equivalent — always a side-effect-free
@@ -681,8 +681,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       // was `DepartmentAgent.llmOverrides.finalize`, resolved fail-CLOSED so a
       // named-but-unusable model raised rather than silently finalizing on the
       // tenant default. Its successor is a per-node `llmBinding`,
-      // which has not landed — so finalize resolves the tenant `text.finalize`
-      // `AiTaskDefault` (tenant → SYSTEM), which is what every consultation
+      // which has not landed — so finalize resolves the tenant's assigned
+      // `TEXT_GENERATION` agent (tenant → SYSTEM), which is what every consultation
       // whose agent named no override already used. Nothing is being failed
       // open here: there is no longer a selection that can fail.
       agentLlm: null,
@@ -1655,7 +1655,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     let generation: Record<string, unknown> | undefined;
     if (this.harnessPolicyService && tenantId) {
       // Precedence: agent `llmOverrides.finalize` (frozen at the
-      // live session's agent) → tenant `text.finalize` AiTaskDefault. The A4
+      // live session's agent) → the assigned `TEXT_GENERATION` agent. The A4
       // fallback retry below stays TENANT-configured either way — an agent
       // override names the primary, never the fallback.
       if (payload.agentLlm) {

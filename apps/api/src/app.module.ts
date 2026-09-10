@@ -435,7 +435,7 @@ const featureModules: any[] = [
   AiInferenceModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
-  // instruction content — separate subject from AiTaskDefault).
+  // instruction content — separate subject from AiRoutingPolicy).
   NlpTaskInstructionsModule,
   // The config-plane core surface: /admin/providers (provider endpoints +
   // BYO credentials + connection ceilings + test-connection). TASK-862 removed

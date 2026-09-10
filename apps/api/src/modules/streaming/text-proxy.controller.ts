@@ -290,7 +290,7 @@ export class TextProxyController {
   /**
    * SDK fidelity: a caller-supplied model is forwarded
    * untouched. When the model is absent, resolve SYSTEM `{provider, model}` via
-   * AiTaskDefault / HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
+   * HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
    * (typically 400) — no silent omit → env fallback.
    *
    * ⚠ The `provider` branch below is NOT a tidy-up. This method used to resolve
@@ -545,7 +545,7 @@ export class TextProxyController {
    * Group registry rows by `provider` into the legacy listing shape.
    * Rows without a `provider` are skipped (not yet machine-actionable — the
    * pre-506 catalog rows); `defaultSelection` marks the tenant's effective
-   * default provider/model (HarnessPolicy for TEXT, AiTaskDefault for guardrail).
+   * default provider/model (HarnessPolicy for TEXT, AiRoutingPolicy for guardrail).
    */
   private groupRegistryModelsByProvider(
     rows: ModelResponse[],
@@ -1351,7 +1351,7 @@ export class TextProxyController {
 
   // The guardrail listing reads ENABLED
   // GUARDRAIL registry rows and marks the effective `guardrail.validate`
-  // default (AiTaskDefault tenant→SYSTEM cascade). There is no upstream-service
+  // default (AiRoutingPolicy tenant→SYSTEM cascade). There is no upstream-service
   // probe: an empty result simply means "not configured".
   //
   // This fail-CONFIGURED posture is deliberate:

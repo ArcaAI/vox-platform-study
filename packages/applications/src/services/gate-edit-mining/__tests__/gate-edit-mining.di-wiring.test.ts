@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 // cycle (`interfaces/IClsContext` -> `services` barrel -> ... -> the
 // consultation modules), so requiring a deep module file as the FIRST module
 // leaves some `imports` entries `undefined` at decoration time — an artifact of
-// evaluation order, not of the wiring. `AiTaskDefaultServiceModule` is already
+// evaluation order, not of the wiring. `AiRoutingPolicyServiceModule` is already
 // `undefined` in `SummaryServiceModule` under that order, on unmodified `dev-2.2`.
 //
 // The real application never loads a deep file first: `apps/api` imports the

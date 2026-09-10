@@ -39,7 +39,7 @@ model AsrPipeline {
   // this row's place in the canonical task taxonomy. CONSTANT for
   // the table: every ASR pipeline is, by construction, a speech-to-text
   // binding. It is therefore NOT NULL with the correct default rather than
-  // nullable-and-backfilled (the shape `AiTaskDefault.taskKind` needs, where
+  // nullable-and-backfilled (the shape `AiRoutingPolicy.taskKind` needs, where
   // the value is derived per row from `taskKey`) — a new row cannot be wrong,
   // and `db push` fills every existing row correctly with no data step.
   //

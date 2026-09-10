@@ -408,7 +408,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // NURSE, SUPER_ADMIN, ...) are SYSTEM-tenant rows every tenant must read
   // directly to function at all (RolesController listing, `:id/clone`
   // source lookup, member counts) — the same "every tenant resolves the
-  // SYSTEM row" shape as `AiTaskDefault`/`HarnessPolicy` below, NOT a
+  // SYSTEM row" shape as `AiRoutingPolicy`/`HarnessPolicy` below, NOT a
   // per-tenant clone. READS widen to [caller, SYSTEM] so a tenant sees the
   // built-ins plus its own custom roles, never another tenant's; WRITES are
   // NOT widened, so a tenant admin's `update`/`patch`/`softDelete` on a
@@ -451,7 +451,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   'AiProviderConnection',
   // The provider ROUTING policy ( The SYSTEM-tenant row is the
   // platform default candidate chain every tenant without its own row must
-  // resolve — the identical "tenant row → SYSTEM row" shape as AiTaskDefault
+  // resolve — the identical "tenant row → SYSTEM row" shape as HarnessPolicy
   // above, and the resolver runs under the caller's own tenant CLS at request
   // time, so without the widening it reads nothing and every such tenant fails
   // closed. READS widen to [caller, SYSTEM]; WRITES are NOT widened (policy

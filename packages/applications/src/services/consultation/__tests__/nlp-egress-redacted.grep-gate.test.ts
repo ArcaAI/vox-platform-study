@@ -47,7 +47,7 @@ const NLP_TEXT_ENDPOINT = /api\/v1\/classify\/(tokens|topic|intent)/;
 const ALLOWED: Array<{ file: string; reason: string }> = [
   {
     file: 'services/consultation/shared/resolveNerModelSelection.ts',
-    reason: 'resolves the AiTaskDefault model id only — mentions the endpoint in a doc comment, never posts text',
+    reason: 'resolves the AiRoutingPolicy model id only — mentions the endpoint in a doc comment, never posts text',
   },
   {
     file: 'services/consultation/live-documentation/live-tool-registry.ts',

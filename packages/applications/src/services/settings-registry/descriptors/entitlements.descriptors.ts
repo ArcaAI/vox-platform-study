@@ -75,7 +75,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
    * tighten-only) as a CATALOGUED-BUT-NOT-ENFORCED ceiling. TASK-872 removed
    * the descriptor.
    *
-   * Nothing read it. Enforcement of D2's floor is the platform-approved-list
+   * Nothing read it. Enforcement of D2's floor was the platform-approved-list
    * half in `AiTaskDefaultService.upsertRow` (a `guardrail.*` binding must name
    * a SYSTEM-tenant `AiModel` row), which does not consult this key; wiring the
    * entitlement half needs a `PlanEntitlement` / `TenantEntitlement` COLUMN
