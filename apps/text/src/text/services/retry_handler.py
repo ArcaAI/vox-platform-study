@@ -8,6 +8,13 @@ The "always jitter, even with an exact wait" clause is the non-obvious half. An
 exact `Retry-After` is precisely the case where every rate-limited caller has
 been given the SAME deadline by the SAME upstream, so obeying it to the
 millisecond synchronises the herd instead of spreading it.
+
+TASK-946 D5: a provider 4xx is a DETERMINISTIC rejection of this exact
+request (a malformed body, an oversized prompt) — retrying it burns the
+platform's retry budget against an outcome that cannot change, and the
+generic 502 that used to follow reads as "the provider is down" rather than
+"the request was rejected". `provider_status_code_from` / `provider_error_code_from`
+below classify that shape; `should_retry` refuses it unconditionally.
 """
 
 from __future__ import annotations
@@ -91,6 +98,84 @@ def retry_after_from(exc: BaseException) -> float | None:
     return seconds if seconds > 0 else None
 
 
+#: The error-type value a deterministic provider 4xx is classified as (see
+#: `provider_status_code_from` below). Structurally excluded from
+#: `should_retry` — never retried, whatever a caller's ``retry_on`` asks for.
+INVALID_REQUEST_ERROR_TYPE = "invalid_request"
+
+#: The `code` this service answers with for a provider 4xx that is NOT
+#: recognised as a context-window overflow. Same naming convention as
+#: `services/output_gate.py`'s `REJECTED_CODE` / `UNAVAILABLE_CODE`.
+PROVIDER_INVALID_REQUEST_CODE = "PROVIDER_INVALID_REQUEST"
+
+#: The `code` for a provider 4xx whose message says the prompt (plus history/
+#: system prompt) no longer fits the model's context window — the D5 trial
+#: evidence (LM Studio: ``"Context size has been exceeded."``). Checked
+#: case-insensitively as a substring, not an exact match: every engine phrases
+#: this differently and none of them hand back a machine-readable field for
+#: it, only prose.
+CONTEXT_WINDOW_EXCEEDED_CODE = "CONTEXT_WINDOW_EXCEEDED"
+
+_CONTEXT_WINDOW_PHRASES: tuple[str, ...] = (
+    "context size",
+    "context length",
+    "context window",
+    "maximum context",
+    "too many tokens",
+    "exceeds the model",
+)
+
+
+def provider_status_code_from(exc: BaseException) -> int | None:
+    """The HTTP status code a provider's own response carried, if any.
+
+    Duck-typed across the two shapes Text's provider adapters actually raise
+    (verified against the installed SDKs — see the D5 evidence in
+    ``api/endpoints/generate.py``, not guessed):
+
+    * ``openai.APIStatusError`` (LM Studio, vLLM, the generic OpenAI-compat
+      adapter, Azure OpenAI) and ``anthropic.APIStatusError`` both expose
+      ``.status_code`` directly; and
+    * a raw ``httpx.HTTPStatusError`` (Ollama, llama.cpp, TEI —
+      ``resp.raise_for_status()``) carries it on ``.response.status_code``
+      instead.
+
+    Neither shape is imported here, so a provider adapter added later needs no
+    update to this function as long as it raises one of these two familiar
+    shapes. A Bedrock ``botocore.exceptions.ClientError`` matches neither
+    (its ``.response`` is a plain ``dict``, not an ``httpx.Response``) and
+    correctly falls through to ``None`` — unclassified, exactly like before
+    this function existed.
+    """
+    direct = getattr(exc, "status_code", None)
+    if isinstance(direct, int):
+        return direct
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def is_provider_invalid_request(exc: BaseException) -> bool:
+    """Whether ``exc`` is a deterministic provider 4xx — never retryable."""
+    status_code = provider_status_code_from(exc)
+    return status_code is not None and 400 <= status_code < 500
+
+
+def provider_error_code_from(exc: BaseException) -> str:
+    """The response ``code`` for a provider 4xx already confirmed via
+    :func:`is_provider_invalid_request`.
+
+    ``str(exc)`` is used rather than a specific SDK's ``.message`` attribute so
+    an unrecognised exception type still classifies correctly instead of
+    raising — the same "duck-type, don't import every SDK" posture as
+    :func:`provider_status_code_from`.
+    """
+    text = str(exc).lower()
+    if any(phrase in text for phrase in _CONTEXT_WINDOW_PHRASES):
+        return CONTEXT_WINDOW_EXCEEDED_CODE
+    return PROVIDER_INVALID_REQUEST_CODE
+
+
 def should_retry(
     error_type: str,
     retry_on: list[str],
@@ -104,7 +189,16 @@ def should_retry(
     for more is silently held to the ceiling rather than refused: the request is
     still serviceable, it just does not get to choose the platform's retry
     budget.
+
+    A deterministic provider 4xx (``INVALID_REQUEST_ERROR_TYPE``) is refused
+    UNCONDITIONALLY — before the attempt-ceiling check and regardless of
+    ``retry_on`` — because no number of retries changes an outcome the
+    provider has already decided synchronously. This is structural, not a
+    ``retry_on`` default: a caller that explicitly lists ``"invalid_request"``
+    still gets exactly one attempt.
     """
+    if error_type == INVALID_REQUEST_ERROR_TYPE:
+        return False
     if attempt >= min(max_retries, MAX_RETRIES):
         return False
     return error_type in retry_on
