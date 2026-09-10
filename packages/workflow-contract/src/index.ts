@@ -232,6 +232,7 @@ export type {
   CompiledLoopBody,
   CompiledPolicyBindings,
   CompiledContextSchemaRef,
+  CompiledUserIdentityBinding,
   ResolvedTriggerContextSchema,
   CompiledCaps,
   CompiledRetryPolicy,

@@ -1,4 +1,4 @@
-import type { ContextPrimitive } from './context-schema-definition';
+import type { ContextPrimitive, UserIdentityBinding } from './context-schema-definition';
 import type { DefinitionChangeClassification } from './definition-diff';
 import type {
   ConsultationContextSchemaBundleResponse,
@@ -98,6 +98,21 @@ export type ContextSchemaReferenceResolution =
       versionId: string;
       /** The DERIVED payload schema (`payloadSchemaFromDefinition`) — the `context.*` namespace. */
       payloadSchema: Record<string, unknown>;
+      /**
+       * TASK-950 D-3 — the DERIVED user-identity binding
+       * (`userIdentityBindingFromDefinition`), or `null` when this version declares none.
+       *
+       * It rides beside `payloadSchema` because both are derived from the SAME version
+       * `definition` the resolver already has in hand, and both are frozen by the same two
+       * callers (agent publish, workflow compile). Deriving it a second time at each freeze
+       * site would need the raw definition there, which is precisely what this result exists
+       * to keep out of them.
+       *
+       * ADDITIVE-OPTIONAL: a producer written before this field existed supplies none, and
+       * absent reads exactly as `null` at every consumer — "this version declares no identity
+       * field", never "unknown".
+       */
+      userIdentity?: UserIdentityBinding | null;
     }
   | { outcome: 'failed'; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
 
