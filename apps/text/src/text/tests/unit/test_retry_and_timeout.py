@@ -7,11 +7,12 @@ RED: Written before implementation — all tests should FAIL initially.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from openai import BadRequestError, InternalServerError
 
 from text.core.config import Settings
 from text.models.task import TaskState, TaskStatus
@@ -399,3 +400,145 @@ class TestRetryWithTimeout:
         assert "timed out" in resp.json()["detail"].lower()
         # 1 initial + 2 retries = 3 total calls
         assert mock_provider.generate.call_count == 3
+
+
+# ── Provider 4xx Tests (TASK-946 D5) ─────────────────────────────────
+#
+# LM Studio (and every other OpenAI-wire engine) answers a too-long prompt
+# with a deterministic HTTP 400 — the request will NEVER succeed no matter
+# how many times it is retried. Before this fix the generic `except Exception`
+# arm classified it as `"provider_error"`, which is in the DEFAULT `retry_on`
+# list, so the retry loop burned 3 attempts against a request that could not
+# possibly change outcome, then answered a generic 502 that reads as "the
+# service is down" rather than "the request was too big".
+
+
+def _bad_request_error(message: str) -> BadRequestError:
+    """A real `openai.BadRequestError`, shaped the way `openai_compat.py` /
+    `lmstudio.py` actually raise it (`AsyncOpenAI.chat.completions.create`).
+    Constructed the same way `test_provider_guardrails.py` already does for
+    Azure's BadRequestError — the two providers share the `openai` SDK's
+    exception hierarchy.
+    """
+    body = {"error": {"message": message, "type": "server_error"}}
+    return BadRequestError(
+        message=message,
+        response=MagicMock(status_code=400, headers={}, json=lambda: body),
+        body=body,
+    )
+
+
+def _internal_server_error(message: str) -> InternalServerError:
+    body = {"error": {"message": message, "type": "server_error"}}
+    return InternalServerError(
+        message=message,
+        response=MagicMock(status_code=500, headers={}, json=lambda: body),
+        body=body,
+    )
+
+
+class TestProviderInvalidRequest:
+    """A deterministic provider 4xx is classified `invalid_request`, is never
+    retried (regardless of what the caller's `retry_on` asks for), and answers
+    422 with a `code` — never the generic 502."""
+
+    @pytest.mark.asyncio
+    async def test_provider_4xx_is_not_retried_and_returns_422(self, _app_factory):
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=_bad_request_error("The model does not support this input.")
+        )
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                # Explicitly asks to retry BOTH shapes — proves the exclusion
+                # is structural, not just "absent from the default retry_on".
+                "retry_config": {
+                    "max_retries": 3,
+                    "retry_on": ["provider_error", "invalid_request"],
+                },
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "PROVIDER_INVALID_REQUEST"
+        # Exactly one attempt — no retry on a deterministic 4xx.
+        assert mock_provider.generate.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_provider_4xx_context_window_message_maps_to_context_window_code(
+        self, _app_factory
+    ):
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=_bad_request_error(
+                "Engine protocol predict stream returned an error: "
+                '{"code":500,"message":"Context size has been exceeded.","type":"server_error"}'
+            )
+        )
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "CONTEXT_WINDOW_EXCEEDED"
+        assert mock_provider.generate.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_provider_5xx_still_retries_and_returns_502(self, _app_factory):
+        """5xx keeps the `provider_error` classification and the existing
+        retry + 502 behavior — only the deterministic 4xx shape changed."""
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(side_effect=_internal_server_error("model overloaded"))
+        app = _app_factory(mock_provider)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 502
+        # 1 initial + 2 retries = 3 total calls, exactly as an unclassified
+        # provider error behaved before this change.
+        assert mock_provider.generate.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_timeout_still_retries_unaffected_by_the_4xx_classification(
+        self, _app_factory, settings
+    ):
+        """Timeouts are a distinct branch (`except TimeoutError`) untouched by
+        the new provider-status-code classification — still retried when
+        `"timeout"` is in `retry_on`."""
+        _app_factory.served_timeouts["lm-studio"] = 1
+        mock_provider = AsyncMock()
+        mock_provider.generate = AsyncMock(
+            side_effect=[
+                TimeoutError(),
+                ("Recovered!", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
+            ]
+        )
+        app = _app_factory(mock_provider)
+        app.state.settings = settings
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "lm-studio",
+                "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
+            },
+            patch_sleep=True,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Recovered!"
+        assert mock_provider.generate.call_count == 2
