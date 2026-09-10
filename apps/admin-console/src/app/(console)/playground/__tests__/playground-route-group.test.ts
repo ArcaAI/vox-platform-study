@@ -14,11 +14,26 @@
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { NAV_ENTRIES } from '@/shared/navigation/nav-config';
 
-const APP = join(process.cwd(), 'src/app');
+/**
+ * Anchored to THIS FILE, never to `process.cwd()`.
+ *
+ * It used to be `join(process.cwd(), 'src/app')`, which made the result depend on where vitest
+ * was invoked from rather than on what the repository contains. `pnpm --filter
+ * @arcaai/admin-console test` runs with the package as its cwd and passed; the same suite driven
+ * from the repo root (`vitest run --root apps/admin-console`, which does NOT change the process
+ * cwd) resolved `<repo>/src/app`, found nothing, and reported every playground route as missing.
+ *
+ * A route-layout assertion that answers differently depending on the caller's shell is worse than
+ * no assertion: it cries wolf on a healthy tree, and a real regression would be indistinguishable
+ * from the noise. This file sits at `src/app/(console)/playground/__tests__`, so `../../..` is
+ * `src/app` wherever the checkout lives — including a git worktree.
+ */
+const APP = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 describe('playground routes (tier 50–59) sit outside the tenant-admin route group', () => {
   it('every tier 50–59 entry has a page under (console)/<route> and none under (console)/(tenant)', () => {
