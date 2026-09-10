@@ -21,6 +21,7 @@ import {
   AgentStepType,
   type ConsultationEntity,
   ConsultationRepository,
+  DepartmentRepository,
   ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
@@ -99,6 +100,9 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+// TASK-943 — the SAME builder the summary path uses, so the two surfaces cannot drift on what an
+// absent clinical variable means.
+import { buildPreSummaryVariables } from '../prompt/pre-summary-variables';
 // TASK-939 OD-2(a) — the turn contract: schema, parser, fold and the whole-document degrade.
 import {
   applyTurn,
@@ -619,6 +623,13 @@ interface LiveSession {
    */
   visitType?: string;
   /**
+   * TASK-943 — the consultation's department, frozen off the SAME row read that freezes
+   * `summaryLanguage` and `visitType`, so the agent's `current_department` variable costs no extra
+   * I/O. `departmentName` is the resolved name, cached after the first lookup.
+   */
+  departmentId?: string | null;
+  departmentName?: string | null;
+  /**
    * TASK-932 R-16a — the live lane's LAST SUCCESSFUL output per node id, accumulated across
    * flushes and handed to the durable interpreter at `stop()`.
    *
@@ -691,6 +702,29 @@ export interface RealtimeBudgets {
   groundednessTimeoutMs: number;
   groundednessMaxRetries: number;
   groundednessRetryBackoffMs: number;
+}
+
+/**
+ * TASK-943 — render the session's extracted vitals as the one-line text the prompt's
+ * `{{formatted_vitals}}` expects, or `undefined` when there is nothing to report.
+ *
+ * `undefined` rather than an empty string on purpose: the caller then falls through to the DECLARED
+ * absence value (`Not available`) instead of handing the model a blank where a reading belongs. The
+ * inverse matters more — claiming `Not available` while the session HOLDS readings is a falsehood,
+ * not a default, which is why this exists at all rather than always using the default.
+ *
+ * Blood pressure is emitted as the `systolic/diastolic` pair clinicians read it as, and only when
+ * BOTH halves are present: a lone systolic is not a blood pressure.
+ */
+function formatVitalsForPrompt(vitals?: LiveSummaryVitalsDto): string | undefined {
+  if (!vitals) return undefined;
+  const parts: string[] = [];
+  if (vitals.systolic != null && vitals.diastolic != null) parts.push(`BP ${vitals.systolic}/${vitals.diastolic} mmHg`);
+  if (vitals.heartRate != null) parts.push(`HR ${vitals.heartRate} bpm`);
+  if (vitals.spo2 != null) parts.push(`SpO2 ${vitals.spo2}%`);
+  if (vitals.temperatureC != null) parts.push(`Temp ${vitals.temperatureC}\u00b0C`);
+  if (vitals.weightKg != null) parts.push(`Weight ${vitals.weightKg} kg`);
+  return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
 /** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
@@ -1065,6 +1099,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // shape a clinical note.
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-943 — resolves `current_department` for the agent's declared trigger context. Optional +
+    // trailing so every positional fixture keeps its arity; ABSENT ⇒ the name falls back to
+    // `buildPreSummaryVariables`' documented default, exactly as `PromptAssemblyService` does when
+    // its own department lookup cannot answer. The note must still be produced.
+    @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1667,6 +1706,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       session.visitType = DEFAULT_VISIT_TYPE_SERVICE.forConsultation(session.tenantId, {
         isFollowUp: Boolean(consultation?.parentConsultationId),
       }).key;
+      // TASK-943 — and the department, for the third time for the same reason: the agent declares
+      // `current_department`, and resolving it from anywhere else would be a second read of a row
+      // this line already has in hand.
+      session.departmentId = consultation?.departmentId ?? null;
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
@@ -3267,7 +3310,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         capabilities,
         isStale: ctx.isStale,
         signal: ctx.signal,
-        runContext: this.realtimeRunContext(session),
+        runContext: await this.realtimeRunContext(session),
       });
     } catch (error) {
       // A BINDING error is a contract violation in the tenant's graph, not a bad
@@ -3567,10 +3610,87 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * "the gateway does not know", which the evaluator reports as `no such key`, and never as a
    * substituted default that would route a follow-up visit down the new-visit branch in silence.
    */
-  private realtimeRunContext(session: LiveSession): Record<string, ExpressionValue> {
-    const context: Record<string, ExpressionValue> = {};
-    if (session.visitType) context.visit_type = session.visitType;
+  /**
+   * TASK-943 — the trigger context a realtime `core.agent` renders its prompt from.
+   *
+   * ## The defect this replaced
+   *
+   * This supplied exactly one variable, `visit_type`. The seeded `general-medicine-summarization`
+   * agent binds NINE names to `trigger.context.*` (`seed/25-agents.ts`
+   * `generalMedicinePromptVariables()`), and `core.agent` fails CLOSED on the first it cannot
+   * resolve — correctly, because a clinical prompt carrying a literal `{{safe_age}}` is worse than
+   * no note. So the realtime case note NEVER GENERATED: measured on a real 120 s recording, eight
+   * flush generations produced eight `prompt_variable_unresolved` degrades and zero sections. It
+   * also explains TASK-891's "`DocumentSection` holds 0 rows cluster-wide" better than that
+   * ticket's own analysis did.
+   *
+   * ## Where each value comes from
+   *
+   * Six of the nine go through `buildPreSummaryVariables` — the SAME surface-neutral builder the
+   * summary path uses — so the realtime and durable surfaces cannot drift on what an absent value
+   * means. Its own rule is the one followed here: *"A surface that has no equivalent for a field
+   * simply omits it and inherits v1's default — never a newly invented one."* The v2 data model
+   * genuinely holds no patient demographics (`patientId` is an external reference with no local
+   * demographic store), so `safe_age`/`safe_dob`/`safe_gender` resolve to the declared `Unknown`.
+   *
+   * The three names that builder does not carry are set here against the absence values the
+   * workflow's OWN trigger-context schema declares for them
+   * (`29-arcaai-agents-and-workflows.generated.ts`): `language` is the consultation language CODE
+   * ("the v1 name of `language`"), `chief_complaint` is empty ("when the client supplies one"), and
+   * `formatted_vitals` is `Not available` — UNLESS this session has extracted vitals of its own, in
+   * which case they are reported. Claiming `Not available` while the session holds readings is a
+   * falsehood, not a default.
+   *
+   * `formatted_previous_visits` stays empty deliberately. The warm-start pre-summary IS prior-visit
+   * material, but feeding it to the note changes what a clinician's record is generated FROM, and
+   * that is an input decision with clinical weight rather than part of restoring generation.
+   */
+  private async realtimeRunContext(session: LiveSession): Promise<Record<string, ExpressionValue>> {
+    const shared = buildPreSummaryVariables({
+      currentDepartment: await this.resolveDepartmentName(session),
+      visitType: session.visitType,
+      language: session.summaryLanguage,
+    });
+
+    const context: Record<string, ExpressionValue> = {
+      ...shared,
+      // The general-medicine template's own names for the three the pre-summary list spells
+      // differently (`language_name`, `safe_vitals`) or does not carry (`chief_complaint`).
+      language: (session.summaryLanguage ?? '').trim(),
+      chief_complaint: '',
+      formatted_vitals: formatVitalsForPrompt(session.lastPayload?.vitals) ?? shared.safe_vitals,
+    };
+
     return { trigger: { context }, vars: {}, nodes: {} };
+  }
+
+  /**
+   * The consultation's department NAME, resolved once per session.
+   *
+   * Cached on the session rather than re-read per flush: the id was already frozen off the row
+   * `ensureSubstrateResolved` reads, and a name that cannot change mid-consultation has no business
+   * costing a query every twenty seconds.
+   *
+   * Never throws — mirrors `PromptAssemblyService.resolveDepartmentName`. A failed lookup yields
+   * `null` and the builder's documented default; a note must still be produced.
+   */
+  private async resolveDepartmentName(session: LiveSession): Promise<string | null> {
+    if (session.departmentName !== undefined) return session.departmentName;
+    if (!session.departmentId || !this.departmentRepository) return null;
+    try {
+      const department = await this.departmentRepository.findById(session.departmentId);
+      session.departmentName = department?.name ?? null;
+      return session.departmentName;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Department lookup failed — the agent’s `current_department` falls back to its declared default',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Cached as null so a broken read is not retried on every flush of a long consultation.
+      session.departmentName = null;
+      return null;
+    }
   }
 
   /**
