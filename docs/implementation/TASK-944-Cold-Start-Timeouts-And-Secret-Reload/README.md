@@ -87,8 +87,102 @@ re-warm works. Worth confirming whether that is a wiring bug.
 
 ## Implementation Plan
 
-To be written by the implementing agent, into this file, before any code.
-TDD per `.claude/rules/01-development-workflow.md` — failing test first, every lane.
+**Status of this plan:** written 2026-09-10 by the implementing agent, from the evidence in
+the sections above plus a static audit of the committed tree. TDD per
+`.claude/rules/01-development-workflow.md` — a failing test first for every lane.
+
+### Lane A — govern the session-create timeout
+
+Exemplar followed: `consultation.realtime.textTimeoutMs` (TASK-891 B1 / TASK-940). It is the
+same SHAPE of defect — a gateway→service hop budget frozen as a literal, set *below* the
+measured tail of the thing it budgets — and it was fixed by making it a `global-kv`
+`open-to-default` descriptor with a 60 s default. The read side follows
+`phiRedaction.requestTimeoutMs` (`GuardrailPhiRedactor`), which is the existing precedent for a
+platform-only, sync `IAppSettingsService.getValueWithDefault` read on an outbound hop.
+
+1. RED — `packages/applications/src/services/stt/streaming/__tests__/streamingSession.service.test.ts`
+   gains a case asserting the POST timeout comes from the settings service, and one asserting the
+   code default when no settings service is wired.
+2. RED — a descriptor test asserting the key is registered with the governed shape.
+3. GREEN — new `descriptors/stt-gateway.descriptors.ts` (key `sttStreaming.sessionCreateTimeoutMs`,
+   `global-kv` / `system` / `globalOnly` / `open-to-default`, default 60000), registered in
+   `registry.ts`; `StreamingSessionService` takes an OPTIONAL + TRAILING `IAppSettingsService`
+   (so every positional fixture keeps its arity) and reads the key.
+4. The existing `timeout: 15000` assertions move to the new default — deliberately, and recorded
+   here: 15 000 ms sat below the measured 16 870 ms cold start, so it is not a number to preserve.
+
+### Lane B — the `[ml]` / `[nemo]` extras are installed into one venv
+
+Root cause, established from committed files alone (no cluster, no image build):
+
+- The repo root `pyproject.toml` `[tool.uv].conflicts` **declares `stt[ml]` ⇄ `stt[nemo]` and
+  `stt[ml-gpu]` ⇄ `stt[nemo]` as conflicting extras.**
+- `uv.lock` agrees: under `[package.optional-dependencies]` for `stt`, `ml`/`ml-gpu` resolve
+  **torch 2.8.0** + **transformers 5.16.1** + torchvision; `nemo` resolves **torch 2.12.1** and
+  declares no torchvision.
+- `apps/stt/docker/Dockerfile` (`ml-builder`) nevertheless installs BOTH into the SAME
+  `/opt/venv`, one after the other — `./apps/stt[ml-gpu]`, then `./apps/stt[nemo]` — and the
+  second step additionally overrides `transformers==5.5.4`, below `[ml]`'s own declared
+  `transformers>=5.13.0,<6` floor.
+
+Consequence chain that produces the observed line: the `[nemo]` step upgrades torch out from
+under the `torchvision` wheel `[ml]` pinned for torch 2.8; an ABI-mismatched torchvision raises
+`RuntimeError` on import; transformers reaches torchvision from
+`video_processing_utils` → `processing_auto`, and `_LazyModule.__getattr__` catches exactly
+`(ModuleNotFoundError, RuntimeError)` and re-raises
+`ModuleNotFoundError: Could not import module 'AutoProcessor'. Are this object's requirements
+defined correctly?` — the exact string in the log. `HuggingFaceLoader.load` catches `ImportError`
+(its parent) and raises `ModelLoadError`, after the torch + transformers cold import has already
+been paid.
+
+1. RED — `apps/stt/tests/unit/test_task944_ml_runtime_extra_conflicts.py`, modelled on the
+   existing `test_dockerfile_pywhispercpp_build.py`: parse the declared conflicts and the
+   Dockerfile, fail when one build stage installs two conflicting extras, and fail on a
+   `transformers==` pin that contradicts the `[ml]` floor.
+2. GREEN — drop the `[nemo]` install (and its transformers override) from `ml-builder`. Both
+   nemo consumers (`models/nemo_loader.py`, `diarization/streaming_sortformer.py`) already
+   lazy-import and fail CLOSED with a named error, so the engines degrade honestly instead of
+   running on a venv whose torch has been swapped under pyannote.
+3. The warm step is NOT removed. No `apps/stt/pyproject.toml` dependency edit is required —
+   the pyproject and the lock are already correct and already say these extras conflict — so
+   there is nothing for `uv lock` to re-resolve. Recorded here because the ticket anticipated a
+   pyproject edit.
+
+### Lane C — one secret source for sign and verify
+
+**Contract chosen: (a), without a previous-key grace window.**
+
+`JwtStrategy` captures `secretOrKey` ONCE in its constructor, so verification is pinned to the
+boot-time value forever while every mint path re-resolves through `SecretsService`. Passport
+supports `secretOrKeyProvider`, so per-request resolution is available with no new machinery,
+and it converges a rotation within the SecretsService cache TTL on both sides at once.
+
+A previous-key grace window is deliberately NOT added: it needs a second Vault key, a second
+descriptor, and an operator procedure for retiring it, and without it a rotation costs each live
+session one 401 and a re-login — a degradation that self-heals, against today's permanent outage
+until a restart. That trade is recorded here so the next reader knows it was decided, not missed.
+
+1. RED — `packages/applications/src/services/auth/__tests__/jwt-secret.task944.test.ts`:
+   verification must observe a secret CHANGED after construction; sign and verify must call the
+   same exported resolver; the OIDC mint path must never substitute a literal.
+2. RED — a test that the production module graph actually attaches the
+   `arca:secrets:invalidate` subscriber.
+3. GREEN — one shared `resolveJwtSecret()` in `services/auth/jwt-secret.ts`, used by
+   `JwtStrategy` (`secretOrKeyProvider`), `OidcStrategy` (dropping its
+   `?? 'default-secret-key'` fallback, which could mint a token no verifier accepts),
+   `FederatedAuthService`, and the three `apps/api` mint sites.
+4. GREEN — wire the secrets invalidation subscriber. Measured on the live cluster as 0
+   subscribers; confirmed statically — `SecretsService.attachRedisSubscriber` has **no
+   production caller** anywhere in the tree, only unit tests and one test helper stub.
+5. DOCS — `docs/operations/jwt-secret-rotation.md`, and correct the claim in
+   `docs/operations/vault/README.md` §"Rotating a platform secret end to end" that the
+   invalidation channel is the fast path (it was inert).
+
+### Out of scope, deliberately
+
+- Raising Lane A's number without governing it (an explicit non-solution in the ticket).
+- Any cluster, Docker, `pnpm install`, `db:*` or deployment-repo action — the orchestrator owns
+  those surfaces.
 
 ## Verification Criteria
 

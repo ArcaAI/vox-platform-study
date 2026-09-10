@@ -167,9 +167,15 @@ printf '%s' "$NEW_VALUE" | vex vault-0 vault kv put secret/hope/GUARDRAIL_SERVIC
 vex vault-0 vault kv metadata get secret/hope/GUARDRAIL_SERVICE_TOKEN | grep -E 'current_version'
 
 # 3. Consumers converge:
-#    - TypeScript gateway: SecretsService publishes on `arca:secrets:invalidate`;
-#      every node drops its cache entry. TTL is the backstop, not the mechanism.
-#        vex vault-0 vault kv get -field=value secret/hope/GUARDRAIL_SERVICE_TOKEN >/dev/null
+#    - TypeScript gateway: announce the rotation on `arca:secrets:invalidate` and every
+#      node drops its cache entry at once. TTL is the backstop, not the mechanism.
+#        redis-cli PUBLISH arca:secrets:invalidate '{"key":"GUARDRAIL_SERVICE_TOKEN"}'
+#      Then CHECK the announcement had listeners — it must be >= the replica count:
+#        redis-cli PUBSUB NUMSUB arca:secrets:invalidate
+#      (This measured 0 until TASK-944: the channel had publishers and SecretsService
+#      had a consumer method, but no production code ever attached a subscriber, so
+#      the "mechanism" above was inert and only the TTL backstop was real. The
+#      listener is `SecretsInvalidationSubscriber`, wired by `SecretsModule.forRoot()`.)
 #    - Python services: the Vault Agent sidecar re-renders
 #      /vault/secrets/GUARDRAIL_SERVICE_TOKEN in place. A settings object built
 #      once at startup keeps the OLD value — trigger the service's
@@ -179,6 +185,12 @@ kubectl -n hope rollout restart deploy/hope-guardrail deploy/hope-api
 # 4. Verify no 401s on the hop that uses it.
 kubectl -n hope logs deploy/hope-guardrail --since=5m | grep -i 'service_token\|401' || echo "clean"
 ```
+
+**`JWT_SECRET_KEY` has its own page.** It is the one platform secret whose two halves
+are exercised by every request, so a half-rotation is a platform-wide 401 rather than a
+degraded hop: `docs/operations/jwt-secret-rotation.md` states the contract (rolling, no
+restart, no previous-key grace window) and the verification step that actually proves
+sign and verify agree.
 
 **Both ends must move together.** `GUARDRAIL_SERVICE_TOKEN` is presented by the
 gateway *and* verified by guardrail; rotating one side alone is an outage on that

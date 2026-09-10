@@ -1,7 +1,20 @@
 import { Inject, Injectable, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { AppConfig, IConfigService } from './IConfigService';
 import { ConfigModuleOptions } from './config.module';
-import { SecretsService } from '../secrets';
+// TASK-944 — deep import, NOT the `../secrets` barrel, and that is load-bearing.
+//
+// The barrel re-exports `secrets.module.ts`, so importing it from here closes a runtime
+// cycle the moment `SecretsModule` gains any provider that reaches config:
+//   config.service -> secrets/index -> secrets.module -> <provider> -> ... -> config
+// A cycle like that does not fail loudly. Whichever module is mid-evaluation hands back
+// a partially-initialised namespace, so a class reference silently reads `undefined` —
+// and a `@Inject(undefined)` on an `@Optional()` dependency then resolves to `undefined`
+// at runtime with no error anywhere. That is exactly how it presented when the secrets
+// invalidation subscriber was wired: the subscriber constructed fine and simply never
+// received its Redis source.
+//
+// This file needs one class. Importing it directly keeps the edge off the module graph.
+import { SecretsService } from '../secrets/SecretsService';
 import { loadEnv, getNodeEnv, type LoadEnvResult } from '../../../../common/env';
 
 /**

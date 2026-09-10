@@ -5,9 +5,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IJwtRevocationService } from './jwt-revocation.service';
+import { JWT_SECRET_KEY_NAME, JWT_SECRET_PLACEHOLDER, resolveJwtSecret } from './jwt-secret';
 import { UserSession } from './dto';
-
-const JWT_SECRET_PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -18,19 +17,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     @Inject(IJwtRevocationService)
     private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
-    // JWT secret is sourced from SecretsService (cache-warmed at bootstrap
-    // by main.ts).
-    //
-    // Refuse to start when the resolved JWT secret is missing OR equals the
-    // literal placeholder.
-    // Catches both:
-    //   (a) the placeholder ever landing in Vault / SecretsService, and
-    //   (b) a warmup miss returning undefined (no implicit fallback).
-    // The thrown Error propagates out of NestFactory.create() and exits
-    // the process before any request can be served — same posture as
-    // `auditAdminRoutePermissions` in apps/api/src/bootstrap.
-    const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY');
-    if (!jwtSecret || jwtSecret === JWT_SECRET_PLACEHOLDER) {
+    // BOOT ASSERTION — unchanged in intent. Refuse to start when the warmed JWT
+    // secret is missing OR equals the literal placeholder. Catches both (a) the
+    // placeholder ever landing in Vault / SecretsService and (b) a warmup miss
+    // returning undefined (no implicit fallback). The thrown Error propagates out of
+    // NestFactory.create() and exits the process before any request is served — same
+    // posture as `auditAdminRoutePermissions` in apps/api/src/bootstrap.
+    const bootSecret = secretsService.getSecretSync(JWT_SECRET_KEY_NAME);
+    if (!bootSecret || bootSecret === JWT_SECRET_PLACEHOLDER) {
       new Logger(JwtStrategy.name).error(
         'JWT_SECRET_KEY resolved to the literal placeholder. SecretsService either has no value warmed under this key, or the warmed value is the development default. Refusing to boot.',
       );
@@ -39,7 +33,33 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: jwtSecret,
+      // TASK-944 — `secretOrKeyProvider`, NOT `secretOrKey`.
+      //
+      // `secretOrKey: bootSecret` handed passport the STRING read one line above, so
+      // verification stayed pinned to the boot-time value for the life of the process
+      // while every mint path re-resolved through `SecretsService` on each call. After
+      // a Vault rotation that is not a stale read, it is an OUTAGE: `/auth/login`
+      // issues tokens signed with the new secret and every authenticated route rejects
+      // them with 401 against the old one, until the pod is restarted. Measured on
+      // `hope-v2-dev` 2026-09-10.
+      //
+      // The provider re-resolves per verification through the SAME function the mint
+      // paths use, so the two cannot diverge. Cost is a cache read on the hot path:
+      // `resolveJwtSecret` hits the boot-warmed sync LRU in the common case and only
+      // awaits the provider when that entry has aged out.
+      //
+      // An unresolvable secret is an ERROR to passport, never a substituted value — a
+      // fallback here would verify signatures against something nobody authenticated
+      // against.
+      secretOrKeyProvider: (_request: unknown, _rawJwtToken: string, done: (err: Error | null, secret?: string) => void): void => {
+        resolveJwtSecret(secretsService)
+          .then((secret) =>
+            secret
+              ? done(null, secret)
+              : done(new Error('JWT_SECRET_KEY could not be resolved from SecretsService; refusing to verify this token.')),
+          )
+          .catch((error: unknown) => done(error instanceof Error ? error : new Error(String(error))));
+      },
     });
   }
 

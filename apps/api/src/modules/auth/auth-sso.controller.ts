@@ -1,4 +1,12 @@
-import { FederatedAuthService, FederatedSession, IAppSettingsService, IRefreshTokenService, SecretsService, createJwt } from '@arcaai/applications';
+import {
+  FederatedAuthService,
+  FederatedSession,
+  IAppSettingsService,
+  IRefreshTokenService,
+  SecretsService,
+  createJwt,
+  resolveJwtSecret,
+} from '@arcaai/applications';
 import { Controller, Get, Header, HttpCode, HttpStatus, Inject, Param, Post, Query, UnauthorizedException, Body } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -54,8 +62,9 @@ export class AuthSsoController {
     return `${base}/${tenantKey}/acs`;
   }
 
+  // TASK-944 — the ONE shared resolver, which `JwtStrategy` also verifies with.
   private async resolveJwtSecretKey(): Promise<string | undefined> {
-    return this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? (await this.secretsService.getSecretOptional('JWT_SECRET_KEY'));
+    return resolveJwtSecret(this.secretsService);
   }
 
   @Post('start')

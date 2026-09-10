@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { setPhiReadSecrets } from '@arcaai/domains';
 import { SecretsService, SECRETS_SERVICE_OPTIONS } from './SecretsService';
 import { SecretsHealthIndicator } from './secrets.health';
+import { SecretsInvalidationSubscriber } from './secrets-invalidation.subscriber';
+import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.service';
 import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretsProviderName } from './ISecretsProvider';
 import { EnvSecretsProvider } from './providers/env-secrets.provider';
 import { VaultSecretsProvider } from './providers/vault-secrets.provider';
@@ -199,6 +201,22 @@ export class SecretsModule {
           inject: [SECRETS_PROVIDER_TOKEN, SECRETS_SERVICE_OPTIONS],
         },
         SecretsHealthIndicator,
+        // TASK-944 — the LISTENING end of `arca:secrets:invalidate`.
+        //
+        // The channel had publishers (`SettingsRegistryWriteService`, the rotation
+        // worker, the scheduled-rotation processor) and a consumer method on
+        // `SecretsService`, but nothing ever called that method: `PUBSUB NUMSUB` on the
+        // live cluster reported 0 subscribers, so a rotation only ever propagated on
+        // the TTL re-warm while the operator runbook said otherwise.
+        //
+        // A DEDICATED `RedisSubscriberService` instance, exactly as
+        // `AppSettingsModule` does for `app-settings:invalidate`: Redis forbids other
+        // commands on a connection in SUBSCRIBE mode, so a subscriber cannot be shared
+        // with the cache client. It reads its connection from the @Global ConfigModule
+        // and disables itself (logging why) when Redis is not configured, which is what
+        // keeps this module bootable in the provider-type-only tests.
+        RedisSubscriberService,
+        SecretsInvalidationSubscriber,
       ],
       exports: [SECRETS_PROVIDER_INSTANCE, SECRETS_PROVIDER_TOKEN, SecretsService, SecretsHealthIndicator],
     };
