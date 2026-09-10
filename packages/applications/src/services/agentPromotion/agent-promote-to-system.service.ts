@@ -47,7 +47,6 @@ import { runInTenantContext } from './tenant-context';
  */
 const GLOBAL_PLAYGROUND_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
-const PROMPT_TEMPLATE_ID_KEY = 'promptTemplateId';
 const PROMPT_VERSION_NUMBER_KEY = 'promptVersionNumber';
 const EVAL_GATE_KEY = 'evalGate';
 

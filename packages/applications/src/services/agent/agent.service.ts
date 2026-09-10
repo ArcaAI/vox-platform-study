@@ -600,9 +600,7 @@ export class AgentService extends BaseService implements IAgentService {
     // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
     // what production sends: a composite is SELECTED and joined here, never served as its static
     // projection (which would show an author the base prompt and hide the branch they came to test).
-    const composed: ComposedPrompt = this.renderMapped(() =>
-      composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }),
-    );
+    const composed: ComposedPrompt = this.renderMapped(() => composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }));
     const assembledSystemPrompt = composed.prompt;
     const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
 
@@ -2292,7 +2290,10 @@ export class AgentService extends BaseService implements IAgentService {
     templateId: string,
     pinnedVersionNumber: number | null,
     paths: { templateId: string; versionNumber: string },
-  ): Promise<{ findings: AgentFinding[]; resolved: { versionNumber: number; content: string; declarations: PromptVariableDeclarationDto[] } | null }> {
+  ): Promise<{
+    findings: AgentFinding[];
+    resolved: { versionNumber: number; content: string; declarations: PromptVariableDeclarationDto[] } | null;
+  }> {
     const refuse = (code: AgentFinding['code'], path: string, message: string) => ({
       findings: [{ severity: 'ERROR' as const, code, path, message }],
       resolved: null,

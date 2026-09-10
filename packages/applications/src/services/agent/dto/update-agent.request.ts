@@ -44,7 +44,14 @@ export class UpdateAgentRequest {
   @IsString({ each: true })
   fallbackModelIds?: string[];
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({
+    description:
+      'Task-specific instruction, REPLACED wholesale. TEXT_GENERATION binds exactly ONE of three forms: ' +
+      '`{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }`, `{ systemPrompt }`, or ' +
+      '`{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite).',
+    type: 'object',
+    additionalProperties: true,
+  })
   @IsOptional()
   @IsObject()
   instruction?: Record<string, unknown>;
