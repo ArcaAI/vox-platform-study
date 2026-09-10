@@ -63,6 +63,23 @@ name them. They are tombstones, not deprecations.
 | Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | removed |
 | `ProviderReconciliationRun` + `provider-reconciler*` + `admin/usage/reconciliation` + `/ai-operations/reconciliation` | TASK-862 | R1 (**removed outright**, owner directive) | — | — | removed (route keeps a one-release redirect to `/ai-operations/consumption`) |
 
+## Data retirements applied by migration
+
+| Item | Ticket | Applied in | Status |
+|---|---|---|---|
+| The five stale `text.*` `AiRoutingPolicy` rows (`text.live`, `text.finalize`, `text.test`, `text.live.fallback`, `text.finalize.fallback`) | TASK-881 retired the keys; TASK-941 R1 retired the ROWS | `20260910053048_task_941_soft_retire_stale_text_routing_rows` | **applied.** Soft delete (`resourceStatus = 'DELETED'`, `resourceStatusUpdatedAt` stamped, `_version` incremented), so the extended client filters them from every read and the rows survive for audit. Idempotent — the statement excludes rows already `DELETED`, so a replay is `UPDATE 0` rather than a second version bump. Proven on a throwaway shadow with the full ledger replayed: the two seeded `text.*` rows went `ENABLED`→`DELETED` at `_version` 2 while a `guardrail.validate` control row was untouched, and `prisma migrate diff` printed the empty migration. **No local data change was needed** — the dev DB was reset on 2026-09-06 and the seed no longer writes these keys, so this migration exists for environments deployed before TASK-881 |
+
+**Note on the commented original.** The same statement was authored COMMENTED in
+`20260905192057_task_870_wave3a_schema_retirement` (lines 77-82), whose text says
+"Soft-retire is an OWNER decision, so it is recorded here and NOT run". That block is
+deliberately **left in place**: `02-database-prisma.md` forbids editing a committed
+migration, and Prisma stores a SHA-256 checksum of each one in `_prisma_migrations`.
+(Measured on Prisma 7: neither `migrate deploy` nor `migrate status` actually flags a
+comment-only edit to an applied migration — so the risk is latent rather than
+immediate, which is a reason to respect the rule rather than to test it.) Its sentence
+stays true of that file; this table is where a reader learns the action has since been
+executed.
+
 ## API routes
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

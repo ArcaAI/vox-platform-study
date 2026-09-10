@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Pending — R1/R2 await an owner decision; R3/R4 are work-ready on a go |
+| **Status** | **Completed** 2026-09-10 — all four done; owner answered R1/R2 and asked for R3/R4 |
 | **Type** | refactor / docs |
 | **Branch** | `dev-2.2` |
 | **Base** | `0d7ed352f` (the TASK-870 close-out) |
 | **Parent** | [TASK-870 Configuration Governance Program](../TASK-870-Configuration-Governance-Program/README.md) — Completed 2026-09-10; §Close-out carries the full 12-item disposition |
-| **Owner decisions** | 2 open (R1, R2) — §4 |
+| **Owner decisions** | 2, both answered 2026-09-10: R1 soft-retire, R2 keep-as-confirmed — §4 |
 
 ## 1. Requirement Analysis
 
@@ -158,10 +158,118 @@ No migration, schema change or route change in R2/R3/R4. R1's is a data statemen
 
 ## 5. Implementation Summary
 
-Not started.
+All four landed. Owner answers (2026-09-10): **R1 soft-retire**, **R2 keep as confirmed**,
+**R3 and R4 do them**.
+
+| Ref | Commit | Outcome |
+|---|---|---|
+| R2, R3 | `99aa2103d` | the rule confirmed in place; three per-target tokens retired |
+| R4 | `90daf0b04` | 72 mentions repointed, 4 kept as history |
+| R1 | (this commit) | `20260910053048_task_941_soft_retire_stale_text_routing_rows` |
+
+### R1 — soft-retire, proven on a shadow
+
+Authored in a NEW migration (never by editing the committed one), against a throwaway
+`hope_shadow` with all 39 ledger entries replayed, per `02-database-prisma.md`:
+
+- two `text.*` rows seeded `ENABLED` plus a `guardrail.validate` control → after apply the
+  two are `DELETED` at `_version` 2 with `resourceStatusUpdatedAt` stamped, and the control
+  is untouched at `_version` 1;
+- re-running the statement returns **`UPDATE 0`** — idempotent by construction, because it
+  excludes rows already `DELETED`, so a replay cannot double-bump `_version`;
+- `prisma migrate diff --from-config-datasource --to-schema` printed **"This is an empty
+  migration."** — no schema drift;
+- shadow dropped.
+
+**No local data change was needed**: the dev DB carries none of the five keys (it was reset
+2026-09-06 and the seed stopped writing them), so this migration exists for environments
+deployed before TASK-881.
+
+**The commented original is deliberately NOT deleted**, which reverses this ticket's own plan
+step. `02-database-prisma.md` forbids editing a committed migration, and Prisma stores a
+SHA-256 of each in `_prisma_migrations`. I measured the actual behaviour rather than assuming
+it: on Prisma 7 **neither `migrate deploy` nor `migrate status` flags a comment-only edit** to
+an applied migration, so the hazard I had assumed is latent, not immediate. That is a reason
+to respect a categorical rule rather than to test it for a cosmetic gain — so the block stays,
+its sentence ("recorded here and NOT run") stays true of that file, and the execution is
+recorded in `docs/operations/deprecation-register.md` §"Data retirements applied by migration",
+which is where a reader looks. **If you would rather the comment go, say so — it is a
+one-line change and the measurement says it is safe today.**
+
+### R2 — confirmed, zero code change
+
+`assertBothDirectionsCovered` stays exactly as shipped. The confirmation is recorded on the
+function's own docblock so the rule and its authority live together rather than the authority
+living only in a ticket, and TASK-886's H6 handoff row is closed.
+
+### R3 — smaller and safer than this ticket projected
+
+Two scope corrections, both from checking rather than trusting §2:
+
+1. **`service_token` is NOT retirable and was excluded.** §2 grouped it with the three
+   per-target fields. It is harness's own INBOUND guard (`accepted_service_tokens`) *and* the
+   token the api_client presents to apps/api, and the cluster still sets
+   `HARNESS_SERVICE_TOKEN`. Deleting it would break inbound auth. Only the three per-TARGET
+   copies went; `peer_service_token`'s parameter became optional rather than being removed.
+2. **No deployment-repo commit was needed.** §2 projected one. That repo sets none of the
+   three names — `HARNESS_{TEXT,NLP,GUARDRAIL}_SERVICE_TOKEN` appear in zero manifests — and
+   they were empty-valued in `.env.dev`, while all three targets accept the shared token. So
+   `first_real_secret(shared, legacy)` already returned the shared token at every site and the
+   removal is behaviour-neutral.
+
+Also caught by reading the generated output: the tombstone comment sat contiguous with the
+next field, and `python-env-surface.py` harvests the preceding `#` block as a field's
+DESCRIPTION — so it was about to ship as `guardrail_base_url`'s documentation in an
+operator-facing `.env.sample`. A blank line separates them, with a comment saying why it is
+load-bearing.
+
+### R4 — not the pure prose sweep §2 described
+
+Two corrections, both found by reading the hits:
+
+1. **Some are user-visible.** `medical.py` returned `"provider": "AiTaskDefault (tenant →
+   SYSTEM)"` as a VALUE in its policy-report response; four `dependencies.py` HTTP 503
+   `detail` strings and two Sarvam errors named it in operator-ACTIONABLE guidance
+   ("configure an AiTaskDefault for the translate task"). No test asserts any of them
+   (checked), so repointing was safe — and it fixes an operator-facing surface, not prose.
+2. **The successor differs by service.** guardrail and nlp are non-agent tasks →
+   `AiRoutingPolicy` (28 files, mechanical). `apps/text` is agent-first since TASK-876, and
+   its provider adapters genuinely do not know which mechanism chose the model — they receive
+   it on the request — so those say "the gateway's resolved selection", while its judge and
+   translation paths say `AiRoutingPolicy`. 17 hand edits. A single blanket rename would have
+   been wrong in 11 places.
+
+Four hits kept as accurate HISTORY rather than stale description (`tenant_config.py:8`,
+`:308`, `:325`, `test_tenant_config.py:597`) — rewriting those deletes the record of the
+migration instead of completing it. Three sentences also named `AiRuntimeProfile`, removed by
+TASK-862; correcting half a two-item list would leave a newly misleading sentence, so those
+became `Agent.parameters` in the same edit.
+
+### Verification
+
+```
+R1  shadow: 2 rows ENABLED→DELETED at _version 2, control row untouched
+    re-run: UPDATE 0 (idempotent) · migrate diff: "This is an empty migration."
+R2  guardrail-availability 39/39
+R3  harness 2329 passed · harness:typecheck 150 files · harness:lint clean
+    env:python-surface:check OK (350 names) · env:sync:check OK (497 globalEnv)
+    env:python-dead OK (360 fields, every one read)
+R4  text 1664 passed/4 skipped · guardrail 520 passed · nlp 657 passed
+    lint: all three "All checks passed" · typecheck: 81 / 45 / 64 files clean
+```
+
+**Two pre-existing failures recorded, neither caused here.** `nlp:test` fails
+`test_metrics_endpoint_task636` (×2, `/metrics` 404) — proved pre-existing by stashing and
+re-running: identical 2 failed / 657 passed without my changes, and the nlp diff touches no
+metrics or wiring file. And `pnpm env:python-surface:check` was ALREADY failing on `dev-2.2`
+before R3: the committed manifest carried three `STT_BENCH_*` bare reads whose source was
+deleted without regenerating, and `apps/nlp/.env.sample` was stale against its own source
+comment. Regenerating for R3 fixed both, which is why the `globalEnv` delta is 503 → 497 —
+3 entries this ticket's, 3 that drift's.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-10 | Filed from TASK-870's close-out at the owner's request, carrying the four residual items (TASK-870 items 3, 5, 8, 9) out of a Completed program. Every claim re-verified by inspection on `0d7ed352f`: R1's commented SQL located at `…_task_870_wave3a_schema_retirement/migration.sql:77-82`; R2's rule at `policy-catalogue.ts:278-291`; R3 measured at 3 legacy fields + 8 call sites in `apps/harness` and 3 env names still set across `hope-v2-deployment/deployment/k8s/**`; R4 measured at 76 mentions across 44 files, 14 of them tests — and no hit anywhere is a compared value (checked), so every one is prose, a docstring or an assertion failure message. No code changed. |
+| 2026-09-10 | **All four complete.** Owner answers: R1 soft-retire, R2 keep-as-confirmed, R3+R4 do them. Four corrections to this ticket's own §2 recorded in §5: `service_token` is not retirable (inbound guard) and was excluded from R3; no deployment-repo commit was needed; R4's hits include user-visible response values and operator guidance, not only prose; and R4's successor differs by service, so a blanket rename would have been wrong in 11 places. R1's plan step "delete the commented block" was NOT followed — `02-database-prisma.md` forbids editing a committed migration; measured that Prisma 7 flags a comment-only edit on neither `migrate deploy` nor `migrate status`, so the hazard is latent, and the execution is recorded in the deprecation register instead. Offered back to the owner as a one-line change. |
