@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | **Completed** (closed out 2026-09-10 — see §Close-out) |
 | **Type** | refactor / feature (program) |
 | **Branch** | `dev-2.2` (all lanes merge here) |
 | **Base** | `c364bb8ec` |
-| **Owner decisions** | 10 answers + 4 follow-up directions, recorded in the review artifact and restated below |
+| **Owner decisions** | 10 answers + 4 follow-up directions, recorded in the review artifact and restated below; 12 post-close owner items, dispositioned in §Close-out |
 | **Review record** | https://claude.ai/code/artifact/d0acc802-b6da-47f2-b83f-0b4b3ff7e541 |
 
 ## Requirement Analysis
@@ -451,6 +451,64 @@ The one failing file is the same out-of-scope one TASK-940 recorded:
 `membership-bounded-sync.integration.test.ts` dies in its own `beforeAll` against a test database
 that is not running, and reports its two actual tests as skipped.
 
+## Close-out (2026-09-10)
+
+**Status → Completed.** All four waves landed on `dev-2.2`; every lane merged, gated and its
+worktree removed. The registry measures **232** descriptors today against the program's own
+reconciled target of 209 — the difference is later tickets registering new governed keys
+(TASK-890 L12 +5, then TASK-930/931/932/933/939 and TASK-940, plus item 12's +2), not program
+scope that went unexecuted.
+
+### Every post-close owner item, dispositioned against the current tree
+
+Audited by inspection on 2026-09-10 rather than by recollection. **Eight of the twelve are
+closed**, four of them silently — by later tickets, or by an assumption that simply held.
+
+| # | Item | Disposition |
+|---|---|---|
+| 1 | sync the local dev DB | **closed** 2026-09-06 (owner) |
+| 2 | reset the test DB, un-`skip` the membership-bounded-sync proof | **closed** 2026-09-06 — `1c7a5fbe7` |
+| 3 | soft-retire the five stale `text.*` `AiRoutingPolicy` rows | **OPEN** — carried forward |
+| 4 | `WorkflowAssignmentService.resolve` has no SYSTEM tier, so an unopinionated tenant dispatches nothing | **CLOSED since the item was filed.** `resolve()` now walks `department → tenant → platform default` (`workflow-assignment.service.ts:49`, `:75-115`), with the platform default as "the declared last" step. G's recorded gap is gone |
+| 5 | H's both-directions rule (`assertBothDirectionsCovered`) — keep or drop | **OPEN** (a decision, not work) — still present in `guardrail-availability/{policy-catalogue,guardrail-availability.service}.ts` |
+| 6 | `AgentModelFallback` is not shared-read for SYSTEM templates (F's H-6) | **CLOSED since the item was filed** — `AgentModelFallback` is now in `SYSTEM_SHARED_READ_MODELS` (`tenant-scope.ts:357`), so cloning or exporting a SYSTEM template can read its fallback chain |
+| 7 | a per-workflow-node fallback override (assumed NOT wanted) | **CLOSED — the assumption held.** No `nodeFallback` / `fallbackOverride` field exists anywhere in `packages/`; nothing was built, and nothing since has needed it |
+| 8 | `HARNESS_TEXT_SERVICE_TOKEN` + the remaining per-service tokens against the one shared internal token | **OPEN** — carried forward |
+| 9 | ~60 comment/doc mentions of `AiTaskDefault` in `apps/{text,guardrail,nlp}` | **OPEN** — carried forward. Measured today: **76** (text 19, guardrail 38, nlp 19) |
+| 10 | deployment-repo handoffs: the `TEXT_SERVICE_TOKEN` overlay + Vault policy paths, the retired env names per lane | **CLOSED for the env-name half, and the token half is item 8.** Checked `hope-v2-deployment/deployment/k8s/**`: every name the lanes retired is ABSENT (`TTS_SERVICE_TOKEN`, and TASK-940's `LIVE_DOC_TEXT_PROVIDER` / `LIVE_DOC_TEXT_MODEL` / `LIVE_DOC_HEARTBEAT_MS` / `LIVE_DOC_STATS_TTL_SEC`, plus item 12's two `TENANT_IDP_*_ENABLED`). `TEXT_SERVICE_TOKEN` is not set there at all; what remains is `GUARDRAIL_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`, `HARNESS_INTERNAL_SERVICE_TOKEN` — which is exactly item 8's scope, so this is not a separate handoff |
+| 11 | five pre-existing `apps/api` lint errors in the TASK-869/875 e2e specs | **CLOSED** — `pnpm --filter @arcaai/api lint` now reports **0 errors** (65 warnings). The owner's in-flight work landed |
+| 12 | the two `TENANT_IDP_*_ENABLED` directory-sync kill-switches | **closed** 2026-09-10 — implemented, §Item 12 above |
+
+### Residual items carried PAST this close — four, and none is program work
+
+Recorded here deliberately rather than absorbed into "Completed", because a closed ticket is
+eventually archived and these must not go with it. **Two are owner decisions the program cannot
+make for itself, one is coordinated with another repository, and one is a documentation sweep.**
+
+| # | What remains | Why it is not program work | Shape of the fix |
+|---|---|---|---|
+| **3** | Five `AiRoutingPolicy` rows for `text.live`, `text.finalize`, `text.test`, `text.live.fallback`, `text.finalize.fallback` are inert but present in any already-deployed database. The seed no longer writes them and nothing resolves them | The SQL is WRITTEN and deliberately COMMENTED at `migrations/20260905192057_task_870_wave3a_schema_retirement/migration.sql:78-82` — its own comment says "Soft-retire is an OWNER decision". Deleting data is never the program's call | uncomment the `UPDATE`, or leave the rows inert forever and delete the comment so it stops reading as a pending action |
+| **5** | `assertBothDirectionsCovered` — lane H DERIVED the rule that a non-empty guardrail selection must cover both request and response directions (400), from the owner's "all requests and all responses gated". It was flagged at the wave close for confirmation and never answered | A derived rule is a guess until the owner confirms it. One call to revert | confirm → delete the flag; reject → remove the assertion and its test |
+| **8** | The legacy per-service tokens are still a live fallback. `peer_service_token(legacy)` (`harness/core/config.py:432-437`) returns `first_real_secret(internal_access_token, legacy)`, so the legacy field is genuinely consulted — and the deployment repo still SETS `GUARDRAIL_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`, `HARNESS_INTERNAL_SERVICE_TOKEN` | Owner decision D-D already says these "remain only as the fallback for an environment that has not been migrated yet". Retiring them means proving every environment presents `INTERNAL_ACCESS_TOKEN` FIRST, which is a deployment-repo change coordinated with a code change — two repos, not one lane | confirm every overlay sets `INTERNAL_ACCESS_TOKEN`, then drop the legacy fields, the `legacy` parameter and the Vault paths in one pass |
+| **9** | 76 stale `AiTaskDefault` mentions in comments and docs across `apps/text` (19), `apps/guardrail` (38), `apps/nlp` (19). The table, service, routes and descriptors were all removed by TASK-881 | Pure prose. No reader, no behaviour, no gate — which is also why no gate catches it | a mechanical sweep repointing each to `AiRoutingPolicy.resolveDefault` / `Agent.modelId` |
+
+None blocks anything and none is load-bearing. If you want them tracked outside this ticket I'd
+file them as **TASK-941** ("TASK-870 residue") — say the word and I will; I have not assigned the
+number unilaterally, since the ticket workflow puts that confirmation with you.
+
+### What this program actually delivered
+
+Four waves, nineteen lanes (TASK-871..889), every one merged with its gates pasted. The registry
+went **341 → 209** on the program's own reconciled set, the configuration tiers became declarable
+facts (`tier`, `targetTier`, `failMode`, `consumedBy`, `floorDirection`, `globalOnly`) rather than
+prose, and the two rules that outrank convenience — *never hardcode configuration* and
+*resolution is tenant → platform default* — acquired enforcement instead of restatement. The
+durable artifacts are the descriptor families under
+`packages/applications/src/services/settings-registry/descriptors/`, the write-lane gates in
+`settings-registry-write.service.ts`, and the generated env surface
+(`env-surface.generated.md`, `turbo.json#globalEnv`) that TASK-940 later taught to see reads it
+had been blind to.
+
 ## Change History
 
 | Date | Change |
@@ -487,3 +545,4 @@ that is not running, and reports its two actual tests as skipped.
 | 2026-09-10 | **Owner item 12 filed** from TASK-940 OD-4: the two `TENANT_IDP_*_ENABLED` directory-sync kill-switches. TASK-940's new `configService.get()` scanner found 21 undeclared env reads; it declared all of them and tiered the 18 in live-documentation, leaving these two (and `HARNESS_BASE_URL`, which needed only the declaration). They are platform-wide constructor-frozen switches over per-tenant work — a tenant with its own provisioned service account cannot sync until a global env var is flipped for everyone, which is the §"Tenant-first resolution" rule rather than a tier label. Recommended home is `FEATURE_AVAILABILITY_SETTINGS` at `maxScope: 'tenant'`, with the env names kept as `envOverride`. No registry count change yet — nothing implemented. |
 | 2026-09-10 | **Owner decision on item 12: only a platform admin manages per-tenant feature availability.** Confirms the recommended home unchanged — `FEATURE_AVAILABILITY_SETTINGS` already encodes it as `globalOnly: true` (who writes) × `maxScope: 'tenant'` (where the row lives), enforced at `settings-registry-write.service.ts:235`/`:417` (403) and by `assertPlatformMatrixAccess()` on both halves of the feature matrix. Audited: all 9 live entries are `globalOnly`, zero exceptions. Item 12's open question is closed; the implementation needs no bespoke guard. |
 | 2026-09-10 | **Item 12 IMPLEMENTED and closed.** Two `FEATURE_AVAILABILITY_SETTINGS` keys (`tenantIdp.googleDirectory.enabled`, `tenantIdp.msGraph.enabled`), resolved per tenant at BOTH `enqueueSync` (400) and the worker (so a queued job cannot outlive the gate being turned off), with the legacy env names kept as `envOverride` pre-resolution seeds; both provider constructor freezes deleted along with their now-orphaned imports. Fail-closed throughout — absent facade, absent row and resolution failure all deny, because the declared default is `false`. `globalEnv` unchanged at 503 (the names moved from scanner-detected to declared). Gates: 30 directory-sync, 460 with settings-registry + env-sync, applications 12680 passed, typecheck 44/44, lint at the 182/0 baseline. |
+| 2026-09-10 | **Program CLOSED — status Review → Completed.** All twelve post-close owner items dispositioned against the current tree by inspection (§Close-out): eight closed, four of them silently since filing — item 4 by `WorkflowAssignmentService.resolve` gaining its `department → tenant → platform default` walk, item 6 by `AgentModelFallback` entering `SYSTEM_SHARED_READ_MODELS`, item 7 by its "not wanted" assumption holding (no node-level fallback field exists), item 10 by every lane-retired env name being absent from `hope-v2-deployment` (its token half is item 8), and item 11 by `apps/api` lint reaching 0 errors. Four residual items carried PAST the close and recorded in their own section so archiving cannot lose them: 3 and 5 are owner decisions, 8 is a two-repo coordination, 9 is a 76-mention doc sweep. Registry measures 232 (program target 209; the rest are later tickets' keys). |
