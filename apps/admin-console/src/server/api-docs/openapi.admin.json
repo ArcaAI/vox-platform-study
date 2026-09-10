@@ -12880,10 +12880,22 @@
             "type": "string"
           },
           "clinicianUserId": {
-            "description": "The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) and refused for every other credential class, whose clinician is the authenticated caller. The named user must belong to the tenant and be able to create consultations; anything else is a 404.",
+            "description": "The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) unless `context` carries the value of the schema-declared user-identity field, and refused for every other credential class, whose clinician is the authenticated caller. Both may be sent only when they agree (otherwise 400 `CLINICIAN_MISMATCH`). The named user must belong to the tenant and be able to create consultations; anything else is a 404.",
             "example": "0192f3a1-7c4b-7d2e-9f01-2b3c4d5e6f70",
             "format": "uuid",
             "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "description": "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. For a SERVICE-ACCOUNT caller the schema's declared user-identity field resolves - or provisions - the clinician recorded as `doctorId`; for every other credential class it is content and nothing more.",
+            "example": {
+              "vitals": {
+                "bloodPressure": "128/82",
+                "consultant_id": "DR-1042",
+                "heartRate": 72
+              }
+            },
+            "type": "object"
           },
           "departmentId": {
             "description": "Department ID (from Department lookup table)",
@@ -22767,6 +22779,11 @@
           "resourceStatus": {
             "type": "string"
           },
+          "staffId": {
+            "description": "Tenant staff identifier (null clears). Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it.",
+            "nullable": true,
+            "type": "string"
+          },
           "tenantId": {
             "example": "0189f7ea-ae2f-72b9-9be8-9c3d224082ef",
             "type": "string"
@@ -23830,6 +23847,11 @@
           },
           "resourceStatusUpdatedBy": {
             "example": "0189f7ea-ae2f-72b9-9be8-9c3d224082ef",
+            "type": "string"
+          },
+          "staffId": {
+            "description": "Tenant staff identifier, unique within the tenant. Null/absent when the user has none.",
+            "nullable": true,
             "type": "string"
           },
           "updatedAt": {
@@ -58418,13 +58440,19 @@
             "description": "The generated output (JSON) or the SSE stream."
           },
           "400": {
-            "description": "The body does not match the agent’s inputSchema, or the agent is not a TEXT_GENERATION agent."
+            "description": "The body does not match the agent’s inputSchema, the `context` does not satisfy the schema the agent binds (`CONTEXT_SCHEMA_VIOLATION`), the agent is not a TEXT_GENERATION agent, or — for a service-account caller on an agent whose schema declares a user-identity field — the supplied staff identifier is unusable (`USER_IDENTITY_INVALID`) or no department could be resolved to provision the clinician in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`)."
           },
           "404": {
-            "description": "Unknown, unpublished, or another tenant’s agent."
+            "description": "Unknown, unpublished, or another tenant’s agent — one answer. Also the answer when a service-account caller supplies a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act (`USER_IDENTITY_NOT_USABLE`)."
+          },
+          "409": {
+            "description": "The context schema declares a user-identity field and the supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries it), or provisioning a new user would exceed the tenant’s `maxUsers` allowance. Service-account callers only."
           },
           "429": {
             "description": "The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed."
+          },
+          "503": {
+            "description": "The identity resolver is not configured, so a request that names a clinician cannot be honoured (`USER_IDENTITY_RESOLVER_UNAVAILABLE`)."
           }
         },
         "security": [
@@ -61025,10 +61053,16 @@
             "description": "Creating a ConsultationResponse"
           },
           "400": {
-            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller named no `clinicianUserId`; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied one."
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; `CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; `CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); `USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; `USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department."
           },
           "404": {
-            "description": "The named clinician is not a user of this tenant, or may not own a consultation."
+            "description": "The named clinician is not a user of this tenant, or may not own a consultation. Also `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled."
+          },
+          "409": {
+            "description": "`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries that staff id. Also the seat quota, when provisioning would exceed it."
+          },
+          "503": {
+            "description": "Context validation or user-identity resolution is not available on this deployment."
           }
         },
         "security": [
@@ -69266,7 +69300,10 @@
             "description": "Scope violation."
           },
           "404": {
-            "description": "Unknown, unpublished, or cross-tenant slug."
+            "description": "Unknown, unpublished, or cross-tenant slug; or an unknown/unusable staff identifier (TASK-950 — see `POST :slug/runs`)."
+          },
+          "409": {
+            "description": "Ambiguous staff identifier, or the `maxUsers` allowance would be exceeded (TASK-950 — see `POST :slug/runs`)."
           },
           "429": {
             "description": "monthlyWorkflowInvocations quota exhausted."
@@ -69372,16 +69409,22 @@
             "description": "`mode=async` — the run handle."
           },
           "400": {
-            "description": "Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here."
+            "description": "Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here. Also, for a service-account caller on a workflow whose trigger schema declares a user-identity field: the supplied staff identifier is unusable (`USER_IDENTITY_INVALID`), or no department could be resolved to provision the clinician in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`)."
           },
           "403": {
             "description": "Scope violation."
           },
           "404": {
-            "description": "Unknown, unpublished, cross-tenant, or non-exposable slug."
+            "description": "Unknown, unpublished, cross-tenant, or non-exposable slug. Also the answer when a service-account caller supplies a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act (`USER_IDENTITY_NOT_USABLE`)."
+          },
+          "409": {
+            "description": "The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a STANDALONE run only — a consultation-bound run takes its clinician from the consultation row."
           },
           "429": {
             "description": "monthlyWorkflowInvocations quota exhausted."
+          },
+          "503": {
+            "description": "The identity resolver is not configured, so a run that names a clinician cannot be started (`USER_IDENTITY_RESOLVER_UNAVAILABLE`)."
           },
           "504": {
             "description": "`mode=blocking` ceiling reached — the run continues; switch to streaming or poll `statusUrl`."
