@@ -488,7 +488,11 @@ function evalNode(node: ExpressionNode, context: { [key: string]: ExpressionValu
       for (const entry of node.entries) {
         const key = evalNode(entry.key, context);
         if (typeof key !== 'string') throw new EvalError(`map keys must be strings, got ${typeName(key)}`);
-        out[key] = evalNode(entry.value, context);
+        // An OWN property, always (TASK-947 R2 L-2): `out[key] = …` with the key `__proto__` swaps
+        // the prototype instead, the entry vanishes behind every `hasOwnProperty` gate, and the
+        // Python mirror — which stores an ordinary dict key — disagrees on a value the run
+        // supplied.
+        Object.defineProperty(out, key, { value: evalNode(entry.value, context), enumerable: true, writable: true, configurable: true });
       }
       return out;
     }

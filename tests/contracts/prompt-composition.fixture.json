@@ -204,6 +204,41 @@
       "resolvedPrompt": { "source": "composite", "content": "Base.", "join": "\n\n" },
       "scope": { "context": {} },
       "error": "PromptCompositionEmpty"
+    },
+    {
+      "name": "null-list-entry-skipped",
+      "_why": "Publish cannot produce a non-object entry; both mirrors SKIP it rather than one of them throwing a type error (R1 #4).",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "A",
+        "join": "\n\n",
+        "fragments": [null, { "key": "a", "source": "inline", "content": "A", "when": null }, "junk"]
+      },
+      "scope": {},
+      "expected": { "prompt": "A", "selected": ["a"], "excluded": [] }
+    },
+    {
+      "name": "fragment-content-missing-is-empty",
+      "_why": "A fragment with no `content` (absent or null) renders as the empty string on both sides; the join still separates it (R1 #4).",
+      "resolvedPrompt": {
+        "source": "composite",
+        "content": "",
+        "join": "|",
+        "fragments": [
+          { "key": "a", "source": "inline", "when": null },
+          { "key": "b", "source": "inline", "content": null, "when": null },
+          { "key": "c", "source": "inline", "content": "C", "when": null }
+        ]
+      },
+      "scope": {},
+      "expected": { "prompt": "||C", "selected": ["a", "b", "c"], "excluded": [] }
+    },
+    {
+      "name": "single-body-content-missing-is-empty",
+      "_why": "The two pre-947 shapes with no `content` render as the empty string, never a type error (R1 #4).",
+      "resolvedPrompt": { "source": "inline" },
+      "scope": {},
+      "expected": { "prompt": "", "selected": [], "excluded": [] }
     }
   ]
 }

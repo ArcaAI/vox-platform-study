@@ -70,6 +70,7 @@ import {
   type ExpressionValue,
 } from '@arcaai/workflow-contract';
 import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
+import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
@@ -306,12 +307,20 @@ function renderLivePrompt(
   variables: Record<string, unknown>,
   agentSlug: string,
   trigger?: Readonly<Record<string, unknown>> | null,
+  contextSchema?: ResolvedTextCandidate['contextSchema'],
 ): ComposedPrompt {
   try {
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
-    const scope = buildAgentPromptScope({ variables, trigger, templateRef: `agent:${agentSlug}` });
+    //
+    // TASK-947 R1 #1 — `context` is the J3-5 VIEW of the trigger (the single kind unwrapped when
+    // the agent's frozen schema declares one), exactly as the invocation route, the bench and the
+    // durable lane's `_prompt_scope` publish it. This lane was the one renderer that aliased the
+    // raw payload, so `context.visit_type` selected a fragment on three lanes and was a silent
+    // `condition_error` on this one. `trigger` stays the payload verbatim.
+    const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
+    const scope = buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
     return composePrompt(resolvedPrompt, scope, { templateRef: `agent:${agentSlug}` });
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
@@ -5206,7 +5215,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // when the candidate carries no instruction body at all, which is the pre-947 `LIVE_DOCUMENT_
     // SYSTEM_PROMPT` case.
     const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
-    const composed = promptSource ? renderLivePrompt(promptSource, variables, candidate.agent.slug, trigger) : null;
+    const composed = promptSource ? renderLivePrompt(promptSource, variables, candidate.agent.slug, trigger, candidate.contextSchema) : null;
     if (composed && composed.excluded.length > 0) {
       // OD-11 — KEY + REASON only. A `when` and a fragment body are authored clinical text; the
       // point of naming the exclusions at all is that an author can tell "the branch was false"
