@@ -138,6 +138,7 @@ class AsrSpecModelProfileDecoding(_Wire):
             "no_repeat_ngram_size",
             "prev_text_context_words",
             "hotwords",
+            "hotwords_in_prompt",
         }
     )
 
@@ -150,6 +151,10 @@ class AsrSpecModelProfileDecoding(_Wire):
     no_repeat_ngram_size: int | None = None
     prev_text_context_words: int | None = None
     hotwords: list[str] | None = None
+    #: TASK-946 (OD-1) — the row's own recommendation for the hotword-prompt switch.
+    #: Provenance only, like every other member here; the EFFECTIVE value is
+    #: ``decoding.hotwords_in_prompt``, already folded by the gateway.
+    hotwords_in_prompt: bool | None = None
 
 
 class AsrSpecModelMetadata(_Wire):
@@ -295,6 +300,7 @@ class AsrSpecDecoding(_Wire):
             "condition_on_prev_tokens",
             "no_repeat_ngram_size",
             "prev_text_context_words",
+            "hotwords_in_prompt",
             "sources",
         }
     )
@@ -319,6 +325,12 @@ class AsrSpecDecoding(_Wire):
     condition_on_prev_tokens: bool | None = None
     no_repeat_ngram_size: int | None = None
     prev_text_context_words: int | None = None
+    #: TASK-946 (OD-1), the TASK-937 R-4 switch — may the engine append
+    #: ``instruction.hotwords`` to its decoder prompt? Resolved by the gateway on the
+    #: same two tiers as the knobs above; ABSENT means neither spoke, so
+    #: :class:`InferenceConfig`'s default stands, and for whisper.cpp that default is
+    #: OFF. It gates the PROMPT only — the terms still reach the lexicon stage.
+    hotwords_in_prompt: bool | None = None
     #: TASK-934 — which TIER supplied each contested knob (``"agent"`` = the agent's
     #: parameters, ``"model"`` = the ASR row's profile), keyed by the WIRE name. Also
     #: covers ``hotwords``, ``initialPrompt`` and ``partialWindowSec``, which travel in
@@ -639,6 +651,13 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
         inference_kwargs["max_decode_window_sec"] = float(asr_metadata.max_decode_window_sec)
     inference_kwargs["initial_prompt_text"] = core.instruction.initial_prompt
     inference_kwargs["hotwords"] = list(core.instruction.hotwords)
+    # TASK-946 (OD-1) — the hotword-prompt switch, forwarded only when a tier decided
+    # it. Absence leaves `InferenceConfig.hotwords_in_prompt` (False) standing, which
+    # is what keeps whisper.cpp's decoder prompt free of the vocabulary that collapsed
+    # the ml-en fine-tune's script. The TERMS above are forwarded either way: the
+    # lexicon stage below binds the same list.
+    if decoding.hotwords_in_prompt is not None:
+        inference_kwargs["hotwords_in_prompt"] = decoding.hotwords_in_prompt
     inference = InferenceConfig(**inference_kwargs)  # type: ignore[arg-type]
 
     pp = core.post_processing

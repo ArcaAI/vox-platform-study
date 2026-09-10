@@ -554,6 +554,41 @@ class ResultPublisher:
         entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
         return entry_id_str
 
+    async def publish_degraded(
+        self,
+        *,
+        reason: str,
+        utterance_index: int | None = None,
+    ) -> str:
+        """TASK-946 — publish a ``status: degraded`` result carrying a machine-readable
+        ``reason``.
+
+        Reuses the ``status`` result type, exactly as :meth:`publish_provider_switched`
+        does, so the gateway forwards it as the existing ``status`` frame with ZERO
+        protocol change — the bridge already projects ``reason`` and ``utterance_index``
+        onto the client-facing status message. Clients that do not know the value see a
+        status they can ignore, which is the point of not inventing a frame type.
+
+        Carries NO text: the result stream is PHI-bearing and this is a control signal.
+        The first (and so far only) caller is the script tripwire in
+        :class:`~stt.streaming.inference.StreamingInferenceWorker`, which sends it once
+        per session with ``reason="script_mismatch"``.
+        """
+        fields: dict[str, str] = {
+            "type": "status",
+            "status": "degraded",
+            "reason": reason,
+        }
+        if utterance_index is not None:
+            fields["utterance_index"] = str(utterance_index)
+        entry_id = await self._redis.xadd(
+            result_stream_key(self._session_id),
+            self._with_trace(fields),
+            maxlen=self._resolve_maxlen(),
+            approximate=True,
+        )
+        return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+
     async def publish_provider_switched(
         self,
         *,

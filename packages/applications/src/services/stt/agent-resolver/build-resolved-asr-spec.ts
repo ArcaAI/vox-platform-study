@@ -262,6 +262,16 @@ function decoding(parameters: Rec, profile: AiModelAsrProfile, sources: Sources)
     sources.conditionOnPrevTokens = agentConditionOnPrevTokens !== undefined ? 'agent' : 'model';
     block.conditionOnPrevTokens = conditionOnPrevTokens;
   }
+  // TASK-946 (OD-1) — the hotword-prompt switch, folded on the same two tiers and with
+  // the same omit-when-absent rule. Absence is the whole point: it is what leaves the
+  // engine's own default (OFF for whisper.cpp) standing, so a row that says nothing gets
+  // the safe answer rather than the one that collapsed the ml-en fine-tune's script.
+  const agentHotwordsInPrompt = typeof d.hotwordsInPrompt === 'boolean' ? d.hotwordsInPrompt : undefined;
+  const hotwordsInPrompt = agentHotwordsInPrompt ?? p.hotwordsInPrompt;
+  if (hotwordsInPrompt !== undefined) {
+    sources.hotwordsInPrompt = agentHotwordsInPrompt !== undefined ? 'agent' : 'model';
+    block.hotwordsInPrompt = hotwordsInPrompt;
+  }
   return block;
 }
 

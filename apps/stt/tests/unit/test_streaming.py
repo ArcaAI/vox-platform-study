@@ -771,7 +771,13 @@ class TestStreamSession:
 
         # Overflow trimming is expected for long sessions and should not spam warnings.
         logger_mock.warning.assert_not_called()
-        assert logger_mock.info.call_count == 2
+        # TASK-946 (D9) — and it is not an INFO event either. The ring buffer is a
+        # write-only 30 s diagnostic window that no decode path reads, so trimming it is
+        # the buffer working, not audio being lost; one trial report read the INFO line
+        # as "96 % of the audio was dropped". The throttle itself is unchanged: one line
+        # per window, still exactly two here.
+        logger_mock.info.assert_not_called()
+        assert logger_mock.debug.call_count == 2
 
     def test_add_result(self):
         from stt.streaming.schemas import SegmentResult

@@ -170,3 +170,37 @@ describe('parseAiModelAsrProfile — unknown keys are dropped and named', () => 
     expect(rejected).toEqual(['decoding.beamSize', 'decoding.zzz', 'zzz', 'aaa']);
   });
 });
+
+describe('parseAiModelAsrProfile — decoding.hotwordsInPrompt (TASK-946 OD-1)', () => {
+  // The TASK-937 R-4 switch: whether THIS model's engine may list `decoding.hotwords`
+  // in its decoder prompt. It is a per-row property because the damage is per-row —
+  // the seeded ml-en fine-tune decodes an English consultation 100 % Latin without the
+  // append and 2 % Latin with it.
+  it.each([true, false])('accepts an explicit %s', (value) => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { hotwordsInPrompt: value } });
+    expect(profile.decoding).toEqual({ hotwordsInPrompt: value });
+    expect(rejected).toEqual([]);
+  });
+
+  it('is absent when the row does not declare it — no opinion, not a false', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { hotwords: ['ceftriaxone'] } });
+    expect(profile.decoding).toEqual({ hotwords: ['ceftriaxone'] });
+    expect(profile.decoding).not.toHaveProperty('hotwordsInPrompt');
+    expect(rejected).toEqual([]);
+  });
+
+  it('rejects a non-boolean rather than coercing it', () => {
+    // A truthy string here would turn ON the one knob this ticket turned off, so it is
+    // NAMED and dropped like every other bad value in a tuning block.
+    for (const value of ['true', 1, null]) {
+      const { profile, rejected } = parseAiModelAsrProfile({ decoding: { hotwordsInPrompt: value } });
+      expect(profile).not.toHaveProperty('decoding');
+      expect(rejected).toEqual(['decoding.hotwordsInPrompt']);
+    }
+  });
+
+  it('is a KNOWN key, so it is never reported as an unknown one', () => {
+    const { rejected } = parseAiModelAsrProfile({ decoding: { hotwordsInPrompt: true, bestOf: 5 } });
+    expect(rejected).toEqual(['decoding.bestOf']);
+  });
+});
