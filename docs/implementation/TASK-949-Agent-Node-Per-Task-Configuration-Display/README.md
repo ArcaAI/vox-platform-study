@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | bugfix + feature |
 | **Branch** | `dev-2.2` |
 | **Surface** | `apps/admin-console` (workflow studio inspector, agents feature), `packages/workflow-contract` (read-only consumer) |
@@ -130,10 +130,80 @@ Layer order; each layer's tests are written first (RED) and the layer is verifie
 
 ## Implementation Summary
 
-_(filled in as layers land)_
+Four commits on `task-949-agent-node-config`, one per layer, each with its gates green.
+
+### D-8 — findings reach the nested field they name (`81f8569aa`)
+
+Scoped as a path-convention mismatch; it was three defects stacked, and the second was found only
+because a test written for the first still failed:
+
+1. `WorkflowFinding.path` is a JSON pointer (`/overrides/generation/temperature`,
+   `publish-findings.ts:446`), `FieldDescriptor.path` is dotted — compared with `===`.
+2. Only the top-level `descriptors.map` resolved errors at all. `FieldRenderer`'s `group` /
+   `discriminated` branches recursed **without passing anything down**, so a nested field received
+   none regardless of convention.
+3. A `group` never rendered its own errors; it only set `data-invalid`.
+
+`errorsForPath` now normalizes, `FieldRenderer` takes the LOOKUP (`errorsFor`) rather than a
+resolved array so every depth resolves its own path, and `group` renders a `FieldError`. The
+graph-level residue uses the same normalization — they must agree or a matched finding renders
+twice, which the tests pin.
+
+### L0 — the picker lists agents of every task (`d0296dbff`)
+
+`task` is optional through `listAgentOptions` / `useAgentOptions` /
+`workflowStudioKeys.agentOptions` (`buildQuery` already drops `undefined`); options are GROUPED by
+task rather than filtered to one. `agentTaskLabel` is total — the picker has no error boundary of
+its own, so a row missing `task` must not blank the Config tab (caught by an existing test whose
+blanket `fetch` stub feeds it template rows).
+
+### L1 — the agent's own configuration, displayed (`f38e3f815`)
+
+- `shared/agent-parameters/schema-walk.ts` — the walk over `AGENT_PARAMETER_SCHEMAS[task]`, moved
+  out of the agents editor, which now imports it.
+- `shared/agent-parameters/agent-parameters-view.tsx` — a read-only per-task renderer of the same
+  contract. Unset knobs collapse to one muted line per group.
+- `components/inspector/agent-summary-section.tsx` — identity, model + provider, ordered
+  fallbacks, ASR/NER instruction fields, blocking findings, deep link.
+- `AgentOption` widened to the fields already on the wire. No new route.
+
+### L2 — the editable surface follows the task (`ba3e4c86c`)
+
+`withheld` for the top-level LLM-only paths, `fieldOverrides` for the three nested `overrides.*`
+(spread LAST so suppression wins over the named `promptVariables` entry). Fails OPEN on an unknown
+task. D-6's notice names stranded values down to their leaf keys.
+
+## Deviations from the decision round
+
+| Decision | What shipped | Why |
+|---|---|---|
+| **D-5** — "move `ParametersForm` to `shared/` and add a read-only mode" | The schema WALK moved to `shared/`; a separate read-only `AgentParametersView` renders values. `ParametersForm` stayed in the agents feature and now imports the shared walk. | Read-only mode on the editor means `fieldset disabled` — ~30 greyed-out, unfocusable inputs — which reads badly as a display surface and cannot express "inherited from the model profile" (D-4). One definition of the CONTRACT is preserved; one component doing two jobs is not. |
+
+## Verification
+
+| Gate | Result |
+|---|---|
+| `apps/admin-console` unit/component tests | **2868 passed**, 1 pre-existing failure (below) |
+| workflow-studio + agents + shared/agent-parameters | 682 passed |
+| `typecheck` | green |
+| `lint` (`--max-warnings 0`) | green |
+| `build` | green |
+| Runtime verification in a running app | **NOT DONE — blocked**, see below |
+
+**Pre-existing failure, not from this change:** `src/app/(console)/playground/__tests__/playground-route-group.test.ts`
+fails identically on a clean `dev-2.2` checkout. Reported, not fixed (out of scope).
+
+**Runtime verification is outstanding.** The worktree console was started on :5178 and reached
+(logged in, super admin), but every DB-backed gateway route hangs and `admin/health/services`
+returns 500 because **Docker/OrbStack stopped mid-session** — Postgres, Redis, MinIO and Vault are
+all down, so `admin/workflow-definitions` and `admin/tenants` never resolve and the studio cannot
+load a graph. Nothing about this involves the change (which touches no backend code); the same
+gateway served `admin/agents` correctly earlier in the same session. This must be repeated once
+the local stack is back, against the ArcaAI `n_asr` node, before the ticket leaves Review.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-10 | Ticket opened; review + owner decision round D-1..D-8 recorded; implementation started |
+| 2026-09-10 | D-8, L0, L1, L2 implemented on `task-949-agent-node-config`; tests/typecheck/lint/build green; runtime verification blocked by the local Docker stack being down |
