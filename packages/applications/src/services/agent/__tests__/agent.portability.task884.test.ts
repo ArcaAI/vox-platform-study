@@ -673,3 +673,209 @@ describe('cloneFromSystem', () => {
     await expect(makeService().cloneFromSystem('nope', PARTNER)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+// ===========================================================================================
+// TASK-947 (OD-10) — the composite instruction crosses the same four boundaries
+// ===========================================================================================
+//
+// A composite binds SEVERAL templates, so every site that used to read one `promptTemplateId`
+// has to read them all. The failure these cases exist to catch is the quiet one: a bundle that
+// rewrites fragment 0 and exports fragment 1's raw tenant row id, or a sync that clears the
+// portability gate because it only ever looked at the top level.
+
+const COMPOSITE = (fragments: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}) => ({ fragments, ...extra });
+
+describe('composite instructions — export', () => {
+  it('rewrites EVERY template fragment to a ref and carries no raw row id', async () => {
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateId: 'tpl-sys', promptVersionNumber: 2 },
+          { key: 'revisit', promptTemplateId: 'tpl-mine', when: "context.visit_type == 'revisit'" },
+          { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'context.patient_age < 18' },
+        ]),
+      }),
+    ]);
+    promptTemplateRepository.findById.mockImplementation(async (id: string) =>
+      id === 'tpl-sys'
+        ? ({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, name: 'Platform SOAP' } as never)
+        : ({ id: 'tpl-mine', tenantId: TENANT, name: 'Clinic SOAP' } as never),
+    );
+
+    const bundleOut = await makeService().exportBySlug('clinic-summarizer');
+    const instruction = (bundleOut.payload as { instruction: Record<string, unknown> }).instruction;
+    const fragments = instruction.fragments as Array<Record<string, unknown>>;
+
+    expect(fragments[0]).toEqual({
+      key: 'base',
+      promptVersionNumber: 2,
+      promptTemplateRef: { kind: 'system', id: 'tpl-sys', name: 'Platform SOAP' },
+    });
+    expect(fragments[1]).toEqual({
+      key: 'revisit',
+      when: "context.visit_type == 'revisit'",
+      promptTemplateRef: { kind: 'tenant', name: 'Clinic SOAP' },
+    });
+    // An inline fragment carries its body verbatim; there is no reference to rewrite.
+    expect(fragments[2]).toEqual({ key: 'peds', systemPrompt: 'The patient is a minor.', when: 'context.patient_age < 18' });
+    expect(JSON.stringify(bundleOut)).not.toContain('tpl-mine');
+  });
+
+  it('still strips the eval gate from a composite instruction, and says so', async () => {
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({ instruction: COMPOSITE([{ key: 'base', systemPrompt: 'BASE' }], { evalGate: { goldenSetId: 'gs-1' } }) }),
+    ]);
+    const bundleOut = await makeService().exportBySlug('clinic-summarizer');
+    const payload = bundleOut.payload as { instruction: Record<string, unknown>; notes: string[] };
+    expect(payload.instruction).not.toHaveProperty('evalGate');
+    expect(payload.notes.join(' ')).toContain('eval gate was not exported');
+  });
+});
+
+describe('composite instructions — import', () => {
+  beforeEach(() => {
+    aiModelRepository.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      tenantId === SYSTEM_TENANT_ID && slug === 'lms-gemma-4-e2b-it-qat' ? LLM_MODEL : null,
+    );
+  });
+
+  it('resolves EVERY fragment ref back to an id: a SYSTEM one keeps its pin, a tenant one loses it', async () => {
+    promptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, name: 'Platform SOAP' } as never);
+    promptTemplateRepository.findByName.mockResolvedValue({ id: 'tpl-here', tenantId: TENANT, name: 'Clinic SOAP' } as never);
+
+    const imported = await makeService().importBundle({
+      bundle: bundle({
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateRef: { kind: 'system', id: 'tpl-sys', name: 'Platform SOAP' }, promptVersionNumber: 2 },
+          { key: 'revisit', promptTemplateRef: { kind: 'tenant', name: 'Clinic SOAP' }, promptVersionNumber: 7, when: 'true' },
+          { key: 'peds', systemPrompt: 'minor' },
+        ]),
+      }),
+    });
+
+    expect(imported.instruction).toEqual({
+      fragments: [
+        { key: 'base', promptTemplateId: 'tpl-sys', promptVersionNumber: 2 },
+        { key: 'revisit', promptTemplateId: 'tpl-here', when: 'true' },
+        { key: 'peds', systemPrompt: 'minor' },
+      ],
+    });
+  });
+
+  it('409s naming the fragment whose template this tenant does not have', async () => {
+    await expect(
+      makeService().importBundle({
+        bundle: bundle({
+          instruction: COMPOSITE([
+            { key: 'base', systemPrompt: 'BASE' },
+            { key: 'revisit', promptTemplateRef: { kind: 'tenant', name: 'Clinic SOAP' }, when: 'true' },
+          ]),
+        }),
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE' } });
+    expect(agentRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a hand-edited bundle that smuggles a raw row id onto a fragment', async () => {
+    await expect(
+      makeService().importBundle({
+        bundle: bundle({ instruction: COMPOSITE([{ key: 'base', promptTemplateId: 'tpl-someone-elses' }]) }),
+      }),
+    ).rejects.toMatchObject({ response: { code: 'BUNDLE_PAYLOAD_INVALID' } });
+  });
+
+  it('round-trips: export then import lands the same composition', async () => {
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateId: 'tpl-sys', promptVersionNumber: 2 },
+          { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'context.patient_age < 18' },
+        ]),
+      }),
+    ]);
+    promptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, name: 'Platform SOAP' } as never);
+
+    const exported = await makeService().exportBySlug('clinic-summarizer');
+    const imported = await makeService().importBundle({ bundle: exported as never });
+
+    expect(imported.instruction).toEqual({
+      fragments: [
+        { key: 'base', promptTemplateId: 'tpl-sys', promptVersionNumber: 2 },
+        { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'context.patient_age < 18' },
+      ],
+    });
+  });
+});
+
+describe('composite instructions — cross-tenant portability', () => {
+  it('refuses a sync when ANY fragment binds a tenant-owned template, naming the fragment', async () => {
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateId: 'tpl-sys' },
+          { key: 'revisit', promptTemplateId: 'tpl-mine', when: 'true' },
+        ]),
+      }),
+    ]);
+    promptTemplateRepository.findById.mockImplementation(async (id: string) =>
+      id === 'tpl-sys' ? ({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID } as never) : ({ id: 'tpl-mine', tenantId: TENANT } as never),
+    );
+    policyEngine.buildAbility.mockResolvedValue({ can: () => true } as never);
+
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER] })).rejects.toMatchObject({
+      response: { code: 'PROMPT_TEMPLATE_NOT_PORTABLE' },
+    });
+    await expect(makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER] })).rejects.toMatchObject({
+      response: { message: expect.stringContaining('revisit') },
+    });
+    expect(agentRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a sync when EVERY fragment binds a SYSTEM template or is inline', async () => {
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([
+      agent({
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateId: 'tpl-sys', promptVersionNumber: 2 },
+          { key: 'peds', systemPrompt: 'minor', when: 'true' },
+        ]),
+      }),
+    ]);
+    promptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID } as never);
+    policyEngine.buildAbility.mockResolvedValue({ can: () => true } as never);
+
+    const result = await makeService().syncToTenants('clinic-summarizer', { targetTenantIds: [PARTNER] });
+    expect(result.targets).toHaveLength(1);
+  });
+});
+
+describe('composite instructions — the reference-set copy', () => {
+  it('re-points EVERY fragment at the target tenant’s own clone of that SYSTEM template', async () => {
+    agentRepository.findSystemReferenceBySlug.mockResolvedValue(
+      agent({
+        id: 'sys-1',
+        tenantId: SYSTEM_TENANT_ID,
+        slug: 'platform-summarization',
+        instruction: COMPOSITE([
+          { key: 'base', promptTemplateId: 'sys-tpl-a', promptVersionNumber: 4 },
+          { key: 'revisit', promptTemplateId: 'sys-tpl-b', promptVersionNumber: 9, when: 'true' },
+          { key: 'peds', systemPrompt: 'minor', when: 'true' },
+        ]),
+      }),
+    );
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([]);
+    promptTemplateRepository.findByTenantAndSourceTemplateId.mockImplementation(async (_tenantId: string, sourceId: string) =>
+      sourceId === 'sys-tpl-a' ? ({ id: 'clone-a', approvedVersionNumber: 1 } as never) : ({ id: 'clone-b', approvedVersionNumber: null } as never),
+    );
+
+    await makeService().cloneFromSystem('platform-summarization', PARTNER);
+
+    const written = agentRepository.create.mock.calls[0][0] as unknown as { instruction: { fragments: Array<Record<string, unknown>> } };
+    expect(written.instruction.fragments).toEqual([
+      // The clone's lineage restarts, so the source's pin is replaced by the clone's approved version…
+      { key: 'base', promptTemplateId: 'clone-a', promptVersionNumber: 1 },
+      // …and DROPPED entirely when the clone has no approved version to pin.
+      { key: 'revisit', promptTemplateId: 'clone-b', when: 'true' },
+      { key: 'peds', systemPrompt: 'minor', when: 'true' },
+    ]);
+  });
+});

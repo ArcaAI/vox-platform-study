@@ -19,6 +19,39 @@ export class AgentTestTargetResponse {
 }
 
 /**
+ * TASK-947 (OD-5, OD-11) — ONE fragment the composition left out, and why.
+ *
+ * `condition_false` is the ordinary case: the encounter simply is not a revisit.
+ * `condition_error` is the guard case — the condition read a field this call does not carry, so
+ * the fragment was EXCLUDED rather than the call failing. `detail` is the evaluator's own
+ * message, which is what tells an author to write `has(context.field) && …`.
+ */
+export class AgentTestCompositionExclusionResponse {
+  @ApiProperty({ description: 'The fragment key, as authored in `instruction.fragments[].key`.' }) key!: string;
+  @ApiProperty({
+    enum: ['condition_false', 'condition_error'],
+    description: '`condition_false` — the condition evaluated to false. `condition_error` — it could not be evaluated, so the fragment was dropped.',
+  })
+  reason!: 'condition_false' | 'condition_error';
+  @ApiPropertyOptional({ description: 'The evaluator’s message, for `condition_error` only. Diagnostic; never part of the prompt.' })
+  detail?: string;
+}
+
+/**
+ * TASK-947 (OD-11) — which prompt fragments this assembly ran, for a COMPOSITE instruction.
+ *
+ * KEYS AND REASONS ONLY. A fragment body and a `when` string are authored clinical text: a
+ * SELECTED fragment's body is already visible in `assembledSystemPrompt`, and an EXCLUDED one has
+ * no business putting its text — or the condition that dropped it — into a response that also
+ * travels into telemetry.
+ */
+export class AgentTestCompositionResponse {
+  @ApiProperty({ type: [String], description: 'The fragment keys that were rendered, in authored order.' }) selected!: string[];
+  @ApiProperty({ type: [AgentTestCompositionExclusionResponse], description: 'The fragments that were not rendered, and why.' })
+  excluded!: AgentTestCompositionExclusionResponse[];
+}
+
+/**
  * TASK-890 §3.8 — the answer to `POST /admin/agents/{id}/test`.
  *
  * ONE shape for both modes, discriminated by `mode`. A dry run carries everything except
@@ -35,8 +68,18 @@ export class AgentTestAckResponse {
   @ApiProperty({ enum: ['dry-run', 'stream'] }) mode!: 'dry-run' | 'stream';
   @ApiProperty({ type: [AgentFindingResponse], description: 'Non-blocking findings from compiling the draft in memory.' })
   findings!: AgentFindingResponse[];
-  @ApiPropertyOptional({ nullable: true, description: 'The rendered system prompt, or null when the agent has none.' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'The rendered system prompt, or null when the agent has none. For a COMPOSITE instruction this is the SELECTED fragments rendered and joined — the bytes that would go to TEXT — not the static projection.',
+  })
   assembledSystemPrompt!: string | null;
+  @ApiPropertyOptional({
+    type: AgentTestCompositionResponse,
+    description:
+      'COMPOSITE instructions only — which prompt fragments ran and which were excluded. Absent for a single template or an inline prompt.',
+  })
+  composition?: AgentTestCompositionResponse;
   @ApiProperty({ description: 'The rendered user prompt — exactly the bytes that would go to TEXT.' }) assembledUserPrompt!: string;
   @ApiProperty({ type: AgentTestTargetResponse }) resolved!: AgentTestTargetResponse;
   @ApiPropertyOptional({ description: 'Stream mode only — the TEXT generation id, and the handle `POST :id/test/finalize` takes.' })

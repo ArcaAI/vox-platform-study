@@ -4,7 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import type { Readable } from 'node:stream';
 import { AsrPipelineRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
-import { PromptTemplateSyntaxError, PromptVariableUnresolvedError, outputSchemaResponseFormat, renderTemplate } from '@arcaai/workflow-contract';
+import {
+  PromptCompositionEmptyError,
+  PromptTemplateSyntaxError,
+  PromptVariableUnresolvedError,
+  composePrompt,
+  outputSchemaResponseFormat,
+} from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -19,6 +25,15 @@ export interface AgentTextInvocationResult {
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+  /**
+   * TASK-947 (OD-11) — which prompt fragments this call actually ran, for a composite agent;
+   * `null` for the two single-body instruction forms, which have no composition to report.
+   *
+   * KEYS ONLY. A fragment BODY and a `when` string are both authored clinical text and can carry
+   * PHI, so neither leaves the renderer — the key is what an author needs to see which branch
+   * ran, and it is all telemetry ever needs.
+   */
+  promptFragments: { selected: string[] } | null;
 }
 
 /** TASK-930 §2.3 — ONE extracted span, in the agent's output vocabulary rather than `apps/nlp`'s. */
@@ -157,15 +172,21 @@ export class AgentInvocationService {
     // Scope construction is inside the same failure mapping as the render: a `{ path }` binding
     // is resolved through the same grammar, so an unresolvable binding is the caller's 400
     // naming the path, not a 500.
-    const systemPrompt = this.renderScoped(resolved.slug, () => {
+    // TASK-947 — the render goes through `composePrompt`, which is the ONE entry point for all
+    // three instruction forms: the two single-body shapes pass straight through it (`selected:
+    // []`), and a composite selects its fragments over THIS scope — the same object the
+    // templates render against, so what a condition saw and what the prompt saw cannot differ.
+    const composed = this.renderScoped(resolved.slug, () => {
       const scope = buildAgentPromptScope({
         variables,
         input,
         trigger: this.contextScopeFor(resolved, input.context),
         templateRef: `agent:${resolved.slug}`,
       });
-      return compiled.resolvedPrompt ? renderTemplate(compiled.resolvedPrompt.content, scope, { templateRef: `agent:${resolved.slug}` }) : undefined;
+      return composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${resolved.slug}` });
     });
+    const systemPrompt = composed.prompt ?? undefined;
+    const promptFragments = compiled.resolvedPrompt?.source === 'composite' ? { selected: [...composed.selected] } : null;
 
     // TASK-890 F9 — what goes on the wire is the ROUTED id (`AiModel.wireModelId`), never the
     // catalogue slug. Resolved BEFORE the body is built so an unroutable row is a named refusal
@@ -236,6 +257,7 @@ export class AgentInvocationService {
       provider: data.provider ?? compiled.model.provider ?? null,
       model: data.model ?? wireModel,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
+      promptFragments,
     };
   }
 
@@ -364,10 +386,21 @@ export class AgentInvocationService {
    * way nothing is sent upstream — a half-substituted prompt, or one carrying a literal
    * `{{…}}`, is the failure mode this grammar exists to end.
    */
-  private renderScoped(agentSlug: string, work: () => string | undefined): string | undefined {
+  private renderScoped<T>(agentSlug: string, work: () => T): T {
     try {
       return work();
     } catch (error) {
+      // TASK-947 (OD-6) — every fragment's condition was false or failed. Publish enforces an
+      // unconditional base fragment, so this is the defensive half: an artifact published before
+      // that rule, or hand-written, must be a NAMED refusal rather than a call to TEXT with no
+      // system prompt at all. The excluded KEYS ride along (never a body, never a condition).
+      if (error instanceof PromptCompositionEmptyError) {
+        throw new BadRequestException({
+          message: `Agent '${agentSlug}' selected no prompt fragment for this call: every fragment's condition was false or could not be evaluated.`,
+          code: 'PROMPT_COMPOSITION_EMPTY',
+          excluded: error.excluded.map((exclusion) => ({ key: exclusion.key, reason: exclusion.reason })),
+        });
+      }
       if (error instanceof PromptVariableUnresolvedError) {
         throw new BadRequestException(
           `Agent '${agentSlug}' instruction references \`${error.path}\`, which this invocation does not supply. Provide it under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
