@@ -840,8 +840,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * value before the first flush is the same one the flush would resolve.
    */
   private textTimeoutMs: number;
-  private readonly textProvider?: string;
-  private readonly textModel?: string;
+  // `textProvider` / `textModel` were here, seeded from `LIVE_DOC_TEXT_PROVIDER` /
+  // `LIVE_DOC_TEXT_MODEL`. TASK-940 deleted both: all three TEXT call sites
+  // overwrite the pair from `resolveTextSelection`, and the module imports
+  // `HarnessPolicyServiceModule`, so the env seed was unreachable in every
+  // deployed path — while contradicting TASK-876's rule that the tenant's
+  // assigned TEXT_GENERATION agent selects and an engine id is never an env var.
   private readonly statsTtl: number;
   /**
    * TASK-932 D-4 - the env OVERRIDE for the groundedness gate, or undefined when
@@ -1037,8 +1041,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // measured p50 of the generation it bounded, so every realtime flush timed out.
     this.envTextTimeoutMs = readNumericEnv(this.configService, 'LIVE_DOC_TEXT_TIMEOUT_MS');
     this.textTimeoutMs = this.envTextTimeoutMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY];
-    this.textProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
-    this.textModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
     // TTL on the per-session Redis stats snapshot + active set. A
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
@@ -4698,9 +4700,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // its reasoning posture can ride the `extra` ride-along below. Without it the live agent was
     // selected and inert. Only the posture is read here: the token budget stays this lane's own
     // (`this.textMaxTokens`), as it was before the split.
-    // Fall back to env only when the resolver is not wired (kept for non-DI construction paths).
-    let provider = this.textProvider;
-    let model = this.textModel;
+    // `resolveTextSelection` is the ONLY source of provider/model: selection belongs
+    // to the tenant's assigned TEXT_GENERATION agent (TASK-876), never to an env
+    // default. An unwired resolver leaves both undefined and TEXT applies its own
+    // default — it must not silently fall back to a pinned engine (TASK-940).
+    let provider: string | undefined;
+    let model: string | undefined;
     let generation: unknown;
     if (this.harnessPolicyService) {
       ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
@@ -4958,8 +4963,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-891 — and the same agent's `generation`, so this hop obeys the reasoning posture the
     // running note obeys. It shares the flush's budget; a posture honoured on one of the three
     // live hops and ignored on the others buys back a fraction of the saving.
-    let provider = this.textProvider;
-    let model = this.textModel;
+    let provider: string | undefined;
+    let model: string | undefined;
     let generation: unknown;
     if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
@@ -5059,8 +5064,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // same selection as the grammar pass: the tenant's assigned TEXT_GENERATION agent, and
     // (TASK-891) the `generation` block that agent authored, so this hop honours the same
     // reasoning posture as the other two on the flush.
-    let provider = this.textProvider;
-    let model = this.textModel;
+    let provider: string | undefined;
+    let model: string | undefined;
     let generation: unknown;
     if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
