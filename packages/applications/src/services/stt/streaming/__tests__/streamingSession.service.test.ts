@@ -1,6 +1,7 @@
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateUsageAttributes } from '../../../usageLedger/usage-attributes';
+import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../../settings-registry/descriptors/stt-gateway.descriptors';
 import { StreamingSessionService } from '../streamingSession.service';
 
 describe('StreamingSessionService', () => {
@@ -94,7 +95,7 @@ describe('StreamingSessionService', () => {
         sample_rate: 16000,
         user_id: 'user-1',
       }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -195,7 +196,7 @@ describe('StreamingSessionService', () => {
       expect.objectContaining({
         audio_bucket_name: 'hope-audio-arcaai',
       }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -214,7 +215,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ language_mode: 'ml-en' }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -228,7 +229,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ language_mode: null }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -273,7 +274,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ start_on: 'fallback' }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -287,7 +288,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ start_on: null }),
-      expect.objectContaining({ timeout: 15000 }),
+      expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
     );
   });
 
@@ -401,7 +402,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: false, consecutive_failure_threshold: 4 }),
-        expect.objectContaining({ timeout: 15000 }),
+        expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
       );
     });
 
@@ -416,7 +417,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: null, consecutive_failure_threshold: null }),
-        expect.objectContaining({ timeout: 15000 }),
+        expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
       );
     });
 
@@ -431,7 +432,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: true }),
-        expect.objectContaining({ timeout: 15000 }),
+        expect.objectContaining({ timeout: STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY] }),
       );
     });
   });
