@@ -49,6 +49,26 @@ function uniqueName(base: string, taken: Set<string>): string {
   return name;
 }
 
+/** JSDoc text `generate.ts` attaches to a kind's marked user-identity property (TASK-950). */
+const IDENTITY_ANNOTATION =
+  "@identity — the clinician's staff identifier; a service-account caller's `open()` resolves or provisions the HOPE user from it (TASK-950).";
+
+/**
+ * `{ [field]: IDENTITY_ANNOTATION }` when `entry` is a kind declaring
+ * `userIdentity` AND the named field is actually one of `fields`'s own
+ * properties — `undefined` otherwise (no marker, an output entry which never
+ * carries one, or a marker naming a property this bundle does not have).
+ * Never throws: a malformed marker on untrusted wire JSON just means no
+ * annotation, not a broken generator run.
+ */
+function identityAnnotations(entry: ContextKindDeclaration | ContextOutputDeclaration, fields: Record<string, unknown>): Record<string, string> | undefined {
+  const userIdentity = (entry as Record<string, unknown>).userIdentity;
+  if (!isPlainObject(userIdentity) || typeof userIdentity.field !== 'string' || userIdentity.field.length === 0) return undefined;
+  const properties = isPlainObject(fields.properties) ? fields.properties : undefined;
+  if (!properties || !(userIdentity.field in properties)) return undefined;
+  return { [userIdentity.field]: IDENTITY_ANNOTATION };
+}
+
 interface RenderedEntry {
   key: string;
   typeName: string;
@@ -77,7 +97,7 @@ function renderEntries<T extends ContextKindDeclaration | ContextOutputDeclarati
       continue;
     }
     const typeName = uniqueName(`${toPascalCase(entry.key)}${suffix}`, taken);
-    const expr = jsonSchemaSubsetToTs(entry.fields, { path: `${entry.key}.fields` });
+    const expr = jsonSchemaSubsetToTs(entry.fields, { path: `${entry.key}.fields`, annotations: identityAnnotations(entry, entry.fields) });
     const label = entry.label ? ` — ${entry.label}` : '';
     rendered.push({
       key: entry.key,

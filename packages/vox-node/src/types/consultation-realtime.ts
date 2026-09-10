@@ -42,12 +42,19 @@ export interface OpenConsultationRequest {
    * that row rather than from the caller.
    *
    * **Required when this client authenticates as a SERVICE ACCOUNT, and
-   * refused when it does not** (TASK-933). A machine has no clinician identity
-   * of its own, so it must name one; a human caller already IS the clinician,
-   * and naming a different one would be an impersonation the gateway answers
-   * with a 400. A user the tenant does not have — or one that may not own a
-   * consultation — is a 404, not a 403: HOPE's cross-tenant posture applies to
-   * the id space here as everywhere else.
+   * refused when it does not** (TASK-933) — UNLESS the tenant's context schema
+   * names a user-identity field and `context` carries it (TASK-950), in which
+   * case HOPE resolves (or provisions) the clinician from that value instead
+   * and this field may be omitted. A machine has no clinician identity of its
+   * own, so it must supply one or the other; a human caller already IS the
+   * clinician, and naming a different one would be an impersonation the
+   * gateway answers with a 400. A user the tenant does not have — or one that
+   * may not own a consultation — is a 404, not a 403: HOPE's cross-tenant
+   * posture applies to the id space here as everywhere else.
+   *
+   * When BOTH this field and the schema's identity value are sent, they MUST
+   * agree — a mismatch is a 400 `CLINICIAN_MISMATCH`. A service-account
+   * caller that sends neither gets 400 `CLINICIAN_REQUIRED`.
    */
   clinicianUserId?: string;
   /** `YYYY-MM-DD`. Defaults to today server-side. */
@@ -84,6 +91,29 @@ export interface OpenConsultationRequest {
    * the agent's own body decides.
    */
   language?: string;
+  /**
+   * The consultation-context payload for this open, `{ [kindKey]: payload }`
+   * — the same shape as the agent-invocation `context` (TASK-950). It is
+   * validated per kind against the DEPARTMENT-effective schema (what
+   * {@link TenantsResource.contextSchema} advertises and `vox-codegen --tenant`
+   * types); a violation is a 400 `CONTEXT_SCHEMA_VIOLATION` carrying
+   * `problems[]`.
+   *
+   * When the effective schema declares a `userIdentity` field on a kind and
+   * this payload carries it, a SERVICE-ACCOUNT caller gets the clinician
+   * resolved from that value instead of (or in agreement with)
+   * `clinicianUserId` — see that field's doc for the agreement rule. Value
+   * problems surface as 400 `USER_IDENTITY_INVALID`, an unresolved
+   * department as 400 `USER_IDENTITY_DEPARTMENT_UNRESOLVED`, no match with
+   * auto-provisioning disabled for the tenant as 404 `USER_IDENTITY_UNKNOWN`,
+   * a match on a user who may not act as clinician as 404
+   * `USER_IDENTITY_NOT_USABLE`, more than one match as 409
+   * `USER_IDENTITY_AMBIGUOUS`, and a full seat quota as a 409 with the quota
+   * error shape. For a JWT or API-key caller the field is validated as
+   * ordinary content and otherwise ignored — that caller already IS the
+   * clinician.
+   */
+  context?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
 
