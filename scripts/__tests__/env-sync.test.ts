@@ -16,7 +16,9 @@
  */
 
 import { BOOTSTRAP_ENV_SETTINGS, HOPE_SETTINGS_REGISTRY, toEnvVarName } from '@arcaai/applications';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildArtifacts, declaredSurface, DOCUMENTATION_SURFACES, getBootstrapFloorContent, scanSourceForTests, scanTypeScriptReads } from '../env-sync.mts';
@@ -621,6 +623,23 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     for (const legacy of ['NLP_SERVICE_TOKEN', 'GUARDRAIL_SERVICE_TOKEN', 'HARNESS_SERVICE_TOKEN']) {
       expect(generated.has(legacy), `${legacy} should still be generated as a fallback`).toBe(true);
     }
+  });
+
+  it('actually RUNS end to end on the shell this repo is developed on', () => {
+    // The tests above PARSE the script; none of them ran it, which is how an
+    // `unbound variable` fatal shipped green: macOS ships bash 3.2, where
+    // expanding an EMPTY array under `set -u` aborts — and `_SUPERSEDED_KEYS`
+    // is deliberately empty. Execute the script for real.
+    const target = join(mkdtempSync(join(tmpdir(), 'hope-envgen-')), '.env.dev');
+    const run = spawnSync('/bin/bash', [join(ROOT, 'scripts', 'generate-env-file.sh'), target, 'dev'], {
+      encoding: 'utf8',
+      env: { ...process.env, FRESH_SECRETS: '1' },
+    });
+    expect(run.stderr + run.stdout, 'generate-env-file.sh failed').not.toMatch(/unbound variable/);
+    expect(run.status, `generate-env-file.sh exited ${run.status}:\n${run.stderr}`).toBe(0);
+    // VAULT_WRAPPED_SECRET_ID must end up EMPTY, not CHANGE_ME — that repair
+    // lives in the very loop the empty-array fatal used to abort.
+    expect(readFileSync(target, 'utf8')).toMatch(/^VAULT_WRAPPED_SECRET_ID=\s*$/m);
   });
 
   it('never generates a value for a credential only a vendor can issue', () => {
