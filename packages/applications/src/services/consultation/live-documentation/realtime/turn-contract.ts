@@ -158,8 +158,25 @@ function unfence(raw: string): string {
     .trim();
 }
 
+/**
+ * A serialisation artifact a model emits where the schema declares JSON `null`.
+ *
+ * Found by the live replay: `gemma-4-e2b-it-qat` answered `{"addition": "null"}` for sections it had
+ * nothing to say about, and the fold appended that as prose — the persisted note literally read
+ * `null` above the one real sentence. The accumulation invariant HELD throughout (it accumulated
+ * `"null"` faithfully), which is exactly why the churn metric could not catch it.
+ *
+ * Deliberately NARROW — only a value whose ENTIRE trimmed text is one of these. `N/A`, `None` and
+ * `Nil` are legitimate clinical shorthand; discarding those would lose real content, which is a
+ * worse defect than the one this prevents.
+ */
+const JSON_NULL_SENTINELS: ReadonlySet<string> = new Set(['null', 'undefined']);
+
 function asText(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return JSON_NULL_SENTINELS.has(trimmed.toLowerCase()) ? undefined : trimmed;
 }
 
 /**
