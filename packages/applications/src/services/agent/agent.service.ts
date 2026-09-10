@@ -107,12 +107,13 @@ import {
   agentBundlePayloadProblems,
   buildAgentBundlePayload,
   instructionForImport,
-  readPromptTemplateRef,
+  readPromptTemplateRefs,
   toolServerIds,
   EVAL_GATE_KEY,
   PROMPT_TEMPLATE_ID_KEY,
   PROMPT_VERSION_NUMBER_KEY,
   type AgentBundlePayload,
+  type AgentBundleTemplateResolution,
 } from './agent-bundle';
 import {
   AgentBundleResponse,
@@ -995,20 +996,31 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private async referenceInstruction(source: AgentEntity, targetTenantId: string): Promise<Record<string, unknown> | undefined> {
     const declared = asRecord(source.instruction);
-    const boundId = declared?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof boundId !== 'string' || boundId.length === 0 || !this.promptTemplateRepository) return undefined;
+    const refs = boundTemplateRefs(declared);
+    if (refs.length === 0 || !this.promptTemplateRepository) return undefined;
 
-    const clone = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, boundId);
-    if (!clone) return undefined;
+    // Resolved FIRST, because `mapBoundTemplateRefs` is a pure rewrite and every read has to be
+    // done before it runs. Keyed by source template id, so a composite that binds one template
+    // from two fragments looks the clone up once.
+    const clones = new Map<string, { id: string; approvedVersionNumber: number | null }>();
+    for (const ref of refs) {
+      if (clones.has(ref.templateId)) continue;
+      const clone = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, ref.templateId);
+      if (clone) clones.set(ref.templateId, { id: clone.id, approvedVersionNumber: clone.approvedVersionNumber ?? null });
+    }
+    if (clones.size === 0) return undefined;
 
-    const next: Record<string, unknown> = { ...declared };
-    next[PROMPT_TEMPLATE_ID_KEY] = clone.id;
-    // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that does
-    // not exist in the target. Carrying it would pin the agent to a missing snapshot.
-    const approved = clone.approvedVersionNumber ?? null;
-    if (approved === null) delete next[PROMPT_VERSION_NUMBER_KEY];
-    else next[PROMPT_VERSION_NUMBER_KEY] = approved;
-    return next;
+    return (
+      mapBoundTemplateRefs(declared, (ref: BoundTemplateRef) => {
+        const clone = clones.get(ref.templateId);
+        // No clone for THIS binding ⇒ it keeps the SYSTEM id, and `publish()` says so in its
+        // findings rather than this method silently unbinding a fragment.
+        if (!clone) return null;
+        // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that
+        // does not exist in the target. Carrying it would pin the agent to a missing snapshot.
+        return { templateId: clone.id, versionNumber: clone.approvedVersionNumber };
+      }) ?? undefined
+    );
   }
 
   async exportBySlug(slug: string, versionNumber?: number): Promise<AgentBundleResponse> {
@@ -1028,7 +1040,12 @@ export class AgentService extends BaseService implements IAgentService {
       if (fallbackModel) fallbackModelSlugs.push(fallbackModel.slug);
     }
 
-    const template = await this.loadBoundTemplate(source);
+    const boundTemplates = new Map(
+      [...(await this.loadBoundTemplates(source))].map(([id, template]) => [
+        id,
+        { id: template.id, name: template.name ?? id, isSystemOwned: template.tenantId === SYSTEM_TENANT_ID },
+      ]),
+    );
     const payload = buildAgentBundlePayload({
       slug: source.slug,
       name: source.name,
@@ -1042,7 +1059,7 @@ export class AgentService extends BaseService implements IAgentService {
       outputSchema: source.outputSchema,
       tools: source.tools,
       tags: source.tags ?? [],
-      boundTemplate: template ? { id: template.id, name: template.name, isSystemOwned: template.tenantId === SYSTEM_TENANT_ID } : null,
+      boundTemplates,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -1258,9 +1275,27 @@ export class AgentService extends BaseService implements IAgentService {
     return versions.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED) ?? versions[0];
   }
 
-  private async loadBoundTemplate(entity: AgentEntity): Promise<PromptTemplateEntity | null> {
-    const templateId = asRecord(entity.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof templateId !== 'string' || templateId.length === 0 || !this.promptTemplateRepository) return null;
+  /**
+   * EVERY template the instruction binds, by row id — one entry for the single-template form,
+   * one per template fragment for a composite (TASK-947 OD-10).
+   *
+   * The traversal is `boundTemplateRefs`, never a local read of `instruction.promptTemplateId`:
+   * the three callers (export, the portability gate, promotion) each used to see exactly one
+   * binding, and a composite would have left all but the first invisible to all three.
+   */
+  private async loadBoundTemplates(entity: AgentEntity): Promise<Map<string, PromptTemplateEntity>> {
+    const loaded = new Map<string, PromptTemplateEntity>();
+    if (!this.promptTemplateRepository) return loaded;
+    for (const ref of boundTemplateRefs(asRecord(entity.instruction))) {
+      if (loaded.has(ref.templateId)) continue;
+      const template = await this.loadTemplateVisible(ref.templateId);
+      if (template) loaded.set(ref.templateId, template);
+    }
+    return loaded;
+  }
+
+  private async loadTemplateVisible(templateId: string): Promise<PromptTemplateEntity | null> {
+    if (!this.promptTemplateRepository) return null;
     const own = await this.promptTemplateRepository.findById(templateId).catch(() => null);
     if (own) return own;
     // TASK-890 L13 — `PromptTemplate` leaves `SYSTEM_SHARED_READ_MODELS` (§1.5), so the scoped
@@ -1281,28 +1316,42 @@ export class AgentService extends BaseService implements IAgentService {
     return platform?.id ?? null;
   }
 
-  /** The instruction an imported bundle stores: the ref resolved back to an id, or a 409 naming it. */
+  /**
+   * The instruction an imported bundle stores: EVERY ref resolved back to an id, or a 409 naming
+   * the first one this tenant cannot supply (TASK-947 — a composite carries one per fragment).
+   *
+   * Resolution is per SITE and the map is keyed by site path, so two fragments binding the same
+   * template name are two independent resolutions and a fragment the importer could not resolve
+   * can never inherit a neighbour's id.
+   */
   private async instructionForBundleImport(payload: AgentBundlePayload, tenantId: string): Promise<Record<string, unknown> | null> {
-    const ref = readPromptTemplateRef(payload.instruction);
-    if (!ref) return instructionForImport(payload.instruction, null);
+    const resolutions = new Map<string, AgentBundleTemplateResolution>();
 
-    if (ref.kind === 'system' && ref.id) {
-      const system = await this.promptTemplateRepository?.findById(ref.id).catch(() => null);
-      // Same row ⇒ the version pin still numbers a version that exists, so it survives.
-      if (system && system.tenantId === SYSTEM_TENANT_ID)
-        return instructionForImport(payload.instruction, { templateId: system.id, keepVersionPin: true });
+    for (const site of readPromptTemplateRefs(payload.instruction)) {
+      if (site.ref.kind === 'system' && site.ref.id) {
+        const system = await this.promptTemplateRepository?.findById(site.ref.id).catch(() => null);
+        // Same row ⇒ the version pin still numbers a version that exists, so it survives.
+        if (system && system.tenantId === SYSTEM_TENANT_ID) {
+          resolutions.set(site.path, { templateId: system.id, keepVersionPin: true });
+          continue;
+        }
+      }
+
+      const own = await this.promptTemplateRepository?.findByName(tenantId, site.ref.name).catch(() => null);
+      if (!own) {
+        throw new ConflictException({
+          message:
+            `This bundle binds the prompt template '${site.ref.name}'${site.fragmentKey ? ` (fragment \`${site.fragmentKey}\`)` : ''}, ` +
+            'which this tenant does not have. Create it (or import the template first), then import the agent.',
+          code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE',
+        });
+      }
+      // A DIFFERENT row: its version lineage is its own, so the source's pin numbers a version
+      // that may not exist here. Dropping it follows the resolved template's approved version.
+      resolutions.set(site.path, { templateId: own.id, keepVersionPin: false });
     }
 
-    const own = await this.promptTemplateRepository?.findByName(tenantId, ref.name).catch(() => null);
-    if (!own) {
-      throw new ConflictException({
-        message: `This bundle binds the prompt template '${ref.name}', which this tenant does not have. Create it (or import the template first), then import the agent.`,
-        code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE',
-      });
-    }
-    // A DIFFERENT row: its version lineage is its own, so the source's pin numbers a version
-    // that may not exist here. Dropping it follows the resolved template's approved version.
-    return instructionForImport(payload.instruction, { templateId: own.id, keepVersionPin: false });
+    return instructionForImport(payload.instruction, resolutions);
   }
 
   /** Every tool binding must name a server this tenant can actually reach; a dangling one is a 409, never a silent drop. */
@@ -1328,11 +1377,17 @@ export class AgentService extends BaseService implements IAgentService {
    * export/import and let the target bind its own.
    */
   private async assertPortableAcrossTenants(source: AgentEntity): Promise<void> {
-    const template = await this.loadBoundTemplate(source);
-    const boundId = asRecord(source.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof boundId === 'string' && boundId.length > 0 && (!template || template.tenantId !== SYSTEM_TENANT_ID)) {
+    // TASK-947 — EVERY bound template, not just the first: a composite whose base is a platform
+    // template and whose second fragment is the tenant's own would otherwise clear this gate and
+    // land in the target carrying an id nothing there can read.
+    const templates = await this.loadBoundTemplates(source);
+    for (const ref of boundTemplateRefs(asRecord(source.instruction))) {
+      const template = templates.get(ref.templateId);
+      if (template && template.tenantId === SYSTEM_TENANT_ID) continue;
       throw new ConflictException({
-        message: `Agent '${source.slug}' binds a prompt template that is not SYSTEM-owned, so it cannot be resolved in another tenant. Re-bind it to a platform template, or export it and let the target tenant bind its own.`,
+        message:
+          `Agent '${source.slug}' binds a prompt template that is not SYSTEM-owned${ref.fragmentKey ? ` (fragment \`${ref.fragmentKey}\`)` : ''}, ` +
+          'so it cannot be resolved in another tenant. Re-bind it to a platform template, or export it and let the target tenant bind its own.',
         code: 'PROMPT_TEMPLATE_NOT_PORTABLE',
       });
     }
@@ -1431,6 +1486,9 @@ export class AgentService extends BaseService implements IAgentService {
         'The eval gate was not copied: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Bind one in the target tenant.',
       );
     }
+    // Half a reference: a version pin with nothing to pin. It would number a version of nothing
+    // in the target, so it does not travel. (A composite pins per FRAGMENT and the contract
+    // refuses a top-level pin on one, so this only ever bites the single-template form.)
     if (crossTenant && typeof instruction[PROMPT_VERSION_NUMBER_KEY] === 'number' && !(PROMPT_TEMPLATE_ID_KEY in instruction)) {
       delete instruction[PROMPT_VERSION_NUMBER_KEY];
     }
