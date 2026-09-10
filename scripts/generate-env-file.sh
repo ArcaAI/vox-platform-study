@@ -201,7 +201,10 @@ _fill_generated_secrets() {
 # credential that must stay unset is an instruction to do the wrong thing.
 _blank_superseded_secrets() {
   local file="$1" k
-  for k in "${_SUPERSEDED_KEYS[@]}" "${_PROD_ONLY_BLANK_KEYS[@]}"; do
+  # `${a[@]+"${a[@]}"}` / `${a[*]-}`: macOS ships bash 3.2, where expanding an
+  # EMPTY array under `set -u` is an "unbound variable" fatal — and
+  # `_SUPERSEDED_KEYS` is deliberately empty (see its declaration).
+  for k in ${_SUPERSEDED_KEYS[@]+"${_SUPERSEDED_KEYS[@]}"} "${_PROD_ONLY_BLANK_KEYS[@]}"; do
     grep -qE "^${k}=CHANGE_ME\s*$" "$file" 2>/dev/null || continue
     _set_env "$file" "$k" ""
   done
@@ -223,7 +226,7 @@ _report_remaining_placeholders() {
   for k in $remaining; do
     case " ${_EXTERNAL_SECRET_KEYS[*]} " in *" $k "*) external="$external $k"; continue ;; esac
     case " ${_MINTED_LATER_KEYS[*]} "     in *" $k "*) minted="$minted $k";     continue ;; esac
-    case " ${_SUPERSEDED_KEYS[*]} "       in *" $k "*) superseded="$superseded $k"; continue ;; esac
+    case " ${_SUPERSEDED_KEYS[*]-} "      in *" $k "*) superseded="$superseded $k"; continue ;; esac
     unexpected="$unexpected $k"
   done
 
