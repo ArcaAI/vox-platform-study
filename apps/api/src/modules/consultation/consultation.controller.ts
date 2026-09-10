@@ -251,7 +251,7 @@ export class ConsultationController {
   }
 
   /**
-   * TASK-933 §3.2 — WHO this consultation is for.
+   * TASK-933 §3.2 — WHO this consultation is for, as far as the CONTROLLER can tell.
    *
    * `Consultation.doctorId` names a person, always. A human caller is that person. A service
    * account is not a person at all, so it NAMES the clinician it acts for and the service
@@ -259,27 +259,43 @@ export class ConsultationController {
    *
    * The two 400s are deliberate and are opposite refusals of the same field:
    *
-   *   · `CLINICIAN_REQUIRED` — a machine that named nobody. Defaulting to the account itself
-   *     would write a machine id into `doctorId`, which every downstream consumer (DNA style,
-   *     the redaction gate, the doctor's report, the prompt tier, the audit trail) reads as a
-   *     clinician. There is no safe default, so there is no default.
+   *   · `CLINICIAN_REQUIRED` — a machine that named nobody AND sent no context payload that
+   *     could identify anybody. Defaulting to the account itself would write a machine id into
+   *     `doctorId`, which every downstream consumer (DNA style, the redaction gate, the
+   *     doctor's report, the prompt tier, the audit trail) reads as a clinician. There is no
+   *     safe default, so there is no default.
    *   · `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human that named someone. Their clinician
    *     IS their authenticated identity; honouring a body field here would be impersonation
    *     with no gate, and silently ignoring it would be worse (the caller would believe it took
    *     effect). 400 says so out loud.
+   *
+   * TASK-950 §D-6 — the THIRD possibility is a machine that identified its clinician by STAFF
+   * ID inside `context`, in whichever field the tenant's schema marks as its user identity.
+   * Answering that needs the tenant's effective schema and the user directory, neither of which
+   * a controller may touch (rule 05: no business logic, no repository access here), so this
+   * returns `null` and `ConsultationService.getOrCreate` settles it — including the D-7
+   * agreement rule when BOTH are sent (400 `CLINICIAN_MISMATCH`) and the `CLINICIAN_REQUIRED`
+   * refusal when the schema declares no marker or the payload carries no value.
+   *
+   * The refusal a controller CAN still answer alone stays here: a machine that sent neither
+   * `clinicianUserId` nor any `context` at all has named nobody by any route, and there is
+   * nothing for the service to resolve. Refusing at the edge keeps that request from reaching a
+   * tenant read.
    */
-  private resolveActingClinicianId(request: OpenConsultationRequest): string {
+  private resolveActingClinicianId(request: OpenConsultationRequest): string | null {
     const serviceAccountId = this.getServiceAccountId();
 
     if (serviceAccountId) {
-      if (!request.clinicianUserId) {
-        throw new BadRequestException({
-          message:
-            'A service account has no clinician of its own. Name the clinician this consultation belongs to with `clinicianUserId`; a service account is never recorded as the doctor.',
-          code: 'CLINICIAN_REQUIRED',
-        });
-      }
-      return request.clinicianUserId;
+      if (request.clinicianUserId) return request.clinicianUserId;
+      // A context payload MIGHT carry the schema-declared identity value; only the service can
+      // tell. Defer, rather than refuse something that may well name a clinician.
+      if (request.context && Object.keys(request.context).length > 0) return null;
+
+      throw new BadRequestException({
+        message:
+          'A service account has no clinician of its own. Name the clinician this consultation belongs to with `clinicianUserId`, or send their staff identifier in the context field your schema marks as its user identity; a service account is never recorded as the doctor.',
+        code: 'CLINICIAN_REQUIRED',
+      });
     }
 
     if (request.clinicianUserId) {
@@ -482,17 +498,36 @@ export class ConsultationController {
     method: HttpMethod.POST,
     path: 'open',
   })
-  // TASK-933 §3.2 — the realtime consultation plane, opened to the machine class. The account's
-  // authority is exactly this scope plus the ability it implies (`create:Consultation`); the
-  // CLINICIAN it acts for is named on the body and validated in the service.
+  // AUTH-NOTE: TASK-933 §3.2 — the realtime consultation plane, opened to the machine class. The
+  // account's authority is exactly this scope plus the ability it implies (`create:Consultation`);
+  // the CLINICIAN it acts for is named on the body — or, since TASK-950, identified by staff id
+  // inside `context` — and is validated in the service, which is the only layer that may read the
+  // tenant's schema and user directory. `@Authorize` gates the CALLER and cannot express a rule
+  // about a third party the body names, which is why that check is imperative
+  // (`assertNamedClinicianMayOwnConsultation`, 404-over-403).
   @Authorize(['create', 'Consultation'])
   @RequiredSvcScopes('svc:consultation:session:write')
   @ApiResponse({
     status: 400,
     description:
-      'Bad request. `CLINICIAN_REQUIRED` — a service-account caller named no `clinicianUserId`; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied one.',
+      'Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; ' +
+      '`CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; ' +
+      '`CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; ' +
+      '`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); ' +
+      '`USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; ' +
+      '`USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department.',
   })
-  @ApiResponse({ status: 404, description: 'The named clinician is not a user of this tenant, or may not own a consultation.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'The named clinician is not a user of this tenant, or may not own a consultation. Also `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries that staff id. Also the seat quota, when provisioning would exceed it.',
+  })
+  @ApiResponse({ status: 503, description: 'Context validation or user-identity resolution is not available on this deployment.' })
   async open(@Body() request: OpenConsultationRequest): Promise<ConsultationResponse> {
     return this.consultationService.getOrCreate(request, this.resolveActingClinicianId(request));
   }
