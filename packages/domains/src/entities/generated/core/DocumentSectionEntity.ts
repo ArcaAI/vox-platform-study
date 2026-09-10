@@ -266,6 +266,11 @@ export class DocumentSectionEntity extends BaseTenantEntity {
    * TRUE only for EMPTY and PROVISIONAL. A CONFIRMED section has been touched by
    * a clinician, so a flush may APPEND to it but must never overwrite it; a
    * LOCKED section rejects every write.
+   *
+   * TASK-939: the append this sentence promised now exists — `appendMachineContent`. Read this
+   * predicate as governing REPLACEMENT only; it is deliberately not consulted on the append path,
+   * because adding cannot destroy what the clinician wrote. `isWritable()` is the gate that still
+   * applies to both.
    */
   public machineMayOverwrite(): boolean {
     return this._state === Enums.DocumentSectionState.EMPTY || this._state === Enums.DocumentSectionState.PROVISIONAL;
@@ -284,6 +289,43 @@ export class DocumentSectionEntity extends BaseTenantEntity {
     this.revision = this._revision + 1;
     // A machine write never demotes a CONFIRMED section back to PROVISIONAL —
     // the clinician's touch is the higher authority and survives the append.
+    if (this._state === Enums.DocumentSectionState.EMPTY) {
+      this.state = Enums.DocumentSectionState.PROVISIONAL;
+    }
+  }
+
+  /**
+   * Machine write: ADD a new part to this section, keeping everything already written.
+   *
+   * TASK-939 — the append this class has described since it was written and never had. Three
+   * places promised it (this file's `machineMayOverwrite` doc, `applyMachineContent`'s "survives
+   * the append", and the shipped OpenAPI description of the clinician PATCH route) while the only
+   * machine write available was a REPLACE. A realtime lane that can only replace regenerates the
+   * whole note every turn, which is exactly what the clinician watching it reported.
+   *
+   * The difference from `applyMachineContent` is the whole point: this cannot destroy prior text,
+   * so — unlike a replace — it is legitimate on a CONFIRMED section and the store does not refuse
+   * it. The clinician's `state`, `confirmedAt` and `confirmedBy` are left exactly as they were.
+   *
+   * An empty or whitespace-only addition is a NO-OP, not an empty append: `repository.update`
+   * persists `entity.changes`, so touching the setters here would write a row and burn a revision
+   * on every turn that had nothing to say. Since `revision` is what clients use to discard
+   * out-of-order patches, a revision that advances without content would also make a later real
+   * append look stale.
+   *
+   * The separator is a blank line, matching `buildRunningSummary`'s own section join, so the
+   * accumulated body reads as paragraphs rather than a run-on.
+   */
+  public appendMachineContent(addition: string, annotations?: JsonValue | null, provenance?: JsonValue | null): void {
+    if (!addition || addition.trim().length === 0) return;
+
+    const existing = (this._content ?? '').trim();
+    this.content = existing.length > 0 ? `${existing}\n\n${addition.trim()}` : addition.trim();
+    if (annotations !== undefined) this.annotations = annotations;
+    if (provenance !== undefined) this.provenance = provenance;
+    this.revision = this._revision + 1;
+    // Same promotion rule as a replace, and the same refusal to demote: a CONFIRMED section that
+    // receives an append is still CONFIRMED.
     if (this._state === Enums.DocumentSectionState.EMPTY) {
       this.state = Enums.DocumentSectionState.PROVISIONAL;
     }

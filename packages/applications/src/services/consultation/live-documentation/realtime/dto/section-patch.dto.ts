@@ -125,6 +125,12 @@ export class SectionPatchDto {
   @ApiProperty({ description: 'The section body. Offsets in `annotations` index THIS string.' })
   content: string;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-939 — the part of `content` this patch ADDED, present only when the flush appended rather than replaced. `content` is always the whole body, so a consumer may ignore this field entirely and behave exactly as before; a renderer that wants to mark what just arrived uses it to avoid re-animating text the clinician has already read. Absent on a replace, and absent on a degrade patch.',
+  })
+  appended?: string;
+
   @ApiPropertyOptional({ description: 'Section-LOCAL annotations', type: [SectionAnnotationDto] })
   annotations?: SectionAnnotationDto[];
 
