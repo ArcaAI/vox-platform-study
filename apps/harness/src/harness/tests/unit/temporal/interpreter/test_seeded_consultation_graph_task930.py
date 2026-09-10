@@ -373,15 +373,30 @@ class TestTheConsultationPlaneFinalizes:
 
     @pytest.mark.asyncio
     async def test_a_consultation_that_never_recorded_still_degrades_with_the_named_reason(self) -> None:
-        """Nothing is invented for a session with no live output — the §6.9 line stands."""
+        """Nothing is invented for a session with no live output — the §6.9 line stands.
+
+        TASK-946 D3 / OD-4 — and the run now REACHES its terminal state. `review=None`: this run
+        is never signalled, because no clinician gate is opened. `n_review` binds `in` from
+        `n_finalize.out`, the degraded finalizer stores no output, so the gate would be opened on
+        `{}` — which is exactly what the three trials of 2026-09-10 did, parking a clinician on
+        an empty note for the full 3,600 s deadline before `n_output` failed its schema and the
+        run closed FAILED an hour after the consultation had stopped. The gate is skipped
+        instead, and this test COMPLETING without ever signalling one is the proof.
+        """
         _LIVE_OUTPUTS.clear()
-        _, nodes = await _run(
+        result, nodes = await _run(
             _seeded_consultation_config(),
             payload={},
             subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
-            review="approved",
+            review=None,
         )
         assert nodes["n_finalize"].status == "DEGRADED"
         assert nodes["n_finalize"].reason == (
             "core.agent: nothing bound on `in`/`context` to generate from"
         )
+        assert nodes["n_review"].status == "DEGRADED"
+        assert nodes["n_review"].reason == "review_skipped_empty_payload"
+        # The run still fails, and on the honest cause: `core.output` carries
+        # `onSchemaViolation: 'fail'` and there is no `case_note` to publish.
+        assert nodes["n_output"].status == "FAILED"
+        assert result.status == "FAILED"
