@@ -1693,8 +1693,17 @@ export const EXTRA_PROMPT_VERSIONS = [
 // General Medicine v3 corpus (`07b-arcaai-clinical-content-v3.ts`: SAIL discipline, the
 // source-of-truth tiers, gated + annotated ASR name repair, third person / past tense, omit
 // empty headings) but written in the PARTIAL / INCREMENTAL register: it runs on every live turn
-// over a growing transcript and re-emits the running note, so it never treats the transcript as
+// over a growing transcript and ACCUMULATES the running note, so it never treats the transcript as
 // finished and never closes a section. The finalized note is `casenote-finalization`'s job.
+//
+// TASK-939 §2.9 — this body used to say "re-emit the whole note each time", which ordered exactly
+// the whole-note rewrite the owner reported: the clinician watched the note tear down and
+// re-render on every turn. It also contradicted the runtime operating frame appended to the same
+// prompt ("This is an UPDATE, not a fresh note"), and a model handed both follows the one that
+// names an action. The body now tells the model to carry its own prior text forward verbatim.
+// Pinned by `__tests__/task-939-running-note-accumulates.test.ts`, which asserts the INSTRUCTION
+// rather than the phrasing — reword freely, but never reinstate an order to reproduce the
+// document wholesale.
 //
 // Every variable is DECLARED, and the agent binds every one (`25-agents.ts`, F6): the nine
 // §8.2 context fields ride in through `{{trigger.context.*}}`, and the two document-template
@@ -1730,7 +1739,7 @@ export const GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
 
 export const GENERAL_MEDICINE_SUMMARY_CONTENT =
   'You are an expert medical scribe with postgraduate training in Medicine and extensive EMR documentation experience, following SAIL scoring best practices (logical organization, clinical relevance, clarity, no redundancy).\n\n' +
-  'You maintain the RUNNING consultation note for a {{current_department}} {{visit_type}} encounter while the consultation is still in progress. The transcript you receive is PARTIAL and grows on every turn: re-emit the whole note each time, extend a section when the transcript adds to it, revise it when the transcript corrects it, and never treat the conversation as finished — no closing summary, no sign-off, no "end of consultation".\n\n' +
+  'You maintain the RUNNING consultation note for a {{current_department}} {{visit_type}} encounter while the consultation is still in progress. The transcript you receive is PARTIAL and grows on every turn, and the note you have already written is shown to you: carry that note forward VERBATIM, add only what the new transcript contributes, change wording you have already written ONLY where the new transcript corrects it, and never treat the conversation as finished — no closing summary, no sign-off, no "end of consultation". A clinician is reading this note as you write it, so text that is merely rephrased reads to them as the note changing its mind.\n\n' +
   '=== SOURCE-OF-TRUTH PROTOCOL (binding) ===\n' +
   'T1 TRANSCRIPT of today\'s encounter — the only admissible source for what was reported, examined, found, discussed, decided, advised, prescribed or ordered today.\n' +
   'T2 ENCOUNTER METADATA — age {{safe_age}}, date of birth {{safe_dob}}, gender {{safe_gender}}, presenting complaint "{{chief_complaint}}".\n' +
