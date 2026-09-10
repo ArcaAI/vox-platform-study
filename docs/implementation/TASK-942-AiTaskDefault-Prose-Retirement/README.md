@@ -282,10 +282,40 @@ file — 74 distinct citations, **0 dangling**. (The scan's one apparent miss,
 `` `-cross-user.spec.ts` `` in `task-779-core-business.spec.ts:6`, is a legible shorthand for
 `consultation-job-cross-user.spec.ts`, which exists.)
 
-**Found while doing this, NOT fixed:** `.claude/rules/05-nestjs-api.md:90` states "Cross-tenant
-contracts are locked by `apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`" — and no
-`task-307-*` spec exists. The rule file carries the same class of dangling pointer, and editing a
-rules file is outside this ticket.
+### The `task-307-*` pointer, fixed on the owner's instruction (2026-09-10)
+
+`.claude/rules/05-nestjs-api.md:90` claimed "Cross-tenant contracts are locked by
+`apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`" — and that glob matched **zero** files. The
+specs were renamed to id-free names by TASK-536 (its §5 records the owner lifting the exclusion on
+spec FILE names), so the rule had been pointing developers at nothing ever since, while reading as
+authoritative.
+
+It was not one line but **seven**, across five files:
+
+| File | What it claimed |
+|---|---|
+| `.claude/rules/05-nestjs-api.md:90` | the cross-tenant contract locks |
+| `.cursor/rules/05-nestjs-api.mdc:65` | **the same rule in the Cursor format** — byte-identical, so fixing one alone would have forked the rule |
+| `docs/development-patterns-and-standards.md:394`, `:500` | rule 00 names this the primary pattern reference, so a developer following rule 05 lands here and meets the same dead glob |
+| `docs/architecture/data-and-domain-model.md:42` | "cross-tenant regression suites live in …" |
+| `docs/traceability/index.md:100` | the `x-tenant` evidence key |
+| `docs/traceability/storage.md:56` | "the cross-tenant storage e2e specs (`task-307-storage-*`)" |
+
+**The fix is a glob on the naming CONVENTION, not on a ticket** — `*cross-tenant*.spec.ts`, which
+matches 21 specs today (20 in the `-cross-tenant.spec.ts` suffix form plus
+`cross-tenant-aggregate-audit.spec.ts` in the prefix form; the one `-cross-user` spec is a different
+axis and is deliberately outside it). That is the actual lesson of this whole class: the original
+pointer rotted **because** it named a ticket, and a convention-glob cannot rot as specs are added or
+renamed. The rule now says so in place, so the next person does not re-introduce a ticket-scoped
+glob. Where a named exemplar genuinely helps, the rule names
+`tenant-bucket-cross-tenant.spec.ts` (the 404-over-403 ownership probe) and
+`admin-fetchall-cross-tenant.spec.ts` (list-endpoint scoping), and `traceability/storage.md` names
+its three real storage specs.
+
+Both rule copies were verified byte-identical on that line before AND after the edit. Every
+surviving `task-307` mention outside `docs/archive/**` is now explanatory text about the retired
+form — no live document asserts those specs exist. `docs/archive/**` keeps its 25 files untouched:
+they are the historical record of TASK-307 itself, and that sprint boundary is declared.
 
 ### Verification
 
@@ -317,3 +347,4 @@ the retirement record byte-for-byte intact.
 | 2026-09-10 | **Completed.** 66 repointed / 110 kept; 238 → 176 survivors, all of them committed migrations (35), generated files (43) or deliberate record/assertion (98). Two wrong agent patches caught by verification (a self-referential precedent citation, and a false "`AiRoutingPolicy` has no `provider` column" claim — it does, at `ai-routing-policy.prisma:77`). One edit flagged as DATA rather than prose: a seed `AiModel.description` that the seed's UPDATE path propagates. Generated Prisma client byte-identical, `openapi*.json` untouched, every lint count exactly at baseline. |
 | 2026-09-10 | **Stale-PATH class swept** on the owner's instruction. Agent C's single find turned out to be four live references across three files, invisible to the ticket's grep because the directory name is kebab-case. All four repointed to `ai-routing-policy/constants.ts`, each verified by confirming the cited symbol is declared there (`AI_TASK_KEYS:37`, `AI_TASK_MODEL_TASK_TYPES:120`, `AI_TASK_KIND_BY_TASK_KEY`, `SUPER_ADMIN_ONLY_TASK_PREFIXES:187`). A fifth copy in a committed migration stays. Separately found and NOT swept: five e2e specs cite the deleted `ai-task-defaults-cross-tenant.spec.ts` as an exemplar — same defect shape, but choosing its replacement is a judgement this ticket has no mandate for. `prisma validate` OK, generated client unchanged, applications lint 182 = baseline, 88 files / 1744 tests green. |
 | 2026-09-10 | **Five dangling e2e exemplar pointers repointed** to `ai-provider-connections-cross-tenant.spec.ts` on the owner's instruction. Two refinements from verification: two of the six hits were historical `/row` notes, not pointers, and were left intact; and three pointers that claim "the canonical shape of these probes" now ALSO name `tenant-bucket-cross-tenant.spec.ts`, because the instructed target's own header disclaims the 404-over-403 posture and carries zero `toBe(404)` assertions. The target's helper/superAdmin claims were verified present (`:21`, `:63`) before editing. Gate: 74 spec citations across the e2e tree, 0 dangling. Separately found and not fixed: `05-nestjs-api.md:90` points at `task-307-*-cross-tenant.spec.ts`, which does not exist. apps/api lint 65 = baseline, build clean. |
+| 2026-09-10 | **The `task-307-*` dangling pointer fixed** — seven occurrences across five files, not one: both rule-05 copies (`.claude` + the byte-identical `.cursor` mirror, which would have forked), two in `development-patterns-and-standards.md` (rule 00's designated primary reference), and one each in `architecture/data-and-domain-model.md`, `traceability/index.md` and `traceability/storage.md`. Replaced with a glob on the naming CONVENTION (`*cross-tenant*.spec.ts`, 21 specs) rather than on a ticket, with the reason stated in the rule so the pattern is not re-introduced — the original rotted precisely because it named a ticket, after TASK-536 renamed those specs to id-free names. `docs/archive/**` (25 files) left untouched as the historical record. No live document asserts those specs exist any more. |

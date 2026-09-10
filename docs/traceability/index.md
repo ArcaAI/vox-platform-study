@@ -97,7 +97,7 @@ Each row states, and each claim must be **verified to exist against the code bef
 - **unit(api)** = `apps/api/src/**/__tests__/`
 - **unit(console)** = `apps/admin-console/src/**/__tests__/` (Vitest + jsdom; screen specs include axe + both themes)
 - **e2e** = `apps/api/tests/e2e/*.spec.ts` (Playwright, real HTTP against `http://localhost:8868/api/v1`)
-- **contract** = `tests/contracts/` · **x-tenant** = `tests/cross-tenant/` + `task-307-*` e2e suite
+- **contract** = `tests/contracts/` · **x-tenant** = `tests/cross-tenant/` + the `apps/api/tests/e2e/*cross-tenant*.spec.ts` suite
 - **py(stt)** = `apps/stt/tests/` · **py(text)** = `apps/text/src/text/tests/` · **py(grd)** = `apps/guardrail/src/guardrail/tests/` · **py(nlp)** = `apps/nlp/tests/` · **py(hrn)** = `apps/harness/src/harness/tests/` · **py(tts)** = `apps/tts/src/tts/tests/`
 
 Last verified: 2026-07-21 (index roll-up) · 2026-09-07 (the TASK-890 delta section above, incl. the two black-box release-phase rows)
