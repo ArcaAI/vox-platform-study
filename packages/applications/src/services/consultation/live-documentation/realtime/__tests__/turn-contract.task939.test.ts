@@ -270,3 +270,56 @@ describe('TASK-939 — a WHOLE-DOCUMENT output is not an empty turn', () => {
     expect(parseTurnJson(raw, compiled)?.subjective?.addition).toBe('Fever.');
   });
 });
+
+describe('TASK-939 — a JSON-shaped `null` sentinel is not clinical content', () => {
+  /**
+   * Found by the live replay, not by any unit test here: a small model (`gemma-4-e2b-it-qat`)
+   * emitted the STRING `"null"` in `addition` for sections it had nothing to say about, rather than
+   * the JSON `null` the schema declares. The fold accepted it as prose and appended it, so the
+   * persisted note read literally:
+   *
+   *     null
+   *
+   *     Patient reported a complaint related to cancer.
+   *
+   * The accumulation invariant held perfectly — it faithfully accumulated `"null"` — which is why
+   * the churn metric could not catch this and only reading the note could.
+   *
+   * The rule is deliberately NARROW: only a value whose ENTIRE trimmed text is `null`/`undefined` is
+   * rejected, because that is a serialisation artifact and never clinical prose. `N/A`, `None` and
+   * `Nil` are all legitimate clinical shorthand and are left alone — suppressing those would lose
+   * real content, which is a worse defect than the one being fixed.
+   */
+  it('drops an `addition` that is the literal string "null"', () => {
+    const turn = parseTurnJson(JSON.stringify({ subjective: { addition: 'null', revision: null, contradiction: null } }), compiled);
+
+    expect(turn).toEqual({});
+  });
+
+  it('is case- and whitespace-insensitive, and covers "undefined"', () => {
+    for (const sentinel of ['NULL', ' null ', 'Null', 'undefined', 'UNDEFINED']) {
+      const turn = parseTurnJson(JSON.stringify({ subjective: { addition: sentinel } }), compiled);
+      expect(turn, `"${sentinel}" was accepted as clinical content`).toEqual({});
+    }
+  });
+
+  it('rejects the same sentinel in `revision`, so it cannot overwrite a section with "null"', () => {
+    const { sections, writes } = applyTurn(prior, parseTurnJson(JSON.stringify({ objective: { revision: 'null' } }), compiled)!, compiled);
+
+    expect(sections[1]!.content).toBe('Temp 37.8.');
+    expect(writes).toEqual([]);
+  });
+
+  it('LEAVES clinical shorthand alone — N/A, None and Nil are things a clinician writes', () => {
+    for (const real of ['N/A', 'None', 'Nil', 'No known allergies']) {
+      const turn = parseTurnJson(JSON.stringify({ subjective: { addition: real } }), compiled);
+      expect(turn?.subjective?.addition, `"${real}" was wrongly discarded`).toBe(real);
+    }
+  });
+
+  it('does not reject a sentence that merely CONTAINS the word null', () => {
+    const turn = parseTurnJson(JSON.stringify({ subjective: { addition: 'Screening for null mutations was discussed.' } }), compiled);
+
+    expect(turn?.subjective?.addition).toBe('Screening for null mutations was discussed.');
+  });
+});
