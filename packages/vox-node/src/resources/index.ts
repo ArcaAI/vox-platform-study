@@ -16,7 +16,7 @@ export type { SummarizationRequestOptions, SummarizationStream } from './summari
 export { SummarizationResource } from './summarization';
 
 export type { ConsultationSummaryRequestOptions, GenerateSummaryOptions, UpdateSummaryOptions } from './consultation-summaries';
-export { ConsultationSummariesResource } from './consultation-summaries';
+export { ConsultationSummariesResource, SYNC_GENERATION_TIMEOUT_MS } from './consultation-summaries';
 
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';

@@ -246,3 +246,47 @@ describe('ConsultationSummariesResource#update', () => {
     });
   });
 });
+
+describe('ConsultationSummariesResource — synchronous generation timeouts (TASK-946)', () => {
+  // A four-note BREN pre-summary took 46–68 s on the dev box while the transport's 60 s default
+  // gave up first (§5.1 of the ticket): the SYNCHRONOUS generation routes are long by nature, so
+  // they carry their own floor — overridable per call, and never above an integrator's explicit
+  // client-level `timeoutMs`.
+  function spiedResource(config: { timeoutMs?: number } = {}) {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, SUMMARY));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, ...config });
+    const request = vi.spyOn(transport, 'request');
+    return { resource: new ConsultationSummariesResource(transport), request };
+  }
+
+  it('generatePreSummary defaults to the 180 s generation floor when the client sets no timeout', async () => {
+    const { resource, request } = spiedResource();
+    await resource.generatePreSummary('c1', {});
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 180_000 }));
+  });
+
+  it('generate (sync summary) carries the same generation floor', async () => {
+    const { resource, request } = spiedResource();
+    await resource.generate('c1', { transcription: 'hello' });
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 180_000 }));
+  });
+
+  it('an explicit client-level timeoutMs wins over the generation floor', async () => {
+    const { resource, request } = spiedResource({ timeoutMs: 45_000 });
+    await resource.generatePreSummary('c1', {});
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 45_000 }));
+  });
+
+  it('a per-call timeoutMs wins over both', async () => {
+    const { resource, request } = spiedResource({ timeoutMs: 45_000 });
+    await resource.generatePreSummary('c1', {}, { timeoutMs: 300_000 });
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 300_000 }));
+  });
+
+  it('the async routes and reads keep the transport default (no floor)', async () => {
+    const { resource, request } = spiedResource();
+    await resource.generatePreSummaryAsync('c1', {});
+    await resource.latestPreSummary('c1');
+    for (const call of request.mock.calls) expect(call[0]).not.toHaveProperty('timeoutMs');
+  });
+});

@@ -191,6 +191,18 @@ export class Transport {
     return this.config.baseUrl;
   }
 
+  /**
+   * The integrator's EXPLICIT client-level `timeoutMs`, or `undefined` when none was given.
+   *
+   * Resources that front a known-long synchronous route (a pre-summary over several case notes
+   * runs 45–70 s on a small local model) use this to decide precedence: a per-call `timeoutMs`,
+   * then this explicit client value, then the route's own floor — never the transport's 60 s
+   * default, which is sized for reads and writes, not for a generation.
+   */
+  get defaultTimeoutMs(): number | undefined {
+    return this.config.timeoutMs;
+  }
+
   /** Perform one HTTP attempt (no retry) and return the raw `Response`. Throws {@link APIConnectionError}/{@link APITimeoutError} on a connect-phase or timeout failure. */
   private async performAttempt(options: TransportRequestOptions): Promise<Response> {
     const method = options.method ?? 'GET';
