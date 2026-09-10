@@ -6,6 +6,7 @@ import { ConsultationServiceModule } from '../consultation/consultation/consulta
 import { HarnessGatewayServiceModule } from '../consultation/harness/harness-gateway.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
+import { ContextUserIdentityServiceModule } from '../user/identity';
 import { WorkflowRunServiceModule } from '../workflow-run';
 import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
@@ -23,6 +24,9 @@ import { WorkflowExposureService } from './workflow-exposure.service';
  *   every other consumer: `note-generation`, `live-documentation`, `summary`, `knowledge`, `eval`).
  * - WorkflowRunServiceModule -> `IWorkflowRunService` (the read-model / ownership-anchor writes).
  * - EntitlementsServiceModule -> `IEntitlementsService` (`monthlyWorkflowInvocations` meter check).
+ * - ContextUserIdentityServiceModule -> `IContextUserIdentityService` (TASK-950): the
+ *   schema-declared staff identifier on a STANDALONE machine run, resolved to (or
+ *   provisioned as) a tenant user before the run is dispatched.
  */
 @Module({
   imports: [
@@ -48,6 +52,9 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     // cycle: ConsultationServiceModule imports neither this module nor anything leading back to
     // it (its own module doc records the same check for ConsentServiceModule).
     ConsultationServiceModule,
+    // TASK-950 (D-6). No cycle: the identity module reads the user/profile/role/department
+    // repositories and the settings cascade, none of which leads back to the exposure plane.
+    ContextUserIdentityServiceModule,
   ],
   providers: [
     WorkflowExposureService,

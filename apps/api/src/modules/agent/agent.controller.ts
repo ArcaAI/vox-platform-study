@@ -212,8 +212,36 @@ export class AgentController {
   @ApiParam({ name: 'slug', type: String })
   @ApiQuery({ name: 'mode', required: false, enum: ['blocking', 'stream'] })
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
-  @ApiResponse({ status: 400, description: 'The body does not match the agent’s inputSchema, or the agent is not a TEXT_GENERATION agent.' })
-  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'The body does not match the agent’s inputSchema, the `context` does not satisfy the schema the agent binds ' +
+      '(`CONTEXT_SCHEMA_VIOLATION`), the agent is not a TEXT_GENERATION agent, or — for a service-account caller on an ' +
+      'agent whose schema declares a user-identity field — the supplied staff identifier is unusable ' +
+      '(`USER_IDENTITY_INVALID`) or no department could be resolved to provision the clinician in ' +
+      '(`USER_IDENTITY_DEPARTMENT_UNRESOLVED`).',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Unknown, unpublished, or another tenant’s agent — one answer. Also the answer when a service-account caller ' +
+      'supplies a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act ' +
+      '(`USER_IDENTITY_NOT_USABLE`).',
+  })
+  // TASK-950 — the schema-declared user-identity refusals. Documented on the route because an
+  // integrator meets them as HTTP statuses long before it meets the resolver; the CODE is what
+  // says which of the four 4xx families it landed in.
+  @ApiResponse({
+    status: 409,
+    description:
+      'The context schema declares a user-identity field and the supplied staff identifier is ambiguous ' +
+      '(`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries it), or provisioning a new ' +
+      'user would exceed the tenant’s `maxUsers` allowance. Service-account callers only.',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'The identity resolver is not configured, so a request that names a clinician cannot be honoured (`USER_IDENTITY_RESOLVER_UNAVAILABLE`).',
+  })
   @ApiResponse({
     status: 429,
     description: 'The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed.',
