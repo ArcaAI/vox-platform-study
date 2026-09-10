@@ -403,11 +403,38 @@ function cadenceOf(config: Readonly<Record<string, unknown>> | undefined): strin
  * schema change; a non-string or blank value is treated as "the lane named none" rather
  * than passed on, because `resolveForGeneration` would then look up a slug nobody authored
  * and fail open to the platform shape anyway — with the cause hidden one layer further in.
+ *
+ * ## TASK-946 D2 — first-match was the wrong "first"
+ *
+ * Every seeded ArcaAI graph splits its per-turn summary by visit type and declares
+ * `n_summary_new` BEFORE `n_summary_revisit` (`seed/28-workflow-library.ts`). First-match over
+ * stage order therefore froze the new-visit shape on every consultation, including the revisits
+ * whose own `n_summary_revisit` node then ran — the shape and the summariser disagreeing about
+ * the same visit. Measured 2026-09-10: `requestedSlug: arcaai-bren-soap-new-visit` on a
+ * consultation carrying a `parentConsultationId`.
+ *
+ * `branchHandles` is the lane's routing decision — {@link resolveBranchHandles}' output,
+ * evaluated ONCE against the session's run context — and it narrows the walk to the nodes that
+ * decision can actually reach. Omitting it keeps the previous first-match answer exactly, which
+ * is the right answer for a caller that has no run context to offer and for every lane that
+ * authors no split.
+ *
+ * REACHABLE means what `runRealtimeLane`'s own `branchSkip` means, and deliberately not
+ * something adjacent: a node with no guards is always reachable; a guarded node is reachable
+ * when one of its DECIDABLE guards names a handle that was taken. A guard whose producer this
+ * lane cannot decide (a `core.classify` model call, a `core.humanReview` person) is left OUT of
+ * the vote rather than counted against the node — refusing to name a shape is worse than naming
+ * one, which is the same trade the executor makes.
  */
-export function realtimeDocumentTemplateSlug(lane: RealtimeLane | null): string | null {
+export function realtimeDocumentTemplateSlug(
+  lane: RealtimeLane | null,
+  branchHandles?: readonly { readonly nodeId: string; readonly handle: string }[],
+): string | null {
   if (!lane) return null;
+  const takenHandle = new Map((branchHandles ?? []).map((evaluation) => [evaluation.nodeId, evaluation.handle]));
   for (const stage of lane.stages) {
     for (const node of stage.nodes) {
+      if (!isReachable(node, takenHandle)) continue;
       // TASK-893: with every realtime node a `core.agent`, the running-note node is the one that
       // NAMES a template — a node that names none is not it.
       const slug = node.config.documentTemplateSlug;
@@ -415,4 +442,13 @@ export function realtimeDocumentTemplateSlug(lane: RealtimeLane | null): string 
     }
   }
   return null;
+}
+
+/** `runRealtimeLane`'s `branchSkip`, first rule, inverted — see {@link realtimeDocumentTemplateSlug}. */
+function isReachable(node: RealtimeNode, takenHandle: ReadonlyMap<string, string>): boolean {
+  // `?? []` because this is a never-throws read on the session-start path: a lane assembled by
+  // something other than `buildRealtimeLane` (a positional fixture, a stored snapshot written
+  // before guards existed) carries no `branchGuards`, and that means UNGUARDED, not a crash.
+  const decidable = (node.branchGuards ?? []).filter((guard) => takenHandle.has(guard.fromNodeId));
+  return decidable.length === 0 || decidable.some((guard) => takenHandle.get(guard.fromNodeId) === guard.handle);
 }

@@ -118,6 +118,18 @@ export class LiveDocSessionStatsResponse {
       'TASK-939 — true when the generation could not be read as a TURN and this flush fell back to a whole-document rewrite (a provider that ignores `response_format`, typically). That is the PRE-ticket behaviour, so a tenant permanently in this state still sees the whole note re-render and is a finding, not a detail.',
   })
   turnDegraded: boolean;
+
+  @ApiProperty({
+    description:
+      'TASK-946 D6 — true when this flush produced NO note: the document generation did not succeed, or an `onError: "fail"` node stopped the lane. Distinct from both neighbours, which is why it exists: `turnDegraded` is a QUALITY signal about a flush that succeeded (the turn contract fell back to a whole-document rewrite) and `textFailed` names one stage, so before this field a reader of the snapshot had nothing that said the flush failed — the 2026-09-10 trial`s three empty consultations read as ordinary sessions.',
+  })
+  flushFailed: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-946 D6 — WHY the flush failed, as a code from the closed vocabulary (`no_case_notes`, `context_overflow`, `text_unavailable`, `timeout`, `generation_failed`, or an executor reason code such as `disabled_by_config` / `superseded_after_completion`). ABSENT on a healthy flush. Never a transport string: it used to be `${status}: ${message}`, so this surface carried `degraded: Request failed with status code 502` — the HTTP client`s words on the field whose job is to explain what happened to the note, and the one place a model`s refusal text could reach a PHI-safe surface.',
+  })
+  degradeReason?: string;
 }
 
 /** A tenant's active live-documentation sessions (`GET /admin/harness/live/sessions`). */

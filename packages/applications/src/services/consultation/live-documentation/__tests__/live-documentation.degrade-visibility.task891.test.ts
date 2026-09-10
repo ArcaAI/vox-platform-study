@@ -143,7 +143,10 @@ describe('TASK-891 B5 — a failed generation reaches the console as an honest s
     expect(patches.length, 'the flush failed and published no section.patch at all — the console renders a skeleton forever').toBeGreaterThan(0);
     for (const patch of patches) {
       expect(patch.state).toBe('empty');
-      expect(patch.degradeReason).toContain(TEXT_ERROR);
+      // TASK-946 D6 — a CODE, not the transport's message. The patch used to carry
+      // `degraded: ${TEXT_ERROR}`, which named the HTTP client rather than the failure and was
+      // the one clinician-facing field a model's own text could travel in.
+      expect(patch.degradeReason).toBe('timeout');
       // A degrade patch persists nothing, so it must never claim a revision that could
       // displace real content in a client that follows the DTO's discard rule.
       expect(patch.revision).toBe(0);
