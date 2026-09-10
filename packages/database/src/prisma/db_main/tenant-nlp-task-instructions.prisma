@@ -11,7 +11,7 @@
 // rather than an extension of its `configJson` — `AiRoutingPolicy`'s
 // `guardrail.`/`nlp.`/`harness.` task-key prefixes are SUPER_ADMIN-ONLY
 // (MODEL/PROVIDER SELECTION governance, `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
-// packages/applications/src/services/ai-task-default/constants.ts). A
+// packages/applications/src/services/ai-routing-policy/constants.ts). A
 // tenant's topic/intent list is tenant-authored CONTENT, not a model
 // selection, and must stay writable by an ordinary tenant admin — conflating
 // the two would either lock tenants out of authoring their own lists or

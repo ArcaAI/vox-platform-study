@@ -229,8 +229,37 @@ generated client is byte-identical and `prisma validate` passes.
 
 Agent C also reported, unprompted and outside its hit list, that
 `tenant-nlp-task-instructions.prisma` still names the deleted path
-`ai-task-default/constants.ts` — invisible to a case-sensitive `AiTaskDefault` grep. Left untouched
-as it reported, and recorded here as the one known remainder.
+`ai-task-default/constants.ts` — invisible to a case-sensitive `AiTaskDefault` grep.
+
+### The stale-PATH class, swept on the owner's instruction (2026-09-10)
+
+C's find was not one line but a CLASS the ticket's own grep could not see: the directory was
+kebab-case (`ai-task-default/`), so nothing matching `AiTaskDefault` would ever surface it.
+Searching all three casings (`ai-task-default`, `ai_task_default`, `aiTaskDefault`) found **four
+live references**, in three files:
+
+| File | Symbol it points at |
+|---|---|
+| `applications/.../tenant-nlp-task-instructions/constants.ts:5` | `AI_TASK_KEYS` |
+| `database/.../enums.prisma:886` | `AI_TASK_MODEL_TASK_TYPES` |
+| `database/.../enums.prisma:898` | `AI_TASK_KIND_BY_TASK_KEY` |
+| `database/.../tenant-nlp-task-instructions.prisma:14` | `SUPER_ADMIN_ONLY_TASK_PREFIXES` |
+
+All four now name `ai-routing-policy/constants.ts`, and each was verified by checking that the
+symbol it cites is actually declared there — `AI_TASK_KEYS:37`, `AI_TASK_MODEL_TASK_TYPES:120`,
+`AI_TASK_KIND_BY_TASK_KEY` and `SUPER_ADMIN_ONLY_TASK_PREFIXES:187` — rather than by assuming the
+directory simply moved. A pointer is only fixed if the thing it points at is really there.
+
+A fifth copy lives in `migrations/20260901051803_task_843_ai_task_taxonomy/migration.sql:37` and
+stays: committed migrations are never edited.
+
+**A separate dangling-pointer class was found and deliberately NOT swept.** Five e2e specs cite
+`ai-task-defaults-cross-tenant.spec.ts` as their pattern exemplar
+(`task-615-billing`, `task-615-usage-analytics`, `task-635-prompt-test-bench`,
+`task-641-allowed-origins` ×2) and that file is DELETED, so the pointer leads nowhere. It is the
+same defect shape but it needs a judgement this ticket has no mandate for — which surviving
+cross-tenant spec should become the named exemplar (`ai-provider-connections-cross-tenant.spec.ts`
+is the closest analogue). Reported rather than guessed.
 
 ### Verification
 
@@ -260,3 +289,4 @@ the retirement record byte-for-byte intact.
 | 2026-09-10 | Filed at the owner's request from TASK-941's close. Inventory measured rather than carried over, which corrected the handoff twice: **238** source hits across 134 files (not the "~25" I quoted — that was the `apps/api` subset alone), and the OpenAPI hit I had recommended fixing FIRST is provenance that should probably be KEPT (OD-1). Classified: 78 untouchable (live `ResourceType` enum member, 35 committed-migration lines, generated entities/`vox-node`), 50 absorption/retirement record to keep, 110 candidates across 70 files — a filter count, not a verified defect count, with the 14 `apps/api` hits identified as the genuinely misleading core. No code changed. |
 | 2026-09-10 | OD-1 answered: KEEP the OpenAPI provenance — so no `@ApiProperty` is touched and `openapi*.json` stays byte-identical (no five-artifact regeneration). Owner guard recorded: TASK-870 is history, not a spec; nothing may un-retire or restore a removed implementation. Execution begun as three read-only classifiers (sonnet / opus / sonnet) with the orchestrator as single writer — rationale and tier choices in §5. |
 | 2026-09-10 | **Completed.** 66 repointed / 110 kept; 238 → 176 survivors, all of them committed migrations (35), generated files (43) or deliberate record/assertion (98). Two wrong agent patches caught by verification (a self-referential precedent citation, and a false "`AiRoutingPolicy` has no `provider` column" claim — it does, at `ai-routing-policy.prisma:77`). One edit flagged as DATA rather than prose: a seed `AiModel.description` that the seed's UPDATE path propagates. Generated Prisma client byte-identical, `openapi*.json` untouched, every lint count exactly at baseline. |
+| 2026-09-10 | **Stale-PATH class swept** on the owner's instruction. Agent C's single find turned out to be four live references across three files, invisible to the ticket's grep because the directory name is kebab-case. All four repointed to `ai-routing-policy/constants.ts`, each verified by confirming the cited symbol is declared there (`AI_TASK_KEYS:37`, `AI_TASK_MODEL_TASK_TYPES:120`, `AI_TASK_KIND_BY_TASK_KEY`, `SUPER_ADMIN_ONLY_TASK_PREFIXES:187`). A fifth copy in a committed migration stays. Separately found and NOT swept: five e2e specs cite the deleted `ai-task-defaults-cross-tenant.spec.ts` as an exemplar — same defect shape, but choosing its replacement is a judgement this ticket has no mandate for. `prisma validate` OK, generated client unchanged, applications lint 182 = baseline, 88 files / 1744 tests green. |
