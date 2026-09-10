@@ -21,11 +21,10 @@ import {
   usePublishAgent,
   type Agent,
   type AgentProblemBody,
-  type AgentPromptVariableBinding,
   type AgentTask,
   type CreateAgentRequest,
 } from '../api';
-import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
+import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
 import { ModelPicker, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
@@ -33,13 +32,8 @@ import { ParametersForm } from './parameters-form';
 const STEPS = ['Task', 'Model', 'Instruction', 'Parameters', 'Schemas', 'Review'] as const;
 type Step = (typeof STEPS)[number];
 
-const NO_INSTRUCTION: InstructionBindingValue = {
-  promptTemplateId: null,
-  promptVersionNumber: null,
-  variables: {},
-  contextSchemaId: null,
-  contextSchemaVersionNumber: null,
-};
+/** No instruction authored yet — defaults to template mode with nothing chosen. */
+const NO_INSTRUCTION: InstructionBindingValue = instructionToBinding(null, null, null);
 
 export function slugify(name: string): string {
   return name
@@ -57,9 +51,7 @@ interface WizardState {
   description: string;
   modelId: string;
   fallbackModelIds: string[];
-  instructionMode: 'template' | 'inline';
   binding: InstructionBindingValue;
-  systemPrompt: string;
   initialPrompt: string;
   hotwords: string;
   /** TASK-930 — the NER label set, comma-separated in the field and split on submit (same shape as `hotwords`). */
@@ -77,9 +69,7 @@ const INITIAL: WizardState = {
   description: '',
   modelId: '',
   fallbackModelIds: [],
-  instructionMode: 'template',
   binding: NO_INSTRUCTION,
-  systemPrompt: '',
   initialPrompt: '',
   hotwords: '',
   labels: '',
@@ -88,22 +78,10 @@ const INITIAL: WizardState = {
   outputSchema: null,
 };
 
-/** `{ path: 'x' }` when set, `{ value: 'x' }` otherwise — mirrors `InstructionBindingForm`'s own bindings verbatim, so nothing is re-typed here. */
-function bindingsToRequest(variables: Record<string, AgentPromptVariableBinding>): Record<string, AgentPromptVariableBinding> | undefined {
-  return Object.keys(variables).length ? variables : undefined;
-}
-
 export function buildCreateRequest(state: WizardState): CreateAgentRequest {
   let instruction: Record<string, unknown> | undefined;
   if (state.task === 'TEXT_GENERATION') {
-    instruction =
-      state.instructionMode === 'template'
-        ? {
-            promptTemplateId: state.binding.promptTemplateId,
-            ...(state.binding.promptVersionNumber !== null ? { promptVersionNumber: state.binding.promptVersionNumber } : {}),
-            ...(bindingsToRequest(state.binding.variables) ? { variables: state.binding.variables } : {}),
-          }
-        : { systemPrompt: state.systemPrompt };
+    instruction = instructionFromBinding(state.binding);
   } else if (state.task === 'SPEECH_TO_TEXT') {
     const hotwords = state.hotwords
       .split(',')
@@ -165,7 +143,7 @@ export function CreateAgentWizard({
   // The Review step names the bound prompt by NAME, not by id: a UUID tells the author nothing
   // about what they are about to publish. `enabled` is the id itself, so nothing is fetched
   // until one is chosen (and the picker has usually warmed this query already).
-  const boundTemplate = usePromptTemplateQuickView(state.instructionMode === 'template' ? (state.binding.promptTemplateId ?? null) : null);
+  const boundTemplate = usePromptTemplateQuickView(state.binding.mode === 'template' ? state.binding.promptTemplateId : null);
   // Same reasoning for the context schema: the Review step is the last thing an author reads
   // before publishing, and a UUID there says nothing about what they are agreeing to. The
   // catalogue is already loaded for the Instruction step's picker, so this costs no extra read.
@@ -184,7 +162,11 @@ export function CreateAgentWizard({
     Model: state.modelId.length > 0,
     Instruction:
       state.task !== 'TEXT_GENERATION' ||
-      (state.instructionMode === 'template' ? !!state.binding.promptTemplateId : state.systemPrompt.trim().length > 0),
+      (state.binding.mode === 'template'
+        ? !!state.binding.promptTemplateId
+        : state.binding.mode === 'inline'
+          ? state.binding.systemPrompt.trim().length > 0
+          : state.binding.fragments.length > 0),
     Parameters: true,
     Schemas: true,
     Review: true,
@@ -382,38 +364,7 @@ export function CreateAgentWizard({
       {step === 'Instruction' ? (
         <div className="flex flex-col gap-4">
           {state.task === 'TEXT_GENERATION' ? (
-            <>
-              <RadioGroup
-                value={state.instructionMode}
-                onValueChange={(mode) => patch({ instructionMode: mode as WizardState['instructionMode'] })}
-                aria-label="Instruction source"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem id="instr-template" value="template" />
-                  <Label htmlFor="instr-template">Approved prompt template (versioned, governed)</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem id="instr-inline" value="inline" />
-                  <Label htmlFor="instr-inline">Inline system prompt</Label>
-                </div>
-              </RadioGroup>
-              {state.instructionMode === 'template' ? (
-                <InstructionBindingForm value={state.binding} onChange={(binding) => patch({ binding })} />
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="agent-system-prompt">
-                    System prompt <span aria-hidden>*</span>
-                  </Label>
-                  <Textarea
-                    id="agent-system-prompt"
-                    rows={8}
-                    value={state.systemPrompt}
-                    maxLength={50000}
-                    onChange={(event) => patch({ systemPrompt: event.target.value })}
-                  />
-                </div>
-              )}
-            </>
+            <InstructionBindingForm value={state.binding} onChange={(binding) => patch({ binding })} />
           ) : state.task === 'SPEECH_TO_TEXT' ? (
             <>
               <div className="flex flex-col gap-1.5">
@@ -491,9 +442,11 @@ export function CreateAgentWizard({
           <dt className="text-muted-foreground">Instruction</dt>
           <dd>
             {state.task === 'TEXT_GENERATION'
-              ? state.instructionMode === 'template'
+              ? state.binding.mode === 'template'
                 ? (boundTemplate.data?.name ?? state.binding.promptTemplateId ?? '—')
-                : `${state.systemPrompt.slice(0, 80)}${state.systemPrompt.length > 80 ? '…' : ''}`
+                : state.binding.mode === 'inline'
+                  ? `${state.binding.systemPrompt.slice(0, 80)}${state.binding.systemPrompt.length > 80 ? '…' : ''}`
+                  : `${state.binding.fragments.length} fragment(s): ${state.binding.fragments.map((fragment) => fragment.key || '(no key)').join(', ')}`
               : state.task === 'SPEECH_TO_TEXT'
                 ? state.initialPrompt || state.hotwords
                   ? 'Initial prompt / hotwords'

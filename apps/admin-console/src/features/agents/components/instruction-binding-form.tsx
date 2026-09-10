@@ -1,14 +1,22 @@
 'use client';
 
 /**
- * TASK-890 §3.4/§3.6/§3.10 — the TEXT_GENERATION Instruction step: the shared
- * `<PromptTemplatePicker>` (quick view + deep link), a version pin (follow the template's own
- * approved version, or pin one), a per-declared-variable binding (a static value, or a context
- * path resolved through the render scope BEFORE the bare-name overlay — §3.3), and the
- * context-schema picker (TENANT rows only, `useContextSchemaOptions`) that governs what
- * `{{context.*}}` resolves against for this agent. Shared by the create wizard and the edit-draft
- * form so the two cannot drift (rule 13 — features never import each other; this lives inside the
- * `agents` feature and consumes the SHARED picker/catalogue, never a copy of either).
+ * TASK-890 §3.4/§3.6/§3.10, extended by TASK-947 §4.1/OD-12 — the TEXT_GENERATION Instruction
+ * step, now covering all three mutually exclusive instruction forms behind one "Instruction
+ * source" choice:
+ *   - `template` — the shared `<PromptTemplatePicker>` (quick view + deep link), a version pin
+ *     (follow the template's own approved version, or pin one), and a per-declared-variable
+ *     binding (a static value, or a context path resolved through the render scope BEFORE the
+ *     bare-name overlay — §3.3).
+ *   - `inline` — a single system prompt.
+ *   - `fragments` (TASK-947) — an ordered list of prompt fragments, each a template reference or
+ *     an inline body, each with an optional CEL `when` condition; see `FragmentListEditor`.
+ * The context-schema picker (TENANT rows only, `useContextSchemaOptions`) governs what
+ * `{{context.*}}` resolves against for this agent and applies regardless of instruction form —
+ * an inline or fragment body can reference `{{context.*}}` exactly as a template can. Shared by
+ * the create wizard and the edit-draft form so the two cannot drift (rule 13 — features never
+ * import each other; this lives inside the `agents` feature and consumes the SHARED
+ * picker/catalogue, never a copy of either).
  */
 import { useId, useState } from 'react';
 import {
@@ -24,16 +32,38 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Textarea,
 } from '@arcaai/ui';
 import { useContextSchemaOptions } from '@/shared/catalog';
 import { PromptTemplatePicker, type PromptPickerTemplate } from '@/shared/prompt-picker';
-import type { AgentPromptVariableBinding } from '../api';
+import {
+  instructionForm,
+  readFragments,
+  type AgentPromptVariableBinding,
+  type PromptFragment,
+} from '../api';
+import {
+  FragmentListEditor,
+  fragmentRowsFromFragments,
+  fragmentsFromRows,
+  type FragmentRow,
+} from './fragment-list-editor';
+import { VariableBindingsFieldset } from './variable-bindings-fieldset';
+import { VersionPinControl } from './version-pin-control';
+
+export type InstructionMode = 'template' | 'inline' | 'fragments';
 
 export interface InstructionBindingValue {
+  mode: InstructionMode;
   promptTemplateId: string | null;
-  /** `null` ⇒ follow the template's own approved version. */
+  /** `null` ⇒ follow the template's own approved version. Only meaningful when `mode === 'template'`. */
   promptVersionNumber: number | null;
+  /** ONE agent-level map — the union of every fragment template's declared variables in `fragments` mode (OD-8). */
   variables: Record<string, AgentPromptVariableBinding>;
+  /** Only meaningful when `mode === 'inline'`. */
+  systemPrompt: string;
+  /** Only meaningful when `mode === 'fragments'`. */
+  fragments: FragmentRow[];
   contextSchemaId: string | null;
   /** `null` ⇒ follow the schema's own pinned version. */
   contextSchemaVersionNumber: number | null;
@@ -45,8 +75,53 @@ export interface InstructionBindingFormProps {
   disabled?: boolean;
 }
 
-function bindingIsContext(binding: AgentPromptVariableBinding | undefined): boolean {
-  return !!binding && typeof binding.path === 'string';
+/**
+ * TASK-947 — the inverse pair used by both the create wizard and the edit-draft form so a
+ * TEXT_GENERATION instruction round-trips through the editor state for all three forms:
+ * `instructionToBinding(json)` seeds the editor, `instructionFromBinding(state)` serializes it
+ * back. `contextSchemaId`/`contextSchemaVersionNumber` live on `Agent` itself (not inside
+ * `instruction`), so they are passed in separately and copied straight into the result.
+ */
+export function instructionToBinding(
+  instruction: Record<string, unknown> | null,
+  contextSchemaId: string | null,
+  contextSchemaVersionNumber: number | null,
+): InstructionBindingValue {
+  const form = instructionForm(instruction);
+  const promptTemplateId = instruction && typeof instruction.promptTemplateId === 'string' ? instruction.promptTemplateId : null;
+  const promptVersionNumber = instruction && typeof instruction.promptVersionNumber === 'number' ? instruction.promptVersionNumber : null;
+  const rawVariables = instruction?.variables;
+  const variables = rawVariables && typeof rawVariables === 'object' ? (rawVariables as Record<string, AgentPromptVariableBinding>) : {};
+  const systemPrompt = instruction && typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : '';
+  return {
+    mode: form === 'fragments' || form === 'inline' ? form : 'template',
+    promptTemplateId,
+    promptVersionNumber,
+    variables,
+    systemPrompt,
+    fragments: fragmentRowsFromFragments(readFragments(instruction)),
+    contextSchemaId,
+    contextSchemaVersionNumber,
+  };
+}
+
+/** The inverse of `instructionToBinding` — `undefined` when there is nothing to persist yet (e.g. no template chosen). */
+export function instructionFromBinding(value: InstructionBindingValue): Record<string, unknown> | undefined {
+  if (value.mode === 'fragments') {
+    const fragments: PromptFragment[] = fragmentsFromRows(value.fragments);
+    if (fragments.length === 0) return undefined;
+    const instruction: Record<string, unknown> = { fragments };
+    if (Object.keys(value.variables).length > 0) instruction.variables = value.variables;
+    return instruction;
+  }
+  if (value.mode === 'template') {
+    if (!value.promptTemplateId) return undefined;
+    const instruction: Record<string, unknown> = { promptTemplateId: value.promptTemplateId };
+    if (value.promptVersionNumber !== null) instruction.promptVersionNumber = value.promptVersionNumber;
+    if (Object.keys(value.variables).length > 0) instruction.variables = value.variables;
+    return instruction;
+  }
+  return { systemPrompt: value.systemPrompt };
 }
 
 export function InstructionBindingForm({ value, onChange, disabled }: InstructionBindingFormProps) {
@@ -59,109 +134,75 @@ export function InstructionBindingForm({ value, onChange, disabled }: Instructio
     onChange({ ...value, ...next });
   }
 
-  function setVariable(name: string, binding: AgentPromptVariableBinding | undefined) {
-    const variables = { ...value.variables };
-    if (binding === undefined) delete variables[name];
-    else variables[name] = binding;
-    patch({ variables });
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <PromptTemplatePicker
-        id={`${idPrefix}-template`}
-        value={value.promptTemplateId}
-        onChange={(id) => patch({ promptTemplateId: id, promptVersionNumber: null, variables: {} })}
-        onTemplateChange={setTemplate}
-        disabled={disabled}
-      />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Instruction source</legend>
+        <RadioGroup value={value.mode} onValueChange={(mode) => patch({ mode: mode as InstructionMode })} aria-label="Instruction source">
+          <div className="flex items-center gap-2">
+            <RadioGroupItem id={`${idPrefix}-mode-template`} value="template" disabled={disabled} />
+            <Label htmlFor={`${idPrefix}-mode-template`}>Approved prompt template</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem id={`${idPrefix}-mode-inline`} value="inline" disabled={disabled} />
+            <Label htmlFor={`${idPrefix}-mode-inline`}>Inline system prompt</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem id={`${idPrefix}-mode-fragments`} value="fragments" disabled={disabled} />
+            <Label htmlFor={`${idPrefix}-mode-fragments`}>Composable fragments (conditional)</Label>
+          </div>
+        </RadioGroup>
+      </fieldset>
 
-      {value.promptTemplateId && template ? (
+      {value.mode === 'template' ? (
         <>
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium">Version</legend>
-            <RadioGroup
-              value={value.promptVersionNumber === null ? 'approved' : 'pinned'}
-              onValueChange={(mode) =>
-                patch({ promptVersionNumber: mode === 'approved' ? null : (template.approvedVersionNumber ?? template.currentVersionNumber) })
-              }
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id={`${idPrefix}-follow`} value="approved" disabled={disabled} />
-                <Label htmlFor={`${idPrefix}-follow`}>
-                  Follow approved{template.approvedVersionNumber != null ? ` (v${template.approvedVersionNumber})` : ''}
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id={`${idPrefix}-pin`} value="pinned" disabled={disabled} />
-                <Label htmlFor={`${idPrefix}-pin`}>Pin a version</Label>
-                {value.promptVersionNumber !== null ? (
-                  <Input
-                    id={`${idPrefix}-pin-number`}
-                    type="number"
-                    min={1}
-                    className="w-20"
-                    aria-label="Pinned version number"
-                    value={value.promptVersionNumber}
-                    disabled={disabled}
-                    onChange={(event) => patch({ promptVersionNumber: Number(event.target.value) || 1 })}
-                  />
-                ) : null}
-              </div>
-            </RadioGroup>
-          </fieldset>
-
-          {declared.length > 0 ? (
-            <fieldset className="flex flex-col gap-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">Variable bindings</legend>
-              {declared.map((declaration) => {
-                const binding = value.variables[declaration.name];
-                const isContext = bindingIsContext(binding);
-                const fieldId = `${idPrefix}-var-${declaration.name}`;
-                return (
-                  <div key={declaration.name} className="flex flex-col gap-1.5">
-                    <Label htmlFor={fieldId}>
-                      {declaration.name}
-                      {declaration.required ? (
-                        <span aria-hidden className="text-destructive">
-                          {' '}
-                          *
-                        </span>
-                      ) : null}
-                    </Label>
-                    <div className="flex gap-2">
-                      <Select
-                        value={isContext ? 'context' : 'static'}
-                        onValueChange={(next) => setVariable(declaration.name, next === 'context' ? { path: '' } : { value: '' })}
-                        disabled={disabled}
-                      >
-                        <SelectTrigger aria-label={`${declaration.name} binding kind`} className="w-40 shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="static">Static value</SelectItem>
-                          <SelectItem value="context">Context path</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        id={fieldId}
-                        className="flex-1"
-                        placeholder={isContext ? 'context.patientAge' : (declaration.default ?? declaration.type)}
-                        value={isContext ? (binding?.path ?? '') : binding?.value !== undefined ? String(binding.value) : ''}
-                        disabled={disabled}
-                        onChange={(event) => {
-                          const text = event.target.value;
-                          if (isContext) setVariable(declaration.name, text ? { path: text } : undefined);
-                          else setVariable(declaration.name, text ? { value: text } : undefined);
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </fieldset>
+          <PromptTemplatePicker
+            id={`${idPrefix}-template`}
+            value={value.promptTemplateId}
+            onChange={(id) => patch({ promptTemplateId: id, promptVersionNumber: null, variables: {} })}
+            onTemplateChange={setTemplate}
+            disabled={disabled}
+          />
+          {value.promptTemplateId && template ? (
+            <>
+              <VersionPinControl
+                idPrefix={idPrefix}
+                approvedVersionNumber={template.approvedVersionNumber}
+                currentVersionNumber={template.currentVersionNumber}
+                value={value.promptVersionNumber}
+                onChange={(promptVersionNumber) => patch({ promptVersionNumber })}
+                disabled={disabled}
+              />
+              <VariableBindingsFieldset idPrefix={idPrefix} declared={declared} variables={value.variables} onChange={(variables) => patch({ variables })} disabled={disabled} />
+            </>
           ) : null}
         </>
+      ) : null}
+
+      {value.mode === 'inline' ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${idPrefix}-system-prompt`}>
+            System prompt <span aria-hidden>*</span>
+          </Label>
+          <Textarea
+            id={`${idPrefix}-system-prompt`}
+            rows={8}
+            maxLength={50000}
+            value={value.systemPrompt}
+            disabled={disabled}
+            onChange={(event) => patch({ systemPrompt: event.target.value })}
+          />
+        </div>
+      ) : null}
+
+      {value.mode === 'fragments' ? (
+        <FragmentListEditor
+          fragments={value.fragments}
+          onFragmentsChange={(fragments) => patch({ fragments })}
+          variables={value.variables}
+          onVariablesChange={(variables) => patch({ variables })}
+          disabled={disabled}
+        />
       ) : null}
 
       <Field>
