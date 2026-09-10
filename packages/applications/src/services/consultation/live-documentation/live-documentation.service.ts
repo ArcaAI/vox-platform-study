@@ -271,18 +271,32 @@ class LivePromptUnresolvedError extends Error {
  * Render an agent instruction on the REALTIME lane through the ONE grammar (§3.2), over the
  * §3.3 scope.
  *
- * This lane has no `core.trigger` and no `core.variable` handler (`realtime-node-registry.ts`),
- * so it publishes no `trigger` / `vars` / `nodes` roots: what it HAS is the agent's bound
- * variables overlaid by the node's `overrides.promptVariables`. Binding those roots to empty
- * objects would claim the run has a trigger whose fields are all missing, which is a different —
- * and more misleading — finding than "this lane declares no trigger".
+ * This lane has no `core.variable` handler (`realtime-node-registry.ts`), so it publishes no
+ * `vars` / `nodes` roots: binding those to empty objects would claim the run has them and that
+ * every field is missing, which is a different — and more misleading — finding than "this lane
+ * declares none".
+ *
+ * TASK-943 — it DOES publish `trigger` now, and must. The seeded agents bind their clinical
+ * variables by path (`{ path: 'trigger.context.language' }`), so with no trigger root every one of
+ * them was unresolvable and `core.agent` failed closed on the first: the realtime case note never
+ * generated at all. The objection the paragraph above records was to binding the root to an EMPTY
+ * object — asserting a trigger whose fields are all missing. Supplying the values the session
+ * actually has (and, for the fields the v2 data model has no store for, the absence values the
+ * workflow's own trigger schema DECLARES) answers that objection rather than overriding it: absent
+ * `trigger` still means "this lane has no trigger", and that is now only true of a caller that
+ * passes none.
  */
-function renderLivePrompt(content: string, variables: Record<string, unknown>, agentSlug: string): string {
+function renderLivePrompt(
+  content: string,
+  variables: Record<string, unknown>,
+  agentSlug: string,
+  trigger?: Readonly<Record<string, unknown>> | null,
+): string {
   try {
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
-    const scope = buildAgentPromptScope({ variables, templateRef: `agent:${agentSlug}` });
+    const scope = buildAgentPromptScope({ variables, trigger, templateRef: `agent:${agentSlug}` });
     return renderTemplate(content, scope, { templateRef: `agent:${agentSlug}` });
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
@@ -2663,6 +2677,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // cannot drift.
       turnInstruction(template.compiled),
     );
+    // TASK-943 — the run's expression/prompt context, built ONCE per flush. The lane evaluates its
+    // guards against it and every `core.agent` renders its instruction from its `trigger` root, so
+    // computing it twice would risk the two disagreeing within one turn.
+    const runContext = await this.realtimeRunContext(session);
     // The compiled view the TEXT call decodes against THIS turn. A derived object, not a mutation:
     // `template.compiled.responseFormat` is persisted on `DocumentTemplateVersion` and is the
     // durable finalisation path's contract too.
@@ -2738,6 +2756,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           signal,
           isStale,
           priorSections,
+          runContext,
         })
       : null;
     if (graph === 'stale') return this.dropStale(session);
@@ -2802,6 +2821,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               turnCompiled,
               undefined,
               session.consultationId,
+              runContext.trigger as Readonly<Record<string, unknown>>,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -3174,6 +3194,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
        * legacy branches fold against byte-identical input.
        */
       priorSections: readonly LiveSummarySectionDto[];
+      /**
+       * TASK-943 — the run's expression/prompt context, computed ONCE per flush by the caller. The
+       * lane evaluates its `core.condition` guards against it AND every `core.agent` renders its
+       * instruction from its `trigger` root; without that root the seeded agents' clinical
+       * variables (`{ path: 'trigger.context.*' }`) were all unresolvable and every node degraded
+       * on the first one, so no note was ever produced.
+       */
+      runContext: Record<string, ExpressionValue>;
     },
   ): Promise<GraphFlushProjection | 'stale' | null> {
     // Honour the session's frozen tool plan on the PLATFORM lane. A tenant graph
@@ -3242,6 +3270,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               turnCompiled,
               textAgent,
               session.consultationId,
+              ctx.runContext.trigger as Readonly<Record<string, unknown>>,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -3310,7 +3339,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         capabilities,
         isStale: ctx.isStale,
         signal: ctx.signal,
-        runContext: await this.realtimeRunContext(session),
+        runContext: ctx.runContext,
       });
     } catch (error) {
       // A BINDING error is a contract violation in the tenant's graph, not a bad
@@ -3611,7 +3640,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * substituted default that would route a follow-up visit down the new-visit branch in silence.
    */
   /**
-   * TASK-943 — the trigger context a realtime `core.agent` renders its prompt from.
+   * TASK-943 — the run context the realtime lane evaluates guards against AND every `core.agent`
+   * renders its instruction from (its `trigger` root, via `buildAgentPromptScope`).
    *
    * ## The defect this replaced
    *
@@ -4917,6 +4947,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-890 §3.13 — attribution for the usage row this call now records. Trailing and
     // optional so every positional fixture keeps its arity.
     consultationId?: string | null,
+    // TASK-943 — the run's `trigger` root, so an agent's `{ path: 'trigger.context.*' }` bindings
+    // resolve instead of degrading the node. Trailing + optional, same reason as above.
+    trigger?: Readonly<Record<string, unknown>> | null,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     if (textAgent) {
       // The candidates this call may run, in order: the primary, then — only when the tenant's
@@ -4936,6 +4969,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             corrective,
             consultationId,
             textAgent.guardrail,
+            trigger,
           );
         } catch (error) {
           lastError = error;
@@ -5041,6 +5075,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // computed once by `resolveRealtimeTextAgent`. Every candidate of one node carries the same
     // decision: switching engines on an outage must never change whether the call is screened.
     guardrail?: { enabled: boolean },
+    // TASK-943 — the run's `trigger` root, so an agent's `{ path: 'trigger.context.*' }` bindings
+    // resolve. Trailing + optional so every positional fixture keeps its arity; ABSENT ⇒ the
+    // pre-943 behaviour (no trigger root), which is correct for a caller that genuinely has none.
+    trigger?: Readonly<Record<string, unknown>> | null,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
@@ -5055,7 +5093,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { provider: _overrideProvider, ...overrideEntry } = candidate.providerOverride ?? {};
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt: promptTemplate ? renderLivePrompt(promptTemplate, variables, candidate.agent.slug) : LIVE_DOCUMENT_SYSTEM_PROMPT,
+      system_prompt: promptTemplate ? renderLivePrompt(promptTemplate, variables, candidate.agent.slug, trigger) : LIVE_DOCUMENT_SYSTEM_PROMPT,
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
