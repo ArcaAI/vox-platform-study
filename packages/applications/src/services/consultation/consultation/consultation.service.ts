@@ -48,6 +48,12 @@ import { withSummaryLanguage } from './summary-language';
 import { PolicyEngine } from '../../../authorization/policy.engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
+// TASK-950 — the two collaborators the schema-typed `context` on `open` needs. The
+// context-schema symbols come from their own files rather than that package's barrel, which
+// re-exports the service, the module and the DTO surface for the three symbols wanted here.
+import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
+import { findKind, type UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
+import { IContextUserIdentityService, extractUserIdentityValue } from '../../user/identity';
 
 /**
  * Consultation Service
@@ -108,6 +114,21 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // assertManagesAgentsIn` precedent. Absent ⇒ the question is unanswered, so the named-
     // clinician path fails CLOSED (404); the ordinary human path never reaches it.
     @Optional() private readonly policyEngine?: PolicyEngine,
+    // TASK-950 §D-6 — optional + trailing (append-only DI, like every dependency above it).
+    // Validates `OpenConsultationRequest.context` against the DEPARTMENT-effective schema and
+    // supplies the definition the user-identity marker is read from. Absent ⇒ a request that
+    // supplies `context` is refused 503 rather than opened with its context unchecked; a request
+    // that supplies none never reaches it, so every existing caller is unaffected.
+    @Optional()
+    @Inject(IConsultationContextSchemaService)
+    private readonly contextSchemaService?: IConsultationContextSchemaService,
+    // TASK-950 §D-8/D-10 — optional + trailing. Resolves the schema's user-identity value to a
+    // tenant user (`UserProfile.staffId`), provisioning one when the tenant allows it. Reached
+    // ONLY when a SERVICE-ACCOUNT caller sends a context payload whose effective schema declares
+    // the marker; absent in that case is a 503, for the same reason as above.
+    @Optional()
+    @Inject(IContextUserIdentityService)
+    private readonly userIdentityService?: IContextUserIdentityService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -317,11 +338,217 @@ export class ConsultationService extends BaseService implements IConsultationSer
     };
   }
 
+  // ------------------------------------------------------------------------
+  // TASK-950 - the schema-typed `context` on `open`, and the clinician it may name
+  // ------------------------------------------------------------------------
+
+  /**
+   * TASK-950 §D-6 (a) - validate `request.context` against the DEPARTMENT-effective schema.
+   *
+   * Runs for EVERY credential class: a payload the tenant's own vocabulary does not admit is a
+   * caller error whoever sent it, and refusing it here - before the get-or-create branch and
+   * before any write - means a violation never depends on whether a consultation for
+   * (patient, doctor, date) happens to already exist.
+   *
+   * Every entry is checked and EVERY problem is reported at once (the same posture the publish
+   * gate takes): an integrator fixing a payload should not discover its faults one round-trip at
+   * a time. The named code is `CONTEXT_SCHEMA_VIOLATION`, the SAME one the agent invocation
+   * plane raises (`AgentInvocationService.invokeText`), so a caller that has met it there
+   * recognises it here.
+   *
+   * An UNWIRED validator is a 503, not a pass. Every other absent dependency on this service
+   * degrades because nothing was asked for; here something was - the caller sent a context
+   * payload, and opening the consultation with it silently unchecked would be a claim this
+   * deployment cannot make.
+   *
+   * @returns the kind keys that validated, in request order - the input to the identity step.
+   */
+  private async assertContextConformsToSchema(request: OpenConsultationRequest): Promise<string[]> {
+    const context = request.context;
+    if (!context || Object.keys(context).length === 0) return [];
+
+    if (!this.contextSchemaService) {
+      this.logger.error({
+        message: 'A context payload was supplied on open but context-schema validation is NOT WIRED - refusing rather than accepting it unchecked',
+        kindKeys: Object.keys(context),
+      });
+      throw new ServiceUnavailableException('Consultation context validation is not available on this deployment');
+    }
+
+    const problems: string[] = [];
+    const validatedKindKeys: string[] = [];
+
+    for (const [kindKey, payload] of Object.entries(context)) {
+      try {
+        await this.contextSchemaService.validateContextPayload({
+          kindKey,
+          payload: payload as Record<string, unknown>,
+          departmentId: request.departmentId ?? undefined,
+        });
+        validatedKindKeys.push(kindKey);
+      } catch (err) {
+        // ONLY a validation refusal becomes a problem line. A repository outage or a decryption
+        // failure must surface as itself, never be reported to the caller as "your payload is
+        // invalid".
+        if (!(err instanceof BadRequestException)) throw err;
+        problems.push(...ConsultationService.contextProblemsOf(kindKey, err));
+      }
+    }
+
+    if (problems.length > 0) {
+      throw new BadRequestException({
+        message: "The supplied `context` does not satisfy this tenant's consultation context schema.",
+        code: 'CONTEXT_SCHEMA_VIOLATION',
+        problems,
+      });
+    }
+
+    return validatedKindKeys;
+  }
+
+  /** Flatten one `validateContextPayload` refusal into caller-facing problem lines, kind-prefixed. */
+  private static contextProblemsOf(kindKey: string, err: BadRequestException): string[] {
+    const response = err.getResponse() as string | { message?: string; problems?: unknown };
+    if (typeof response === 'string') return [`${kindKey}: ${response}`];
+    const nested = Array.isArray(response?.problems) ? (response.problems as unknown[]).map((problem) => String(problem)) : [];
+    if (nested.length > 0) return nested.map((problem) => `${kindKey}: ${problem}`);
+    return [`${kindKey}: ${response?.message ?? err.message}`];
+  }
+
+  /**
+   * TASK-950 §D-6 (b) - the clinician a SERVICE-ACCOUNT caller identified by STAFF ID.
+   *
+   * The tenant may mark ONE string property of ONE STRUCTURED kind as its user identity
+   * (`userIdentity: { field }`). When the caller sent that kind and the value is a string, it is
+   * resolved to a tenant user by `UserProfile.staffId` - provisioning one when the tenant allows
+   * it - and that user becomes the acting clinician.
+   *
+   * The definition comes from the SAME cascade the validation above resolved against
+   * (`getEffectiveBundle(departmentId)`: department default -> tenant default), so a marker can
+   * never be read from a schema the payload was not checked against. Only kinds that VALIDATED
+   * are considered, which is what makes "the marked field carries a string" a safe read.
+   *
+   * Absent marker, absent kind, or a non-string value => `undefined`, and the caller falls back
+   * to `clinicianUserId`. Everything else - an unknown staff id, an unusable user, an ambiguous
+   * match, an unresolved department, a seat-quota refusal - is the identity service's own named
+   * failure and propagates untouched (D-10); this method never re-labels one.
+   */
+  private async resolveIdentityClinicianId(
+    tenantId: string,
+    request: OpenConsultationRequest,
+    validatedKindKeys: string[],
+    serviceAccountId: string,
+  ): Promise<string | undefined> {
+    if (validatedKindKeys.length === 0 || !this.contextSchemaService) return undefined;
+
+    const bundle = await this.contextSchemaService.getEffectiveBundle(request.departmentId ?? undefined);
+    if (!bundle?.definition) return undefined;
+
+    let binding: UserIdentityBinding | undefined;
+    for (const kindKey of validatedKindKeys) {
+      const field = findKind(bundle.definition, kindKey)?.userIdentity?.field;
+      if (typeof field === 'string' && field.length > 0) {
+        binding = { kindKey, field };
+        break;
+      }
+    }
+    if (!binding) return undefined;
+
+    const staffId = extractUserIdentityValue(request.context, binding);
+    if (typeof staffId !== 'string') return undefined;
+
+    if (!this.userIdentityService) {
+      this.logger.error({
+        message:
+          'The effective context schema declares a user-identity field but identity resolution is NOT WIRED - refusing rather than opening for the wrong clinician',
+        kindKey: binding.kindKey,
+        field: binding.field,
+      });
+      throw new ServiceUnavailableException('Context user-identity resolution is not available on this deployment');
+    }
+
+    const resolved = await this.userIdentityService.resolveOrProvision({
+      tenantId,
+      staffId,
+      departmentId: request.departmentId ?? null,
+      provenance: {
+        plane: 'consultation-open',
+        kindKey: binding.kindKey,
+        field: binding.field,
+        serviceAccountId,
+        ...(bundle.schemaId ? { schemaId: bundle.schemaId } : {}),
+        ...(typeof bundle.versionNumber === 'number' ? { versionNumber: bundle.versionNumber } : {}),
+      },
+    });
+
+    return resolved.userId;
+  }
+
+  /**
+   * TASK-950 §D-6 (c) - WHO this consultation is for, once the context has been validated.
+   *
+   * | Caller | Outcome |
+   * |---|---|
+   * | human (JWT / API key) | the caller, exactly as before. The identity field, if the schema declares one and the payload carries it, was validated as content and is otherwise IGNORED (D-5) - a human already IS the clinician, and resolving someone else from a body field would be impersonation with no gate |
+   * | machine, `clinicianUserId` only | that user (TASK-933, unchanged) |
+   * | machine, identity value only | the user it resolves or provisions to |
+   * | machine, BOTH and they agree | that user - one resolution, one clinician |
+   * | machine, BOTH and they disagree | 400 `CLINICIAN_MISMATCH` (D-7): no silent precedence |
+   * | machine, NEITHER | 400 `CLINICIAN_REQUIRED` - there is still no safe default |
+   *
+   * `named` is what decides whether `assertNamedClinicianMayOwnConsultation` runs below. It is
+   * true for EVERY machine caller, resolved or named: a machine has proved nothing about the
+   * person it acts for, and a freshly provisioned user is exactly as unproven as a named one
+   * (it passes, because the role its tenant provisions with grants `create:Consultation` - but
+   * it must be ASKED).
+   */
+  private async resolveActingClinician(
+    tenantId: string,
+    request: OpenConsultationRequest,
+    callerClinicianId: string,
+  ): Promise<{ clinicianId: string; named: boolean }> {
+    const validatedKindKeys = await this.assertContextConformsToSchema(request);
+    const serviceAccount = this.requestServiceAccount;
+
+    if (!serviceAccount) {
+      return { clinicianId: callerClinicianId, named: Boolean(request.clinicianUserId) };
+    }
+
+    const resolvedFromIdentity = await this.resolveIdentityClinicianId(tenantId, request, validatedKindKeys, serviceAccount.id);
+    const namedByCaller = request.clinicianUserId;
+
+    if (namedByCaller && resolvedFromIdentity && namedByCaller !== resolvedFromIdentity) {
+      throw new BadRequestException({
+        message:
+          '`clinicianUserId` and the user identified by the context payload are two different clinicians. Send one, or send both agreeing; this consultation belongs to exactly one person.',
+        code: 'CLINICIAN_MISMATCH',
+      });
+    }
+
+    const clinicianId = namedByCaller ?? resolvedFromIdentity;
+    if (!clinicianId) {
+      throw new BadRequestException({
+        message:
+          'A service account has no clinician of its own. Name the clinician this consultation belongs to with `clinicianUserId`, or send their staff identifier in the context field your schema marks as its user identity; a service account is never recorded as the doctor.',
+        code: 'CLINICIAN_REQUIRED',
+      });
+    }
+
+    return { clinicianId, named: true };
+  }
+
   /**
    * Get or create consultation for (patientId, doctorId, appointmentDate)
    *
    * - If consultation exists: returns existing
    * - If not: creates new consultation
+   *
+   * `doctorId` is the clinician the CALLER resolves to: the authenticated human, or the user a
+   * service account named with `clinicianUserId`. TASK-950 adds a third possibility — a machine
+   * that identified its clinician by STAFF ID inside `request.context` — which only this service
+   * can resolve, so the acting clinician is settled HERE (`resolveActingClinician`) and
+   * `doctorId` is that decision's input, not its answer. For a human caller the two are always
+   * the same value.
    */
   async getOrCreate(request: OpenConsultationRequest, doctorId: string): Promise<ConsultationResponse> {
     const tenantId = this.tenantId;
@@ -331,8 +558,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
+    // TASK-950 §D-6 — validate the context payload and settle WHO this consultation is for,
+    // BEFORE the tenant guard below and before anything is written. Ordering is deliberate: a
+    // provisioned clinician must exist before `assertCrossAggregateRefsInTenant` asks whether
+    // they belong to the tenant, and a schema violation must be a 400 rather than a 404 about a
+    // clinician the caller never named.
+    const { clinicianId: actingClinicianId, named: clinicianWasNamed } = await this.resolveActingClinician(tenantId, request, doctorId);
+
     await this.assertCrossAggregateRefsInTenant(tenantId, {
-      doctorId,
+      doctorId: actingClinicianId,
       departmentId: request.departmentId,
       parentConsultationId: request.parentConsultationId,
     });
@@ -340,9 +574,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // TASK-933 §3.2 — when the DOCTOR was named by the caller rather than being the caller,
     // membership is not enough: the named user must also be able to own a consultation. Runs
     // AFTER the tenant guard above, so a foreign user is 404'd on tenancy before anything about
-    // their privileges is computed.
-    if (request.clinicianUserId) {
-      await this.assertNamedClinicianMayOwnConsultation(tenantId, doctorId);
+    // their privileges is computed. TASK-950 widens the trigger from "the caller sent
+    // `clinicianUserId`" to "the clinician is not the caller" — a machine that identified its
+    // clinician through the context payload has proved exactly as little about that person.
+    if (clinicianWasNamed) {
+      await this.assertNamedClinicianMayOwnConsultation(tenantId, actingClinicianId);
     }
 
     // point 6 — authorize the caller's workflow SELECTION here, before the
@@ -362,7 +598,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]); // Today, no time
 
     // Try to find existing consultation (first one if multiple exist)
-    const existing = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, doctorId);
+    const existing = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, actingClinicianId);
 
     if (existing) {
       // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
@@ -417,7 +653,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       tenantId,
       patientId: request.patientId,
       appointmentDate,
-      doctorId,
+      doctorId: actingClinicianId,
       departmentId: request.departmentId,
       metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
       createdBy: userId ?? undefined,
@@ -481,7 +717,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
         consultationId: saved.id,
         tenantId,
         departmentId: saved.departmentId,
-        userId: userId ?? doctorId,
+        // TASK-950 — the ROW's clinician, not the `doctorId` PARAMETER. For a machine that
+        // identified its clinician by staff id the parameter carries no user at all, so reading
+        // it here would hand the harness `null` for a consultation that has a doctor. `saved`
+        // is the same value in every other case, so nothing else changes.
+        userId: userId ?? saved.doctorId,
         externalPatientId: saved.patientId,
         // Already authorized above; the dispatcher re-verifies rather than trusts.
         workflowDefinitionSlug: request.workflowDefinitionSlug,

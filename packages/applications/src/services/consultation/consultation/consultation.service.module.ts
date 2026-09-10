@@ -9,6 +9,8 @@ import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsentServiceModule } from '../../consent/consent-grant.service.module';
 import { AuthorizationModule } from '../../../authorization/authorization.module';
+import { ConsultationContextSchemaServiceModule } from '../../consultation-context-schema/consultation-context-schema.service.module';
+import { ContextUserIdentityServiceModule } from '../../user/identity';
 
 @Module({
   // HarnessAuditServiceModule resolves the @Optional
@@ -34,6 +36,16 @@ import { AuthorizationModule } from '../../../authorization/authorization.module
     // (absent ⇒ every service-account open is a 404) and an implicit global is not a record of
     // that. No cycle: `AuthorizationModule` imports CoreDatabase, Redis and ApiKey only.
     AuthorizationModule,
+    // TASK-950 §D-6 — the two collaborators `open` needs once a caller may send a schema-typed
+    // `context`. Named here (rather than relied on globally) for the same reason
+    // `AuthorizationModule` is: both are load-bearing when a context payload arrives — absent,
+    // such a request is a 503 — and an implicit provider is not a record of that.
+    //
+    // No cycle either way: `ConsultationContextSchemaServiceModule` imports only
+    // `CommonServiceModule` + `CoreDatabaseModule`, and the identity module owns the user
+    // surface, which knows nothing about consultations.
+    ConsultationContextSchemaServiceModule,
+    ContextUserIdentityServiceModule,
   ],
   providers: [
     ConsultationService,
