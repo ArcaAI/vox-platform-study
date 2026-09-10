@@ -14,6 +14,7 @@ export class UserProfile extends BaseDataModel {
   public phone: string | null;
   public avatarId: string | null;
   public preferredPromptTemplateId: string | null;
+  public staffId: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -29,6 +30,7 @@ export class UserProfile extends BaseDataModel {
     this.phone = data.phone;
     this.avatarId = data.avatarId;
     this.preferredPromptTemplateId = data.preferredPromptTemplateId;
+    this.staffId = data.staffId;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
