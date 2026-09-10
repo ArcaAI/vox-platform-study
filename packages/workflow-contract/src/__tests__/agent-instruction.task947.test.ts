@@ -122,6 +122,21 @@ describe('primaryTemplateId — the pointer the prompt-resolution tiers read (OD
     ).toBe(T2);
   });
 
+  it('treats a COMPILED fragment list (`when: null`) exactly like an authored one (`when` absent) — Lane B found the edge', () => {
+    // The authored schema never carries `when: null` (it is `string` or absent), but the compiled
+    // artifact ALWAYS does (`when: string | null`); a caller handing either shape to the pointer
+    // reader must get the same base fragment back.
+    const compiledShaped = {
+      fragments: [
+        { key: 'peds', systemPrompt: 'x', when: 'has(context.patient_age)' },
+        { key: 'base', promptTemplateId: T1, when: null },
+        { key: 'closing', promptTemplateId: T2, when: null },
+      ],
+    };
+    expect(primaryTemplateId(compiledShaped)).toBe(T1);
+    expect(boundTemplateRefs(compiledShaped).map((ref) => ref.templateId)).toEqual([T1, T2]);
+  });
+
   it('form 3 with only conditional template fragments, form 2, none: null — the tier falls through', () => {
     expect(
       primaryTemplateId({

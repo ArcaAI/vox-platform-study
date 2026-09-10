@@ -139,8 +139,10 @@ export function boundTemplateRefs(instruction: unknown): BoundTemplateRef[] {
  * UNCONDITIONAL TEMPLATE fragment of form 3. `null` for form 2, for a composite whose template
  * fragments are all conditional, and for anything malformed — the reader falls through.
  *
- * "Unconditional" is `when` absent; an unconditional INLINE fragment ahead of the first template
- * one does not count, because what these readers want is a template ROW to govern, not text.
+ * "Unconditional" is `when` absent — or `null`, which is how the COMPILED artifact spells it
+ * (`resolvedPrompt.fragments[].when: string | null`); a reader handed either shape must find the
+ * same base. An unconditional INLINE fragment ahead of the first template one does not count,
+ * because what these readers want is a template ROW to govern, not text.
  */
 export function primaryTemplateId(instruction: unknown): string | null {
   const form = agentInstructionForm(instruction);
@@ -148,7 +150,7 @@ export function primaryTemplateId(instruction: unknown): string | null {
   if (form !== 'composite') return null;
   const raws = (instruction as Record<string, unknown>).fragments as unknown[];
   for (const raw of raws) {
-    if (isRecord(raw) && nonEmptyString(raw.promptTemplateId) && raw.when === undefined) return raw.promptTemplateId;
+    if (isRecord(raw) && nonEmptyString(raw.promptTemplateId) && (raw.when === undefined || raw.when === null)) return raw.promptTemplateId;
   }
   return null;
 }
