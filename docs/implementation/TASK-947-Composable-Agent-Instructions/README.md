@@ -283,7 +283,61 @@ Why these tiers (rule 14 §1): Lane 0 is the API every other lane codes against 
 
 ## 5. Implementation Summary
 
-_Pending — filled per lane as each merges._
+_Draft while the reviewers (R1 parity, R2 security, R3 live) run; their findings and any fixes are appended to §6 and reflected here before the status flips._
+
+### 5.1 What a tenant admin can do now
+
+A TEXT_GENERATION agent's `instruction` has a third form: an ordered `fragments[]`, each fragment a
+template reference (`promptTemplateId` + optional `promptVersionNumber`) or an inline `systemPrompt`,
+each with an optional CEL `when` over the ONE render scope (`context.*`, `trigger.*`, `input.*`,
+`vars.*`, `nodes.*`, bound names; `has(x.y)` guards a possibly-missing field). At least one
+fragment is unconditional. Publish resolves every template fragment (APPROVED, pinned), cross-checks
+each body's references and each condition's roots, and freezes the lot into
+`compiledConfig.resolvedPrompt = { source: 'composite', content: <static projection>, join, fragments }`.
+At run time every renderer selects the fragments whose condition holds, renders each through the
+one grammar, and joins them; a condition that cannot evaluate excludes its fragment and says so; an
+empty composition is refused by name. The console authors, edits and benches all three forms; the
+bench, the invocation response, the live stats and the durable trajectory row report which fragment
+KEYS ran — never a body or a condition.
+
+### 5.2 Commits on `dev-2.2`, in order
+
+| Commit | What |
+|---|---|
+| `db85eff19` | ticket opened (plan, OD-1…OD-14) |
+| `aafde0b3d` | **Lane 0** — contract: `agent-instruction.ts`, `prompt-composition.ts`, fragment schema + `fragmentProblems` (problems carry a named `code`), widened `resolvedPrompt` type, five finding codes, fixture (15 cases) + TS loader |
+| `57ca5a2ad` | seed 26 re-points every template fragment of a composite at the tenant's clone |
+| `173f9ede8` | **Lane D** merge — console: fragment-list editor, one mode-driven `InstructionBindingForm`, three-form round-trip, bench composition panel |
+| `5df88d28e` | **Lane C** merge — harness: `compose_prompt` mirror (parity 15/15), widened `ResolvedPrompt`, `core.agent` composes on the durable lane |
+| `c3aeb87b8` | a composite with no `fragments` list refuses by name on both mirrors (fixture case 16) |
+| `6ebe64c2b` | the selected fragments land on the NODE trajectory row (`_shared.py` `stats` / `node_stats`, `core.py`) |
+| `5117cd868` | **Lane A** merge — publish/compile/bench/invocation compose; bundle, clone, promotion read every bound template |
+| `08288cb1a` | `promptFragments` on the invocation HTTP response |
+| `08c85cbaa` | `primaryTemplateId` treats a compiled fragment list (`when: null`) like an authored one |
+| `5975ffa4d` | **Lane B** merge — realtime `core.agent` lane composes; both prompt-resolution pointer tiers read `primaryTemplateId` |
+| `fe3ba9547` | the five API artifacts regenerated (`e49f6554f`) |
+
+### 5.3 Gates (post-merge, in the primary unless noted)
+
+| Surface | Result |
+|---|---|
+| `@arcaai/workflow-contract` | 916/916, tsc 0, lint 0 errors, build OK |
+| `@arcaai/types` | build OK |
+| `tests/contracts` loaders | prompt-composition 18/18 (16 cases + guards), prompt-template 30/30 |
+| `@arcaai/database` (seed) | reference-set suites 20/20, typecheck 0 |
+| `@arcaai/applications` | 775 files / 12852 passed; ONE file red in every run — `membership-bounded-sync.integration.test.ts` (live-DB suite, port 5433 down on this box; environmental) ; build 0; lint 0 errors / 182 warnings (unchanged count) |
+| `apps/api` | `api:build` 12/12; agent controller unit 26/26 |
+| `apps/admin-console` | 310 files / 2837 passed; `eslint --max-warnings 0`; `next build` OK (94/94 pages; five Edge-runtime warnings on `instrumentation.ts` pre-date this ticket) |
+| `apps/harness` | 2388 passed (incl. parity 19/19 → 20/20 after case 16, trajectory 6/6, replay-compat 23/23); ruff; mypy 151 files; `black --check` red on 22 files that pre-date the ticket (black 26.5.1 vs tree) |
+| `@arcaai/vox-node` | 33 files / 486 passed on the regenerated schemas; `gen:admin:check`, `api:openapi:check`, `api:portal:check` all "no drift" (run in the worktree on the same tree state) |
+
+### 5.4 Files changed (by lane; the §6 record has the per-lane stats)
+
+Contract: `packages/workflow-contract/src/{agent-instruction,prompt-composition,agent-schemas,index}.ts` + three `__tests__/*.task947.test.ts`; `packages/types/src/agent.ts`; `tests/contracts/prompt-composition.fixture.json` + loader. Applications: `services/agent/{agent.service,agent-invocation.service,agent-bundle,agent-findings}.ts`, `dto/{agent-test-ack.response,create-agent.request,update-agent.request}.ts`, `services/agentPromotion/agent-promote-to-system.service.ts`, `services/consultation/live-documentation/{live-documentation.service.ts,dto/live-summary.dto.ts}`, `services/consultation/prompt/prompt-resolution.service.ts`, + eight `*.task947.test.ts`. API: `apps/api/src/modules/agent/agent.controller.ts` (+ test), `openapi.json`. Console: `apps/admin-console/src/features/agents/**` (16 files) + the two portal documents. Harness: `temporal/interpreter/{models.py,prompt_composition.py,nodes/core.py,nodes/_shared.py}` + two tests. Database: `seed/26-tenant-reference-set.ts` + test. SDK: `packages/vox-node/src/resources/admin/schemas.ts` (generated).
+
+### 5.5 No migration, no env var, no new dependency
+
+`instruction` and `compiledConfig` are JSONB; nothing in `turbo.json#globalEnv` moved; `@arcaai/database` keeps its no-contract-dependency posture (the seed carries a tested twin of the traversal).
 
 ## 6. Change History
 
