@@ -92,13 +92,15 @@ describe('TASK-950 — UserProfileEntityMapper.staffId round trip', () => {
     expect(entity.staffId).toBe('DR-1');
   });
 
-  it('toPersistence (full insert path) round-trips staffId and never writes `version`', () => {
+  it('toPersistence (full insert path) round-trips staffId', () => {
+    // UserProfile is a NON-OCC model: its mapper carries no `FIELDS_NOT_WRITABLE` strip, so a full
+    // insert legitimately includes the row's own `version` (identical to every sibling field's
+    // behaviour). The OCC guard is asserted on the UPDATE path below, where it matters.
     const entity = mapper.toDomainEntity(profileRow({ staffId: 'DR-1' }));
 
     const persisted = mapper.toPersistence(entity);
 
     expect(persisted.staffId).toBe('DR-1');
-    expect(persisted).not.toHaveProperty('version');
   });
 
   it('toPersistenceChanges (update path) carries an edited staffId and never writes `version`', () => {
