@@ -7,10 +7,32 @@ github-backup:
   image: alpine:3.22
   tags: [deploy]
   interruptible: false
+  # A stalled LFS fetch used to eat the full 30-minute default before the runner
+  # SIGTERM'd it (pipeline 1171, job 17884: `git-lfs died of signal 15`, nothing
+  # pushed). A healthy run of this job is ~40 s, so 15m is generous and the
+  # retry absorbs the flake instead of leaving the mirror a commit behind.
+  timeout: 15m
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - script_failure
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:
     GIT_DEPTH: "0"            # full clone so all objects are available for push
     GIT_LFS_SKIP_SMUDGE: "1"  # skip downloading LFS blobs during clone (saves time)
+    # The clone comes over the LAN, but the LFS batch API answers with object
+    # URLs on GitLab's external_url (https://git.taphuynh.dev), so the ~27 MB of
+    # blobs comes back through the Cloudflare tunnel at ~42 KB/s — see the
+    # § Git LFS block in .gitlab-ci.yml. Without these two timeouts a stalled
+    # edge hangs forever instead of erroring; same fix as build-admin-console
+    # after the identical hang in pipeline #1113.
+    GIT_CONFIG_COUNT: "2"
+    GIT_CONFIG_KEY_0: lfs.activitytimeout
+    GIT_CONFIG_VALUE_0: "60"
+    GIT_CONFIG_KEY_1: lfs.dialtimeout
+    GIT_CONFIG_VALUE_1: "30"
     VAULT_AUTH_ROLE: "hope-ci-deploy"
     VAULT_SECRETS: !reference [.vault-secret-sets, github-backup]
   before_script:
@@ -26,8 +48,17 @@ github-backup:
       GITHUB_AUTH_URL="https://${GITHUB_BACKUP_USER}:${GITHUB_BACKUP_TOKEN}@github.com/4bits-vn/project-hope-v2.git"
       git remote add github $GITHUB_AUTH_URL
 
-      # Fetch LFS objects referenced by HEAD so they can be pushed
-      git lfs fetch origin HEAD
+      # Fetch LFS objects referenced by HEAD so they can be pushed. Bounded
+      # retry (same idiom as the kustomize pull in deploy.yml): with the
+      # timeouts above a dead endpoint now errors in ~a minute, so retrying is
+      # cheap and rides out a transient tunnel stall.
+      n=0
+      until git lfs fetch origin HEAD; do
+        n=$((n+1))
+        [ "$n" -ge 3 ] && { echo "[lfs] fetch origin HEAD failed after $n attempts" >&2; exit 1; }
+        echo "[lfs] fetch failed, retry $n/3 in $((n*10))s" >&2
+        sleep $((n*10))
+      done
 
       echo "Force-pushing $CI_COMMIT_REF_NAME to GitHub branch: $GITHUB_BACKUP_BRANCH ..."
       git push github "HEAD:refs/heads/$GITHUB_BACKUP_BRANCH" --force
