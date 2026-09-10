@@ -990,6 +990,14 @@ class AiModelConfig:
     subfolder: str | None = None  # e.g., "onnx" for onnx-community models
     device: str | None = None  # Override device (auto, cuda, cpu, mps)
     attn_implementation: str | None = None  # "flash_attention_2", "sdpa", or None (default)
+    #: TASK-944 (B2) — ``AiModel.libraryName``, the Hugging Face ``library_name``
+    #: facet. THE loader-selection field since TASK-860 ("Artifact format —
+    #: descriptive only ... Loader selection is `libraryName`",
+    #: ``packages/database/src/prisma/db_main/ai-model.prisma``). ``None`` on the
+    #: paths that cannot declare one — an inline model definition, or a spec built
+    #: by a gateway that predates the wire field — where selection falls back to
+    #: ``format`` exactly as it did before.
+    library_name: str | None = None
 
     @property
     def is_downloaded(self) -> bool:

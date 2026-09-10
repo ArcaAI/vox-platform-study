@@ -31,7 +31,7 @@ import structlog
 
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
-from stt.core.exceptions import SessionManagerDrainingError
+from stt.core.exceptions import ModelNotCacheServedError, SessionManagerDrainingError
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
     streaming_session_ended,
@@ -1975,6 +1975,19 @@ class SessionManager:
                 slug = loaded.model_slug or (ref.slug if hasattr(ref, "slug") else None)
                 if slug:
                     pinned.append(slug)
+            except ModelNotCacheServedError as exc:
+                # TASK-944 (B2) — NOT a failure. The row declares a serving library
+                # this cache does not hold (pyannote-audio / speechbrain /
+                # pyrnnoise / deepfilternet); the session manager builds those
+                # runtimes itself, from the same spec, further down. Warming one
+                # here used to mean a doomed `transformers` resolution — ~9.3 s on
+                # every cold session — reported as a WARNING that read like a
+                # broken model. Logged at INFO, and only once the cache has SAID so.
+                logger.info(
+                    f"Skipped warming the {label} model: its runtime owns the weights",
+                    session_id=session_id,
+                    reason=str(exc),
+                )
             except Exception as exc:
                 logger.warning(
                     f"Failed to warm {label} model for streaming pipeline",

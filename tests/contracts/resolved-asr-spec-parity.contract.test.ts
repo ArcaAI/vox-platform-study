@@ -28,8 +28,14 @@ const fixture = JSON.parse(readFileSync(join(__dirname, 'resolved-asr-spec.fixtu
 const cases = Object.entries(fixture).filter((entry): entry is [string, FixtureCase] => typeof entry[1] === 'object');
 
 const MODEL_FIELDS = ['role', 'slug', 'taskType', 'format', 'sourceUri', 'sourceRevision', 'localPath', 'checksum', 'computeType', 'provider', 'tenantId'];
-/** TASK-880 — `metadata` is the one OPTIONAL member: present only when the row declares geometry. */
-const OPTIONAL_MODEL_FIELDS = ['metadata'];
+/**
+ * TASK-880 — `metadata` is present only when the row declares decode geometry.
+ * TASK-944 (B2) — `libraryName` is omit-when-absent for the same reason `metadata` is:
+ * both halves are strict about unknown keys, so a field added on one side first has to
+ * be able to be missing on the other. It IS present on every model in this fixture,
+ * asserted separately below — the loader-selection field going missing is the defect.
+ */
+const OPTIONAL_MODEL_FIELDS = ['metadata', 'libraryName'];
 
 function assertCore(core: AsrSpecCore): void {
   expect(core.runtimeKey.length).toBeGreaterThan(0);
@@ -84,6 +90,29 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     expect(wired.expected.streaming.endpointing).toBe('semantic');
     expect(wired.expected.models.endpointing?.slug).toBe('smart-turn-v3');
     expect(wired.expected.models.endpointing?.taskType).toBe(ASR_SPEC_ROLE_TASK_TYPE.endpointing);
+  });
+
+  it('carries the loader-selection library on every model, and omits it rather than nulling it (TASK-944)', () => {
+    // `apps/stt` selects its loader with `libraryName` — `format` has been descriptive
+    // since TASK-860. Selecting on `format` is what routed the pyannote/speechbrain
+    // embedders and the two package-resident denoisers (all `PYTORCH`) to `transformers`,
+    // which cannot read them. The gateway is the only half that KNOWS the library, so if
+    // it stops sending it, `apps/stt` silently falls back to the key that caused the bug.
+    for (const [name, { expected }] of cases) {
+      for (const [role, model] of Object.entries(expected.models)) {
+        expect(model.libraryName, `${name}.models.${role}`).toBeTruthy();
+      }
+      for (const [role, model] of Object.entries(expected.fallback.spec?.models ?? {})) {
+        expect(model.libraryName, `${name}.fallback.models.${role}`).toBeTruthy();
+      }
+    }
+    // Omit-when-absent, like `metadata`: an input row with no library must not produce a
+    // `libraryName: null` key, which the strict pydantic half would reject outright.
+    const stripped = structuredClone(fixture.platformDefault as FixtureCase).input;
+    for (const model of stripped.agent.models) delete (model as { libraryName?: string }).libraryName;
+    for (const model of Object.values(buildResolvedAsrSpec(stripped).models)) {
+      expect(model).not.toHaveProperty('libraryName');
+    }
   });
 
   it('carries AiModel._metadata.asr per CHAIN, and omits it on a row that declares none (TASK-880)', () => {

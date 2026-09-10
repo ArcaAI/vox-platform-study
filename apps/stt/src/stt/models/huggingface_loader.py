@@ -140,7 +140,45 @@ class HuggingFaceLoader(BaseModelLoader):
         except Exception as e:
             raise ModelLoadError(
                 f"Failed to load HuggingFace model {model_config.slug}: {e}"
+                f"{self._not_a_transformers_checkpoint_hint(model_config)}"
             ) from e
+
+    @staticmethod
+    def _not_a_transformers_checkpoint_hint(model_config: AiModelConfig) -> str:
+        """Say so when the weights ARE present but are not a transformers checkpoint.
+
+        TASK-944 (B2). ``from_pretrained`` requires ``config.json``. When it is
+        absent and ``HF_HUB_OFFLINE=1``, transformers reports *"We couldn't
+        connect to 'https://huggingface.co' ... and couldn't find them in the
+        cached files"* — a message about the NETWORK and the CACHE that is
+        produced by an artifact-shape mismatch. It is indistinguishable from a
+        genuinely missing snapshot, and it sent two independent diagnoses of this
+        ticket to the data (a stale ``sourceUri``, then a wrong ``cache_dir``);
+        both were wrong, and the real fault was loader SELECTION.
+
+        So: if a local snapshot directory is resolvable and it does hold files
+        but none of them is ``config.json``, append what is actually there and
+        name the selection field. This runs only on the failure path, and it is
+        a DIAGNOSTIC — selection itself never sniffs a file (``ModelCache``
+        selects on the declared ``AiModel.libraryName``).
+        """
+        directory = model_config.local_path
+        if not directory or not os.path.isdir(directory):
+            return ""
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            return ""
+        if not names or "config.json" in names:
+            return ""
+        library = model_config.library_name or "<undeclared>"
+        return (
+            f" — NOTE: the weights ARE present at {directory} but it holds no `config.json` "
+            f"(it holds: {', '.join(names[:8])}), so this is not a transformers checkpoint and "
+            "the message above is about the artifact SHAPE, not a missing or unreachable model. "
+            f"Loader selection comes from `AiModel.libraryName`, which this row declares as "
+            f"'{library}'."
+        )
 
     def _load_by_task(
         self,
