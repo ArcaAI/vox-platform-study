@@ -357,9 +357,14 @@ test.describe('TASK-933 — a service account drives a consultation for a named 
   // ── 6. Deny-by-default is still the default ───────────────────────────────
 
   test('a consultation route this ticket did NOT open is still 403 for a machine', async ({ request }) => {
-    // `GET /consultations/:id/workflow` (SINGULAR) declares no `@RequiredSvcScopes`. The grant is
-    // per-route and enumerated, not a blanket opening of the controller.
-    const res = await request.get(`/api/v1/consultations/${CONSULTATION_GLOBAL}/workflow`, { headers: svcHeaders(svcToken) });
+    // `GET /consultations/:id/context/shared` declares no `@RequiredSvcScopes`. The grant is
+    // per-route and enumerated, not a blanket opening of the controller. (`GET :id/workflow`
+    // used to be this spec's example of an ungranted route, but TASK-946 D8/OD-7 declared
+    // `svc:consultation:session:read` on it, along with `:id/context`, `:id/context/case-notes`,
+    // `:id/context/transcriptions`, `:id/named-entities`, `:id/timeline`, `:id/chain`, and
+    // `svc:consultation:report:read` on `:id/summary`, `:id/documents/sections`,
+    // `:id/documents/:documentKey/sections[/:sectionKey]` — the route manifest is the oracle.)
+    const res = await request.get(`/api/v1/consultations/${CONSULTATION_GLOBAL}/context/shared`, { headers: svcHeaders(svcToken) });
 
     expect(res.status()).toBe(403);
     expect((await res.json()).message).toBe('This route does not accept service-account authentication');

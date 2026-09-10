@@ -102,7 +102,7 @@ describe('RealtimeSttSocket — sending', () => {
     await connecting;
 
     socket.sendPcm16(new Uint8Array([1, 2, 3, 4]));
-    socket.stop();
+    socket.finalize();
 
     expect(opened.sent[0]).toBeInstanceOf(Uint8Array);
     expect(JSON.parse(String(opened.sent[1]))).toEqual({ type: 'stop' });
@@ -115,6 +115,34 @@ describe('RealtimeSttSocket — sending', () => {
   it('refuses to send before connect() rather than dropping audio silently', () => {
     const socket = makeSocket();
     expect(() => socket.sendPcm16(new Uint8Array([1]))).toThrow(/not connected/i);
+  });
+});
+
+describe('RealtimeSttSocket#finalize', () => {
+  it('sends the {type:"stop"} wire frame — the gateway finalizes AND closes the session for it', async () => {
+    const socket = makeSocket();
+    const connecting = socket.connect();
+    const opened = await FakeWebSocket.opened();
+    opened.emitOpen();
+    await connecting;
+
+    socket.finalize();
+
+    expect(JSON.parse(String(opened.sent[0]))).toEqual({ type: 'stop' });
+  });
+});
+
+describe('RealtimeSttSocket#stop (deprecated)', () => {
+  it('is an alias for finalize() — same wire frame, same session-ending behavior', async () => {
+    const socket = makeSocket();
+    const connecting = socket.connect();
+    const opened = await FakeWebSocket.opened();
+    opened.emitOpen();
+    await connecting;
+
+    socket.stop();
+
+    expect(JSON.parse(String(opened.sent[0]))).toEqual({ type: 'stop' });
   });
 });
 
