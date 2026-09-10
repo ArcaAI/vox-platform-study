@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 112 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 308 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 356 |
-| `turbo.json#globalEnv` entries | 503 |
+| Python declared fields | 305 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
+| `turbo.json#globalEnv` entries | 497 |
 
 ## Variables — the TypeScript platform surface
 
@@ -251,7 +251,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_GATE_ESCALATION_SECONDS` | `apps/harness` | no | no | `43200` | commented | — |
 | `HARNESS_GATE_SLA_SECONDS` | `apps/harness` | no | no | `86400` | commented | — |
 | `HARNESS_GUARDRAIL_BASE_URL` | `apps/harness` | no | no | `http://localhost:8863` | commented | — |
-| `HARNESS_GUARDRAIL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_GUARDRAIL_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_HOST` | `apps/harness` | no | no | `0.0.0.0` | commented | — |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
@@ -289,7 +288,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_MODEL_CACHE_MAX_MODELS` | `apps/harness` | no | no | `1` | commented | — |
 | `HARNESS_MODEL_CACHE_TTL_SECONDS` | `apps/harness` | no | no | `600` | commented | — |
 | `HARNESS_NLP_BASE_URL` | `apps/harness` | no | no | `http://localhost:8864` | commented | — |
-| `HARNESS_NLP_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_NLP_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_OPTIMISTIC_DELIVERY_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_OTEL_DEPLOYMENT_ENVIRONMENT` | `apps/harness` | no | no | `development` | commented | — |
@@ -329,7 +327,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_BASE_URL` | `apps/harness` | no | no | `http://localhost:8862` | commented | — |
 | `HARNESS_TEXT_MODEL` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_TEXT_PROVIDER` | `apps/harness` | no | no | — | commented | — |
-| `HARNESS_TEXT_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
 | `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
@@ -523,7 +520,4 @@ promotion into its service’s `BaseSettings`.
 | `QDRANT_KNOWLEDGE_COLLECTION` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_KNOWLEDGE_DIM` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_PORT` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
-| `STT_BENCH_CORPUS` | `apps/stt/scripts/benchmark_pipelines.py` |
-| `STT_BENCH_PIPELINES` | `apps/stt/scripts/benchmark_pipelines.py` |
-| `STT_BENCH_REFERENCE_DIR` | `apps/stt/scripts/benchmark_pipelines.py` |
 | `WHISPER_MLEN_GGUF` | `apps/stt/scripts/mlen_scorecard.py` |

@@ -274,6 +274,15 @@ export function normalizeSelection(raw: unknown): GuardrailPolicySelectionSet {
  * The minimal legal narrowing is therefore one policy that runs on both —
  * `jailbreak_detection` — so this rule constrains the surface without closing
  * the use case it exists for.
+ *
+ * CONFIRMED BY THE OWNER 2026-09-10 (TASK-941 R2 / OD-2). This rule was DERIVED
+ * from the decision's wording rather than stated, and TASK-886 flagged it as H6 for
+ * exactly that reason: a derived rule carries the force of a 400 while resting on an
+ * inference. It is now a decision, so it is no longer provisional and the handoff is
+ * closed. "A tenant may not switch a screening direction off" is a deliberate limit
+ * on what availability can express, not an oversight — reversing it means deleting
+ * this function and its call in `guardrail-availability.service.ts`, which stays a
+ * one-line change if the decision ever changes.
  */
 export function assertBothDirectionsCovered(policies: GuardrailPolicySelectionSet): void {
   if (!hasEnabledPolicy(policies)) return;

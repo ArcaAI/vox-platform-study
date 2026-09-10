@@ -309,7 +309,7 @@ async def run_eval(
     safety_screen = GuardrailSafetyScreen(
         GuardrailClient(
             settings.guardrail_base_url,
-            service_token=settings.peer_service_token(settings.guardrail_service_token),
+            service_token=settings.peer_service_token(),
             timeout=settings.guardrail_timeout_s,
         ),
         tenant_id=_SYSTEM_TENANT_ID,

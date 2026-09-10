@@ -118,7 +118,7 @@ async def interpreter_consultation_phi_hop(payload: NodeActivityInput) -> NodeAc
     client = GuardrailClient(
         settings.guardrail_base_url,
         # D-D: the shared `INTERNAL_ACCESS_TOKEN` (see `guardrail_check.py`).
-        service_token=settings.peer_service_token(settings.guardrail_service_token),
+        service_token=settings.peer_service_token(),
         timeout=settings.guardrail_timeout_s,
     )
     try:

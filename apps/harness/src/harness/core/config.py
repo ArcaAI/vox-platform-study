@@ -429,8 +429,18 @@ class Settings(BaseSettings):
             if t
         )
 
-    def peer_service_token(self, legacy: SecretStr) -> str:
-        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
+    def peer_service_token(self, legacy: SecretStr | None = None) -> str:
+        """Token to PRESENT on an outbound peer call: shared first, legacy fallback.
+
+        TASK-941 R3 — `legacy` is OPTIONAL now. The three per-TARGET fallbacks
+        (`text_service_token`, `nlp_service_token`, `guardrail_service_token`) are
+        retired: their env names were set in no cluster manifest and were empty in
+        `.env.dev`, while all three targets accept the shared token, so
+        `first_real_secret` already returned the shared one at every such site.
+        The parameter survives for the hop that still HAS a legacy credential —
+        harness→apps/api, which passes `service_token` (and that field is also
+        harness's own inbound guard, so it is not retirable).
+        """
         # `first_real_secret`, not `or`: the sentinel is a NON-EMPTY string, so a plain
         # truthiness chain returns "CHANGE_ME" and never reaches the legacy fallback — the
         # trap that made every internal hop 401 (see hope_env.placeholders).
@@ -459,19 +469,26 @@ class Settings(BaseSettings):
     text_base_url: str = "http://localhost:8862"
     nlp_base_url: str = "http://localhost:8864"
     api_base_url: str = "http://localhost:8868"
-    # Peer-service auth: harness's own copy of apps/text's TEXT_SERVICE_TOKEN and
-    # apps/nlp's NLP_SERVICE_TOKEN, presented as X-Service-Token on outbound calls
-    # (mirrors the api_client pattern above, and apps/nlp's own ExternalTextConfig
-    # when it calls apps/text). Each target validates against exactly one configured
-    # secret with no OR-fallback, so this must match that target's own value, not
-    # HARNESS_SERVICE_TOKEN. Empty = auth disabled (local dev-bypass), same as above.
-    text_service_token: SecretStr = SecretStr("")
-    nlp_service_token: SecretStr = SecretStr("")
-    # Legacy fallback for the harness→guardrail hop (env HARNESS_GUARDRAIL_SERVICE_TOKEN),
-    # i.e. apps/guardrail's own GUARDRAIL_SERVICE_TOKEN. Superseded by the shared
-    # INTERNAL_ACCESS_TOKEN; before D-D this hop wrongly presented HARNESS_SERVICE_TOKEN,
-    # which apps/guardrail never accepts.
-    guardrail_service_token: SecretStr = SecretStr("")
+    # TASK-941 R3 — `text_service_token`, `nlp_service_token` and
+    # `guardrail_service_token` were here: harness's own copies of each target's
+    # inbound secret, presented as X-Service-Token on the outbound hop. Owner
+    # decision D-D made the shared INTERNAL_ACCESS_TOKEN the credential and kept
+    # these "only as the fallback for an environment that has not been migrated
+    # yet"; that migration is complete, verified before deleting them — their env
+    # names appear in NO cluster manifest, they were empty-valued in `.env.dev`,
+    # and apps/{text,nlp,guardrail} all accept the shared token. So
+    # `first_real_secret(shared, legacy)` already resolved to the shared token at
+    # every one of those sites and this removal is behaviour-neutral.
+    #
+    # `service_token` (above) is deliberately NOT in that set: it is harness's own
+    # INBOUND guard and the token the api_client presents to apps/api, and the
+    # cluster still sets it.
+    #
+    # NOTE the blank line below: `scripts/python-env-surface.py` harvests the
+    # contiguous `#` block directly above a field as that field's DESCRIPTION in the
+    # generated `.env.sample`. Without the separator this tombstone becomes
+    # `guardrail_base_url`'s documentation in an operator-facing artifact.
+
     # Peer service — the summarization palette's `guardrail.check` node calls
     # apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap-
     # floor pattern (rule 09 §Configuration Tiers: a `*_URL` transport address is the ONE
