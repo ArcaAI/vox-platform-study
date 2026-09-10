@@ -24,7 +24,13 @@
  * file because the node catalogue is being replaced by `core.*` (TASK-864) and the agent's
  * schema must outlive it.
  */
-import { AGENT_PROMPT_CONDITION_MAX_LENGTH, AGENT_PROMPT_FRAGMENT_KEY_PATTERN, AGENT_PROMPT_FRAGMENT_MAX } from './agent-instruction';
+import {
+  AGENT_PROMPT_CONDITION_MAX_DEPTH,
+  AGENT_PROMPT_CONDITION_MAX_LENGTH,
+  AGENT_PROMPT_FRAGMENT_KEY_PATTERN,
+  AGENT_PROMPT_FRAGMENT_MAX,
+  conditionNestingDepth,
+} from './agent-instruction';
 import { FORBIDDEN_CONFIG_KEYS, hyperparameterCapabilityProblems, type ProviderGenerationCapabilities } from './agentic-contract';
 import { canonicalJson } from './canonical-json';
 import { expressionProblems } from './expressions';
@@ -1115,6 +1121,17 @@ function fragmentProblems(fragments: unknown[], out: AgentConfigProblem[]): void
     }
     for (const problem of expressionProblems(raw.when)) {
       out.push({ severity: 'ERROR', path: `${at}.when`, message: `\`${at}.when\` ${problem}.`, code: 'PROMPT_FRAGMENT_CONDITION_SYNTAX' });
+    }
+    // R1 #2 — the length cap alone let a 244-character, 120-deep condition through to a worker
+    // whose parser recurses; bound the nesting at publish so the two runtimes cannot disagree.
+    const depth = conditionNestingDepth(raw.when);
+    if (depth > AGENT_PROMPT_CONDITION_MAX_DEPTH) {
+      out.push({
+        severity: 'ERROR',
+        path: `${at}.when`,
+        message: `\`${at}.when\` is nested ${depth} levels deep; the limit is ${AGENT_PROMPT_CONDITION_MAX_DEPTH}.`,
+        code: 'PROMPT_FRAGMENT_CONDITION_SYNTAX',
+      });
     }
   });
 

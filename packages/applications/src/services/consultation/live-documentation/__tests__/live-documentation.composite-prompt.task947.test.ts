@@ -366,3 +366,49 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
     expect(calls).toHaveLength(0);
   });
 });
+
+/**
+ * TASK-947 R1 #1 — the realtime lane applies the J3-5 `context` unwrap like every other renderer.
+ * The run payload is `{ trigger: { context: {...} } }` (TASK-943); with a single-kind schema keyed
+ * `context` bound on the agent, `context.visit_type` must mean the same thing here as on the
+ * invocation route, the bench and the durable lane — before this fix it was a silent
+ * `condition_error` exclusion on this lane alone.
+ */
+describe('R1 #1 — the `context` alias is the UNWRAPPED view when the agent binds a single-kind schema', () => {
+  const singleKindContextSchema = {
+    schemaId: 'cs-1',
+    versionNumber: 1,
+    versionId: 'csv-1',
+    payloadSchema: { type: 'object', additionalProperties: false, properties: { context: { type: 'object' } }, required: ['context'] },
+  };
+  const artifact = () =>
+    composite([
+      { key: 'base', content: 'BASE.', when: null },
+      { key: 'revisit', content: 'UNWRAPPED {{context.visit_type}}.', when: `context.visit_type == '${VISIT_TYPE}'` },
+    ]);
+  const specWith = (contextSchema: ResolvedTextCandidate['contextSchema']): ResolvedTextGenerationSpec =>
+    ({
+      schemaVersion: 1,
+      agent: {} as never,
+      primary: candidate({ resolvedPrompt: artifact(), instruction: { variables: {} }, contextSchema }),
+      fallback: { autoSwitch: true, chain: [] },
+    }) as ResolvedTextGenerationSpec;
+
+  it('selects and renders `context.<field>` when the agent binds the single-kind `context` schema', async () => {
+    const { service, post } = buildService(specWith(singleKindContextSchema));
+
+    const { calls, stats } = await runOneFlush(service, post);
+
+    expect(calls[0]?.system_prompt).toBe(`BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`);
+    expect(stats?.prompt_fragments).toEqual(['base', 'revisit']);
+  });
+
+  it('without a bound schema the alias is the payload itself, so `trigger.context.*` is the spelling (unchanged)', async () => {
+    const { service, post } = buildService(specWith(null));
+
+    const { calls, stats } = await runOneFlush(service, post);
+
+    expect(calls[0]?.system_prompt).toBe('BASE.');
+    expect(stats?.prompt_fragments).toEqual(['base']);
+  });
+});

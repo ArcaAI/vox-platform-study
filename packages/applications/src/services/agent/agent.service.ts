@@ -97,6 +97,7 @@ import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness
 // and this is the one parser for them.
 import { parsePromptVariableDeclarations, type PromptVariableDeclarationDto } from '../prompt-management/dto/prompt-variable-declaration.dto';
 import { AgentDraftTestService } from './agent-draft-test.service';
+import { redactConditionDetail } from './agent-condition-detail';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
 import type { CompiledModelRef } from './agent-wire-model';
@@ -618,7 +619,8 @@ export class AgentService extends BaseService implements IAgentService {
               excluded: composed.excluded.map((exclusion) => ({
                 key: exclusion.key,
                 reason: exclusion.reason,
-                ...(exclusion.detail === undefined ? {} : { detail: exclusion.detail }),
+                // R2 L-5 — the SHAPE of the problem, never an operand the caller's scope supplied.
+                ...(exclusion.detail === undefined ? {} : { detail: redactConditionDetail(exclusion.detail) }),
               })),
             },
           }
@@ -1881,7 +1883,10 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private conditionFindings(instruction: Record<string, unknown>, boundNames: readonly string[]): AgentFinding[] {
     const findings: AgentFinding[] = [];
-    for (const [index, fragment] of readPromptFragments(instruction).entries()) {
+    for (const fragment of readPromptFragments(instruction)) {
+      // R1 #6 — the AUTHORED index, so a path here names the same `instruction.fragments[i]` the
+      // contract's `fragmentProblems` names even when a non-object entry was dropped ahead of it.
+      const index = fragment.index;
       if (typeof fragment.when !== 'string' || fragment.when.length === 0) continue;
       for (const problem of conditionRootProblems(fragment.when, boundNames)) {
         findings.push({
@@ -2232,7 +2237,10 @@ export class AgentService extends BaseService implements IAgentService {
     const compiled: AgentCompiledPromptFragment[] = [];
     let failed = false;
 
-    for (const [index, fragment] of readPromptFragments(instruction).entries()) {
+    for (const fragment of readPromptFragments(instruction)) {
+      // R1 #6 — the AUTHORED index, so a path here names the same `instruction.fragments[i]` the
+      // contract's `fragmentProblems` names even when a non-object entry was dropped ahead of it.
+      const index = fragment.index;
       const at = `instruction.fragments[${index}]`;
       const when = typeof fragment.when === 'string' ? fragment.when : null;
 

@@ -181,4 +181,22 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
     expect(ack.assembledSystemPrompt).toBe('Scribe for Ward B.');
     expect(ack.composition).toBeUndefined();
   });
+
+  it('R2 L-5 — the exclusion `detail` never echoes a SCOPE VALUE, only the evaluator`s shape of the problem', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(
+      compositeAgent([
+        { key: 'base', systemPrompt: 'BASE' },
+        { key: 'parsed', systemPrompt: 'P', when: 'int(context.patient_name) > 5' },
+        { key: 'keyed', systemPrompt: 'K', when: 'context[context.mrn] == 1' },
+      ]),
+    );
+
+    const ack = await makeService().testDraft('agent-1', { context: { patient_name: 'Jane Doe', mrn: 'MRN-4471' } });
+
+    const details = (ack.composition?.excluded ?? []).map((exclusion) => exclusion.detail ?? '');
+    expect(details).toHaveLength(2);
+    for (const detail of details) expect(detail).toBeTruthy();
+    expect(JSON.stringify(ack)).not.toContain('Jane Doe');
+    expect(JSON.stringify(ack)).not.toContain('MRN-4471');
+  });
 });

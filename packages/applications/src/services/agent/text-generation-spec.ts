@@ -43,6 +43,13 @@ export interface ResolvedTextCandidate {
   fundingTier: AgentFundingTier;
   /** The one-hop cloud credential for `provider`, when a tier holds one. Never persisted. */
   providerOverride?: ResolvedAgentProviderOverride;
+  /**
+   * TASK-947 R1 #1 — the agent's FROZEN context schema (`compiledConfig.contextSchema`), so the
+   * realtime lane can apply the same single-kind `context` unwrap the invocation route, the bench
+   * and the durable lane apply. `null` when the agent pins none. The Python fallback candidate
+   * ignores unknown fields, so the wire is unchanged for it.
+   */
+  contextSchema: AgentCompiledConfig['contextSchema'] | null;
 }
 
 export interface ResolvedTextFallback {
@@ -163,6 +170,7 @@ export function toTextCandidate(
     tools: compiled.tools ?? [],
     fundingTier: funding.fundingTier,
     ...(providerOverride ? { providerOverride } : {}),
+    contextSchema: compiled.contextSchema ?? null,
   };
 }
 

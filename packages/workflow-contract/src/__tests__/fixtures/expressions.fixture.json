@@ -368,6 +368,16 @@
       "name": "error: modulus on doubles",
       "expression": "7.5 % 2",
       "error": true
+    },
+    {
+      "name": "map literal: a __proto__ key is an ordinary own key (TASK-947 R2 L-2)",
+      "expression": "size({'__proto__': 1}) == 1 && '__proto__' in {'__proto__': 1}",
+      "expected": true
+    },
+    {
+      "name": "map literal: a __proto__ key does not make the map equal to the empty map",
+      "expression": "{'__proto__': {'polluted': 1}} == {}",
+      "expected": false
     }
   ]
 }

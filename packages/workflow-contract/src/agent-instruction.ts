@@ -33,11 +33,25 @@ export const AGENT_PROMPT_FRAGMENT_KEY_PATTERN = '^[a-z0-9_]{2,48}$';
 /** A `when` is authored text; this bounds it the way `overrides.promptVariables` values are bounded. */
 export const AGENT_PROMPT_CONDITION_MAX_LENGTH = 2000;
 
+/**
+ * Maximum OPEN nesting of `(` / `[` / `{` in a `when` (R1 #2). The TypeScript parser tolerates
+ * hundreds of levels and the Python mirror ~120 before its recursion limit; 244 characters of
+ * parentheses fit under the length cap, so length alone let publish accept a condition the
+ * durable worker could not evaluate. Nobody authors a 64-deep condition on purpose.
+ */
+export const AGENT_PROMPT_CONDITION_MAX_DEPTH = 64;
+
 export type AgentInstructionForm = 'template' | 'inline' | 'composite' | 'none';
 
 /** One authored fragment, fields coerced to their declared types (an absent or mistyped field is simply absent). */
 export interface AgentPromptFragment {
   readonly key: string;
+  /**
+   * The fragment's position in the AUTHORED list — kept because non-object entries are dropped
+   * from this view, and a finding path (`instruction.fragments[i]`) must name the same `i` the
+   * validator names (R1 #6).
+   */
+  readonly index: number;
   readonly promptTemplateId?: string;
   readonly systemPrompt?: string;
   readonly promptVersionNumber?: number;
@@ -91,16 +105,41 @@ export function isCompositeInstruction(instruction: unknown): boolean {
 export function readPromptFragments(instruction: unknown): AgentPromptFragment[] {
   if (!isRecord(instruction) || !Array.isArray(instruction.fragments)) return [];
   const out: AgentPromptFragment[] = [];
-  for (const raw of instruction.fragments) {
-    if (!isRecord(raw)) continue;
-    const fragment: { -readonly [K in keyof AgentPromptFragment]: AgentPromptFragment[K] } = { key: typeof raw.key === 'string' ? raw.key : '' };
+  (instruction.fragments as unknown[]).forEach((raw, index) => {
+    if (!isRecord(raw)) return;
+    const fragment: { -readonly [K in keyof AgentPromptFragment]: AgentPromptFragment[K] } = {
+      key: typeof raw.key === 'string' ? raw.key : '',
+      index,
+    };
     if (nonEmptyString(raw.promptTemplateId)) fragment.promptTemplateId = raw.promptTemplateId;
     if (nonEmptyString(raw.systemPrompt)) fragment.systemPrompt = raw.systemPrompt;
     if (positiveInteger(raw.promptVersionNumber)) fragment.promptVersionNumber = raw.promptVersionNumber;
     if (typeof raw.when === 'string') fragment.when = raw.when;
     out.push(fragment);
-  }
+  });
   return out;
+}
+
+/**
+ * The deepest OPEN nesting of `(` / `[` / `{` in a condition, ignoring anything inside a string
+ * literal. A scanner, not a parser: it only has to bound what the parsers will recurse on.
+ */
+export function conditionNestingDepth(source: string): number {
+  let depth = 0;
+  let deepest = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i] as string;
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === '(' || ch === '[' || ch === '{') deepest = Math.max(deepest, (depth += 1));
+    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+  }
+  return deepest;
 }
 
 /** Every template the instruction binds, in authored order, with the path each one sits at. */
@@ -145,14 +184,23 @@ export function boundTemplateRefs(instruction: unknown): BoundTemplateRef[] {
  * because what these readers want is a template ROW to govern, not text.
  */
 export function primaryTemplateId(instruction: unknown): string | null {
+  return primaryTemplateRef(instruction)?.templateId ?? null;
+}
+
+/**
+ * The pointer fragment's REF — id AND pin from the same fragment (R1 #3, R2 L-3). A reader that
+ * looked the pin up by `templateId` found the FIRST fragment binding that id, which need not be
+ * the unconditional one this function chose: ids may repeat across fragments, only keys are
+ * unique. Same selection rule as `primaryTemplateId`, which is now defined through it.
+ */
+export function primaryTemplateRef(instruction: unknown): BoundTemplateRef | null {
   const form = agentInstructionForm(instruction);
-  if (form === 'template') return (instruction as Record<string, unknown>).promptTemplateId as string;
+  if (form === 'template') return boundTemplateRefs(instruction)[0] ?? null;
   if (form !== 'composite') return null;
   const raws = (instruction as Record<string, unknown>).fragments as unknown[];
-  for (const raw of raws) {
-    if (isRecord(raw) && nonEmptyString(raw.promptTemplateId) && (raw.when === undefined || raw.when === null)) return raw.promptTemplateId;
-  }
-  return null;
+  const index = raws.findIndex((raw) => isRecord(raw) && nonEmptyString(raw.promptTemplateId) && (raw.when === undefined || raw.when === null));
+  if (index < 0) return null;
+  return boundTemplateRefs(instruction).find((ref) => ref.fragmentIndex === index) ?? null;
 }
 
 /**
