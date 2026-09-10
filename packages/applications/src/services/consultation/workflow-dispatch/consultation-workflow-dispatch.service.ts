@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConsultationRepository, generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
+import { IWorkflowRunCompletionPort } from '../../workflow-run/IWorkflowRunCompletionPort';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
@@ -47,6 +48,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // with the shared `DEFAULT_VISIT_TYPE_SERVICE` fallback follows the same pattern every
     // other consumer of this service already uses.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-946 D3 — the gateway's run-completion watcher, named as a PORT because this package
+    // must never import `apps/api` (see `IWorkflowRunCompletionPort`). `@Optional()`: a context
+    // built without the gateway module degrades to the pre-existing "reconciled by the next
+    // status read" behaviour rather than failing to construct.
+    @Optional() @Inject(IWorkflowRunCompletionPort) private readonly runCompletion?: IWorkflowRunCompletionPort,
   ) {}
 
   /**
@@ -239,6 +245,23 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         sandbox: false,
         subject: { consultationId, userId, externalPatientId: externalPatientId ?? undefined },
       });
+
+      // TASK-946 D3 — attach the terminal-status watcher for THIS run. Until now it was
+      // attached only by the workflows-plane controller, so a consultation-dispatched run had no
+      // consumer for its `workflow.run.completed` event: the `WorkflowRun` row stayed `RUNNING`
+      // and the consultation stayed `DRAINING` until the 24h sweep (16 consultations on
+      // 2026-09-10). Guarded on its own: the run has ALREADY started here, so a watcher failure
+      // must never be reported to the caller as a dispatch that did not happen.
+      try {
+        this.runCompletion?.watch(tenantId, runId, consultationId);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Consultation run started but its completion watcher could not be attached — the terminal status waits for a reader',
+          consultationId,
+          runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // record the decision AFTER the run has actually started. The
       // order is the safety argument: every failure up to this line degrades to

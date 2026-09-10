@@ -331,7 +331,15 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
   }
 
   async recordRunFinished(input: RecordRunFinishedInput): Promise<WorkflowRunResponse> {
-    const entity = await this.workflowRunRepository.findByRunKey(input.tenantId, input.sessionId, input.runId ?? '');
+    const runId = input.runId ?? '';
+    // TASK-946 D3 — the SAME two-spelling lookup `findRunOrThrow` has done since TASK-933 H3-5.
+    // The caller's `sessionId` is tried first (it is right for every exposure-plane run), then
+    // both conventional keys: a consultation-dispatched run is anchored as `wf-<runId>`, so a
+    // watcher that named the interpreter key 404'd against a row that exists — which is why the
+    // 2026-09-10 consultation runs stayed `RUNNING` after their workflows had already FAILED.
+    const entity =
+      (await this.workflowRunRepository.findByRunKey(input.tenantId, input.sessionId, runId)) ??
+      (await this.findRunByConventionalSessionKeys(input.tenantId, runId));
     if (!entity) {
       throw new NotFoundException(`WorkflowRun for run ${input.runId} not found`);
     }
@@ -379,14 +387,22 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     return WorkflowRunDtoMapper.toResponse(saved);
   }
 
+  /**
+   * A run reaches this plane under one of two session keys: the exposure plane's own
+   * (`invoke` / sandbox) or the consultation dispatcher's (`wf-<runId>`). Same tenant scope,
+   * same 404-over-403 posture either way; the key is only which row the run was anchored as.
+   * Declared once so the read path and the terminal write cannot resolve differently.
+   */
+  private async findRunByConventionalSessionKeys(tenantId: string, runId: string): Promise<WorkflowRunEntity | null> {
+    return (
+      (await this.workflowRunRepository.findByRunKey(tenantId, interpreterSessionId(runId), runId)) ??
+      (await this.workflowRunRepository.findByRunKey(tenantId, consultationDispatchSessionId(runId), runId))
+    );
+  }
+
   /** 404-over-403: a cross-tenant or nonexistent run id both raise `NotFoundException`. */
   private async findRunOrThrow(tenantId: string, runId: string): Promise<WorkflowRunEntity> {
-    // A run reaches this plane under one of two session keys: the exposure plane's own
-    // (`invoke` / sandbox) or the consultation dispatcher's (`wf-<runId>`). Same tenant scope,
-    // same 404-over-403 posture either way; the key is only which row the run was anchored as.
-    const entity =
-      (await this.workflowRunRepository.findByRunKey(tenantId, interpreterSessionId(runId), runId)) ??
-      (await this.workflowRunRepository.findByRunKey(tenantId, consultationDispatchSessionId(runId), runId));
+    const entity = await this.findRunByConventionalSessionKeys(tenantId, runId);
     if (!entity) {
       throw new NotFoundException(`WorkflowRun ${runId} not found`);
     }
