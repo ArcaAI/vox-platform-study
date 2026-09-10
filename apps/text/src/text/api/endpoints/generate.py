@@ -107,7 +107,14 @@ from text.services.pool_router import resolve_pool_route
 from text.services.provider_queue import ProviderQueue, QueueFullError
 from text.services.rate_limiter import RateLimitTracker, estimate_tokens
 from text.services.resizable_semaphore import ResizableSemaphore
-from text.services.retry_handler import calculate_backoff, retry_after_from, should_retry
+from text.services.retry_handler import (
+    INVALID_REQUEST_ERROR_TYPE,
+    calculate_backoff,
+    is_provider_invalid_request,
+    provider_error_code_from,
+    retry_after_from,
+    should_retry,
+)
 from text.services.runtime_limits import lane_budget
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
@@ -665,7 +672,15 @@ async def generate(
                     task_id=task.task_id,
                 )
             except Exception as exc:
-                error_type = "provider_error"
+                # D5: a deterministic provider 4xx (malformed body, prompt too
+                # large for the loaded context) can never succeed on a retry —
+                # classify it so `should_retry` refuses it unconditionally,
+                # instead of burning the retry budget on a fixed outcome.
+                error_type = (
+                    INVALID_REQUEST_ERROR_TYPE
+                    if is_provider_invalid_request(exc)
+                    else "provider_error"
+                )
                 last_exc = exc
 
             if not should_retry(error_type, retry_on, attempt, max_retries):
@@ -994,16 +1009,26 @@ async def generate(
             cb.record_failure()
             _update_cb_metric(request_body.provider, cb)
         latency_ms = int((time.monotonic() - start) * 1000)
+        # D5: the LAST attempt's exception may still be the deterministic
+        # provider 4xx the retry loop above already refused to retry (or, with
+        # max_retries=0 / retry_on excluding it, the ONLY attempt) — classify
+        # it the same way here so the response is 422 with a `code`, not the
+        # generic 502 an operator reads as "the provider is down".
+        is_invalid_request = is_provider_invalid_request(exc)
+        error_type = INVALID_REQUEST_ERROR_TYPE if is_invalid_request else "provider_error"
+        code = provider_error_code_from(exc) if is_invalid_request else None
         logger.error(
             "generation.failed",
             task_id=task.task_id,
             provider=request_body.provider,
             error=str(exc),
+            error_type=error_type,
+            code=code,
             exc_info=True,
         )
         await task_manager.update_task(task.task_id, status=TaskStatus.FAILED, error=str(exc))
         GENERATION_ERRORS.labels(
-            provider=request_body.provider, model=model, error_type="provider_error"
+            provider=request_body.provider, model=model, error_type=error_type
         ).inc()
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
 
@@ -1023,6 +1048,12 @@ async def generate(
                 tenant_id=x_tenant_id,
             )
         )
+
+        if is_invalid_request:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": str(exc), "code": code},
+            ) from exc
 
         raise HTTPException(
             status_code=502,

@@ -54,6 +54,11 @@ from text.services.output_gate import (
     gate_completion,
     source_context_of,
 )
+from text.services.retry_handler import (
+    INVALID_REQUEST_ERROR_TYPE,
+    is_provider_invalid_request,
+    provider_error_code_from,
+)
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
 
@@ -444,10 +449,21 @@ async def run_generation_producer(
         )
     except Exception as exc:
         latency_ms = int((time.monotonic() - start) * 1000)
+        # D5: this route has no retry loop of its own (a provider generator
+        # either yields or raises once), so "no retry on a deterministic
+        # 4xx" already holds — the fix here is the terminal frame's `code`,
+        # so a rejected-for-context-size stream reads the same as the
+        # blocking `/generate` 422 instead of the opaque "internal error"
+        # every other provider failure gets.
+        is_invalid_request = is_provider_invalid_request(exc)
+        error_type = INVALID_REQUEST_ERROR_TYPE if is_invalid_request else "provider_error"
+        code = provider_error_code_from(exc) if is_invalid_request else None
         logger.error(
             "streaming_generation.failed",
             generation_id=generation_id,
             error=str(exc),
+            error_type=error_type,
+            code=code,
             exc_info=True,
         )
         await task_manager.update_task(generation_id, status=TaskStatus.FAILED, error=str(exc))
@@ -456,15 +472,15 @@ async def run_generation_producer(
         # class: the provider bills for work whose only record we threw away.
         # The block carries the SAME id a clean completion would, so the
         # gateway's idempotency key converges instead of double-billing.
-        await emit_terminal(
-            StreamChunk(
-                type="error",
-                data={
-                    "error": "Generation failed due to an internal error.",
-                    "usage": _usage_detail(interrupted=True),
-                },
-            )
-        )
+        error_data: dict[str, Any] = {
+            "error": (
+                str(exc) if is_invalid_request else "Generation failed due to an internal error."
+            ),
+            "usage": _usage_detail(interrupted=True),
+        }
+        if code is not None:
+            error_data["code"] = code
+        await emit_terminal(StreamChunk(type="error", data=error_data))
         _log_audit(
             status="failed",
             latency_ms=latency_ms,
@@ -472,7 +488,7 @@ async def run_generation_producer(
             error=str(exc),
         )
         GENERATION_ERRORS.labels(
-            provider=resolved_provider, model=resolved_model, error_type="provider_error"
+            provider=resolved_provider, model=resolved_model, error_type=error_type
         ).inc()
         GENERATION_TOTAL.labels(
             provider=resolved_provider, model=resolved_model, status="failed"
