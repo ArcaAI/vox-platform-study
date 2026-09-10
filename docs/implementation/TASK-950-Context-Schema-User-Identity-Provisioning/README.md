@@ -282,11 +282,75 @@ pasted evidence; set status `Review`.
 
 ## Implementation Summary
 
-_Pending — nothing has been built. On **go** the orchestrator executes Wave 0, then Waves 1–3 as
-tiered worktree lanes, and fills this section with the merged commits, gates run and evidence._
+### Execution model (owner directive, 2026-09-11)
+
+> "lets align and manage agents for maximizing working parallel without overlapping tasks or
+> works, using appropriate model-effort tiers. agent wont run any gated tests, you are the one
+> who review, finalize, perform gated tests, after all changes merged to `dev-2.2`"
+
+Executed as ONE wave of seven lanes, each in its own git worktree with a disjoint file boundary
+and a self-contained brief carrying the pinned contracts (C1 marker + derivation, C2 identity
+service, C3 `UserProfile.staffId`, C4 open, C5 invocation planes). No lane ran any test, build,
+lint, install, DB or infra command; the orchestrator reviewed every diff, merged into `dev-2.2`,
+and ran every gate. Recommended OD answers were applied (the owner did not override any).
+
+| Lane | Tier | Scope | Commit | Merge |
+|---|---|---|---|---|
+| A | sonnet | Prisma + migration + domain trio + SYSTEM seed rows | `78f850688` | `e709a7096` |
+| B | opus | marker grammar, `userIdentityBindingFromDefinition`, freeze into agents + compiled triggers | `db5c03dd2` | `47d1aca5d` |
+| C | opus | `ContextUserIdentityService`, `UserProfile.staffId` DTOs/409, `identity.autoProvision.*` descriptors | `487587b0e` | `85401eeee` |
+| D | opus | `POST consultations/open` `context` + identity → `doctorId`, e2e | `edbe1293d` | (merge after C) |
+| E | opus | agent invocations + workflow runs, e2e | `e3c5ff831` | (merge after D) |
+| F | sonnet | `@arcaai/vox-node` `open().context`, codegen `@identity` | `0add646ea` | `298989210` |
+| G | sonnet | console editor picker, Staff ID on the profile, badge | `2df72e992` | `f2884a472` |
+
+Orchestrator fixups on `dev-2.2`: `f2c7ac587` (seed reset value = descriptor default),
+`ca0d836fd` (single `UserIdentityBinding` export; three lane E test premises), plus the domains
+insert-path test correction.
+
+### Accepted deviations from the plan (recorded, not silently absorbed)
+
+| # | Plan said | Shipped | Why |
+|---|---|---|---|
+| 1 | D-9: descriptors on the `db-config` tier | **`global-kv`**, `maxScope: 'tenant'` | `EffectiveSettingsService.resolveEffective` has no resolver for `db-config` keys outside storage, and `SettingsRegistryWriteService` refuses every tier but `global-kv` — as `db-config` the flag could neither resolve nor be set by a tenant. `GlobalSetting` IS the `global-kv` store, so the cascade is exactly D-9's. |
+| 2 | D-6: workflow runs stamp `subject.userId` | Standalone runs **provision + record `actingUserId`** on the run's `ResourceCreated` event; `subject` stays absent | `StartWorkflowRunSubject.consultationId` is required (`harness-gateway.service.ts`) and the harness `RunSubject` forbids a consultation-less subject (`interpreter/models.py`, `extra="forbid"`) — a subject with only `userId` is a 422. Widening both is an owner decision. Pinned by a unit test naming both files. |
+| 3 | D-6: agent-plane attribution on trajectory metadata | Structured log `agent.invocation.identity_resolved` + the resolver's own `ResourceCreated` provenance (`plane: 'agent-invocation'`) | `AgentInvocationService` broadcasts no sys-event and writes no trajectory row; durable per-invocation attribution needs a new channel — follow-up. |
+| 4 | D-8: `_metadata.provisioning` via the factory | `tx.user.update` inside the same transaction | `UserEntity` surfaces no `metaData` prop. |
+| 5 | e2e test 21: `GET admin/users/:id` shows `profile.staffId` | `GET admin/users/:id/profile` | `UserResponse` has no profile embed; `tags` is not exposed over HTTP either, so provenance is asserted via the `auto_<16 hex>` username + profile + department. |
+| 6 | Controller passes `{ clinicianUserId, serviceAccountId }` | `getOrCreate(request, doctorId \| null)`; the service reads `requestServiceAccount` itself | Existing TASK-933 controller tests assert the two-argument call. |
+| 7 | Lane E `subject.userId` fix on open | Dispatch subject now `saved.doctorId` (was `userId ?? doctorId`) | The parameter is `null` on the identity path. |
+| 8 | Lane B boundary | Also edited `IConsultationContextSchemaService.ts`, `consultation-context-schema.service.ts` (the one derivation in `resolveReference`), `workflow-definition.service.ts` (4 lines) | Without them the freeze sites had a type and no producer; no other lane owned those files. |
+| 9 | Lane C boundary | No change to `@arcaai/logger` usage — NestJS `Logger` | 175 files in `packages/applications` use the NestJS logger; none import `@arcaai/logger`. |
+
+### Gate evidence (orchestrator, primary checkout unless noted)
+
+| Gate | Result |
+|---|---|
+| Baseline before any merge | domains 1910 passed; applications 12866 passed (one DB-bound integration file failed only because the test DB was down) |
+| Migration | shadow DB replay: `Applying migration 20260911120000_task_950_user_profile_staff_id` … `-- This is an empty migration.`; `\d core."UserProfile"` shows `staffId text` + `UserProfile_staffId_idx`; dev DB `db:push` in sync |
+| `gen:model:check` / `gen:entity:check` / `gen:factory:check` | no drift (181 / 103 / 103 files); schema coverage OK (101 artifacts / 105 models) |
+| `@arcaai/domains` build + test | build OK; 1925 tests green after the insert-path assertion fix |
+| `RUN_SEED=safe` on dev | exit 0; rows `identity.autoProvision.enabled = true/true`, `identity.autoProvision.roleId = …0010`, both `locked` |
+| Lane B targeted vitest | 47 passed (definition ×2, diff, agent freeze, repaired task890 reference test, workflow-definition ref) |
+| `@arcaai/workflow-contract` build + test | OK; 937 passed |
+| `pnpm harness:test:unit` | 2412 passed; new `test_compiled_config_user_identity_task950.py` at 100 % |
+| `@arcaai/vox-node` build / test / check:exports / lint / typecheck | all exit 0; 34 test files |
+| `@arcaai/vox-codegen` build / test / lint | exit 0; 67 tests |
+| `@arcaai/admin-console` test / lint / build | 2883 tests, lint clean, build exit 0 (Turbopack `instrumentation.ts` Edge warnings pre-exist) |
+| Lane C targeted vitest | 477 passed (identity, userProfile, settings-registry) |
+| Lane D targeted vitest | consultation service 203, API consultation controller 255 |
+| Lane E targeted vitest | agent + workflow-exposure 440 + 70 after the three test-premise fixes; API agent/workflows controllers 117 |
+
+Environment note: a peer session holds uncommitted edits to `live-documentation.service.ts`,
+`realtime-node-registry.ts`, `agent-schemas.ts` (+ a test) in the primary checkout, so compile
+gates and artifact regeneration run in a dedicated worktree `../hope-v2-task-950-verify`
+(branch `task-950/verify`, fast-forwarded to `dev-2.2`). The isolated test infra cannot start
+(the ALaaS stack holds ports 5433/6380), so API e2e runs against the worktree gateway with
+`RESET_DB=false`, as the TASK-933 spec documents.
 
 ## Change History
 
 | Date | Entry |
 |---|---|
 | 2026-09-11 | Ticket opened from the owner's requirement. Discovery (three read-only lanes) and plan written; status Pending, awaiting OD-0…OD-10 and an explicit go. |
+| 2026-09-11 | Owner directive: maximise parallel lanes, tiered models, no lane runs gates. Seven worktree lanes spawned against pinned contracts; A, B, C, D, E, F, G merged into `dev-2.2` with per-lane gates (table above). Deviations 1–9 accepted on evidence. Remaining: full applications/API suites, lint, typecheck, artifact regeneration, e2e, live proof. |
