@@ -60,7 +60,13 @@ export class CreateAgentRequest {
 
   @ApiPropertyOptional({
     description:
-      'Task-specific instruction: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` or `{ systemPrompt }` (TEXT_GENERATION); `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH).',
+      'Task-specific instruction. TEXT_GENERATION binds exactly ONE of three forms: ' +
+      '`{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` (a single approved template), ' +
+      '`{ systemPrompt }` (an inline body), or ' +
+      '`{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite — an ordered list ' +
+      'of 1–16 fragments, each optionally guarded by a CEL `when` over the render scope; at least one fragment must be unconditional, and the ' +
+      'selected ones are rendered separately and joined with a blank line). ' +
+      '`{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH).',
     type: 'object',
     additionalProperties: true,
   })

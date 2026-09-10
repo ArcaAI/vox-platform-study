@@ -76,7 +76,8 @@ export class AgentTestAckResponse {
   assembledSystemPrompt!: string | null;
   @ApiPropertyOptional({
     type: AgentTestCompositionResponse,
-    description: 'COMPOSITE instructions only — which prompt fragments ran and which were excluded. Absent for a single template or an inline prompt.',
+    description:
+      'COMPOSITE instructions only — which prompt fragments ran and which were excluded. Absent for a single template or an inline prompt.',
   })
   composition?: AgentTestCompositionResponse;
   @ApiProperty({ description: 'The rendered user prompt — exactly the bytes that would go to TEXT.' }) assembledUserPrompt!: string;
