@@ -319,7 +319,56 @@ Base `3227be8d6` (the program's close-of-3a commit). Three capability lanes in p
 
 **Wave-3b close (2026-09-06).** Registry measured **209** on the final tree (target 208: `pipeline.templateResync.{enabled,cron}` stay, R4-deferred with the template-resync cron; `guardrail.judge.timeoutSeconds` was added by TASK-881 as the judge's one tuning knob). Four migrations proven together on one throwaway shadow with an empty diff and four ledger rows (`task_870_wave3a_schema_retirement`, `task_888_tenant_tts_config_retirement`, `task_886_tenant_guardrail_policy`, `task_884_agent_provenance_and_assignment_selector`); the local dev DB and the test DB were reset and synced by the owner on 2026-09-06 (both diff empty against the schema; the four migrations are the ledger for every other environment). Python close sweep at baseline (stt 3196, text 1620, guardrail 483, nlp 586, tts 412, harness 2102 + replay). Every worktree removed after its merge and gates.
 
-**Open, owner (the complete list as of the close; items 1 and 2 CLOSED 2026-09-06):** ~~(1) sync the local dev DB~~ done; ~~(2) reset the test DB, then un-`skip` the membership-bounded-sync integration proof~~ done — the proof runs and passes (`1c7a5fbe7`), and the whole integration suite is green on the reset DB (8 files, 108 tests); (3) soft-retire the five stale `text.*` `AiRoutingPolicy` rows (commented in the wave-3a migration); (4) `WorkflowAssignmentService.resolve` has no SYSTEM tier and the dispatch lookup is tenant-scoped — an unopinionated tenant dispatches nothing (G's recorded gap); (5) H's both-directions rule (`assertBothDirectionsCovered`) — keep or drop; (6) F's H-6: `AgentModelFallback` is not shared-read for SYSTEM templates; (7) a per-workflow-node fallback override (assumed NOT wanted); (8) `HARNESS_TEXT_SERVICE_TOKEN` and the remaining per-service tokens against the one shared internal token; (9) ~60 comment/doc mentions of `AiTaskDefault` in `apps/{text,guardrail,nlp}`; (10) deployment-repo handoffs: the `TEXT_SERVICE_TOKEN` overlay + Vault policy paths, the retired env names per lane; (11) five pre-existing `apps/api` lint errors in the TASK-869/875 e2e specs (`auth-throttle-per-endpoint`, `harness-gate`, `shared-component-contracts`) — the owner's in-flight work, untouched by this program.
+**Open, owner (the complete list as of the close; items 1 and 2 CLOSED 2026-09-06):** ~~(1) sync the local dev DB~~ done; ~~(2) reset the test DB, then un-`skip` the membership-bounded-sync integration proof~~ done — the proof runs and passes (`1c7a5fbe7`), and the whole integration suite is green on the reset DB (8 files, 108 tests); (3) soft-retire the five stale `text.*` `AiRoutingPolicy` rows (commented in the wave-3a migration); (4) `WorkflowAssignmentService.resolve` has no SYSTEM tier and the dispatch lookup is tenant-scoped — an unopinionated tenant dispatches nothing (G's recorded gap); (5) H's both-directions rule (`assertBothDirectionsCovered`) — keep or drop; (6) F's H-6: `AgentModelFallback` is not shared-read for SYSTEM templates; (7) a per-workflow-node fallback override (assumed NOT wanted); (8) `HARNESS_TEXT_SERVICE_TOKEN` and the remaining per-service tokens against the one shared internal token; (9) ~60 comment/doc mentions of `AiTaskDefault` in `apps/{text,guardrail,nlp}`; (10) deployment-repo handoffs: the `TEXT_SERVICE_TOKEN` overlay + Vault policy paths, the retired env names per lane; (11) five pre-existing `apps/api` lint errors in the TASK-869/875 e2e specs (`auth-throttle-per-endpoint`, `harness-gate`, `shared-component-contracts`) — the owner's in-flight work, untouched by this program; **(12) the two `TENANT_IDP_*_ENABLED` directory-sync kill-switches — see below (filed 2026-09-10 from TASK-940).**
+
+### Item 12 — `TENANT_IDP_*_ENABLED`: platform-wide env switches over per-tenant work (filed 2026-09-10, from TASK-940 OD-4)
+
+TASK-940 taught `scripts/env-sync.mts` to see `configService.get()` reads and found 21 undeclared
+env names. Eighteen were live-documentation's and that ticket tiered them. **Three were not**, and
+two of those land in this program's scope:
+
+| Env var | Reader | Shape |
+|---|---|---|
+| `TENANT_IDP_GOOGLE_DIRECTORY_ENABLED` | `directory-sync/google-directory.provider.ts:47` | `String(configService.get(…) ?? '').toLowerCase() === 'true'` in the CONSTRUCTOR; `fetchUsers` throws `BadRequestException` naming the env var when off |
+| `TENANT_IDP_MS_GRAPH_ENABLED` | `directory-sync/ms-graph-directory.provider.ts:40` | identical |
+
+(The third, `HARNESS_BASE_URL`, is correctly `env`-tier topology and needed only the declaration
+TASK-940 gave it. No follow-up.)
+
+**The defect is not the tier label, it is the SCOPE.** Both are platform-wide switches gating work
+that is inherently per-tenant: `DirectorySyncService.enqueueSync(tenantId, providerId)` runs against
+credentials the TENANT provisions itself (its own Google service account with delegated directory
+scopes, or its own Azure AD app registration). So today a tenant that has done all of that still
+cannot sync until the platform flips a global env var — and flipping it enables the capability for
+**every** tenant at once, with a redeploy. That is the `09-infrastructure-devops.md`
+§"Tenant-first resolution" rule (tenant → SYSTEM, widening only on absence), not a cosmetic
+retiering; and corollary L1 rules out the constructor freeze independently.
+
+**Recommended shape — they are already-written feature gates.** Move both into
+`FEATURE_AVAILABILITY_SETTINGS` (`feature-availability.descriptors.ts`), which is this exact
+pattern and supplies every property they need without a new family:
+
+- `tier: 'global-kv'`, `maxScope: feature.maxScope ?? 'tenant'` → the tenant → SYSTEM cascade and
+  per-tenant rollout, for free;
+- `killSwitch: true` is auto-derived for a `default: false` entry, and both defaults are already
+  `false` — so the governance rule "a kill-switch MUST default OFF" is satisfied by construction
+  rather than by remembering;
+- `failMode: 'open-to-default'` with the safe end as the default, which matches the current
+  fail-closed-to-`BadRequestException` behaviour for an unresolvable read;
+- declare each env name as `SettingDescriptor.envOverride` (the mechanism TASK-940 added) so it
+  keeps working as a pre-resolution seed, stays in `turbo.json#globalEnv`, and appears on the
+  deprecation register as a name with a scheduled end rather than one discovered later.
+
+The one real code change beyond the descriptors: resolve per call instead of in the constructor, so
+`fetchUsers` consults the gate for the tenant it is syncing. The error message should then name the
+setting key, not the env var.
+
+**Two notes for whoever picks this up.** The family already has history — `TENANT_IDP_ENABLED` sits
+in `env-sync.test.ts`'s dead-keys list ("no reader at all"), retired for exactly the ungoverned-knob
+reason, so these two are the survivors of that sweep rather than new ground. And this is a `redis-flag`
+candidate only if it must flip mid-incident; it is a per-tenant entitlement-shaped capability, so
+`global-kv` at `maxScope: 'tenant'` is the better read — worth the owner confirming, because it
+decides whether a tenant admin may enable it themselves or only a platform admin may.
 
 ## Change History
 
@@ -354,3 +403,4 @@ Base `3227be8d6` (the program's close-of-3a commit). Three capability lanes in p
 | 2026-09-06 | Noted, not touched: an uncommitted prettier pass over 24 files appeared in the primary checkout (the owner's; it includes the two TASK-869 specs carrying the five lint errors). |
 | 2026-09-06 | **Registry 209 → 214** — TASK-890 lane L12 (inference readiness, wave 1) registered five `global-kv` keys in a new `ai-readiness.descriptors.ts`: the sweep's `inference.readiness.{enabled,intervalSeconds,cloudProbeIntervalSeconds}`, plus two previously ungoverned model-inventory keys it retro-registered. All five are `globalOnly`, `failMode: 'open-to-default'` (measurement cadence and a switch — no selection). Measured on the TASK-890 wave-1 close tree: `HOPE_SETTINGS_REGISTRY.byKey.size === 214`. No TASK-870 decision is reopened; the program's own reconciled set is unchanged. |
 | 2026-09-06 | **Registry 209 → 214** — TASK-890 lane L12 (inference readiness, wave 1) registered five `global-kv` keys in a new `ai-readiness.descriptors.ts`: the sweep's `inference.readiness.{enabled,intervalSeconds,cloudProbeIntervalSeconds}`, plus two previously ungoverned model-inventory keys it retro-registered. All five are `globalOnly`, `failMode: 'open-to-default'` (measurement cadence and a switch — no selection). Measured on the wave-1 close tree: `HOPE_SETTINGS_REGISTRY.byKey.size === 214`. No TASK-870 decision is reopened; the program's own reconciled set is unchanged. |
+| 2026-09-10 | **Owner item 12 filed** from TASK-940 OD-4: the two `TENANT_IDP_*_ENABLED` directory-sync kill-switches. TASK-940's new `configService.get()` scanner found 21 undeclared env reads; it declared all of them and tiered the 18 in live-documentation, leaving these two (and `HARNESS_BASE_URL`, which needed only the declaration). They are platform-wide constructor-frozen switches over per-tenant work — a tenant with its own provisioned service account cannot sync until a global env var is flipped for everyone, which is the §"Tenant-first resolution" rule rather than a tier label. Recommended home is `FEATURE_AVAILABILITY_SETTINGS` at `maxScope: 'tenant'`, with the env names kept as `envOverride`. No registry count change yet — nothing implemented. |
