@@ -4,6 +4,16 @@
 //   - NOT call appSettingsService.getValueWithDefault('<SECRET>', …)
 //   - read the secret via SecretsService.getSecret(Sync|Optional)('<SECRET>')
 //
+// TASK-944 amended the JWT_SECRET_KEY half of that. The REQUIREMENT is unchanged —
+// the secret comes from SecretsService, never from AppSettings — but the two JWT
+// strategies no longer spell the read out inline: both now go through
+// `resolveJwtSecret()` (`services/auth/jwt-secret.ts`), the ONE resolver the mint
+// paths also use, because a `getSecretSync` captured once in `JwtStrategy`'s
+// constructor pinned verification to the boot-time value and turned a Vault rotation
+// into a platform-wide 401 outage. The assertions below therefore name the resolver
+// rather than the byte sequence it wraps — asserting the inline call would now forbid
+// exactly the fix.
+//
 // Non-secret OIDC config (DISCOVERY_URL, CLIENT_ID, CALLBACK_URL, SCOPES,
 // JWT_EXPIRES_IN) MUST stay on AppSettingsService (surgical scope).
 import { describe, it, expect } from 'vitest';
@@ -26,8 +36,8 @@ describe('Phase 3B auth secret migration', () => {
     it('does not read JWT_SECRET_KEY from AppSettings', () => {
       expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]JWT_SECRET_KEY['"]/);
     });
-    it('reads JWT_SECRET_KEY from SecretsService', () => {
-      expect(src).toMatch(/secretsService\.getSecretSync\(['"]JWT_SECRET_KEY['"]\)/);
+    it('reads JWT_SECRET_KEY from SecretsService, through the shared resolver', () => {
+      expect(src).toMatch(/resolveJwtSecret\(secretsService\)/);
     });
   });
 
@@ -36,8 +46,14 @@ describe('Phase 3B auth secret migration', () => {
     it('does not read JWT_SECRET_KEY from AppSettings', () => {
       expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]JWT_SECRET_KEY['"]/);
     });
-    it('reads JWT_SECRET_KEY from SecretsService', () => {
-      expect(src).toMatch(/secretsService\.getSecretSync\(['"]JWT_SECRET_KEY['"]\)/);
+    it('reads JWT_SECRET_KEY from SecretsService, through the shared resolver', () => {
+      expect(src).toMatch(/resolveJwtSecret\(this\.secretsService\)/);
+    });
+    // TASK-944 — and never substitutes a literal. This line used to end
+    // `?? 'default-secret-key'`, so one lapsed cache TTL made an OIDC login mint a
+    // token signed with a hard-coded string no verifier would ever accept.
+    it('never falls back to a hard-coded secret', () => {
+      expect(src).not.toMatch(/\?\?\s*['"]default-secret-key['"]/);
     });
     // Surgical-scope invariants: non-secret OIDC fields stay on AppSettings.
     it('keeps OIDC_SCOPES on AppSettings (non-secret)', () => {

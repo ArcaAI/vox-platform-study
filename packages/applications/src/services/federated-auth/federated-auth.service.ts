@@ -26,6 +26,7 @@ import {
   UserRoleAssignmentFactory,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
+import { resolveJwtSecret } from '../auth/jwt-secret';
 import { IdpResolverService } from '../idp-resolver/idp-resolver.service';
 import { IUserRoleAssignmentService } from '../user/userRoleAssignment/IUserRoleAssignmentService';
 import { IUserDepartmentService } from '../user/userDepartment/IUserDepartmentService';
@@ -519,9 +520,14 @@ export class FederatedAuthService {
     this.eventEmitter.emit(type, { tenantId, resourceType, resourceId, createdAt });
   }
 
-  /** Same two-step (sync-cache → async-fallback) resolution as `AuthController.resolveJwtSecretKey` — the SSO mint path must never diverge from the local-login sign/verify secret. */
+  /**
+   * TASK-944 — delegates to the ONE shared resolver, which `JwtStrategy` also verifies
+   * with. This method used to open-code the two-step read and claim in a comment that
+   * it "must never diverge" from the verify path; the verify path had in fact captured
+   * its secret once at construction, and the claim held only because nobody rotated.
+   */
   private async resolveJwtSecretKey(): Promise<string | undefined> {
-    return this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? (await this.secretsService.getSecretOptional('JWT_SECRET_KEY'));
+    return resolveJwtSecret(this.secretsService);
   }
 
   private errorMessage(error: unknown): string {

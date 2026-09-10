@@ -361,19 +361,32 @@ export class SecretsService implements OnModuleDestroy {
     });
     sub.on('message', (channel: string, raw: string) => {
       if (channel !== SecretsService.INVALIDATION_CHANNEL) return;
-      let msg: { key?: string; all?: boolean } | undefined;
-      try {
-        msg = JSON.parse(raw) as { key?: string; all?: boolean };
-      } catch {
-        this.logger.warn(`Bad ${SecretsService.INVALIDATION_CHANNEL} payload (ignored): ${raw.slice(0, 64)}`);
-        return;
-      }
-      if (msg?.all) {
-        this.invalidateAll();
-      } else if (msg?.key) {
-        this.invalidate(msg.key);
-      }
+      this.handleInvalidationMessage(raw);
     });
+  }
+
+  /**
+   * Apply ONE announcement from {@link INVALIDATION_CHANNEL}.
+   *
+   * TASK-944 — extracted from `attachRedisSubscriber` so the Nest wiring
+   * (`SecretsInvalidationSubscriber`, which consumes an RxJS stream rather than an
+   * ioredis client) shares the exact parse-and-dispatch rules instead of restating
+   * them. A malformed payload is logged and dropped: a bad publish must not take down
+   * a process, and a channel that throws on garbage is a channel operators stop using.
+   */
+  handleInvalidationMessage(raw: string): void {
+    let msg: { key?: string; all?: boolean } | undefined;
+    try {
+      msg = JSON.parse(raw) as { key?: string; all?: boolean };
+    } catch {
+      this.logger.warn(`Bad ${SecretsService.INVALIDATION_CHANNEL} payload (ignored): ${raw.slice(0, 64)}`);
+      return;
+    }
+    if (msg?.all) {
+      this.invalidateAll();
+    } else if (msg?.key) {
+      this.invalidate(msg.key);
+    }
   }
 
   /**
