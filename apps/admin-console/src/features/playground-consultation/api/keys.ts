@@ -8,4 +8,5 @@ export const playgroundConsultationKeys = {
   transcriptions: (consultationId: string) => [...playgroundConsultationKeys.root, 'transcriptions', consultationId] as const,
   provenance: (consultationId: string, contextItemId: string) =>
     [...playgroundConsultationKeys.root, 'provenance', consultationId, contextItemId] as const,
+  documentSectionsHydrate: (consultationId: string) => [...playgroundConsultationKeys.root, 'document-sections-hydrate', consultationId] as const,
 };

@@ -15,6 +15,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  foldHydratedDocumentSections,
+  useConfirmDocumentSection,
   useDocumentSectionsStream,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
@@ -74,10 +76,17 @@ interface RecordedCall {
   body: unknown;
 }
 
-/** Answers the ticket mint, the job-status poll and the pre-summary REST catch-up; everything else throws. */
+/**
+ * Answers the ticket mint, the job-status poll, the pre-summary REST catch-up, and (TASK-939 R4)
+ * the durable `.../documents/:documentKey/sections` LIST read `useDocumentSectionsStream` fires
+ * once it knows of a document — everything else throws. The list route defaults to an empty
+ * array: most tests here never intend to exercise hydration, only the SSE fold, and an empty
+ * durable read is a correct no-op against `foldHydratedDocumentSections` (nothing to merge).
+ */
 function stubNetwork(
   jobStatus: () => Response = () => Response.json({}),
   preSummaryLatest: () => Response = () => new Response(null, { status: 404 }),
+  documentSectionsList: () => Response = () => Response.json([]),
 ): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
@@ -94,6 +103,9 @@ function stubNetwork(
       }
       if (call.url.includes('/jobs/')) return jobStatus();
       if (call.url.includes('/pre-summary/latest')) return preSummaryLatest();
+      // LIST route only — `/documents/<key>/sections` with nothing after it (the single-section
+      // GET/PATCH `/documents/<key>/sections/<sectionKey>` is a DIFFERENT route, tested separately).
+      if (/\/documents\/[^/]+\/sections(\?.*)?$/.test(call.url)) return documentSectionsList();
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),
   );
@@ -506,6 +518,226 @@ describe('useDocumentSectionsStream (DD-3 / DD-3 — N documents)', () => {
 
     expect(result.current.documents.map((d) => d.documentKey)).toEqual(['soap_note']);
     expect(result.current.documents[0].sections[0]).toMatchObject({ sectionKey: 'assessment', revision: 1, state: 'provisional' });
+  });
+
+  it('carries `appended` through the fold, cleared by a later patch that carries none', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 1,
+        state: 'provisional',
+        content: 'Hypertension.',
+        appended: 'Hypertension.',
+        updatedAt: 't1',
+      }),
+    );
+    expect(result.current.documents[0].sections[0]).toMatchObject({ content: 'Hypertension.', appended: 'Hypertension.' });
+
+    // A later patch that REPLACED rather than appended (e.g. a correction) must clear the
+    // highlight — never leave it pointing at a span that is no longer the tail.
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 2,
+        state: 'provisional',
+        content: 'Rewritten entirely.',
+        updatedAt: 't2',
+      }),
+    );
+    expect(result.current.documents[0].sections[0].content).toBe('Rewritten entirely.');
+    expect(result.current.documents[0].sections[0].appended).toBeUndefined();
+  });
+});
+
+describe('useDocumentSectionsStream — durable hydration (TASK-939 R4)', () => {
+  it('hydrates a section this fold already knows the DOCUMENT of, honoring revision over version', async () => {
+    const calls = stubNetwork(undefined, undefined, () =>
+      Response.json([
+        {
+          id: 'row-1',
+          consultationId: 'c-1',
+          documentKey: 'soap_note',
+          sectionKey: 'assessment',
+          title: 'Assessment',
+          idx: 0,
+          state: 'confirmed',
+          // LOWER revision than the SSE-held one below, but a much HIGHER version — must still
+          // be discarded, proving the gate compares `revision`, never `version`.
+          revision: 1,
+          version: 99,
+          content: 'Stale durable read.',
+          createdAt: 't0',
+          updatedAt: 't0',
+        },
+        {
+          id: 'row-2',
+          consultationId: 'c-1',
+          documentKey: 'soap_note',
+          sectionKey: 'plan',
+          title: 'Plan',
+          idx: 1,
+          state: 'provisional',
+          revision: 1,
+          version: 1,
+          content: 'Discharge home.',
+          createdAt: 't0',
+          updatedAt: 't0',
+        },
+      ]),
+    );
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    // Seeds `documentOrder` with `soap_note` — hydration cannot fire for a document nothing has
+    // ever named (no console route enumerates a consultation's document keys ahead of one).
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 2,
+        state: 'confirmed',
+        content: 'Latest via SSE.',
+        updatedAt: 't1',
+      }),
+    );
+
+    await waitFor(() => expect(calls.some((call) => call.url.includes('/documents/soap_note/sections'))).toBe(true));
+    await waitFor(() => expect(result.current.documents[0]?.sections.some((section) => section.sectionKey === 'plan')).toBe(true));
+
+    const soap = result.current.documents.find((document) => document.documentKey === 'soap_note');
+    expect(soap?.sections.find((section) => section.sectionKey === 'assessment')).toMatchObject({ revision: 2, content: 'Latest via SSE.' });
+    // `plan` was never seen over SSE at all — the durable hydration is what filled it in.
+    expect(soap?.sections.find((section) => section.sectionKey === 'plan')).toMatchObject({
+      revision: 1,
+      content: 'Discharge home.',
+      state: 'provisional',
+    });
+  });
+
+  it('never queries the durable view for a document nothing has named yet', async () => {
+    const calls = stubNetwork();
+    const { Wrapper } = createWrapper();
+    renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    // Let any queued microtask run — a cold mount with zero SSE history has nothing to hydrate.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(calls.some((call) => call.url.includes('/documents/'))).toBe(false);
+  });
+});
+
+describe('foldHydratedDocumentSections (TASK-939 R4)', () => {
+  const RECORD = {
+    id: 'row-1',
+    consultationId: 'c-1',
+    documentKey: 'soap_note',
+    sectionKey: 'assessment',
+    title: 'Assessment',
+    idx: 0,
+    state: 'provisional' as const,
+    revision: 1,
+    version: 1,
+    content: 'x',
+    createdAt: 't',
+    updatedAt: 't',
+  };
+
+  it('merges a section not yet held, dropping `appended` (a durable read carries none)', () => {
+    const next = foldHydratedDocumentSections({}, [RECORD]);
+    expect(next['soap_note::assessment']).toMatchObject({ sectionKey: 'assessment', revision: 1, content: 'x' });
+    expect(next['soap_note::assessment'].appended).toBeUndefined();
+  });
+
+  it('discards a hydrated row whose revision is not greater than the one already held', () => {
+    const current = { 'soap_note::assessment': { documentKey: 'soap_note', sectionKey: 'assessment', title: 'Assessment', idx: 0, revision: 5, state: 'confirmed' as const, content: 'kept', annotations: [] } };
+    const next = foldHydratedDocumentSections(current, [{ ...RECORD, revision: 5, version: 500, content: 'stale' }]);
+    expect(next).toBe(current); // same reference — nothing changed, so no re-render is triggered
+    expect(next['soap_note::assessment'].content).toBe('kept');
+  });
+
+  it('applies a hydrated row whose revision is strictly greater', () => {
+    const current = { 'soap_note::assessment': { documentKey: 'soap_note', sectionKey: 'assessment', title: 'Assessment', idx: 0, revision: 1, state: 'provisional' as const, content: 'old', annotations: [] } };
+    const next = foldHydratedDocumentSections(current, [{ ...RECORD, revision: 2, content: 'new' }]);
+    expect(next).not.toBe(current);
+    expect(next['soap_note::assessment']).toMatchObject({ revision: 2, content: 'new' });
+  });
+});
+
+describe('useConfirmDocumentSection (TASK-939 R4/OD-5)', () => {
+  function installConfirmFetch(sectionRead: () => Response, patchResponse: () => Response = () => Response.json({})) {
+    const calls: RecordedCall[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? 'GET',
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        });
+        if ((init?.method ?? 'GET') === 'GET') return sectionRead();
+        return patchResponse();
+      }),
+    );
+    return calls;
+  }
+
+  it('re-reads the section for a fresh version, then PATCHes its own content under If-Match', async () => {
+    const calls = installConfirmFetch(
+      () => new Response(JSON.stringify({ id: 'row-1', content: 'Hypertension.', state: 'provisional' }), { headers: { ETag: '"7"' } }),
+      () => Response.json({ id: 'row-1', content: 'Hypertension.', state: 'confirmed', version: 8 }),
+    );
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useConfirmDocumentSection(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'assessment' });
+    });
+
+    expect(calls[0]).toMatchObject({ method: 'GET', url: '/api/hope/consultations/c-1/documents/soap_note/sections/assessment' });
+    expect(calls[1]).toMatchObject({
+      method: 'PATCH',
+      url: '/api/hope/consultations/c-1/documents/soap_note/sections/assessment',
+      body: { content: 'Hypertension.', expectedVersion: 7 },
+    });
+  });
+
+  it('rejects with the gateway 412 when the section changed under the caller', async () => {
+    const calls = installConfirmFetch(
+      () => new Response(JSON.stringify({ id: 'row-1', content: 'x' }), { headers: { ETag: '"7"' } }),
+      () => new Response(JSON.stringify({ message: 'Version conflict' }), { status: 412 }),
+    );
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useConfirmDocumentSection(), { wrapper: Wrapper });
+
+    await expect(result.current.mutateAsync({ consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'assessment' })).rejects.toMatchObject({
+      status: 412,
+    });
+    expect(calls).toHaveLength(2);
   });
 });
 

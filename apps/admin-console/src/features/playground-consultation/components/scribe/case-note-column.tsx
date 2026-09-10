@@ -92,13 +92,53 @@ function SectionStateBadge({ state }: { state: SectionState }) {
 }
 
 /**
- * / — N documents, each rendering its OWN sections in `idx` order
- * with a live per-section state (`empty` renders as a skeleton, never an error
- * Per-section CLINICIAN EDITING is not wired here: no console-facing mutation endpoint exists
- * yet for a single section (only the whole persisted draft is editable, via `editor` below), so
- * this view is read-only live state, not a second writer.
+ * Renders `section.content` with the LATEST accepted patch's `appended` slice called out — the
+ * clinician's eye should find what just arrived without the rest appearing to change. Only when
+ * `content` actually ENDS WITH `appended`: an out-of-order or fully-replaced patch (a
+ * correction, a confirm) clears `appended` itself (see the hooks fold), but this is a second,
+ * cheap guard against ever mis-highlighting a span that isn't really the tail.
+ *
+ * `<mark>` carries the emphasis on its OWN (a ring, not just a background tint) so it is never
+ * color alone (rule 11 §10); `animate-in fade-in` is an ENTRANCE cue, not a timed fade-out — it
+ * naturally stops being "the latest" the moment a further patch arrives, and the project-wide
+ * reduced-motion reset (`globals.css`) zeroes the animation duration under
+ * `prefers-reduced-motion: reduce`, leaving the static ring/tint as the only cue.
  */
-function DocumentSectionsView({ documents }: { documents: DocumentView[] }) {
+function SectionBody({ content, appended, revision }: { content: string; appended: string | undefined; revision: number }) {
+  if (appended && content.endsWith(appended)) {
+    const priorText = content.slice(0, content.length - appended.length);
+    return (
+      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+        {priorText}
+        <mark key={revision} className="bg-ai/15 ring-ai/40 rounded-sm px-0.5 py-px ring-1 animate-in fade-in duration-normal">
+          {appended}
+        </mark>
+      </p>
+    );
+  }
+  return <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>;
+}
+
+/**
+ * / — N documents, each rendering its OWN sections in `idx` order
+ * with a live per-section state (`empty` renders as a skeleton, never an error). Read-only
+ * except for ONE action: confirming a `provisional` section (`onConfirmSection`) — the
+ * checkpoint the state machine has always described (`GET`/`PATCH .../sections[/:sectionKey]`).
+ * The whole persisted draft's edit path (`editor`) is untouched; this is not a second writer
+ * over that surface.
+ */
+function DocumentSectionsView({
+  documents,
+  onConfirmSection,
+  confirmSectionPending = false,
+}: {
+  documents: DocumentView[];
+  /** Absent renders no Confirm control at all (mirrors `editor`'s opt-in shape). */
+  onConfirmSection?: (documentKey: string, sectionKey: string) => void;
+  /** True while ANY section confirm is in flight — disables every Confirm control so a second
+   *  click cannot race the first. */
+  confirmSectionPending?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-5" aria-label="Live documents">
       {documents.map((document) => (
@@ -117,6 +157,19 @@ function DocumentSectionsView({ documents }: { documents: DocumentView[] }) {
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
                     <h4 className="text-xs font-medium tracking-wide uppercase">{section.title}</h4>
                     <SectionStateBadge state={section.state} />
+                    {onConfirmSection && section.state === 'provisional' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-xs"
+                        disabled={confirmSectionPending}
+                        onClick={() => onConfirmSection(document.documentKey, section.sectionKey)}
+                      >
+                        {confirmSectionPending ? <Spinner aria-hidden className="size-3" /> : <IconCheck aria-hidden className="size-3" />}
+                        Confirm
+                      </Button>
+                    ) : null}
                   </div>
                   {section.state === 'empty' ? (
                     <div className="flex flex-col gap-1.5" role="status" aria-label={`Waiting for ${section.title}`}>
@@ -124,7 +177,7 @@ function DocumentSectionsView({ documents }: { documents: DocumentView[] }) {
                       <Skeleton className="h-4 w-2/3" />
                     </div>
                   ) : (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                    <SectionBody content={section.content} appended={section.appended} revision={section.revision} />
                   )}
                 </div>
               </div>
@@ -362,6 +415,16 @@ export interface CaseNoteColumnProps {
  */
   documentSections?: DocumentView[];
   /**
+   * R4/OD-5 — confirms one `provisional` section as a clinician checkpoint
+   * (`PATCH .../documents/:documentKey/sections/:sectionKey`), transitioning it to `confirmed`
+   * so a later flush may append but never overwrite it again. Absent renders no Confirm control
+   * at all (mirrors `editor`'s opt-in shape), so every other caller of this column is unaffected.
+ */
+  onConfirmSection?: (documentKey: string, sectionKey: string) => void;
+  /** True while ANY section confirm is in flight (mirrors `approvePending`/`generatePending`'s
+   *  single-flag shape) — disables every Confirm control so a second click cannot race the first. */
+  confirmSectionPending?: boolean;
+  /**
    * TASK-932 D-9 — the WARM START, from the `presummary` plane on the same live-summary stream.
    *
    * `null` = no event has arrived, which is NOT "there is no warm start": a graph that authors
@@ -453,6 +516,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     liveStatus = 'idle',
     liveError = null,
     documentSections = [],
+    onConfirmSection,
+    confirmSectionPending = false,
     preSummary = null,
     draft,
     draftLoading,
@@ -703,7 +768,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : showLive && documentSections.length > 0 ? (
           // DD-3 — richer than the legacy single-section view below (per-section state,
           // multiple documents), so it takes priority the moment any section.patch has arrived.
-          <DocumentSectionsView documents={documentSections} />
+          <DocumentSectionsView documents={documentSections} onConfirmSection={onConfirmSection} confirmSectionPending={confirmSectionPending} />
         ) : showLive && liveSections.length > 0 ? (
           <div className="flex flex-col gap-4" role="group" aria-label="Live running summary">
             {liveSections.map((section) => (

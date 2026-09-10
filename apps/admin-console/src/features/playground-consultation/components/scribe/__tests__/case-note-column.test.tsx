@@ -357,6 +357,101 @@ describe('CaseNoteColumn', () => {
     });
   });
 
+  describe('R4/OD-5 — per-section Confirm checkpoint', () => {
+    function withOneSection(state: 'provisional' | 'confirmed' | 'locked' | 'empty', overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> = {}) {
+      return baseProps({
+        draft: null,
+        isRecording: true,
+        documentSections: [
+          { documentKey: 'soap_note', sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 1, state, content: state === 'empty' ? '' : 'Discharge home.', annotations: [] }] },
+        ],
+        ...overrides,
+      });
+    }
+
+    it('shows Confirm only for a provisional section', () => {
+      render(<CaseNoteColumn {...withOneSection('provisional', { onConfirmSection: vi.fn() })} />);
+      expect(screen.getByRole('button', { name: /confirm/i })).toBeTruthy();
+    });
+
+    it.each(['confirmed', 'locked'] as const)('shows no Confirm control once a section is %s', (state) => {
+      render(<CaseNoteColumn {...withOneSection(state, { onConfirmSection: vi.fn() })} />);
+      expect(screen.queryByRole('button', { name: /confirm/i })).toBeNull();
+    });
+
+    it('renders no Confirm control when the caller has not wired one (opt-in, mirrors `editor`)', () => {
+      render(<CaseNoteColumn {...withOneSection('provisional')} />);
+      expect(screen.queryByRole('button', { name: /confirm/i })).toBeNull();
+    });
+
+    it('reports the documentKey and sectionKey on click', () => {
+      const onConfirmSection = vi.fn();
+      render(<CaseNoteColumn {...withOneSection('provisional', { onConfirmSection })} />);
+      fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+      expect(onConfirmSection).toHaveBeenCalledWith('soap_note', 'plan');
+    });
+
+    it('disables Confirm while a confirm is already in flight', () => {
+      render(<CaseNoteColumn {...withOneSection('provisional', { onConfirmSection: vi.fn(), confirmSectionPending: true })} />);
+      expect((screen.getByRole('button', { name: /confirm/i }) as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
+
+  describe('R4 — the appended-content highlight', () => {
+    it('sets off the newly-appended tail when content ends with it', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [
+              {
+                documentKey: 'soap_note',
+                sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 2, state: 'provisional', content: 'Discharge home tomorrow.', appended: ' tomorrow.', annotations: [] }],
+              },
+            ],
+          })}
+        />,
+      );
+      const mark = document.querySelector('mark');
+      expect(mark?.textContent).toBe(' tomorrow.');
+      // The prior text renders too — the highlight marks only the tail, not the whole section.
+      expect(screen.getByText(/discharge home/i)).toBeTruthy();
+    });
+
+    it('never highlights when content does not end with the appended slice (out-of-order/replaced)', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [
+              {
+                documentKey: 'soap_note',
+                sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 2, state: 'provisional', content: 'Fully rewritten.', appended: 'stale slice', annotations: [] }],
+              },
+            ],
+          })}
+        />,
+      );
+      expect(document.querySelector('mark')).toBeNull();
+      expect(screen.getByText('Fully rewritten.')).toBeTruthy();
+    });
+
+    it('renders plainly when no patch has appended anything', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [{ documentKey: 'soap_note', sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 1, state: 'provisional', content: 'Discharge home.', annotations: [] }] }],
+          })}
+        />,
+      );
+      expect(document.querySelector('mark')).toBeNull();
+    });
+  });
+
   // click-to-source evidence panel at sign-off.
   describe('citation evidence panel', () => {
     const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];

@@ -53,6 +53,10 @@ export interface SectionPatch {
   revision: number;
   state: SectionState;
   content: string;
+  /** The part of `content` this patch ADDED — present only when the flush appended rather than
+   *  replaced. `content` is always the WHOLE body regardless; this is a rendering hint so a
+   *  client can draw attention to what just arrived without re-deriving a diff itself. */
+  appended?: string;
   annotations?: SectionAnnotation[];
   provenance?: SectionProvenance[];
   documentTemplateVersionId?: string | null;
@@ -68,10 +72,49 @@ export interface DocumentSectionView {
   state: SectionState;
   content: string;
   annotations: SectionAnnotation[];
+  /** The most recently accepted patch's `appended`, when it carried one. Cleared (`undefined`)
+   *  by any patch that carries none — a correction rewrite, a clinician confirm, or a durable
+   *  read hydrated from `DocumentSectionRecord` (below), which knows nothing about it. Never
+   *  "sticky" across a patch that superseded it without appending anything itself. */
+  appended?: string;
 }
 
 /** One document, its sections in render order. */
 export interface DocumentView {
   documentKey: string;
   sections: DocumentSectionView[];
+}
+
+/**
+ * One persisted `DocumentSection`, as `GET/PATCH :id/documents/:documentKey/sections[/:sectionKey]`
+ * return it. Mirrors the gateway's `DocumentSectionResponse` verbatim.
+ *
+ * Deliberately NOT `SectionPatch`: this is the REST/durable representation and carries `version`
+ * — the row's `_version`, the ONLY value valid as this section's `If-Match` precondition (also
+ * emitted as the response `ETag`) — in ADDITION to `revision`, the monotonic write-ordinal the
+ * SSE plane orders on. They are different numbers doing different jobs; confusing them breaks
+ * both the OCC precondition and the client fold's ordering. Carries no `appended` — nothing
+ * "just arrived" from a durable read's perspective.
+ */
+export interface DocumentSectionRecord {
+  id: string;
+  consultationId: string;
+  documentKey: string;
+  sectionKey: string;
+  title: string;
+  idx: number;
+  state: SectionState;
+  /** Orders the SSE `section.patch` stream — see the module docblock. NOT the OCC token. */
+  revision: number;
+  /** The row's `_version` — the ONLY valid `If-Match` precondition for the PATCH route. */
+  version: number;
+  content: string;
+  annotations?: SectionAnnotation[];
+  provenance?: SectionProvenance[];
+  documentTemplateVersionId?: string | null;
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
+  lockedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

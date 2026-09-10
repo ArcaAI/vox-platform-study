@@ -7,7 +7,9 @@
  * and the review plane the SDK demo composes around it.
  */
 
-import { GatewayError, getJson, patchJson, patchWithEtag, postJson } from '@/shared/api';
+import { GatewayError, getJson, getWithEtag, patchJson, patchWithEtag, postJson } from '@/shared/api';
+import type { WithEtag } from '@/shared/api';
+import type { DocumentSectionRecord } from './document-sections';
 import type { CorrectionProposal } from './live-assist';
 import type {
   ApproveSummaryRequest,
@@ -244,6 +246,47 @@ export function getSummaryProvenance(consultationId: string, contextItemId: stri
 /** Approve & sign-off; `contextItemId` is the summary's `id`. */
 export function approveSummary(consultationId: string, contextItemId: string, body: ApproveSummaryRequest = {}): Promise<SummaryApproval> {
   return postJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/approve`), body);
+}
+
+function documentSectionPath(consultationId: string, documentKey: string, sectionKey?: string): string {
+  const suffix = sectionKey ? `documents/${encodeURIComponent(documentKey)}/sections/${encodeURIComponent(sectionKey)}` : `documents/${encodeURIComponent(documentKey)}/sections`;
+  return consultationPath(consultationId, suffix);
+}
+
+/**
+ * The DURABLE view of one document — "the `section.patch` SSE lane only emits while a flush is
+ * running, so a client that reloads mid-encounter reads its state here" (the gateway's own
+ * description). `useDocumentSectionsStream` hydrates its fold from this for documents it
+ * already knows about (TASK-939 R4).
+ */
+export function listDocumentSections(consultationId: string, documentKey: string): Promise<DocumentSectionRecord[]> {
+  return getJson(documentSectionPath(consultationId, documentKey));
+}
+
+/**
+ * Reads one section WITH its ETag — the only way to obtain the `If-Match` precondition the
+ * confirm PATCH below requires. `version`, not `revision`, is the OCC token (see
+ * `DocumentSectionRecord`'s own note in `document-sections.ts`).
+ */
+export function getDocumentSection(consultationId: string, documentKey: string, sectionKey: string): Promise<WithEtag<DocumentSectionRecord>> {
+  return getWithEtag(documentSectionPath(consultationId, documentKey, sectionKey));
+}
+
+/**
+ * The clinician's CHECKPOINT (R4/OD-5): PATCHes a section's content under `If-Match`,
+ * transitioning it to `confirmed` — after which a flush may append but never overwrite it
+ * again. `content` is required by the DTO even for a plain confirm-with-no-edit, so callers
+ * that only want to confirm (not edit) re-send the section's own current content.
+ */
+export async function confirmDocumentSection(
+  consultationId: string,
+  documentKey: string,
+  sectionKey: string,
+  content: string,
+  expectedVersion: number,
+): Promise<DocumentSectionRecord> {
+  const result = await patchWithEtag<DocumentSectionRecord>(documentSectionPath(consultationId, documentKey, sectionKey), { content, expectedVersion }, `"${expectedVersion}"`);
+  return result.data;
 }
 
 // ─── Gateway SSE paths (relative to /api/v1 — useEventStream prepends the
