@@ -883,7 +883,7 @@ enum AiExplicitProviderMode {
 //   AiTaskKind WHICH TASK A BINDING IS FOR — this enum.
 //
 // The proof they are different axes is already in the tree:
-// `AI_TASK_MODEL_TASK_TYPES` (ai-task-default/constants.ts) is a MANY-TO-ONE
+// `AI_TASK_MODEL_TASK_TYPES` (ai-routing-policy/constants.ts) is a MANY-TO-ONE
 // map from task key to `ModelTaskType`. You do not write a map between a thing
 // and itself. Concretely `ModelTaskType.TOKEN_CLASSIFICATION` serves BOTH
 // `nlp.ner` and `guardrail.pii`, and `ModelTaskType.TEXT_CLASSIFICATION` serves
@@ -895,7 +895,7 @@ enum AiExplicitProviderMode {
 // selector (`text.live` and `text.finalize` are ONE kind, TWO selections) and
 // this enum is the product-visible grouping over it. The mapping is
 // `AI_TASK_KIND_BY_TASK_KEY` in
-// `packages/applications/src/services/ai-task-default/constants.ts`, whose
+// `packages/applications/src/services/ai-routing-policy/constants.ts`, whose
 // exhaustive `Record<AiTaskKey, AiTaskKind>` makes it impossible to add a task
 // key without deciding its kind.
 //

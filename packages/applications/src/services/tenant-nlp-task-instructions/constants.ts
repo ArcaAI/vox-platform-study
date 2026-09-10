@@ -2,7 +2,7 @@
  * Task keys governed by `TenantNlpTaskInstructions` — the
  * open-taxonomy `nlp.*` task types whose per-tenant CONTENT (topic list /
  * intent list / free-text guidance) is tenant-writable. Deliberately a
- * separate, smaller list from `AI_TASK_KEYS` (ai-task-default/constants.ts):
+ * separate, smaller list from `AI_TASK_KEYS` (ai-routing-policy/constants.ts):
  * that list governs MODEL/PROVIDER selection (super-admin-only for every
  * `nlp.*` key); this one governs tenant-authored INSTRUCTION CONTENT only,
  * and both `nlp.topic`/`nlp.intent` model selection still resolves through
