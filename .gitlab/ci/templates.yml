@@ -215,6 +215,16 @@
       - script_failure
   variables:
     SERVICE_NAME: ""
+    # Layer cache to read AND write, as a service name. Defaults to SERVICE_NAME
+    # — one cache per image, which is right whenever two jobs share no layers.
+    # Set it when two jobs build the SAME Dockerfile: two targets of one file
+    # have an identical builder stage, and giving each its own cache repo makes
+    # the second target rebuild every layer the first just built. The only
+    # instance is build-harness-worker (--target worker FROMs production), which
+    # points at `harness`. A job that shares a cache MUST also `needs:` the job
+    # that fills it — a shared ref alone buys nothing in the pipeline that
+    # writes it, and two concurrent `--cache-to` exports to one ref race.
+    CACHE_SERVICE: ""
     DOCKER_CONTEXT: "."
     DOCKERFILE: ""
     BUILD_TARGET: ""
@@ -226,7 +236,7 @@
       set -eu
 
       image_repo="$REGISTRY/$CI_PROJECT_PATH/$SERVICE_NAME"
-      cache_repo="$image_repo/cache"
+      cache_repo="$REGISTRY/$CI_PROJECT_PATH/${CACHE_SERVICE:-$SERVICE_NAME}/cache"
       short_sha=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
       created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

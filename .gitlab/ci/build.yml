@@ -404,26 +404,37 @@ build-harness-worker:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
+    # NOT optional, and not merely an ordering preference: this job shares
+    # build-harness's layer cache (CACHE_SERVICE below), and a shared cache is
+    # only worth anything to the job that reads it AFTER the writer has pushed.
+    # Run in parallel instead and the two jobs (a) both pay the full builder
+    # stage — apt toolchain plus a from-source llama-cpp-python compile — and
+    # (b) serialise anyway on the `sharing=locked` apt cache mount, one waiting
+    # out the other's download before starting its own. Sequenced, the worker is
+    # a cache hit down to its two-instruction final stage.
+    - job: build-harness
     # See build-harness above — same dev-2.1 shim constraint.
     - job: test-harness
       optional: true
   variables:
     SERVICE_NAME: harness-worker
+    # Read AND write build-harness's cache. `production` is not a stage the
+    # worker image merely resembles — `FROM production AS worker` IS its base,
+    # so every layer up to that point is byte-identical and a second cache repo
+    # only guaranteed it got rebuilt. The export from here is a superset (the
+    # same chain plus HEALTHCHECK NONE + ENTRYPOINT) and lands after
+    # build-harness's, so the shared ref only ever grows.
+    CACHE_SERVICE: harness
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/harness/Dockerfile
     # Same Dockerfile, `worker` stage — the Temporal worker is a separate
     # PROCESS, not a separate codebase (06-python-services.md §Temporal).
     BUILD_TARGET: worker
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
-  # 90m, not the .build-template default of 30m. This is the only Python service
-  # whose builder installs an apt toolchain (build-essential + cmake, for the
-  # `atomic-fact` extra's llama-cpp-python, which has no wheel and compiles
-  # llama.cpp from source). A COLD build pays ~28m of apt download at this
-  # runner's ~60 KB/s public egress before cmake starts, so 30m could not
-  # complete one — it timed out at exactly 1800s in pipeline 1161. The apt cache
-  # mount now actually retains its .debs (apps/harness/Dockerfile), so a warm
-  # build is minutes; this budget is what survives a cold one — after a
-  # BUILDER_REV bump, a builder reclaim, or the 168h cachemount GC.
+  # Same 90m as build-harness. Normally this job never needs it — it reads that
+  # job's cache and only adds a two-instruction final stage — but a cache miss
+  # (a failed export upstream, or a cachemount GC between the two jobs) puts it
+  # right back on the full builder stage, and the budget has to cover that.
   timeout: 90m
   rules:
     - !reference [.build-common-rules, rules]
