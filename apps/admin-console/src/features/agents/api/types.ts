@@ -62,6 +62,71 @@ export interface TemplateInstruction {
   variables?: Record<string, AgentPromptVariableBinding>;
 }
 
+/**
+ * TASK-947 §4.1 — the third TEXT_GENERATION instruction form: an ordered list of prompt
+ * fragments, each a template reference or an inline body, each with an optional CEL `when`
+ * condition (absent ⇒ always included — the "base"). Mirrors
+ * `packages/workflow-contract/src/agent-schemas.ts` (`Fragment`); this console feature
+ * hand-writes its own minimal type guards below rather than importing the not-yet-shipped
+ * `@arcaai/workflow-contract` helpers (`isCompositeInstruction` etc. land in a later lane —
+ * ticket §4.2 OD-13).
+ */
+export interface PromptFragment {
+  key: string;
+  promptTemplateId?: string;
+  systemPrompt?: string;
+  /** Only meaningful together with `promptTemplateId`; absent ⇒ follow the template's own approved version. */
+  promptVersionNumber?: number;
+  /** CEL string, ≤ 2,000 chars. Absent ⇒ always included. */
+  when?: string;
+}
+
+/** `Agent.instruction` for a TEXT_GENERATION agent composed from an ordered fragment list. */
+export interface CompositeInstruction {
+  fragments: PromptFragment[];
+  variables?: Record<string, AgentPromptVariableBinding>;
+}
+
+/** The 2-48 char `^[a-z0-9_]+$` handle a fragment key must match, unique within the list (agent-schemas.ts `KEY_PATTERN`). */
+export const FRAGMENT_KEY_PATTERN = /^[a-z0-9_]{2,48}$/;
+export const MIN_FRAGMENTS = 1;
+export const MAX_FRAGMENTS = 16;
+export const FRAGMENT_WHEN_MAX_LENGTH = 2000;
+
+export type InstructionForm = 'template' | 'inline' | 'fragments' | 'none';
+
+function isFragmentArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+/** Which of the three mutually exclusive TEXT_GENERATION instruction shapes a raw instruction is. */
+export function instructionForm(instruction: Record<string, unknown> | null | undefined): InstructionForm {
+  if (!instruction) return 'none';
+  if (isFragmentArray(instruction.fragments)) return 'fragments';
+  if (typeof instruction.promptTemplateId === 'string') return 'template';
+  if (typeof instruction.systemPrompt === 'string') return 'inline';
+  return 'none';
+}
+
+/** One fragment out of a raw, possibly-malformed value — `null` when it does not even carry a `key`. */
+function toPromptFragment(value: unknown): PromptFragment | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.key !== 'string') return null;
+  const fragment: PromptFragment = { key: record.key };
+  if (typeof record.promptTemplateId === 'string') fragment.promptTemplateId = record.promptTemplateId;
+  if (typeof record.systemPrompt === 'string') fragment.systemPrompt = record.systemPrompt;
+  if (typeof record.promptVersionNumber === 'number') fragment.promptVersionNumber = record.promptVersionNumber;
+  if (typeof record.when === 'string') fragment.when = record.when;
+  return fragment;
+}
+
+/** The fragment list of a composite instruction, in authored order; `[]` for any other form or malformed input. */
+export function readFragments(instruction: Record<string, unknown> | null | undefined): PromptFragment[] {
+  if (!instruction || !isFragmentArray(instruction.fragments)) return [];
+  return instruction.fragments.map(toPromptFragment).filter((fragment): fragment is PromptFragment => fragment !== null);
+}
+
 export interface Agent {
   id: string;
   tenantId: string;
@@ -234,12 +299,26 @@ export interface AgentTestTarget {
   source: 'row' | 'override';
 }
 
+/** TASK-947 §3 OD-11 — which fragments of a composite instruction ran. Keys only, never a condition string or a fragment body (no PHI-bearing text in telemetry). */
+export interface AgentTestAckExcludedFragment {
+  key: string;
+  reason: 'condition_false' | 'condition_error';
+  detail?: string;
+}
+
+export interface AgentTestAckComposition {
+  selected: string[];
+  excluded: AgentTestAckExcludedFragment[];
+}
+
 export interface AgentTestAck {
   mode: 'dry-run' | 'stream';
   findings: AgentFinding[];
   assembledSystemPrompt: string | null;
   assembledUserPrompt: string;
   resolved: AgentTestTarget;
+  /** TASK-947 — present only when the instruction is the fragments form; absent ⇒ render nothing extra. */
+  composition?: AgentTestAckComposition;
   /** Stream mode only. */
   taskId?: string;
   streamUrl?: string;

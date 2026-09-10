@@ -145,6 +145,18 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
             </span>{' '}
             · {ack.resolved.fundingTier} funding
           </p>
+          {ack.composition ? (
+            <p className="text-muted-foreground text-xs">
+              Fragments — selected: <span className="font-mono">{ack.composition.selected.join(', ') || '—'}</span>
+              {ack.composition.excluded.length ? (
+                <>
+                  {' '}
+                  · excluded:{' '}
+                  <span className="font-mono">{ack.composition.excluded.map((excluded) => `${excluded.key} (${excluded.reason})`).join(', ')}</span>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
