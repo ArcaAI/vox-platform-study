@@ -5,21 +5,10 @@
 // they reach it through three different validators. One function means the three cannot drift
 // on which property they read.
 
-/**
- * Where the identity value lives in a context payload: which STRUCTURED kind, and which of its
- * properties. Derived from the schema definition by `userIdentityBindingFromDefinition`
- * (lane B), frozen into the compiled agent/workflow config, and resolved live on the
- * consultation plane.
- *
- * DUPLICATED from lane B's canonical declaration in
- * `services/consultation-context-schema/context-schema-definition.ts` so this file compiles
- * standalone while both lanes are in flight. The orchestrator aliases it to the canonical
- * export at merge; the SHAPE is the contract and is identical on both sides.
- */
-export interface UserIdentityBinding {
-  kindKey: string;
-  field: string;
-}
+// The binding shape is lane B's canonical declaration; this helper only READS it, so the type is
+// imported rather than restated (a second declaration would surface twice through the services
+// barrel and TS2308 on the ambiguity).
+import type { UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
 
 /**
  * The identity value carried by `payload`, or `undefined` when the request did not send one.
