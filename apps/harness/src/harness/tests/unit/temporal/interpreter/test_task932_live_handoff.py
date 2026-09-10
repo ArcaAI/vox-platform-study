@@ -305,3 +305,7 @@ class TestLiveHandoff:
         assert trigger["dna_style_id"] == "rep-1"
         # Identity is untouched — the overlay ADDS, it does not replace the run's own subject.
         assert trigger["consultationId"] == _CONSULTATION
+        # TASK-946 OD-3 — and the SAME context is reachable under the namespace both lanes
+        # share, across the real activity-input serialization rather than in-process.
+        assert trigger["context"]["dna_style_text"] == "Terse. Abbreviates freely."
+        assert trigger["context"]["consultationId"] == _CONSULTATION
