@@ -49,6 +49,14 @@ from stt.pipeline.dto import (
 _SECRET = "super-secret-tenant-key"
 
 
+def _cache():
+    from stt.models.cache import ModelCache
+
+    cache = ModelCache.__new__(ModelCache)  # no __init__: avoid cache/metrics setup
+    ModelCache._install_loaders(cache)
+    return cache
+
+
 def _registry() -> dict[AiModelFormat, BaseModelLoader]:
     """The production format → loader map, read off ModelCache itself.
 
@@ -56,22 +64,45 @@ def _registry() -> dict[AiModelFormat, BaseModelLoader]:
     be one more hand-written list to drift, which is the defect this suite exists
     to prevent.
     """
-    from stt.models.cache import ModelCache
+    return _cache()._loaders
 
-    cache = ModelCache.__new__(ModelCache)  # no __init__: avoid cache/metrics setup
-    ModelCache._install_loaders(cache)
-    return cache._loaders
+
+def _library_registry() -> dict[str, BaseModelLoader]:
+    """The production library → loader map (TASK-944 B2).
+
+    Since TASK-944 a LOAD selects on `AiModel.libraryName`, not on `format`, so
+    the posture sweep has to cover this map too — otherwise a loader reachable
+    only by library would be exactly the "declared nothing" case this suite was
+    built to make impossible.
+    """
+    return _cache()._library_loaders
 
 
 _REGISTRY = _registry()
 _ALL = sorted(_REGISTRY.items(), key=lambda kv: kv[0].value)
 _ALL_IDS = [fmt.value for fmt, _ in _ALL]
 
+_LIBRARY_REGISTRY = _library_registry()
+_ALL_LIBRARIES = sorted(_LIBRARY_REGISTRY.items(), key=lambda kv: kv[0])
+_ALL_LIBRARY_IDS = [library for library, _ in _ALL_LIBRARIES]
+
 
 def test_the_registry_sweep_actually_found_loaders():
     """Guard the guard: an empty sweep makes every parametrised test below
     vacuously pass — the failure mode most likely to go unnoticed."""
     assert len(_ALL) >= 10, f"loader sweep found only {_ALL_IDS}"
+    assert len(_ALL_LIBRARIES) >= 10, f"library sweep found only {_ALL_LIBRARY_IDS}"
+
+
+@pytest.mark.parametrize(("library", "loader"), _ALL_LIBRARIES, ids=_ALL_LIBRARY_IDS)
+def test_every_library_selected_loader_declares_a_credential_posture(library, loader):
+    """TASK-944 (B2) — the SELECTION map, swept on the same default-deny terms."""
+    posture = getattr(loader, "credential_posture", None)
+    assert isinstance(posture, CredentialPosture), (
+        f"loader for library {library!r} ({type(loader).__name__}) declares no "
+        "`credential_posture`. Selection keys on `AiModel.libraryName`, so a loader "
+        "reachable only from this map would otherwise never be asked the question."
+    )
 
 
 # ---------------------------------------------------------------------------

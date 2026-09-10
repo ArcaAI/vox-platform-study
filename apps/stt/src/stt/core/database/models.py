@@ -205,6 +205,11 @@ class AiModelRead(Base):
     source_uri: Mapped[str] = mapped_column("sourceUri", String)
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
     format: Mapped[str] = mapped_column(AiModelFormatType)
+    # TASK-944 (B2) — the loader-SELECTION column (TASK-860). Mapped here too so
+    # the deprecated `pipeline_id` reader selects the same way the spec-driven
+    # path does; leaving one reader on the old `format` key is exactly how this
+    # half of TASK-860 went unfinished for a release.
+    library_name: Mapped[str] = mapped_column("libraryName", String)
     provider: Mapped[str | None] = mapped_column(String)
     architecture: Mapped[str | None] = mapped_column(String)
     memory_size_mb: Mapped[int | None] = mapped_column("memorySizeMb", Integer)
