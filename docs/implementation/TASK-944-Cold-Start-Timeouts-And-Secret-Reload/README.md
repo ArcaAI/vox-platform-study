@@ -1,6 +1,6 @@
 # TASK-944 — Cold-start timeouts and secret hot-reload
 
-**Status:** Review (lanes A + C merged and confirmed live; B1 + B2 implemented, UNMERGED)
+**Status:** In Progress (A, C, B1 done; B2 re-scoped to the loader mismatch)
 **Type:** bugfix
 **Opened:** 2026-09-10
 **Found by:** live verification of the `hope-v2-dev` k3s deployment (pipeline #862, rev `50b2db5`)
@@ -574,6 +574,73 @@ not `sourceUri`, which is the column that actually carries the repo id.
 
 **Not verified here, and it cannot be:** that the deployed row is repaired, that the embedding
 model then loads, and what the cold start costs afterwards. All three need the cluster.
+
+## B2 RE-SCOPED 2026-09-10 — the loader, not the data
+
+**The B2 premise in this ticket was wrong, and so was its first fix.** Recorded in
+full because the wrong diagnosis is instructive.
+
+The ticket asserted the `AiModel` row carried no HuggingFace repo id. It does —
+in `sourceUri`, a column the original in-pod inspection never selected (it read
+`slug`, `provider`, `format`, `_metadata`). Verified on the live cluster:
+
+```
+slug                        | sourceUri
+wespeaker-voxceleb-resnet34 | pyannote/wespeaker-voxceleb-resnet34-LM
+seed/ai-models/audio.ts:595   sourceUri: 'pyannote/wespeaker-voxceleb-resnet34-LM'   (since TASK-860)
+```
+
+Seed and live row have always agreed. The repair migration authored against that
+premise was a guarded no-op; it has been **dropped** rather than added to the
+ledger for a defect that does not exist.
+
+A second hypothesis — that `huggingface_cache_dir` defaults to `HF_HOME` instead
+of the hub directory — is also false HERE: `HUGGINGFACE_CACHE_DIR` IS set in the
+pod, to `/mnt/models-bucket/hf/hub`. (The default-factory inconsistency at
+`apps/stt/src/stt/core/config/settings.py:285-290` is real but latent, and only
+bites an environment that leaves the var unset. Worth a separate cleanup.)
+
+### The actual defect: a pyannote checkpoint loaded through the transformers loader
+
+The published snapshot, read in-pod:
+
+```
+/mnt/models-bucket/hf/hub/models--pyannote--wespeaker-voxceleb-resnet34-LM/
+  refs/main
+  snapshots/837717ddb9ff5507820346191109dc79c958d614/
+    config.yaml        _target_: pyannote.audio.models.embedding.WeSpeakerResNet34
+    pytorch_model.bin
+                       <- there is NO config.json
+```
+
+`HuggingFaceLoader` (`apps/stt/src/stt/models/huggingface_loader.py`) drives
+`transformers` — `AutoProcessor`, `AutoModelForSpeechSeq2Seq`, `AutoModelForCTC`.
+`transformers.from_pretrained` requires `config.json`. Absent it, and with
+`HF_HUB_OFFLINE=1`, transformers reports *"We couldn't connect to
+'https://huggingface.co' ... and couldn't find them in the cached files"* — a
+message indistinguishable from a missing model or a wrong repo id, which is why
+two independent diagnoses landed on the data instead of the loader.
+
+`pyannote.audio` 4.x is ALREADY installed (it is why `[ml]` pins torch 2.8), so
+the checkpoint has a correct loader available; it is simply not being used for
+`SPEAKER_EMBEDDING`.
+
+This also explains the ORIGINAL `AutoProcessor` symptom: that path was always
+transformers. Lane B fixed the import, so it now fails one step deeper.
+
+### Work still to do (B2)
+
+- Route a `SPEAKER_EMBEDDING` / pyannote-format checkpoint to a loader that can
+  read `config.yaml` + `pytorch_model.bin`, rather than to `transformers`.
+- Decide how the format is DECLARED rather than sniffed — the catalogue already
+  carries `format` (`PYTORCH`) and `taskType` (`SPEAKER_EMBEDDING`); prefer an
+  existing declared field over inspecting files at load time.
+- Make the offline "not in cache" failure distinguishable from "wrong loader",
+  so the next person is not sent to the data again.
+- Verification: diarization/voice-profile warm succeeds in-cluster, and the cold
+  streaming-session create drops below its ~17 s.
+
+**Status of B2: NOT fixed. Re-scoped, not closed.**
 
 ## Change History
 
