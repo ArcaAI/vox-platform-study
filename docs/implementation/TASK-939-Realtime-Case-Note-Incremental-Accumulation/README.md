@@ -408,7 +408,86 @@ the five API artifacts regenerated together if any route changes (`05-nestjs-api
 
 ## 7. Implementation Summary
 
-_Not started — plan awaiting owner decisions and go._
+### Wave 0 — the prompt stopped ordering the defect (`efac0bbb2`)
+
+`GENERAL_MEDICINE_SUMMARY_CONTENT` no longer says *"re-emit the whole note each time"*. It now tells
+the model to carry its own prior text forward VERBATIM, add only what the new transcript
+contributes, and says why (a clinician is reading the note as it is written, so rephrased text reads
+as the note changing its mind). `task-939-running-note-accumulates.test.ts` asserts the
+INSTRUCTION rather than the phrasing — an author may reword freely but may not reinstate an order to
+reproduce the document wholesale — and pins the in-progress posture in the same sentence so the
+rewrite order cannot be "fixed" by deleting the paragraph.
+
+### Wave 2a — the append the state machine always described (`d8f4a4394`)
+
+`DocumentSectionEntity.appendMachineContent` and `DocumentSectionStore`'s `mode: 'append'`. A REPLACE
+can destroy what the clinician wrote, so it stays refused on a CONFIRMED section; an APPEND cannot,
+so it proceeds (OD-3). Details that matter:
+
+- An empty addition is `nothing-to-append`, answered BEFORE the row read, so the generation
+  watermark does not advance on a turn that wrote nothing — a later real append for the same
+  generation must not then look stale.
+- The entity treats an empty addition as a no-op rather than an empty append: `repository.update`
+  persists `entity.changes`, so touching the setters would write a row and burn a revision every
+  quiet turn, and since `revision` is the client's out-of-order discard key, advancing it without
+  content would make a later real append look stale too.
+- `section.patch` gained `appended` (the new part) while `content` stays the WHOLE body, so
+  `@arcaai/vox-node`'s `onSectionPatch`, the browser SDK and the console's fold are untouched.
+
+### Wave 2b — the turn contract (OD-2a)
+
+`realtime/turn-contract.ts`: `buildTurnResponseFormat` (the strict per-section
+`{addition, revision, contradiction}` schema), `turnInstruction` (its prose half, kept beside it so
+the two cannot drift), `parseTurnJson`, `applyTurn` (the fold) and `wholeDocumentAsTurn` (the
+degrade). Wired into BOTH lanes; `publishSectionPatches` now consumes per-section writes, so a
+section the turn said nothing about produces no row, no patch and no render churn.
+
+**Deviation from OD-2(a) as written, with rationale.** The owner approved
+`{ addition, corrections[] }`. Implemented as `{ addition, revision, contradiction }`: a
+`corrections[]` of `{find, replace}` pairs fails SILENTLY whenever the model's `find` string does not
+match the stored text byte-for-byte, so a correction the clinician needed simply does not happen and
+nothing reports it. A whole-section `revision` always applies, and the `contradiction` requirement is
+what stops it becoming the old behaviour under a new field name. Same spirit (prior text is not
+re-emittable; corrections are explicit), more reliable mechanism.
+
+Three defects were found BY the pre-existing suite during integration and are each now pinned:
+
+| Defect | Why it mattered |
+|---|---|
+| A whole-document JSON (string values under section keys) parsed as an EMPTY turn | Every section "contributed nothing" and the note came out blank — a whole generation silently discarded. `parseTurnJson` now returns `null` on a string value, which routes it to the lossless degrade |
+| `wholeDocumentAsTurn` re-keyed the parser's output onto `sectionKeys` | Discarded the prose parser's single-section `Running Summary` fallback, publishing an empty note. It now passes the parsed list through verbatim, exactly as `publishSectionPatches` did before |
+| `renderPriorNote` drove off `sectionKeys` | Same class of bug: a fallback-shaped prior note rendered as "(nothing recorded yet)" everywhere, so the prior note vanished from the prompt and the model started over |
+
+A fourth was a performance regression the suite caught: a well-formed whole-document response failed
+the turn parser and so triggered the bounded repair retry, doubling model calls on the clinician's
+live path for every provider that answers with the document. `shouldRepair` now also requires that
+the text is not parseable as a document.
+
+### Evidence
+
+`live-documentation.accumulates.task939.test.ts` drives the real service across three turns and
+asserts the owner's requirement directly: **for every section, each published revision's text is a
+PREFIX of the next** — plus that a patch names only what it added, that a quiet section publishes
+nothing, that a justified revision replaces and an unjustified one is refused, and that the prompt
+carries the prior note BY KEY.
+
+```
+pnpm --filter @arcaai/database test   → 1 failed | 85 passed (86 files); 1726 passed (1727)
+                                        the 1 failure is a PRE-EXISTING ASR-default seed test from
+                                        TASK-938 (`a56e534e5`), unrelated to prompts — flagged, not fixed
+pnpm --filter @arcaai/domains  test   → 162 passed | 2 skipped (164); 1910 passed
+pnpm --filter @arcaai/domains  build  → clean;  gen:entity:check / gen:factory:check → no drift, coverage OK
+pnpm --filter @arcaai/applications test → 12650 passed | 6 skipped (12656)
+                                        (plus 1 live-DB integration file that needs `pnpm setup:test`)
+```
+
+The guard test was verified by MUTATION: removing the `contradiction` requirement from `applyTurn`
+failed exactly one test (`THE GUARD: a revision with no contradiction is REFUSED`) and nothing else.
+
+### Still to land
+
+OD-8(a) flag flip, the churn metric (R7), session continuity (R9–R11), the console lane (R4, in its
+own worktree) and the replay harness (R8).
 
 ## 8. Change History
 

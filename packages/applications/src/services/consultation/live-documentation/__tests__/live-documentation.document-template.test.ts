@@ -186,7 +186,15 @@ describe('the live loop serves the tenant’s document template', () => {
     expect(schema?.required).toEqual(['subjective', 'objective', 'assessment', 'plan']);
     // D-21 holds for the platform shape too: every key is required (strict
     // decoding stays on) and every one of them is NULLABLE.
-    expect((schema?.properties as Record<string, { type: unknown }>).objective.type).toEqual(['string', 'null']);
+    //
+    // TASK-939 OD-2(a) — what a section's property CONTAINS changed: the realtime lane decodes a
+    // TURN (what this turn adds), not the whole document, so a section is now a nullable
+    // `{addition, revision, contradiction}` object rather than a nullable string. The assertion
+    // this test exists for is unchanged — the schema is DERIVED from the resolved template and is
+    // not a hardcoded literal — and `required` above still proves it follows the template's keys.
+    const objective = (schema?.properties as Record<string, { type: unknown; properties?: Record<string, unknown> }>).objective;
+    expect(objective.type).toEqual(['object', 'null']);
+    expect(Object.keys(objective.properties ?? {}).sort()).toEqual(['addition', 'contradiction', 'revision']);
   });
 
   it('falls open to the platform shape when the catalog throws', async () => {

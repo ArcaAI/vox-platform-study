@@ -99,6 +99,17 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+// TASK-939 OD-2(a) — the turn contract: schema, parser, fold and the whole-document degrade.
+import {
+  applyTurn,
+  buildTurnResponseFormat,
+  parseTurnJson,
+  turnInstruction,
+  wholeDocumentAsTurn,
+  type AppliedTurn,
+  type TurnRefusal,
+  type TurnSectionWrite,
+} from './realtime/turn-contract';
 import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
 // TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
 // instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
@@ -407,6 +418,12 @@ interface GraphFlushProjection {
   nlpRan: boolean;
   nlpFailed: boolean;
   nlpLatencyMs: number;
+  /** TASK-939 — only the sections this turn CHANGED, each with the mode it must be written in. */
+  turnWrites: TurnSectionWrite[];
+  /** Contributions the turn contract refused (an unjustified rewrite). PHI-safe: keys and reasons. */
+  turnRefusals: TurnRefusal[];
+  /** True when the generation could not be read as a turn and fell back to a whole-document rewrite. */
+  turnDegraded: boolean;
   /** The raw run, for the trajectory and for the parity diff. */
   run: RealtimeRunResult;
 }
@@ -2429,7 +2446,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         elidedParts,
       });
     }
-    const priorNote = session.lastPayload?.runningSummary ?? '';
+    const priorSections = session.lastPayload?.sections ?? [];
+    // TASK-939 §2.2 — the prior note, WITH ITS STRUCTURE.
+    //
+    // This used to be `session.lastPayload?.runningSummary`, which is
+    // `buildRunningSummary(sections)`: an unlabelled `\n\n` join of the section BODIES, titles and
+    // keys discarded. The model was then asked to emit a KEYED document against the compiled
+    // template schema, so every turn it had to re-derive which prose belonged to which section —
+    // and re-emit all of it. Telling it "merge, don't restart" against a prompt that structurally
+    // required a full re-partition is the contradiction that produced the reported defect.
+    //
+    // `buildRunningSummary` keeps its real job (the offset base NER entities index); it was simply
+    // never the right thing to feed back as the prior note. The sections, titles intact, were two
+    // lines away the whole time.
+    const priorNote = this.renderPriorNote(priorSections, template.compiled);
     // The stable lead-in now comes from the FROZEN snapshot rather than the
     // module constant. Prefix-cache friendliness is preserved BY CONSTRUCTION:
     // the prefix is frozen per session, so it stays byte-identical across every
@@ -2442,14 +2472,31 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.stablePrefixFor(agent, template),
       template.compiled.title,
       this.operatingFrame(template, session.summaryLanguage),
+      // TASK-939 OD-2(a) — the turn contract's prose half, kept beside its schema so the two
+      // cannot drift.
+      turnInstruction(template.compiled),
     );
+    // The compiled view the TEXT call decodes against THIS turn. A derived object, not a mutation:
+    // `template.compiled.responseFormat` is persisted on `DocumentTemplateVersion` and is the
+    // durable finalisation path's contract too.
+    const turnCompiled: CompiledDocumentTemplate = { ...template.compiled, responseFormat: buildTurnResponseFormat(template.compiled) };
 
     // TEXT first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
     // must be produced before NER runs). Both calls retain the last-good value if the
     // service is down.
-    let sections = session.lastPayload?.sections ?? [];
-    let runningSummary = priorNote;
+    let sections = priorSections;
+    // The last-good note, for the degrade paths below. NOT `priorNote`, which is now the STRUCTURED
+    // prompt rendering — publishing that as `runningSummary` would put section headings into the
+    // text NER offsets index against.
+    let runningSummary = session.lastPayload?.runningSummary ?? '';
+    // TASK-939 — the per-section writes this flush implies, and what it refused. Empty on a flush
+    // that produced nothing; `publishSectionPatches` consumes it instead of re-walking every
+    // section, so a quiet section costs no write and publishes no patch.
+    let turnWrites: TurnSectionWrite[] = [];
+    let turnRefusals: TurnRefusal[] = [];
+    /** True when the turn contract could not be honoured and this flush fell back to a full rewrite. */
+    let turnDegraded = false;
     let textFailed = false;
     let textLatencyMs = 0;
     // AD-1 generation stats for this flush (null unless TEXT
@@ -2485,11 +2532,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               this.stablePrefixFor(agent, template),
               template.compiled.title,
               this.operatingFrame(template, session.summaryLanguage),
+              turnInstruction(template.compiled),
             ),
           agent,
           template,
           signal,
           isStale,
+          priorSections,
         })
       : null;
     if (graph === 'stale') return this.dropStale(session);
@@ -2516,6 +2565,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       if (graph.sections.length > 0) {
         sections = graph.sections;
         runningSummary = graph.runningSummary;
+        turnWrites = graph.turnWrites;
+        turnRefusals = graph.turnRefusals;
+        turnDegraded = graph.turnDegraded;
         session.flushedTranscriptCount = deltaEnd;
       }
       textFailed = graph.textFailed;
@@ -2528,13 +2580,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     if (!graph) {
       try {
-        // Bounded JSON auto-repair: the strict parser is `parseDocumentJson` (null on
-        // a JSON/shape failure); the tolerant `parseDocumentSections` prose parser is the
-        // final fallback. A retry only runs when `response_format` was actually
+        // Bounded JSON auto-repair. The strict parser is now the TURN parser
+        // (TASK-939 OD-2(a)); the tolerant path reproduces the PRE-ticket whole-document
+        // behaviour, for a provider that ignores `response_format` and answers with the document
+        // rather than with its contribution. A retry only runs when `response_format` was actually
         // sent (structured) — an engine that ignores it returns prose by design, so
         // a retry could never yield JSON and is skipped. The corrective instruction
         // is appended (not prepended) to keep the prefix-cache-stable lead-in intact.
-        const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
+        const outcome = await generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
             const { text, stats, structured } = await this.callText(
@@ -2543,21 +2596,41 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               signal,
               corrective,
               agent,
-              template.compiled,
+              // The turn schema, swapped in by DERIVING a compiled view rather than by threading a
+              // new parameter: `responseFormat` is the only field the call path reads, and
+              // `CompiledDocumentTemplate.responseFormat` is a persisted artifact the durable
+              // finalisation path also decodes against, so it must not be changed in place.
+              turnCompiled,
               undefined,
               session.consultationId,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
           parseStrict: (text) => {
-            const parsed = parseDocumentJson(text, template.compiled);
-            return parsed && parsed.length > 0 ? parsed : null;
+            const turn = parseTurnJson(text, template.compiled);
+            return turn ? applyTurn(priorSections, turn, template.compiled) : null;
           },
-          parseTolerant: (text) => parseDocumentSections(text, template.compiled),
+          parseTolerant: (text) => {
+            // DEGRADE. Try the whole-document JSON first, then prose — both are "the model answered
+            // with the document", which is the old behaviour, so both become replaces and the flush
+            // records that it took this path. The churn metric is what makes a tenant stuck here
+            // visible instead of silently fine.
+            const asJson = parseDocumentJson(text, template.compiled);
+            const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(text, template.compiled);
+            turnDegraded = true;
+            return wholeDocumentAsTurn(parsed, template.compiled);
+          },
           // Retry only a genuine malformed-JSON attempt: structured output was
           // requested AND the text opens a JSON object. Clean prose (no leading
           // `{`) is served by the tolerant regex parser with no wasted regen.
-          shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
+          //
+          // TASK-939 — and NOT when the text is a well-formed WHOLE-DOCUMENT response. Such an
+          // output failed the turn parser but is perfectly usable through the degrade path, so
+          // regenerating it buys nothing and costs a second model call on the clinician's live
+          // path. Without this, switching to the turn contract silently doubled the calls for
+          // every provider that answers with the document.
+          shouldRepair: (first) =>
+            first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, template.compiled) === null,
         });
         if (isStale()) return this.dropStale(session);
 
@@ -2570,14 +2643,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           repairStats = repairCall.stats;
         }
 
-        const parsed = outcome.value;
-        if (parsed.length > 0) {
-          sections = parsed;
-          runningSummary = buildRunningSummary(parsed);
-          // Advance only over the segments actually sent (C5-04): on a truncated
-          // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
-          session.flushedTranscriptCount = deltaEnd;
-        }
+        const applied = outcome.value;
+        // A turn that changed NOTHING is a real outcome, not a failure: the new transcript may have
+        // carried no clinical content. The cursor must still advance — the delta WAS consumed — but
+        // nothing is written or published, which is the whole point of an additive contract.
+        sections = applied.sections;
+        runningSummary = buildRunningSummary(applied.sections);
+        turnWrites = applied.writes;
+        turnRefusals = applied.refusals;
+        // Advance only over the segments actually sent (C5-04): on a truncated
+        // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
+        session.flushedTranscriptCount = deltaEnd;
       } catch (error) {
         if (isStale()) return this.dropStale(session);
         textFailed = true;
@@ -2748,6 +2824,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         groundedness,
         template,
         generation: myGeneration,
+        // TASK-939 — only the sections this turn changed.
+        writes: turnWrites,
         // TASK-891 B5 — WHY this flush produced nothing, when it produced nothing. The
         // summary node's own reason wins over any other node's: it is the one that
         // decides whether there is a note at all.
@@ -2849,6 +2927,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       template: ResolvedDocumentTemplate;
       signal: AbortSignal;
       isStale: () => boolean;
+      /**
+       * TASK-939 — the note BEFORE this turn. The turn contract folds a contribution onto it, so
+       * the lane needs what is already written; passed in rather than re-read so the graph and
+       * legacy branches fold against byte-identical input.
+       */
+      priorSections: readonly LiveSummarySectionDto[];
     },
   ): Promise<GraphFlushProjection | 'stale' | null> {
     // Honour the session's frozen tool plan on the PLATFORM lane. A tenant graph
@@ -2864,6 +2948,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let repairLatencyMs = 0;
     let repairStats: LiveSummaryStatsDto | null = null;
     let parsedSections: LiveSummarySectionDto[] = [];
+    // TASK-939 — what this turn changed, and what it refused. Captured in the closure beside
+    // `parsedSections` for the same reason: the projection below is built after the run, and these
+    // are produced inside the capability.
+    let turnWrites: TurnSectionWrite[] = [];
+    let turnRefusals: TurnRefusal[] = [];
+    let turnDegraded = false;
 
     const capabilities: RealtimeCapabilities = {
       // task 14 / — capture PRODUCES the transcript.
@@ -2892,7 +2982,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // the tenant default in its place. A legacy summary node carries no ref and keeps the
         // assigned-agent path inside `callText`.
         const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId, effectiveLane);
-        const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
+        // TASK-939 OD-2(a) — the TURN schema, derived per call. `responseFormat` is the only field
+        // the call path reads off `compiled`, and the committed one is a persisted artifact the
+        // durable finalisation path decodes against, so it is spread rather than mutated.
+        const turnCompiled: CompiledDocumentTemplate = {
+          ...ctx.template.compiled,
+          responseFormat: buildTurnResponseFormat(ctx.template.compiled),
+        };
+        const outcome = await generateJsonWithRepair<AppliedTurn, LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
             const { text, stats, structured } = await this.callText(
@@ -2901,18 +2998,27 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               signal,
               corrective,
               ctx.agent,
-              ctx.template.compiled,
+              turnCompiled,
               textAgent,
               session.consultationId,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
           parseStrict: (text) => {
-            const parsed = parseDocumentJson(text, ctx.template.compiled);
-            return parsed && parsed.length > 0 ? parsed : null;
+            const turn = parseTurnJson(text, ctx.template.compiled);
+            return turn ? applyTurn(ctx.priorSections, turn, ctx.template.compiled) : null;
           },
-          parseTolerant: (text) => parseDocumentSections(text, ctx.template.compiled),
-          shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
+          parseTolerant: (text) => {
+            // DEGRADE to the pre-ticket whole-document behaviour — see `wholeDocumentAsTurn`.
+            const asJson = parseDocumentJson(text, ctx.template.compiled);
+            const parsed = asJson && asJson.length > 0 ? asJson : parseDocumentSections(text, ctx.template.compiled);
+            turnDegraded = true;
+            return wholeDocumentAsTurn(parsed, ctx.template.compiled);
+          },
+          // TASK-939 — see the legacy branch: a well-formed whole-document response is usable via
+          // the degrade path, so it must not trigger a second model call.
+          shouldRepair: (first) =>
+            first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, ctx.template.compiled) === null,
         });
 
         const [firstCall, repairCall] = outcome.calls;
@@ -2923,8 +3029,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           repairLatencyMs = repairCall.latencyMs;
           repairStats = repairCall.stats;
         }
-        parsedSections = outcome.value;
-        return { text: buildRunningSummary(outcome.value), sections: outcome.value, stats: firstCall.stats, repaired: outcome.repaired };
+        parsedSections = outcome.value.sections;
+        turnWrites = outcome.value.writes;
+        turnRefusals = outcome.value.refusals;
+        return {
+          text: buildRunningSummary(parsedSections),
+          sections: parsedSections,
+          stats: firstCall.stats,
+          repaired: outcome.repaired,
+        };
       },
 
       // Lane R (R1) — the live GRAMMAR pass. Reads the node's own config (the prompt binding)
@@ -3027,6 +3140,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return {
       sections: summarize?.status === 'succeeded' ? parsedSections : [],
       runningSummary: summarize?.status === 'succeeded' ? buildRunningSummary(parsedSections) : '',
+      // TASK-939 — only the sections this turn changed. A node that did not succeed contributes no
+      // writes, so a degraded generation can never be mistaken for "the turn had nothing to say".
+      turnWrites: summarize?.status === 'succeeded' ? turnWrites : [],
+      turnRefusals: summarize?.status === 'succeeded' ? turnRefusals : [],
+      turnDegraded: summarize?.status === 'succeeded' ? turnDegraded : false,
       textFailed: summarize !== undefined && summarize.status !== 'succeeded' && summarize.status !== 'skipped',
       textLatencyMs,
       textStats,
@@ -3079,33 +3197,45 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
        * publishes content, whatever else degraded alongside it.
        */
       degradeReason?: string;
+      /**
+       * TASK-939 — the per-section writes THIS turn implies, each carrying its own mode. Only these
+       * sections are written and published: a section the turn said nothing about produces no
+       * write, no row, no patch and no render churn, which is the whole point of the additive
+       * contract.
+       */
+      writes: readonly TurnSectionWrite[];
     },
   ): Promise<void> {
     if (ctx.sections.length === 0) {
       await this.publishSectionDegrade(session, ctx.template, ctx.degradeReason);
       return;
     }
+    // A turn that touched nothing publishes nothing — and is NOT a degrade: the note stands as it
+    // was, which for a stretch of transcript with no clinical content is the correct outcome.
+    if (ctx.writes.length === 0) return;
 
     // The document this lane is producing. One document today; the key is what
     // makes a second one addressable without reshaping anything.
     const documentKey = ctx.template.slug;
-    const sectionKeys = ctx.template.compiled.sectionKeys;
     const perSection = reanchorAnnotations(ctx.sections, ctx.runningSummary, ctx.entities, ctx.groundedness, ctx.findings);
 
-    for (const [idx, section] of ctx.sections.entries()) {
-      // Positional: `parseDocumentJson`/`parseDocumentSections` emit sections in
-      // the compiled template's authored order, which IS `sectionKeys`' order.
-      const sectionKey = sectionKeys[idx] ?? section.title.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+    for (const write of ctx.writes) {
+      const { sectionKey, idx } = write;
       try {
         const result = await this.sections().applyFlushPatch({
           consultationId: session.consultationId,
           tenantId: session.tenantId,
           documentKey,
           sectionKey,
-          title: section.title,
+          title: write.title,
           idx,
-          content: section.content,
+          content: write.content,
+          mode: write.mode,
+          // Annotations are computed over the POST-turn section list and indexed by the section's
+          // render ordinal, so they are addressed by `idx` rather than by the write's position in
+          // this loop — only changed sections are written, so the two are no longer the same.
           annotations: perSection[idx],
+          ...(write.contradiction ? { contradiction: write.contradiction } : {}),
           documentTemplateVersionId: ctx.template.documentTemplateVersionId,
           generation: ctx.generation,
           userId: session.userId ?? null,
@@ -3946,6 +4076,58 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     ].join('\n');
   }
 
+  /**
+   * TASK-939 §2.2 — render the prior note for the PROMPT, with its structure intact.
+   *
+   * `buildRunningSummary` drops every title and key and returns a flat `\n\n` join of bodies. As
+   * the prompt's "note so far" that was the defect's engine: the model was shown unlabelled prose
+   * and asked for a keyed document, so it re-partitioned and re-emitted everything, every turn.
+   * Feeding it back BY KEY means a turn can address one section without reconstructing the rest —
+   * which is what makes the additive contract expressible at all.
+   *
+   * The key is named alongside the title because the turn schema is keyed: a model that reads
+   * "Objective (objective)" knows which property to put its addition under.
+   *
+   * Empty sections are listed too, as `(nothing recorded yet)`. Omitting them invites the model to
+   * treat the section as absent from the template rather than as not yet reached, and the compiled
+   * schema requires every key regardless.
+   */
+  private renderPriorNote(sections: readonly LiveSummarySectionDto[], compiled: CompiledDocumentTemplate): string {
+    if (sections.length === 0) return '';
+
+    const titles = new Map(compiled.checklist.map((entry) => [entry.key, entry.title]));
+    const keyByTitle = new Map(compiled.checklist.map((entry) => [entry.title.trim().toLowerCase(), entry.key]));
+    const aligned = sections.length === compiled.sectionKeys.length;
+
+    // Walk what we ACTUALLY HAVE, not the template's key list. The prose parser has a fallback
+    // shape — one `Running Summary` section carrying the whole output when no heading matched — and
+    // driving this off `sectionKeys` silently rendered every section as "(nothing recorded yet)" for
+    // such a note, so the prior note vanished from the prompt and the model started over. Same
+    // class of bug as re-keying the degrade path: the authoritative shape is the note, not the
+    // template.
+    const covered = new Set<string>();
+    const rendered = sections.map((section, idx) => {
+      const key = aligned ? compiled.sectionKeys[idx] : keyByTitle.get(section.title.trim().toLowerCase());
+      if (key) covered.add(key);
+      const body = (section.content ?? '').trim();
+      // The key is named beside the title because the turn schema is KEYED: a model reading
+      // "Objective (objective)" knows which property its addition belongs under. A section with no
+      // resolvable key (the fallback) is rendered by title alone rather than mislabelled.
+      const heading = key ? `## ${titles.get(key) ?? section.title} (${key})` : `## ${section.title}`;
+      return `${heading}\n${body.length > 0 ? body : '(nothing recorded yet)'}`;
+    });
+
+    // Template sections the note has not reached are listed too. Omitting them invites the model to
+    // treat a section as absent from the document rather than as not yet discussed, and the turn
+    // schema requires every key regardless.
+    for (const key of compiled.sectionKeys) {
+      if (covered.has(key)) continue;
+      rendered.push(`## ${titles.get(key) ?? key} (${key})\n(nothing recorded yet)`);
+    }
+
+    return rendered.join('\n\n');
+  }
+
   private buildTextUserPrompt(
     priorNote: string,
     delta: string,
@@ -3960,6 +4142,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-932 §3.7 — the operating frame, already rendered. Passed in rather than built here so
     // this method stays a pure string assembly and the frame is testable on its own.
     operatingFrame = '',
+    // TASK-939 OD-2(a) — the turn contract's prose half (`turnInstruction`), already rendered.
+    // Trailing and defaulted so every positional fixture keeps its arity. Empty ⇒ the pre-ticket
+    // whole-document prompt, which is what the durable/compat callers still want.
+    turnContract = '',
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -3981,9 +4167,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // flushes) is now the trailing block.
     const transcriptBlock = hasPriorNote ? `\n\nNew transcript since last update:\n${delta}` : `\n\nTranscript so far:\n${delta}`;
     const currentNoteBlock = hasPriorNote ? `\n\nCurrent ${documentTitle} so far:\n${priorNote}` : '';
-    const deltaInstruction = hasPriorNote
-      ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
-      : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
+    // TASK-939 — under the turn contract the instruction is about the CONTRIBUTION, not about the
+    // document: "update the existing note" invited the model to hand back the note, which is what
+    // it did. `turnContract` (appended last) carries the field-level rules; this line only has to
+    // say what the turn is FOR.
+    const deltaInstruction = turnContract
+      ? hasPriorNote
+        ? `\n\nReport what the new transcript adds to the ${documentTitle} above. Do not reproduce the note.`
+        : `\n\nThis is the first turn of this ${documentTitle}: report what the transcript above establishes.`
+      : hasPriorNote
+        ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
+        : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
 
     // The frame goes LAST, after the delta instruction: it is the turn's procedure, and a
     // trailing block is what the model reads immediately before generating. It is deliberately
@@ -3991,7 +4185,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // so the engine can reuse its cached KV, and the frame carries the same bytes for the same
     // session, so appending it here costs the cache nothing while keeping the prefix's contract
     // (tenant-governed prose + compiled structure) unmuddied.
-    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock + operatingFrame;
+    // `turnContract` is LAST of all — after the operating frame — because it is the output
+    // contract, and the nearest instruction to the generation point is the one a model honours
+    // most reliably. It is per-session-stable like the frame, so the prefix cache is unaffected.
+    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock + operatingFrame + turnContract;
   }
 
   /**

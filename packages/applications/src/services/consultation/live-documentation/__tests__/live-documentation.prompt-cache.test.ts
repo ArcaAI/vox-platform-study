@@ -103,7 +103,10 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     // this fixture resolves the platform shape, whose title is "SOAP Note".
     const noteIdx = update.indexOf('Current SOAP Note so far');
     const transcriptIdx = update.indexOf('mild fever');
-    const instructionIdx = update.indexOf('Update the existing SOAP Note');
+    // TASK-939 OD-2(a) — the update instruction is now about the CONTRIBUTION, not the document:
+    // "update the existing note" invited the model to hand the note back, which is exactly what it
+    // did. The ORDERING this test exists to pin is unchanged.
+    const instructionIdx = update.indexOf('Report what the new transcript adds to the SOAP Note');
     expect(noteIdx).toBeGreaterThanOrEqual(0);
     expect(transcriptIdx).toBeGreaterThanOrEqual(0);
     expect(instructionIdx).toBeGreaterThanOrEqual(0);
@@ -112,5 +115,10 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     expect(instructionIdx).toBeGreaterThan(transcriptIdx);
     // Old transcript is not re-sent verbatim (incremental design preserved).
     expect(update).not.toContain('Patient reports cough');
+    // TASK-939 — the output contract is the LAST thing the model reads before generating, so it
+    // comes after the instruction and after the operating frame.
+    const turnIdx = update.indexOf('WHAT TO EMIT THIS TURN:');
+    expect(turnIdx).toBeGreaterThan(instructionIdx);
+    expect(update.indexOf('HOW TO PRODUCE THIS TURN:')).toBeLessThan(turnIdx);
   });
 });
