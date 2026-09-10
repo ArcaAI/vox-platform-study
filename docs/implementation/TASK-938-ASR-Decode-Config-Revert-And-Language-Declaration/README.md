@@ -145,7 +145,7 @@ it is left as-is on the dev row.
 
 | Gate | Result |
 |---|---|
-| `packages/database` seed tests | 50 files / **677 passed** |
+| `packages/database` seed tests | ⚠️ **50 files / 677 passed — a PARTIAL run**, not the package suite. It missed `src/__tests__/seed.test.ts`, whose slug-pinned assertion that q8_0 is the platform ASR default went red with the D-3 election move and stayed red. Corrected 2026-09-10 (`f6fb70579`): the full suite is **86 files / 1728 passed**. Run the whole package (`pnpm --filter @arcaai/database test`, no filter) — a seed-data change can break an assertion in any of the 86 files. |
 | `apps/admin-console` suite | 304 files / **2776 passed**; eslint + `tsc --noEmit` clean |
 | `apps/stt` unit suite | **3258 passed**, 1 failed — `test_task799_env_surface.py::test_minio_credentials_default_to_empty`, the pre-existing env failure TASK-891's own gate line records |
 | `ruff check apps/stt` | All checks passed |
@@ -200,3 +200,4 @@ unpinned or Malayalam session still gets the clean sentence-level decode.
 | 2026-09-09 | Root-cause analysis against the two live sessions; ticket opened. Language clobber fixed (RED confirmed), decode config moved to the owner's table, gates green, live dev DB updated. |
 | 2026-09-09 | R-4: collapsed the duplicate auto option in the consultation playground (RED confirmed); admin-console suite green. |
 | 2026-09-09 | The dev stack had gone down mid-work (22:00, nothing on 8868/8861) and two orphan `apps/api` processes were left holding no port; cleared them and restarted `pnpm stack:dev`. Runtime proof captured (§5). |
+| 2026-09-10 | **Follow-up fix (`f6fb70579`) — a stale test this ticket left red.** `a56e534e5` rewrote `seed/__tests__/task-934-asr-model-geometry.test.ts` to assert the D-3 INVARIANT (exactly one elected ASR row, and it equals `asrAgent.modelSlug`) instead of a slug, but a second, slug-pinned copy of the claim in `src/__tests__/seed.test.ts:1399` was missed — it still asserted `…-gguf-q8_0` carries `isPlatformDefaultFor: ['SPEECH_TO_TEXT']`. It now points at the f16 row, its name says f16, and its TASK-934 OD-2 comment states OD-2 as the RULE ("the default is whichever quantisation the agent serves") rather than the row TASK-934 happened to select, pointing at the geometry test that owns the invariant. A sibling test keeps q8_0's shape covered and asserts it does NOT elect itself. Also swapped the two rows' stale `description` strings in `seed/ai-models/audio.ts` — f16 still read "First fallback behind the q8_0 platform default" while q8_0 claimed to be the default the agent serves; both are catalogue-visible. §5 gate line corrected in the same pass. |
