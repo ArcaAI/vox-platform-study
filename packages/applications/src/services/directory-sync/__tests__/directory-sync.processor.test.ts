@@ -39,6 +39,10 @@ function makeProcessor() {
   const secretsService = { decrypt: vi.fn(async () => Buffer.from(JSON.stringify({ azureTenantId: 't', clientId: 'c', clientSecret: 's' }))) };
   const databaseService = { baseClient: { userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) } } };
   const entitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn() };
+  // TASK-870 item 12 — ENABLED, because these cases are about the paging/provisioning
+  // loop rather than availability. The gate is covered in
+  // `directory-sync.feature-gate.task870.test.ts`.
+  const effectiveSettings = { resolveEffective: vi.fn().mockResolvedValue({ value: true, sourceScope: 'global-kv' }) };
 
   const processor = new DirectorySyncProcessor(
     providerRepository as never,
@@ -50,9 +54,10 @@ function makeProcessor() {
     secretsService as never,
     databaseService as never,
     entitlements as never,
+    effectiveSettings as never,
   );
 
-  return { processor, providerRepository, federatedIdentityRepository, msGraphProvider, googleProvider, federatedAuthService, cls, entitlements };
+  return { processor, providerRepository, federatedIdentityRepository, msGraphProvider, googleProvider, federatedAuthService, cls, entitlements, effectiveSettings };
 }
 
 describe('DirectorySyncProcessor.process', () => {

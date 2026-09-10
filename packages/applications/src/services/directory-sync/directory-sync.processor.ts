@@ -11,6 +11,8 @@ import { FederatedAuthService } from '../federated-auth/federated-auth.service';
 import { GoogleDirectoryProvider } from './google-directory.provider';
 import { IDirectoryProvider } from './IDirectoryProvider';
 import { MsGraphDirectoryProvider } from './ms-graph-directory.provider';
+import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
+import { directoryAvailabilityKey, isDirectorySyncEnabled } from './directory-availability';
 
 export interface SyncTenantDirectoryUsersJobPayload {
   jobId?: string;
@@ -55,6 +57,9 @@ export class DirectorySyncProcessor extends WorkerHost {
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     // Optional + kill-switch-gated, same posture as UserService.create().
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-870 item 12 — the per-tenant availability gate. @Optional like the
+    // entitlements service; absent DENIES, because a capability never grants itself.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super();
   }
@@ -79,6 +84,16 @@ export class DirectorySyncProcessor extends WorkerHost {
         throw new Error('Identity provider has no directory API credentials configured');
       }
       const config = provider.config as unknown as { directoryProvider?: string };
+      // TASK-870 item 12 — re-check availability HERE, not only at enqueue. The
+      // enqueue check gives a caller a fast 400; this one is the work boundary, so
+      // a capability a platform admin disables stops syncing even for a job that
+      // was already queued (BullMQ retries and a drained worker can both widen
+      // that window well past "seconds").
+      if (!(await isDirectorySyncEnabled(this.effectiveSettings, tenantId, config.directoryProvider))) {
+        throw new Error(
+          `Directory sync is not enabled for this tenant (${String(directoryAvailabilityKey(config.directoryProvider) ?? config.directoryProvider)})`,
+        );
+      }
       const directoryProvider = this.pickProvider(config.directoryProvider);
       const credentials = JSON.parse((await this.secretsService.decrypt(provider.directoryCredentialsRef)).toString('utf8'));
 

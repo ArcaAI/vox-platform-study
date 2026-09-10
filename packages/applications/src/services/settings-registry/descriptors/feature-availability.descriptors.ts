@@ -59,6 +59,12 @@ export const FEATURE_AVAILABILITY_CATEGORY = 'Feature Availability';
 export const REGISTRATION_SELF_SIGNUP_ENABLED_KEY = 'registration.selfSignupEnabled';
 export const WORKFLOW_EXPOSURE_ENABLED_KEY = 'workflowExposure.enabled';
 export const LIVE_DOC_GROUNDEDNESS_ENABLED_KEY = 'liveDoc.groundedness.enabled';
+// TASK-870 item 12 — the two directory-sync capabilities, one per directory API.
+// Gated SEPARATELY because a tenant provisions them separately (a Google service
+// account with delegated directory scopes is a different act from an Azure AD app
+// registration), so "enabled" is never one answer for both.
+export const TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY = 'tenantIdp.googleDirectory.enabled';
+export const TENANT_IDP_MS_GRAPH_ENABLED_KEY = 'tenantIdp.msGraph.enabled';
 
 /**
  * TASK-932 S2-4 — the two legacy `feature-flags` `GlobalSetting` keys that were
@@ -193,6 +199,36 @@ const FEATURES: FeatureSpec[] = [
     // Declared so `turbo.json#globalEnv` hashes a name the gateway really reads
     // (TASK-940) — never rendered into an operator-facing `.env.sample`.
     envOverride: ['LIVE_DOC_GROUNDEDNESS_ENABLED'],
+  },
+  // ── TASK-870 item 12 — directory sync, per tenant ────────────────────────────
+  //
+  // Both MIGRATED from platform-wide env vars (`TENANT_IDP_*_ENABLED`) that were
+  // frozen in each provider's CONSTRUCTOR. The freeze needed a redeploy, but the
+  // SCOPE was the real defect: directory sync runs against credentials the TENANT
+  // provisions itself, so a tenant that had done that work still could not sync
+  // until the platform flipped a global switch — and flipping it enabled the
+  // capability for EVERY tenant at once. `09-infrastructure-devops.md`
+  // §"Tenant-first resolution" is the rule that forbids it.
+  //
+  // Owner decision (2026-09-10): only a PLATFORM ADMIN manages which features are
+  // enabled for each tenant. That is exactly this family's `globalOnly: true`
+  // (who may write) × `maxScope: 'tenant'` (where the row lives), so these take
+  // the mapper's defaults and carry no bespoke guard.
+  {
+    key: TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY,
+    label: 'Google Workspace directory sync',
+    description:
+      'Allows this tenant to pre-provision users by pulling its Google Workspace directory. The tenant supplies its own domain-wide-delegated service account and delegates the two read-only directory scopes to it in the Workspace admin console; this gate decides whether the platform will act on that. MIGRATED from `TENANT_IDP_GOOGLE_DIRECTORY_ENABLED`, a platform-wide env var frozen in the provider constructor — so enabling one tenant enabled all of them, and only a redeploy could change it. Checked at enqueue (a refusal is a 400, not a job that fails later) AND in the worker, so turning it off stops work already queued. Ships OFF: a directory pull reads every user in the tenant’s directory, which a platform admin should enable deliberately.',
+    default: false,
+    envOverride: ['TENANT_IDP_GOOGLE_DIRECTORY_ENABLED'],
+  },
+  {
+    key: TENANT_IDP_MS_GRAPH_ENABLED_KEY,
+    label: 'Microsoft Graph directory sync',
+    description:
+      'Allows this tenant to pre-provision users by pulling its Microsoft Entra ID directory over Graph. The tenant supplies its own Azure AD app registration — distinct from the OIDC login-time client — with admin-consented application permissions (`User.Read.All`, `GroupMember.Read.All`); this gate decides whether the platform will act on that. MIGRATED from `TENANT_IDP_MS_GRAPH_ENABLED`, a platform-wide env var frozen in the provider constructor. Checked at enqueue AND in the worker. Ships OFF, for the same reason as its Google sibling — and gated independently from it, because the two credentials are provisioned independently.',
+    default: false,
+    envOverride: ['TENANT_IDP_MS_GRAPH_ENABLED'],
   },
 ];
 

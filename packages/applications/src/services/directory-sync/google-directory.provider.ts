@@ -1,6 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
 import { DirectoryCredentials, DirectoryUser, DirectoryUserPage, IDirectoryProvider } from './IDirectoryProvider';
 
@@ -31,26 +30,19 @@ const TOKEN_EXPIRY_BUFFER_MS = 60_000;
  * service account, JWT-bearer OAuth2 grant (RFC 7523) — the tenant provisions
  * its own service account + delegates the two read-only directory scopes to
  * it in the Workspace admin console; `delegatedAdminEmail` is the
- * impersonation target the JWT's `sub` claim carries. Gated by
- * `TENANT_IDP_GOOGLE_DIRECTORY_ENABLED` (default OFF).
+ * impersonation target the JWT's `sub` claim carries. Availability is decided by the CALLER —
+ * `DirectorySyncService.enqueueSync` and `DirectorySyncProcessor` both resolve the
+ * per-tenant feature gate (TASK-870 item 12); this class holds no `tenantId`, so it
+ * could never have answered that question correctly.
  */
 @Injectable()
 export class GoogleDirectoryProvider implements IDirectoryProvider {
   readonly key = 'google-directory' as const;
-  private readonly enabled: boolean;
   private tokenCache?: CachedToken;
 
-  constructor(
-    private readonly httpService: HttpService,
-    configService: ConfigService,
-  ) {
-    this.enabled = String(configService.get('TENANT_IDP_GOOGLE_DIRECTORY_ENABLED') ?? '').toLowerCase() === 'true';
-  }
+  constructor(private readonly httpService: HttpService) {}
 
   async fetchUsers(credentials: DirectoryCredentials, pageToken?: string): Promise<DirectoryUserPage> {
-    if (!this.enabled) {
-      throw new BadRequestException('Google Directory sync is disabled (TENANT_IDP_GOOGLE_DIRECTORY_ENABLED=false)');
-    }
     const creds = credentials as unknown as GoogleDirectoryCredentials;
     const accessToken = await this.resolveAccessToken(creds);
 
