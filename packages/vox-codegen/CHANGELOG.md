@@ -1,5 +1,15 @@
 # @arcaai/vox-codegen
 
+## 3.2.0
+
+### Minor Changes
+
+- **`--tenant` can now authenticate as a SERVICE ACCOUNT, so a build pipeline types a tenant's context schema without a human's super-admin JWT (TASK-933).**
+
+  Pass `--client-id` / `--client-secret` (env fallbacks `HOPE_SVC_CLIENT_ID` / `HOPE_SVC_CLIENT_SECRET`) instead of `--token`, with an optional `--working-tenant`. The CLI exchanges them at `POST /auth/service-token` and reads with `X-Service-Account-Token` and NO `X-Tenant-Id` — the working tenant binds at the exchange, not per request. `--token` continues to work unchanged.
+
+  Credentials are read from the environment by preference because a secret passed on argv is visible in `ps`.
+
 ## 3.1.0
 
 ### Minor Changes

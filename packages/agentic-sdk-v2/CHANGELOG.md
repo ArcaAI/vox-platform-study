@@ -1,5 +1,25 @@
 # @arcaai/vox — Changelog
 
+## 3.2.0
+
+### Minor Changes
+
+- **Declare the language a consultation's NOTES are written in, independently of what the microphone hears (TASK-932).**
+
+  `OpenSessionInput.language` (BCP-47 — `en`, `ml`, `en-IN`) is honoured by `session.open()` and by a re-visit, and reads back on `Consultation.language`. It is NOT the STT language mode, and the difference is the point of the field: a Malayalam-English consultation is routinely documented in English. `audio.start({ languageMode })` governs what the microphone is allowed to HEAR; this governs what the note is WRITTEN IN. Declaring either never sets the other. Omit it and the note's language is undeclared — which is not English: the tenant's own agent body decides, exactly as before. Re-opening an already-open consultation keeps the language it was opened with, the same way it keeps its governing workflow.
+
+  **`useArcaLiveSummary` no longer wipes its own snapshot.** The gateway multiplexes typed sub-plane events onto the live-summary channel — per-section patches (`event: 'section.patch'`) and the warm-start pre-summary lifecycle (`event: 'presummary'`). They are not snapshots, and folding one over the last full-state payload cleared `entities` / `runningSummary` milliseconds after every flush. Only an undiscriminated payload is now treated as a snapshot, and both sub-plane events are registered as named no-ops so an upgraded gateway that tags them as named SSE frames cannot fold them either.
+
+  `SttWebSocketClient.sendAudioFrame` accepts `ArrayBuffer | ArrayBufferView<ArrayBuffer>`. Under TypeScript 6 `ArrayBufferView` is generic over its backing buffer and defaults to `ArrayBufferLike`, which is not a `BufferSource`; the narrowing only makes the signature honest, since a `SharedArrayBuffer`-backed view was never sendable over a WebSocket at runtime.
+
+### Patch Changes
+
+- @arcaai/med-ner@3.2.0
+  - @arcaai/noise-filter@3.2.0
+  - @arcaai/room@3.2.0
+  - @arcaai/stt@3.2.0
+  - @arcaai/vad@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes

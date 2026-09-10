@@ -1,5 +1,30 @@
 # @arcaai/vox-node — Changelog
 
+## 3.2.0
+
+### Minor Changes
+
+- **The realtime consultation plane — a server can now drive a HOPE consultation end to end (TASK-933).**
+
+  `@arcaai/vox-node` previously stopped at stateless summarization and job submission; a service that already had audio (a telephony bridge, a recording relay) had no way to open a consultation, stream into it, or watch it produce a note. It does now, and the package still has **zero runtime dependencies**.
+
+  - **`hope.consultations.open(request)`** takes `clinicianUserId`, REQUIRED for a service-account caller and refused (400) for a human one — a machine is never recorded as the clinician, so the named user lands on `Consultation.doctorId` and the audit names the service account as the actor beside them. Identity fixes at open: `departmentId` selects the workflow and note shape, `parentConsultationId` is the visit-type signal, and `language` fixes the note's language (never the STT language). `hope.consultations.get(id)` reads it back.
+  - **`hope.consultations.recording.{start,stop}`** and the four live SSE planes under **`hope.consultations.streams`** — `liveSummary`, `liveAssist`, `harnessProgress`, `loop`. Each is a handler subscription returning `{ close() }`, and `onError` is REQUIRED on every one: a subscription is fire-and-forget, so a 403 with nowhere to go is indistinguishable from a quiet consultation. `liveSummary` is MULTIPLEXED — snapshot / `section.patch` / `presummary`, discriminated by the `event` field IN THE JSON, never by the SSE `event:` line.
+  - **`hope.stt.*`** — `createStreamSession` / `refreshTicket` / `closeStreamSession` / `socket(session)` — plus **`RealtimeSttSocket`**: binary PCM16 LE mono up, typed `transcript` / `status` / `error` / `resumed` events down. The handshake carries a SINGLE-USE ticket, never a credential, so every reconnect mints a fresh one and re-handshakes with `{type:'resume', sessionId, lastSeq}`. It is `globalThis.WebSocket` and nothing else — a runtime without it gets `SocketUnavailableError`, not a silent polyfill.
+  - **`hope.jobs.subscribe`** joins the existing `jobs.stream` generator with the same handler shape.
+
+  ASR selection stays `agentSlug` or nothing, resolved by the gateway: this is a socket client for HOPE's `/ws/stt/stream` protocol, **not** an inference stack — no capture, no VAD, no denoise, no models.
+
+  **Both machine credential classes now reach the consultation plane.** `assertCredentialClass()` replaced the hard-coded API-key check per resource, so an API key and a service-account token both reach consultations, agents and workflows; only `hope.admin.*` stays service-account-only. `CredentialClassError` / `assertApiKeyPlane` remain exported for integrators on older versions.
+
+### Patch Changes
+
+- a0e73e1: **`RealtimeSttSocket#stop()` is renamed to `finalize()` — its old doc comment was wrong, and it cost real consultations.** `stop()` documented itself as "finalize the current utterance. The SESSION stays open — this is not a close." That was never true: the `{type:'stop'}` frame it sends is forwarded by the gateway to the tenant's ASR service as a `finalize` control command, which flushes the tail of the utterance and then CLOSES the session (observed live: `status finalizing` → `status closed`, the session's Redis status ending `closed`). Two integrators called `stop()` mid-consultation expecting to keep streaming and lost the rest of the session.
+
+  `finalize()` carries the corrected doc and is now the primary name; `stop()` is kept as a `@deprecated` alias that delegates to it and sends the exact same wire frame — no wire-protocol change, this is a documentation and naming fix. Existing callers of `stop()` are unaffected functionally and should migrate to `finalize()` at their own pace.
+
+- e8e8518: `consultations.summaries.generate` and `generatePreSummary` now wait up to `SYNC_GENERATION_TIMEOUT_MS` (180 s) when neither the call nor the client names a `timeoutMs`, instead of the transport's 60 s default; `ConsultationSummaryRequestOptions.timeoutMs` overrides it per call. A four-note pre-summary took 46–68 s on a local model and the old default gave up before the gateway answered (TASK-946).
+
 ## 3.1.0
 
 ### Minor Changes

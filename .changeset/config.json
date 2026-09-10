@@ -9,6 +9,7 @@
     [
       "@arcaai/vox",
       "@arcaai/vox-node",
+      "@arcaai/vox-codegen",
       "@arcaai/room",
       "@arcaai/stt",
       "@arcaai/vad",
