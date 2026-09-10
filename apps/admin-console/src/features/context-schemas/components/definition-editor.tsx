@@ -32,6 +32,7 @@ import type { ContextKindDeclaration, ContextOutputDeclaration, ContextSchemaDef
 import { publishRejection } from '../lib/publish-error';
 import { KindForm } from './kind-form';
 import { OutputForm } from './output-form';
+import { UserIdentityFieldSelect } from './user-identity-field-select';
 
 function defaultKind(): ContextKindDeclaration {
   return {
@@ -137,11 +138,19 @@ export function DefinitionEditor({
                     <span className="font-mono text-sm">{kind.key || `kind ${index + 1}`}</span>
                     <Badge variant="outline">{kind.primitive}</Badge>
                     {kind.required ? <Badge variant="secondary">Required</Badge> : null}
+                    {kind.userIdentity ? (
+                      <Badge variant="secondary" aria-label={`Identity field: ${kind.userIdentity.field}`}>
+                        Identity
+                      </Badge>
+                    ) : null}
                     {kind.deprecated ? <Badge variant="secondary">Deprecated</Badge> : null}
                   </span>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <KindForm kind={kind} onChange={(next) => updateKind(index, next)} onRemove={() => removeKind(index)} />
+                  <div className="flex flex-col gap-4">
+                    <KindForm kind={kind} onChange={(next) => updateKind(index, next)} onRemove={() => removeKind(index)} />
+                    <UserIdentityFieldSelect kind={kind} index={index} kinds={definition.kinds} onChange={(next) => updateKind(index, next)} />
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             ))}
