@@ -535,10 +535,9 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
   // request carries none.
   //
   // `identity.autoProvision.enabled` follows the same shape as the three ON-by-default rows
-  // above: `value: 'true'` is the deliberate platform flip (OD-3 — the owner's ask says HOPE
-  // "will create a user"), `defaultValue: 'false'` is the fail-safe a reset reverts to (silently
-  // minting User accounts is the riskier default, so a reset turns provisioning back OFF rather
-  // than re-arming it).
+  // above: `value` and `defaultValue` are BOTH 'true' (OD-3 — the owner's ask says HOPE "will create a
+  // user"): the registry descriptor's open-to-default value is `true`, so a reset must land on the
+  // same answer a missing row gives, not on a second, quieter default.
   {
     id: '00000000-0000-0000-0002-000000000005',
     tenantId: SYSTEM_TENANT_ID,
@@ -546,7 +545,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     name: 'Identity Auto-Provision Enabled',
     key: 'identity.autoProvision.enabled',
     value: 'true',
-    defaultValue: 'false',
+    defaultValue: 'true',
     dataType: ValueType.Boolean,
     description:
       'Platform default (open-to-default) for whether a service-account request naming a context-schema user-identity field may provision a new tenant User when no existing profile matches (TASK-950). A tenant may opt out with its own row. Locked — only SUPER_ADMIN may change the platform default.',
