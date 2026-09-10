@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BaseResponse, BaseResponseProps } from '../../../../common';
 
 export class UserProfileResponse extends BaseResponse {
@@ -20,6 +20,12 @@ export class UserProfileResponse extends BaseResponse {
   @ApiProperty({ description: 'Preferred backend prompt template ID', required: false })
   preferredPromptTemplateId?: string;
 
+  // TASK-950 — the tenant staff identifier. Declared here so `AutoClassMapper` copies it (the
+  // mapper copies a field only when the target instance declares it), which is what puts it on
+  // `GET admin/users/:id/profile` and therefore on the console's profile tab.
+  @ApiPropertyOptional({ description: 'Tenant staff identifier, unique within the tenant. Null/absent when the user has none.', nullable: true })
+  staffId?: string | null;
+
   @ApiProperty({ description: 'ID of the associated user' })
   userId!: string;
 
@@ -31,6 +37,7 @@ export class UserProfileResponse extends BaseResponse {
     this.phone = init.phone;
     this.avatarId = init.avatarId;
     this.preferredPromptTemplateId = init.preferredPromptTemplateId;
+    this.staffId = init.staffId;
     this.userId = init.userId;
   }
 }

@@ -34,6 +34,7 @@ import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
+import { USER_IDENTITY_SETTINGS } from './descriptors/user-identity.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
@@ -188,6 +189,14 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // descriptor file for why the split falls that way (D-1).
   ...HARNESS_SENSOR_SETTINGS,
   HARNESS_CLAIM_CHECK_MIN_BYTES,
+
+  // ── Context-schema user identity ─────────────────────────────────────────
+  // TASK-950 D-9 — whether HOPE may provision a tenant user for an unrecognised
+  // staff id, and the role + department it is given. CONFIGURATION, not schema
+  // content: a schema version is CLONED from SYSTEM into every tenant, so a
+  // department id could never ride inside it. Tenant → SYSTEM, like every other
+  // per-tenant knob.
+  ...USER_IDENTITY_SETTINGS,
 
   // ── Inference readiness ──────────────────────────────────────────────────
   // The readiness sweep's three knobs plus the two `modelRegistry.inventory.*`
