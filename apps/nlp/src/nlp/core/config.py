@@ -465,7 +465,7 @@ class NLPServiceConfig(BaseSettings):
 
     # ── Model weight cache root ────────────────────────────────────────────
     # WHERE weights are cached; never WHICH checkpoint runs (that stays
-    # `AiTaskDefault` x `AiModel`, resolved per request). Transport/topology,
+    # `AiRoutingPolicy` x `AiModel`, resolved per request). Transport/topology,
     # so env-tier is correct — but it must be DECLARED, not inherited from an
     # operator's login shell: `~/.zshrc` is sourced by INTERACTIVE shells only,
     # and services, CI jobs and coding agents all run in non-interactive ones.
@@ -540,7 +540,7 @@ class TokenClassificationConfig(BaseSettings):
     # to default to a real HuggingFace NER checkpoint, which the env-source
     # filter above then made unchangeable — the appearance of compliance around
     # a live hardcoded selection. A model id is configuration
-    # (`AiTaskDefault` ⋈ `AiModel`, resolved tenant → SYSTEM by the gateway and
+    # (`AiRoutingPolicy` ⋈ `AiModel`, resolved tenant → SYSTEM by the gateway and
     # injected per request), so an unresolved selection must be a REFUSAL, not a
     # substitution: constructing this config without one raises, and the routes
     # turn that into a fail-closed 503.

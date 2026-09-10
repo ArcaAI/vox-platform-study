@@ -21,8 +21,8 @@ Everything else that used to live here is gone, not renamed:
 
 * **Eight per-provider blocks** (`TEXT_{OLLAMA,AZURE,BEDROCK,OPENAI,ANTHROPIC,
   VERTEX,OPENAI_COMPAT,VLLM,LLAMA_CPP,SARVAM,TEI}_*`) — endpoint, credential,
-  model and capacity now ride `AiProviderConnection` / `AiTaskDefault` /
-  `AiRuntimeProfile`. An adapter with no injected connection FAILS CLOSED
+  model and capacity now ride `AiProviderConnection` / the task's `Agent`
+  (`AiRoutingPolicy` for the non-agent tasks) / `Agent.parameters`. An adapter with no injected connection FAILS CLOSED
   (`core/connection.py`); it never substitutes a process-wide value, because a
   process-wide value is one no tenant could ever override.
 * **Three spellings of four resilience concepts** (`TEXT_CB_*`, `TEXT_QUEUE_*`,

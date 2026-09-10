@@ -1,7 +1,7 @@
 """model ids are CONFIG, never Python literals.
 
 `apps/nlp` is the EXECUTOR of the safety plane. Every weight identity arrives
-per request, resolved by the caller from `AiTaskDefault` ⋈ `AiModel`
+per request, resolved by the caller from `AiRoutingPolicy` ⋈ `AiModel`
 (tenant → SYSTEM, fail-closed). A model id that appears in shipped Python — in
 code OR in a docstring — is a config surface that no admin can change, and the
 docstring form is the one that rots silently.

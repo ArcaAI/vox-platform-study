@@ -10,7 +10,8 @@ None of that is a bootstrap floor. `.claude/rules/09-infrastructure-devops.md`
 Tiers: a variable stays in `env` only when it is required *to
 reach* the config source — "the only sanctioned defaults are bootstrap TRANSPORT
 addresses". Everything else is a connection row (`AiProviderConnection`), a
-selection (`AiTaskDefault`), a runtime profile (`AiRuntimeProfile`), a
+selection (the task's `Agent`, or `AiRoutingPolicy`), hyper-parameters on
+`Agent.parameters`, a
 `global-kv` knob or a kill-switch — and `apps/text` is a STATELESS gateway, so
 all of it arrives injected per request or pulled from
 `/internal/effective-config`, never read from the process environment.
@@ -69,7 +70,8 @@ class TestEnvSurface:
         assert actual - SANCTIONED_FIELDS == set(), (
             "apps/text declares env fields outside the bootstrap floor. "
             "A provider connection belongs in AiProviderConnection, a model in "
-            "AiTaskDefault, capacity/hyperparameters in AiRuntimeProfile, a "
+            "the task's Agent (AiRoutingPolicy for non-agent tasks), "
+            "capacity/hyperparameters in Agent.parameters, a "
             "platform knob in global-kv and a switch in redis-flag — see "
             ".claude/rules/09-infrastructure-devops.md §Configuration Tiers."
         )

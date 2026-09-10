@@ -93,7 +93,7 @@ def get_redis(request: Request) -> aioredis.Redis:
 async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     """Resolve the delegated guardian for this request's tenant.
 
-    Reads ``AiTaskDefault`` ⋈ ``AiModel`` for ``guardrail.validate`` tenant-first
+    Reads ``AiRoutingPolicy`` ⋈ ``AiModel`` for ``guardrail.validate`` tenant-first
     (SYSTEM as the platform fallback) and returns a client bound to that
     selection, pointed at ``apps/text``'s judge lane.
 
@@ -116,7 +116,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     if resolver is None:
         raise HTTPException(
             status_code=503,
-            detail="AiTaskDefault for 'guardrail.validate' is unavailable (resolver not wired).",
+            detail="AiRoutingPolicy for 'guardrail.validate' is unavailable (resolver not wired).",
         )
 
     from guardrail.core.tenant_config import (
@@ -153,7 +153,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     if not tenant_cfg.provider or not tenant_cfg.model:
         raise HTTPException(
             status_code=503,
-            detail="AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
+            detail="AiRoutingPolicy for 'guardrail.validate' is missing. Run db:seed.",
         )
 
     from guardrail.core.errors import GuardrailUndeterminedError
@@ -309,7 +309,7 @@ def get_job_processor(request: Request) -> JobProcessor:
 # MiniCheck GGUF scorer moved to `apps/nlp` together with their model cache and
 # their weight staging; what stays here is POLICY plus a bounded peer client.
 #
-# Two selections, both `AiTaskDefault` ⋈ `AiModel`, both tenant-first with
+# Two selections, both `AiRoutingPolicy` ⋈ `AiModel`, both tenant-first with
 # SYSTEM as the platform fallback, both FAIL-CLOSED:
 #
 #   `guardrail.safety` — the LLM-safety moderation model (six tasks)
@@ -343,7 +343,7 @@ async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: st
     resolver = getattr(app_state, "tenant_config_resolver", None)
     if resolver is None:
         raise SelectionUnavailableError(
-            f"AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
+            f"AiRoutingPolicy for {task_key!r} is unavailable (resolver not wired)."
         )
 
     from guardrail.core.tenant_config import (
@@ -369,7 +369,7 @@ async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: st
         ) from exc
 
     if not cfg.model:
-        raise SelectionUnavailableError(f"AiTaskDefault for {task_key!r} is missing. Run db:seed.")
+        raise SelectionUnavailableError(f"AiRoutingPolicy for {task_key!r} is missing. Run db:seed.")
     return cfg
 
 

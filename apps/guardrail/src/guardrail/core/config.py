@@ -16,7 +16,7 @@ class JudgePolicy(BaseModel):
     ``api_key`` literal — and every one of them was configuration wearing an env
     costume (`.claude/rules/00-project-context.md` §Configuration Principles).
     Engine, model and credential now come from the control plane: the
-    provider/model pair from ``AiTaskDefault`` (tenant row first, SYSTEM as the
+    provider/model pair from ``AiRoutingPolicy`` (tenant row first, SYSTEM as the
     platform fallback) and the credential from the tenant's ``llm``
     ``AiProviderConnection``, forwarded as an opaque ``provider_overrides`` blob.
 
@@ -123,7 +123,7 @@ class GroundednessConfig(BaseModel):
     llama.cpp runtime knobs (``model_id``, ``model_file``, ``model_path``,
     ``model_cache_dir``, ``n_ctx``, ``n_threads``, ``n_gpu_layers``) are GONE from
     here. The weights now live in `apps/nlp`, and the model identity is the
-    `guardrail.groundedness` `AiTaskDefault` selection — resolved per request,
+    `guardrail.groundedness` `AiRoutingPolicy` selection — resolved per request,
     tenant-first, fail-closed. What is left is the POLICY guardrail owns: whether
     the gate is on, what score counts as grounded, and how much it will score.
 
@@ -201,7 +201,7 @@ class DatabaseConfig(BaseSettings):
     """Per-tenant config DB access.
 
     The service resolves the admin-chosen guardrail provider/model **per tenant**
-    at request time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"``
+    at request time by reading ``core."AiRoutingPolicy"`` ⋈ ``core."AiModel"``
     directly (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. This
     is the sanctioned transport exception in `06-python-services.md`: guardrail's
     callers are peer services, not the gateway, so there is nothing to inject

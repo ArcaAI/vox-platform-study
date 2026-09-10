@@ -49,7 +49,7 @@ def _require_selection(payload: Any, header_tenant: str | None, what: str) -> No
             status_code=503,
             detail=(
                 f"{what} model selection is unresolved. apps/nlp names no model of its "
-                "own — the caller resolves it from AiTaskDefault (fail-closed)."
+                "own — the caller resolves it from AiRoutingPolicy (fail-closed)."
             ),
         )
 

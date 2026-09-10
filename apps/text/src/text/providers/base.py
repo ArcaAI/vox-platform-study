@@ -63,7 +63,7 @@ def require_model(model: str | None, *, provider: str) -> str:
         raise ModelNotSelectedError(
             f"No model selected for provider '{provider}': Text does not "
             "substitute a default cloud model — the caller must supply "
-            "'model' (resolved via AiTaskDefault upstream).",
+            "'model' (resolved upstream by the gateway).",
             provider=provider,
         )
     return model

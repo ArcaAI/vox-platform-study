@@ -208,8 +208,8 @@ ContentPart = Annotated[TextContentPart | ImageContentPart, Field(discriminator=
 #: * It is ASYMMETRIC with `model`, which has NO default: `POST /generate`
 # Fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
 # "Text has no default model"). Provider selection deserves the same posture —
-# Both halves of a `{provider, model}` pair come from the same `AiTaskDefault`
-# / `HarnessPolicy` resolution on the gateway.
+# Both halves of a `{provider, model}` pair come from the same `Agent` /
+# `AiRoutingPolicy` resolution on the gateway.
 #: * It is REACHABLE, not vestigial. `apps/api`
 # `streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
 # `{provider, model}` only when `!target.model`, so a caller that PINS a model

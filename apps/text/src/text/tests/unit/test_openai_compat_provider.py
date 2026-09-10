@@ -80,7 +80,7 @@ class TestOpenAICompatHasNoConfigOfItsOwn:
     every request that reached the default got a 400 "Failed to load model", and
     the same stale id had already propagated into the AiModel catalogue. An
     engine-specific string in a config file is a model SELECTION, and selection
-    belongs to `AiTaskDefault`, fail-closed.
+    belongs to the gateway's `Agent`/`AiRoutingPolicy` resolution, fail-closed.
     """
 
     def test_the_config_class_is_gone(self):

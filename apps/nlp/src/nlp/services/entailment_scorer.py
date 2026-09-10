@@ -4,7 +4,7 @@ MOVED here from `apps/guardrail` : `apps/nlp` owns inference,
 `apps/guardrail` owns the groundedness POLICY (threshold, segment cap, verdict
 shape, fail-closed degradation) and calls this service per segment batch. The
 model id and staged weights path arrive PER REQUEST from guardrail's
-`guardrail.groundedness` `AiTaskDefault` selection — neither is named here.
+`guardrail.groundedness` `AiRoutingPolicy` selection — neither is named here.
 
 Implements the ``NliScorer`` seam (``groundedness_nli.py``) against a MiniCheck
 Flan-T5-Large GGUF quant run under llama.cpp (owner directive

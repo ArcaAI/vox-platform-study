@@ -24,7 +24,7 @@ class DiagnosisSuggestionRequest(BaseModel):
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )
     # The suggester runs TWO models and BOTH selections are gateway-injected
-    # (`AiTaskDefault` ⋈ `AiModel`, tenant → SYSTEM). The NER pair used to be
+    # (`AiRoutingPolicy` ⋈ `AiModel`, tenant → SYSTEM). The NER pair used to be
     # absent, which left that half of the route running a hardcoded default.
     # Either one missing fails the request closed with 503.
     model_name: str | None = Field(

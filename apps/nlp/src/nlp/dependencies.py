@@ -86,7 +86,7 @@ def get_document_extractor() -> DocumentExtractor:
 # Per-request model selection.
 #
 # Every classify/diagnosis request carries a REQUIRED `model_name` (the
-# gateway-injected `AiModel.sourceUri` resolved from the DB AiTaskDefault
+# gateway-injected `AiModel.sourceUri` resolved from the DB AiRoutingPolicy
 # registry). Model identity is never selected by environment variables
 # ; a missing/unloadable model fails closed with HTTP 503. Resolved
 # instances live in a bounded, idle-TTL per-slot cache (lazily created and
@@ -490,7 +490,7 @@ async def pinned_medical_suggester(
 # `apps/guardrail` holds ZERO resident weights: its GLiNER detector and its
 # MiniCheck groundedness scorer live here now, behind the same per-slot,
 # idle-TTL, pin-while-active cache the NER/classifier models use. Both are
-# selected BY THE CALLER (`AiTaskDefault` ⋈ `AiModel`, tenant-first) and
+# selected BY THE CALLER (`AiRoutingPolicy` ⋈ `AiModel`, tenant-first) and
 # arrive per request — no model id is named in this file.
 # ---------------------------------------------------------------------------
 

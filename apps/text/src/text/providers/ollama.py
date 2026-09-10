@@ -329,7 +329,7 @@ class OllamaProvider:
             name="ollama",
             display_name="Ollama (Self-Hosted)",
             status="available" if models else "unavailable",
-            # The default model comes from `AiTaskDefault` on the gateway. This
+            # The default model comes from the gateway's resolved selection. This
             # adapter used to echo ``TEXT_OLLAMA_DEFAULT_MODEL``, which no
             # generation path ever read.
             default_model="",

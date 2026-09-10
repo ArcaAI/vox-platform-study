@@ -444,7 +444,7 @@ class OpenAICompatProvider:
             name=self._provider_name,
             display_name=self._display_name,
             status=status,
-            # The default model comes from `AiTaskDefault` on the gateway. This
+            # The default model comes from the gateway's resolved selection. This
             # adapter used to echo ``TEXT_OPENAI_COMPAT_DEFAULT_MODEL``, whose
             # value had to match an id LM Studio actually served — a hardcoded
             # engine-specific string in a config file, which is how a stale

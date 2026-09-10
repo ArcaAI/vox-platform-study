@@ -9,7 +9,7 @@ half that decides things. It owns
 * the fail-closed posture,
 
 and it owns NO model id and NO label set. Both arrive from the registry
-(`AiTaskDefault` ⋈ `AiModel`, tenant row first and SYSTEM as the platform
+(`AiRoutingPolicy` ⋈ `AiModel`, tenant row first and SYSTEM as the platform
 fallback) and reach this object through :class:`SafetyPolicy`.
 
 Two DIFFERENT models back it, deliberately (owner directive 2026-08-19):

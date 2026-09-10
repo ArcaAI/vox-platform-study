@@ -25,7 +25,7 @@ class TestAzureProviderInit:
         """`TEXT_AZURE_DEFAULT_MODEL` is gone, and nothing replaced it in-process.
 
         Its only reader was `get_info()`; the model catalogue is authoritative on
-        the gateway (`AiModel` / `AiTaskDefault`), and a generation resolves its
+        the gateway (`AiModel` + the resolved `Agent`/`AiRoutingPolicy` selection), and a generation resolves its
         model from the request. An adapter-held default would be a hardcoded
         SELECTION, which is `failMode: closed`."""
         from text.providers.azure_openai import AzureOpenAIProvider

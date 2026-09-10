@@ -6,7 +6,7 @@
 #
 # Guardrail hosts NO model and NO LLM: medical validation posts to apps/text's
 # judge lane, PII/groundedness to apps/nlp, and provider/model come from
-# core."AiTaskDefault" per tenant. There is nothing here to point at an engine.
+# core."AiRoutingPolicy" per tenant. There is nothing here to point at an engine.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:

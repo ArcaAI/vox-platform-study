@@ -14,7 +14,7 @@ class TextClassificationRequest(BaseModel):
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )
     # Optional per-request model override (gateway-injected from the
-    # AiTaskDefault registry). None → the startup default instance, unchanged.
+    # AiRoutingPolicy registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(
         default=None, description="Optional HF model id overriding the default classifier"
     )
@@ -126,7 +126,7 @@ class TokenClassificationRequest(BaseModel):
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )
     # Optional per-request model override (gateway-injected from the
-    # AiTaskDefault registry). None → the startup default instance, unchanged.
+    # AiRoutingPolicy registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(
         default=None, description="Optional HF model id overriding the default NER model"
     )

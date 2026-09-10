@@ -4,7 +4,7 @@ Proves the standardized cross-service ``model_running_instances`` gauge and
 ``model_inference_latency_seconds`` histogram increment on the real guardian
 validation path — now the DELEGATED one : guardrail times the
 judgement it asked `apps/text` for, under the model it selected from
-``AiTaskDefault``. The metric belongs to the caller that waits on the inference,
+``AiRoutingPolicy``. The metric belongs to the caller that waits on the inference,
 not to whichever process hosts the weights.
 """
 

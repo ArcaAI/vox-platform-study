@@ -60,7 +60,8 @@ class ModelNotSelectedError(InputValidationError):
     """No model resolved for a cloud-provider generation request.
 
     Text is a stateless gateway (see ``core/config.py``): the gateway resolves
-    the tenant/task model (``AiTaskDefault``) and injects it on every request.
+    the tenant/task model (the task's ``Agent``, or ``AiRoutingPolicy`` for the
+    non-agent tasks) and injects it on every request.
     Provider/model SELECTION is ``failMode=closed`` (Configuration Tiers,
     ``09-infrastructure-devops.md``) — a cloud provider adapter must never
     substitute an env-configured vendor model when the caller omits one, so a

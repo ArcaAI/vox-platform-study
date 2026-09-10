@@ -8,7 +8,7 @@ caller, which interprets it into a verdict.
 What deliberately does NOT live here:
 
 * **No engine.** No base_url per vendor, no `api_key`, no model default. The
-  provider/model pair is resolved from `AiTaskDefault` (tenant row first,
+  provider/model pair is resolved from `AiRoutingPolicy` (tenant row first,
   SYSTEM as the platform fallback) and passed in; the tenant's own credential
   arrives as an opaque `provider_overrides` blob that this client forwards
   VERBATIM and never decrypts, stores or logs.

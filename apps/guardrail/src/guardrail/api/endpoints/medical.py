@@ -249,7 +249,7 @@ async def get_medical_validation_config(
     """Report the medical-validation POLICY.
 
     Provider and model are deliberately absent: they are resolved per TENANT at
-    request time from ``AiTaskDefault``, so there is no one answer to report from
+    request time from ``AiRoutingPolicy``, so there is no one answer to report from
     a process-wide config route.
 
     ``temperature`` and ``max_tokens`` left for the SAME reason in TASK-878 — they
@@ -266,8 +266,8 @@ async def get_medical_validation_config(
         "min_confidence": judge.min_confidence,
         "max_attempts": judge.max_attempts,
         "resolved_per_request": {
-            "provider": "AiTaskDefault (tenant → SYSTEM)",
-            "model": "AiTaskDefault (tenant → SYSTEM)",
+            "provider": "AiRoutingPolicy (tenant → SYSTEM)",
+            "model": "AiRoutingPolicy (tenant → SYSTEM)",
             "temperature": "AiModel._metadata.policy.judgeTemperature (failMode: closed)",
             "max_tokens": "AiModel._metadata.policy.judgeMaxTokens (failMode: closed)",
             "timeout_s": "guardrail.judge.timeoutSeconds (global-kv, effective-config)",

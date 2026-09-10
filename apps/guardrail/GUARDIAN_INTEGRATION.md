@@ -8,7 +8,7 @@ The Guardian service provides medical context validation to ensure only medical-
 confidence floor, the verdict shape and the fail-closed posture, and delegates the model
 call to `apps/text`'s isolated judge lane — `POST {TEXT_URL}/api/v1/generate/internal/judge`,
 which sits outside `text`'s own moderation gate and runs on its own pool. Provider and model
-come from `AiTaskDefault` (`guardrail.validate`), the tenant's row first and the SYSTEM row
+come from `AiRoutingPolicy` (`guardrail.validate`), the tenant's row first and the SYSTEM row
 as the platform fallback; the tenant's credential comes from its own `llm`
 `AiProviderConnection` and is forwarded as an opaque `provider_overrides` blob that
 guardrail never decrypts, stores or logs.
@@ -45,7 +45,7 @@ INTERNAL_ACCESS_TOKEN=...
 There is deliberately no `GUARDRAIL_V2_PROVIDER` and no
 `GUARDRAIL_{OPENAI_COMPAT,VLLM,LLAMA_CPP,AZURE,BEDROCK}_*` block: an engine name, model id,
 endpoint or API key in guardrail's env is configuration wearing a costume, and a vendor key
-there is a leak. Selection is `AiTaskDefault`; tuning is the provider-level
+there is a leak. Selection is `AiRoutingPolicy`; tuning is the provider-level
 `AiRuntimeProfile`; the credential is the tenant's own connection.
 
 ### 1b. Per-Tenant DB Configuration (TASK-338, optional)
@@ -86,7 +86,7 @@ When enabled, the service resolves the guardian provider/model at request time b
 
 The model is **not chosen here and not chosen in env**. A platform admin publishes the
 approved guardian models as SYSTEM-tenant `AiModel` rows and points the SYSTEM
-`AiTaskDefault` row for `guardrail.validate` at one of them; a tenant may select any model
+`AiRoutingPolicy` row for `guardrail.validate` at one of them; a tenant may select any model
 from that approved list for its own row, and bring its own key for it. Guardrail resolves
 tenant row → SYSTEM row and fails CLOSED (503) when neither exists — it never substitutes a
 compiled-in default.
