@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 426 component schemas the generated surface transitively
+ * Only the 428 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -179,10 +179,12 @@ export interface AgentSyncTargetResponse {
 }
 
 export interface AgentTestAckResponse {
-  /** The rendered system prompt, or null when the agent has none. */
+  /** The rendered system prompt, or null when the agent has none. For a COMPOSITE instruction this is the SELECTED fragments rendered and joined — the bytes that would go to TEXT — not the static projection. */
   assembledSystemPrompt?: string | null;
   /** The rendered user prompt — exactly the bytes that would go to TEXT. */
   assembledUserPrompt: string;
+  /** COMPOSITE instructions only — which prompt fragments ran and which were excluded. Absent for a single template or an inline prompt. */
+  composition?: AgentTestCompositionResponse;
   /** Non-blocking findings from compiling the draft in memory. */
   findings: AgentFindingResponse[];
   mode: 'dry-run' | 'stream';
@@ -191,6 +193,22 @@ export interface AgentTestAckResponse {
   streamUrl?: string;
   /** Stream mode only — the TEXT generation id, and the handle `POST :id/test/finalize` takes. */
   taskId?: string;
+}
+
+export interface AgentTestCompositionExclusionResponse {
+  /** The evaluator’s message, for `condition_error` only. Diagnostic; never part of the prompt. */
+  detail?: string;
+  /** The fragment key, as authored in `instruction.fragments[].key`. */
+  key: string;
+  /** `condition_false` — the condition evaluated to false. `condition_error` — it could not be evaluated, so the fragment was dropped. */
+  reason: 'condition_false' | 'condition_error';
+}
+
+export interface AgentTestCompositionResponse {
+  /** The fragments that were not rendered, and why. */
+  excluded: AgentTestCompositionExclusionResponse[];
+  /** The fragment keys that were rendered, in authored order. */
+  selected: string[];
 }
 
 export interface AgentTestResultResponse {
@@ -1218,7 +1236,7 @@ export interface CreateAgentRequest {
   fallbackModelIds?: string[];
   /** Authorable JSON-Schema subset for the invocation input; defaults per task. */
   inputSchema?: Record<string, unknown>;
-  /** Task-specific instruction: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` or `{ systemPrompt }` (TEXT_GENERATION); `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH). */
+  /** Task-specific instruction. TEXT_GENERATION binds exactly ONE of three forms: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` (a single approved template), `{ systemPrompt }` (an inline body), or `{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite — an ordered list of 1–16 fragments, each optionally guarded by a CEL `when` over the render scope; at least one fragment must be unconditional, and the selected ones are rendered separately and joined with a blank line). `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH). */
   instruction?: Record<string, unknown>;
   /** The registry `AiModel` id backing this agent; its `taskType` must match `task`. */
   modelId: string;
@@ -5658,6 +5676,7 @@ export interface UpdateAgentRequest {
   /** Replaces the whole fallback chain. */
   fallbackModelIds?: string[];
   inputSchema?: Record<string, unknown>;
+  /** Task-specific instruction, REPLACED wholesale. TEXT_GENERATION binds exactly ONE of three forms: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }`, `{ systemPrompt }`, or `{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite). */
   instruction?: Record<string, unknown>;
   /** Re-bind the backing model (same task). */
   modelId?: string;
