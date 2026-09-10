@@ -5,6 +5,7 @@ import { RedisCacheModule } from '../baseServices/redis';
 import { ConsultationServiceModule } from '../consultation/consultation/consultation.service.module';
 import { HarnessGatewayServiceModule } from '../consultation/harness/harness-gateway.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { WorkflowRunServiceModule } from '../workflow-run';
 import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
@@ -31,6 +32,17 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     HarnessGatewayServiceModule,
     WorkflowRunServiceModule,
     EntitlementsServiceModule,
+    // TASK-932 D-4 said this plane resolves `workflowExposure.enabled` through the
+    // tenant -> SYSTEM cascade. It could not: nothing here provided
+    // `TenantSettingsService`, so the `@Optional()` injection was ALWAYS undefined and
+    // `isExposureEnabled()` always took its "settings graph unwired" fallback -- the
+    // pre-TASK-932 `WORKFLOW_EXPOSURE_ENABLED` env read. Unset in `.env.dev`, so the
+    // entire published-workflow plane answered 404 for every tenant while
+    // `GET admin/settings/features/effective` reported it enabled. A control surface
+    // that disagrees with the plane it controls is the bug; this wires the cascade the
+    // service already asks for. No cycle: EffectiveSettingsModule imports only
+    // CommonServiceModule, GlobalSettingServiceModule and CoreDatabaseModule.
+    EffectiveSettingsModule,
     // lane A -> `IConsultationService`, used ONLY to re-resolve the PATH
     // `consultationId` against the caller's tenant before it may become a run's `subject`. No
     // cycle: ConsultationServiceModule imports neither this module nor anything leading back to
