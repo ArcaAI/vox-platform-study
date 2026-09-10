@@ -25,6 +25,8 @@ import {
   LIVE_DOC_GROUNDEDNESS_ENABLED_KEY,
   LOCAL_RAW_CAPTURE_ENABLED_KEY,
   REGISTRATION_SELF_SIGNUP_ENABLED_KEY,
+  TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY,
+  TENANT_IDP_MS_GRAPH_ENABLED_KEY,
   WORKFLOW_EXPOSURE_ENABLED_KEY,
 } from '../descriptors/feature-availability.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
@@ -36,7 +38,7 @@ describe('Feature Availability category', () => {
     expect(HOPE_SETTINGS_REGISTRY.list().filter((d) => d.category === 'Feature Flags')).toEqual([]);
   });
 
-  it('carries the four console gates, the three migrated keys, the realtime graph executor and the two adopted legacy flags', () => {
+  it('carries the four console gates, the three migrated keys, the realtime graph executor, the two adopted legacy flags and the two directory-sync capabilities', () => {
     const keys = featureRows()
       .map((d) => d.key)
       .sort();
@@ -59,6 +61,12 @@ describe('Feature Availability category', () => {
         // keep governing rather than be orphaned by a rename.
         CONSULTATION_SHARING_ENABLED_KEY,
         LOCAL_RAW_CAPTURE_ENABLED_KEY,
+        // TASK-870 item 12 — the two directory-sync capabilities, migrated from
+        // platform-wide `TENANT_IDP_*_ENABLED` env vars frozen in each provider's
+        // constructor. Gated SEPARATELY because a tenant provisions the two
+        // credentials separately, so "enabled" is never one answer for both.
+        TENANT_IDP_GOOGLE_DIRECTORY_ENABLED_KEY,
+        TENANT_IDP_MS_GRAPH_ENABLED_KEY,
       ].sort(),
     );
   });

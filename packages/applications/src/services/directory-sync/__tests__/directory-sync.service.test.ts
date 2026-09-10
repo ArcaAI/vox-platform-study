@@ -28,8 +28,13 @@ function makeProvider(overrides: Record<string, unknown> = {}) {
 function makeService() {
   const providerRepository = { findById: vi.fn() };
   const queue = { add: vi.fn().mockResolvedValue({ id: 'job-1' }) };
-  const svc = new DirectorySyncService(providerRepository as never, queue as never);
-  return { svc, providerRepository, queue };
+  // TASK-870 item 12 — these cases are about the validation chain, not the
+  // availability gate, so the gate is ENABLED here. The gate's own behaviour (both
+  // directions, per provider, fail-closed) is covered in
+  // `directory-sync.feature-gate.task870.test.ts`.
+  const effectiveSettings = { resolveEffective: vi.fn().mockResolvedValue({ value: true, sourceScope: 'global-kv' }) };
+  const svc = new DirectorySyncService(providerRepository as never, queue as never, effectiveSettings as never);
+  return { svc, providerRepository, queue, effectiveSettings };
 }
 
 describe('DirectorySyncService.enqueueSync', () => {

@@ -1,6 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
 import { DirectoryCredentials, DirectoryUser, DirectoryUserPage, IDirectoryProvider } from './IDirectoryProvider';
 
 interface MsGraphCredentials {
@@ -25,25 +24,18 @@ const TOKEN_EXPIRY_BUFFER_MS = 60_000;
  * OAuth2 client-credentials grant (tenant's own Azure AD app registration —
  * distinct from the OIDC login-time client; directory-pull scopes are
  * `User.Read.All`/`GroupMember.Read.All`, application-permission, admin-consented).
- * Gated by `TENANT_IDP_MS_GRAPH_ENABLED` (default OFF).
+ * Availability is decided by the CALLER — `DirectorySyncService.enqueueSync` and
+ * `DirectorySyncProcessor` both resolve the per-tenant feature gate, which is the
+ * only place a `tenantId` is in hand (TASK-870 item 12).
  */
 @Injectable()
 export class MsGraphDirectoryProvider implements IDirectoryProvider {
   readonly key = 'ms-graph' as const;
-  private readonly enabled: boolean;
   private tokenCache?: CachedToken;
 
-  constructor(
-    private readonly httpService: HttpService,
-    configService: ConfigService,
-  ) {
-    this.enabled = String(configService.get('TENANT_IDP_MS_GRAPH_ENABLED') ?? '').toLowerCase() === 'true';
-  }
+  constructor(private readonly httpService: HttpService) {}
 
   async fetchUsers(credentials: DirectoryCredentials, pageToken?: string): Promise<DirectoryUserPage> {
-    if (!this.enabled) {
-      throw new BadRequestException('Microsoft Graph directory sync is disabled (TENANT_IDP_MS_GRAPH_ENABLED=false)');
-    }
     const creds = credentials as unknown as MsGraphCredentials;
     const accessToken = await this.resolveAccessToken(creds);
 

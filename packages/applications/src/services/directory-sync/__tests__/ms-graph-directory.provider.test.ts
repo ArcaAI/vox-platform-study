@@ -1,25 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
 import { MsGraphDirectoryProvider } from '../ms-graph-directory.provider';
 
 const CREDENTIALS = { azureTenantId: 'aad-tenant-1', clientId: 'client-abc', clientSecret: 'secret-xyz' };
 
-function makeProvider(opts: { enabled?: boolean } = { enabled: true }) {
+function makeProvider() {
   const post = vi.fn();
   const get = vi.fn();
   const httpService = { axiosRef: { post, get } };
-  const configService = { get: vi.fn((key: string) => (key === 'TENANT_IDP_MS_GRAPH_ENABLED' ? String(opts.enabled ?? true) : undefined)) };
-  const provider = new MsGraphDirectoryProvider(httpService as never, configService as never);
+  const provider = new MsGraphDirectoryProvider(httpService as never);
   return { provider, post, get };
 }
 
 describe('MsGraphDirectoryProvider', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('rejects fetchUsers when TENANT_IDP_MS_GRAPH_ENABLED is off', async () => {
-    const { provider } = makeProvider({ enabled: false });
-    await expect(provider.fetchUsers(CREDENTIALS)).rejects.toBeInstanceOf(BadRequestException);
-  });
+  // The availability test that was here asserted a platform-wide env var frozen in
+  // this class's constructor. TASK-870 item 12 moved that decision to the two
+  // callers that hold a `tenantId` — this class never did, so it could not have
+  // answered per tenant. Coverage lives in
+  // `directory-sync.feature-gate.task870.test.ts`.
 
   it('fetches a client-credentials token, then lists users with group memberships', async () => {
     const { provider, post, get } = makeProvider();

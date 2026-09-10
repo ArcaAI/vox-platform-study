@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
 
 vi.mock('jsonwebtoken', () => ({
   default: { sign: vi.fn(() => 'signed-jwt-assertion') },
@@ -14,24 +13,22 @@ const CREDENTIALS = {
   customerId: 'my_customer',
 };
 
-function makeProvider(opts: { enabled?: boolean } = { enabled: true }) {
+function makeProvider() {
   const post = vi.fn();
   const get = vi.fn();
   const httpService = { axiosRef: { post, get } };
-  const configService = {
-    get: vi.fn((key: string) => (key === 'TENANT_IDP_GOOGLE_DIRECTORY_ENABLED' ? String(opts.enabled ?? true) : undefined)),
-  };
-  const provider = new GoogleDirectoryProvider(httpService as never, configService as never);
+  const provider = new GoogleDirectoryProvider(httpService as never);
   return { provider, post, get };
 }
 
 describe('GoogleDirectoryProvider', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('rejects fetchUsers when TENANT_IDP_GOOGLE_DIRECTORY_ENABLED is off', async () => {
-    const { provider } = makeProvider({ enabled: false });
-    await expect(provider.fetchUsers(CREDENTIALS)).rejects.toBeInstanceOf(BadRequestException);
-  });
+  // The availability test that was here asserted a platform-wide env var frozen in
+  // this class's constructor. TASK-870 item 12 moved that decision to the two
+  // callers that hold a `tenantId` — this class never did, so it could not have
+  // answered per tenant. Coverage lives in
+  // `directory-sync.feature-gate.task870.test.ts`.
 
   it('exchanges a signed JWT assertion for an access token, then lists users with group memberships', async () => {
     const { provider, post, get } = makeProvider();

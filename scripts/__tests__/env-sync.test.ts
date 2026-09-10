@@ -350,14 +350,32 @@ describe('env:sync — ConfigService reads (TASK-940)', () => {
     }
   });
 
-  it('sees the three undeclared reads that were NOT in live-documentation', () => {
+  it('sees the undeclared read that was NOT in live-documentation', () => {
     // The generator's blindness spanned three unrelated subsystems, not one
     // service. `HARNESS_BASE_URL` is the proof it hid ordinary topology too,
     // not only control-plane knobs that arguably should not be env at all.
-    const found = scanTypeScriptReads();
-    expect(found.has('HARNESS_BASE_URL')).toBe(true);
-    expect(found.has('TENANT_IDP_GOOGLE_DIRECTORY_ENABLED')).toBe(true);
-    expect(found.has('TENANT_IDP_MS_GRAPH_ENABLED')).toBe(true);
+    expect(scanTypeScriptReads().has('HARNESS_BASE_URL')).toBe(true);
+  });
+
+  it('the two TENANT_IDP_* names now arrive by DECLARATION, not by scan — and still arrive', () => {
+    // They were `configService.get()` reads in the two directory providers'
+    // constructors when TASK-940 found them. TASK-870 item 12 then governed the
+    // capability per tenant and deleted those reads, so the scanner correctly no
+    // longer sees either name — and `envOverride` is what keeps them in the cache
+    // key anyway, because a deployment may still pin them as a pre-resolution seed.
+    //
+    // This is the clearest demonstration that the two Lane 1 mechanisms are
+    // complementary rather than redundant: a name can leave the SCAN and stay
+    // DECLARED, and `globalEnv` must not notice the difference.
+    const scanned = scanTypeScriptReads();
+    const overrides = HOPE_SETTINGS_REGISTRY.list().flatMap((d) => [...(d.envOverride ?? [])]);
+    const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
+
+    for (const name of ['TENANT_IDP_GOOGLE_DIRECTORY_ENABLED', 'TENANT_IDP_MS_GRAPH_ENABLED']) {
+      expect(scanned.has(name), `${name} is no longer read directly`).toBe(false);
+      expect(overrides, `${name} must be declared as an envOverride instead`).toContain(name);
+      expect(globalEnv, `${name} must still reach the cache key`).toContain(name);
+    }
   });
 
   it('registers every one of them in turbo.json#globalEnv', () => {
