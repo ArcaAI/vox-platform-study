@@ -91,15 +91,21 @@ _EXTERNAL_SECRET_KEYS=(
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
 )
 
-# Legacy per-service tokens SUPERSEDED by the one shared INTERNAL_ACCESS_TOKEN
-# (owner decision D-D). Every call site was routed through `peer_service_token()`
-# in, which prefers the shared token and falls back to these only
-# for an environment that has not migrated yet. A FRESH env has therefore no use
-# for them, and leaving them as the literal CHANGE_ME is actively wrong: it reads
-# as "paste something here" for a credential that should stay unset. Blanked, and
-# reported as superseded rather than as an optional provider key.
+# TASK-941 R3 — `_SUPERSEDED_KEYS` is now EMPTY, and that is the correct state
+# rather than a list waiting to be refilled.
+#
+# It held HARNESS_{TEXT,NLP,GUARDRAIL}_SERVICE_TOKEN: legacy per-service tokens
+# superseded by the one shared INTERNAL_ACCESS_TOKEN, blanked here because
+# `CHANGE_ME` reads as "paste something here" for a credential that should stay
+# unset. Those pydantic fields are gone, so the names no longer appear in any
+# `.env.sample` and these entries matched nothing — dead list members of exactly
+# the kind that caused the `_CARRY_FORWARD_KEYS` drift recorded in TASK-870's
+# change history (a hand-maintained list beside a generated one, silently stale).
+#
+# Keep it declared and empty: `env-sync.test.ts` reads it by name when it proves
+# every declared secret is classified, so deleting the array would break that
+# check rather than simplify it.
 _SUPERSEDED_KEYS=(
-  HARNESS_TEXT_SERVICE_TOKEN HARNESS_NLP_SERVICE_TOKEN HARNESS_GUARDRAIL_SERVICE_TOKEN
 )
 
 # Secrets a LATER setup step mints — not external, not generated here. Listing them makes the
