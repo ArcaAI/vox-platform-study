@@ -101,6 +101,12 @@ interface FeatureSpec {
    * no tenant in hand, so a tenant row could never be enforced.
    */
   maxScope?: SettingScope;
+  /**
+   * Legacy env name(s) this gate still honours as an override — forwarded to
+   * `SettingDescriptor.envOverride` so the name reaches `turbo.json#globalEnv`
+   * without being rendered into an operator-facing env file (TASK-940).
+   */
+  envOverride?: readonly string[];
 }
 
 const FEATURES: FeatureSpec[] = [
@@ -182,6 +188,11 @@ const FEATURES: FeatureSpec[] = [
     description:
       'Runs the output-side groundedness check on the live-documentation path: the generated note is verified against the source transcript BETWEEN building it and publishing it, so ungrounded segments carry their mark before the clinician reads them. MIGRATED from `LIVE_DOC_GROUNDEDNESS_ENABLED`, which was read ONCE in the `LiveDocumentationService` constructor and therefore needed a restart; it is now resolved per flush against the session tenant, so a rollout is per tenant and immediate. Enabling it requires the guardrail service and its self-hosted NLI model staged — degrade is fail-CLOSED (an unavailable gate marks segments `unverified`, never `grounded`).',
     default: false,
+    // Still honoured as an override, seeded in the consumer's constructor so the
+    // value before the first per-flush resolve matches what that resolve returns.
+    // Declared so `turbo.json#globalEnv` hashes a name the gateway really reads
+    // (TASK-940) — never rendered into an operator-facing `.env.sample`.
+    envOverride: ['LIVE_DOC_GROUNDEDNESS_ENABLED'],
   },
 ];
 
@@ -208,6 +219,7 @@ export const FEATURE_AVAILABILITY_SETTINGS: SettingDescriptor[] = FEATURES.map<S
   label: feature.label,
   description: feature.description,
   default: feature.default,
+  ...(feature.envOverride ? { envOverride: feature.envOverride } : {}),
 }));
 
 /** Every feature-availability key, in declaration order. The matrix rows. */

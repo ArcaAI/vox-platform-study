@@ -49,37 +49,48 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
 
 export type AgenticContextKnobKey = keyof typeof AGENTIC_CONTEXT_DEFAULTS;
 
-const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataType']; label: string; description: string }> = {
+// The legacy `LIVE_DOC_*` / `AGENTIC_CONTEXT_*` env name each knob still honours
+// as an override (precedence: stored value → env → code default). Declared so
+// `turbo.json#globalEnv` can hash a name the gateway genuinely reads, without
+// rendering a control-plane key into any operator-facing `.env.sample` —
+// see `SettingDescriptor.envOverride` (TASK-940).
+const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataType']; label: string; description: string; envOverride: readonly string[] }> = {
   'liveDelta.maxChars': {
     dataType: 'number',
     label: 'Live delta max chars',
     description: 'Soft per-flush cap on the transcript delta sent to TEXT (chars).',
+    envOverride: ['AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS'],
   },
   'liveFlush.segmentThreshold': {
     dataType: 'number',
     label: 'Live flush segment threshold',
     description: 'Number of final transcript segments that triggers an incremental flush.',
+    envOverride: ['LIVE_DOC_SEGMENT_THRESHOLD'],
   },
   'liveFlush.idleMs': {
     dataType: 'number',
     label: 'Live flush idle debounce (ms)',
     description: 'Idle time before a flush when the segment threshold is not yet met.',
+    envOverride: ['LIVE_DOC_DEBOUNCE_MS'],
   },
   'liveFlush.minIntervalMs': {
     dataType: 'number',
     label: 'Live flush minimum interval (ms)',
     description:
       'Floor on the time between partial-summary generations for one consultation. Raising it makes the note update less often and costs less; lowering it makes the note feel more live.',
+    envOverride: ['LIVE_DOC_MIN_INTERVAL_MS'],
   },
   'transcript.mode': {
     dataType: 'enum',
     label: 'Transcript mode',
     description: 'Transcript assembly strategy: whole (default) or windowed.',
+    envOverride: ['AGENTIC_CONTEXT_TRANSCRIPT_MODE'],
   },
   'tokenBudget.perRun': {
     dataType: 'number',
     label: 'Token budget per run',
     description: 'Per-run token budget. 0 = unbounded.',
+    envOverride: ['AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN'],
   },
 };
 
@@ -103,4 +114,5 @@ export const AGENTIC_CONTEXT_SETTINGS: SettingDescriptor[] = (
   label: META[knob].label,
   description: META[knob].description,
   default: AGENTIC_CONTEXT_DEFAULTS[knob],
+  envOverride: META[knob].envOverride,
 }));

@@ -58,6 +58,11 @@ export const CONSULTATION_REALTIME_SETTINGS: SettingDescriptor[] = [
     // (`failMode` governs an ABSENT VALUE only — a settings-backend error still
     // propagates and is never disguised as "the default".)
     failMode: 'open-to-default',
+    // Still honoured as an override, and seeded in the consumer's constructor so
+    // the value before the first resolve matches what that resolve returns.
+    // Declared so `turbo.json#globalEnv` hashes a name the gateway really reads
+    // (TASK-940) — it is never rendered into an operator-facing `.env.sample`.
+    envOverride: ['LIVE_DOC_TEXT_TIMEOUT_MS'],
     category: 'Agentic Context',
     label: 'Realtime TEXT generation timeout (ms)',
     description:
