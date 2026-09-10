@@ -180,7 +180,7 @@ test.describe('TASK-950 — a service account opens a consultation for a clinici
     // back while leaving the marked version in the list, so an identical republish is a checksum
     // no-op that moves nothing (`publish` is idempotent). Find the version that carries the marker
     // and PIN it explicitly — the same operation afterAll uses to roll back.
-    const after = await request.get(`//versions`, { headers: adminHeaders(adminJwt) });
+    const after = await request.get(`${SCHEMAS}/${schemaId}/versions`, { headers: adminHeaders(adminJwt) });
     expect(after.status(), await after.text()).toBe(200);
     const marked = ((await after.json()) as Array<{ versionNumber: number; definition: { kinds?: Array<Record<string, unknown>> } }>)
       .filter((version) =>
@@ -190,7 +190,10 @@ test.describe('TASK-950 — a service account opens a consultation for a clinici
     expect(marked, 'a version carrying the identity marker').toBeTruthy();
     expect(marked!.versionNumber).toBeGreaterThan(originalPinnedVersion);
     if ((await publish.json()).pinnedVersionNumber !== marked!.versionNumber) {
-      const pin = await request.post(`//pin`, { headers: adminHeaders(adminJwt), data: { versionNumber: marked!.versionNumber } });
+      const pin = await request.post(`${SCHEMAS}/${schemaId}/pin`, {
+        headers: adminHeaders(adminJwt),
+        data: { versionNumber: marked!.versionNumber },
+      });
       expect(pin.status(), await pin.text()).toBe(201);
     }
   });
