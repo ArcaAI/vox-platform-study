@@ -34,6 +34,7 @@ from collections.abc import Callable
 from typing import Any
 
 import jsonschema
+import structlog
 from temporalio import activity
 
 from harness.core.config import get_settings
@@ -80,8 +81,15 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     read_text_primary,
     wire_provider,
 )
+from harness.temporal.interpreter.prompt_composition import (
+    ComposedPrompt,
+    PromptCompositionEmpty,
+    compose_prompt,
+)
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 from harness.temporal.models import HarnessPolicy
+
+_LOGGER = structlog.get_logger(__name__)
 
 
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
@@ -705,19 +713,43 @@ def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> 
     return binding
 
 
-def _system_prompt(
+def _compose_system_prompt(
     resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
-) -> str | None:
+) -> ComposedPrompt:
     """The agent's instruction, rendered through the ONE grammar (§3.2) over the §3.3 scope: the
     run env's ``trigger`` / ``vars`` / ``nodes`` (plus the ``context`` alias) and the agent's own
     bound variables, overlaid by the node's ``overrides.promptVariables`` (node wins).
 
+    TASK-947 §4.1 — a COMPOSITE instruction goes through ``compose_prompt``: its fragments are
+    selected against the SAME scope the template renders against, each is rendered on its own,
+    and the results are joined. The two single-body shapes keep the pre-947 path byte for byte.
+    The composite branch is taken BEFORE the candidate chain below, because a composite's
+    ``content`` is the static projection (OD-3) — rendering it would silently drop every
+    conditional fragment.
+
     Raises ``PromptVariableUnresolved`` when a placeholder resolves to nothing and declares no
-    ``default("…")``. The caller degrades the step on it — a prompt that silently lost a
-    variable, or that shipped a literal ``{{…}}`` to the model, is the failure this replaces.
+    ``default("…")``, and ``PromptCompositionEmpty`` when no fragment was selected (OD-6). The
+    caller degrades the step on either — a prompt that silently lost a variable, that shipped a
+    literal ``{{…}}`` to the model, or that arrived empty, is the failure this replaces.
     """
     instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
     compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
+    variables: dict[str, Any] = {}
+    declared = instruction.get("variables")
+    if isinstance(declared, dict):
+        variables.update(declared)
+    overrides = config.get("overrides")
+    if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
+        variables.update(overrides["promptVariables"])
+    template_ref = f"agent:{resolved.slug}"
+
+    if resolved.resolved_prompt is not None and resolved.resolved_prompt.source == "composite":
+        return compose_prompt(
+            resolved.resolved_prompt,
+            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
+            template_ref=template_ref,
+        )
+
     template = next(
         (
             value
@@ -737,19 +769,21 @@ def _system_prompt(
         None,
     )
     if template is None:
-        return None
-    variables: dict[str, Any] = {}
-    declared = instruction.get("variables")
-    if isinstance(declared, dict):
-        variables.update(declared)
-    overrides = config.get("overrides")
-    if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
-        variables.update(overrides["promptVariables"])
-    return render_template(
-        template,
-        _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
-        template_ref=f"agent:{resolved.slug}",
+        return ComposedPrompt(prompt=None)
+    return ComposedPrompt(
+        prompt=render_template(
+            template,
+            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
+            template_ref=template_ref,
+        )
     )
+
+
+def _system_prompt(
+    resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
+) -> str | None:
+    """Just the prompt — for every caller that has no use for which fragments composed it."""
+    return _compose_system_prompt(resolved, config, context).prompt
 
 
 #: OD-E's closed `trigger` vocabulary, mirrored from
@@ -1291,7 +1325,7 @@ async def _run_text_generation(
         # the fallback chain: every candidate renders the SAME template against the SAME scope,
         # so a switch would re-raise identically while billing nothing but latency.
         try:
-            system_prompt = _system_prompt(candidate, config, run_context)
+            composed = _compose_system_prompt(candidate, config, run_context)
         except PromptVariableUnresolved as exc:
             await record_and_flush(
                 payload,
@@ -1302,6 +1336,31 @@ async def _run_text_generation(
             return NodeActivityResult(
                 status="DEGRADED",
                 reason=f"core.agent: prompt_variable_unresolved: {exc}",
+            )
+        except PromptCompositionEmpty as exc:
+            # TASK-947 OD-6 — publish enforces an unconditional base fragment, so this is the
+            # defensive half. Named and DEGRADED, never an empty system prompt sent to a model.
+            await record_and_flush(
+                payload,
+                status=STATUS_DEGRADED,
+                started=started,
+                error_code="prompt_composition_empty",
+            )
+            return NodeActivityResult(
+                status="DEGRADED",
+                reason=f"core.agent: prompt_composition_empty: {exc}",
+            )
+        system_prompt = composed.prompt
+        prompt_fragments = composed.selected or None
+        for exclusion in composed.excluded:
+            # OD-5/OD-11 — an exclusion is not a degrade, and only the KEY is observable: a
+            # condition string and a fragment body are both authored content.
+            _LOGGER.debug(
+                "core.agent.prompt_fragment_excluded",
+                node_id=payload.node_id,
+                slug=candidate.slug,
+                fragment=exclusion.key,
+                reason=exclusion.reason,
             )
         try:
             safe_prompt = ensure_egress_safe(
@@ -1438,9 +1497,14 @@ async def _run_text_generation(
             )
             if failure is not None:
                 return NodeActivityResult(
-                    status="DEGRADED", reason=f"core.agent: {failure}", output=output
+                    status="DEGRADED",
+                    reason=f"core.agent: {failure}",
+                    output=output,
+                    prompt_fragments=prompt_fragments,
                 )
-        return NodeActivityResult(status="SUCCEEDED", output=output)
+        return NodeActivityResult(
+            status="SUCCEEDED", output=output, prompt_fragments=prompt_fragments
+        )
 
     if exhausted:
         # DEGRADED, never a raise: raising is what makes Temporal retry the activity from the

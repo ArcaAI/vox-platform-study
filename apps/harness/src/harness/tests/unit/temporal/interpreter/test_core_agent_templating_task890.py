@@ -23,8 +23,12 @@ from typing import Any
 
 import pytest
 
-from harness.temporal.interpreter.models import NodeActivityInput, ResolvedAgent
+from harness.temporal.interpreter.models import NodeActivityInput, ResolvedAgent, ResolvedPrompt
 from harness.temporal.interpreter.nodes import core
+from harness.temporal.interpreter.nodes._text_fallback import (
+    TextFallbackCandidate,
+    candidate_as_resolved_agent,
+)
 from harness.temporal.interpreter.templating import PromptVariableUnresolved
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
@@ -449,3 +453,399 @@ class TestSingleKindContextEnvelope:
         prompt = core._system_prompt(_resolved("Age {{context.patientAge}}."), {}, context)
 
         assert prompt == "Age 41."
+
+
+def _composite(
+    fragments: list[dict[str, Any]],
+    *,
+    variables: dict[str, Any] | None = None,
+    join: str | None = "\n\n",
+) -> ResolvedAgent:
+    """TASK-947 §4.1 — an agent whose compiled instruction is a COMPOSITE.
+
+    ``content`` is the STATIC PROJECTION (OD-3): the unconditional fragments joined, which is
+    what a reader that predates fragments renders. A reader that DOES understand fragments must
+    never render it — the cases below pin that by making the projection differ from every
+    composed result.
+    """
+    resolved = _resolved("PROJECTION-NEVER-RENDERED", variables)
+    assert resolved.compiled_config is not None
+    composite: dict[str, Any] = {
+        "source": "composite",
+        "content": "\n\n".join(f["content"] for f in fragments if f.get("when") is None),
+        "fragments": fragments,
+    }
+    if join is not None:
+        composite["join"] = join
+    resolved.compiled_config["resolvedPrompt"] = composite
+    resolved.resolved_prompt = ResolvedPrompt.model_validate(composite)
+    instruction = resolved.instruction
+    assert isinstance(instruction, dict)
+    instruction.pop("systemPrompt", None)
+    instruction["fragments"] = [
+        {k: v for k, v in fragment.items() if k in ("key", "when")} for fragment in fragments
+    ]
+    return resolved
+
+
+class TestCoreAgentCompositeInstruction:
+    """§4.1 — the durable lane composes exactly as `composePrompt` does (parity fixture:
+    `test_prompt_composition_parity.py`); this pins the wiring INTO `_system_prompt`."""
+
+    def test_selected_fragments_render_and_join(self) -> None:
+        prompt = core._system_prompt(
+            _composite(
+                [
+                    {
+                        "key": "base",
+                        "source": "inline",
+                        "content": "Write a note for {{context.patient.name}}.",
+                        "when": None,
+                    },
+                    {
+                        "key": "revisit",
+                        "source": "inline",
+                        "content": "Compare with the prior note.",
+                        "when": "context.patientAge > 18",
+                    },
+                ]
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert prompt == "Write a note for Ada.\n\nCompare with the prior note."
+
+    def test_a_false_condition_excludes_its_fragment(self) -> None:
+        prompt = core._system_prompt(
+            _composite(
+                [
+                    {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                    {
+                        "key": "peds",
+                        "source": "inline",
+                        "content": "Minor.",
+                        "when": "context.patientAge < 18",
+                    },
+                ]
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert prompt == "Base."
+
+    def test_a_condition_error_excludes_rather_than_raises(self) -> None:
+        """OD-5 — a branch input this encounter does not carry is "no opinion", not a failure."""
+        composed = core._compose_system_prompt(
+            _composite(
+                [
+                    {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                    {
+                        "key": "revisit",
+                        "source": "inline",
+                        "content": "Revisit.",
+                        "when": "context.visit_type == 'revisit'",
+                    },
+                ]
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert composed.prompt == "Base."
+        assert composed.selected == ["base"]
+        assert [(x.key, x.reason) for x in composed.excluded] == [("revisit", "condition_error")]
+
+    def test_a_has_guard_makes_the_same_condition_a_plain_false(self) -> None:
+        composed = core._compose_system_prompt(
+            _composite(
+                [
+                    {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                    {
+                        "key": "revisit",
+                        "source": "inline",
+                        "content": "Revisit.",
+                        "when": "has(context.visit_type) && context.visit_type == 'revisit'",
+                    },
+                ]
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert [(x.key, x.reason) for x in composed.excluded] == [("revisit", "condition_false")]
+
+    def test_the_static_projection_is_never_rendered(self) -> None:
+        """OD-3 — `content` exists for an OLD reader. A reader that understands fragments must
+        compose them, or a conditional fragment would silently never run."""
+        prompt = core._system_prompt(
+            _composite([{"key": "base", "source": "inline", "content": "Base.", "when": None}]),
+            {},
+            _run_context(),
+        )
+
+        assert prompt == "Base."
+
+    def test_the_node_bound_variables_are_visible_to_both_halves(self) -> None:
+        """§3.3 — the condition sees exactly what the template sees, bindings included."""
+        composed = core._compose_system_prompt(
+            _composite(
+                [
+                    {"key": "base", "source": "inline", "content": "Tone {{tone}}.", "when": None},
+                    {
+                        "key": "formal",
+                        "source": "inline",
+                        "content": "Be formal.",
+                        "when": "tone == 'formal'",
+                    },
+                ],
+                variables={"tone": {"path": "vars.tone"}},
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert composed.prompt == "Tone formal.\n\nBe formal."
+        assert composed.selected == ["base", "formal"]
+
+    def test_an_unresolved_variable_inside_a_fragment_names_that_fragment(self) -> None:
+        with pytest.raises(PromptVariableUnresolved) as excinfo:
+            core._system_prompt(
+                _composite(
+                    [
+                        {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                        {
+                            "key": "revisit",
+                            "source": "inline",
+                            "content": "{{trigger.absent}}",
+                            "when": None,
+                        },
+                    ]
+                ),
+                {},
+                _run_context(),
+            )
+
+        assert excinfo.value.path == "trigger.absent"
+        assert excinfo.value.template_ref == "agent:discharge-writer#revisit"
+
+    def test_a_join_absent_from_the_artifact_defaults(self) -> None:
+        prompt = core._system_prompt(
+            _composite(
+                [
+                    {"key": "a", "source": "inline", "content": "A", "when": None},
+                    {"key": "b", "source": "inline", "content": "B", "when": None},
+                ],
+                join=None,
+            ),
+            {},
+            _run_context(),
+        )
+
+        assert prompt == "A\n\nB"
+
+
+class TestCoreAgentCompositeOnTheActivity:
+    """What the STEP does with a composition — the durable half of OD-5, OD-6 and OD-11."""
+
+    @pytest.fixture
+    def harness(self, monkeypatch: pytest.MonkeyPatch):
+        records: list[dict[str, Any]] = []
+
+        async def _record(*_args: Any, **kwargs: Any) -> None:
+            records.append(kwargs)
+
+        monkeypatch.setattr(core, "record_and_flush", _record)
+        monkeypatch.setattr(core, "record_generation_and_flush", _record)
+        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
+
+        def _install(wire: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            calls: list[dict[str, Any]] = []
+
+            class _Api:
+                async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+                    return wire
+
+                async def get_policy(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+                    return {"phiEnabled": False, "phiFailClosed": True}
+
+            class _Result:
+                content = "the note"
+                provider = "openai"
+                model = "gpt-x"
+                usage: dict[str, Any] = {}
+
+            class _Text:
+                async def generate(self, **kwargs: Any) -> Any:
+                    calls.append(kwargs)
+                    return _Result()
+
+            monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
+            monkeypatch.setattr(core, "_text_client", lambda _settings: _Text())
+            return calls, records
+
+        return _install
+
+    @staticmethod
+    async def _run(install, fragments: list[dict[str, Any]]):
+        wire = _composite(fragments).model_dump(by_alias=True)
+        calls, records = install(wire)
+        result = await core.interpreter_core_agent(
+            NodeActivityInput(
+                node_id="agent1",
+                node_type="core.agent",
+                tenant_id=_TENANT,
+                run_id=_RUN,
+                config={"agentRef": {"slug": "discharge-writer"}},
+                bound_inputs={"in": "the transcript"},
+                run_context=_run_context(),
+            )
+        )
+        return result, calls, records
+
+    @pytest.mark.asyncio
+    async def test_the_composed_prompt_is_what_reaches_text(self, harness) -> None:
+        _result, calls, _records = await self._run(
+            harness,
+            [
+                {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                {
+                    "key": "adult",
+                    "source": "inline",
+                    "content": "Adult.",
+                    "when": "context.patientAge > 18",
+                },
+            ],
+        )
+
+        assert calls[0]["system_prompt"] == "Base.\n\nAdult."
+
+    @pytest.mark.asyncio
+    async def test_the_selected_keys_ride_the_node_result(self, harness) -> None:
+        """OD-11 — keys ONLY: never a condition string, never a fragment body."""
+        result, _calls, _records = await self._run(
+            harness,
+            [
+                {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                {
+                    "key": "adult",
+                    "source": "inline",
+                    "content": "Adult.",
+                    "when": "context.patientAge > 18",
+                },
+                {
+                    "key": "peds",
+                    "source": "inline",
+                    "content": "Minor.",
+                    "when": "context.patientAge < 18",
+                },
+            ],
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert result.prompt_fragments == ["base", "adult"]
+
+    @pytest.mark.asyncio
+    async def test_a_condition_error_generates_anyway(self, harness) -> None:
+        """OD-5 — an exclusion is not a degrade."""
+        result, calls, _records = await self._run(
+            harness,
+            [
+                {"key": "base", "source": "inline", "content": "Base.", "when": None},
+                {
+                    "key": "revisit",
+                    "source": "inline",
+                    "content": "Revisit.",
+                    "when": "context.visit_type == 'revisit'",
+                },
+            ],
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert result.prompt_fragments == ["base"]
+        assert calls[0]["system_prompt"] == "Base."
+
+    @pytest.mark.asyncio
+    async def test_an_empty_composition_degrades_with_the_named_code(self, harness) -> None:
+        """OD-6's defensive path: publish enforced a base fragment, so a composition that
+        selects nothing is a NAMED degrade, never an empty system prompt sent to a model."""
+        result, calls, records = await self._run(
+            harness,
+            [
+                {
+                    "key": "peds",
+                    "source": "inline",
+                    "content": "Minor.",
+                    "when": "context.patientAge < 18",
+                }
+            ],
+        )
+
+        assert result.status == "DEGRADED"
+        assert "prompt_composition_empty" in (result.reason or "")
+        assert records[-1]["error_code"] == "prompt_composition_empty"
+        assert calls == []
+
+
+class TestResolvedPromptWireShape:
+    """The composite artifact survives the fallback-chain projection (`_text_fallback.py`), which
+    re-serialises a candidate's `resolvedPrompt` with `model_dump(by_alias=True)`."""
+
+    _COMPOSITE = {
+        "source": "composite",
+        "content": "Base.",
+        "join": "\n\n",
+        "fragments": [
+            {
+                "key": "base",
+                "source": "template",
+                "promptTemplateId": "t1",
+                "promptVersionNumber": 3,
+                "content": "Base.",
+                "when": None,
+            },
+            {"key": "revisit", "source": "inline", "content": "Revisit.", "when": "vars.revisit"},
+        ],
+    }
+
+    def test_a_composite_round_trips_by_alias(self) -> None:
+        dumped = ResolvedPrompt.model_validate(self._COMPOSITE).model_dump(by_alias=True)
+
+        assert dumped["source"] == "composite"
+        assert dumped["join"] == "\n\n"
+        assert [f["key"] for f in dumped["fragments"]] == ["base", "revisit"]
+        assert dumped["fragments"][0]["promptTemplateId"] == "t1"
+        assert dumped["fragments"][0]["promptVersionNumber"] == 3
+        assert dumped["fragments"][1]["when"] == "vars.revisit"
+        # The dump is itself a valid payload — the projection is lossless.
+        assert ResolvedPrompt.model_validate(dumped).model_dump(by_alias=True) == dumped
+
+    def test_a_pre_fragment_payload_still_validates(self) -> None:
+        """A payload authored before this ticket carries no `join` and no `fragments`."""
+        legacy = ResolvedPrompt.model_validate(
+            {"source": "template", "content": "Base.", "promptTemplateId": "t1"}
+        )
+
+        assert legacy.source == "template"
+        assert legacy.join is None
+        assert legacy.fragments == []
+
+    def test_the_fallback_projection_keeps_the_composition(self) -> None:
+        candidate = TextFallbackCandidate.model_validate(
+            {
+                "kind": "agent-fallback",
+                "agent": {"slug": "discharge-writer", "versionId": "v1", "versionNumber": 1},
+                "modelSlug": "gpt-x",
+                "provider": "openai",
+                "model": "openai/gpt-x",
+                "resolvedPrompt": self._COMPOSITE,
+            }
+        )
+
+        projected = candidate_as_resolved_agent(candidate)
+
+        assert projected.resolved_prompt is not None
+        assert projected.resolved_prompt.source == "composite"
+        assert [f.key for f in projected.resolved_prompt.fragments] == ["base", "revisit"]
+        assert core._system_prompt(projected, {}, _run_context()) == "Base."
