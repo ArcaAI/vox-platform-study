@@ -106,6 +106,20 @@ export interface ResolvedAgentProviderOverride {
 }
 
 /**
+ * TASK-947 — one fragment of a composite instruction, frozen at publish. `when` is the authored
+ * CEL condition (`null` = always included), evaluated at render time over the same scope the
+ * content renders against.
+ */
+export interface AgentCompiledPromptFragment {
+  key: string;
+  source: 'template' | 'inline';
+  promptTemplateId?: string;
+  promptVersionNumber?: number;
+  content: string;
+  when: string | null;
+}
+
+/**
  * What `compiledConfig` carries once published — the fully resolved references
  * the runtime consumes. Stamped by `AgentService.publish`, never from a DTO.
  */
@@ -123,9 +137,20 @@ export interface AgentCompiledConfig {
   model: { id: string; slug: string; provider: string | null; taskType: string };
   fallbacks: Array<{ priority: number; id: string; slug: string; provider: string | null }>;
   instruction: Record<string, unknown> | null;
-  /** The resolved prompt text when the instruction is template-bound (pinned version), else the inline system prompt. */
+  /**
+   * The resolved prompt text when the instruction is template-bound (pinned version), else the
+   * inline system prompt — or, since TASK-947, the COMPOSITE: every fragment's content frozen at
+   * publish beside its authored `when`, with `content` holding the STATIC PROJECTION (the
+   * unconditional fragments joined) so a reader that predates fragments still serves the base
+   * prompt (OD-3). The selection + render algorithm is `composePrompt` in
+   * `@arcaai/workflow-contract`, mirrored by the harness and pinned by
+   * `tests/contracts/prompt-composition.fixture.json`.
+   */
   resolvedPrompt:
-    { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
+    | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+    | { source: 'inline'; content: string }
+    | { source: 'composite'; content: string; join: string; fragments: AgentCompiledPromptFragment[] }
+    | null;
   parameters: Record<string, unknown>;
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;

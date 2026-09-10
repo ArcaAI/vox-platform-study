@@ -24,8 +24,10 @@
  * file because the node catalogue is being replaced by `core.*` (TASK-864) and the agent's
  * schema must outlive it.
  */
+import { AGENT_PROMPT_CONDITION_MAX_LENGTH, AGENT_PROMPT_FRAGMENT_KEY_PATTERN, AGENT_PROMPT_FRAGMENT_MAX } from './agent-instruction';
 import { FORBIDDEN_CONFIG_KEYS, hyperparameterCapabilityProblems, type ProviderGenerationCapabilities } from './agentic-contract';
 import { canonicalJson } from './canonical-json';
+import { expressionProblems } from './expressions';
 import type { NodeConfigSchema } from './node-config-schemas';
 
 // =============================================================================================
@@ -641,7 +643,44 @@ const PROMPT_VARIABLE_BINDINGS_PROPERTY: NodeConfigSchema = Object.freeze({
   description: 'Bindings for the instruction template`s variables, by name.',
 });
 
-/** Exactly one of `promptTemplateId` or `systemPrompt` — enforced by `agentConfigProblems`. */
+/**
+ * TASK-947 (OD-2) — one fragment of a COMPOSITE instruction: exactly one of `promptTemplateId` /
+ * `systemPrompt` (the keyword schema cannot say "exactly one"; `fragmentProblems` does), a pin
+ * only beside a template, and an optional CEL `when` over the render scope. Absent `when` means
+ * "always included" — and at least one fragment must be that (OD-6).
+ */
+const PROMPT_FRAGMENT_SCHEMA: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['key']),
+  properties: Object.freeze({
+    key: Object.freeze({
+      type: 'string',
+      pattern: AGENT_PROMPT_FRAGMENT_KEY_PATTERN,
+      description: 'Names the fragment in findings, the bench and telemetry. Unique in the list.',
+    }),
+    promptTemplateId: ROW_ID_PROPERTY,
+    promptVersionNumber: Object.freeze({ type: 'integer', minimum: 1 }),
+    systemPrompt: Object.freeze({ type: 'string', minLength: 1, maxLength: 50000 }),
+    when: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: AGENT_PROMPT_CONDITION_MAX_LENGTH,
+      description:
+        'CEL over the render scope (`context.*`, `trigger.*`, `input.*`, `vars.*`, `nodes.*`, bound names). Absent = always included. Guard a possibly-missing field with `has(context.field)`.',
+    }),
+  }),
+});
+
+const PROMPT_FRAGMENTS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'array',
+  minItems: 1,
+  maxItems: AGENT_PROMPT_FRAGMENT_MAX,
+  items: PROMPT_FRAGMENT_SCHEMA,
+  description: 'Ordered prompt fragments; the selected ones are rendered separately and joined. Exclusive with `promptTemplateId` / `systemPrompt`.',
+});
+
+/** Exactly one of `promptTemplateId`, `systemPrompt` or `fragments` (TASK-947) — enforced by `agentConfigProblems`. */
 const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
@@ -650,6 +689,7 @@ const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
     promptVersionNumber: Object.freeze({ type: 'integer', minimum: 1 }),
     variables: PROMPT_VARIABLE_BINDINGS_PROPERTY,
     systemPrompt: Object.freeze({ type: 'string', minLength: 1, maxLength: 50000 }),
+    fragments: PROMPT_FRAGMENTS_PROPERTY,
     evalGate: EVAL_GATE_PROPERTY,
   }),
 });
@@ -881,10 +921,19 @@ export interface AgentConfigContext {
   readonly capabilities?: AgentProviderCapabilities;
 }
 
+/**
+ * TASK-947 — the problems the contract can NAME rather than leave to a path heuristic. Two
+ * fragment problems share the path `instruction.fragments` and differ only in what went wrong,
+ * so the applications layer's `codeForConfigProblem` reads `code` first when it is present.
+ * Every pre-947 problem carries none; nothing downstream depends on it being set.
+ */
+export type AgentConfigProblemCode = 'PROMPT_FRAGMENT_SHAPE' | 'PROMPT_FRAGMENT_CONDITION_SYNTAX' | 'PROMPT_COMPOSITION_NO_BASE';
+
 export interface AgentConfigProblem {
   readonly severity: 'ERROR' | 'WARNING';
   readonly path: string;
   readonly message: string;
+  readonly code?: AgentConfigProblemCode;
 }
 
 /** Walk a JSON value for FORBIDDEN property names (exact, case-insensitive) — the agent-side form of rule 16. */
@@ -967,13 +1016,16 @@ function variableBindingProblems(instruction: Record<string, unknown>, out: Agen
 function textGenerationInstructionProblems(instruction: Record<string, unknown>, out: AgentConfigProblem[]): void {
   const hasTemplate = typeof instruction.promptTemplateId === 'string' && instruction.promptTemplateId.length > 0;
   const hasSystemPrompt = typeof instruction.systemPrompt === 'string' && instruction.systemPrompt.length > 0;
-  if (hasTemplate === hasSystemPrompt) {
+  const hasFragments = Array.isArray(instruction.fragments);
+  const forms = [hasTemplate, hasSystemPrompt, hasFragments].filter(Boolean).length;
+  if (forms !== 1) {
     out.push({
       severity: 'ERROR',
       path: 'instruction',
-      message: hasTemplate
-        ? 'A TEXT_GENERATION instruction binds exactly one of `promptTemplateId` (an approved, version-pinned template) or `systemPrompt`, not both.'
-        : 'A TEXT_GENERATION instruction must bind exactly one of `promptTemplateId` (an approved, version-pinned template) or `systemPrompt`.',
+      message:
+        forms > 1
+          ? 'A TEXT_GENERATION instruction binds exactly one of `promptTemplateId` (an approved, version-pinned template), `systemPrompt`, or `fragments` (an ordered, conditional list of either) — not several.'
+          : 'A TEXT_GENERATION instruction must bind exactly one of `promptTemplateId` (an approved, version-pinned template), `systemPrompt`, or `fragments` (an ordered, conditional list of either).',
     });
   }
   if (
@@ -983,10 +1035,98 @@ function textGenerationInstructionProblems(instruction: Record<string, unknown>,
   ) {
     out.push({ severity: 'ERROR', path: 'instruction.promptVersionNumber', message: '`promptVersionNumber` must be a positive integer when set.' });
   }
-  if (!hasTemplate && (instruction.promptVersionNumber !== undefined || instruction.variables !== undefined)) {
+  if (!hasTemplate && !hasFragments && (instruction.promptVersionNumber !== undefined || instruction.variables !== undefined)) {
     out.push({ severity: 'ERROR', path: 'instruction', message: '`promptVersionNumber` / `variables` only apply to a template-bound instruction.' });
   }
+  // TASK-947 — a composite instruction pins per FRAGMENT; a top-level pin has nothing to pin.
+  if (hasFragments && instruction.promptVersionNumber !== undefined) {
+    out.push({
+      severity: 'ERROR',
+      path: 'instruction.promptVersionNumber',
+      message:
+        'A composite instruction pins a template version on the fragment that binds it (`fragments[i].promptVersionNumber`), not at the top level.',
+    });
+  }
+  if (hasFragments) fragmentProblems(instruction.fragments as unknown[], out);
   variableBindingProblems(instruction, out);
+}
+
+/**
+ * TASK-947 (OD-2, OD-6) — the composite form's own rules, each named by `code` so the
+ * applications layer reports it without a path heuristic. Every problem is reported at the
+ * fragment it belongs to; the list-level ones at `instruction.fragments`.
+ */
+function fragmentProblems(fragments: unknown[], out: AgentConfigProblem[]): void {
+  const shape = (path: string, message: string): void => {
+    out.push({ severity: 'ERROR', path, message, code: 'PROMPT_FRAGMENT_SHAPE' });
+  };
+
+  if (fragments.length === 0) shape('instruction.fragments', 'A composite instruction needs at least one fragment.');
+  if (fragments.length > AGENT_PROMPT_FRAGMENT_MAX) {
+    shape('instruction.fragments', `A composite instruction carries at most ${AGENT_PROMPT_FRAGMENT_MAX} fragments; found ${fragments.length}.`);
+  }
+
+  const keyPattern = new RegExp(AGENT_PROMPT_FRAGMENT_KEY_PATTERN);
+  const seenKeys = new Set<string>();
+  let hasBase = false;
+
+  fragments.forEach((raw, index) => {
+    const at = `instruction.fragments[${index}]`;
+    if (!isPlainObject(raw)) {
+      shape(at, `\`${at}\` must be an object \`{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }\`.`);
+      return;
+    }
+
+    if (typeof raw.key !== 'string' || !keyPattern.test(raw.key)) {
+      shape(`${at}.key`, `\`${at}.key\` must match ${AGENT_PROMPT_FRAGMENT_KEY_PATTERN} (lowercase letters, digits, underscores; 2–48 characters).`);
+    } else if (seenKeys.has(raw.key)) {
+      shape(`${at}.key`, `\`${at}.key\` duplicates \`${raw.key}\`; fragment keys are unique within the list.`);
+    } else {
+      seenKeys.add(raw.key);
+    }
+
+    const hasTemplate = typeof raw.promptTemplateId === 'string' && raw.promptTemplateId.length > 0;
+    const hasSystemPrompt = typeof raw.systemPrompt === 'string' && raw.systemPrompt.length > 0;
+    if (hasTemplate === hasSystemPrompt) {
+      shape(
+        at,
+        hasTemplate
+          ? `\`${at}\` binds exactly one of \`promptTemplateId\` or \`systemPrompt\`, not both.`
+          : `\`${at}\` must bind exactly one of \`promptTemplateId\` (an approved template) or \`systemPrompt\` (an inline body).`,
+      );
+    }
+    if (raw.promptVersionNumber !== undefined) {
+      if (!hasTemplate) shape(`${at}.promptVersionNumber`, `\`${at}.promptVersionNumber\` pins a template version; this fragment binds none.`);
+      else if (!(Number.isInteger(raw.promptVersionNumber) && (raw.promptVersionNumber as number) >= 1)) {
+        shape(`${at}.promptVersionNumber`, `\`${at}.promptVersionNumber\` must be a positive integer when set.`);
+      }
+    }
+
+    if (raw.when === undefined) {
+      hasBase = true;
+      return;
+    }
+    if (typeof raw.when !== 'string' || raw.when.length === 0 || raw.when.length > AGENT_PROMPT_CONDITION_MAX_LENGTH) {
+      shape(
+        `${at}.when`,
+        `\`${at}.when\` must be a non-empty CEL expression of at most ${AGENT_PROMPT_CONDITION_MAX_LENGTH} characters, or absent for "always".`,
+      );
+      return;
+    }
+    for (const problem of expressionProblems(raw.when)) {
+      out.push({ severity: 'ERROR', path: `${at}.when`, message: `\`${at}.when\` ${problem}.`, code: 'PROMPT_FRAGMENT_CONDITION_SYNTAX' });
+    }
+  });
+
+  if (fragments.length > 0 && !hasBase) {
+    out.push({
+      severity: 'ERROR',
+      path: 'instruction.fragments',
+      message:
+        'Every fragment carries a `when`, so the runtime could select nothing. At least one fragment must be unconditional (no `when`) — the base the composition can never lose.',
+      code: 'PROMPT_COMPOSITION_NO_BASE',
+    });
+  }
 }
 
 /**
