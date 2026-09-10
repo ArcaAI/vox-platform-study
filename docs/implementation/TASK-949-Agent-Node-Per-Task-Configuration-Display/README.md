@@ -188,18 +188,35 @@ task. D-6's notice names stranded values down to their leaf keys.
 | `typecheck` | green |
 | `lint` (`--max-warnings 0`) | green |
 | `build` | green |
-| Runtime verification in a running app | **NOT DONE — blocked**, see below |
+| Runtime verification in a running app | **PASSED** — see below |
 
 **Pre-existing failure, not from this change:** `src/app/(console)/playground/__tests__/playground-route-group.test.ts`
 fails identically on a clean `dev-2.2` checkout. Reported, not fixed (out of scope).
 
-**Runtime verification is outstanding.** The worktree console was started on :5178 and reached
-(logged in, super admin), but every DB-backed gateway route hangs and `admin/health/services`
-returns 500 because **Docker/OrbStack stopped mid-session** — Postgres, Redis, MinIO and Vault are
-all down, so `admin/workflow-definitions` and `admin/tenants` never resolve and the studio cannot
-load a graph. Nothing about this involves the change (which touches no backend code); the same
-gateway served `admin/agents` correctly earlier in the same session. This must be repeated once
-the local stack is back, against the ArcaAI `n_asr` node, before the ticket leaves Review.
+**Runtime verification — passed 2026-09-11**, worktree console on :5178 against the live gateway,
+ArcaAI working tenant, `arcaai-gen-consultation` v1.
+
+(First attempt was blocked: Docker/OrbStack stopped mid-session, so every DB-backed gateway route
+hung. Restarted; the gateway recovered on its own.)
+
+`n_asr` — the node this ticket started from:
+
+| Check | Result |
+|---|---|
+| Agent resolves | `Realtime transcription (whisper.cpp ML/EN)` selected — **no "(not in the list)"** |
+| Model + fallbacks | `arcaai-whisper-large-ml-en-gguf (built-in)`, `…-gguf-q8_0 → faster-whisper-large-v3-turbo-int8` |
+| Parameters | 24 rows across Vad / Diarization / Decoding / Post-processing / Streaming — `ml-en`, beam size 5, VAD 0.5/100/500, `cadence-punctuation`, 500 ms partials |
+| D-4 tier attribution | `Partial Window Sec 6 — from the model profile` |
+| Unset knobs | collapsed per group, e.g. `Vad Filter, Chunk Length Sec, … — engine default` |
+| LLM-only controls | **none** — editable set is Agent, guardrail, port bindings, Lane, Cadence, On Error, retry/timeout |
+
+`n_presummary` (TEXT_GENERATION) — unchanged: `Max Tokens, Top P, Carry Forward, Dna, Prompt
+variable, Prompt template, Document` all still offered, model `lms-gemma-4-e2b-it-qat (lm-studio)`.
+
+**The runtime pass found a defect the suite could not.** The standalone prompt-template picker is
+rendered outside the schema (its path is not a descriptor), so `withheld` never reached it and an
+ASR node still offered "Prompt template". Fixed with a regression test — the reason rule 13 makes
+a runtime pass part of the definition of done rather than a formality.
 
 ## Change History
 
@@ -207,3 +224,4 @@ the local stack is back, against the ArcaAI `n_asr` node, before the ticket leav
 |---|---|
 | 2026-09-10 | Ticket opened; review + owner decision round D-1..D-8 recorded; implementation started |
 | 2026-09-10 | D-8, L0, L1, L2 implemented on `task-949-agent-node-config`; tests/typecheck/lint/build green; runtime verification blocked by the local Docker stack being down |
+| 2026-09-11 | Stack restarted; runtime pass PASSED against ArcaAI `arcaai-gen-consultation` v1. It caught one defect the suite missed (the standalone prompt-template picker was not task-gated) — fixed with a regression test |
