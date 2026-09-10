@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { GatewayError, versionFromEtag } from '@/shared/api';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import { foldLoopActivity, type LoopActivityEntry, type LoopEvent } from '../hooks/use-loop-activity';
-import type { DocumentSectionView, DocumentView, SectionPatch } from './document-sections';
+import type { DocumentSectionRecord, DocumentSectionView, DocumentView, SectionPatch } from './document-sections';
 import { liveAssistScopeFor, liveAssistStreamPath, type ClinicalSuggestion, type CorrectionProposal, type CorrectionsEnvelope, type LiveAssistEnvelope } from './live-assist';
 import {
   approveSummary,
   cancelConsultationJob,
+  confirmDocumentSection,
   consultationJobStreamPath,
   generateSummaryAsync,
   getConsultationJob,
+  getDocumentSection,
   getLatestPreSummary,
   getLatestSummary,
   getNamedEntities,
@@ -20,6 +23,7 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   liveSummaryStreamPath,
+  listDocumentSections,
   loopStreamPath,
   listScopingDepartments,
   startRecording,
@@ -432,6 +436,10 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
           state: patch.state,
           content: patch.content,
           annotations: patch.annotations ?? [],
+          // The most recent accepted patch's value, whether or not it carries one — a patch
+          // that replaced rather than appended (a correction, a confirm) must clear a highlight
+          // an EARLIER patch set, never leave it pointing at now-stale content.
+          appended: patch.appended,
         },
       };
     });
@@ -449,6 +457,38 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
     enabled: enabled && !!consultationId,
   });
 
+  // R4 — hydrate documents already known to this fold from the DURABLE view, so a dropped SSE
+  // frame or a reconnect (recording stopped and restarted without a remount — `documentOrder`
+  // survives that, only a `consultationId` change resets it) is reconciled from the row the
+  // gateway itself points to for exactly this: "the section.patch SSE lane only emits while a
+  // flush is running, so a client that reloads mid-encounter reads its state here." Gated on
+  // `documentOrder` rather than firing blind: nothing in the console plane can enumerate a
+  // consultation's document keys ahead of a first section.patch (the list route itself REQUIRES
+  // one), so a cold reload before anything has ever streamed still shows a skeleton until the
+  // next flush — same as before this change, not a regression.
+  const hydrate = useQuery({
+    queryKey: [...playgroundConsultationKeys.documentSectionsHydrate(consultationId ?? 'none'), documentOrder],
+    queryFn: async (): Promise<DocumentSectionRecord[]> => {
+      const perDocument = await Promise.all(
+        documentOrder.map(async (documentKey) => {
+          try {
+            return await listDocumentSections(consultationId as string, documentKey);
+          } catch (error) {
+            if (error instanceof GatewayError && error.isNotFound) return [];
+            throw error;
+          }
+        }),
+      );
+      return perDocument.flat();
+    },
+    enabled: enabled && !!consultationId && documentOrder.length > 0,
+  });
+
+  if (hydrate.data) {
+    const folded = foldHydratedDocumentSections(sections, hydrate.data);
+    if (folded !== sections) setSections(folded);
+  }
+
   const documents = useMemo<DocumentView[]>(() => {
     const bySections = Object.values(sections);
     return documentOrder.map((documentKey) => ({
@@ -461,6 +501,68 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
   }, [sections, documentOrder]);
 
   return { documents, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
+}
+
+/**
+ * Folds a `GET .../documents/:documentKey/sections` read into the SSE-derived state. Exported
+ * for the reducer test, same rationale as `foldPreSummaryEvent`/`reconcilePreSummaryFromLatest`.
+ *
+ * Uses `revision` — NEVER `version` — as the ordering token, for the same reason the SSE fold
+ * does: `version` is the section's OCC precondition, `revision` is what orders writes
+ * (`DocumentSectionRecord`'s own docblock in `document-sections.ts`). A hydrated read therefore
+ * never clobbers state a LATER SSE patch already produced, and never regresses an
+ * already-accepted revision — same discard rule (`<=`), just fed from REST instead of SSE.
+ */
+export function foldHydratedDocumentSections(
+  current: Record<string, DocumentSectionView & { documentKey: string }>,
+  hydrated: readonly DocumentSectionRecord[],
+): Record<string, DocumentSectionView & { documentKey: string }> {
+  let next = current;
+  for (const item of hydrated) {
+    const key = `${item.documentKey}::${item.sectionKey}`;
+    const existing = next[key];
+    if (existing && item.revision <= existing.revision) continue;
+    if (next === current) next = { ...current };
+    next[key] = {
+      documentKey: item.documentKey,
+      sectionKey: item.sectionKey,
+      title: item.title,
+      idx: item.idx,
+      revision: item.revision,
+      state: item.state,
+      content: item.content,
+      annotations: item.annotations ?? [],
+      // A durable REST read never carries `appended` — nothing "just arrived" from a page
+      // load's perspective, so any highlight an earlier SSE patch set is cleared, never guessed.
+    };
+  }
+  return next;
+}
+
+export interface ConfirmDocumentSectionInput {
+  consultationId: string;
+  documentKey: string;
+  sectionKey: string;
+}
+
+/**
+ * R4/OD-5 — the clinician's CHECKPOINT. Re-reads the section FIRST for a fresh `version` +
+ * `content` pair: the SSE fold this console renders from carries `revision` only, never the OCC
+ * token the confirm PATCH's `If-Match` requires (`document-sections.ts`'s own note on why the
+ * two numbers differ), and re-sending the section's OWN current content is enough to transition
+ * it `provisional` -> `confirmed` without editing it.
+ */
+export function useConfirmDocumentSection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ consultationId, documentKey, sectionKey }: ConfirmDocumentSectionInput): Promise<DocumentSectionRecord> => {
+      const read = await getDocumentSection(consultationId, documentKey, sectionKey);
+      if (!read.etag) throw new Error(`Section ${sectionKey} of ${documentKey} carried no ETag to confirm against.`);
+      return confirmDocumentSection(consultationId, documentKey, sectionKey, read.data.content, versionFromEtag(read.etag));
+    },
+    onSuccess: (_result, variables) =>
+      void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.documentSectionsHydrate(variables.consultationId) }),
+  });
 }
 
 /**
