@@ -31,6 +31,7 @@ import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-c
 import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descriptors';
 import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
+import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { SettingsRegistry } from './settings-registry';
@@ -111,6 +112,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // verbatim from the Python field it replaces, so registering them changes no
   // behaviour and needs no seeded rows.
   ...STT_RUNTIME_SETTINGS,
+  // TASK-944 — the GATEWAY's own budget for opening an stt streaming session.
+  // Deliberately not part of the family above: that one is `consumedBy: ['stt']`
+  // and travels the pull route to the Python process, while this is read by the
+  // gateway about its own outbound hop and `apps/stt` never sees it.
+  ...STT_GATEWAY_SETTINGS,
   // Gateway-side PHI-redaction call budget (companion to the guardrail-side
   // chunk budget in SERVICE_RUNTIME_SETTINGS). Registered at the redactor's own
   // code default, so cataloging it changes no behaviour.
