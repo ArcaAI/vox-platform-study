@@ -567,8 +567,7 @@ const socket = hope.stt.socket(session);
 socket.on('transcript', (t) => { if (t.isFinal) appendCaption(t.text); });
 await socket.connect();
 for await (const frame of pcm16Frames) socket.sendPcm16(frame);
-socket.stop();   // finalize the utterance; the session stays open
-socket.close();  // end the session
+socket.finalize();  // finalize the utterance — this ALSO ends the session; no separate close() needed
 
 // 5. Stop, then read the finished note.
 await hope.consultations.recording.stop(consultation.id, { persistSnapshot: true });
@@ -617,8 +616,11 @@ never on the SSE `event:` line — the legacy whole-document payload carries no
 you. What crosses the wire:
 
 - **up**: binary frames of **PCM16 LE mono** (`sendPcm16`), and JSON control
-  frames — `stop` (finalize the utterance), `close` (end the session), `resume`.
-  The gateway routes on the WebSocket binary flag, so audio needs no envelope.
+  frames — `stop` (`socket.finalize()` — finalizes the utterance AND ends the
+  session; there is no grace window and the session cannot be resumed after
+  it), `close` (`socket.close()` — ends the session immediately, without
+  waiting for a finalize flush), `resume`. The gateway routes on the WebSocket
+  binary flag, so audio needs no envelope.
 - **down**: `transcript`, `status`, `error`, `resumed` events, typed.
 
 Three things worth knowing before you wire it up:

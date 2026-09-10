@@ -155,8 +155,7 @@ function defaultSleep(ms: number): Promise<void> {
  * socket.on('transcript', (t) => { if (t.isFinal) append(t.text); });
  * await socket.connect();
  * for await (const frame of pcm16Frames) socket.sendPcm16(frame);
- * socket.stop();   // finalize the utterance, session stays open
- * socket.close();  // end the session
+ * socket.finalize();  // finalize the utterance — this ALSO ends the session
  * ```
  */
 export class RealtimeSttSocket {
@@ -232,9 +231,36 @@ export class RealtimeSttSocket {
     socket.send(frame);
   }
 
-  /** Finalize the current utterance. The SESSION stays open — this is not a close. */
-  stop(): void {
+  /**
+   * Finalize the current utterance — and, despite the name, END THE SESSION.
+   *
+   * Sends the `{type:'stop'}` wire frame. The gateway forwards it to the tenant's
+   * ASR service as a `finalize` control command, which flushes the tail of the
+   * utterance and then CLOSES the session — observed live as
+   * `status finalizing` → `status closed`, with the session's Redis status
+   * ending `closed`. The gateway itself will close this socket once that flush
+   * completes; there is no grace window in which the session can still accept
+   * more audio, and the session CANNOT be resumed afterward. If you need to
+   * keep streaming past this utterance, do not call this — this is the last
+   * thing you send on a session, not a mid-stream punctuation mark.
+   */
+  finalize(): void {
     this.requireSocket().send(JSON.stringify({ type: 'stop' }));
+  }
+
+  /**
+   * @deprecated Use {@link finalize} instead. Despite this method's old name and
+   * its old doc comment ("the SESSION stays open — this is not a close"), it
+   * ENDS THE SESSION — the wire frame it sends (`{type:'stop'}`) is forwarded to
+   * the tenant's ASR service as a `finalize` control command, which flushes the
+   * tail of the utterance and then closes the session. That doc comment was
+   * wrong and cost two integrators the rest of a consultation when they called
+   * this expecting the session to stay open. `stop()` is kept only as an alias
+   * for source compatibility; it delegates to {@link finalize} and sends the
+   * exact same wire frame.
+   */
+  stop(): void {
+    this.finalize();
   }
 
   /**
