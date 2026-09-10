@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending — plan awaiting owner decisions (OD-0…OD-10) and an explicit **go** |
+| **Status** | Review — shipped on `dev-2.2` (`e1418982f` + this doc); every automated gate green or attributed; the owner's console click-through is the one open gate |
 | **Type** | feature (full-stack: database → domains → applications → api → SDKs → admin console) |
 | **Branch** | `dev-2.2` |
 | **Surface** | `packages/database` (migration), `packages/domains` (UserProfile trio), `packages/applications` (context-schema definition, new identity service, consultation open, agent invocations, workflow runs, settings descriptors), `packages/workflow-contract` (compiler freeze), `apps/api` (DTO + e2e + five regenerated artifacts), `packages/vox-node` + `packages/vox-codegen` (types), `apps/admin-console` (schema editor + user profile) |
@@ -340,6 +340,15 @@ insert-path test correction.
 | Lane C targeted vitest | 477 passed (identity, userProfile, settings-registry) |
 | Lane D targeted vitest | consultation service 203, API consultation controller 255 |
 | Lane E targeted vitest | agent + workflow-exposure 440 + 70 after the three test-premise fixes; API agent/workflows controllers 117 |
+| Verification worktree (`dev-2.2`): `turbo build --filter='@arcaai/api^...'`, `api:build`, `route-manifest`, `api:openapi`, `api:portal`, `gen:admin` | all exit 0; `api:openapi:check` OK, `api:portal:check` no drift (admin 662 / business 200 ops), `gen:admin:check` no drift (49 areas, 422 routes, 428 schemas); artifacts committed `20e9b3f86` |
+| `@arcaai/applications` FULL suite | 12987 passed / 6 skipped; the one failed FILE is `agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts` (needs the live TEST DB on 5433, held by ALaaS — same as the pre-merge baseline) |
+| `@arcaai/api` FULL vitest | 4358 passed / 4 skipped; the one failure is `tests/integration/summary-provenance.spec.ts` expecting no `redactionApplied` key — the mapper gained it in TASK-932 (`f369003fc`, 2026-09-09), the spec was last touched 2026-09-04: pre-existing on the base, not TASK-950 |
+| Lint | `apps/api` clean after prettier on lane E's two controllers + spec (`432e54f22`); `@arcaai/applications`, `@arcaai/workflow-contract`, `@arcaai/domains` exit 0 (`packages/database` has no lint script) |
+| API e2e — `task-950-consultation-identity.spec.ts` | **13/13 passed** against the worktree gateway (8869): provision on first `open`, reuse on second, `CONTEXT_SCHEMA_VIOLATION`, unknown kind, agree/mismatch (`CLINICIAN_MISMATCH`), `CLINICIAN_REQUIRED`, `clinicianUserId`-only unchanged, human caller opens as self, opt-out → `USER_IDENTITY_UNKNOWN`, known id still resolves, override removal restores. Made re-runnable on a persistent DB (`e1418982f`) |
+| API e2e — `task-950-invocation-identity.spec.ts` | **7/7 passed**: marked schema publish, agent bound to it, machine invoke provisions, second invoke reuses, human provisions nobody, blank id mints nobody, probe tenant = ArcaAI (workflow half pinned by unit tests — see deviation 2) |
+| API e2e — regressions `task-933`, `task-658` | 2 failures, BOTH environmental and reproduced on the peer's own gateway: `task-933` "recording/start must record the governing run" — dispatch logged `connect ECONNREFUSED :8866` (no harness running here); `task-658` "context write … 201" got 404 because the dev-mode Vault restarted at 16:49Z after the seeded context items were encrypted at 07:01Z, so `ConsultationRepository.findWithContext` swallows the decrypt error and answers `null` (a `db:all` reseed fixes it; nothing in TASK-950 touches that path) |
+| Live evidence (dev DB, after the e2e runs) | `select username, staffId, tags, role, department …` → five `auto_<16 hex>` users, `staffId` = the sent value, `tags {auto-provisioned}`, tenant ArcaAI, role DOCTOR, department `GEN_ARCAAI`; 10 consultations with `doctorId` = one of them |
+| Console runtime pass | NOT done by the orchestrator: the browser-safety policy forbids typing a password into the login form. Automated console gates are green (2883 tests incl. axe on both themes for the new picker and the Staff ID field). For the owner: console `http://localhost:5178` (worktree, `NEXT_PUBLIC_API_HOST=http://localhost:8869`) → Users → any `auto_…` user → Profile tab shows Staff ID; Context schemas → `consultation_gen_arcaai` → the `vitals` kind shows the "User identity field" picker |
 
 Environment note: a peer session holds uncommitted edits to `live-documentation.service.ts`,
 `realtime-node-registry.ts`, `agent-schemas.ts` (+ a test) in the primary checkout, so compile
@@ -353,4 +362,5 @@ gates and artifact regeneration run in a dedicated worktree `../hope-v2-task-950
 | Date | Entry |
 |---|---|
 | 2026-09-11 | Ticket opened from the owner's requirement. Discovery (three read-only lanes) and plan written; status Pending, awaiting OD-0…OD-10 and an explicit go. |
-| 2026-09-11 | Owner directive: maximise parallel lanes, tiered models, no lane runs gates. Seven worktree lanes spawned against pinned contracts; A, B, C, D, E, F, G merged into `dev-2.2` with per-lane gates (table above). Deviations 1–9 accepted on evidence. Remaining: full applications/API suites, lint, typecheck, artifact regeneration, e2e, live proof. |
+| 2026-09-11 | Owner directive: maximise parallel lanes, tiered models, no lane runs gates. Seven worktree lanes spawned against pinned contracts; A, B, C, D, E, F, G merged into `dev-2.2` with per-lane gates (table above). Deviations 1–9 accepted on evidence. |
+| 2026-09-11 | Mid-run a peer session ran `git checkout -b asr-transcript-timing-metadata` in the primary checkout, so the G/C/D/E merges landed on that branch; `dev-2.2` was fast-forwarded to `ca0d836fd` (every commit on the peer's branch was this ticket's) and all later work moved to the `../hope-v2-task-950-verify` worktree, which now checks out `dev-2.2`. Artifacts regenerated (`20e9b3f86`), full suites + lints run, e2e green for both TASK-950 specs, two environmental regressions attributed. Lane worktrees removed after `merge-base --is-ancestor` confirmed each merge. Status → **Review**; the owner's console click-through is the one open gate. |
