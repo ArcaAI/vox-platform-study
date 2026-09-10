@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — versioned and gated on `dev-2.2`; awaiting the `SDK-3.2.0` tag, then the ALaaS install |
+| **Status** | In Progress — versioned and gated on `dev-2.2`, ALaaS migrated and green against the built 3.2.0; awaiting the `SDK-3.2.0` tag, then the ALaaS dep bump + lockfile |
 | **Type** | infrastructure (release) |
 | **Branch** | `dev-2.2` |
 | **Consumers touched** | `arca/ALaaSv3.0` → `apps/audio-stream-svc` |
@@ -92,9 +92,7 @@ syntax reaches the published declarations**, and the counts are byte-identical b
 | `pnpm sdk-node:check:exports` | publint `All good!`; are-the-types-wrong bundler 🟢 |
 | `pnpm sdk-codegen:test` | `Tasks: 2 successful, 2 total` |
 
-### 4.3 ALaaS — `apps/audio-stream-svc`
-
-`@arcaai/vox-node` and `@arcaai/vox-codegen` → `3.2.0`, plus the migration the release requires.
+### 4.3 ALaaS — `apps/audio-stream-svc` (commit `7191c05`, branch `codeSwitchImplementation`)
 
 The service anticipated this release: `hope-realtime.port.ts` + `hope-realtime.vox-node.adapter.ts`
 declare the H2 surface and cast the client to it, so the adapter compiles against an SDK that
@@ -112,6 +110,24 @@ lands, this file does not change") held, apart from the rename below.
 
 **ALaaS was never harmed by that bug.** `consultation-broker.service.ts` calls it inside its own
 `stop()`, at end-of-consultation, which is the one correct place. Only the wording was wrong.
+
+**Verified against the REAL 3.2.0, not just the declaration.** `node_modules/@arcaai/vox-node` in
+that service is a symlink to `hope-v2/packages/vox-node` (the dev arrangement left by the TASK-933
+live proof), and that package now reads `3.2.0` with `finalize()` in its built `dist`. So these
+gates ran against the shipped surface:
+
+| Gate | Result |
+|---|---|
+| `nest build` (tsc) | exit 0 |
+| `eslint` (the four changed files) | exit 0 |
+| `jest src/consultation` | `7 passed, 7 total` suites · `136 passed, 136 total` tests |
+
+**The dependency bump is deliberately NOT in that commit.** `apps/audio-stream-svc/pnpm-lock.yaml`
+is tracked and pins `@arcaai/vox-node@3.1.0` to a registry tarball + integrity hash; moving
+`package.json` to `3.2.0` alone would fail `pnpm install --frozen-lockfile` in Docker and CI. The
+manifest and the lockfile must move in one commit, and the lockfile cannot resolve 3.2.0 until it
+is published. (`@arcaai/vox-codegen` is absent from that lockfile and from `node_modules`
+entirely — declared as a devDependency but never installed. Pre-existing, untouched here.)
 
 ### 4.4 The timeout finding — latent, documented, no behaviour changed
 
@@ -133,15 +149,18 @@ timeout override, so its ceiling is the client value or nothing.
 
 ## 5. Remaining Work
 
-1. **Owner pushes `SDK-3.2.0`** → CI `publish-sdk` publishes to GitHub Packages.
-2. In ALaaS: `pnpm install` (needs `GITHUB_TOKEN` with `read:packages` exported), then
-   `pnpm --filter audio-stream-svc build lint test`.
+1. **Owner pushes the `SDK-3.2.0` tag** → CI `publish-sdk` versions (a no-op; already applied
+   here), builds, and publishes the nine packages to GitHub Packages.
+2. In ALaaS, as ONE commit: set `@arcaai/vox-node` and `@arcaai/vox-codegen` to `3.2.0` in
+   `apps/audio-stream-svc/package.json`, export a `GITHUB_TOKEN` with `read:packages`, run
+   `pnpm install` to refresh `pnpm-lock.yaml`, then re-run `nest build` / `eslint` / `jest`.
+   That install also replaces the local symlink with the registry copy — which is the one thing
+   these gates have NOT exercised.
 
-Until step 1 lands, the ALaaS edits are **committed but unverified at runtime** — its lockfile
-still resolves 3.1.0.
+Neither repository has been pushed.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
-| 2026-09-10 | Ticket opened. vox-codegen added to the changesets `fixed` group; three missing minor changesets written; nine packages versioned to 3.2.0; all SDK gates green; TS 6 → TS 5.1 declaration compatibility proven against a 3.1.0 control. ALaaS migrated (`finalize()`, corrected docs, dep bumps) pending publish. |
+| 2026-09-10 | Ticket opened. vox-codegen added to the changesets `fixed` group; three missing minor changesets written; nine packages versioned to 3.2.0 (`cc8d3e79a`); all SDK gates green; TS 6 → TS 5.1 declaration compatibility proven against a 3.1.0 control. ALaaS migrated to `finalize()` with the half-close doc corrected in three places (`7191c05`), green against the built 3.2.0; dep bump held back to stay atomic with the lockfile. |
