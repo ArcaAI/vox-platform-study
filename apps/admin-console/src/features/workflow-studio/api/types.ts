@@ -380,6 +380,12 @@ export interface AgentOption {
    */
   instruction?: {
     variables?: Record<string, unknown>;
+    /** SPEECH_TO_TEXT (`AGENT_INSTRUCTION_SCHEMAS`) — surfaced because a bad hotword list is a
+     *  transcription regression that is otherwise invisible from the graph. */
+    hotwords?: string[];
+    initialPrompt?: string;
+    /** NAMED_ENTITY_RECOGNITION — the label taxonomy is instruction, not a parameter. */
+    labels?: string[];
     /** TASK-890 J4-F6 — the template the agent binds. Its `declaredVariables` are the fallback
      *  when `variables` is empty, which is every seeded platform agent's state. */
     promptTemplateId?: string | null;
@@ -389,7 +395,27 @@ export interface AgentOption {
    * Absent/undefined means the platform default (ON) — the same `parameters.guards.enabled`
    * the agents form (L5) reads for its own switch.
    */
-  parameters?: { guards?: { enabled?: boolean } } | null;
+  parameters?: ({ guards?: { enabled?: boolean } } & Record<string, unknown>) | null;
+  /**
+   * TASK-949 L1 — the rest of the payload `GET admin/agents` has always returned.
+   *
+   * `AgentResponse` carries all of this already (see the note above `instruction`); the studio
+   * simply projected it away, so a `core.agent` node could show a slug and nothing else. These
+   * are what `AgentSummarySection` renders: which model actually runs, what it falls back to,
+   * the task-typed hyper-parameters, and whether the agent is publishable at all. No new route.
+   */
+  modelId?: string | null;
+  modelSlug?: string | null;
+  status?: string;
+  isActive?: boolean;
+  fallbacks?: Array<{ priority: number; modelId: string; modelSlug?: string | null; enabled: boolean }> | null;
+  /**
+   * D-3 — the RESOLVED, checksummed view the runtime compiled at publish: `model` (slug +
+   * provider), `fallbacks` (resolved slugs, ordered), `parameters`, `guardrail`, `protocols`.
+   * Preferred over the raw columns because it is what will actually run; absent until published.
+   */
+  compiledConfig?: Record<string, unknown> | null;
+  validationReport?: { blocking?: boolean; findings?: Array<{ severity?: string; code?: string; path?: string; message: string }> } | null;
 }
 
 /** `GET admin/consultation-context-schemas/:id/versions` row — only what the version pin picker needs.

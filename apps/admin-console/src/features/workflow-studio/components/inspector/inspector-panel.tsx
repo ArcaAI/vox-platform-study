@@ -76,7 +76,8 @@ import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
 import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
-import { AgentPickerField, DEFAULT_AGENT_TASK } from './agent-picker-field';
+import { AgentPickerField, agentTaskLabel } from './agent-picker-field';
+import { AgentSummarySection } from './agent-summary-section';
 import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer, type FieldRenderContext } from './field-renderers';
@@ -104,6 +105,21 @@ const CONTEXT_SCHEMA_PATH = 'contextSchema';
 const GUARDRAIL_PATH = 'guardrail';
 /** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
+/**
+ * TASK-949 L2 — the TEXT_GENERATION-shaped half of `CORE_AGENT_SCHEMA`.
+ *
+ * `CORE_AGENT_SCHEMA` is one static shape, so an ASR or NER node was offered prompt variables,
+ * seven generation hyper-parameters, re-visit carry-forward, the DNA writing-style switch and a
+ * document binding. Every one of those is about GENERATING TEXT — `dna` reads "when this agent
+ * generates", `carryForward` "into this prompt", `promptVariables` "the agent's
+ * instruction-template variables" — and none is reachable from a `SPEECH_TO_TEXT` /
+ * `NAMED_ENTITY_RECOGNITION` / `TEXT_TO_SPEECH` agent at run time.
+ *
+ * Split in two because the mechanisms differ: `withheld` filters the top-level descriptor list
+ * and cannot reach inside a group, so the three `overrides.*` fields go through `fieldOverrides`.
+ */
+const LLM_ONLY_TOP_LEVEL_PATHS = ['dna', 'documentTemplateId', 'documentTemplateSlug', 'documentVersionNumber', PROMPT_TEMPLATE_PATH] as const;
+const LLM_ONLY_NESTED_PATHS = [PROMPT_VARIABLES_PATH, 'overrides.generation', 'overrides.carryForward'] as const;
 /** Namespace for a secondary input's DOM id and its finding path. Not a config key: the binding
  *  itself is an edge (see the note above `SecondaryInputsSection`), so nothing is written here. */
 const SECONDARY_INPUTS_ROOT = 'inputs';
@@ -178,8 +194,55 @@ export interface InspectorPanelProps {
  * resolve the producing socket and run the compatibility check.
  */
 
+/**
+ * TASK-949 D-8 — one path convention, so a finding can find its field.
+ *
+ * A `WorkflowFinding.path` is documented as (and emitted as) a JSON POINTER —
+ * `/overrides/generation/temperature` (`publish-findings.ts`) — while a `FieldDescriptor.path` is
+ * DOTTED, `overrides.generation.temperature` (`schema-form.ts`). The two were compared with
+ * `===`, so no pointer-shaped finding ever matched a field and `OVERRIDE_OUT_OF_RANGE` /
+ * `GUARDRAIL_OPTED_OUT` fell silently into the graph-level bucket. Normalizing the pointer form
+ * onto the descriptor form fixes both the field lookup and the graph-level residue, which must
+ * agree or a matched finding renders twice.
+ *
+ * A path that is already dotted is returned unchanged, so findings emitted in either convention
+ * land on the same field.
+ */
+function normalizeFindingPath(path: string | undefined): string {
+  if (!path) return '';
+  if (!path.startsWith('/')) return path;
+  return path
+    .slice(1)
+    .split('/')
+    .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+    .join('.');
+}
+
+/**
+ * TASK-949 D-6 — LLM-only config already written on a node whose agent cannot read it.
+ *
+ * Hiding such a field silently would strand its value: the author could neither see it nor clear
+ * it, and it would still ride along in the published graph. So the paths are named instead, and
+ * an object is expanded to its leaf keys — "temperature", not just "generation".
+ */
+function strandedLlmOnlyValues(config: Record<string, unknown>): string[] {
+  const stranded: string[] = [];
+  for (const path of [...LLM_ONLY_NESTED_PATHS, ...LLM_ONLY_TOP_LEVEL_PATHS]) {
+    const value = getAtPath(config, path);
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const keys = Object.keys(value as Record<string, unknown>);
+      if (keys.length === 0) continue;
+      stranded.push(...keys.map((key) => `${path}.${key}`));
+      continue;
+    }
+    stranded.push(path);
+  }
+  return stranded;
+}
+
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
-  return problems.filter((problem) => (problem.path ?? '') === path).map((problem) => problem.message);
+  return problems.filter((problem) => normalizeFindingPath(problem.path) === path).map((problem) => problem.message);
 }
 
 function flattenPaths(descriptors: FieldDescriptor[]): string[] {
@@ -355,7 +418,9 @@ export function InspectorPanel({
   // `AgentPickerField` already runs for this task, so this is a cache hit, not a second fetch.
   const isCoreAgentNode = node?.type === 'core.agent';
   const agentSlugValue = node && typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : '';
-  const agentOptions = useAgentOptions(DEFAULT_AGENT_TASK, isCoreAgentNode);
+  // TASK-949 L0 — no task filter: a `core.agent` may reference an agent of ANY task, and this is
+  // also how `referencedAgent` below resolves for an ASR/NER/TTS node rather than coming back empty.
+  const agentOptions = useAgentOptions(undefined, isCoreAgentNode);
   // TASK-890 J4-F5 — the version rows carry the definition itself, so the trigger's kind paths
   // come from the SAME read `ContextSchemaRefField` already performs (a cache hit, not a second
   // fetch). Disabled for every node type but `core.agent`, which is the only consumer.
@@ -365,6 +430,11 @@ export function InspectorPanel({
   const contextSchemaVersions = useContextSchemaVersions(isCoreAgentNode ? (triggerContextBinding?.schemaId ?? null) : null);
   // TASK-890 J4-F6 — the agent's bound template, read only when the agent declares no variables
   // of its own. `usePromptTemplateQuickView` is the shared picker's own cached read.
+  // TASK-949 L2 — the referenced agent's task decides which of the schema's fields apply.
+  // UNKNOWN suppresses NOTHING: while the list is loading, or when the slug resolves to nothing
+  // visible, the surface fails OPEN to what it has always shown rather than making fields vanish.
+  const referencedTask = referencedAgentForNode?.task;
+  const suppressLlmOnlyFields = isCoreAgentNode && referencedTask !== undefined && referencedTask !== 'TEXT_GENERATION';
   const agentDeclaresVariables = Object.keys(referencedAgentForNode?.instruction?.variables ?? {}).length > 0;
   const boundTemplate = usePromptTemplateQuickView(
     isCoreAgentNode && !agentDeclaresVariables ? (referencedAgentForNode?.instruction?.promptTemplateId ?? null) : null,
@@ -422,15 +492,16 @@ export function InspectorPanel({
     const withheld = new Set<string>([
       ...DOCUMENT_BINDING_PATHS,
       ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
+      ...(suppressLlmOnlyFields ? LLM_ONLY_TOP_LEVEL_PATHS : []),
       ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
       ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
     ]);
     const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
-    const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
+    const hasDocumentBinding = !suppressLlmOnlyFields && allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
     // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
     const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
     const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
-    const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
+    const graphLevelErrors = problems.filter((problem) => !knownPaths.has(normalizeFindingPath(problem.path)));
 
     // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
     // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
@@ -451,8 +522,15 @@ export function InspectorPanel({
     // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
     // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
     // recurses into the `overrides` group.
+    // TASK-949 L2 — `withheld` cannot reach a field nested inside a group, so the three
+    // `overrides.*` fields are suppressed here instead. Rendering `null` removes the control;
+    // any value already written is reported once, below, rather than disappearing with it.
+    const llmOnlySuppression = suppressLlmOnlyFields
+      ? Object.fromEntries(LLM_ONLY_NESTED_PATHS.map((path) => [path, () => null]))
+      : {};
     const fieldOverrides = isCoreAgent
       ? {
+          ...llmOnlySuppression,
           [PROMPT_VARIABLES_PATH]: ({ errors: fieldErrors }: FieldRenderContext) => (
             <PromptVariablesField
               idPrefix={node.id}
@@ -466,6 +544,9 @@ export function InspectorPanel({
               disabled={readOnly}
             />
           ),
+          // Re-applied AFTER the named entry above, so suppression wins over it: the spread order
+          // would otherwise hand `overrides.promptVariables` back to a non-LLM node.
+          ...llmOnlySuppression,
         }
       : undefined;
 
@@ -480,6 +561,10 @@ export function InspectorPanel({
             disabled={readOnly}
           />
         ) : null}
+        {/* TASK-949 L1 — what the referenced agent actually is: model, fallbacks and its
+            task-typed hyper-parameters, projected from the SAME `useAgentOptions` payload the
+            picker reads. Read-only: the node references an agent, it does not own it. */}
+        {isCoreAgent ? <AgentSummarySection agent={referencedAgent} config={node.config} /> : null}
         {isCoreTrigger ? (
           <ContextSchemaRefField
             idPrefix={node.id}
@@ -517,7 +602,7 @@ export function InspectorPanel({
             descriptor={descriptor}
             config={node.config}
             onConfigChange={onConfigChange}
-            errors={errorsForPath(problems, descriptor.path)}
+            errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
           />
@@ -528,12 +613,21 @@ export function InspectorPanel({
             descriptor={descriptor}
             config={node.config}
             onConfigChange={onConfigChange}
-            errors={errorsForPath(problems, descriptor.path)}
+            errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
             fieldOverrides={fieldOverrides}
           />
         ))}
+        {/* TASK-949 D-6 — LLM-only values on a node whose agent cannot read them. Named, not
+            dropped: a hidden field's value still rides along in the published graph. */}
+        {suppressLlmOnlyFields && strandedLlmOnlyValues(node.config).length > 0 ? (
+          <div data-testid="inapplicable-overrides" role="status" className="border-warning/40 bg-warning/10 text-foreground rounded-md border p-2 text-xs">
+            This node sets <span className="font-mono">{strandedLlmOnlyValues(node.config).join(', ')}</span>, which a{' '}
+            {agentTaskLabel(referencedTask).toLowerCase()} agent does not use — the values are kept but not applied. Clear them, or point this node at a
+            text generation agent.
+          </div>
+        ) : null}
         {hasDocumentBinding ? (
           <DocumentBindingField
             idPrefix={node.id}
@@ -543,7 +637,10 @@ export function InspectorPanel({
             versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
           />
         ) : null}
-        {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
+        {/* TASK-949 L2 — this picker is rendered standalone (the path is not a schema descriptor,
+            which is why `withheld` cannot reach it), so it needs the task check spelled out. A
+            prompt template on an ASR or NER node is the same category error as a temperature. */}
+        {!knownPaths.has(PROMPT_TEMPLATE_PATH) && !suppressLlmOnlyFields ? (
           <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
         ) : null}
         {graphLevelErrors.length > 0 ? (

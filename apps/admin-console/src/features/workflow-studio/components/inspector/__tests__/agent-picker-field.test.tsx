@@ -9,11 +9,14 @@ import { AgentPickerField } from '../agent-picker-field';
 describe('AgentPickerField', () => {
   beforeEach(() => useAgentOptions.mockReset());
 
-  it('lists published agents of the task and reports the chosen slug', () => {
+  // TASK-949 L0 — this asserted `toHaveBeenCalledWith('TEXT_GENERATION')`, which pinned the bug:
+  // a `core.agent` may reference an agent of ANY task, so the picker now asks for all of them.
+  // Grouping and the non-LLM cases are covered in `agent-picker-field.task949.test.tsx`.
+  it('lists published agents of every task and reports the chosen slug', () => {
     useAgentOptions.mockReturnValue({ isPending: false, isError: false, data: [{ slug: 'platform-summarization', name: 'Summarization', task: 'TEXT_GENERATION' }] });
     const onChange = vi.fn();
     render(<AgentPickerField id="agent" value="platform-summarization" onChange={onChange} />);
-    expect(useAgentOptions).toHaveBeenCalledWith('TEXT_GENERATION');
+    expect(useAgentOptions).toHaveBeenCalledWith(undefined);
     expect(screen.getByRole('combobox', { name: /agent/i })).toBeTruthy();
     expect(screen.getByText(/create agent/i).closest('a')?.getAttribute('href')).toBe('/agents?create=1');
   });

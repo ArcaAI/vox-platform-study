@@ -54,16 +54,29 @@ export interface FieldRendererProps {
    * call so it reaches a field at any depth.
    */
   fieldOverrides?: Record<string, (ctx: FieldRenderContext) => React.ReactNode>;
+  /**
+   * TASK-949 D-8 — resolve a NESTED field's own findings.
+   *
+   * `errors` above is this descriptor's messages, resolved by the caller. That works for a
+   * top-level field and for nothing else: the `group` / `discriminated` branches recurse, and a
+   * child's messages are not the parent's, so a nested field used to receive none at all — an
+   * `OVERRIDE_OUT_OF_RANGE` on `overrides.generation.temperature` was simply invisible. Passing
+   * the LOOKUP down instead of a resolved array lets every level resolve its own path, at any
+   * depth. `errors`, when given, still wins — the specialized call sites keep their behaviour.
+   */
+  errorsFor?: (path: string) => string[];
 }
 
 function fieldId(idPrefix: string, path: string): string {
   return `${idPrefix}-${path || 'root'}`;
 }
 
-export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPrefix, references, fieldOverrides }: FieldRendererProps) {
+export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownErrors, errorsFor, idPrefix, references, fieldOverrides }: FieldRendererProps) {
   const id = fieldId(idPrefix, descriptor.path);
   const value = getAtPath(config, descriptor.path);
   const set = (next: unknown) => onConfigChange(setAtPath(config, descriptor.path, next));
+  // TASK-949 D-8 — an explicitly-passed array wins; otherwise resolve this descriptor's own path.
+  const errors = ownErrors ?? errorsFor?.(descriptor.path);
 
   const override = fieldOverrides?.[descriptor.path];
   if (override) {
@@ -80,9 +93,10 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <div className="flex flex-col gap-4 pl-4">
           {descriptor.fields.map((field) => (
-            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} />
+            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
           ))}
         </div>
+        <FieldError errors={errors?.map((message) => ({ message }))} />
       </FieldSet>
     );
   }
@@ -116,7 +130,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {currentBranch ? (
           <div className="flex flex-col gap-4 pl-4">
             {currentBranch.fields.map((field) => (
-              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} />
+              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
             ))}
           </div>
         ) : null}
