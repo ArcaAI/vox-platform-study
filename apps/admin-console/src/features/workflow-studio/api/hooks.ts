@@ -212,7 +212,7 @@ export function useUpdateNodePrompt() {
 // ===========================================================================
 
 /** The `core.agent` picker's options (TASK-864 B1). Retries are off: a 404 means the agent surface is not there yet, and the picker falls back to a slug box. */
-export function useAgentOptions(task: string, enabled = true) {
+export function useAgentOptions(task?: string, enabled = true) {
   return useQuery({
     queryKey: workflowStudioKeys.agentOptions(task),
     queryFn: () => listAgentOptions(task),

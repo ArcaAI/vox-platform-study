@@ -76,7 +76,7 @@ import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
 import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
-import { AgentPickerField, DEFAULT_AGENT_TASK } from './agent-picker-field';
+import { AgentPickerField } from './agent-picker-field';
 import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer, type FieldRenderContext } from './field-renderers';
@@ -379,7 +379,9 @@ export function InspectorPanel({
   // `AgentPickerField` already runs for this task, so this is a cache hit, not a second fetch.
   const isCoreAgentNode = node?.type === 'core.agent';
   const agentSlugValue = node && typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : '';
-  const agentOptions = useAgentOptions(DEFAULT_AGENT_TASK, isCoreAgentNode);
+  // TASK-949 L0 — no task filter: a `core.agent` may reference an agent of ANY task, and this is
+  // also how `referencedAgent` below resolves for an ASR/NER/TTS node rather than coming back empty.
+  const agentOptions = useAgentOptions(undefined, isCoreAgentNode);
   // TASK-890 J4-F5 — the version rows carry the definition itself, so the trigger's kind paths
   // come from the SAME read `ContextSchemaRefField` already performs (a cache hit, not a second
   // fetch). Disabled for every node type but `core.agent`, which is the only consumer.
