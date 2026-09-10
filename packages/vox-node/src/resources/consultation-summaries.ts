@@ -19,7 +19,23 @@ import type {
 /** Per-call options shared by every read/list method on {@link ConsultationSummariesResource}. */
 export interface ConsultationSummaryRequestOptions {
   signal?: AbortSignal;
+  /**
+   * Per-call request timeout. On the SYNCHRONOUS generation routes (`generate`, `generatePreSummary`)
+   * the precedence is: this value → the client's explicit `timeoutMs` → {@link SYNC_GENERATION_TIMEOUT_MS}.
+   * Every other method keeps the transport default.
+   */
+  timeoutMs?: number;
 }
+
+/**
+ * The floor for a synchronous generation call when neither the call nor the client names a timeout.
+ *
+ * TASK-946 §5.1: a four-note Breast & Endocrine pre-summary took 46–68 s on `gemma-4-e2b` while the
+ * transport's 60 s default (sized for reads and writes) gave up first — the gateway answered 200 to a
+ * caller that had already gone. A generation is long by nature, so it carries its own floor. Prefer
+ * `generateAsync`/`generatePreSummaryAsync` plus the `presummary` SSE plane when you can wait elsewhere.
+ */
+export const SYNC_GENERATION_TIMEOUT_MS = 180_000;
 
 /** Options for {@link ConsultationSummariesResource.generate}. */
 export interface GenerateSummaryOptions extends ConsultationSummaryRequestOptions {
@@ -64,6 +80,11 @@ function consultationSummaryPath(consultationId: string): string {
 export class ConsultationSummariesResource {
   constructor(private readonly transport: Transport) {}
 
+  /** Call → the client's explicit `timeoutMs` → {@link SYNC_GENERATION_TIMEOUT_MS}. */
+  private syncGenerationTimeout(options: ConsultationSummaryRequestOptions): number {
+    return options.timeoutMs ?? this.transport.defaultTimeoutMs ?? SYNC_GENERATION_TIMEOUT_MS;
+  }
+
   /** `POST /api/v1/consultations/:id/summary` — synchronous; not retried unless the caller supplies `idempotencyKey` (`core/retry.ts`'s non-idempotent-POST rule). */
   async generate(
     consultationId: string,
@@ -78,6 +99,7 @@ export class ConsultationSummariesResource {
       body,
       hasIdempotencyKey: Boolean(body.idempotencyKey),
       signal: options.signal,
+      timeoutMs: this.syncGenerationTimeout(options),
     });
   }
 
@@ -93,6 +115,7 @@ export class ConsultationSummariesResource {
       body: request,
       hasIdempotencyKey: Boolean(request.idempotencyKey),
       signal: options.signal,
+      timeoutMs: this.syncGenerationTimeout(options),
     });
   }
 

@@ -977,6 +977,16 @@ Requests are retried automatically under `core/retry.ts`'s policy:
   synchronous `generate`/`generatePreSummary` calls, and the stateless
   `summarization.*` calls, are retried only for the connection/status
   reasons above — never blindly retried as a write.
+- **Synchronous generations get a 180 s floor, not the 60 s default.**
+  `consultations.summaries.generate` and `generatePreSummary` wait up to
+  `SYNC_GENERATION_TIMEOUT_MS` (180 s) when neither the call nor the client
+  names a timeout — a pre-summary over several case notes runs 45–70 s on a
+  small local model, and the transport's 60 s default (sized for reads and
+  writes) used to give up while the gateway went on to answer 200. Precedence:
+  the call's `timeoutMs` → the client's explicit `timeoutMs` → the floor. When
+  you can wait elsewhere, prefer `generatePreSummaryAsync` and the
+  `presummary` SSE plane (`consultations.streams.liveSummary`), which delivers
+  `status: ready` with the content however long the model takes.
 
 ## Further reading
 
