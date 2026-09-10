@@ -747,6 +747,59 @@ class TestStreamingProducer:
         assert [c.type for c in chunks] == ["done"]
         assert (chunks[0].data or {})["stopped_reason"] == "cancelled"
 
+    @pytest.mark.asyncio
+    async def test_provider_4xx_terminal_frame_carries_the_invalid_request_code(
+        self, mock_task_manager
+    ) -> None:
+        """TASK-946 D5: a deterministic provider 4xx (e.g. LM Studio's "Context
+        size has been exceeded.") reaches the streaming path's own generic
+        `except Exception` arm — there is no retry loop here to begin with, so
+        the fix is purely about the terminal frame carrying the same `code`
+        vocabulary the blocking `/generate` 422 now carries, instead of the
+        opaque "internal error" every other provider failure gets."""
+        from openai import BadRequestError
+
+        from text.api.endpoints.generate import _run_streaming_generation
+
+        body = {
+            "error": {
+                "message": "Context size has been exceeded.",
+                "type": "server_error",
+            }
+        }
+
+        async def stream(_request):
+            raise BadRequestError(
+                message="Context size has been exceeded.",
+                response=MagicMock(status_code=400, headers={}, json=lambda: body),
+                body=body,
+            )
+            yield  # pragma: no cover — makes this an async generator
+
+        provider = AsyncMock()
+        provider.generate_stream = stream
+        breaker = _breaker()
+
+        await _run_streaming_generation(
+            mock_task_manager,
+            provider,
+            "task-4xx",
+            GenerateRequest(prompt="p", provider=_PROVIDER, model="m", stream=True),
+            provider_name=_PROVIDER,
+            model="m",
+            tenant_id="t",
+            circuit_breakers={_PROVIDER: breaker},
+            guardrail_client=_guardrail(),
+        )
+
+        chunks = _appended_chunks(mock_task_manager)
+        assert [c.type for c in chunks] == ["error"]
+        data = chunks[0].data or {}
+        assert data["code"] == "CONTEXT_WINDOW_EXCEEDED"
+
+        last = mock_task_manager.update_task.await_args_list[-1].kwargs
+        assert last["status"] == TaskStatus.FAILED
+
 
 # ── 5. streaming through HTTP: the rejection reaches the subscriber ──────────
 
