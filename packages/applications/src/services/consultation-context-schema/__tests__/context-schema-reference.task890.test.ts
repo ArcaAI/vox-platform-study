@@ -203,6 +203,10 @@ describe('ConsultationContextSchemaService.resolveReference', () => {
       versionNumber: 1,
       versionId: 'version-1',
       payloadSchema: payloadSchemaFromDefinition(LEGACY_DEFINITION),
+      // TASK-950 D-3 — derived beside the payload schema from the same definition. The legacy
+      // bridge schema declares no identity field, so the binding is `null` — a fact in its own
+      // right, and the reason this stays an exhaustive `toEqual`.
+      userIdentity: null,
     });
   });
 

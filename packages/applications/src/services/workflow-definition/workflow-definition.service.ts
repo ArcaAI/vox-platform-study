@@ -2190,6 +2190,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         versionNumber: resolution.versionNumber,
         versionId: resolution.versionId,
         payloadSchema: resolution.payloadSchema,
+        // TASK-950 D-3 — carried through so the compiler can freeze it onto the trigger
+        // beside `resolved`. Omitted when the version declares no identity field, which is
+        // what keeps every previously compiled artifact byte-identical.
+        ...(resolution.userIdentity ? { userIdentity: resolution.userIdentity } : {}),
       },
     };
   }
