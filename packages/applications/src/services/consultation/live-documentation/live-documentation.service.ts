@@ -58,12 +58,15 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
 import {
+  composePrompt,
   CORE_PALETTE_KEY,
   guardrailOptOutOf,
+  PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  renderTemplate,
   resolveGuardrailDecision,
+  type ComposableResolvedPrompt,
+  type ComposedPrompt,
   type ExpressionValue,
 } from '@arcaai/workflow-contract';
 import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
@@ -290,19 +293,26 @@ class LivePromptUnresolvedError extends Error {
  * workflow's own trigger schema DECLARES) answers that objection rather than overriding it: absent
  * `trigger` still means "this lane has no trigger", and that is now only true of a caller that
  * passes none.
+ *
+ * TASK-947 §4.1 — the render goes through `composePrompt`, which is what makes a COMPOSITE
+ * artifact select its fragments over THIS scope (built once, before any condition), render each
+ * fragment on its own and join them. The two single-body forms take that function's other branch,
+ * which is `renderTemplate` over this same scope — byte-identical to what this function did
+ * before. A fragment names itself in an error as `agent:<slug>#<key>`, so an unresolved variable
+ * inside one still degrades the node with the PATH named, exactly as §3.2 requires.
  */
 function renderLivePrompt(
-  content: string,
+  resolvedPrompt: ComposableResolvedPrompt,
   variables: Record<string, unknown>,
   agentSlug: string,
   trigger?: Readonly<Record<string, unknown>> | null,
-): string {
+): ComposedPrompt {
   try {
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
     const scope = buildAgentPromptScope({ variables, trigger, templateRef: `agent:${agentSlug}` });
-    return renderTemplate(content, scope, { templateRef: `agent:${agentSlug}` });
+    return composePrompt(resolvedPrompt, scope, { templateRef: `agent:${agentSlug}` });
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
       throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.path} (agent '${agentSlug}')`);
@@ -310,8 +320,33 @@ function renderLivePrompt(
     if (error instanceof PromptTemplateSyntaxError) {
       throw new LivePromptUnresolvedError(`core.agent: prompt_template_syntax: ${error.message} (agent '${agentSlug}')`);
     }
+    // OD-6, defensive: publish refuses a composite with no unconditional fragment, so reaching
+    // here means every fragment's condition was false or unevaluable. Degrading on the FIRST
+    // candidate is the same reasoning the two errors above carry — every candidate of this node
+    // composes against the same scope and would answer identically.
+    if (error instanceof PromptCompositionEmptyError) {
+      throw new LivePromptUnresolvedError(`core.agent: prompt_composition_empty (agent '${agentSlug}')`);
+    }
     throw error;
   }
+}
+
+/**
+ * TASK-947 — the candidate's prompt SOURCE in the ONE shape `composePrompt` reads, or `null` when
+ * the candidate carries no instruction body at all (the caller then sends
+ * `LIVE_DOCUMENT_SYSTEM_PROMPT`, exactly as before).
+ *
+ * The pre-947 read was `resolvedPrompt?.content ?? instruction.systemPrompt`, guarded on the RAW
+ * string's truthiness — an artifact with an empty body falls to the platform prompt. That guard is
+ * preserved verbatim for the two single-body forms, and deliberately NOT applied to a composite:
+ * a composite's `content` is only the STATIC PROJECTION (OD-3), so a list whose fragments are all
+ * conditional carries an EMPTY projection and must still compose, not fall through to a platform
+ * prompt the tenant never authored.
+ */
+function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, instruction: Record<string, unknown>): ComposableResolvedPrompt {
+  if (resolvedPrompt && resolvedPrompt.source === 'composite') return resolvedPrompt;
+  const content = resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
+  return content ? { source: 'inline', content } : null;
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -5167,7 +5202,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
     const instruction = asRecord(candidate.instruction);
     const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
-    const promptTemplate = candidate.resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
+    // TASK-947 §4.1 — ONE render seam for all three instruction forms. `composed` is `null` only
+    // when the candidate carries no instruction body at all, which is the pre-947 `LIVE_DOCUMENT_
+    // SYSTEM_PROMPT` case.
+    const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
+    const composed = promptSource ? renderLivePrompt(promptSource, variables, candidate.agent.slug, trigger) : null;
+    if (composed && composed.excluded.length > 0) {
+      // OD-11 — KEY + REASON only. A `when` and a fragment body are authored clinical text; the
+      // point of naming the exclusions at all is that an author can tell "the branch was false"
+      // from "the branch could not be read", and both fit in the reason.
+      this.logger.debug({
+        message: 'core.agent: prompt fragments excluded from this generation',
+        agentSlug: candidate.agent.slug,
+        excluded: composed.excluded.map(({ key, reason }) => ({ key, reason })),
+      });
+    }
+    // Selected KEYS, and only for a composite: a single-body agent has no fragments to report, and
+    // `[]` there would read as "every fragment was excluded".
+    const promptFragments = promptSource?.source === 'composite' && composed ? [...composed.selected] : null;
     // TASK-876 — the RESOLVED candidate's own credential is authoritative for this request.
     // Without it `postTextGenerate`'s enrichment recomputes `provider_overrides` from the CLS
     // tenant, so a call served by the SYSTEM platform default would be forwarded with the
@@ -5176,7 +5228,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { provider: _overrideProvider, ...overrideEntry } = candidate.providerOverride ?? {};
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt: promptTemplate ? renderLivePrompt(promptTemplate, variables, candidate.agent.slug, trigger) : LIVE_DOCUMENT_SYSTEM_PROMPT,
+      system_prompt: composed?.prompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
@@ -5202,6 +5254,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             selection_source: candidate.kind === 'primary' ? 'agent' : 'agent-fallback',
             agent_slug: candidate.agent.slug,
             funding_tier: candidate.fundingTier,
+            prompt_fragments: promptFragments,
           }
         : null,
       structured: includeResponseFormat,
