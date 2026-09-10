@@ -189,6 +189,22 @@ def test_the_refusal_type_alone_separates_the_two_causes():
     assert issubclass(ModelNotCacheServedError, ModelLoadError)
 
 
+async def test_the_refusal_survives_the_real_single_flight_load_path():
+    """`loader_for` raises inside the SHARED cache's factory, not at the call site.
+
+    The warm path calls `get_or_load_from_ref` -> `get_or_load`, so the exception
+    crosses `hope_runtime_models.ModelCache`'s single-flight machinery before the
+    session manager can catch it. If that wrapped the type, the INFO-level skip would
+    never fire and the warm would go back to reading as a failure — which every other
+    test here would still pass.
+    """
+    from stt.models.cache import ModelCache
+
+    cache = ModelCache(max_memory_mb=1000, max_models=2, ttl_seconds=600)
+    with pytest.raises(ModelNotCacheServedError):
+        await cache.get_or_load(_hf_config())
+
+
 # ---------------------------------------------------------------------------
 # 3 — the warm path stops paying for a load that cannot succeed
 # ---------------------------------------------------------------------------
