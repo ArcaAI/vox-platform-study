@@ -32,6 +32,10 @@ export * from './descriptors/feature-availability.descriptors';
 // env-tier key left in that file -- it used to reach `env.schema.ts` inside
 // `FEATURE_FLAG_SETTINGS`, which TASK-932 deleted.
 export { HARNESS_CLAIM_CHECK_ENABLED } from './descriptors/service-runtime.descriptors';
+// TASK-950 — the three `identity.autoProvision.*` keys. `ContextUserIdentityService`
+// resolves them by KEY through `EffectiveSettingsService`, and the seed writes the SYSTEM
+// role row by the same constant, so both sides name one exported symbol.
+export * from './descriptors/user-identity.descriptors';
 export * from './settings-registry-write.service';
 // TASK-932 R-6/D-6 -- the derived lock (bootstrap / credential / data-plane are
 // un-editable for everyone) and the tenant-visibility predicate behind R-1/D-5.
