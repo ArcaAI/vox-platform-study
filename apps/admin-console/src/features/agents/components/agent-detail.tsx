@@ -8,7 +8,6 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
-import { RadioGroup, RadioGroupItem } from '@arcaai/ui/components/shadcn/radio-group';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
@@ -20,6 +19,8 @@ import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import {
   AGENT_TASK_LABEL,
+  instructionForm,
+  readFragments,
   useAgent,
   useAgentAssignments,
   useAgentVersions,
@@ -32,13 +33,13 @@ import {
   useUpsertAgentAssignment,
   useValidateAgent,
   type Agent,
-  type AgentPromptVariableBinding,
   type AgentProblemBody,
+  type PromptFragment,
 } from '../api';
 import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
 import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
-import { InstructionBindingForm, type InstructionBindingValue } from './instruction-binding-form';
+import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
 import { ModelPicker, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
@@ -59,6 +60,28 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
     <section className="flex flex-col gap-1">
       <h3 className="text-sm font-medium">{label}</h3>
       <pre className="bg-muted max-h-64 overflow-auto rounded-md p-3 font-mono text-xs">{value === null || value === undefined ? '—' : JSON.stringify(value, null, 2)}</pre>
+    </section>
+  );
+}
+
+/** TASK-947 §4.5 item 5 — a published composite agent's fragments, read-only: key, source, and its condition (or "Base" when unconditional). */
+function CompositeInstructionSummary({ fragments }: { fragments: PromptFragment[] }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-medium">Instruction — composable fragments ({fragments.length})</h3>
+      <ol className="flex flex-col gap-2">
+        {fragments.map((fragment, index) => (
+          <li key={`${fragment.key}-${index}`} className="flex flex-col gap-1 rounded-md border p-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground font-mono text-xs">{index + 1}.</span>
+              <span className="font-mono font-medium">{fragment.key}</span>
+              <Badge variant="outline">{fragment.promptTemplateId ? 'Template' : 'Inline'}</Badge>
+              {!fragment.when ? <Badge variant="secondary">Base — always included</Badge> : null}
+            </div>
+            {fragment.when ? <p className="text-muted-foreground font-mono text-xs">when: {fragment.when}</p> : null}
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -99,9 +122,7 @@ interface DraftState {
   modelId: string;
   fallbackModelIds: string[];
   tags: string;
-  instructionMode: 'template' | 'inline';
   binding: InstructionBindingValue;
-  systemPrompt: string;
   initialPrompt: string;
   hotwords: string;
   /** TASK-930 — the NER label set, comma-separated in the field and split on save (same shape as `hotwords`). */
@@ -111,21 +132,6 @@ interface DraftState {
 function stringField(instruction: Record<string, unknown> | null, key: string): string {
   const value = instruction?.[key];
   return typeof value === 'string' ? value : '';
-}
-
-/** TASK-890 §3.4/§3.6 — the row's OWN instruction/context-schema binding, seeded into the editor. */
-function instructionToBinding(agent: Agent): InstructionBindingValue {
-  const instruction = agent.instruction as Record<string, unknown> | null;
-  const promptTemplateId = instruction?.promptTemplateId;
-  const promptVersionNumber = instruction?.promptVersionNumber;
-  const variables = instruction?.variables;
-  return {
-    promptTemplateId: typeof promptTemplateId === 'string' ? promptTemplateId : null,
-    promptVersionNumber: typeof promptVersionNumber === 'number' ? promptVersionNumber : null,
-    variables: (variables && typeof variables === 'object' ? (variables as Record<string, AgentPromptVariableBinding>) : {}),
-    contextSchemaId: agent.contextSchemaId,
-    contextSchemaVersionNumber: agent.contextSchemaVersionNumber,
-  };
 }
 
 function draftFromAgent(agent: Agent): DraftState {
@@ -141,9 +147,10 @@ function draftFromAgent(agent: Agent): DraftState {
     modelId: agent.modelId,
     fallbackModelIds: [...agent.fallbacks].sort((a, b) => a.priority - b.priority).map((fallback) => fallback.modelId),
     tags: agent.tags.join(', '),
-    instructionMode: agent.task === 'TEXT_GENERATION' && typeof instruction?.promptTemplateId === 'string' ? 'template' : 'inline',
-    binding: instructionToBinding(agent),
-    systemPrompt: stringField(instruction, 'systemPrompt'),
+    // TASK-947 — one shared pair (`instructionToBinding` / `instructionFromBinding`) for all
+    // three TEXT_GENERATION instruction forms, so the wizard and this edit-draft form cannot
+    // drift on how an instruction round-trips through the editor.
+    binding: instructionToBinding(instruction, agent.contextSchemaId, agent.contextSchemaVersionNumber),
     initialPrompt: stringField(instruction, 'initialPrompt'),
     hotwords: Array.isArray(hotwords) ? hotwords.join(', ') : '',
     labels: Array.isArray(labels) ? labels.join(', ') : '',
@@ -211,14 +218,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
     if (!agent || !draft || !etag) return;
     let instruction: Record<string, unknown> | undefined;
     if (agent.task === 'TEXT_GENERATION') {
-      instruction =
-        draft.instructionMode === 'template'
-          ? {
-              promptTemplateId: draft.binding.promptTemplateId,
-              ...(draft.binding.promptVersionNumber !== null ? { promptVersionNumber: draft.binding.promptVersionNumber } : {}),
-              ...(Object.keys(draft.binding.variables).length ? { variables: draft.binding.variables } : {}),
-            }
-          : { systemPrompt: draft.systemPrompt };
+      instruction = instructionFromBinding(draft.binding);
     } else if (agent.task === 'SPEECH_TO_TEXT') {
       const hotwords = draft.hotwords
         .split(',')
@@ -529,24 +529,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                   {agent.task === 'TEXT_GENERATION' ? (
                     <fieldset className="flex flex-col gap-3">
                       <legend className="text-sm font-medium">Instruction</legend>
-                      <RadioGroup value={draft.instructionMode} onValueChange={(mode) => setDraft({ ...draft, instructionMode: mode as DraftState['instructionMode'] })} aria-label="Instruction source">
-                        <div className="flex items-center gap-2">
-                          <RadioGroupItem id="edit-instr-template" value="template" />
-                          <Label htmlFor="edit-instr-template">Approved prompt template</Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <RadioGroupItem id="edit-instr-inline" value="inline" />
-                          <Label htmlFor="edit-instr-inline">Inline system prompt</Label>
-                        </div>
-                      </RadioGroup>
-                      {draft.instructionMode === 'template' ? (
-                        <InstructionBindingForm value={draft.binding} onChange={(binding) => setDraft({ ...draft, binding })} />
-                      ) : (
-                        <div className="flex flex-col gap-1.5">
-                          <Label htmlFor="edit-system-prompt">System prompt</Label>
-                          <Textarea id="edit-system-prompt" rows={8} maxLength={50000} value={draft.systemPrompt} onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })} />
-                        </div>
-                      )}
+                      <InstructionBindingForm value={draft.binding} onChange={(binding) => setDraft({ ...draft, binding })} />
                     </fieldset>
                   ) : agent.task === 'SPEECH_TO_TEXT' ? (
                     <fieldset className="flex flex-col gap-3">
@@ -591,7 +574,11 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                 </form>
               ) : (
                 <>
-                  <JsonBlock label="Instruction" value={agent.instruction} />
+                  {agent.task === 'TEXT_GENERATION' && instructionForm(agent.instruction) === 'fragments' ? (
+                    <CompositeInstructionSummary fragments={readFragments(agent.instruction)} />
+                  ) : (
+                    <JsonBlock label="Instruction" value={agent.instruction} />
+                  )}
                   <JsonBlock label="Parameters" value={agent.parameters} />
                   <JsonBlock label="Input schema" value={agent.inputSchema ?? 'task default'} />
                   <JsonBlock label="Output schema" value={agent.outputSchema ?? 'task default'} />
