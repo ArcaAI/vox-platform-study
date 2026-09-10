@@ -225,8 +225,15 @@ function resolveBoundInputs(
  * expression: the error is RECORDED and that branch counts as not taken, so a condition nobody
  * can evaluate falls through to `else` observably instead of routing on a guess. `evaluateCondition`
  * is the same evaluator both lanes call, so the two runtimes cannot drift on the language.
+ *
+ * TASK-946 D2 — EXPORTED, because the routing decision is needed once more OUTSIDE a flush:
+ * `ensureTemplateResolved` freezes the note's SHAPE at session start and must freeze the shape
+ * of the branch the session will actually take. Exporting the evaluator rather than
+ * reimplementing the walk is what keeps the frozen template and the executed summary node from
+ * disagreeing — which is exactly what they did on 2026-09-10, when a revisit was documented with
+ * the new-visit shape while its own `n_summary_revisit` node ran.
  */
-function resolveBranchHandles(lane: RealtimeLane, runContext: Record<string, ExpressionValue>): RealtimeBranchEvaluation[] {
+export function resolveBranchHandles(lane: RealtimeLane, runContext: Record<string, ExpressionValue>): RealtimeBranchEvaluation[] {
   return lane.conditions.map((condition) => {
     const errors: { branch: string; error: string }[] = [];
     let handle = 'else';
