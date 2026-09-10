@@ -31,6 +31,12 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
   'liveFlush.segmentThreshold': 3,
   // Idle debounce (ms) before a flush when the segment threshold is not met.
   'liveFlush.idleMs': 5000,
+  // TASK-939 R7 — minimum ms between TEXT calls for ONE session: the floor that bounds how often a
+  // partial summarization can run, and therefore the cadence a clinician experiences. It was read
+  // once from `LIVE_DOC_MIN_INTERVAL_MS` in the service CONSTRUCTOR, which is exactly the freeze
+  // this module's own header calls out as what made the control plane decorative — the one cadence
+  // knob an operator would most want to turn was the one that needed a redeploy.
+  'liveFlush.minIntervalMs': 4000,
   // NOTE: `claimCheck.minBytes` was removed — the live lane never
   // consumed it; the real claim-check threshold is the harness-side
   // HARNESS_CLAIM_CHECK_MIN_BYTES env setting.
@@ -58,6 +64,12 @@ const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataTyp
     dataType: 'number',
     label: 'Live flush idle debounce (ms)',
     description: 'Idle time before a flush when the segment threshold is not yet met.',
+  },
+  'liveFlush.minIntervalMs': {
+    dataType: 'number',
+    label: 'Live flush minimum interval (ms)',
+    description:
+      'Floor on the time between partial-summary generations for one consultation. Raising it makes the note update less often and costs less; lowering it makes the note feel more live.',
   },
   'transcript.mode': {
     dataType: 'enum',
