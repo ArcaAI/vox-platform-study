@@ -18,7 +18,8 @@ export const workflowStudioKeys = {
   assignments: (paletteKey: string) => [...workflowStudioKeys.root, 'assignments', paletteKey] as const,
   departmentOptions: () => [...workflowStudioKeys.root, 'department-options'] as const,
   // TASK-864 — the `core.agent` picker's options, per task (TASK-863 §3.5 `GET /admin/agents?task=`).
-  agentOptions: (task: string) => [...workflowStudioKeys.root, 'agent-options', task] as const,
+  /** TASK-949 L0 — `task` is OPTIONAL; absent = every task, which is what a `core.agent` picker asks for. */
+  agentOptions: (task?: string) => [...workflowStudioKeys.root, 'agent-options', task ?? 'all'] as const,
   // DD-11 — per-definition prompt bindings, and the version list() of
   // one template (keyed by template id, not by definition: the same template is
   // legitimately referenced from several definitions).
