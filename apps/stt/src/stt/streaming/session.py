@@ -104,6 +104,14 @@ class StreamSession:
         # ---- Tier-2: in-memory ephemeral state ----
         # These are *not* persisted. They are rebuilt on recovery by
         # replaying the tail of the audio stream.
+        # TASK-946 (D9) — a WRITE-ONLY diagnostic window: the last ~30 s of received
+        # PCM, reported as `ring_buffer_bytes` in `get_stats()` and read by NOTHING
+        # else. No decode path touches it — utterances are cut from
+        # `current_utterance` by the preprocessor and the durable copy is
+        # `audio_buffer` — so its overflow is the buffer doing its job, not audio being
+        # lost. One trial report read the INFO "Ring buffer overflow, trimming oldest
+        # frames" as "96 % of the audio was dropped"; the three log calls below are
+        # DEBUG for that reason.
         self.ring_buffer: bytearray = bytearray()
         self.current_utterance: bytearray = bytearray()
         self.utterance_start_time: float = 0.0
@@ -231,7 +239,7 @@ class StreamSession:
 
             now = time.monotonic()
             if self._overflow_acc_events == 0:
-                logger.info(
+                logger.debug(
                     "Ring buffer overflow, trimming oldest frames",
                     session_id=self.session_id,
                     overflow_bytes=overflow,
@@ -241,7 +249,7 @@ class StreamSession:
                 self._overflow_acc_bytes = overflow
                 self._overflow_acc_events = 1
             elif (now - self._overflow_window_start) >= _OVERFLOW_THROTTLE_S:
-                logger.info(
+                logger.debug(
                     "Ring buffer overflow (throttled summary)",
                     session_id=self.session_id,
                     window_events=self._overflow_acc_events,
@@ -260,7 +268,7 @@ class StreamSession:
         if self._overflow_acc_events == 0:
             return
 
-        logger.info(
+        logger.debug(
             "Ring buffer overflow (final summary)",
             session_id=self.session_id,
             window_events=self._overflow_acc_events,

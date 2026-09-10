@@ -124,6 +124,18 @@ STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL = Counter(
     "past the bounded enqueue wait",
 )
 
+# TASK-946 — FINAL transcripts whose script contradicted the session's PINNED
+# language (e.g. a `language=en` session answering in Malayalam). Not a decode
+# error: the engine returns confidently, the text publishes, and the only signal
+# before this counter existed was a clinician reading the note. Unlabelled on
+# purpose — this is the fleet-wide "is the ml-en fine-tune collapsing again?"
+# question; the per-session detail is the `stt.streaming.script_mismatch` log line
+# and the `status: degraded` / `reason: script_mismatch` frame the caller receives.
+STREAMING_SCRIPT_MISMATCH_TOTAL = Counter(
+    "stt_streaming_script_mismatch_total",
+    "Final transcripts whose script contradicted the session's pinned language",
+)
+
 # ---------------------------------------------------------------------------
 # Model loading metrics
 # ---------------------------------------------------------------------------
@@ -321,6 +333,11 @@ def streaming_session_ended(active_count: int) -> None:
 def streaming_inference_queue_dropped() -> None:
     """F-08: one utterance was dropped because the inference queue stayed full."""
     STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL.inc()
+
+
+def streaming_script_mismatch() -> None:
+    """TASK-946: one final came back in a script its pinned language rules out."""
+    STREAMING_SCRIPT_MISMATCH_TOTAL.inc()
 
 
 # ---------------------------------------------------------------------------
