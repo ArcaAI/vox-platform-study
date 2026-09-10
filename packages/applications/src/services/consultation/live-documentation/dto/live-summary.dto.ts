@@ -205,6 +205,14 @@ export class LiveSummaryStatsDto {
       "TASK-876 — 'tenant' | 'platform': which tier's row served the model, derived per candidate (a platform-default fallback is platform-funded).",
   })
   funding_tier?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    nullable: true,
+    description:
+      'TASK-947 (OD-11) — the KEYS of the prompt fragments this generation actually ran, in authored order, when the serving agent carries a COMPOSITE instruction. `null` for the two single-body forms, which have no fragments to report (an empty array would read as "every fragment was excluded"). Keys only, never a condition string or a fragment body: this envelope reaches the clinician’s live feed. What was EXCLUDED, and why, is logged at debug beside the agent slug.',
+  })
+  prompt_fragments?: string[] | null;
 }
 
 /**
