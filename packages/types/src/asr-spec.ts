@@ -94,8 +94,23 @@ export interface AsrSpecModel {
   role: AsrSpecModelRole;
   slug: string;
   taskType: string;
-  /** `AiModelFormat` value — selects the engine/loader in `apps/stt`. */
+  /**
+   * `AiModelFormat` value. DESCRIPTIVE since TASK-860 — it no longer selects the
+   * loader (see `libraryName`), and `apps/stt` still validates it so a
+   * catalogue-only format fails closed.
+   */
   format: string;
+  /**
+   * TASK-944 (B2) — `AiModel.libraryName`, the field `apps/stt` SELECTS its loader
+   * with. OMITTED (never `null`) when absent, like `metadata`: both halves are
+   * `extra: 'forbid'`, so omit-when-absent is what lets the gateway and the STT
+   * runtime deploy in either order.
+   *
+   * Selecting on `format` was the TASK-944 defect: `PYTORCH` is worn by a pyannote
+   * embedder, a speechbrain embedder and two package-resident denoisers as well as
+   * by real transformers checkpoints, so all four were handed to `transformers`.
+   */
+  libraryName?: string;
   sourceUri: string;
   sourceRevision: string | null;
   /**

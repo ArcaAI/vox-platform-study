@@ -1,6 +1,6 @@
 # TASK-944 — Cold-start timeouts and secret hot-reload
 
-**Status:** In Progress (A, C, B1 done; B2 re-scoped to the loader mismatch)
+**Status:** Review (A, C, B1 merged; B2 implemented on `task-944-lane-b2`, UNMERGED, cluster verification pending)
 **Type:** bugfix
 **Opened:** 2026-09-10
 **Found by:** live verification of the `hope-v2-dev` k3s deployment (pipeline #862, rev `50b2db5`)
@@ -628,19 +628,158 @@ the checkpoint has a correct loader available; it is simply not being used for
 This also explains the ORIGINAL `AutoProcessor` symptom: that path was always
 transformers. Lane B fixed the import, so it now fails one step deeper.
 
-### Work still to do (B2)
+## B2 Implementation — loader selection moves onto `AiModel.libraryName`
 
-- Route a `SPEAKER_EMBEDDING` / pyannote-format checkpoint to a loader that can
-  read `config.yaml` + `pytorch_model.bin`, rather than to `transformers`.
-- Decide how the format is DECLARED rather than sniffed — the catalogue already
-  carries `format` (`PYTORCH`) and `taskType` (`SPEAKER_EMBEDDING`); prefer an
-  existing declared field over inspecting files at load time.
-- Make the offline "not in cache" failure distinguishable from "wrong loader",
-  so the next person is not sent to the data again.
-- Verification: diarization/voice-profile warm succeeds in-cluster, and the cold
-  streaming-session create drops below its ~17 s.
+**Status of B2: implemented on `task-944-lane-b2`. Not merged; cluster verification pending.**
 
-**Status of B2: NOT fixed. Re-scoped, not closed.**
+### The decision, and why the alternatives were rejected
+
+**Selection now keys on the row's DECLARED serving library, `AiModel.libraryName`.**
+That is not a new invention for this ticket — it is the field TASK-860 already made
+authoritative, and the Prisma schema says so in as many words
+(`packages/database/src/prisma/db_main/ai-model.prisma`):
+
+```
+format AiModelFormat   // Artifact format — descriptive only since TASK-860.
+                       // Loader selection is `libraryName`
+libraryName String     // the Hub's second facet — the serving LIBRARY a loader is
+                       // selected BY … Replaces the overloaded `format` + `provider`
+                       // pair for loader selection.
+```
+
+`apps/stt` never received the field, so `ModelCache` kept the pre-TASK-860 `format`
+key. **B2 is the unfinished half of TASK-860, not a new design.** The candidates in the
+brief were weighed against that:
+
+| Candidate | Verdict |
+|---|---|
+| **Key on `libraryName`** (chosen) | The catalogue already declares it, NOT NULL, on every row, validated against `AI_MODEL_LIBRARIES`; the schema names it as the selection field. One key, one vocabulary, no new concept. |
+| Key on `(format, taskType)` | **Insufficient, not merely inelegant.** `SPEAKER_EMBEDDING` + `PYTORCH` covers `ecapa-tdnn-voxceleb` (speechbrain) AND `wespeaker-voxceleb-resnet34` (pyannote) — two different runtimes. `AUDIO_TO_AUDIO` + `PYTORCH` likewise covers `rnnoise` and `deepfilternet3`. The pair cannot separate either. |
+| A new `AiModelFormat` value | A Prisma enum change + `ALTER TYPE ADD VALUE` + seed edits + a data migration for a DEPLOYED, never-re-seeded database — all to re-derive a fact the row already states. It would also entrench `format` as the selection key that TASK-860 explicitly retired. |
+| Sniff the snapshot (`config.json` present?) | The "constant wearing a config costume" failure mode: an artifact probe standing in for a declared value, and it needs the weights on disk before it can answer. Rejected for SELECTION. It IS used, deliberately, for the failure MESSAGE — see Diagnosability. |
+
+Selection FAILS CLOSED (`.claude/rules/09-infrastructure-devops.md` — provider/model
+selection is `failMode: closed`): a declared library with no loader raises and names
+both tables; no engine is guessed. The `format` map survives as the fallback for the
+paths that cannot declare a library — inline model definitions, the deprecated DB
+reader, and a spec built by a gateway that predates the wire field — so behaviour on
+those is byte-identical to before.
+
+### The second half of the decision: four rows do not belong in this cache at all
+
+The correct loaders for the mis-routed rows **already exist and are already used.**
+`SessionManager` builds `PyannoteEmbeddingService` / `SpeechBrainEmbeddingService`
+itself (`_get_pipeline_embedding_service`, per model id, cached on the manager) and the
+denoisers likewise, from the SAME `ResolvedAsrSpec` rows. The `ModelCache` warm was a
+SECOND, doomed load of the same weights through `transformers`.
+
+So the answer to "route it to a loader that can read `config.yaml`" is not a new
+loader — writing one would duplicate an existing load and double the resident memory.
+It is `RUNTIME_OWNED_LIBRARIES`: a declared table naming, per library, the runtime that
+owns those weights instead. `loader_for` raises `ModelNotCacheServedError` and the warm
+path treats it as an expected INFO-level skip.
+
+**A correction to this ticket's own Lane B text:** the warm failure did NOT "silently
+disable the speaker-embedding stage". `pipeline_embedding_service` comes from
+`_get_pipeline_embedding_service`, never from the cache — the cache warm only lost the
+pin. What it cost was time (~9.3 s on the measured cold session) and a WARNING that
+read like a broken model.
+
+### Blast radius — established from the catalogue, not assumed
+
+Enumerated from `packages/database/src/prisma/db_main/seed/ai-models/*.ts`. Every
+`format = PYTORCH` row is `servedBy: 'stt'` except `kokoro` (TTS, never in this cache):
+
+| slug | `taskType` | `libraryName` | Before | After |
+|---|---|---|---|---|
+| `wespeaker-voxceleb-resnet34` | SPEAKER_EMBEDDING | `pyannote-audio` | → `HuggingFaceLoader` (the measured failure) | skipped, `PyannoteEmbeddingService` named |
+| `ecapa-tdnn-voxceleb` | SPEAKER_EMBEDDING | `speechbrain` | → `HuggingFaceLoader` (`hyperparams.yaml`, no `config.json`) | skipped, `SpeechBrainEmbeddingService` named |
+| `rnnoise` | AUDIO_TO_AUDIO | `pyrnnoise` | → `HuggingFaceLoader` on `sourceUri: pypi:pyrnnoise` | skipped, wheel-resident weights named |
+| `deepfilternet3` | AUDIO_TO_AUDIO | `deepfilternet` | → `HuggingFaceLoader` on `sourceUri: github:…` | skipped, wheel-resident weights named |
+
+So it is **four rows, not one** — the ECAPA embedder is the SYSTEM platform-default
+agent's embedding model in the contract fixture, so this was hitting the default
+configuration too, not only the wespeaker tenant. Rows that legitimately use
+`HuggingFaceLoader` (`libraryName: transformers` / `ctranslate2` — e.g.
+`nemotron-3.5-asr-streaming-0.6b`, `arcaai-whisper-large-ml-en`) are unchanged, pinned
+by `test_a_served_library_selects_the_loader_that_executes_it`.
+
+`cadence-punctuation` is listed in `RUNTIME_OWNED_LIBRARIES` for completeness — it is
+referenced by slug only and never enters the cache (`pipeline_spec_from_resolved`
+excludes `punctuation`/`endpointing`), so a future routing mistake gets the accurate
+answer rather than "unknown library".
+
+### Diagnosability — the two causes now read differently
+
+1. **A distinct type.** `ModelNotCacheServedError(ModelLoadError)` — every existing
+   `except ModelLoadError` still catches it, but the wrong-loader case is now nameable.
+   Its message states the declared library, names the owning runtime, and says in
+   words: *"This is a LOADER-SELECTION outcome, not a missing or mislocated model: do
+   not go looking for the weights."*
+2. **A failure-path probe, in the message only.**
+   `HuggingFaceLoader._not_a_transformers_checkpoint_hint` — when `from_pretrained`
+   fails and a resolved local snapshot directory EXISTS and holds files but none is
+   `config.json`, the raised message appends the directory, what it actually holds
+   (`config.yaml, pytorch_model.bin`), and the row's declared `libraryName`. A
+   genuinely absent snapshot adds nothing, so a real cache miss is never relabelled a
+   loader mismatch — the inverse defect, pinned by
+   `test_a_genuinely_absent_snapshot_adds_no_hint`.
+3. **The load log now names the loader** it selected and the library it selected on.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `apps/stt/src/stt/models/cache.py` | `RUNTIME_OWNED_LIBRARIES` (module constant, exported); `_install_loaders` builds `_library_loaders` beside `_loaders` from ONE set of shared loader instances; new `loader_for(model_config)`; `_load_by_slug` routes through it and logs library + loader |
+| `apps/stt/src/stt/core/exceptions.py` | NEW `ModelNotCacheServedError(ModelLoadError)` |
+| `apps/stt/src/stt/models/huggingface_loader.py` | `_not_a_transformers_checkpoint_hint`, appended to the generic load failure |
+| `apps/stt/src/stt/pipeline/dto.py` | `AiModelConfig.library_name: str \| None = None` |
+| `apps/stt/src/stt/pipeline/spec.py` | `AsrSpecModel.library_name` (in `OPTIONAL_FIELDS`); `to_ai_model_config` forwards it |
+| `apps/stt/src/stt/pipeline/config_reader.py`, `core/database/models.py` | the deprecated DB reader carries the same field (leaving one reader on the old key is how this half of TASK-860 went unfinished) |
+| `apps/stt/src/stt/streaming/session_manager.py` | `_load_optional` catches `ModelNotCacheServedError` → INFO skip, before the generic WARNING |
+| `packages/types/src/agent.ts`, `asr-spec.ts` | `libraryName?: string` on `ResolvedAgentModel` and `AsrSpecModel` |
+| `packages/applications/…/agent/agent-resolver.service.ts` | `toResolvedModel` projects `libraryName` off the row |
+| `packages/applications/…/stt/agent-resolver/build-resolved-asr-spec.ts` | `toSpecModel` forwards it, omit-when-absent |
+| `tests/contracts/resolved-asr-spec.fixture.json` | `libraryName` on all 24 model objects (purely additive; the file round-trips byte-for-byte otherwise) |
+| `tests/contracts/resolved-asr-spec-parity.contract.test.ts` | `libraryName` in `OPTIONAL_MODEL_FIELDS` + a case asserting every fixture model carries one AND that a library-less input yields no `libraryName` key |
+| `apps/stt/tests/unit/test_task944_loader_selection.py` | NEW — 18 cases: the measured defect, the blast radius row by row, the served libraries, library-beats-format, the two fallbacks, and the registry invariants |
+| `apps/stt/tests/unit/test_task944_loader_diagnosability.py` | NEW — 9 cases: the field travels end to end, omit-when-absent, the four hint cases, and the warm path (skip at INFO / genuine failure still WARNING) |
+| `apps/stt/tests/unit/test_task799_byok_credentials.py` | the BYOK lock test now sweeps `_library_loaders` too — selection keys on it, so a loader reachable only from that map must still declare a `credential_posture` |
+
+**Why the wire field is OPTIONAL.** `_Wire` is `extra='forbid'` on both halves, and its
+own docstring names omit-when-absent as the mechanism that makes the gateway and the
+STT runtime independently deployable. `libraryName` follows `metadata` exactly. The
+consequence is a DEPLOY ORDER note, not a defect: **STT deployed alone, against a
+gateway that has not shipped this change, keeps the old `format` behaviour** — the
+field arrives only once the gateway half is deployed.
+
+**No migration, no schema change, no seed edit.** `AiModel.libraryName` is an existing
+NOT NULL column, correctly populated on every seeded row. Nothing for the orchestrator
+to apply to a database.
+
+### Gate results (B2)
+
+| Gate | Result |
+|---|---|
+| `pnpm stt:test:unit` | **1 failed, 3328 passed** (baseline was 3290 + the 38 added here). The single failure is `test_task799_env_surface.py::TestNoCredentialHasARealCodeDefault::test_minio_credentials_default_to_empty`, the documented pre-existing one (the local `.env.test` sets `MINIO_ACCESS_KEY`). |
+| `pnpm stt:lint` | PASS — "All checks passed!" |
+| `pnpm stt:typecheck` | PASS — "Success: no issues found in 141 source files" |
+| `pnpm --filter @arcaai/database test` | PASS — 89 files, 1739 tests |
+| `pnpm --filter @arcaai/applications test` | **12 852 passed, 6 skipped; 1 FILE failed** — `agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts`, PRE-EXISTING: its `afterAll` needs the live test DB on :5433, and `nc -z localhost 5433` confirms the port is CLOSED. ZERO test-level failures. |
+| `npx vitest run tests/contracts/resolved-asr-spec-parity.contract.test.ts` | PASS — 18 tests, both halves of the contract green on the new field |
+| `pnpm lint` | PASS — 39/39 tasks, 0 errors. The 65 warnings are pre-existing `eslint-comments/require-description` in untouched `apps/api` files (same count as the B1/B2 run above). |
+| `npx turbo run build --filter=@arcaai/applications` | PASS — 10/10 tasks |
+
+`pnpm stt:test` (the full suite) was deliberately NOT run: it rewrites the tracked
+`stt-loss-report.json` / `stt-quality-scorecard.json` with garbage on a machine with no
+models. Both files are confirmed unmodified.
+
+**Not verified here, and it cannot be without the cluster:** that the embedding warm
+now skips instead of failing in-pod, what the cold streaming-session create actually
+costs afterwards, and whether the ~9.3 s is fully recovered (the doomed transformers
+resolution is removed, but its share of that figure was never isolated from
+`PyannoteEmbeddingService`'s own load in the captured logs). All three need a deploy of
+BOTH halves — see the deploy-order note above.
 
 ## Change History
 
@@ -656,3 +795,7 @@ transformers. Lane B fixed the import, so it now fails one step deeper.
 | 2026-09-10 | **B1** — `_resolve_hf_token` now crosses the async boundary from EITHER side (`_run_resolver_blocking`); the caller that was on the loop is identified as `SileroVADService.initialize` → `_resolve_model_path`, not a diarization constructor. Its single `except` splits: `CredentialUnavailable` stays a tolerated WARNING, everything else is an ERROR + traceback labelled a defect on the STT side. RED reproduced the live `RuntimeWarning: coroutine ... was never awaited` at `embedding_service.py:57`. Branch `task-944-lane-b1-b2`. |
 | 2026-09-10 | **B2** — decision recorded: the hub repo id is **DATA on `AiModel.sourceUri`**, not a loader-side slug→repo map (owner rule "no hardcoded configuration"; the column is already plumbed end to end with no code default; `provider = built-in` is a label, not a resolution tier). The seed has always been correct, so the mechanism supplied is the one that reaches an already-seeded database: a guarded data migration, `20260910190000_task_944_wespeaker_embedding_source_uri`, applied by the existing `hope-db-migrate` PreSync Job. Pinned by 5 text-level tests, including a class invariant that no HuggingFace row may locate itself by its own bare slug. |
 | 2026-09-10 | Adjacent finding recorded and deliberately NOT fixed: `settings.huggingface_cache_dir` defaults to `HF_HOME`, the PARENT of the hub cache, so `HuggingFaceLoader` may miss an offline snapshot even with a correct `sourceUri`. Read the deployed row's `sourceUri` before assuming which cause is live. |
+| 2026-09-10 | **B2 RE-SCOPED** — both prior diagnoses (a stale `sourceUri`, then a wrong `cache_dir`) proven false against the live cluster; the repair migration authored for the first was dropped as a guarded no-op. Real cause: a pyannote checkpoint routed to the transformers loader, because `ModelCache` keyed its registry on `format` alone and `PYTORCH` cannot separate a transformers checkpoint from a pyannote one. |
+| 2026-09-10 | **B2 IMPLEMENTED** (branch `task-944-lane-b2`). Loader selection moves onto `AiModel.libraryName` — the field TASK-860 already declared as authoritative and `apps/stt` never received, making B2 the unfinished half of TASK-860 rather than a new design. `(format, taskType)` was rejected as INSUFFICIENT (it separates neither `speechbrain` from `pyannote-audio` nor `pyrnnoise` from `deepfilternet`); a new `AiModelFormat` value was rejected as an enum migration on a deployed, never-re-seeded DB to re-derive a fact the row already states; file sniffing was rejected for selection and used only in the failure MESSAGE. Blast radius is **four** rows, not one — `wespeaker-voxceleb-resnet34`, `ecapa-tdnn-voxceleb` (the SYSTEM default agent's embedder), `rnnoise`, `deepfilternet3`. All four are declared `RUNTIME_OWNED_LIBRARIES`: their correct loaders already exist and are already used by `SessionManager`, so the cache warm was a second, doomed load, and a new loader would have duplicated it. Diagnosability: `ModelNotCacheServedError` + a failure-path hint naming what the snapshot actually holds. NO schema change, NO migration, NO seed edit — the column exists and is correctly populated. |
+| 2026-09-10 | B2 correction to this ticket's own Lane B text: the warm failure did NOT disable the speaker-embedding stage. `pipeline_embedding_service` is built by `_get_pipeline_embedding_service`, never by the cache; the warm only lost the pin. What it cost was ~9.3 s of cold start and a WARNING that read like a broken model. |
+| 2026-09-10 | B2 gates recorded above: `stt:test:unit` 3328 passed / 1 pre-existing failure, `stt:lint`, `stt:typecheck`, `@arcaai/database` (1739), the cross-language ASR-spec contract (both halves), `pnpm lint` (0 errors) and the `@arcaai/applications` build all green; the one `applications` file failure proven pre-existing (test DB :5433 closed, 0 test-level failures). **Deploy-order note: the wire field is omit-when-absent, so STT deployed WITHOUT the gateway half keeps the old `format` behaviour.** Worktree left UNMERGED. |

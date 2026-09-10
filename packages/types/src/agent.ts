@@ -81,6 +81,18 @@ export interface ResolvedAgentModel {
   wireModelId: string | null;
   checksum: string | null;
   format: string;
+  /**
+   * `AiModel.libraryName` — the Hugging Face `library_name` facet and, since
+   * TASK-860, THE loader-selection field (`format` beside it is descriptive).
+   *
+   * TASK-944 (B2): optional so every existing construction site keeps compiling
+   * and a consumer that predates it is unaffected; `toResolvedModel` always sets
+   * it from the NOT NULL column, so a production spec always carries it. Absent
+   * means the sender predates the field, and `apps/stt` falls back to `format` —
+   * which is the pre-TASK-860 key that could not tell a pyannote checkpoint from
+   * a transformers one, because both are `PYTORCH`.
+   */
+  libraryName?: string;
   computeType: string | null;
   provider: string | null;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */

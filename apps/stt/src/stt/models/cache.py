@@ -36,7 +36,7 @@ from hope_runtime_models import ModelCache as SharedModelCache
 from hope_runtime_models import clamp_cache_ttl_seconds
 
 from ..core.config.settings import get_settings
-from ..core.exceptions import ModelLoadError
+from ..core.exceptions import ModelLoadError, ModelNotCacheServedError
 from ..core.metrics import build_model_cache_metrics_sink
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
 from .azure_foundry_loader import AzureFoundryLoader
@@ -57,6 +57,45 @@ logger = logging.getLogger(__name__)
 # Control-plane retention refresher, installed at app startup so the
 # cache never hard-depends on HTTP (see `ModelCache._refresh_retention`).
 _retention_refresher: Callable[[], Awaitable[None]] | None = None
+
+
+#: TASK-944 (B2) — serving libraries (`AiModel.libraryName`) whose weights are
+#: owned by a DEDICATED runtime inside this process, not by this model cache.
+#: The value NAMES that runtime, because a refusal that does not say who loads
+#: the model instead is what sends the next reader back to the data.
+#:
+#: Every entry is a `format = PYTORCH` (or SAFETENSOR) row that the pre-TASK-860
+#: format-keyed registry handed to `HuggingFaceLoader`, i.e. to `transformers`.
+#: None of them is a transformers checkpoint: the pyannote snapshot publishes
+#: `config.yaml` + `pytorch_model.bin` and no `config.json`, the speechbrain one
+#: publishes `hyperparams.yaml`, and the two denoisers have no published weights
+#: at all (they ship inside their wheels — `sourceUri` is `pypi:` / `github:`).
+#: Warming one of these through the cache was never a load that could succeed:
+#: it was ~9.3 s of a doomed transformers resolution on every cold session, and
+#: it never gated the feature — the session manager builds the embedding service
+#: and the denoisers itself, from the very same `ResolvedAsrSpec` rows.
+RUNTIME_OWNED_LIBRARIES: dict[str, str] = {
+    "pyannote-audio": (
+        "stt.diarization.pyannote_embedding.PyannoteEmbeddingService "
+        "(pyannote.audio Model.from_pretrained reads config.yaml; transformers cannot)"
+    ),
+    "speechbrain": (
+        "stt.diarization.speechbrain_embedding.SpeechBrainEmbeddingService "
+        "(speechbrain reads hyperparams.yaml; transformers cannot)"
+    ),
+    "pyrnnoise": (
+        "the RNNoise denoiser — its coefficients are compiled into the `pyrnnoise` "
+        "wheel, so there are no published weights to cache"
+    ),
+    "deepfilternet": (
+        "stt.streaming.deepfilternet_denoiser — `df.enhance.init_df` ships the "
+        "DeepFilterNet3 checkpoint inside the `deepfilternet` wheel"
+    ),
+    "cadence-punctuation": (
+        "the punctuation service, which loads its own model; `models.punctuation` "
+        "is referenced by slug only and never enters this cache"
+    ),
+}
 
 
 def set_retention_refresher(refresher: Callable[[], Awaitable[None]] | None) -> None:
@@ -270,31 +309,71 @@ class ModelCache(SharedModelCache[LoadedModel]):
         )
 
     def _install_loaders(self) -> None:
-        """Build the format -> loader registry.
+        """Build the loader registry — BOTH keys, one set of loader instances.
 
         The single source of truth for which engines this service can run. Every
-        loader declares its `credential_posture`; the lock test iterates THIS map
+        loader declares its `credential_posture`; the lock test iterates BOTH maps
         so a new engine cannot be added without stating whether it needs a vendor
         credential.
+
+        `_library_loaders` is the SELECTION key (TASK-944 B2 / TASK-860):
+        `AiModel.libraryName` says which library serves a row, and `format` has
+        been descriptive since TASK-860. `_loaders` — the pre-TASK-860 format map
+        — survives as the fallback for the paths that declare no library (inline
+        model definitions, the deprecated DB reader, a spec from a gateway that
+        predates the wire field) and as the key `_unload_model` releases by, since
+        a `LoadedModel` carries a format and not a library.
+
+        The two maps share loader INSTANCES on purpose: a model admitted through
+        the library key must be released through the very same loader.
         """
+        huggingface = HuggingFaceLoader()
+        onnx = ONNXLoader()
+        nemo = NeMoLoader()
+        faster_whisper = FasterWhisperLoader()
+        azure_speech = AzureSpeechLoader()
+        azure_foundry = AzureFoundryLoader()
+        parakeet_cpp = ParakeetCppLoader()
+        whisper_cpp = WhisperCppLoader()
+        sarvam = SarvamLoader()
+        openai = OpenAILoader()
+
         self._loaders: dict[AiModelFormat, BaseModelLoader] = {
-            AiModelFormat.SAFETENSOR: HuggingFaceLoader(),
-            AiModelFormat.PYTORCH: HuggingFaceLoader(),
-            AiModelFormat.ONNX: ONNXLoader(),
-            AiModelFormat.ONNX_OPTIMUM: ONNXLoader(),  # HuggingFace Optimum ONNX uses same loader
-            AiModelFormat.NEMO: NeMoLoader(),
-            AiModelFormat.CTRANSLATE2: HuggingFaceLoader(),  # Legacy alias — transformers path
+            AiModelFormat.SAFETENSOR: huggingface,
+            AiModelFormat.PYTORCH: huggingface,
+            AiModelFormat.ONNX: onnx,
+            AiModelFormat.ONNX_OPTIMUM: onnx,  # HuggingFace Optimum ONNX uses same loader
+            AiModelFormat.NEMO: nemo,
+            AiModelFormat.CTRANSLATE2: huggingface,  # Legacy alias — transformers path
             # faster-whisper on CTranslate2 (lazy import)
-            AiModelFormat.FASTER_WHISPER: FasterWhisperLoader(),
-            AiModelFormat.AZURE_SPEECH: AzureSpeechLoader(),  # Cloud-based Azure Cognitive Services
+            AiModelFormat.FASTER_WHISPER: faster_whisper,
+            AiModelFormat.AZURE_SPEECH: azure_speech,  # Cloud Azure Cognitive Services
             # New engines (both lazy at load time).
-            AiModelFormat.AZURE_FOUNDRY: AzureFoundryLoader(),
-            AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
+            AiModelFormat.AZURE_FOUNDRY: azure_foundry,
+            AiModelFormat.PARAKEET_CPP: parakeet_cpp,
             # whisper.cpp (lazy at load time).
-            AiModelFormat.WHISPER_CPP: WhisperCppLoader(),
+            AiModelFormat.WHISPER_CPP: whisper_cpp,
             # Cloud BYOK speech engines (REST).
-            AiModelFormat.SARVAM: SarvamLoader(),
-            AiModelFormat.OPENAI: OpenAILoader(),
+            AiModelFormat.SARVAM: sarvam,
+            AiModelFormat.OPENAI: openai,
+        }
+
+        # Keys are `AiModel.libraryName` values, validated platform-side against
+        # `AI_MODEL_LIBRARIES` (packages/applications `services/ai-model/constants.ts`).
+        # Every library an `stt`-served row may declare appears HERE or in
+        # `RUNTIME_OWNED_LIBRARIES`; anything else fails closed.
+        self._library_loaders: dict[str, BaseModelLoader] = {
+            "transformers": huggingface,
+            "ctranslate2": huggingface,  # legacy alias — transformers path
+            "faster-whisper": faster_whisper,
+            "whisper.cpp": whisper_cpp,
+            "parakeet.cpp": parakeet_cpp,
+            "nemo": nemo,
+            "onnxruntime": onnx,
+            "azure-speech": azure_speech,
+            "azure-foundry": azure_foundry,
+            "sarvam": sarvam,
+            "openai": openai,
         }
 
     # ── legacy internal spellings ───────────────────────────────────────────
@@ -367,11 +446,15 @@ class ModelCache(SharedModelCache[LoadedModel]):
     async def _load_by_slug(self, slug: str) -> LoadedModel:
         """Shared-cache factory: resolve the loader for the pending config and load."""
         model_config = self._pending_configs[slug]
-        loader = self._get_loader(model_config.format)
-        if loader is None:
-            raise ModelLoadError(f"No loader available for format: {model_config.format}")
+        loader = self.loader_for(model_config)
 
-        logger.info(f"Loading model {slug} (format={model_config.format})")
+        logger.info(
+            "Loading model %s (library=%s, format=%s, loader=%s)",
+            slug,
+            model_config.library_name or "<undeclared>",
+            model_config.format,
+            type(loader).__name__,
+        )
         return await loader.load(model_config)
 
     async def _unload_model(self, slug: str, model: LoadedModel) -> None:
@@ -579,8 +662,56 @@ class ModelCache(SharedModelCache[LoadedModel]):
         )
 
     def _get_loader(self, format: AiModelFormat) -> BaseModelLoader | None:
-        """Get loader for model format."""
+        """Get loader for model format.
+
+        The pre-TASK-860 key. Still the release path (`_unload_model` has only a
+        `LoadedModel`, which carries a format and no library) and still the
+        fallback for a config that declares no library. `loader_for` is what a
+        LOAD goes through.
+        """
         return self._loaders.get(format)
+
+    def loader_for(self, model_config: AiModelConfig) -> BaseModelLoader:
+        """The loader that executes this row — selected by its DECLARED library.
+
+        `AiModel.libraryName` is the loader-selection field ("Artifact format —
+        descriptive only since TASK-860. Loader selection is `libraryName`",
+        `packages/database/src/prisma/db_main/ai-model.prisma`). This runtime
+        never received it, so it kept keying on `format` — and `PYTORCH` is worn
+        by a pyannote embedder, a speechbrain embedder and two denoisers as well
+        as by real transformers checkpoints, so the key could not tell them
+        apart and sent all four to `transformers`.
+
+        Selection FAILS CLOSED, per `.claude/rules/09-infrastructure-devops.md`:
+        a library this service does not serve raises, and no engine is guessed
+        in its place. The `format` fallback applies ONLY when no library is
+        declared at all — an inline model definition, the deprecated DB reader,
+        or a spec from a gateway that predates the wire field.
+        """
+        library = (model_config.library_name or "").strip()
+        if library:
+            owner = RUNTIME_OWNED_LIBRARIES.get(library)
+            if owner is not None:
+                raise ModelNotCacheServedError(
+                    f"Model '{model_config.slug}' declares serving library '{library}', which "
+                    f"this model cache does not load. It is executed by {owner}. This is a "
+                    "LOADER-SELECTION outcome, not a missing or mislocated model: do not go "
+                    "looking for the weights."
+                )
+            loader = self._library_loaders.get(library)
+            if loader is None:
+                raise ModelLoadError(
+                    f"Model '{model_config.slug}' declares serving library '{library}', which "
+                    "the STT runtime has no loader for. Known libraries: "
+                    f"{sorted(self._library_loaders)}; runtime-owned: "
+                    f"{sorted(RUNTIME_OWNED_LIBRARIES)}."
+                )
+            return loader
+
+        loader = self._get_loader(model_config.format)
+        if loader is None:
+            raise ModelLoadError(f"No loader available for format: {model_config.format}")
+        return loader
 
 
 # Singleton instance
@@ -602,6 +733,7 @@ async def clear_model_cache() -> int:
 
 
 __all__ = [
+    "RUNTIME_OWNED_LIBRARIES",
     "CacheEntry",
     "CacheStats",
     "ModelCache",
