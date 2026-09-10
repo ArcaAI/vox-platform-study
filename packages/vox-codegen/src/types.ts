@@ -35,6 +35,13 @@ export interface ContextKindDeclaration {
   fields?: Record<string, unknown>;
   constraints?: { mimeTypes?: string[]; maxBytes?: number };
   deprecated?: { since: string; migrateBy?: string; message?: string };
+  /**
+   * Names the ONE property of `fields.properties` that carries the tenant's
+   * staff identifier for the clinician (TASK-950) — present on at most one
+   * `STRUCTURED`, `cardinality: 'ONE'` kind per definition. `generate.ts`
+   * renders this as an `@identity` JSDoc annotation on that property.
+   */
+  userIdentity?: { field: string };
   [key: string]: unknown;
 }
 

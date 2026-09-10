@@ -71,6 +71,16 @@ export interface ContextKindDeclaration {
   fields?: Record<string, unknown>;
   constraints?: { mimeTypes?: string[]; maxBytes?: number };
   deprecated?: ContextKindDeprecation;
+  /**
+   * Marks the ONE property of a `STRUCTURED`, `cardinality: 'ONE'` kind's
+   * `fields.properties` that carries the tenant's STAFF IDENTIFIER for the
+   * clinician (TASK-950). At most one kind in a definition carries this. When
+   * a service-account caller's `open()` sends `context[key][field]`, HOPE
+   * resolves it to a tenant user — creating one when none exists — and that
+   * user becomes the consultation's clinician. Presence of the VALUE is still
+   * governed by the kind/property's own `required` flags, not by this marker.
+   */
+  userIdentity?: { field: string };
   [key: string]: unknown;
 }
 

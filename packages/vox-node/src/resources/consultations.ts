@@ -93,12 +93,14 @@ export class ConsultationsResource {
    * this twice for the same visit is the intended way to re-attach to a
    * consultation you already opened, not an error.
    *
-   * **A service-account caller MUST name `clinicianUserId`, and a human caller
-   * must not** (TASK-933). The named clinician lands on `Consultation.doctorId`
-   * and is what every downstream consumer reads — the DNA writing style, the
-   * redaction gate, the doctor's report, the prompt tier and the audit trail.
-   * A machine is never recorded as the clinician; it is recorded as the ACTOR,
-   * beside the clinician it acted for.
+   * **A service-account caller MUST name the clinician — either
+   * `clinicianUserId`, or the schema's user-identity field inside `context`
+   * (TASK-950) — and a human caller must not name one at all** (TASK-933).
+   * The named clinician lands on `Consultation.doctorId` and is what every
+   * downstream consumer reads — the DNA writing style, the redaction gate,
+   * the doctor's report, the prompt tier and the audit trail. A machine is
+   * never recorded as the clinician; it is recorded as the ACTOR, beside the
+   * clinician it acted for.
    *
    * The other three identity details all matter at open and only at open:
    * `departmentId` selects the governing workflow and the department's SOAP

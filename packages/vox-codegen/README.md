@@ -219,6 +219,18 @@ providerName: string }`) — never a single object with every branch's
 properties merged together as optional siblings ("property soup"), which is
 what a naive generator would emit.
 
+## The `@identity` annotation (TASK-950)
+
+A tenant admin may mark ONE property of a `STRUCTURED` context kind as the
+clinician's staff-identifier field (`ContextKindDeclaration.userIdentity`).
+When `generate.ts` renders that kind's payload type, the marked property
+carries a `/** @identity … */` JSDoc — a documentation hint only, not a type
+constraint — noting that a service-account caller's `open()` resolves (or
+provisions) the HOPE user from that value. A marker naming a property absent
+from the kind's own `fields` is ignored rather than thrown on: the annotation
+is best-effort, exactly like the rest of this generator's stance on
+untrusted wire JSON.
+
 ## Known limitations
 
 - Constraint keywords with no TypeScript representation

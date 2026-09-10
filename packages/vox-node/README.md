@@ -592,6 +592,28 @@ audited as the ACTOR beside the clinician it acted for — which is exactly why
 `clinicianUserId` is required for that credential class and rejected for a human
 one, who already is the clinician.
 
+### Identifying the clinician by staff id (TASK-950)
+
+`clinicianUserId` is not the only way for a service account to name the
+clinician. A tenant admin can mark one property of a `STRUCTURED` context kind
+as the **user-identity field** — the tenant's own staff identifier — and a
+service-account `open()` that sends it gets the clinician resolved from that
+value instead, HOPE creating a HOPE user for it the first time it is seen:
+
+```ts
+const consultation = await hope.consultations.open({
+  patientId: 'MRN-4471',
+  departmentId: cardiologyId,
+  context: { context: { consultant_id: 'DR-1001' } },
+});
+```
+
+`clinicianUserId` and the identity value may both be sent, but they must
+agree (400 `CLINICIAN_MISMATCH` when they don't), and a service account that
+sends neither still gets 400 `CLINICIAN_REQUIRED`. See
+`OpenConsultationRequest.context`'s doc comment for the full
+resolution/provisioning contract and its error codes.
+
 ### The four live planes are not the same shape
 
 | `hope.consultations.streams.…` | Shape | Ends itself? |

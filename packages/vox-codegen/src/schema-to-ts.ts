@@ -46,6 +46,14 @@ function isSupportedType(value: unknown): value is SupportedType {
 export interface SchemaToTsOptions {
   /** Dotted path to the current node, for error messages only. */
   path?: string;
+  /**
+   * Property-name → JSDoc text to attach to that property when it is
+   * rendered directly as a member of THIS schema node's object type
+   * (TASK-950's `@identity` annotation). Never propagated into recursive
+   * calls for nested schemas — see {@link jsonSchemaSubsetToTs}'s only
+   * consumer of it, `generate.ts`'s top-level call per kind.
+   */
+  annotations?: Record<string, string>;
 }
 
 /** Render a JSON literal (string/number/boolean/null) as a TS literal type. */
@@ -128,7 +136,7 @@ export function jsonSchemaSubsetToTs(schema: unknown, options: SchemaToTsOptions
 
   if ('type' in schema) {
     const declared = Array.isArray(schema.type) ? schema.type : [schema.type];
-    const rendered = declared.map((entry) => renderType(entry, schema, path));
+    const rendered = declared.map((entry) => renderType(entry, schema, path, options.annotations));
     return rendered.length === 1 ? rendered[0] : `(${rendered.join(' | ')})`;
   }
 
@@ -138,7 +146,7 @@ export function jsonSchemaSubsetToTs(schema: unknown, options: SchemaToTsOptions
   return 'unknown';
 }
 
-function renderType(type: unknown, schema: Record<string, unknown>, path: string): string {
+function renderType(type: unknown, schema: Record<string, unknown>, path: string, annotations?: Record<string, string>): string {
   if (!isSupportedType(type)) {
     throw new CodegenError(`${path}: unsupported JSON Schema 'type' value ${JSON.stringify(type)} (supported: ${SUPPORTED_TYPES.join(', ')})`);
   }
@@ -158,11 +166,11 @@ function renderType(type: unknown, schema: Record<string, unknown>, path: string
       return `(${itemsType})[]`;
     }
     case 'object':
-      return renderObjectType(schema, path);
+      return renderObjectType(schema, path, annotations);
   }
 }
 
-function renderObjectType(schema: Record<string, unknown>, path: string): string {
+function renderObjectType(schema: Record<string, unknown>, path: string, annotations?: Record<string, string>): string {
   const properties = isPlainObject(schema.properties) ? schema.properties : {};
   const required = new Set(Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === 'string') : []);
   const propertyKeys = Object.keys(properties);
@@ -170,7 +178,9 @@ function renderObjectType(schema: Record<string, unknown>, path: string): string
   const members = propertyKeys.map((key) => {
     const optional = required.has(key) ? '' : '?';
     const propertyType = jsonSchemaSubsetToTs(properties[key], { path: `${path}.properties.${key}` });
-    return `${propertyKeyLiteral(key)}${optional}: ${propertyType};`;
+    const member = `${propertyKeyLiteral(key)}${optional}: ${propertyType};`;
+    const annotation = annotations?.[key];
+    return annotation ? `/** ${annotation} */ ${member}` : member;
   });
 
   if (isPlainObject(schema.additionalProperties)) {
