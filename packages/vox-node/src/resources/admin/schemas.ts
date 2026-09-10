@@ -6331,6 +6331,8 @@ export interface UpdateUserProfileRequest {
   /** Preferred backend prompt template ID (null clears). */
   preferredPromptTemplateId?: string | null;
   resourceStatus?: string;
+  /** Tenant staff identifier (null clears). Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it. */
+  staffId?: string | null;
   tenantId?: string;
   /** ID of the associated user */
   userId?: string;
@@ -6691,6 +6693,8 @@ export interface UserProfileResponse {
   resourceStatus: string;
   resourceStatusUpdatedAt: string;
   resourceStatusUpdatedBy?: string;
+  /** Tenant staff identifier, unique within the tenant. Null/absent when the user has none. */
+  staffId?: string | null;
   updatedAt: string;
   updatedBy?: string;
   /** ID of the associated user */
