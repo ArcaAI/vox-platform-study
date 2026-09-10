@@ -25,8 +25,14 @@ import numpy as np
 import structlog
 
 from stt.core.initial_prompt import compose_prompt
-from stt.core.metrics import observe_streaming_inference
+from stt.core.metrics import observe_streaming_inference, streaming_script_mismatch
 from stt.pipeline.dto import InferenceConfig, PostprocessingConfig
+from stt.pipeline.language_modes import (
+    SCRIPT_MISMATCH_LATIN_RATIO,
+    SCRIPT_MISMATCH_MIN_LETTERS,
+    is_latin_script_language,
+    latin_letter_ratio,
+)
 from stt.postprocessing.lexicon import LexiconCorrector
 from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS
 from stt.streaming.preprocessor import AudioUtterance
@@ -146,6 +152,7 @@ class StreamingInferenceWorker:
         embedding_service: Any = None,  # per-pipeline embedding model
         active_pipeline_id: str | None = None,
         max_decode_window_sec: float | None = None,
+        language: str | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -221,6 +228,18 @@ class StreamingInferenceWorker:
             if isinstance(gloss_timeout_s, (int, float)) and not isinstance(gloss_timeout_s, bool)
             else _GLOSS_TIMEOUT_S
         )
+        # TASK-946 — the session's PINNED language (`InferenceConfig.language`, which
+        # `_language_from_mode` resolved from the agent's language mode). `None` means
+        # auto-detect or an unpinned code-switch pair: no pin, so nothing a decode can
+        # contradict, and the script guard below stays entirely inert.
+        self._language: str | None = (
+            language.strip() if isinstance(language, str) and language.strip() else None
+        )
+        self._expects_latin_script: bool = is_latin_script_language(self._language)
+        #: The `status: degraded` frame is sent ONCE per session — the caller needs to
+        #: know the session went wrong, not to be told again on every utterance for the
+        #: next forty minutes. The metric and the log line still fire per occurrence.
+        self._script_mismatch_reported: bool = False
         self._gloss_tasks: set[asyncio.Task[None]] = set()
         self._punctuation_model: Any = None
         self._embedding_service: Any = embedding_service
@@ -314,6 +333,64 @@ class StreamingInferenceWorker:
                 score=round(correction.score, 4),
             )
         return corrected
+
+    def _is_script_mismatch(self, text: str) -> bool:
+        """Does *text* contradict the session's pinned language?
+
+        Only ever true for a session pinned to a Latin-script language (`en`, `vi`) whose
+        decode came back mostly in another script. A Malayalam session is CORRECT in
+        Malayalam, and an unpinned session declared no expectation to contradict — both
+        return False without looking at the text.
+
+        The length floor matters: below it one foreign proper noun swings the ratio, and
+        a one-word final is exactly where a foreign name is legitimate. The ratio floor
+        is deliberately generous — the measured failure is 2 % Latin, while a genuinely
+        code-mixed clinical line sits far above 50 %.
+        """
+        if not self._expects_latin_script:
+            return False
+        if sum(1 for ch in text if ch.isalpha()) < SCRIPT_MISMATCH_MIN_LETTERS:
+            return False
+        return latin_letter_ratio(text) < SCRIPT_MISMATCH_LATIN_RATIO
+
+    async def _report_script_mismatch(
+        self, session_id: str, text: str, utterance: AudioUtterance
+    ) -> None:
+        """Count it, log it, and tell the caller once.
+
+        Deliberately does NOT carry the text: the log is the only place a transcript can
+        be read without decrypting a `ContextItem`, and a WARNING that reproduced the
+        garbage would put PHI in it on every bad final. The `latin_ratio` and the
+        utterance ordinal are enough to say how bad and from when.
+        """
+        streaming_script_mismatch()
+        logger.warning(
+            "stt.streaming.script_mismatch",
+            session_id=session_id,
+            language=self._language,
+            expected_script="latin",
+            latin_ratio=round(latin_letter_ratio(text), 3),
+            utterance_index=utterance.utterance_index,
+            reported=not self._script_mismatch_reported,
+        )
+        if self._script_mismatch_reported or self._publisher is None:
+            return
+        self._script_mismatch_reported = True
+        publish_degraded = getattr(self._publisher, "publish_degraded", None)
+        if publish_degraded is None:
+            # A publisher that predates TASK-946 (or a test double) still gets the log
+            # and the metric; the session must never fail over a diagnostic.
+            return
+        try:
+            await publish_degraded(
+                reason="script_mismatch", utterance_index=utterance.utterance_index
+            )
+        except Exception as exc:
+            logger.warning(
+                "stt.streaming.script_mismatch.publish_failed",
+                session_id=session_id,
+                error=str(exc),
+            )
 
     def _resolve_uses_cadence_fast(self) -> bool:
         """Does the session's punctuation model resolve to the direct-load
@@ -493,12 +570,23 @@ class StreamingInferenceWorker:
             self._last_final_end = utterance.end_time
             self._last_final_tail = " ".join(text.split()[-12:]) if text.strip() else ""
 
-        if text.strip():
-            if self._prev_text_context_words > 0:
+        # TASK-946 — the decoder carry-forward, with two rules the 2026-09-10 trial paid
+        # for. It is taken from FINALS ONLY (a partial is a guess at an utterance still
+        # in flight, and priming the next decode with a guess is how a bad hypothesis
+        # becomes the session's context), and NEVER from a final that contradicts its own
+        # pinned language: once one decode came back in the wrong script, carrying it
+        # forward primed the next decode with that script and the collapse sustained
+        # itself. Clearing is the intervention — the text itself still publishes.
+        script_mismatch = False
+        if utterance.is_final and text.strip():
+            script_mismatch = self._is_script_mismatch(text)
+            if script_mismatch:
+                await self._report_script_mismatch(session_id, text, utterance)
+            if script_mismatch or self._prev_text_context_words <= 0:
+                self._previous_text = ""
+            else:
                 words = text.strip().split()
                 self._previous_text = " ".join(words[-self._prev_text_context_words :])
-            else:
-                self._previous_text = ""
 
         # Step 2b: Punctuation restoration (postprocessor). Runs before the
         # final is published AND before the gloss task snapshots

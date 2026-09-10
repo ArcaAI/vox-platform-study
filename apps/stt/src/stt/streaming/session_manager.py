@@ -769,6 +769,12 @@ class SessionManager:
             embedding_service=pipeline_embedding_service,
             active_pipeline_id=active_pipeline_id,
             max_decode_window_sec=max_decode_window_sec,
+            # TASK-946 — the session's PINNED language, so the worker can tell a decode
+            # that contradicts its own pin (a `language=en` session answering in
+            # Malayalam script) from one that is simply in another language. `None` for
+            # auto-detect and for an unpinned code-switch pair, which is what makes the
+            # guard inert on exactly the sessions that declared no expectation.
+            language=getattr(inference_cfg, "language", None),
         )
 
         # TASK-934 — the two windows, once per session, at INFO. The 2026-09-09
