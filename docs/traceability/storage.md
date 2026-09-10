@@ -53,6 +53,6 @@ and the object browser.
 
 - **Two distinct console features front storage.** `storage` (`tenant-storage-screen`, tier 10–19 global) is the bucket / config / key *administration* surface; `storage-browser` (`storage-browser-screen`, tier 30–49 tenant) is the object *data plane*. They are separate features on separate routes — not a duplication.
 - **Media persistence is documented elsewhere.** The `Media` / `AudioRecording` producer path (recording capture) lives in [`consultation.md`](./consultation.md); this file records the storage control/data plane, so `Media` appears here only as the object model the buckets hold.
-- **No storage-browser e2e.** S3 has unit(console) coverage only; the cross-tenant storage e2e specs (`task-307-storage-*`) exercise the gateway routes (S1/S2), not the browser UI.
+- **No storage-browser e2e.** S3 has unit(console) coverage only; the cross-tenant storage e2e specs (`storage-cross-tenant.spec.ts`, `task-932-storage-cross-tenant.spec.ts`, `tenant-bucket-cross-tenant.spec.ts`) exercise the gateway routes (S1/S2), not the browser UI.
 
 Last verified: 2026-07-22

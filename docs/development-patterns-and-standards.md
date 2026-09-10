@@ -391,7 +391,7 @@ Root `playwright.config.ts`: `testDir: './apps/api/tests/e2e'`, pattern `**/*.sp
 ### 4.4 Contract and cross-tenant tests
 
 - Contract tests: `tests/contracts/*.contract.test.ts` validate gateway↔Python request/response shapes against shared zod schemas in `tests/contracts/schemas.ts` (e.g. `tests/contracts/stt.contract.test.ts`).
-- Cross-tenant tests: `tests/cross-tenant/` (fixtures in `tests/cross-tenant/fixtures.ts`) plus a coverage meta-test `packages/applications/src/__tests__/cross-tenant-coverage.test.ts`; dedicated e2e cross-tenant specs exist per feature (`apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`).
+- Cross-tenant tests: `tests/cross-tenant/` (fixtures in `tests/cross-tenant/fixtures.ts`) plus a coverage meta-test `packages/applications/src/__tests__/cross-tenant-coverage.test.ts`; dedicated e2e cross-tenant specs exist per feature (`apps/api/tests/e2e/*cross-tenant*.spec.ts`, 21 of them — the glob names the CONVENTION because the former `task-307-*` form matched nothing once those specs were renamed).
 - Shared helpers/fixtures: `tests/helpers/` (`api.helper.ts`, `auth.helper.ts`, `db.helper.ts`, `e2e.helper.ts`) and `tests/fixtures/` (`tenants.fixture.ts`, `users.fixture.ts`, `roles.fixture.ts`).
 
 ### 4.5 Python tests
@@ -497,7 +497,7 @@ Two commands are deliberately hazardous and must never be run casually: `pnpm ge
 3. Services verify ownership on every by-id mutation — tenant mismatch throws `NotFoundException` ("not found", never "forbidden") to avoid existence leaks; helpers in `packages/applications/src/common/tenant-guards.ts` (`assertParentInScope` for parent references).
 4. The Prisma tenant-scope extension injects `tenantId` into reads/writes of `TENANT_SCOPED_MODELS` from the CLS provider (`packages/database/src/extensions/tenant-scope.ts`); SUPER_ADMIN bypasses; SYSTEM-shared catalogs widen reads only.
 5. SSE-specific ownership guard `TenantOwnedResourceSseGuard` re-runs assertions before the stream opens (`apps/api/src/app.module.ts`).
-6. Cross-tenant e2e suites lock the 404 contracts (`apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`).
+6. Cross-tenant e2e suites lock the 404 contracts (`apps/api/tests/e2e/*cross-tenant*.spec.ts`).
 
 **Deliberate 403 privilege walls — a DIFFERENT axis from the 404 posture (verified 2026-07-21).** The 404-over-403 rule above hides _whether a resource exists in another tenant_. It does NOT apply to _privilege_ — a caller who legitimately owns a resource for most operations but lacks the standing for one specific action gets a genuine **403 `ForbiddenException`**, because concealing the action would be nonsensical (the caller can already read it). These 403s are enforced IMPERATIVELY in the service, because the CASL permission decorators express only `action + subject` and cannot express "super-admins only" or "the row's owner only". On such routes the declarative decorator UNDERSTATES the real gate, so each carries a mandatory `// AUTH-NOTE:` marker at the handler (rule 05; two live markers, both in `apps/api/src/modules/prompt-management/`). Two shapes:
 
