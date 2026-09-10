@@ -40,6 +40,7 @@ import {
   contextSchemaDefinitionProblems,
   findKind,
   payloadSchemaFromDefinition,
+  userIdentityBindingFromDefinition,
   type ContextPrimitive,
 } from './context-schema-definition';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
@@ -381,6 +382,9 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       versionNumber: version.versionNumber,
       versionId: version.id,
       payloadSchema: payloadSchemaFromDefinition(version.definition),
+      // TASK-950 D-3 — derived from the SAME definition, once, here: the two freeze sites
+      // (agent publish, workflow compile) receive this result and never the raw definition.
+      userIdentity: userIdentityBindingFromDefinition(version.definition),
     };
   }
 

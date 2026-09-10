@@ -83,6 +83,7 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 import { MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
 import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
+import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
 import type {
   ContextSchemaReferenceResolution,
   IConsultationContextSchemaService as IConsultationContextSchemaServicePort,
@@ -159,8 +160,18 @@ interface FragmentTemplateVariables {
  * The shape lives on `AgentCompiledConfig` (`packages/types/src/agent.ts`) since the wave-2b
  * close; this alias is the local NAME the service reads it under, so the freeze site and the two
  * consumers (`testScope`, `assertContextConforms`) name one type rather than restating it.
+ *
+ * TASK-950 D-3 — `userIdentity` rides along as an INTERSECTION rather than being restated on
+ * `AgentCompiledConfig`, the same way `CompiledModelRef` carries `wireModelId`
+ * (`agent-wire-model.ts`): the compiled artifact is JSON, `@arcaai/types` declares the members a
+ * reader may RELY on, and every consumer of this key reads it structurally off the compiled
+ * config exactly as `boundContextPayloadSchema` reads its sibling. Absent means "the pinned
+ * schema declares no identity field" — the key is OMITTED, never stamped `null`, so an artifact
+ * published before this ticket is byte-identical.
  */
-export type AgentCompiledContextSchema = NonNullable<AgentCompiledConfig['contextSchema']>;
+export type AgentCompiledContextSchema = NonNullable<AgentCompiledConfig['contextSchema']> & {
+  userIdentity?: UserIdentityBinding;
+};
 
 /**
  * What the caller of `publishFindings` needs to know about ONE agent a `core.agent` node
@@ -1710,6 +1721,11 @@ export class AgentService extends BaseService implements IAgentService {
         versionNumber: outcome.versionNumber,
         versionId: outcome.versionId,
         payloadSchema: outcome.payloadSchema,
+        // TASK-950 D-3 — frozen for the same reason the payload schema is: the invocation
+        // planes must not re-read the schema row to learn which field carries the staff
+        // identifier. OMITTED when the pinned version declares none, so an agent that binds
+        // no identity field compiles to exactly the bytes it did before this ticket.
+        ...(outcome.userIdentity ? { userIdentity: outcome.userIdentity } : {}),
       },
       findings: [],
     };

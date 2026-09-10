@@ -140,6 +140,25 @@ export interface CompiledContextSchemaRef {
 }
 
 /**
+ * TASK-950 D-1/D-3 — WHERE a run payload carries the tenant's staff identifier.
+ *
+ * A structural MIRROR of `UserIdentityBinding` in
+ * `@arcaai/applications`' `consultation-context-schema/context-schema-definition.ts`, restated
+ * here because this package must not depend on that one. It is deliberately only the TYPE: the
+ * derivation itself (`userIdentityBindingFromDefinition`) stays a single implementation on the
+ * applications side and its answer is handed in on {@link ResolvedTriggerContextSchema}, exactly
+ * as the derived payload schema is. A second derivation living here would eventually disagree
+ * about which field HOPE resolves a user from.
+ *
+ * It is a mapping declaration, never authorization — a caller is still authorized by its own
+ * credential.
+ */
+export interface CompiledUserIdentityBinding {
+  kindKey: string;
+  field: string;
+}
+
+/**
  * TASK-890 §3.4 — what the CALLER resolved about the trigger's `contextSchema.contextSchemaId`.
  *
  * The compiler never reads a database; the service resolves the reference in the caller's
@@ -152,6 +171,11 @@ export interface ResolvedTriggerContextSchema {
   versionNumber: number;
   versionId: string;
   payloadSchema: Record<string, unknown>;
+  /**
+   * TASK-950 D-3 — the version's user-identity binding, derived by the same caller from the
+   * same definition as `payloadSchema`. Absent (or `null`) means this version declares none.
+   */
+  userIdentity?: CompiledUserIdentityBinding | null;
 }
 
 export interface CompiledCaps {
@@ -314,6 +338,14 @@ function compileNode(
  * replacing them: the reference is what the author wrote and what a re-publish re-resolves,
  * while `resolved` is the frozen answer the interpreter validates against without a
  * database read (invariant 4).
+ *
+ * TASK-950 D-3 — `userIdentity` freezes beside `resolved`, from the same resolution, for the
+ * same reason: which field carries the staff identifier is a property of the version the
+ * workflow was PUBLISHED against, and no run may re-read a schema row to learn it. It is
+ * OMITTED when the resolution declares none, so an artifact whose schema has no identity
+ * field compiles to exactly the bytes it did before this ticket and its checksum still
+ * verifies. It never affects validation: `interpreter.core_trigger` reads `resolved` /
+ * `inline` and nothing else.
  */
 function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Record<string, unknown> {
   const config = node.config ?? {};
@@ -325,7 +357,14 @@ function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Recor
   const authored = config.contextSchema;
   const contextSchema = typeof authored === 'object' && authored !== null && !Array.isArray(authored) ? (authored as Record<string, unknown>) : {};
 
-  return { ...config, contextSchema: { ...contextSchema, resolved: resolved.payloadSchema } };
+  return {
+    ...config,
+    contextSchema: {
+      ...contextSchema,
+      resolved: resolved.payloadSchema,
+      ...(resolved.userIdentity ? { userIdentity: resolved.userIdentity } : {}),
+    },
+  };
 }
 
 function compileGate(node: WorkflowGraphNode, ctx: CompilerContext): CompiledGate {

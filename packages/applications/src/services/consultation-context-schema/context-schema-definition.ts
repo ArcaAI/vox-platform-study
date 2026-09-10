@@ -29,6 +29,18 @@ import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
  * gateway's `forbidNonWhitelisted` posture) and returns EVERY problem at once
  * rather than throwing on the first — an admin editing a large definition
  * should not discover its faults one round-trip at a time.
+ *
+ * ## The `userIdentity` marker is a MAPPING declaration, never authorization
+ *
+ * TASK-950 D-1 lets a kind name ONE of its own string properties as the field
+ * carrying the tenant's staff identifier ({@link userIdentityBindingFromDefinition}).
+ * That is a reversal of TASK-933 §2.3 in exactly one respect — the schema may now say
+ * WHICH field holds the identifier — and in no other: the marker authorizes nobody
+ * (a caller is still authorized by its own credential's scopes and abilities), it
+ * changes no payload contract ({@link payloadSchemaFromDefinition} is byte-identical
+ * with and without it), and the row column every consumer reads is still the one the
+ * gateway writes. It declares a MAPPING from a declared field to
+ * `UserProfile.staffId`, and nothing more.
  */
 
 /** The CLOSED set of platform primitives. Extending it is a platform change, never a tenant one. */
@@ -78,11 +90,14 @@ const KIND_KEYS = [
   'constraints',
   'description',
   'deprecated',
+  'userIdentity',
 ] as const;
 const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description'] as const;
 const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
 /** The only keys a `deprecated` block may carry. */
 const DEPRECATED_KEYS = ['since', 'migrateBy', 'message'] as const;
+/** The only keys a `userIdentity` block may carry. */
+const USER_IDENTITY_KEYS = ['field'] as const;
 /** `YYYY-MM-DD`, deliberately loose (a calendar date, not a full timestamp). */
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -103,6 +118,19 @@ export interface KindDeprecation {
   message?: string;
 }
 
+/**
+ * TASK-950 D-1/D-3 — WHERE the tenant's staff identifier is carried, resolved from a
+ * definition by {@link userIdentityBindingFromDefinition}.
+ *
+ * `kindKey` names the declared kind, `field` one of that kind's own `fields.properties`.
+ * Both halves are needed because a payload is keyed by kind
+ * ({@link payloadSchemaFromDefinition}), so the field alone would not locate a value.
+ */
+export interface UserIdentityBinding {
+  kindKey: string;
+  field: string;
+}
+
 export interface ContextKindDeclaration {
   key: string;
   label: string;
@@ -116,6 +144,17 @@ export interface ContextKindDeclaration {
   fields?: Record<string, unknown>;
   constraints?: { mimeTypes?: string[]; maxBytes?: number };
   deprecated?: KindDeprecation;
+  /**
+   * TASK-950 D-1 — this kind's `fields.properties[field]` carries the tenant's staff
+   * identifier. At most ONE kind in a definition may declare it, and only a `STRUCTURED`
+   * kind with `cardinality: 'ONE'` can (a stream, a document or a repeated kind has no
+   * single property to read an identifier out of).
+   *
+   * A MAPPING declaration, never authorization — see the module docstring. PRESENCE is
+   * still governed by the schema's own `required` flags (D-2): the marker says what to do
+   * with a value when there is one, never that there must be one.
+   */
+  userIdentity?: { field: string };
 }
 
 export interface ContextOutputDeclaration {
@@ -176,6 +215,18 @@ export function contextSchemaDefinitionProblems(value: unknown): string[] {
 
   const seenKindKeys = new Set<string>();
   value.kinds.forEach((kind, index) => problems.push(...kindProblems(kind, `definition.kinds[${index}]`, seenKindKeys)));
+
+  // TASK-950 D-1 — a DEFINITION-level invariant, so it cannot be checked per kind: a
+  // second marker is not a fault of either kind, it is a fault of the pair. One problem
+  // naming both, because the admin has to choose between them.
+  const markedKindKeys = value.kinds
+    .filter((kind): kind is Record<string, unknown> => isPlainObject(kind) && kind.userIdentity !== undefined)
+    .map((kind) => (typeof kind.key === 'string' ? kind.key : String(kind.key)));
+  if (markedKindKeys.length > 1) {
+    problems.push(
+      `definition: at most one kind may declare \`userIdentity\`; ${markedKindKeys.length} do (${markedKindKeys.map((key) => `\`${key}\``).join(', ')})`,
+    );
+  }
 
   if (Array.isArray(outputs)) {
     const seenOutputKeys = new Set<string>();
@@ -248,6 +299,59 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
 
   if (kind.deprecated !== undefined) {
     problems.push(...deprecatedProblems(kind.deprecated, `${at}.deprecated`));
+  }
+
+  if (kind.userIdentity !== undefined) {
+    problems.push(...userIdentityProblems(kind.userIdentity, kind, `${at}.userIdentity`));
+  }
+
+  return problems;
+}
+
+/**
+ * TASK-950 D-1 — validate a `kinds[].userIdentity` marker AGAINST ITS OWN KIND.
+ *
+ * The marker points at a property of the kind it sits on, so it cannot be checked in
+ * isolation: the primitive decides whether there IS a property table, the cardinality
+ * decides whether one value is even meaningful, and `fields.properties` decides whether
+ * the named property exists and is a string. All four are checked here rather than
+ * anywhere later, because an identifier that cannot be located is a defect the AUTHOR can
+ * fix and a live consultation cannot.
+ */
+function userIdentityProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
+  if (!isPlainObject(marker)) {
+    return [`${at} must be a JSON object when present`];
+  }
+
+  const problems: string[] = [];
+  for (const key of Object.keys(marker)) {
+    if (!(USER_IDENTITY_KEYS as readonly string[]).includes(key)) {
+      problems.push(`${at}: unknown key \`${key}\``);
+    }
+  }
+
+  if (kind.primitive !== 'STRUCTURED') {
+    problems.push(`${at} is only allowed on a STRUCTURED kind (this kind is \`${String(kind.primitive)}\`)`);
+  }
+  if (kind.cardinality !== 'ONE') {
+    problems.push(`${at} is only allowed on a kind with cardinality ONE (this kind is \`${String(kind.cardinality)}\`)`);
+  }
+
+  const field = marker.field;
+  if (typeof field !== 'string' || field.trim().length === 0) {
+    problems.push(`${at}.field must be a non-empty string naming a property of \`fields.properties\``);
+    return problems;
+  }
+
+  const fields = kind.fields;
+  const properties = isPlainObject(fields) ? fields.properties : undefined;
+  const declared = isPlainObject(properties) ? properties[field] : undefined;
+  if (declared === undefined) {
+    problems.push(`${at}.field \`${field}\` names a property that \`fields.properties\` does not declare`);
+    return problems;
+  }
+  if (!isPlainObject(declared) || declared.type !== 'string') {
+    problems.push(`${at}.field \`${field}\` must name a property of type \`string\``);
   }
 
   return problems;
@@ -358,6 +462,14 @@ function constraintProblems(constraints: unknown, at: string): string[] {
  * eventually disagree about what a prompt may reference, which is the failure this
  * function exists to make impossible.
  *
+ * TASK-950 D-3 — {@link userIdentityBindingFromDefinition} is the SECOND derivation off the
+ * same definition, and it is a sibling rather than a branch of this one for the reason
+ * above: the two answer different questions ("what may a payload contain" vs "which field
+ * carries the staff identifier"), and both are frozen at the same two moments — agent
+ * publish and workflow compile. This function's OUTPUT is unaffected by the marker: a
+ * `userIdentity` block lives on the KIND, never inside `fields`, so a definition's payload
+ * schema is byte-identical with and without it and no frozen artifact's checksum moves.
+ *
  * The mapping:
  *
  *  - one property per declared KIND, keyed by its `key`;
@@ -397,6 +509,36 @@ export function payloadSchemaFromDefinition(definition: unknown): Record<string,
     properties,
     ...(required.length > 0 ? { required } : {}),
   };
+}
+
+/**
+ * TASK-950 D-3 — WHERE a payload carries the tenant's staff identifier, or `null`.
+ *
+ * The one implementation of the binding derivation, beside
+ * {@link payloadSchemaFromDefinition} and frozen by the same two callers (agent publish,
+ * workflow compile) so no plane re-reads a schema row at run time. A second copy of these
+ * few lines would eventually disagree about which field HOPE resolves a user from, which
+ * is the whole reason this lives here rather than at each call site.
+ *
+ * TOTAL, like its sibling: a definition this cannot read yields `null` rather than
+ * throwing. The publish gate ({@link contextSchemaDefinitionProblems}) already refused
+ * anything malformed, so `null` here means "this schema declares no identity field" — a
+ * fact in its own right, never "unknown". At most one kind can carry the marker (the
+ * definition-level gate), so the first match IS the answer.
+ */
+export function userIdentityBindingFromDefinition(definition: unknown): UserIdentityBinding | null {
+  if (!isPlainObject(definition) || !Array.isArray(definition.kinds)) return null;
+
+  for (const kind of definition.kinds) {
+    if (!isPlainObject(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
+    const marker = kind.userIdentity;
+    if (!isPlainObject(marker)) continue;
+    const field = marker.field;
+    if (typeof field !== 'string' || field.length === 0) continue;
+    return { kindKey: kind.key, field };
+  }
+
+  return null;
 }
 
 /**
