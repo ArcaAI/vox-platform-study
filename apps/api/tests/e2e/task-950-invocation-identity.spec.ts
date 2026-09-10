@@ -167,7 +167,7 @@ test.describe('TASK-950 — a machine invocation resolves the schema’s user-id
     // would break a concurrent run.
     const setDepartment = await request.put('/api/v1/admin/settings/registry/identity.autoProvision.departmentId', {
       headers: auth(adminToken),
-      data: { value: GEN_ARCAAI },
+      data: { value: GEN_ARCAAI, scope: 'tenant' },
     });
     if (![200, 201].includes(setDepartment.status())) {
       fixtureBlocked = `identity.autoProvision.departmentId is not writable here (${setDepartment.status()}): ${await setDepartment.text()}`;
@@ -288,7 +288,10 @@ test.describe('TASK-950 — a machine invocation resolves the schema’s user-id
     expect([200, 502, 503], `invoke — body: ${await response.text()}`).toContain(response.status());
 
     const after = await autoProvisionedUsers(request, adminToken);
-    expect([...after.keys()].filter((id) => !before.has(id)), 'a known staff id must resolve, never re-provision').toHaveLength(0);
+    expect(
+      [...after.keys()].filter((id) => !before.has(id)),
+      'a known staff id must resolve, never re-provision',
+    ).toHaveLength(0);
   });
 
   test('a HUMAN caller sending the same field provisions nobody (D-5)', async ({ request }) => {
@@ -304,9 +307,10 @@ test.describe('TASK-950 — a machine invocation resolves the schema’s user-id
     expect([200, 502, 503], `invoke — body: ${await response.text()}`).toContain(response.status());
 
     const after = await autoProvisionedUsers(request, adminToken);
-    expect([...after.keys()].filter((id) => !before.has(id)), 'a human caller already IS the clinician — mapping a different one would be impersonation').toHaveLength(
-      0,
-    );
+    expect(
+      [...after.keys()].filter((id) => !before.has(id)),
+      'a human caller already IS the clinician — mapping a different one would be impersonation',
+    ).toHaveLength(0);
   });
 
   test('a blank staff id never mints a user', async ({ request }) => {
@@ -325,13 +329,15 @@ test.describe('TASK-950 — a machine invocation resolves the schema’s user-id
     // read as "no value supplied" and ignored (D-2). What is NOT defensible either way is
     // provisioning a clinician whose staff id is blank — a row nothing could ever match again.
     // The status is recorded in the message so a change of posture is visible when this runs.
-    expect(
-      [200, 400, 404, 502, 503],
-      `invoke with a blank staff id answered ${response.status()} — body: ${await response.text()}`,
-    ).toContain(response.status());
+    expect([200, 400, 404, 502, 503], `invoke with a blank staff id answered ${response.status()} — body: ${await response.text()}`).toContain(
+      response.status(),
+    );
 
     const after = await autoProvisionedUsers(request, adminToken);
-    expect([...after.keys()].filter((id) => !before.has(id)), 'a blank identity must provision nobody').toHaveLength(0);
+    expect(
+      [...after.keys()].filter((id) => !before.has(id)),
+      'a blank identity must provision nobody',
+    ).toHaveLength(0);
   });
 
   test('the tenant that owns the probe is the one the machine acted in', async ({ request }) => {

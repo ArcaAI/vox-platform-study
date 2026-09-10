@@ -202,9 +202,15 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse })
-  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or cross-tenant slug; or an unknown/unusable staff identifier (TASK-950 — see `POST :slug/runs`).' })
+  @ApiResponse({
+    status: 404,
+    description: 'Unknown, unpublished, or cross-tenant slug; or an unknown/unusable staff identifier (TASK-950 — see `POST :slug/runs`).',
+  })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
-  @ApiResponse({ status: 409, description: 'Ambiguous staff identifier, or the `maxUsers` allowance would be exceeded (TASK-950 — see `POST :slug/runs`).' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ambiguous staff identifier, or the `maxUsers` allowance would be exceeded (TASK-950 — see `POST :slug/runs`).',
+  })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   async invoke(
     @Param('slug') slug: string,
