@@ -6,6 +6,7 @@ import {
   IUserRoleAssignmentService,
   SecretsService,
   createJwt,
+  resolveJwtSecret,
 } from '@arcaai/applications';
 import { EventTypes, ResourceStatusType, ResourceType, SysEventType, UserRepository } from '@arcaai/domains';
 import {
@@ -192,7 +193,8 @@ export class AdminImpersonationController {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
     }
 
-    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? (await this.secretsService.getSecretOptional('JWT_SECRET_KEY'));
+    // TASK-944 — the ONE shared resolver, which `JwtStrategy` also verifies with.
+    const jwtSecretKey = await resolveJwtSecret(this.secretsService);
     if (!jwtSecretKey) {
       throw new UnauthorizedException('Authentication system not configured');
     }

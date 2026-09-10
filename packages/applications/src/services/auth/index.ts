@@ -5,6 +5,10 @@ export * from './IAuthService';
 export * from './auth.service.module';
 export * from './auth.service';
 export * from './createJwt';
+// TASK-944 — `resolveJwtSecret` is the ONE source for the platform JWT secret. Every
+// mint site in `apps/api` imports it from here so a rotation can never leave the
+// gateway signing with one value and verifying with another.
+export * from './jwt-secret';
 export * from './jwt.strategy';
 export * from './jwt-revocation.service';
 export * from './jwt-revocation.module';

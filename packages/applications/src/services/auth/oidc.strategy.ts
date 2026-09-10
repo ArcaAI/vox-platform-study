@@ -6,6 +6,7 @@ import { fetchUserInfo, skipSubjectCheck, type Configuration, type TokenEndpoint
 import { IAuthService } from './IAuthService';
 import { UnauthorizedException } from '@arcaai/exceptions';
 import { createJwt, StringValue } from './createJwt';
+import { resolveJwtSecret } from './jwt-secret';
 import { ClsService } from 'nestjs-cls';
 import { OAuthUserResponse, UserSession } from './dto';
 import { IActiveUserContext } from '../../interfaces';
@@ -88,9 +89,21 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
       throw new UnauthorizedException('User could not be found/created');
     }
 
-    // JWT_SECRET_KEY is sourced from SecretsService (cache-warmed at
-    // bootstrap). JWT_EXPIRES_IN stays on AppSettings — it is not a secret.
-    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? 'default-secret-key';
+    // TASK-944 — the SAME resolver `JwtStrategy` verifies with, so this mint can
+    // never sign against a secret the guard will not accept.
+    //
+    // This line used to be a bare `getSecretSync` with a hard-coded development
+    // string as its nullish fallback. `getSecretSync` is cache-only by design, so one
+    // lapsed TTL was enough to make an OIDC login mint a token signed with that
+    // literal — which NO verifier would ever accept, producing a silent 401
+    // indistinguishable from a bad password. A missing secret is now a refusal, never
+    // a substituted value. (`auth-secrets-migration.test.ts` scans this file's TEXT
+    // for that fallback, so the retired literal is deliberately not written out here.)
+    // JWT_EXPIRES_IN stays on AppSettings — it is not a secret.
+    const jwtSecretKey = await resolveJwtSecret(this.secretsService);
+    if (!jwtSecretKey) {
+      throw new UnauthorizedException('Authentication system not configured');
+    }
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as StringValue;
 
     oauthUserResponse.token = createJwt({

@@ -19,10 +19,12 @@
 # CPU vs GPU dependency sourcing:
 #   - CPU `runtime` installs stt's BASE deps from the unified workspace lock,
 #     so it stays version-consistent with every other HOPE Python service.
-#   - GPU `ml-runtime`/`worker` install stt[ml-gpu]/[nemo] with a Dockerfile
+#   - GPU `ml-runtime`/`worker` install stt[ml-gpu] with a Dockerfile
 #     override that skips redundant nvidia-* wheels (the CUDA libs come from the
 #     nvidia/cuda base image). This GPU path is NOT covered by `uv sync --frozen`
-#     and must be validated on a GPU CI runner.
+#     and must be validated on a GPU CI runner. `[nemo]` is deliberately NOT in
+#     this venv — the root pyproject declares it as conflicting with `[ml]`/
+#     `[ml-gpu]` (TASK-944); see the note in the ml-builder stage.
 #   - GPU `ml-runtime`/`worker` additionally COMPILE pywhispercpp from source
 #     (GGML_CUDA=1, pinned CUDA arch) because no CUDA wheel is published; the
 #     ml-builder stage therefore needs the CUDA -devel base for nvcc.
@@ -80,9 +82,10 @@ RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/nul
 # is compiled from source here and needs nvcc, which only ships in -devel. This
 # is builder-only: the shipped ml-runtime stage stays on -runtime, whose CUDA
 # math libs (libcudart/libcublas) are what ggml-cuda links against.
-# Installs stt[ml-gpu]/[nemo] directly (fresh resolve) with an override that
-# skips nvidia-* wheels already provided by the base image. transformers/optimum
-# are pinned by stt's pyproject ([ml]) so they match the workspace lock.
+# Installs stt[ml-gpu] directly (fresh resolve) with an override that skips
+# nvidia-* wheels already provided by the base image. transformers/optimum are
+# pinned by stt's pyproject ([ml]) so they match the workspace lock — and nothing
+# below may override them back down (TASK-944).
 # =============================================================================
 FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04 AS ml-builder
 
@@ -213,15 +216,38 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --override /tmp/cuda-overrides.txt \
         "./apps/stt[ml-gpu]"
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    printf '%s\n' \
-        'transformers==5.5.4' \
-    >> /tmp/cuda-overrides.txt \
-    && uv pip install --python /opt/venv/bin/python \
-        --override /tmp/cuda-overrides.txt \
-        "./apps/stt[nemo]"
+# `./apps/stt[nemo]` USED TO BE INSTALLED HERE, into this same venv, with an
+# additional `transformers==5.5.4` override. Both are gone — TASK-944.
+#
+# The repo root `pyproject.toml` `[tool.uv].conflicts` DECLARES `stt[ml]` ⇄ `stt[nemo]`
+# and `stt[ml-gpu]` ⇄ `stt[nemo]` as conflicting extras, and `uv.lock` resolves them
+# apart: `ml`/`ml-gpu` on **torch 2.8.0** with torchvision, `nemo` on **torch 2.12.1**
+# with none. Installing both into one venv is not "two extras, both available" — the
+# second install re-resolves the shared pins of the first. torch went 2.8 -> 2.12 while
+# the torchvision 0.23.x wheel `[ml]` had pinned FOR torch 2.8 stayed behind, and an
+# ABI-mismatched torchvision raises `RuntimeError` on import.
+#
+# That is what produced the production symptom (measured on hope-v2-dev 2026-09-10,
+# every cold streaming session): transformers reaches torchvision through
+# `video_processing_utils` -> `models.auto.processing_auto`, `_LazyModule.__getattr__`
+# catches exactly `(ModuleNotFoundError, RuntimeError)`, and the speaker-embedding warm
+# died on
+#     Missing required package for HuggingFace loader: Could not import module
+#     'AutoProcessor'. Are this object's requirements defined correctly?
+# after burning 9.33 s of torch + transformers cold import — with diarization / voice
+# profiles silently disabled for the rest of the session. `[ml]`'s own comment
+# ("pyannote.audio 4.x hard-pins torch==2.8.0 ... Do NOT upgrade torch past 2.8.x") was
+# correct; this step was quietly violating it at build time.
+#
+# The `nemo` extra is NOT deleted from `apps/stt/pyproject.toml`. Both of its consumers
+# — `models/nemo_loader.py` and `diarization/streaming_sortformer.py` — lazy-import and
+# fail CLOSED with a named error, so the `nemo` engine and Sortformer diarization now
+# degrade honestly instead of appearing installed on a venv whose torch had been swapped
+# under pyannote. A nemo-capable image is a SEPARATE build target on its own venv, which
+# is exactly what the declared conflict means; it must never be layered onto this one.
+# `apps/stt/tests/unit/test_task944_ml_runtime_extra_conflicts.py` keeps it that way.
 
-# whisper.cpp WITH CUDA — must run AFTER [ml-gpu]/[nemo] so neither resolves the
+# whisper.cpp WITH CUDA — must run AFTER [ml-gpu] so it does not resolve the
 # CPU wheel back over it.
 #
 # The PyPI `pywhispercpp` wheels are prebuilt CPU-only ggml (Metal on macOS, plain

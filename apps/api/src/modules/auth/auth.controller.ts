@@ -13,6 +13,7 @@ import {
   createJwt,
   // Password rotation surfaced at login() (warning-only).
   isPasswordExpired,
+  resolveJwtSecret,
   resolvePasswordPolicy,
 } from '@arcaai/applications';
 import type { AppAbility } from '@arcaai/applications';
@@ -163,7 +164,7 @@ export class AuthController {
    * cannot supply the secret, preserving the fail-closed 401.
    */
   private async resolveJwtSecretKey(): Promise<string | undefined> {
-    return this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? (await this.secretsService.getSecretOptional('JWT_SECRET_KEY'));
+    return resolveJwtSecret(this.secretsService);
   }
 
   @Post('login')

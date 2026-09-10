@@ -2,12 +2,14 @@ import { HttpService } from '@nestjs/axios';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
+import { IAppSettingsService } from '../../baseServices/_meta/appSettings';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
+import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
 import { IStreamingSessionService } from './IStreamingSessionService';
 import {
   CreateStreamingSessionRequest,
@@ -77,6 +79,10 @@ export class StreamingSessionService implements IStreamingSessionService {
     // opening sessions and met the overrun on its invoice. Optional + trailing
     // like the four above; absent ⇒ ungated, exactly as before.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-944 — the governed session-create budget (see `sessionCreateTimeoutMs`).
+    // Optional + trailing like the five above; absent ⇒ the descriptor's own default,
+    // which is what an unwritten `GlobalSetting` row resolves to anyway.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -102,6 +108,25 @@ export class StreamingSessionService implements IStreamingSessionService {
    * fetched at all — the model is a WHERE clause, not a post-filter — because comparing
    * vectors across embedding spaces is meaningless rather than merely inaccurate.
    */
+  /**
+   * The gateway's budget for `POST /internal/streaming/sessions`, resolved PER CALL.
+   *
+   * TASK-944: this was the literal `timeout: 15000`. Measured on `hope-v2-dev`
+   * 2026-09-10, the first session after an STT pod restart took 16 870 ms and STT
+   * answered **201** — 1 870 ms after the gateway had aborted and 503'd the clinician.
+   * A warm session is 0.1–0.5 s, so the literal failed on exactly one request per
+   * deploy, which is why no test ever caught it.
+   *
+   * Resolved on every call rather than captured on `this`, so an operator's write
+   * governs the NEXT session open with no redeploy — a cold-start budget moves whenever
+   * the model set or the GPU contention profile does, which is precisely what
+   * disqualifies it from being a compile-time constant.
+   */
+  private sessionCreateTimeoutMs(): number {
+    const fallback = STT_GATEWAY_DEFAULTS[STT_SESSION_CREATE_TIMEOUT_MS_KEY];
+    return this.appSettingsService?.getValueWithDefault<number>(STT_SESSION_CREATE_TIMEOUT_MS_KEY, fallback) ?? fallback;
+  }
+
   private async resolveVoiceProfiles(dto: CreateStreamingSessionRequest): Promise<RuntimeVoiceProfile[]> {
     const spec = dto.resolvedSpec;
     const modelId = spec?.models.embedding?.slug;
@@ -237,7 +262,7 @@ export class StreamingSessionService implements IStreamingSessionService {
             channel_count: dto.channelCount ?? 1,
           },
           {
-            timeout: 15000,
+            timeout: this.sessionCreateTimeoutMs(),
             // The session's own tenant is REQUIRED on the DTO and is already in
             // the body as `tenant_id`; the header is the transport-level half of
             // the same fact, so the fallback below is structurally unreachable.
