@@ -367,8 +367,39 @@ setting key, not the env var.
 in `env-sync.test.ts`'s dead-keys list ("no reader at all"), retired for exactly the ungoverned-knob
 reason, so these two are the survivors of that sweep rather than new ground. And this is a `redis-flag`
 candidate only if it must flip mid-incident; it is a per-tenant entitlement-shaped capability, so
-`global-kv` at `maxScope: 'tenant'` is the better read — worth the owner confirming, because it
-decides whether a tenant admin may enable it themselves or only a platform admin may.
+`global-kv` at `maxScope: 'tenant'` is the better read.
+
+#### OWNER DECISION (2026-09-10): only a platform admin manages which features are enabled per tenant
+
+This closes the one question item 12 left open, and it confirms the recommended home rather than
+changing it — `FEATURE_AVAILABILITY_SETTINGS` already encodes exactly this rule, in the two fields
+its own header says answer different questions:
+
+- **`globalOnly: true`** — *who may write*: a platform admin only. It is a LITERAL in the mapper,
+  not a `FeatureSpec` field, so no entry can opt out of it by omission or by a typo.
+- **`maxScope: 'tenant'`** — *where the row lives*: one row per tenant, so availability is still
+  decided per tenant. A tenant admin simply never authors it.
+
+Enforced in three independent places, verified 2026-09-10:
+
+| Where | Mechanism |
+|---|---|
+| `settings-registry-write.service.ts:235` and `:417` | `descriptor.globalOnly && !isSuperAdmin(requestUser)` → **403** on the write and on the reset/delete path |
+| `feature-availability.service.ts:154`, `:194` | `assertPlatformMatrixAccess()` on BOTH the cross-tenant matrix read and its `PUT` — the per-tenant management surface itself (TASK-932 R-8) |
+| the descriptor mapper | `globalOnly: true` unconditional, so the gate cannot be skipped by a new entry |
+
+Audited against the live family the same day — **all 9 entries are `globalOnly: true`, zero
+exceptions**; 7 carry `maxScope: 'tenant'` (per-tenant rows, platform-written) and 2 are `'system'`
+(`registration.selfSignupEnabled`, `enable-local-raw-capture` — platform-wide by nature, where a
+per-tenant row could never be enforced). So the rule already holds across the whole family and this
+decision adds no new mechanism.
+
+**Consequence for item 12's implementation:** take `maxScope: 'tenant'` with the mapper's default
+`globalOnly: true` and write no bespoke guard. A tenant that has provisioned its own Google service
+account or Azure AD app registration gets the capability when a platform admin enables it *for that
+tenant* — which is the per-tenant rollout the current global env var cannot express, without handing
+the tenant the switch. The error raised when the gate is off should name the setting key, and should
+read as "not enabled for this tenant" rather than implying the caller can change it.
 
 ## Change History
 
@@ -404,3 +435,4 @@ decides whether a tenant admin may enable it themselves or only a platform admin
 | 2026-09-06 | **Registry 209 → 214** — TASK-890 lane L12 (inference readiness, wave 1) registered five `global-kv` keys in a new `ai-readiness.descriptors.ts`: the sweep's `inference.readiness.{enabled,intervalSeconds,cloudProbeIntervalSeconds}`, plus two previously ungoverned model-inventory keys it retro-registered. All five are `globalOnly`, `failMode: 'open-to-default'` (measurement cadence and a switch — no selection). Measured on the TASK-890 wave-1 close tree: `HOPE_SETTINGS_REGISTRY.byKey.size === 214`. No TASK-870 decision is reopened; the program's own reconciled set is unchanged. |
 | 2026-09-06 | **Registry 209 → 214** — TASK-890 lane L12 (inference readiness, wave 1) registered five `global-kv` keys in a new `ai-readiness.descriptors.ts`: the sweep's `inference.readiness.{enabled,intervalSeconds,cloudProbeIntervalSeconds}`, plus two previously ungoverned model-inventory keys it retro-registered. All five are `globalOnly`, `failMode: 'open-to-default'` (measurement cadence and a switch — no selection). Measured on the wave-1 close tree: `HOPE_SETTINGS_REGISTRY.byKey.size === 214`. No TASK-870 decision is reopened; the program's own reconciled set is unchanged. |
 | 2026-09-10 | **Owner item 12 filed** from TASK-940 OD-4: the two `TENANT_IDP_*_ENABLED` directory-sync kill-switches. TASK-940's new `configService.get()` scanner found 21 undeclared env reads; it declared all of them and tiered the 18 in live-documentation, leaving these two (and `HARNESS_BASE_URL`, which needed only the declaration). They are platform-wide constructor-frozen switches over per-tenant work — a tenant with its own provisioned service account cannot sync until a global env var is flipped for everyone, which is the §"Tenant-first resolution" rule rather than a tier label. Recommended home is `FEATURE_AVAILABILITY_SETTINGS` at `maxScope: 'tenant'`, with the env names kept as `envOverride`. No registry count change yet — nothing implemented. |
+| 2026-09-10 | **Owner decision on item 12: only a platform admin manages per-tenant feature availability.** Confirms the recommended home unchanged — `FEATURE_AVAILABILITY_SETTINGS` already encodes it as `globalOnly: true` (who writes) × `maxScope: 'tenant'` (where the row lives), enforced at `settings-registry-write.service.ts:235`/`:417` (403) and by `assertPlatformMatrixAccess()` on both halves of the feature matrix. Audited: all 9 live entries are `globalOnly`, zero exceptions. Item 12's open question is closed; the implementation needs no bespoke guard. |
