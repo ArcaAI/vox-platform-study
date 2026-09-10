@@ -130,10 +130,34 @@ export class WorkflowsController {
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value joins the existing run.' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse, description: '`mode=async` — the run handle.' })
   @ApiResponse({ status: 200, type: WorkflowRunStatusResponse, description: '`mode=blocking` — the terminal run status.' })
-  @ApiResponse({ status: 400, description: 'Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here.' })
-  @ApiResponse({ status: 404, description: 'Unknown, unpublished, cross-tenant, or non-exposable slug.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here. Also, for a ' +
+      'service-account caller on a workflow whose trigger schema declares a user-identity field: the supplied staff ' +
+      'identifier is unusable (`USER_IDENTITY_INVALID`), or no department could be resolved to provision the clinician ' +
+      'in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`).',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Unknown, unpublished, cross-tenant, or non-exposable slug. Also the answer when a service-account caller supplies ' +
+      'a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act ' +
+      '(`USER_IDENTITY_NOT_USABLE`).',
+  })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries ' +
+      'it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a ' +
+      'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row.',
+  })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
+  @ApiResponse({
+    status: 503,
+    description: 'The identity resolver is not configured, so a run that names a clinician cannot be started (`USER_IDENTITY_RESOLVER_UNAVAILABLE`).',
+  })
   @ApiResponse({ status: 504, description: '`mode=blocking` ceiling reached — the run continues; switch to streaming or poll `statusUrl`.' })
   async startRun(
     @Param('slug') slug: string,
@@ -178,8 +202,9 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse })
-  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or cross-tenant slug.' })
+  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or cross-tenant slug; or an unknown/unusable staff identifier (TASK-950 — see `POST :slug/runs`).' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 409, description: 'Ambiguous staff identifier, or the `maxUsers` allowance would be exceeded (TASK-950 — see `POST :slug/runs`).' })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   async invoke(
     @Param('slug') slug: string,
