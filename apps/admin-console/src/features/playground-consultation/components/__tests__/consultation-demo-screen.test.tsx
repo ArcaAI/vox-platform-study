@@ -563,6 +563,10 @@ describe('ConsultationDemoScreen — harness-progress terminal signal (TASK-932 
           return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: (call.body as { scope: string }).scope });
         }
         if (path === '/api/hope/consultations/c-1/recording/stop') return Response.json({ status: 'DRAINING' });
+        // TASK-939 R4 — the durable document-sections hydration fires on mount now that it needs
+        // no `documentKey` (see `useDocumentSectionsStream`). Nothing has been flushed in this
+        // test, so the honest answer is an empty list.
+        if (path === '/api/hope/consultations/c-1/documents/sections') return Response.json([]);
         if (path === '/api/hope/consultations/c-1/summary/pre-summary/latest') return Response.json({}, { status: 404 });
         if (path === '/api/hope/consultations/c-1/summary/latest') {
           summaryLatestCalls += 1;

@@ -12243,6 +12243,24 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "listAllDocumentSections",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/documents/sections",
+      "routePath": "/consultations/:id/documents/sections",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "streamHarnessAssurance",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/harness-assurance/stream",

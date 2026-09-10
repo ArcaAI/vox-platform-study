@@ -49,6 +49,7 @@ function buildController(overrides: { doctorId?: string; consultation?: unknown 
   };
   const documentSectionService = {
     listSections: vi.fn().mockResolvedValue([SECTION]),
+    listAllSections: vi.fn().mockResolvedValue([SECTION]),
     getSection: vi.fn().mockResolvedValue(SECTION),
     updateSectionContent: vi.fn().mockResolvedValue(SECTION),
   };
@@ -108,6 +109,34 @@ describe('GET :id/documents/:documentKey/sections — the read half', () => {
 
     await expect(controller.listDocumentSections('consult-1', 'soap_note')).resolves.toEqual([SECTION]);
     expect(documentSectionService.listSections).toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-939 R4 — the DISCOVERY read. Same gate and same ordering as the keyed
+ * list above; what is new is that it needs no `documentKey`, which is the whole
+ * point (a client reloading mid-encounter has none).
+ */
+describe('GET :id/documents/sections — every document', () => {
+  it('lists every document’s sections for a consultation the caller may read', async () => {
+    const { controller, documentSectionService } = buildController();
+
+    await expect(controller.listAllDocumentSections('consult-1')).resolves.toEqual([SECTION]);
+    expect(documentSectionService.listAllSections).toHaveBeenCalledWith('consult-1');
+  });
+
+  it('verifies access BEFORE reading — an unknown id never reaches the service', async () => {
+    const { controller, documentSectionService } = buildController({ consultation: null });
+
+    await expect(controller.listAllDocumentSections('nope')).rejects.toBeInstanceOf(NotFoundException);
+    expect(documentSectionService.listAllSections).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller with no relationship to the consultation — discovery is not a weaker gate', async () => {
+    const { controller, documentSectionService } = buildController({ doctorId: 'another-doctor' });
+
+    await expect(controller.listAllDocumentSections('consult-1')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(documentSectionService.listAllSections).not.toHaveBeenCalled();
   });
 });
 

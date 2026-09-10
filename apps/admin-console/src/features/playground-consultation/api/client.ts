@@ -248,19 +248,26 @@ export function approveSummary(consultationId: string, contextItemId: string, bo
   return postJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/approve`), body);
 }
 
-function documentSectionPath(consultationId: string, documentKey: string, sectionKey?: string): string {
-  const suffix = sectionKey ? `documents/${encodeURIComponent(documentKey)}/sections/${encodeURIComponent(sectionKey)}` : `documents/${encodeURIComponent(documentKey)}/sections`;
-  return consultationPath(consultationId, suffix);
+function documentSectionPath(consultationId: string, documentKey: string, sectionKey: string): string {
+  return consultationPath(consultationId, `documents/${encodeURIComponent(documentKey)}/sections/${encodeURIComponent(sectionKey)}`);
 }
 
 /**
- * The DURABLE view of one document — "the `section.patch` SSE lane only emits while a flush is
- * running, so a client that reloads mid-encounter reads its state here" (the gateway's own
- * description). `useDocumentSectionsStream` hydrates its fold from this for documents it
- * already knows about (TASK-939 R4).
+ * The DURABLE view — every section of EVERY document of the consultation, in `(documentKey, idx)`
+ * order. "The `section.patch` SSE lane only emits while a flush is running, so a client that
+ * reloads mid-encounter reads its state here" (the gateway's own description).
+ *
+ * This is what `useDocumentSectionsStream` hydrates from, and it is the AGGREGATE read
+ * (TASK-939 R4) rather than the gateway's keyed `documents/:documentKey/sections`. That one
+ * cannot serve a cold reload: it takes the key as a path param, and until this route existed
+ * nothing could enumerate a consultation's documents, so a browser reloaded mid-encounter had to
+ * wait for the next flush's `section.patch` to learn even one key.
+ *
+ * An empty array means the documents have not been written yet, not that the consultation is
+ * missing.
  */
-export function listDocumentSections(consultationId: string, documentKey: string): Promise<DocumentSectionRecord[]> {
-  return getJson(documentSectionPath(consultationId, documentKey));
+export function listAllDocumentSections(consultationId: string): Promise<DocumentSectionRecord[]> {
+  return getJson(consultationPath(consultationId, 'documents/sections'));
 }
 
 /**

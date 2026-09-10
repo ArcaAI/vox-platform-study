@@ -78,15 +78,19 @@ interface RecordedCall {
 
 /**
  * Answers the ticket mint, the job-status poll, the pre-summary REST catch-up, and (TASK-939 R4)
- * the durable `.../documents/:documentKey/sections` LIST read `useDocumentSectionsStream` fires
- * once it knows of a document — everything else throws. The list route defaults to an empty
- * array: most tests here never intend to exercise hydration, only the SSE fold, and an empty
- * durable read is a correct no-op against `foldHydratedDocumentSections` (nothing to merge).
+ * the durable document-sections read `useDocumentSectionsStream` fires ON MOUNT — everything
+ * else throws. The list route defaults to an empty array: most tests here never intend to
+ * exercise hydration, only the SSE fold, and an empty durable read is a correct no-op against
+ * `foldHydratedDocumentSections` (nothing to merge).
+ *
+ * `Promise<Response>` is accepted so a test can hold the durable read OPEN and land an SSE patch
+ * first — the ordering that proves hydration appends to the streamed document order rather than
+ * replacing it.
  */
 function stubNetwork(
   jobStatus: () => Response = () => Response.json({}),
   preSummaryLatest: () => Response = () => new Response(null, { status: 404 }),
-  documentSectionsList: () => Response = () => Response.json([]),
+  documentSectionsList: () => Response | Promise<Response> = () => Response.json([]),
 ): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
@@ -103,9 +107,10 @@ function stubNetwork(
       }
       if (call.url.includes('/jobs/')) return jobStatus();
       if (call.url.includes('/pre-summary/latest')) return preSummaryLatest();
-      // LIST route only — `/documents/<key>/sections` with nothing after it (the single-section
-      // GET/PATCH `/documents/<key>/sections/<sectionKey>` is a DIFFERENT route, tested separately).
-      if (/\/documents\/[^/]+\/sections(\?.*)?$/.test(call.url)) return documentSectionsList();
+      // LIST routes only — the aggregate `/documents/sections` (TASK-939 R4) and the keyed
+      // `/documents/<key>/sections`, each with nothing after it (the single-section GET/PATCH
+      // `/documents/<key>/sections/<sectionKey>` is a DIFFERENT route, tested separately).
+      if (/\/documents\/(?:[^/]+\/)?sections(\?.*)?$/.test(call.url)) return documentSectionsList();
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),
   );
@@ -565,51 +570,68 @@ describe('useDocumentSectionsStream (DD-3 / DD-3 — N documents)', () => {
   });
 });
 
+/**
+ * TASK-939 R4 — durable hydration.
+ *
+ * The `section.patch` lane only emits WHILE A FLUSH IS RUNNING, so a browser reloaded
+ * mid-encounter has no stream to fold and would show a skeleton until the next one. Hydration
+ * reads the durable view instead — through the AGGREGATE `GET :id/documents/sections`, which
+ * needs no `documentKey`. That is what makes a cold reload work: the keyed read can only be
+ * asked about a key the fold already learned FROM a patch, which is precisely what it does not
+ * have.
+ *
+ * The revision-vs-version discard rule these reads obey is pinned at the reducer, in
+ * `foldHydratedDocumentSections` below, where it is deterministic.
+ */
 describe('useDocumentSectionsStream — durable hydration (TASK-939 R4)', () => {
-  it('hydrates a section this fold already knows the DOCUMENT of, honoring revision over version', async () => {
+  function durableRecord(documentKey: string, sectionKey: string, idx: number, content: string, revision = 1) {
+    return {
+      id: `row-${documentKey}-${sectionKey}`,
+      consultationId: 'c-1',
+      documentKey,
+      sectionKey,
+      title: sectionKey === 'assessment' ? 'Assessment' : 'Plan',
+      idx,
+      state: 'provisional' as const,
+      revision,
+      version: revision,
+      content,
+      createdAt: 't0',
+      updatedAt: 't0',
+    };
+  }
+
+  it('fills the fold on a COLD mount, before any section.patch has ever arrived', async () => {
     const calls = stubNetwork(undefined, undefined, () =>
       Response.json([
-        {
-          id: 'row-1',
-          consultationId: 'c-1',
-          documentKey: 'soap_note',
-          sectionKey: 'assessment',
-          title: 'Assessment',
-          idx: 0,
-          state: 'confirmed',
-          // LOWER revision than the SSE-held one below, but a much HIGHER version — must still
-          // be discarded, proving the gate compares `revision`, never `version`.
-          revision: 1,
-          version: 99,
-          content: 'Stale durable read.',
-          createdAt: 't0',
-          updatedAt: 't0',
-        },
-        {
-          id: 'row-2',
-          consultationId: 'c-1',
-          documentKey: 'soap_note',
-          sectionKey: 'plan',
-          title: 'Plan',
-          idx: 1,
-          state: 'provisional',
-          revision: 1,
-          version: 1,
-          content: 'Discharge home.',
-          createdAt: 't0',
-          updatedAt: 't0',
-        },
+        durableRecord('discharge_summary', 'plan', 0, 'Discharge home.'),
+        durableRecord('soap_note', 'assessment', 0, 'Likely viral URI.'),
+        durableRecord('soap_note', 'plan', 1, 'Fluids and rest.'),
       ]),
     );
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
-    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-    const source = FakeEventSource.instances[0];
 
-    // Seeds `documentOrder` with `soap_note` — hydration cannot fire for a document nothing has
-    // ever named (no console route enumerates a consultation's document keys ahead of one).
+    await waitFor(() => expect(result.current.documents).toHaveLength(2));
+
+    // The AGGREGATE route — the whole point. A keyed read could not have been issued here:
+    // nothing has named a document key.
+    expect(calls.some((call) => /\/documents\/sections$/.test(call.url))).toBe(true);
+    // Read order is `(documentKey, idx)`, which is the ONLY order available on a cold load.
+    expect(result.current.documents.map((document) => document.documentKey)).toEqual(['discharge_summary', 'soap_note']);
+    expect(result.current.documents[1].sections.map((section) => section.sectionKey)).toEqual(['assessment', 'plan']);
+    expect(result.current.documents[1].sections[0].content).toBe('Likely viral URI.');
+  });
+
+  it('lets a later section.patch supersede the hydrated body', async () => {
+    stubNetwork(undefined, undefined, () => Response.json([durableRecord('soap_note', 'assessment', 0, 'Hydrated at reload.', 1)]));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    await waitFor(() => expect(result.current.documents[0]?.sections[0]?.content).toBe('Hydrated at reload.'));
+
     act(() =>
-      source.message({
+      FakeEventSource.instances[0].message({
         event: 'section.patch',
         consultationId: 'c-1',
         documentKey: 'soap_note',
@@ -617,37 +639,56 @@ describe('useDocumentSectionsStream — durable hydration (TASK-939 R4)', () => 
         title: 'Assessment',
         idx: 0,
         revision: 2,
-        state: 'confirmed',
-        content: 'Latest via SSE.',
+        state: 'provisional',
+        content: 'Hydrated at reload. Plus this turn.',
+        appended: ' Plus this turn.',
         updatedAt: 't1',
       }),
     );
 
-    await waitFor(() => expect(calls.some((call) => call.url.includes('/documents/soap_note/sections'))).toBe(true));
-    await waitFor(() => expect(result.current.documents[0]?.sections.some((section) => section.sectionKey === 'plan')).toBe(true));
-
-    const soap = result.current.documents.find((document) => document.documentKey === 'soap_note');
-    expect(soap?.sections.find((section) => section.sectionKey === 'assessment')).toMatchObject({ revision: 2, content: 'Latest via SSE.' });
-    // `plan` was never seen over SSE at all — the durable hydration is what filled it in.
-    expect(soap?.sections.find((section) => section.sectionKey === 'plan')).toMatchObject({
-      revision: 1,
-      content: 'Discharge home.',
-      state: 'provisional',
-    });
+    expect(result.current.documents[0].sections[0]).toMatchObject({ revision: 2, content: 'Hydrated at reload. Plus this turn.' });
   });
 
-  it('never queries the durable view for a document nothing has named yet', async () => {
-    const calls = stubNetwork();
+  it('APPENDS a hydrated document after one the stream named first — it never reorders', async () => {
+    // Hold the durable read open so the SSE patch lands first, which is the order a live
+    // (not reloaded) session sees.
+    let release: (value: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    stubNetwork(undefined, undefined, () => pending);
     const { Wrapper } = createWrapper();
-    renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
 
-    // Let any queued microtask run — a cold mount with zero SSE history has nothing to hydrate.
+    act(() =>
+      FakeEventSource.instances[0].message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 1,
+        state: 'provisional',
+        content: 'Streamed first.',
+        updatedAt: 't1',
+      }),
+    );
+    expect(result.current.documents.map((document) => document.documentKey)).toEqual(['soap_note']);
+
+    // `discharge_summary` sorts BEFORE `soap_note` in the durable read; the document already on
+    // screen must not jump position because of it.
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      release(
+        Response.json([durableRecord('discharge_summary', 'plan', 0, 'Discharge home.'), durableRecord('soap_note', 'assessment', 0, 'Stale.', 1)]),
+      );
+      await pending;
     });
-    expect(calls.some((call) => call.url.includes('/documents/'))).toBe(false);
+
+    await waitFor(() => expect(result.current.documents).toHaveLength(2));
+    expect(result.current.documents.map((document) => document.documentKey)).toEqual(['soap_note', 'discharge_summary']);
+    expect(result.current.documents[0].sections[0].content).toBe('Streamed first.');
   });
 });
 

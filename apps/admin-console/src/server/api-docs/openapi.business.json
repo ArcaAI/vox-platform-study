@@ -11242,6 +11242,10 @@
             },
             "type": "array"
           },
+          "noteChurnChars": {
+            "description": "TASK-939 — NOTE CHURN: how many characters of text the clinician had ALREADY READ this flush rewrote. `0` is the healthy value and the design target: an additive turn appends, so previously published text is a prefix of what replaces it. A non-zero value means a section was rewritten rather than extended, which is the defect this ticket exists to remove — it is legitimate only where the model named a transcript contradiction (`turnSectionsRewritten`). Characters only, never text: this is a PHI-safe size.",
+            "type": "number"
+          },
           "sectionCount": {
             "description": "Number of summary sections in the last published summary",
             "type": "number"
@@ -11273,6 +11277,22 @@
           "textLatencyMs": {
             "description": "TEXT running-summary latency of the last flush (ms)",
             "type": "number"
+          },
+          "turnDegraded": {
+            "description": "TASK-939 — true when the generation could not be read as a TURN and this flush fell back to a whole-document rewrite (a provider that ignores `response_format`, typically). That is the PRE-ticket behaviour, so a tenant permanently in this state still sees the whole note re-render and is a finding, not a detail.",
+            "type": "boolean"
+          },
+          "turnRefusedRewrites": {
+            "description": "TASK-939 — rewrites the turn contract REFUSED because no contradiction was named. The prior text stood. A high count means the model is trying to restate itself and the guard is doing its job.",
+            "type": "number"
+          },
+          "turnSectionsAppended": {
+            "description": "TASK-939 — sections this flush EXTENDED (the ordinary, cheap case).",
+            "type": "number"
+          },
+          "turnSectionsRewritten": {
+            "description": "TASK-939 — sections this flush REPLACED. Each one should be a transcript contradiction the model named; a session where this is routinely high is regenerating rather than accumulating.",
+            "type": "number"
           }
         },
         "required": [
@@ -11289,7 +11309,12 @@
           "staleDropCount",
           "entityCount",
           "sectionCount",
-          "summaryChars"
+          "summaryChars",
+          "noteChurnChars",
+          "turnSectionsAppended",
+          "turnSectionsRewritten",
+          "turnRefusedRewrites",
+          "turnDegraded"
         ],
         "type": "object"
       },
@@ -29917,6 +29942,76 @@
           }
         ],
         "summary": "Retrieving a single ContextItemVersionResponse by id and contextId and versionNumber",
+        "tags": [
+          "consultations"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "consultation:session:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/consultations/{id}/documents/sections": {
+      "get": {
+        "description": "The DISCOVERY read. The route below can only be asked about a `documentKey` the caller already holds, and nothing else in this API enumerates them — so a client that reloads mid-encounter could not reach the durable view at all until a `section.patch` happened to name a key, which is exactly the window the SSE lane does not cover (it only emits while a flush is running). This returns the same items that route does, for EVERY document, ordered by `(documentKey, idx)`: alphabetical by document, render order within it. A consultation whose documents have not been written yet is an empty array, not a 404.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationController_listAllDocumentSections",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponse"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "items": {
+                            "$ref": "#/components/schemas/DocumentSectionResponse"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Retrieving multiple DocumentSectionResponses by id"
+          },
+          "404": {
+            "description": "Consultation not found, or not visible to this caller."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retrieving multiple DocumentSectionResponses by id",
         "tags": [
           "consultations"
         ],
