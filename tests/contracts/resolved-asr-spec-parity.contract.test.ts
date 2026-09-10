@@ -125,6 +125,28 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     }
   });
 
+  it('carries the per-model hotword-prompt switch, and omits it when the row is silent (TASK-946)', () => {
+    // OD-1 — appending `instruction.hotwords` to a whisper.cpp decoder prompt is a
+    // property of the MODEL, not of the box: on the seeded ml-en fine-tune it is the
+    // difference between 100 % and 2 % Latin script on English audio. The row declares
+    // it; absence keeps the engine default (OFF).
+    const tuned = fixture.modelProfileDecodeKnobs as FixtureCase;
+    expect(tuned.expected.decoding.hotwordsInPrompt).toBe(true);
+    expect(tuned.expected.decoding.sources).toMatchObject({ hotwordsInPrompt: 'model' });
+    // The row's RAW recommendation rides on the model as provenance, beside the value.
+    expect(tuned.expected.models.asr.metadata?.decoding?.hotwordsInPrompt).toBe(true);
+
+    // Omit-when-absent, as for every additive field before it. `clinicalVocabularyCorrection`
+    // is the load-bearing one: the SAME row, hotwords and all, with no switch — the terms
+    // still reach the lexicon stage and the decoder prompt is left alone.
+    for (const name of ['platformDefault', 'cloudWithAgentFallback', 'agentOwnedStreamingBehaviour', 'clinicalVocabularyCorrection']) {
+      expect((fixture[name] as FixtureCase).expected.decoding).not.toHaveProperty('hotwordsInPrompt');
+    }
+    const silent = fixture.clinicalVocabularyCorrection as FixtureCase;
+    expect(silent.expected.instruction.hotwords).toEqual(['ceftriaxone', 'amoxicillin']);
+    expect(silent.expected.postProcessing.lexicon?.enabled).toBe(true);
+  });
+
   it('carries no credential material anywhere', () => {
     const json = JSON.stringify(fixture);
     // The INPUT deliberately carries a provider override; the EXPECTED specs must not.

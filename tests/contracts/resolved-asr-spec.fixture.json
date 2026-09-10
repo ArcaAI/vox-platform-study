@@ -879,7 +879,7 @@
     }
   },
   "modelProfileDecodeKnobs": {
-    "$comment": "TASK-934 — the per-model ASR decode profile. The q8_0 ml-en fine-tune's row carries a FULL `_metadata.asr` profile (both windows, the six previously-hardcoded decode knobs, its priming prompt and its hotwords); the tenant agent overrides `beamSize`, `noSpeechThreshold` and — OD-4 — the partial window, and says nothing else. Expected shows the OD-3 fold: agent wins where it spoke, the row fills the rest, `decoding.sources` names the tier per knob, and `models.asr.metadata` keeps the row's raw recommendation as provenance (note `partialWindowSec` there is the EFFECTIVE 15, not the row's 6 — it rides where apps/stt already reads it). The other three cases carry NONE of these keys, which is what keeps the two halves deployable in either order against `extra='forbid'`.",
+    "$comment": "TASK-934 — the per-model ASR decode profile. The q8_0 ml-en fine-tune's row carries a FULL `_metadata.asr` profile (both windows, the six previously-hardcoded decode knobs, its priming prompt and its hotwords); the tenant agent overrides `beamSize`, `noSpeechThreshold` and — OD-4 — the partial window, and says nothing else. Expected shows the OD-3 fold: agent wins where it spoke, the row fills the rest, `decoding.sources` names the tier per knob, and `models.asr.metadata` keeps the row's raw recommendation as provenance (note `partialWindowSec` there is the EFFECTIVE 15, not the row's 6 — it rides where apps/stt already reads it). The other three cases carry NONE of these keys, which is what keeps the two halves deployable in either order against `extra='forbid'`. TASK-946 (OD-1) adds `decoding.hotwordsInPrompt`, folded by the same two-tier rule and reported in `sources`: this row declares it ON, so the whisper.cpp adapter may append its hotwords to the decoder prompt. `clinicalVocabularyCorrection` carries the SAME row WITHOUT the key on purpose — that is the absent case, where the terms still reach the lexicon stage and the prompt is left alone.",
     "input": {
       "agent": {
         "agentId": "0199a861-0000-7000-8000-000000000031",
@@ -954,7 +954,8 @@
                   "hotwords": [
                     "ceftriaxone",
                     "amoxicillin"
-                  ]
+                  ],
+                  "hotwordsInPrompt": true
                 }
               }
             }
@@ -1001,7 +1002,8 @@
               "hotwords": [
                 "ceftriaxone",
                 "amoxicillin"
-              ]
+              ],
+              "hotwordsInPrompt": true
             },
             "initialPrompt": "Clinical consultation between a clinician and a patient. English and Malayalam medical terminology."
           }
@@ -1039,6 +1041,7 @@
         "noRepeatNgramSize": 3,
         "prevTextContextWords": 50,
         "conditionOnPrevTokens": true,
+        "hotwordsInPrompt": true,
         "sources": {
           "partialWindowSec": "agent",
           "beamSize": "agent",
@@ -1049,6 +1052,7 @@
           "noRepeatNgramSize": "model",
           "prevTextContextWords": "model",
           "conditionOnPrevTokens": "model",
+          "hotwordsInPrompt": "model",
           "initialPrompt": "model",
           "hotwords": "model"
         }

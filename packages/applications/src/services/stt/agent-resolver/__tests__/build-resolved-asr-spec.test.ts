@@ -328,6 +328,58 @@ describe('buildResolvedAsrSpec — AiModelAsrProfile precedence (OD-3)', () => {
     expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).decoding).not.toHaveProperty('sources');
   });
 
+  // TASK-946 (OD-1) — `hotwordsInPrompt`, the TASK-937 R-4 per-model switch. It folds on
+  // the SAME two tiers as the knobs above, and its absence is what leaves whisper.cpp's
+  // own default (OFF) standing. It gates the PROMPT only: `instruction.hotwords` still
+  // travels either way, because the lexicon correction stage reads the same list.
+  it('takes hotwordsInPrompt from the model row when the agent says nothing', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwords: ['ceftriaxone'], hotwordsInPrompt: true } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding.hotwordsInPrompt).toBe(true);
+    expect(spec.decoding.sources).toMatchObject({ hotwordsInPrompt: 'model' });
+  });
+
+  it('lets the agent override the row in both directions', () => {
+    const off = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwordsInPrompt: true } }, { decoding: { hotwordsInPrompt: false } }),
+      fallbackAgent: null,
+    });
+    expect(off.decoding.hotwordsInPrompt).toBe(false);
+    expect(off.decoding.sources).toMatchObject({ hotwordsInPrompt: 'agent' });
+
+    const on = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwordsInPrompt: false } }, { decoding: { hotwordsInPrompt: true } }),
+      fallbackAgent: null,
+    });
+    expect(on.decoding.hotwordsInPrompt).toBe(true);
+    expect(on.decoding.sources).toMatchObject({ hotwordsInPrompt: 'agent' });
+  });
+
+  it('omits hotwordsInPrompt — never writes false — when neither tier declared it', () => {
+    // Absent is not the same state as an explicit `false`: absent means "no opinion", and
+    // it is what lets a gateway that has learned the key talk to an `extra='forbid'`
+    // mirror that has not. A row WITH hotwords and WITHOUT the switch is the live case.
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwords: ['ceftriaxone', 'amoxicillin'] } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding).not.toHaveProperty('hotwordsInPrompt');
+    expect(spec.decoding.sources).not.toHaveProperty('hotwordsInPrompt');
+    // The terms travel regardless — the switch gates the PROMPT, not the vocabulary.
+    // (This base agent names its own hotwords, so the agent tier wins the list itself.)
+    expect(spec.instruction.hotwords.length).toBeGreaterThan(0);
+  });
+
+  it('drops a non-boolean on the row rather than coercing it on', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwordsInPrompt: 'true' } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding).not.toHaveProperty('hotwordsInPrompt');
+  });
+
   it('carries every new decode knob from the profile alone', () => {
     const spec = buildResolvedAsrSpec({
       agent: withProfile({

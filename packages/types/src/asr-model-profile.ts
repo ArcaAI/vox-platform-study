@@ -49,6 +49,24 @@ export type AiModelAsrProfileDecoding = {
   prevTextContextWords?: number;
   /** Terms biased into the decode. Folded into `instruction.hotwords` when the agent names none. */
   hotwords?: string[];
+  /**
+   * TASK-946 (OD-1), the TASK-937 R-4 switch — may this model's engine append
+   * {@link hotwords} to its decoder prompt?
+   *
+   * whisper.cpp has no hotword API, so the only way to bias it toward a term is to list
+   * the terms in the `initial_prompt`. On the seeded `ml-en` fine-tune that append is
+   * what collapses an English consultation into Malayalam script: measured offline on
+   * the owner's recording (7 s spans, `language=en`, temperature 0) the same audio
+   * decodes 100 % Latin with no prompt and **2 %** Latin with the priming prompt, the
+   * agent prompt and these terms together. TASK-935 removed the append after the same
+   * failure; TASK-938 restored it globally; this makes it a property of the ROW, which
+   * is where "this fine-tune tolerates a vocabulary prompt" actually belongs.
+   *
+   * ABSENT is the engine default, and for whisper.cpp that default is OFF. The terms
+   * still reach the LEXICON correction stage either way — dropping them from the prompt
+   * costs bias, never vocabulary.
+   */
+  hotwordsInPrompt?: boolean;
 }
 
 /**
@@ -160,7 +178,15 @@ function parseDecoding(raw: unknown, prefix: string, rejected: string[]): AiMode
     if (isHotwordList(raw.hotwords)) out.hotwords = [...raw.hotwords];
     else rejected.push(`${prefix}hotwords`);
   }
-  const known = new Set([...Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES), 'conditionOnPrevTokens', 'hotwords']);
+  // TASK-946 (OD-1) — the per-model hotword-prompt switch. Parsed like
+  // `conditionOnPrevTokens`: a boolean or nothing, and anything else is NAMED in
+  // `rejected` rather than coerced, because a truthy string here would silently turn
+  // on the exact knob this ticket turned off.
+  if (raw.hotwordsInPrompt !== undefined) {
+    if (typeof raw.hotwordsInPrompt === 'boolean') out.hotwordsInPrompt = raw.hotwordsInPrompt;
+    else rejected.push(`${prefix}hotwordsInPrompt`);
+  }
+  const known = new Set([...Object.keys(AI_MODEL_ASR_PROFILE_DECODING_RANGES), 'conditionOnPrevTokens', 'hotwords', 'hotwordsInPrompt']);
   for (const key of Object.keys(raw)) if (!known.has(key)) rejected.push(`${prefix}${key}`);
   return Object.keys(out).length > 0 ? out : undefined;
 }
