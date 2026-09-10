@@ -1232,6 +1232,32 @@ export class ConsultationController {
   // stream never publishes it. Without a read that emits the `ETag`, a client has
   // no way to obtain the `If-Match` the PATCH requires — the write route would be
   // unusable on its own.
+  //
+  // TASK-939 R4 added a FOURTH, and it comes first below: the aggregate read. The
+  // three above all take a `documentKey`, which a client that reloads mid-encounter
+  // does not have and had no way to obtain — see that route's own description.
+
+  @ApiEndpoint({
+    returnedModel: DocumentSectionResponse,
+    multi: true,
+    path: ':id/documents/sections',
+    by: ['id'],
+  })
+  @ApiOperation({
+    summary: "List every persisted section of every one of the consultation's clinical documents",
+    description:
+      'The DISCOVERY read. The route below can only be asked about a `documentKey` the caller already holds, and nothing else in this API ' +
+      'enumerates them — so a client that reloads mid-encounter could not reach the durable view at all until a `section.patch` happened to ' +
+      'name a key, which is exactly the window the SSE lane does not cover (it only emits while a flush is running). This returns the same ' +
+      'items that route does, for EVERY document, ordered by `(documentKey, idx)`: alphabetical by document, render order within it. A ' +
+      'consultation whose documents have not been written yet is an empty array, not a 404.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
+  async listAllDocumentSections(@Param('id') id: string): Promise<DocumentSectionResponse[]> {
+    await this.verifyConsultationAccess(id);
+    return this.documentSectionService.listAllSections(id);
+  }
 
   @ApiEndpoint({
     returnedModel: DocumentSectionResponse,

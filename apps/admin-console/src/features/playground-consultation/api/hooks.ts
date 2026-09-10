@@ -23,7 +23,7 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   liveSummaryStreamPath,
-  listDocumentSections,
+  listAllDocumentSections,
   loopStreamPath,
   listScopingDepartments,
   startRecording,
@@ -457,36 +457,46 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
     enabled: enabled && !!consultationId,
   });
 
-  // R4 — hydrate documents already known to this fold from the DURABLE view, so a dropped SSE
-  // frame or a reconnect (recording stopped and restarted without a remount — `documentOrder`
-  // survives that, only a `consultationId` change resets it) is reconciled from the row the
-  // gateway itself points to for exactly this: "the section.patch SSE lane only emits while a
-  // flush is running, so a client that reloads mid-encounter reads its state here." Gated on
-  // `documentOrder` rather than firing blind: nothing in the console plane can enumerate a
-  // consultation's document keys ahead of a first section.patch (the list route itself REQUIRES
-  // one), so a cold reload before anything has ever streamed still shows a skeleton until the
-  // next flush — same as before this change, not a regression.
+  // R4 — hydrate from the DURABLE view, which is what the gateway points to for exactly this:
+  // "the section.patch SSE lane only emits while a flush is running, so a client that reloads
+  // mid-encounter reads its state here."
+  //
+  // It fires BLIND — no document key needed — because the read is the aggregate
+  // `GET :id/documents/sections`, which enumerates the consultation's documents itself. That
+  // route is why this closes a COLD reload: the earlier keyed read could only be asked about a
+  // key this fold had already learned from a `section.patch`, so a fresh browser mid-encounter
+  // sat on a skeleton until the next flush — the very window the SSE lane does not cover.
+  //
+  // It also covers a stop/restart (`enabled` flips, so the query refetches on re-enable) and a
+  // dropped frame within one mount, since a hydrated read never regresses a later revision
+  // (`foldHydratedDocumentSections`).
   const hydrate = useQuery({
-    queryKey: [...playgroundConsultationKeys.documentSectionsHydrate(consultationId ?? 'none'), documentOrder],
+    queryKey: playgroundConsultationKeys.documentSectionsHydrate(consultationId ?? 'none'),
     queryFn: async (): Promise<DocumentSectionRecord[]> => {
-      const perDocument = await Promise.all(
-        documentOrder.map(async (documentKey) => {
-          try {
-            return await listDocumentSections(consultationId as string, documentKey);
-          } catch (error) {
-            if (error instanceof GatewayError && error.isNotFound) return [];
-            throw error;
-          }
-        }),
-      );
-      return perDocument.flat();
+      try {
+        return await listAllDocumentSections(consultationId as string);
+      } catch (error) {
+        // A consultation with no documents written yet answers `[]`, so a 404 here means the
+        // consultation is not visible to this caller — nothing to hydrate, and no reason to
+        // fail a pane the SSE lane may still be feeding.
+        if (error instanceof GatewayError && error.isNotFound) return [];
+        throw error;
+      }
     },
-    enabled: enabled && !!consultationId && documentOrder.length > 0,
+    enabled: enabled && !!consultationId,
   });
 
   if (hydrate.data) {
     const folded = foldHydratedDocumentSections(sections, hydrate.data);
     if (folded !== sections) setSections(folded);
+    // Documents the fold has never seen streamed. Appended AFTER the SSE-derived order rather
+    // than replacing it: a key already on screen must not jump position because the durable
+    // read sorts alphabetically, and on a cold load there is no SSE order to preserve, so the
+    // read's own deterministic `(documentKey, idx)` order is the whole order.
+    const unseen = hydrate.data
+      .map((record) => record.documentKey)
+      .filter((documentKey, index, keys) => keys.indexOf(documentKey) === index && !documentOrder.includes(documentKey));
+    if (unseen.length > 0) setDocumentOrder([...documentOrder, ...unseen]);
   }
 
   const documents = useMemo<DocumentView[]>(() => {

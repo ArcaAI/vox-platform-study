@@ -3020,6 +3020,8 @@ export interface LiveDocSessionStatsResponse {
   nlpLatencyMs: number;
   /** TASK-891 B4 — the realtime lane nodes that did NOT succeed on the last flush, with their reasons. `textFailed`/`nlpFailed` say THAT the two legacy stages failed; this says WHICH node and WHY, which is the difference between reading this endpoint and reading pod logs. Empty/absent on a clean flush and on the legacy (non-graph) engine, which has no nodes. */
   nodeDegrades?: LiveDocNodeDegradeResponse[];
+  /** TASK-939 — NOTE CHURN: how many characters of text the clinician had ALREADY READ this flush rewrote. `0` is the healthy value and the design target: an additive turn appends, so previously published text is a prefix of what replaces it. A non-zero value means a section was rewritten rather than extended, which is the defect this ticket exists to remove — it is legitimate only where the model named a transcript contradiction (`turnSectionsRewritten`). Characters only, never text: this is a PHI-safe size. */
+  noteChurnChars: number;
   /** Number of summary sections in the last published summary */
   sectionCount: number;
   /** STT streaming session id bound to this recording */
@@ -3036,6 +3038,14 @@ export interface LiveDocSessionStatsResponse {
   textFailed: boolean;
   /** TEXT running-summary latency of the last flush (ms) */
   textLatencyMs: number;
+  /** TASK-939 — true when the generation could not be read as a TURN and this flush fell back to a whole-document rewrite (a provider that ignores `response_format`, typically). That is the PRE-ticket behaviour, so a tenant permanently in this state still sees the whole note re-render and is a finding, not a detail. */
+  turnDegraded: boolean;
+  /** TASK-939 — rewrites the turn contract REFUSED because no contradiction was named. The prior text stood. A high count means the model is trying to restate itself and the guard is doing its job. */
+  turnRefusedRewrites: number;
+  /** TASK-939 — sections this flush EXTENDED (the ordinary, cheap case). */
+  turnSectionsAppended: number;
+  /** TASK-939 — sections this flush REPLACED. Each one should be a transcript contradiction the model named; a session where this is routinely high is regenerating rather than accumulating. */
+  turnSectionsRewritten: number;
 }
 
 export interface LiveDocSessionsListResponse {

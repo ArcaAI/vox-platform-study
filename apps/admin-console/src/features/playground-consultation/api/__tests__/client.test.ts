@@ -24,7 +24,7 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   listDnaStyleOptions,
-  listDocumentSections,
+  listAllDocumentSections,
   listScopingDepartments,
   liveSummaryStreamPath,
   openConsultation,
@@ -367,16 +367,20 @@ describe('the previously-unsent request shapes', () => {
   });
 
   // TASK-939 R4/OD-5 — the durable document-section plane, and the console's one wired writer.
-  it('listDocumentSections GETs the durable view of one document', async () => {
+  it('listAllDocumentSections GETs the AGGREGATE view — no documentKey in the path', async () => {
     const calls = installHeaderAwareFetch(() =>
-      Response.json([{ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 2, version: 2, content: 'x', createdAt: 't', updatedAt: 't' }]),
+      Response.json([
+        { id: 's-1', consultationId: 'c-1', documentKey: 'discharge_summary', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 1, version: 1, content: 'x', createdAt: 't', updatedAt: 't' },
+        { id: 's-2', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 2, version: 2, content: 'y', createdAt: 't', updatedAt: 't' },
+      ]),
     );
 
-    const sections = await listDocumentSections('c-1', 'soap_note');
+    const sections = await listAllDocumentSections('c-1');
 
     expect(calls[0].method).toBe('GET');
-    expect(calls[0].url).toBe('/api/hope/consultations/c-1/documents/soap_note/sections');
-    expect(sections).toHaveLength(1);
+    // Needing no key is the whole capability — a cold reload has none to supply.
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/documents/sections');
+    expect(sections.map((section) => section.documentKey)).toEqual(['discharge_summary', 'soap_note']);
   });
 
   it('getDocumentSection captures the response ETag as the read version', async () => {

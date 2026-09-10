@@ -25,6 +25,7 @@ const mockEmitter = { emit: vi.fn() };
 const mockRepository = {
   findSection: vi.fn(),
   findByDocument: vi.fn(),
+  findByConsultation: vi.fn(),
   create: vi.fn(),
   updateWithVersion: vi.fn(),
   encryptContentIntoEntity: vi.fn(async () => undefined),
@@ -33,12 +34,12 @@ const mockRepository = {
 const mockSecrets = { encrypt: vi.fn(async () => 'vault:v1:x'), decrypt: vi.fn(), getPhiTransitKeyName: () => 'hope-phi' };
 
 /** A persisted section at a given version/state, as `findSection` would return it. */
-function sectionAt(version: number, state = DocumentSectionState.PROVISIONAL) {
+function sectionAt(version: number, state = DocumentSectionState.PROVISIONAL, documentKey = DOCUMENT, sectionKey = SECTION) {
   const entity = DocumentSectionFactory.CreateDocumentSection({
     tenantId: TENANT,
     consultationId: CONSULTATION,
-    documentKey: DOCUMENT,
-    sectionKey: SECTION,
+    documentKey,
+    sectionKey,
     title: 'Assessment',
     idx: 2,
   });
@@ -237,6 +238,38 @@ describe('reads decrypt', () => {
 
     expect(response).toHaveLength(2);
     expect(mockRepository.findByDocument).toHaveBeenCalledWith(TENANT, CONSULTATION, DOCUMENT);
+  });
+});
+
+/**
+ * TASK-939 R4 — the DISCOVERY read.
+ *
+ * `listSections` can only be asked about a `documentKey` the caller already
+ * knows, so a client that reloads mid-encounter could not reach the durable view
+ * at all until a `section.patch` happened to name one — and that lane only emits
+ * while a flush is running. This read is what makes the durable view reachable
+ * from a cold start.
+ */
+describe('listAllSections — every document of the consultation', () => {
+  it('returns each document\'s sections, decrypted, without being told a documentKey', async () => {
+    mockRepository.findByConsultation.mockResolvedValue([
+      sectionAt(7, DocumentSectionState.PROVISIONAL, 'discharge_summary', 'plan'),
+      sectionAt(3, DocumentSectionState.CONFIRMED, DOCUMENT, SECTION),
+    ]);
+
+    const response = await buildService().listAllSections(CONSULTATION);
+
+    expect(mockRepository.findByConsultation).toHaveBeenCalledWith(TENANT, CONSULTATION);
+    expect(response.map((section) => section.documentKey)).toEqual(['discharge_summary', 'soap_note']);
+    expect(response.map((section) => section.content)).toEqual(['decrypted body', 'decrypted body']);
+    // The repository owns the ordering (`(documentKey, idx)`); the service must not re-sort it.
+    expect(response.map((section) => section.version)).toEqual([7, 3]);
+  });
+
+  it('is an empty list — never a 404 — for a consultation whose documents have not been written yet', async () => {
+    mockRepository.findByConsultation.mockResolvedValue([]);
+
+    await expect(buildService().listAllSections(CONSULTATION)).resolves.toEqual([]);
   });
 });
 

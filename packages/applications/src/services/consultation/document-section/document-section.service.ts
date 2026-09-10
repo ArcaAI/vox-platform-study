@@ -84,7 +84,32 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
   }
 
   async listSections(consultationId: string, documentKey: string): Promise<DocumentSectionResponse[]> {
-    const sections = await this.documentSectionRepository.findByDocument(this.tenantId, consultationId, documentKey);
+    return this.toResponses(await this.documentSectionRepository.findByDocument(this.tenantId, consultationId, documentKey));
+  }
+
+  /**
+   * Every section of EVERY document of the consultation — the DISCOVERY read.
+   *
+   * `listSections` above requires the caller to already know a `documentKey`, and
+   * nothing else in the API surface can enumerate them. A client that reloads
+   * mid-encounter therefore had no way to ask what documents this consultation
+   * has: the durable view existed but was unreachable until a `section.patch`
+   * happened to name a key, which is exactly the window the SSE lane does not
+   * cover (it only emits while a flush is running). This read closes that:
+   * one request, no discover-then-fetch waterfall, and the same
+   * `DocumentSectionResponse` items `listSections` returns.
+   *
+   * Order is `(documentKey, idx)` — alphabetical by document, render order within
+   * it. Deliberately NOT "the order a stream happened to mention them in": a cold
+   * read has no stream to inherit an order from, and a deterministic one is what
+   * makes two clients hydrating the same encounter render it the same way.
+   */
+  async listAllSections(consultationId: string): Promise<DocumentSectionResponse[]> {
+    return this.toResponses(await this.documentSectionRepository.findByConsultation(this.tenantId, consultationId));
+  }
+
+  /** Decrypt-and-map a read result. Shared by both list reads, which differ only in their query. */
+  private toResponses(sections: DocumentSectionEntity[]): Promise<DocumentSectionResponse[]> {
     return Promise.all(sections.map(async (section) => DocumentSectionDtoMapper.toResponse(section, await this.plaintext(section))));
   }
 
