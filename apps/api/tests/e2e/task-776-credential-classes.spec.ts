@@ -63,13 +63,23 @@ const CONSULTATION_WORKFLOWS = (id: string) => `/api/v1/consultations/${id}/work
  * (`svc:workflows:execute`), so that route is now REACHABLE by one — see
  * `task-933-service-account-consultation.spec.ts`.
  *
- * `GET /consultations/:id/workflow` (SINGULAR — "which engine governs this consultation") is the
- * replacement: it declares `@RequiredScopes('consultation:session:read')` for API keys and no
- * `@RequiredSvcScopes` at all, and TASK-933 deliberately left it that way. It is a discovery
- * read a broker does not need, and it takes no dependency that could turn the JWT half of the
- * pair into a 503.
+ * `GET /consultations/:id/workflow` (SINGULAR — "which engine governs this consultation") was the
+ * replacement through TASK-933: it declared `@RequiredScopes('consultation:session:read')` for
+ * API keys and no `@RequiredSvcScopes` at all. TASK-946 D8/OD-7 opened it (and six siblings —
+ * `:id/context`, `:id/context/case-notes`, `:id/context/transcriptions`, `:id/named-entities`,
+ * `:id/timeline`, `:id/chain` — to `svc:consultation:session:read`, and four report reads —
+ * `:id/summary`, `:id/documents/sections`, `:id/documents/:documentKey/sections[/:sectionKey]`
+ * — to `svc:consultation:report:read`), because a service account otherwise had no way to read
+ * back the state of a consultation it had just driven. See the constant below for the current
+ * live deny-by-default example.
  */
 const GOVERNING_WORKFLOW = (id: string) => `/api/v1/consultations/${id}/workflow`;
+/**
+ * The deny-by-default example after TASK-946 D8/OD-7 (see the block comment above): still no
+ * `@RequiredSvcScopes` — it was deliberately excluded from that grant, since a broker driving a
+ * consultation has no use for the "shared with other clinicians" context view.
+ */
+const CONTEXT_SHARED = (id: string) => `/api/v1/consultations/${id}/context/shared`;
 /** Admin-plane route: `@ForbidApiKey()` via policy A2. */
 const ADMIN_USERS = '/api/v1/admin/users';
 /**
@@ -196,16 +206,25 @@ test.describe('credential-class semantics', () => {
 
   test.describe('deny-by-default scopes', () => {
     test('service-account token on a route with no @RequiredSvcScopes is 403', async ({ request }) => {
-      // TASK-930 admitted service accounts to `/workflows` and TASK-933 to the consultation-bound
-      // plane; the SINGULAR governing-workflow read declares @RequiredScopes (API keys) and no
-      // @RequiredSvcScopes, so it is the live deny-by-default case. See its constant above.
-      const res = await request.get(GOVERNING_WORKFLOW(CONSULTATION_GLOBAL), { headers: { 'X-Service-Account-Token': svcToken } });
+      // TASK-930 admitted service accounts to `/workflows`, TASK-933 to the consultation-bound
+      // plane, and TASK-946 D8/OD-7 to the governing-workflow read (and its ten siblings) — see
+      // the constant's block comment above. `context/shared` is the current live
+      // deny-by-default case: no @RequiredSvcScopes.
+      const res = await request.get(CONTEXT_SHARED(CONSULTATION_GLOBAL), { headers: { 'X-Service-Account-Token': svcToken } });
       expect(res.status()).toBe(403);
       expect((await res.json()).message).toBe('This route does not accept service-account authentication');
     });
 
     test('the same route is reachable by a JWT — the 403 is about the CREDENTIAL CLASS, not the route', async ({ request }) => {
-      const res = await request.get(GOVERNING_WORKFLOW(CONSULTATION_GLOBAL), { headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      const res = await request.get(CONTEXT_SHARED(CONSULTATION_GLOBAL), { headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      expect(res.status()).toBe(200);
+    });
+
+    test('the governing-workflow read IS reachable now — TASK-946 D8/OD-7 opened it to service accounts', async ({ request }) => {
+      // The counterpart of the two cases above: this used to be the deny-by-default example
+      // (see the constant's block comment), and the 403 it used to return would now be a
+      // regression.
+      const res = await request.get(GOVERNING_WORKFLOW(CONSULTATION_GLOBAL), { headers: { 'X-Service-Account-Token': svcToken } });
       expect(res.status()).toBe(200);
     });
 

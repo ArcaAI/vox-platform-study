@@ -588,6 +588,7 @@ export class ConsultationController {
   @Get(':id/workflow')
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @RequiredScopes('consultation:session:read')
+  @RequiredSvcScopes('svc:consultation:session:read')
   @ApiOperation({
     summary: 'Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.',
     description:
@@ -662,6 +663,7 @@ export class ConsultationController {
   // SAME purpose even though this route resolves patientId via the loaded
   // consultation (:id) rather than a :patientId param.
   @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getChain(@Param('id') id: string): Promise<ConsultationResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.consultationService.getConsultationChain(id);
@@ -1046,6 +1048,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiQuery({ name: 'scope', required: false, enum: ['single', 'chain'] })
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getTimeline(@Param('id') id: string, @Query('scope') scope?: 'single' | 'chain'): Promise<ConsultationTimelineResponse> {
     await this.verifyConsultationAccess(id);
     return this.timelineService.getTimeline(id, scope ?? 'chain');
@@ -1086,6 +1089,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getContextItems(@Param('id') id: string): Promise<ContextItemResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getContextItems(id);
@@ -1110,6 +1114,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getTranscriptions(@Param('id') id: string): Promise<ContextItemResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getTranscriptions(id);
@@ -1122,6 +1127,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getCaseNotes(@Param('id') id: string): Promise<ContextItemResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getContextItems(id, { type: 'CASE_NOTE' });
@@ -1254,6 +1260,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
+  @RequiredSvcScopes('svc:consultation:report:read')
   async listAllDocumentSections(@Param('id') id: string): Promise<DocumentSectionResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.documentSectionService.listAllSections(id);
@@ -1275,6 +1282,7 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug` (e.g. `soap_note`, `discharge_summary`)" })
   @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
+  @RequiredSvcScopes('svc:consultation:report:read')
   async listDocumentSections(@Param('id') id: string, @Param('documentKey') documentKey: string): Promise<DocumentSectionResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.documentSectionService.listSections(id, documentKey);
@@ -1296,6 +1304,7 @@ export class ConsultationController {
   @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug`" })
   @ApiParam({ name: 'sectionKey', description: "The compiled template's section key (e.g. `assessment`)" })
   @ApiResponse({ status: 404, description: 'No such section for this consultation, or it is not visible to this caller.' })
+  @RequiredSvcScopes('svc:consultation:report:read')
   async getDocumentSection(
     @Param('id') id: string,
     @Param('documentKey') documentKey: string,
@@ -1465,6 +1474,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @RequiredScopes('consultation:report:read')
+  @RequiredSvcScopes('svc:consultation:report:read')
   async getSummaries(@Param('id') id: string): Promise<SummaryResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.summaryService.getSummaries(id);
@@ -1928,6 +1938,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiQuery({ name: 'scope', required: false, enum: ['single', 'chain'] })
+  @RequiredSvcScopes('svc:consultation:session:read')
   async getNamedEntities(@Param('id') id: string, @Query('scope') scope?: 'single' | 'chain'): Promise<AggregateNerResponse> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getAggregateNamedEntities(id, scope ?? 'single');
