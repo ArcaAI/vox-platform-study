@@ -10,10 +10,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   approveSummary,
   cancelConsultationJob,
+  confirmDocumentSection,
   consultationJobStreamPath,
   generateSummary,
   generateSummaryAsync,
   getConsultationJob,
+  getDocumentSection,
   getLatestPreSummary,
   getLatestSummary,
   getNamedEntities,
@@ -22,6 +24,7 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   listDnaStyleOptions,
+  listDocumentSections,
   listScopingDepartments,
   liveSummaryStreamPath,
   openConsultation,
@@ -361,6 +364,46 @@ describe('the previously-unsent request shapes', () => {
     await openConsultation({ patientId: 'P-1', departmentId: 'dept-cardio' });
 
     expect(calls[0].body).toEqual({ patientId: 'P-1', departmentId: 'dept-cardio' });
+  });
+
+  // TASK-939 R4/OD-5 — the durable document-section plane, and the console's one wired writer.
+  it('listDocumentSections GETs the durable view of one document', async () => {
+    const calls = installHeaderAwareFetch(() =>
+      Response.json([{ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', title: 'Plan', idx: 0, state: 'provisional', revision: 2, version: 2, content: 'x', createdAt: 't', updatedAt: 't' }]),
+    );
+
+    const sections = await listDocumentSections('c-1', 'soap_note');
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/documents/soap_note/sections');
+    expect(sections).toHaveLength(1);
+  });
+
+  it('getDocumentSection captures the response ETag as the read version', async () => {
+    const calls = installHeaderAwareFetch(
+      () => new Response(JSON.stringify({ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', content: 'x' }), { headers: { ETag: '"4"' } }),
+    );
+
+    const read = await getDocumentSection('c-1', 'soap_note', 'plan');
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/documents/soap_note/sections/plan');
+    expect(read.etag).toBe('"4"');
+    expect(read.data.content).toBe('x');
+  });
+
+  it('confirmDocumentSection PATCHes the section under If-Match with its own content', async () => {
+    const calls = installHeaderAwareFetch(() =>
+      Response.json({ id: 's-1', consultationId: 'c-1', documentKey: 'soap_note', sectionKey: 'plan', state: 'confirmed', content: 'Discharge home.' }),
+    );
+
+    await confirmDocumentSection('c-1', 'soap_note', 'plan', 'Discharge home.', 4);
+
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/documents/soap_note/sections/plan');
+    // `@RequiresIfMatch()` — without this header the route is 428, not a write.
+    expect(calls[0].headers['if-match']).toBe('"4"');
+    expect(calls[0].body).toEqual({ content: 'Discharge home.', expectedVersion: 4 });
   });
 });
 

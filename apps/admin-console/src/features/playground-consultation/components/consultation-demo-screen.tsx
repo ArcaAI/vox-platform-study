@@ -49,6 +49,7 @@ import {
   playgroundConsultationKeys,
   useApproveSummary,
   useCancelConsultationJob,
+  useConfirmDocumentSection,
   useConsultationLoopStream,
   useGenerateSummaryAsync,
   useHarnessAssuranceStream,
@@ -83,6 +84,19 @@ import { ScribeFooter } from './scribe/scribe-footer';
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+/**
+ * R4/OD-5 — the two OCC outcomes a section confirm can hit need clinician-facing wording, not
+ * the raw gateway message: 412 means the section moved under them (re-read, don't blind-retry);
+ * 409 means the encounter finalized and locked it (retrying can never help, unlike a 412).
+ */
+function confirmSectionErrorMessage(error: unknown): string {
+  if (error instanceof GatewayError) {
+    if (error.isVersionConflict) return 'This section changed since you loaded it — reload the note and try again.';
+    if (error.status === 409) return 'This note is finalized and can no longer be confirmed.';
+  }
+  return errorMessage(error, 'Could not confirm this section.');
 }
 
 /**
@@ -340,6 +354,8 @@ function ScribeWorkspace() {
   // connection from `live` (useArcaLiveSummary) — that SDK hook only ever parses the legacy
   // undiscriminated payload on the same channel.
   const documentSections = useDocumentSectionsStream(consultationId, isRecording);
+  // R4/OD-5 — the clinician's checkpoint over one section (`onConfirmSection` below).
+  const confirmSection = useConfirmDocumentSection();
   /**
    * TASK-932 D-9 — the WARM-START feed.
    *
@@ -645,6 +661,18 @@ function ScribeWorkspace() {
     );
   }
 
+  // R4/OD-5 — the clinician's checkpoint over one section.
+  function handleConfirmSection(documentKey: string, sectionKey: string) {
+    if (!consultationId) return;
+    confirmSection.mutate(
+      { consultationId, documentKey, sectionKey },
+      {
+        onSuccess: () => toast.success('Section confirmed'),
+        onError: (error) => toast.error(confirmSectionErrorMessage(error)),
+      },
+    );
+  }
+
   // W1/R5 — the clinician's editing buffer over the persisted draft. The
   // two-writer policy lives in the hook (see its docblock); this only supplies
   // the transport: an If-Match PATCH, and a fresh read for the 412 comparison.
@@ -806,6 +834,8 @@ function ScribeWorkspace() {
               suggestions={liveAssist.suggestions}
               suggestionsNodeType={liveAssist.suggestionsNodeType ?? undefined}
               documentSections={documentSections.documents}
+              onConfirmSection={handleConfirmSection}
+              confirmSectionPending={confirmSection.isPending}
               preSummary={preSummaryStream.preSummary}
             />
           </ResizablePanel>
