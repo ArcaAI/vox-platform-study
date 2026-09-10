@@ -190,8 +190,15 @@ task. D-6's notice names stranded values down to their leaf keys.
 | `build` | green |
 | Runtime verification in a running app | **PASSED** — see below |
 
-**Pre-existing failure, not from this change:** `src/app/(console)/playground/__tests__/playground-route-group.test.ts`
-fails identically on a clean `dev-2.2` checkout. Reported, not fixed (out of scope).
+**`playground-route-group.test.ts` — diagnosed and fixed 2026-09-11.** It was reported here as a
+"pre-existing failure on clean `dev-2.2`", which was true but MISLEADING: it is not a product
+defect, and the routes it guards were correct the whole time. The test built its path from
+`process.cwd()`, so it answered differently depending on where vitest was invoked from —
+`pnpm --filter @arcaai/admin-console test` (cwd = the package) passed, which is why CI was green,
+while `vitest run --root apps/admin-console` from the repo root resolved `<repo>/src/app`, found
+nothing, and reported every playground route as missing. Anchored to `import.meta.url` instead;
+verified passing from both invocations, and verified still FAILING when a playground page is
+planted under `(tenant)`, which is the regression it exists to catch.
 
 **Runtime verification — passed 2026-09-11**, worktree console on :5178 against the live gateway,
 ArcaAI working tenant, `arcaai-gen-consultation` v1.
@@ -224,4 +231,5 @@ a runtime pass part of the definition of done rather than a formality.
 |---|---|
 | 2026-09-10 | Ticket opened; review + owner decision round D-1..D-8 recorded; implementation started |
 | 2026-09-10 | D-8, L0, L1, L2 implemented on `task-949-agent-node-config`; tests/typecheck/lint/build green; runtime verification blocked by the local Docker stack being down |
+| 2026-09-11 | `playground-route-group.test.ts` fixed: it was `process.cwd()`-dependent, not a product defect — a false failure whenever vitest was driven from the repo root. Anchored to `import.meta.url`; teeth re-verified |
 | 2026-09-11 | Stack restarted; runtime pass PASSED against ArcaAI `arcaai-gen-consultation` v1. It caught one defect the suite missed (the standalone prompt-template picker was not task-gated) — fixed with a regression test |
