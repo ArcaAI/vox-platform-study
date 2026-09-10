@@ -20,6 +20,9 @@ function ProfileField({
   onChange,
   type = 'text',
   autoComplete = 'off',
+  maxLength,
+  helperText,
+  error,
 }: {
   id: string;
   label: string;
@@ -27,13 +30,44 @@ function ProfileField({
   onChange: (value: string) => void;
   type?: string;
   autoComplete?: string;
+  maxLength?: number;
+  helperText?: string;
+  error?: string | null;
 }) {
+  const describedBy = error ? `${id}-error` : helperText ? `${id}-helper` : undefined;
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} autoComplete={autoComplete} />
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete={autoComplete}
+        maxLength={maxLength}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+      />
+      {error ? (
+        <p id={`${id}-error`} className="text-destructive text-sm">
+          {error}
+        </p>
+      ) : helperText ? (
+        <p id={`${id}-helper`} className="text-muted-foreground text-xs">
+          {helperText}
+        </p>
+      ) : null}
     </div>
   );
+}
+
+const STAFF_ID_TAKEN_MESSAGE = 'That Staff ID is already used by another user in this tenant';
+
+/** Body carries `{ message, code: 'STAFF_ID_TAKEN' }` on a duplicate-in-tenant 409 (TASK-950 D-4). */
+function isStaffIdTaken(error: unknown): boolean {
+  if (!(error instanceof GatewayError) || error.status !== 409) return false;
+  const body = error.details as { code?: unknown } | undefined;
+  return body?.code === 'STAFF_ID_TAKEN';
 }
 
 /**
@@ -47,20 +81,35 @@ function ProfileForm({ userId, profile }: { userId: string; profile: UserProfile
   const [lastName, setLastName] = useState(profile?.lastName ?? '');
   const [email, setEmail] = useState(profile?.email ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [staffId, setStaffId] = useState(profile?.staffId ?? '');
+  const [staffIdError, setStaffIdError] = useState<string | null>(null);
+  const hadStaffId = !!profile?.staffId;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setStaffIdError(null);
+    const trimmedStaffId = staffId.trim();
     const body: UpdateUserProfileRequest = {
       ...(firstName.trim() ? { firstName: firstName.trim() } : {}),
       ...(lastName.trim() ? { lastName: lastName.trim() } : {}),
       ...(email.trim() ? { email: email.trim() } : {}),
       ...(phone.trim() ? { phone: phone.trim() } : {}),
+      // Cleared to empty only clears an EXISTING staffId (explicit null); a
+      // never-set field stays omitted, matching the other fields' pattern.
+      ...(trimmedStaffId ? { staffId: trimmedStaffId } : hadStaffId ? { staffId: null } : {}),
     };
     updateProfile.mutate(
       { id: userId, body },
       {
         onSuccess: () => toast.success('Profile saved'),
-        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not save the profile.'),
+        onError: (error) => {
+          if (isStaffIdTaken(error)) {
+            setStaffIdError(STAFF_ID_TAKEN_MESSAGE);
+            toast.error(STAFF_ID_TAKEN_MESSAGE);
+            return;
+          }
+          toast.error(error instanceof GatewayError ? error.message : 'Could not save the profile.');
+        },
       },
     );
   }
@@ -74,6 +123,18 @@ function ProfileForm({ userId, profile }: { userId: string; profile: UserProfile
           <ProfileField id="profile-last-name" label="Last name" value={lastName} onChange={setLastName} autoComplete="family-name" />
           <ProfileField id="profile-email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
           <ProfileField id="profile-phone" label="Phone" type="tel" value={phone} onChange={setPhone} autoComplete="tel" />
+          <ProfileField
+            id="profile-staff-id"
+            label="Staff ID"
+            value={staffId}
+            onChange={(value) => {
+              setStaffId(value);
+              setStaffIdError(null);
+            }}
+            maxLength={128}
+            helperText="Tenant staff identifier used by integrations to identify this user."
+            error={staffIdError}
+          />
         </div>
         <div className="flex justify-end">
           <Button type="submit" disabled={updateProfile.isPending}>
@@ -94,7 +155,7 @@ export function UserProfileTab({ id }: { id: string }) {
     return (
       <Card className="p-6">
         <div className="grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 4 }, (_, index) => (
+          {Array.from({ length: 5 }, (_, index) => (
             <div key={index} className="flex flex-col gap-2">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-9 w-full" />

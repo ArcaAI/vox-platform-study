@@ -109,6 +109,19 @@ export interface ContextKindDeclaration {
   fields?: Record<string, unknown>;
   constraints?: ContextKindConstraints;
   deprecated?: KindDeprecation;
+  /**
+   * Marks `field` — a property of this kind's `fields.properties` whose
+   * `type` is `'string'` — as the tenant's clinician **staff identifier**
+   * (TASK-950). Allowed only on a `STRUCTURED` kind with `cardinality:
+   * 'ONE'`; at most one kind per definition may carry it. When a
+   * service-account request (consultation open, agent invocation, workflow
+   * run) supplies this field, HOPE resolves it to a tenant user via
+   * `UserProfile.staffId` — provisioning one when none exists — and that
+   * user becomes the request's acting clinician. Presence/absence of the
+   * value is still governed by the ordinary `required` flags; this marker
+   * only says what to do with the value when it is sent.
+   */
+  userIdentity?: { field: string };
 }
 
 export interface ContextOutputDeclaration {

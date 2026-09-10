@@ -289,6 +289,7 @@ export function UsersListScreen() {
           <span className="flex items-center gap-2">
             <UserAvatar username={row.original.username} size="sm" />
             <span className="font-medium">{row.original.username}</span>
+            {row.original.tags?.includes('auto-provisioned') ? <Badge variant="outline">Auto-provisioned</Badge> : null}
           </span>
         ),
         size: 240,
