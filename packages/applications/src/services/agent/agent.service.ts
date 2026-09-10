@@ -28,7 +28,7 @@ import {
 import type { JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
-import type { AgentCompiledConfig } from '@arcaai/types';
+import type { AgentCompiledConfig, AgentCompiledPromptFragment } from '@arcaai/types';
 import {
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
@@ -36,18 +36,29 @@ import {
   AGENT_PROTOCOLS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
+  PROMPT_COMPOSITION_JOIN,
   TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
   agentConfigProblems,
   agentTagProblems,
+  boundTemplateRefs,
   buildPortableBundle,
   canonicalJson,
+  composePrompt,
+  conditionRootProblems,
+  isCompositeInstruction,
+  mapBoundTemplateRefs,
   portableBundleProblems,
+  readPromptFragments,
   renderTemplate,
+  staticProjection,
   templateReferenceProblems,
   templateSyntaxProblems,
   type AgentConfigView,
+  type BoundTemplateRef,
+  type ComposedPrompt,
   type DeclaredNamespaces,
   type AgentModelView,
   type AgentProviderCapabilities,
@@ -80,6 +91,11 @@ import { IInferenceReadinessService } from '../ai-readiness/IInferenceReadinessS
 import type { IInferenceReadinessService as IInferenceReadinessServicePort } from '../ai-readiness/IInferenceReadinessService';
 import { modelReadinessFrom } from '../ai-readiness/inference-readiness.types';
 import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness/inference-readiness.types';
+// TASK-947 (OD-8) — the TYPED variable declarations a prompt template carries. The composite
+// form binds several templates behind ONE agent-level `variables` map, so publish has to notice
+// when two of them mean different things by the same name; that check needs the declarations,
+// and this is the one parser for them.
+import { parsePromptVariableDeclarations, type PromptVariableDeclarationDto } from '../prompt-management/dto/prompt-variable-declaration.dto';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
@@ -91,12 +107,13 @@ import {
   agentBundlePayloadProblems,
   buildAgentBundlePayload,
   instructionForImport,
-  readPromptTemplateRef,
+  readPromptTemplateRefs,
   toolServerIds,
   EVAL_GATE_KEY,
   PROMPT_TEMPLATE_ID_KEY,
   PROMPT_VERSION_NUMBER_KEY,
   type AgentBundlePayload,
+  type AgentBundleTemplateResolution,
 } from './agent-bundle';
 import {
   AgentBundleResponse,
@@ -123,6 +140,17 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 ]);
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
+
+/**
+ * TASK-947 (OD-8) — what ONE resolved template fragment declares, carried from `resolvePrompt`
+ * (which already read the row) to `promptTemplateFindings` (which needs it for the conflict
+ * check). `key` is `null` for the single-template form, where a conflict is not expressible.
+ */
+interface FragmentTemplateVariables {
+  key: string | null;
+  path: string;
+  declarations: PromptVariableDeclarationDto[];
+}
 
 /**
  * TASK-890 §3.4 — the frozen context-schema snapshot a published agent carries.
@@ -569,7 +597,11 @@ export class AgentService extends BaseService implements IAgentService {
     // Built through the same failure mapping as the render below: a `{ path }` binding resolves
     // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
     const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
-    const assembledSystemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, 'instruction') : null;
+    // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
+    // what production sends: a composite is SELECTED and joined here, never served as its static
+    // projection (which would show an author the base prompt and hide the branch they came to test).
+    const composed: ComposedPrompt = this.renderMapped(() => composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }));
+    const assembledSystemPrompt = composed.prompt;
     const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
 
     const resolved = await this.testTarget(entity, model as AiModelEntity, dto);
@@ -577,6 +609,20 @@ export class AgentService extends BaseService implements IAgentService {
       mode: 'dry-run',
       findings: report.findings as AgentTestAckResponse['findings'],
       assembledSystemPrompt,
+      // OD-11 — only a composite HAS a composition; the two single-body forms would carry an
+      // empty pair that reads as "nothing was selected", which is a different and wrong claim.
+      ...(compiled.resolvedPrompt?.source === 'composite'
+        ? {
+            composition: {
+              selected: [...composed.selected],
+              excluded: composed.excluded.map((exclusion) => ({
+                key: exclusion.key,
+                reason: exclusion.reason,
+                ...(exclusion.detail === undefined ? {} : { detail: exclusion.detail }),
+              })),
+            },
+          }
+        : {}),
       assembledUserPrompt,
       resolved,
     };
@@ -687,11 +733,22 @@ export class AgentService extends BaseService implements IAgentService {
     return this.renderMapped(() => renderTemplate(content, scope, { templateRef }));
   }
 
-  /** The grammar's two named failures, as the 400s a bench caller can act on. */
+  /** The grammar's named failures, as the 400s a bench caller can act on. */
   private renderMapped<T>(work: () => T): T {
     try {
       return work();
     } catch (error) {
+      // TASK-947 (OD-6) — every fragment's condition was false or failed. Publish enforces an
+      // unconditional base, so a draft reaching this has already been refused by
+      // `PROMPT_COMPOSITION_NO_BASE`; this is the defensive half, and it still names the keys so
+      // the answer is "none of these ran" rather than a silent empty prompt.
+      if (error instanceof PromptCompositionEmptyError) {
+        throw new BadRequestException({
+          message: 'No prompt fragment was selected for this test: every fragment’s condition was false or could not be evaluated.',
+          code: 'PROMPT_COMPOSITION_EMPTY',
+          excluded: error.excluded.map((exclusion) => ({ key: exclusion.key, reason: exclusion.reason })),
+        });
+      }
       if (error instanceof PromptVariableUnresolvedError) {
         throw new BadRequestException({ message: error.message, code: 'PROMPT_VARIABLE_UNRESOLVED', path: error.path });
       }
@@ -937,20 +994,31 @@ export class AgentService extends BaseService implements IAgentService {
    */
   private async referenceInstruction(source: AgentEntity, targetTenantId: string): Promise<Record<string, unknown> | undefined> {
     const declared = asRecord(source.instruction);
-    const boundId = declared?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof boundId !== 'string' || boundId.length === 0 || !this.promptTemplateRepository) return undefined;
+    const refs = boundTemplateRefs(declared);
+    if (refs.length === 0 || !this.promptTemplateRepository) return undefined;
 
-    const clone = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, boundId);
-    if (!clone) return undefined;
+    // Resolved FIRST, because `mapBoundTemplateRefs` is a pure rewrite and every read has to be
+    // done before it runs. Keyed by source template id, so a composite that binds one template
+    // from two fragments looks the clone up once.
+    const clones = new Map<string, { id: string; approvedVersionNumber: number | null }>();
+    for (const ref of refs) {
+      if (clones.has(ref.templateId)) continue;
+      const clone = await this.promptTemplateRepository.findByTenantAndSourceTemplateId(targetTenantId, ref.templateId);
+      if (clone) clones.set(ref.templateId, { id: clone.id, approvedVersionNumber: clone.approvedVersionNumber ?? null });
+    }
+    if (clones.size === 0) return undefined;
 
-    const next: Record<string, unknown> = { ...declared };
-    next[PROMPT_TEMPLATE_ID_KEY] = clone.id;
-    // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that does
-    // not exist in the target. Carrying it would pin the agent to a missing snapshot.
-    const approved = clone.approvedVersionNumber ?? null;
-    if (approved === null) delete next[PROMPT_VERSION_NUMBER_KEY];
-    else next[PROMPT_VERSION_NUMBER_KEY] = approved;
-    return next;
+    return (
+      mapBoundTemplateRefs(declared, (ref: BoundTemplateRef) => {
+        const clone = clones.get(ref.templateId);
+        // No clone for THIS binding ⇒ it keeps the SYSTEM id, and `publish()` says so in its
+        // findings rather than this method silently unbinding a fragment.
+        if (!clone) return null;
+        // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version that
+        // does not exist in the target. Carrying it would pin the agent to a missing snapshot.
+        return { templateId: clone.id, versionNumber: clone.approvedVersionNumber };
+      }) ?? undefined
+    );
   }
 
   async exportBySlug(slug: string, versionNumber?: number): Promise<AgentBundleResponse> {
@@ -970,7 +1038,12 @@ export class AgentService extends BaseService implements IAgentService {
       if (fallbackModel) fallbackModelSlugs.push(fallbackModel.slug);
     }
 
-    const template = await this.loadBoundTemplate(source);
+    const boundTemplates = new Map(
+      [...(await this.loadBoundTemplates(source))].map(([id, template]) => [
+        id,
+        { id: template.id, name: template.name ?? id, isSystemOwned: template.tenantId === SYSTEM_TENANT_ID },
+      ]),
+    );
     const payload = buildAgentBundlePayload({
       slug: source.slug,
       name: source.name,
@@ -984,7 +1057,7 @@ export class AgentService extends BaseService implements IAgentService {
       outputSchema: source.outputSchema,
       tools: source.tools,
       tags: source.tags ?? [],
-      boundTemplate: template ? { id: template.id, name: template.name, isSystemOwned: template.tenantId === SYSTEM_TENANT_ID } : null,
+      boundTemplates,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -1200,9 +1273,27 @@ export class AgentService extends BaseService implements IAgentService {
     return versions.find((row) => row.isActive && row.status === WorkflowDefinitionStatus.PUBLISHED) ?? versions[0];
   }
 
-  private async loadBoundTemplate(entity: AgentEntity): Promise<PromptTemplateEntity | null> {
-    const templateId = asRecord(entity.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof templateId !== 'string' || templateId.length === 0 || !this.promptTemplateRepository) return null;
+  /**
+   * EVERY template the instruction binds, by row id — one entry for the single-template form,
+   * one per template fragment for a composite (TASK-947 OD-10).
+   *
+   * The traversal is `boundTemplateRefs`, never a local read of `instruction.promptTemplateId`:
+   * the three callers (export, the portability gate, promotion) each used to see exactly one
+   * binding, and a composite would have left all but the first invisible to all three.
+   */
+  private async loadBoundTemplates(entity: AgentEntity): Promise<Map<string, PromptTemplateEntity>> {
+    const loaded = new Map<string, PromptTemplateEntity>();
+    if (!this.promptTemplateRepository) return loaded;
+    for (const ref of boundTemplateRefs(asRecord(entity.instruction))) {
+      if (loaded.has(ref.templateId)) continue;
+      const template = await this.loadTemplateVisible(ref.templateId);
+      if (template) loaded.set(ref.templateId, template);
+    }
+    return loaded;
+  }
+
+  private async loadTemplateVisible(templateId: string): Promise<PromptTemplateEntity | null> {
+    if (!this.promptTemplateRepository) return null;
     const own = await this.promptTemplateRepository.findById(templateId).catch(() => null);
     if (own) return own;
     // TASK-890 L13 — `PromptTemplate` leaves `SYSTEM_SHARED_READ_MODELS` (§1.5), so the scoped
@@ -1223,28 +1314,42 @@ export class AgentService extends BaseService implements IAgentService {
     return platform?.id ?? null;
   }
 
-  /** The instruction an imported bundle stores: the ref resolved back to an id, or a 409 naming it. */
+  /**
+   * The instruction an imported bundle stores: EVERY ref resolved back to an id, or a 409 naming
+   * the first one this tenant cannot supply (TASK-947 — a composite carries one per fragment).
+   *
+   * Resolution is per SITE and the map is keyed by site path, so two fragments binding the same
+   * template name are two independent resolutions and a fragment the importer could not resolve
+   * can never inherit a neighbour's id.
+   */
   private async instructionForBundleImport(payload: AgentBundlePayload, tenantId: string): Promise<Record<string, unknown> | null> {
-    const ref = readPromptTemplateRef(payload.instruction);
-    if (!ref) return instructionForImport(payload.instruction, null);
+    const resolutions = new Map<string, AgentBundleTemplateResolution>();
 
-    if (ref.kind === 'system' && ref.id) {
-      const system = await this.promptTemplateRepository?.findById(ref.id).catch(() => null);
-      // Same row ⇒ the version pin still numbers a version that exists, so it survives.
-      if (system && system.tenantId === SYSTEM_TENANT_ID)
-        return instructionForImport(payload.instruction, { templateId: system.id, keepVersionPin: true });
+    for (const site of readPromptTemplateRefs(payload.instruction)) {
+      if (site.ref.kind === 'system' && site.ref.id) {
+        const system = await this.promptTemplateRepository?.findById(site.ref.id).catch(() => null);
+        // Same row ⇒ the version pin still numbers a version that exists, so it survives.
+        if (system && system.tenantId === SYSTEM_TENANT_ID) {
+          resolutions.set(site.path, { templateId: system.id, keepVersionPin: true });
+          continue;
+        }
+      }
+
+      const own = await this.promptTemplateRepository?.findByName(tenantId, site.ref.name).catch(() => null);
+      if (!own) {
+        throw new ConflictException({
+          message:
+            `This bundle binds the prompt template '${site.ref.name}'${site.fragmentKey ? ` (fragment \`${site.fragmentKey}\`)` : ''}, ` +
+            'which this tenant does not have. Create it (or import the template first), then import the agent.',
+          code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE',
+        });
+      }
+      // A DIFFERENT row: its version lineage is its own, so the source's pin numbers a version
+      // that may not exist here. Dropping it follows the resolved template's approved version.
+      resolutions.set(site.path, { templateId: own.id, keepVersionPin: false });
     }
 
-    const own = await this.promptTemplateRepository?.findByName(tenantId, ref.name).catch(() => null);
-    if (!own) {
-      throw new ConflictException({
-        message: `This bundle binds the prompt template '${ref.name}', which this tenant does not have. Create it (or import the template first), then import the agent.`,
-        code: 'PROMPT_TEMPLATE_NOT_RESOLVABLE',
-      });
-    }
-    // A DIFFERENT row: its version lineage is its own, so the source's pin numbers a version
-    // that may not exist here. Dropping it follows the resolved template's approved version.
-    return instructionForImport(payload.instruction, { templateId: own.id, keepVersionPin: false });
+    return instructionForImport(payload.instruction, resolutions);
   }
 
   /** Every tool binding must name a server this tenant can actually reach; a dangling one is a 409, never a silent drop. */
@@ -1270,11 +1375,17 @@ export class AgentService extends BaseService implements IAgentService {
    * export/import and let the target bind its own.
    */
   private async assertPortableAcrossTenants(source: AgentEntity): Promise<void> {
-    const template = await this.loadBoundTemplate(source);
-    const boundId = asRecord(source.instruction)?.[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof boundId === 'string' && boundId.length > 0 && (!template || template.tenantId !== SYSTEM_TENANT_ID)) {
+    // TASK-947 — EVERY bound template, not just the first: a composite whose base is a platform
+    // template and whose second fragment is the tenant's own would otherwise clear this gate and
+    // land in the target carrying an id nothing there can read.
+    const templates = await this.loadBoundTemplates(source);
+    for (const ref of boundTemplateRefs(asRecord(source.instruction))) {
+      const template = templates.get(ref.templateId);
+      if (template && template.tenantId === SYSTEM_TENANT_ID) continue;
       throw new ConflictException({
-        message: `Agent '${source.slug}' binds a prompt template that is not SYSTEM-owned, so it cannot be resolved in another tenant. Re-bind it to a platform template, or export it and let the target tenant bind its own.`,
+        message:
+          `Agent '${source.slug}' binds a prompt template that is not SYSTEM-owned${ref.fragmentKey ? ` (fragment \`${ref.fragmentKey}\`)` : ''}, ` +
+          'so it cannot be resolved in another tenant. Re-bind it to a platform template, or export it and let the target tenant bind its own.',
         code: 'PROMPT_TEMPLATE_NOT_PORTABLE',
       });
     }
@@ -1373,6 +1484,9 @@ export class AgentService extends BaseService implements IAgentService {
         'The eval gate was not copied: a golden set is a corpus of encrypted patient data and its pointer never leaves the tenant. Bind one in the target tenant.',
       );
     }
+    // Half a reference: a version pin with nothing to pin. It would number a version of nothing
+    // in the target, so it does not travel. (A composite pins per FRAGMENT and the contract
+    // refuses a top-level pin on one, so this only ever bites the single-template form.)
     if (crossTenant && typeof instruction[PROMPT_VERSION_NUMBER_KEY] === 'number' && !(PROMPT_TEMPLATE_ID_KEY in instruction)) {
       delete instruction[PROMPT_VERSION_NUMBER_KEY];
     }
@@ -1524,7 +1638,7 @@ export class AgentService extends BaseService implements IAgentService {
       const outcome = await this.resolvePrompt(asRecord(entity.instruction));
       findings.push(...outcome.findings);
       resolvedPrompt = outcome.resolvedPrompt;
-      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, context.resolved));
+      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, context.resolved, outcome.templateVariables));
     }
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
@@ -1668,14 +1782,56 @@ export class AgentService extends BaseService implements IAgentService {
     entity: AgentEntity,
     resolvedPrompt: ResolvedPrompt,
     contextSchema: AgentCompiledContextSchema | null,
+    templateVariables: readonly FragmentTemplateVariables[] = [],
   ): AgentFinding[] {
-    const content = resolvedPrompt?.content;
-    if (typeof content !== 'string' || content.length === 0) return [];
+    const instruction = asRecord(entity.instruction) ?? {};
+    const boundNames = Object.keys(asRecord(instruction.variables) ?? {});
+
+    // TASK-947 — a composite is CHECKED PER FRAGMENT, at that fragment's own path, plus the two
+    // checks that only exist because there is more than one fragment: a `when` reading a root
+    // nothing supplies (OD-4), and two templates meaning different things by one bound name
+    // (OD-8). The `when` checks run off the AUTHORED instruction rather than the compiled
+    // artifact, so they still report when a sibling fragment failed to resolve.
+    if (resolvedPrompt?.source === 'composite') {
+      const findings: AgentFinding[] = [];
+      for (const [index, fragment] of resolvedPrompt.fragments.entries()) {
+        findings.push(
+          ...this.promptContentFindings(entity, fragment.content, `instruction.fragments[${index}]`, this.fragmentRef(fragment), contextSchema),
+        );
+      }
+      findings.push(...this.conditionFindings(instruction, boundNames));
+      findings.push(...this.variableConflictFindings(templateVariables));
+      return findings;
+    }
+    if (isCompositeInstruction(instruction)) {
+      // A composition that did not resolve still has conditions worth checking — the author
+      // is going to fix the broken fragment and re-publish into the same `when`s.
+      return [...this.conditionFindings(instruction, boundNames), ...this.variableConflictFindings(templateVariables)];
+    }
 
     const templateRef =
       resolvedPrompt?.source === 'template'
         ? `prompt template ${resolvedPrompt.promptTemplateId} v${resolvedPrompt.promptVersionNumber}`
         : 'instruction.systemPrompt';
+    return this.promptContentFindings(entity, resolvedPrompt?.content, 'instruction', templateRef, contextSchema);
+  }
+
+  /** How a fragment names itself in a finding message — the fix is on the fragment, so the key leads. */
+  private fragmentRef(fragment: AgentCompiledPromptFragment): string {
+    return fragment.source === 'template'
+      ? `fragment \`${fragment.key}\` (prompt template ${fragment.promptTemplateId} v${fragment.promptVersionNumber})`
+      : `fragment \`${fragment.key}\` (inline)`;
+  }
+
+  /** The TASK-890 §3.5 pair — syntax (ERROR) then undeclared references (the OD-C ramp) — over ONE body. */
+  private promptContentFindings(
+    entity: AgentEntity,
+    content: string | undefined,
+    path: string,
+    templateRef: string,
+    contextSchema: AgentCompiledContextSchema | null,
+  ): AgentFinding[] {
+    if (typeof content !== 'string' || content.length === 0) return [];
 
     const syntax = templateSyntaxProblems(content);
     if (syntax.length > 0) {
@@ -1683,7 +1839,7 @@ export class AgentService extends BaseService implements IAgentService {
       return syntax.map((problem) => ({
         severity: 'ERROR' as const,
         code: 'PROMPT_TEMPLATE_SYNTAX' as const,
-        path: 'instruction',
+        path,
         message: `${templateRef}: ${problem}`,
       }));
     }
@@ -1709,9 +1865,66 @@ export class AgentService extends BaseService implements IAgentService {
     return templateReferenceProblems(content, declared).map((problem) => ({
       severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
       code: 'PROMPT_VARIABLE_UNDECLARED' as const,
-      path: 'instruction',
+      path,
       message: `${templateRef}: ${problem}`,
     }));
+  }
+
+  /**
+   * TASK-947 (OD-4) — a `when` may read the render scope's own roots and the agent's bound
+   * variable names, and nothing else.
+   *
+   * A WARNING, on the `PROMPT_VARIABLE_UNDECLARED` ramp and for the same reason: the root MIGHT
+   * be supplied by a caller this publish cannot see, and an unevaluable condition EXCLUDES its
+   * fragment at run time (OD-5) rather than failing the call. Syntax is a separate, blocking
+   * finding the contract already emits (`PROMPT_FRAGMENT_CONDITION_SYNTAX`).
+   */
+  private conditionFindings(instruction: Record<string, unknown>, boundNames: readonly string[]): AgentFinding[] {
+    const findings: AgentFinding[] = [];
+    for (const [index, fragment] of readPromptFragments(instruction).entries()) {
+      if (typeof fragment.when !== 'string' || fragment.when.length === 0) continue;
+      for (const problem of conditionRootProblems(fragment.when, boundNames)) {
+        findings.push({
+          severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+          code: 'PROMPT_FRAGMENT_CONDITION_ROOT',
+          path: `instruction.fragments[${index}].when`,
+          message: `fragment \`${fragment.key}\`: ${problem}`,
+        });
+      }
+    }
+    return findings;
+  }
+
+  /**
+   * TASK-947 (OD-8) — one agent-level `variables` map serves every fragment, so two templates
+   * that declare one name with different TYPES cannot both be satisfied by it.
+   *
+   * An ERROR, unlike the two ramps above: this is not "might resolve at run time", it is two
+   * declarations that contradict each other in the artifact being published. The message names
+   * both fragments, because the fix is to rename one of them.
+   */
+  private variableConflictFindings(templateVariables: readonly FragmentTemplateVariables[]): AgentFinding[] {
+    const seen = new Map<string, { key: string | null; type: string }>();
+    const findings: AgentFinding[] = [];
+    for (const fragment of templateVariables) {
+      for (const declaration of fragment.declarations) {
+        const previous = seen.get(declaration.name);
+        if (previous === undefined) {
+          seen.set(declaration.name, { key: fragment.key, type: declaration.type });
+          continue;
+        }
+        if (previous.type === declaration.type) continue;
+        findings.push({
+          severity: 'ERROR',
+          code: 'PROMPT_VARIABLE_CONFLICT',
+          path: fragment.path,
+          message:
+            `Fragment \`${fragment.key}\` declares \`${declaration.name}\` as \`${declaration.type}\`, but fragment ` +
+            `\`${previous.key}\` declares it as \`${previous.type}\`. One agent-level binding cannot serve both — rename one of them.`,
+        });
+      }
+    }
+    return findings;
   }
 
   /**
@@ -1947,82 +2160,175 @@ export class AgentService extends BaseService implements IAgentService {
     ];
   }
 
-  /** Template-bound instruction ⇒ the template must be APPROVED and the pinned version must exist (R-7). */
-  private async resolvePrompt(
-    instruction: Record<string, unknown> | undefined,
-  ): Promise<{ findings: AgentFinding[]; resolvedPrompt: ResolvedPrompt }> {
-    if (!instruction) return { findings: [], resolvedPrompt: null };
+  /**
+   * The instruction's prompt, RESOLVED and ready to freeze — one method for all three forms
+   * (TASK-947 OD-2), because the rule they share is the one that matters: a bound template must
+   * be APPROVED and the version it pins must exist.
+   *
+   * | Form | Resolves to |
+   * |---|---|
+   * | `{ promptTemplateId, promptVersionNumber? }` | `{ source: 'template', … }` — unchanged since TASK-890 |
+   * | `{ systemPrompt }` | `{ source: 'inline', content }` — unchanged |
+   * | `{ fragments: [...] }` | `{ source: 'composite', join, content: <static projection>, fragments: [...] }` |
+   *
+   * A composite resolves EVERY fragment and reports EVERY failure, rather than stopping at the
+   * first: an author fixing a three-fragment agent one publish attempt at a time is the exact
+   * experience the per-fragment `path` exists to avoid. Any failing fragment ⇒ `resolvedPrompt:
+   * null`, so publish still fails closed and never freezes a partial composition.
+   *
+   * `templateVariables` rides along because the rows are already read here: `promptTemplateFindings`
+   * needs each template's declarations for the OD-8 conflict check, and reading them a second
+   * time would be one more chance for the two reads to disagree.
+   */
+  private async resolvePrompt(instruction: Record<string, unknown> | undefined): Promise<{
+    findings: AgentFinding[];
+    resolvedPrompt: ResolvedPrompt;
+    templateVariables: FragmentTemplateVariables[];
+  }> {
+    if (!instruction) return { findings: [], resolvedPrompt: null, templateVariables: [] };
+
+    if (isCompositeInstruction(instruction)) return this.resolveCompositePrompt(instruction);
+
     const systemPrompt = typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : undefined;
     const templateId = typeof instruction.promptTemplateId === 'string' ? instruction.promptTemplateId : undefined;
     if (!templateId) {
-      return { findings: [], resolvedPrompt: systemPrompt ? { source: 'inline', content: systemPrompt } : null };
+      return { findings: [], resolvedPrompt: systemPrompt ? { source: 'inline', content: systemPrompt } : null, templateVariables: [] };
     }
-    if (!this.promptTemplateRepository || !this.promptVersionRepository) {
-      return {
-        findings: [
-          {
-            severity: 'ERROR',
-            code: 'TEMPLATE_NOT_FOUND',
-            path: 'instruction.promptTemplateId',
-            message: 'Prompt templates are not available to this service instance.',
-          },
-        ],
-        resolvedPrompt: null,
-      };
-    }
-    const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
-    if (!template) {
-      return {
-        findings: [
-          {
-            severity: 'ERROR',
-            code: 'TEMPLATE_NOT_FOUND',
-            path: 'instruction.promptTemplateId',
-            message: `Prompt template ${templateId} is not visible to this tenant.`,
-          },
-        ],
-        resolvedPrompt: null,
-      };
-    }
-    if (template.status !== 'APPROVED') {
-      return {
-        findings: [
-          {
-            severity: 'ERROR',
-            code: 'TEMPLATE_NOT_APPROVED',
-            path: 'instruction.promptTemplateId',
-            message: `Prompt template \`${template.name ?? templateId}\` is ${template.status ?? 'DRAFT'}; an agent instruction must bind an APPROVED template.`,
-          },
-        ],
-        resolvedPrompt: null,
-      };
-    }
-    const versionNumber =
-      typeof instruction.promptVersionNumber === 'number'
-        ? instruction.promptVersionNumber
-        : (template.approvedVersionNumber ?? template.currentVersionNumber ?? null);
-    const version =
-      versionNumber !== null ? await this.promptVersionRepository.findByVersionNumber(templateId, versionNumber).catch(() => null) : null;
-    if (!version || versionNumber === null) {
-      return {
-        findings: [
-          {
-            severity: 'ERROR',
-            code: 'TEMPLATE_VERSION_NOT_FOUND',
-            path: 'instruction.promptVersionNumber',
-            message: `Prompt template ${templateId} has no version ${versionNumber ?? '(unpinned)'}.`,
-          },
-        ],
-        resolvedPrompt: null,
-      };
-    }
+    const outcome = await this.resolveTemplateBinding(
+      templateId,
+      typeof instruction.promptVersionNumber === 'number' ? instruction.promptVersionNumber : null,
+      { templateId: 'instruction.promptTemplateId', versionNumber: 'instruction.promptVersionNumber' },
+    );
+    if (!outcome.resolved) return { findings: outcome.findings, resolvedPrompt: null, templateVariables: [] };
     return {
-      findings: [],
+      findings: outcome.findings,
       resolvedPrompt: {
         source: 'template',
         promptTemplateId: templateId,
-        promptVersionNumber: versionNumber,
+        promptVersionNumber: outcome.resolved.versionNumber,
+        content: outcome.resolved.content,
+      },
+      templateVariables: [{ key: null, path: 'instruction', declarations: outcome.resolved.declarations }],
+    };
+  }
+
+  /**
+   * TASK-947 §4.1 — the composite form. Fragments are resolved in AUTHORED order and the result
+   * carries the static projection (OD-3) so a reader that predates this ticket still serves the
+   * base prompt rather than nothing.
+   *
+   * The index in each finding path is the position in `readPromptFragments`'s output. A fragment
+   * entry that is not an object is dropped by that reader AND is already a blocking
+   * `PROMPT_FRAGMENT_SHAPE` error from the contract, so the two can only disagree on a publish
+   * that is refused anyway.
+   */
+  private async resolveCompositePrompt(instruction: Record<string, unknown>): Promise<{
+    findings: AgentFinding[];
+    resolvedPrompt: ResolvedPrompt;
+    templateVariables: FragmentTemplateVariables[];
+  }> {
+    const findings: AgentFinding[] = [];
+    const templateVariables: FragmentTemplateVariables[] = [];
+    const compiled: AgentCompiledPromptFragment[] = [];
+    let failed = false;
+
+    for (const [index, fragment] of readPromptFragments(instruction).entries()) {
+      const at = `instruction.fragments[${index}]`;
+      const when = typeof fragment.when === 'string' ? fragment.when : null;
+
+      if (fragment.promptTemplateId === undefined) {
+        // An inline fragment travels verbatim. A fragment that binds NEITHER is a blocking
+        // `PROMPT_FRAGMENT_SHAPE` error from the contract; nothing is invented for it here.
+        if (fragment.systemPrompt === undefined) {
+          failed = true;
+          continue;
+        }
+        compiled.push({ key: fragment.key, source: 'inline', content: fragment.systemPrompt, when });
+        continue;
+      }
+
+      const outcome = await this.resolveTemplateBinding(fragment.promptTemplateId, fragment.promptVersionNumber ?? null, {
+        templateId: `${at}.promptTemplateId`,
+        versionNumber: `${at}.promptVersionNumber`,
+      });
+      findings.push(...outcome.findings);
+      if (!outcome.resolved) {
+        failed = true;
+        continue;
+      }
+      templateVariables.push({ key: fragment.key, path: at, declarations: outcome.resolved.declarations });
+      compiled.push({
+        key: fragment.key,
+        source: 'template',
+        promptTemplateId: fragment.promptTemplateId,
+        promptVersionNumber: outcome.resolved.versionNumber,
+        content: outcome.resolved.content,
+        when,
+      });
+    }
+
+    if (failed) return { findings, resolvedPrompt: null, templateVariables };
+    return {
+      findings,
+      resolvedPrompt: {
+        source: 'composite',
+        content: staticProjection(compiled),
+        join: PROMPT_COMPOSITION_JOIN,
+        fragments: compiled,
+      },
+      templateVariables,
+    };
+  }
+
+  /**
+   * ONE template binding, resolved: APPROVED status and an existing version (R-7). The caller
+   * supplies the PATHS its findings should carry, which is the whole reason this is shared —
+   * `instruction.promptTemplateId` and `instruction.fragments[2].promptTemplateId` are the same
+   * check reported at two addresses, not two checks.
+   */
+  private async resolveTemplateBinding(
+    templateId: string,
+    pinnedVersionNumber: number | null,
+    paths: { templateId: string; versionNumber: string },
+  ): Promise<{
+    findings: AgentFinding[];
+    resolved: { versionNumber: number; content: string; declarations: PromptVariableDeclarationDto[] } | null;
+  }> {
+    const refuse = (code: AgentFinding['code'], path: string, message: string) => ({
+      findings: [{ severity: 'ERROR' as const, code, path, message }],
+      resolved: null,
+    });
+
+    if (!this.promptTemplateRepository || !this.promptVersionRepository) {
+      return refuse('TEMPLATE_NOT_FOUND', paths.templateId, 'Prompt templates are not available to this service instance.');
+    }
+    const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
+    if (!template) {
+      return refuse('TEMPLATE_NOT_FOUND', paths.templateId, `Prompt template ${templateId} is not visible to this tenant.`);
+    }
+    if (template.status !== 'APPROVED') {
+      return refuse(
+        'TEMPLATE_NOT_APPROVED',
+        paths.templateId,
+        `Prompt template \`${template.name ?? templateId}\` is ${template.status ?? 'DRAFT'}; an agent instruction must bind an APPROVED template.`,
+      );
+    }
+    const versionNumber = pinnedVersionNumber ?? template.approvedVersionNumber ?? template.currentVersionNumber ?? null;
+    const version =
+      versionNumber !== null ? await this.promptVersionRepository.findByVersionNumber(templateId, versionNumber).catch(() => null) : null;
+    if (!version || versionNumber === null) {
+      return refuse(
+        'TEMPLATE_VERSION_NOT_FOUND',
+        paths.versionNumber,
+        `Prompt template ${templateId} has no version ${versionNumber ?? '(unpinned)'}.`,
+      );
+    }
+    return {
+      findings: [],
+      resolved: {
+        versionNumber,
         content: version.content ?? template.content ?? '',
+        declarations: parsePromptVariableDeclarations(version.variables ?? template.variables),
       },
     };
   }

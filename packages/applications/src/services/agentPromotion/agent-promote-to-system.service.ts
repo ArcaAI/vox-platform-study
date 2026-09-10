@@ -27,7 +27,7 @@ import {
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
-import { canonicalJson } from '@arcaai/workflow-contract';
+import { boundTemplateRefs, canonicalJson, mapBoundTemplateRefs } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -47,7 +47,6 @@ import { runInTenantContext } from './tenant-context';
  */
 const GLOBAL_PLAYGROUND_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
-const PROMPT_TEMPLATE_ID_KEY = 'promptTemplateId';
 const PROMPT_VERSION_NUMBER_KEY = 'promptVersionNumber';
 const EVAL_GATE_KEY = 'evalGate';
 
@@ -101,6 +100,7 @@ interface ContextSchemaWritePort {
  * |---|---|
  * | `instruction.promptTemplateId`, Global-owned | DEEP-COPIED into SYSTEM (`sourceTemplateId` stamped, APPROVED where the source was) and re-bound; the version pin drops to the copy's v1 |
  * | `instruction.promptTemplateId`, SYSTEM-owned | left alone — copying it would fork the platform library |
+ * | `instruction.fragments[].promptTemplateId` (TASK-947) | the same rule, PER FRAGMENT; two fragments naming one template share ONE copy |
  * | `contextSchemaId` | re-bound to the SYSTEM schema of the SAME slug, copied when SYSTEM carries none |
  * | `instruction.evalGate` | STRIPPED — `goldenSetId` names a corpus of Vault-Transit-encrypted `GoldenCase` PHI, and not even the pointer crosses a tenant boundary |
  * | `modelId` and the fallback chain | re-resolved BY SLUG in SYSTEM; a slug SYSTEM does not carry is a 409 `MODEL_NOT_RESOLVABLE`, never a dangling id |
@@ -367,8 +367,14 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
   // =========================================================================
 
   /**
-   * The promoted `instruction`: the source's, with the eval gate stripped and any GLOBAL-owned
+   * The promoted `instruction`: the source's, with the eval gate stripped and EVERY GLOBAL-owned
    * prompt binding re-pointed at a SYSTEM copy of that template.
+   *
+   * TASK-947 (OD-10) — "every" is the word that changed. A composite instruction binds one
+   * template per fragment, so the resolution runs once per DISTINCT template id (two fragments
+   * naming one template produce one copy, not two forks of the same lineage) and the rewrite is
+   * the contract's own `mapBoundTemplateRefs`, which reaches the single-template form and the
+   * fragment list alike. Reads first, rewrite second: the rewrite is pure.
    */
   private async materializeInstruction(
     source: AgentEntity,
@@ -378,21 +384,44 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     const declared = asRecord(source.instruction);
     if (!declared) return { instruction: null, copied: 0 };
 
-    const instruction: Record<string, unknown> = { ...declared };
-    if (EVAL_GATE_KEY in instruction) delete instruction[EVAL_GATE_KEY];
+    const withoutGate: Record<string, unknown> = { ...declared };
+    if (EVAL_GATE_KEY in withoutGate) delete withoutGate[EVAL_GATE_KEY];
 
-    const boundId = instruction[PROMPT_TEMPLATE_ID_KEY];
-    if (typeof boundId !== 'string' || boundId.length === 0) {
+    const refs = boundTemplateRefs(withoutGate);
+    if (refs.length === 0) {
       // A version pin with no template is half a reference; it would number a version of nothing.
-      if (PROMPT_VERSION_NUMBER_KEY in instruction) delete instruction[PROMPT_VERSION_NUMBER_KEY];
-      return { instruction, copied: 0 };
+      if (PROMPT_VERSION_NUMBER_KEY in withoutGate) delete withoutGate[PROMPT_VERSION_NUMBER_KEY];
+      return { instruction: withoutGate, copied: 0 };
     }
 
+    let copied = 0;
+    const rebinds = new Map<string, { templateId: string; versionNumber: number | null }>();
+    for (const ref of refs) {
+      if (rebinds.has(ref.templateId)) continue;
+      const outcome = await this.materializeTemplate(ref.templateId, source, userId, tx);
+      if (!outcome) continue;
+      copied += outcome.copied;
+      rebinds.set(ref.templateId, { templateId: outcome.templateId, versionNumber: outcome.versionNumber });
+    }
+
+    const instruction = mapBoundTemplateRefs(withoutGate, (ref) => rebinds.get(ref.templateId) ?? null) ?? withoutGate;
+    return { instruction, copied };
+  }
+
+  /**
+   * ONE Global-owned template, materialised in SYSTEM: an existing copy re-bound, or a fresh deep
+   * copy. `null` means "leave this binding alone" — the template is already SYSTEM's (copying it
+   * would fork the platform library), or its id no longer reads, in which case `publish` reports
+   * it as a finding rather than this method silently unbinding the instruction.
+   */
+  private async materializeTemplate(
+    boundId: string,
+    source: AgentEntity,
+    userId: string,
+    tx: unknown,
+  ): Promise<{ templateId: string; versionNumber: number | null; copied: number } | null> {
     const template = await this.safeFindTemplate(boundId);
-    // A SYSTEM template is already the platform's own; copying it would fork the library. An id
-    // that no longer reads is left as it is — `publish` reports it as a finding rather than this
-    // method silently unbinding the instruction.
-    if (!template || template.tenantId === SYSTEM_TENANT_ID) return { instruction, copied: 0 };
+    if (!template || template.tenantId === SYSTEM_TENANT_ID) return null;
 
     const existing =
       (await this.promptTemplateRepository.findByTenantAndSourceTemplateId(SYSTEM_TENANT_ID, template.id).catch(() => null)) ??
@@ -400,11 +429,7 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     if (existing) {
       // Idempotent: a second promotion of the same lineage re-binds to the copy the first made
       // rather than forking it.
-      instruction[PROMPT_TEMPLATE_ID_KEY] = existing.id;
-      const approved = existing.approvedVersionNumber ?? null;
-      if (approved === null) delete instruction[PROMPT_VERSION_NUMBER_KEY];
-      else instruction[PROMPT_VERSION_NUMBER_KEY] = approved;
-      return { instruction, copied: 0 };
+      return { templateId: existing.id, versionNumber: existing.approvedVersionNumber ?? null, copied: 0 };
     }
 
     // The APPROVED snapshot travels, not the mutable draft column — `PromptManagementService
@@ -456,10 +481,8 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     } as never);
     await this.promptVersionRepository.create(v1, tx);
 
-    instruction[PROMPT_TEMPLATE_ID_KEY] = savedTemplate.id;
     // The copy's lineage restarts at 1, so the source's pin numbers a version that is not here.
-    instruction[PROMPT_VERSION_NUMBER_KEY] = 1;
-    return { instruction, copied: 1 };
+    return { templateId: savedTemplate.id, versionNumber: 1, copied: 1 };
   }
 
   /**
