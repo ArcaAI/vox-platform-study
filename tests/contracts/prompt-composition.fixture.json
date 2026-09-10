@@ -197,6 +197,13 @@
       },
       "scope": { "context": { "patient_age": 12 } },
       "error": "PromptCompositionEmpty"
+    },
+    {
+      "name": "fragments-missing-raises",
+      "_why": "Publish always stamps `fragments`, so this artifact is malformed — both mirrors refuse it by the NAME the caller already degrades on (PromptCompositionEmpty), never a bare type error.",
+      "resolvedPrompt": { "source": "composite", "content": "Base.", "join": "\n\n" },
+      "scope": { "context": {} },
+      "error": "PromptCompositionEmpty"
     }
   ]
 }

@@ -163,3 +163,13 @@ describe('conditionRootProblems — the publish-time root check (OD-4)', () => {
     expect(conditionRootProblems('context.visit_type ==', [])).toEqual([]);
   });
 });
+
+describe('composePrompt — a malformed composite refuses by NAME (parity with the Python mirror)', () => {
+  it('a composite with no `fragments` list raises PromptCompositionEmptyError, never a TypeError', () => {
+    const malformed = { source: 'composite', content: 'Base.', join: '\n\n' } as unknown as CompositeResolvedPrompt;
+    expect(() => composePrompt(malformed, scope, { templateRef: 'agent:x' })).toThrow(PromptCompositionEmptyError);
+    expect(() => composePrompt({ ...malformed, fragments: 'nope' as unknown as CompositeResolvedPrompt['fragments'] }, scope)).toThrow(
+      PromptCompositionEmptyError,
+    );
+  });
+});

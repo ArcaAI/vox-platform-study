@@ -156,7 +156,11 @@ export function composePrompt(
     return { prompt, selected: [], excluded: [] };
   }
 
-  const { selected, excluded } = selectPromptFragments(resolvedPrompt.fragments, scope);
+  // A composite that carries no fragment list cannot be published (publish always stamps one),
+  // but a malformed artifact must refuse by NAME, not by a `TypeError` from iterating `undefined`
+  // — and the Python mirror already refuses it as an empty composition (Lane C).
+  const fragments = Array.isArray(resolvedPrompt.fragments) ? resolvedPrompt.fragments : [];
+  const { selected, excluded } = selectPromptFragments(fragments, scope);
   if (selected.length === 0) throw new PromptCompositionEmptyError(excluded, templateRef);
 
   const join = typeof resolvedPrompt.join === 'string' ? resolvedPrompt.join : PROMPT_COMPOSITION_JOIN;
