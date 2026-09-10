@@ -55,7 +55,8 @@
  * in `afterAll` — mirrors `agent-management-contract.spec.ts` so this spec
  * never touches seeded rows. Cross-tenant probe reuses `super_admin` scoped
  * to the `ARCAAI` tenant (the cross-tenant pattern, per
- * `ai-task-defaults-cross-tenant.spec.ts`).
+ * `ai-provider-connections-cross-tenant.spec.ts` and
+ * `tenant-bucket-cross-tenant.spec.ts`).
  *
  * @see apps/api/src/modules/prompt-management/prompt-management.controller.ts
  * @see packages/applications/src/services/prompt-management/prompt-management.service.ts

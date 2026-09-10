@@ -1,8 +1,9 @@
 /**
  * Cross-tenant 404 posture for the billing plane's by-id
  * surfaces (BillingAdminController, RateCardAdminController), following the
- * cross-tenant pattern (see `ai-task-defaults-cross-tenant.spec.ts`
- * for the canonical shape of these probes).
+ * cross-tenant pattern (see `ai-provider-connections-cross-tenant.spec.ts`,
+ * and `tenant-bucket-cross-tenant.spec.ts` for the canonical shape of these
+ * 404-over-403 probes).
  *
  * Two distinct governance postures are exercised, per rule 05:
  *   1. `admin/billing/invoices/:id` — a REGULAR cross-tenant BY-ID surface.

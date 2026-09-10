@@ -21,7 +21,7 @@
  *    unlike `AiTaskDefaultAdminController` this surface has NO `?tenantId=`
  *    query override at all: every handler is scoped purely off CLS.
  *
- * Modeled closely on `ai-task-defaults-cross-tenant.spec.ts` /
+ * Modeled closely on `ai-provider-connections-cross-tenant.spec.ts` /
  * `tenant-bucket-cross-tenant.spec.ts` — same auth/bootstrap helpers
  * (`loginUser`, `SEEDED_USERS`, `DEFAULT_TENANT_KEY`), same 404-over-403 style
  * assertions (status code AND no foreign-row content in the body).
@@ -34,7 +34,7 @@
  * exercise the SAME tenant scope a TENANT_ADMIN of that tenant would see —
  * this surface has no `?tenantId=` override, so "acting cross-tenant" for a
  * super admin means logging into the target tenant's working context, same
- * as the `ai-task-defaults` spec's `superAdmin` login pattern.
+ * as the `ai-provider-connections` spec's `superAdmin` login pattern.
  */
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
