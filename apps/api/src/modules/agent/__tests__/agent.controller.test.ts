@@ -158,6 +158,24 @@ describe('AgentController — invocations', () => {
     expect(res.body).toMatchObject({ agentSlug: 'clinic-summarizer', output: { text: 'hello' } });
   });
 
+  it('blocking: surfaces which fragments a COMPOSITE agent ran, keys only; null for a single-body agent (TASK-947 OD-11)', async () => {
+    const { controller, invocation } = make();
+    const single = fakeRes();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, single as never, undefined);
+    expect(single.body).toMatchObject({ promptFragments: null });
+
+    (invocation.invokeText as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      text: 'hello',
+      provider: null,
+      model: null,
+      usage: null,
+      promptFragments: { selected: ['base', 'revisit'] },
+    });
+    const composite = fakeRes();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, composite as never, undefined);
+    expect(composite.body).toMatchObject({ promptFragments: { selected: ['base', 'revisit'] } });
+  });
+
   it('rejects a body that violates the agent inputSchema (TIER 3) before calling the model', async () => {
     const { controller, invocation } = make();
     invocation.inputProblems.mockReturnValue(['/text: required property is missing']);
