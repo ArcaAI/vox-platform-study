@@ -618,7 +618,10 @@ real stack and asserts the invariant, attaching the report either way so a BEFOR
 needs no code reading. The feed is real-time on purpose: the cadence under test is driven by how
 transcript segments arrive over time, and a burst collapses every turn into one.
 
-> **HONEST LIMIT — this spec has NOT been executed.** Playwright's `globalSetup` requires a live
+> **SUPERSEDED 2026-09-10 — the spec HAS now been executed. See §6.4 below.** The limit recorded
+> here was real when written.
+>
+> **HONEST LIMIT (as written) — this spec has NOT been executed.** Playwright's `globalSetup` requires a live
 > gateway, so NO e2e in this repo can run without the stack, and the local one is down. Verified
 > instead: it compiles (`pnpm typecheck:all`, 0 errors) and Playwright lists it; its skip conditions
 > copy the committed `test.skip(!created.ok, …)` pattern the other streaming specs use. **The
@@ -648,3 +651,71 @@ stale with respect to the five new stats fields.**
 | 2026-09-09 | **Owner answered: OD-1 new ticket TASK-939, OD-2 (a), OD-8 (a), and said go.** §4 rewritten as the answer table; the six unnamed ODs taken on the recorded recommendations. Status → `In Progress`. Execution starts at wave 0. |
 | 2026-09-10 | **Wave 3E follow-up — the cold-reload half of R4.** Wave 3E's hydration could only fire for a document a `section.patch` had already named, so a true cold reload mid-encounter still showed a skeleton. Closed with the gateway DISCOVERY read `GET :id/documents/sections` (new route + `DocumentSectionService.listAllSections`, over the already-present, caller-less `DocumentSectionRepository.findByConsultation`), chosen over a `sessionStorage` key cache — a per-tab cache of server-owned state that rescues only "same tab, reloaded" and can render a heading for a document that no longer exists. The console hook now hydrates blind on mount and drops its per-document fan-out. Five API artifacts regenerated; gates green. |
 | 2026-09-09 | **Waves 0–4 implemented and merged to `dev-2.2`.** Wave 0 prompt fix (`efac0bbb2`); append mechanism (`d8f4a4394`); turn contract (`85dfd4a89`); churn metric (`f6d509880`); console lane merged from its worktree (`561485d0e`, worktree removed after the merge and the post-merge gates); session continuity R9–R11 (`cbbe5c257`); cadence knob into the registry (`8320ea15c`); measurement harness (`d54dc03ab`). Gates: `@arcaai/applications` 12660 passed, `@arcaai/domains` 1910 passed, `@arcaai/database` 1726 passed (1 PRE-EXISTING TASK-938 ASR-default failure, spun off), `@arcaai/admin-console` 2796 passed + lint + typecheck clean, `pnpm typecheck:all` 0 errors, `pnpm env:sync:check` OK. Two fixes were found by MUTATION testing rather than assumed: the turn guard, and the R11 race test (whose first two versions passed with the fix reverted — it had to move to the LEGACY lane and stop reading `prompts.at(-1)`). **Outstanding: the replay numbers against the owner's recording (needs the local stack), and the five API artifacts (deferred to the concurrent session that is adding a route).** |
+
+### 6.4 The replay, actually run (2026-09-10)
+
+Run against the owner's recording through the full local stack — gateway, STT, TEXT, guardrail, NLP
+and LM Studio serving `gemma-4-e2b-it-qat`, the model the seeded agent names.
+
+Two workarounds were needed and are worth knowing:
+
+- the **test** Postgres/Redis ports (5433/6380) were held by the owner's ALaaS dev stack, so the run
+  went against the **dev** gateway (`SKIP_DB_PRECHECK=true RESET_DB=false API_URL=…:8868/api/v1`);
+- `streaming.helper.ts` defaults `STREAM_E2E_AGENT_SLUG` to `example-transcription`, which the dev
+  seed does not carry — it seeds `realtime-transcription`. Without the override the session creation
+  404s and the spec SKIPS. Both are documented in the spec header now.
+
+**Result, full 13 m 18 s, fed in real time:**
+
+```json
+{ "replaySeconds": 798, "churnedChars": 0, "patchCount": 5, "sectionCount": 4,
+  "cleanAppends": 5, "replacements": 0, "violations": [] }
+```
+
+Aggregated over 59 flushes across the session set: **churn 0 in every flush**, `turnDegraded` **0**
+(the model emits TURNS, never the whole document — the contract holds against a real model), and the
+guard **refused 4 real attempted rewrites**. That last number is the one that matters most: without
+the `revision`-needs-a-`contradiction` guard, those four would have been churn.
+
+### 6.5 What the run found that 12,697 unit tests could not
+
+**A `"null"` string is not clinical content.** The model answered `{"addition": "null"}` — the STRING
+— for sections it had nothing to say about, and the fold appended it. The persisted note read:
+
+```
+null
+
+Patient reported a complaint related to cancer.
+```
+
+The accumulation invariant held *perfectly* throughout — churn 0, every patch a clean append — which
+is precisely why neither the churn metric nor the unit suite could catch it. Only opening the note
+could. Fixed narrowly (`abe033e7a`): a value is rejected only when its entire trimmed text is `null`
+or `undefined`; `N/A`, `None` and `Nil` are clinical shorthand and are explicitly preserved.
+
+It also surfaced the defect that became **TASK-943** — the realtime lane published no `trigger` root,
+so every seeded agent's clinical variables were unresolvable and the case note had never generated at
+all, on any run, ever.
+
+### 6.6 Why the note is SPARSE, and what that is not
+
+After the `"null"` fix the replay produces a near-empty note and the spec FAILS its own
+"no section.patch was published" guard. That guard is correct and should stay: silence over a busy
+feed is a broken setup, never a pass.
+
+The cause is the recording, not the code. Probed directly with the turn schema and a clinical
+paragraph, the same model answers exactly as designed:
+
+```json
+"subjective": { "addition": "Patient reports a 3-day dry cough and fever starting last night. Denies chest pain.", "revision": null, "contradiction": null }
+"objective":  { "addition": null, "revision": null, "contradiction": null }
+```
+
+Real content where there is some, proper JSON `null` elsewhere. The owner's file is a
+communication-skills teaching recording about breaking bad news — 161 ASR finals and a 3.4 KB
+transcript, but almost no symptom-gathering for a SOAP note to hold. The one real sentence it did
+produce ("Patient reported a complaint related to cancer.") is consistent with that.
+
+**So: a CI-usable regression fixture needs a recording of an actual history-taking consultation.**
+Swapping to a medical-tuned model (`gemma-4-e2b-it-sft-rlvr-medical`) changed nothing, which is the
+evidence that the limit is the content rather than the model.
