@@ -232,11 +232,42 @@ class TestResultPublisherTraceInjection:
             await publisher.publish_provider_switched(
                 from_pipeline="a", to_pipeline="b", reason="auto"
             )
+            # TASK-946 — the degraded status is a status entry like the others, so it
+            # carries the trace context like the others.
+            await publisher.publish_degraded(reason="script_mismatch", utterance_index=3)
         finally:
             _detach(token)
 
         assert all(f[TRACEPARENT_HEADER] == GOLDEN_TRACEPARENT for _k, f in redis.writes)
-        assert len(redis.writes) == 3
+        assert len(redis.writes) == 4
+
+    @pytest.mark.asyncio
+    async def test_task946_degraded_reuses_the_status_type_and_carries_no_text(self) -> None:
+        """OD-1's sibling signal. It rides the EXISTING `status` result type — the bridge
+        already projects `reason` and `utterance_index` onto the client-facing status
+        frame — so the caller learns the session degraded with zero protocol change, and
+        the entry carries no transcript."""
+        redis = _CapturingRedis()
+        publisher = ResultPublisher(redis, "s1", maxlen=100)
+
+        await publisher.publish_degraded(reason="script_mismatch", utterance_index=7)
+
+        _key, fields = redis.writes[0]
+        assert fields["type"] == "status"
+        assert fields["status"] == "degraded"
+        assert fields["reason"] == "script_mismatch"
+        assert fields["utterance_index"] == "7"
+        assert set(fields) == {"type", "status", "reason", "utterance_index"}
+
+    @pytest.mark.asyncio
+    async def test_task946_degraded_omits_the_utterance_index_when_absent(self) -> None:
+        redis = _CapturingRedis()
+        publisher = ResultPublisher(redis, "s1", maxlen=100)
+
+        await publisher.publish_degraded(reason="script_mismatch")
+
+        _key, fields = redis.writes[0]
+        assert "utterance_index" not in fields
 
     @pytest.mark.asyncio
     async def test_no_transcript_text_ever_reaches_the_carrier(self) -> None:

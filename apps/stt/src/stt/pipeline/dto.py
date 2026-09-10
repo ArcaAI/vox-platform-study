@@ -793,6 +793,14 @@ class InferenceConfig:
     # TASK-861 — agent hotwords (ResolvedAsrSpec.instruction.hotwords). Carried
     # for engines that accept them; not yet wired into every adapter.
     hotwords: list[str] = field(default_factory=list)
+    # TASK-946 (OD-1) / TASK-937 R-4 — `ResolvedAsrSpec.decoding.hotwordsInPrompt`.
+    # whisper.cpp has no hotword API, so the only way to bias it toward a term is to
+    # list the terms in the `initial_prompt`. On the seeded ml-en fine-tune that append
+    # is what turns an English consultation into Malayalam script (measured: 100 % Latin
+    # with no prompt, 2 % with the priming prompt + agent prompt + these terms), so the
+    # ENGINE DEFAULT is OFF and a model row that tolerates the append opts in. The terms
+    # themselves are unaffected — `hotwords` above still feeds the lexicon stage.
+    hotwords_in_prompt: bool = False
     prev_text_context_words: int = 50
     enable_prev_text_context: bool = True
     condition_on_prev_tokens: bool = False

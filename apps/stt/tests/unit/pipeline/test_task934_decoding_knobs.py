@@ -111,6 +111,9 @@ def test_the_tuned_fixture_case_maps_the_whole_resolved_profile(tuned) -> None:
     assert inference.initial_prompt_text is not None
     assert "Malayalam" in inference.initial_prompt_text
     assert inference.hotwords == ["ceftriaxone", "amoxicillin"]
+    # TASK-946 (OD-1) — this row opts IN to the hotword prompt, so the switch rides the
+    # same fold and lands on the field the whisper.cpp adapter reads.
+    assert inference.hotwords_in_prompt is True
     # OD-4 — the agent's partial-window override arrives as the EFFECTIVE geometry, so
     # the runtime reads it where it always read the row's.
     assert _spec(tuned).streaming.partial_window_s == pytest.approx(15.0)
@@ -135,6 +138,26 @@ def test_provenance_round_trips_and_is_inert(tuned) -> None:
     # Round-trips byte-for-byte — the parity suite asserts this for every case, repeated
     # here so a change to THESE fields fails in the file that owns them.
     assert spec.model_dump(by_alias=True, mode="json") == tuned
+
+
+def test_hotwords_in_prompt_defaults_off_when_no_tier_declared_it(platform_default) -> None:
+    """TASK-946 (OD-1) — absent is the SAFE state, and it is the one a silent row gets.
+
+    The dataclass stays the one source of that default, exactly as for the six knobs
+    above; what makes this one load-bearing is that the default it protects is the
+    difference between a readable English transcript and Malayalam script.
+    """
+    assert "hotwordsInPrompt" not in platform_default["decoding"]
+    assert _inference(platform_default).hotwords_in_prompt is False
+    assert InferenceConfig().hotwords_in_prompt is False
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_an_explicit_hotwords_in_prompt_reaches_the_inference_config(
+    platform_default, value: bool
+) -> None:
+    platform_default["decoding"]["hotwordsInPrompt"] = value
+    assert _inference(platform_default).hotwords_in_prompt is value
 
 
 def test_an_undeclared_decoding_key_is_still_a_contract_drift(platform_default) -> None:

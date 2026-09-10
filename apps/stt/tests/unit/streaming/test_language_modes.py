@@ -167,40 +167,42 @@ def test_resolve_whisper_cpp_pair_unpinned_but_primed() -> None:
     assert "Vietnamese" in vi.initial_prompt
 
 
-def test_resolve_whisper_cpp_single_pins_and_primes() -> None:
-    """A single mode pins its language AND (TASK-938) carries its own prompt.
+def test_resolve_whisper_cpp_single_pins_and_does_not_prime() -> None:
+    """TASK-946 (OD-2) — a single mode PINS its language and carries no prompt.
 
-    The pin is what the mode is for; the prompt tells a code-switch fine-tune to
-    stay in the pinned language rather than drifting into the other one. ``auto``
-    is neither pinned nor primed — it is the deliberate "let the model decide"."""
+    The pin is what the mode is for. The prompt on top of it was TASK-938's; measured
+    in isolation on the owner's recording it kept the script Latin but lost 43 % of the
+    content and echoed its own instruction text ("...and English") into the transcript,
+    which is exactly the failure mode TASK-891 A3 predicted for an instruction-shaped
+    ``initial_prompt``. ``auto`` is neither pinned nor primed — it is the deliberate
+    "let the model decide"."""
     en = resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert en.language == "en"
-    assert en.initial_prompt is not None
-    assert "English" in en.initial_prompt
-    assert "Malayalam" not in en.initial_prompt
+    assert en.initial_prompt is None
 
     ml = resolve_mode_for_engine("ml", AiModelFormat.WHISPER_CPP)
     assert ml.language == "ml"
-    assert ml.initial_prompt is not None
-    assert "Malayalam" in ml.initial_prompt
+    assert ml.initial_prompt is None
 
     auto = resolve_mode_for_engine("auto", AiModelFormat.WHISPER_CPP)
     assert auto.language is None
     assert auto.initial_prompt is None
 
 
-def test_task938_both_priming_prompts_default_on() -> None:
-    """TASK-891 A3 made the ONE kill-switch TWO; TASK-938 turned both ON.
+def test_task946_only_the_pair_priming_prompt_ships_on() -> None:
+    """TASK-891 A3 made the ONE kill-switch TWO; TASK-938 turned both ON; OD-2 turns
+    the SINGLE-language one back OFF and leaves the PAIR one ON.
 
-    They stay two switches for the reason A3 gave — the pair prompt and the
-    single-language prompt are different experiments and must be flippable apart
-    (the two tests below prove they still are). This assertion is the SHIPPED
-    state, deliberately pinned so a change of decode behaviour is a visible test
-    edit and not a silent one."""
+    They stay two switches for the reason A3 gave — they are different experiments and
+    must be flippable apart (the two tests below prove they still are). The pair prompt
+    is a code-switch pair's ONLY bias correction and has not been measured on this
+    fine-tune, so it is untouched pending its own A/B. This assertion is the SHIPPED
+    state, deliberately pinned so a change of decode behaviour is a visible test edit
+    and not a silent one."""
     import stt.pipeline.language_modes as lm
 
     assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is True
-    assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is True
+    assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is False
 
 
 def test_task891_pair_priming_prompt_is_independently_switchable(
@@ -218,7 +220,7 @@ def test_task891_pair_priming_prompt_is_independently_switchable(
     assert "Malayalam" in pair.initial_prompt
     assert "English" in pair.initial_prompt
 
-    # The single-language switch is untouched, so a declared language still
+    # The single-language switch was set OFF above, so a declared language still
     # reaches the decoder as a pin and nothing else.
     single = lm.resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert single.language == "en"
@@ -277,3 +279,38 @@ def test_catalog_payload_shape() -> None:
     assert ml_en["primaryLanguage"] == "ml"
     assert ml_en["secondaryLanguage"] == "en"
     assert AiModelFormat.SARVAM.value in ml_en["supportedEngines"]
+
+
+def test_task946_latin_script_membership_comes_from_the_catalog() -> None:
+    """OD-2's sibling: which catalog languages are written in the Latin alphabet.
+
+    ``None`` is not Latin-script on purpose — auto-detect and an unpinned code-switch
+    pair declare no language, so there is no pin for a decode to contradict."""
+    import stt.pipeline.language_modes as lm
+
+    assert lm.is_latin_script_language("en") is True
+    assert lm.is_latin_script_language("vi") is True
+    assert lm.is_latin_script_language("EN") is True
+    assert lm.is_latin_script_language("en-US") is True
+    assert lm.is_latin_script_language("ml") is False
+    assert lm.is_latin_script_language(None) is False
+    assert lm.is_latin_script_language("") is False
+    # Every single-language catalog entry is classified one way or the other.
+    for mode in lm.LANGUAGE_MODE_CATALOG:
+        if mode.kind == "single":
+            assert isinstance(lm.is_latin_script_language(mode.primary_language), bool)
+
+
+def test_task946_latin_letter_ratio_counts_letters_only() -> None:
+    """Diacritics are Latin; digits and punctuation do not vote; empty is not a miss."""
+    from stt.pipeline.language_modes import latin_letter_ratio
+
+    assert latin_letter_ratio("The patient reports severe chest pain.") == 1.0
+    # Vietnamese is Latin-script and mostly non-ASCII — an `isascii()` test would call
+    # a correct `vi` transcript foreign and fire the tripwire this feeds.
+    assert latin_letter_ratio("Bệnh nhân bị đau ngực dữ dội") == 1.0
+    assert latin_letter_ratio("രോഗിക്ക് നെഞ്ചുവേദന ഉണ്ട്") == 0.0
+    assert 0.7 < latin_letter_ratio("patient രോഗി") < 0.8
+    # No letters at all ⇒ no evidence of a foreign script.
+    assert latin_letter_ratio("12:30 ... ") == 1.0
+    assert latin_letter_ratio("") == 1.0

@@ -29,6 +29,7 @@ up); if no configured engine qualifies, the create request is rejected (422).
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
@@ -223,21 +224,96 @@ def build_single_language_prompt(language: str) -> str:
 #   token, so it is largely redundant and mostly adds the risk that Whisper
 #   transcribes the instruction text into the output.
 #
-# TASK-938 (owner directive 2026-09-09) — BOTH are ON. This is the deliberate
-# A/B the note above asked for, run against the live console rather than the
-# offline scorecard: the committed CER baseline
-# (`mlen_scorecard_baseline.json`) was captured with both flags false AND with
-# no agent `initialPrompt` applied, so "prompt off is better" was never measured
-# against the configuration production actually runs. Turning them on gives the
-# unpinned `ml-en` pair its only bias correction back, and gives a pinned single
-# language a prompt that tells a code-switch fine-tune to stay in it.
+# TASK-938 (owner directive 2026-09-09) turned BOTH on as the deliberate A/B the
+# note above asked for, run against production rather than the offline scorecard.
 #
-# These remain DECODE-QUALITY switches: a capture that turns them on needs its
-# own baseline entry (window_s alone does not distinguish prompt state — see the
-# scorecard's own `_note`). Flip one at a time when measuring; the behaviour of
-# each is covered by its own test.
+# TASK-946 (OD-2, 2026-09-10) is that A/B's verdict, and it splits the two. Measured
+# offline on the owner's English recording against the served f16 GGUF (7 s spans,
+# `language=en`, temperature 0, the same audio in every arm):
+#
+#   no prompt                                 648 letters, 100 % Latin
+#   agent `initialPrompt` only                623 letters, 100 %
+#   SINGLE-language priming prompt only       371 letters, 100 % — 43 % of the content
+#                                             gone, and the prompt echoed into the text
+#   priming + agent prompt                    151 letters,  99 %
+#   hotwords only                             416 letters,  80 % ("carcinoid" ×30)
+#   priming + agent + hotwords (production)   248 letters,   2 %
+#
+# So the SINGLE-language prompt is OFF. It sits on top of an already-pinned
+# `language=` token, which is what A3 predicted would make it redundant, and its
+# measured cost is the content it eats plus its own instruction text arriving in the
+# transcript. The pin alone is the mode.
+#
+# The PAIR prompt stays ON and is NOT covered by that verdict: a pair pins no
+# language, so the prompt is the code-switch mode's only bias correction, and none of
+# the arms above ran unpinned. Its own A/B on `ml-en` is TASK-946 §7.
+#
+# These remain DECODE-QUALITY switches: a capture that turns one on needs its own
+# baseline entry (window_s alone does not distinguish prompt state — see the
+# scorecard's own `_note`). Flip one at a time when measuring; the behaviour of each
+# is covered by its own test.
 WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = True
-WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = True
+WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = False
+
+
+# --- Script, per language ----------------------------------------------------
+# TASK-946 — which of the catalog's languages are written in the Latin alphabet.
+# Derived from the catalog above (`en`, `vi` Latin; `ml` Malayalam script), and kept
+# HERE rather than in the streaming worker because "what script does this language
+# use" is a property of the language catalog, not of one decode loop.
+#
+# It exists because a decode can contradict its own pin: the ml-en fine-tune, primed
+# with the wrong prompt, answers a `language=en` session in Malayalam script. That is
+# never a real transcript, so the streaming path uses this to refuse to CARRY such a
+# decode forward as decoder context and to tell the caller once (`script_mismatch`).
+LATIN_SCRIPT_LANGUAGES: frozenset[str] = frozenset({"en", "vi"})
+
+#: A final must be at least this long, in letters, before its script is judged. Below
+#: it a single stray token would swing the ratio, and a one-word final is exactly the
+#: case where a foreign proper noun is legitimate.
+SCRIPT_MISMATCH_MIN_LETTERS = 12
+
+#: Below this share of Latin letters a decode pinned to a Latin-script language is
+#: treated as contradicting its pin. Half is deliberately generous: the measured
+#: failure is 2 % Latin, and a genuinely code-mixed line sits far above 50 %.
+SCRIPT_MISMATCH_LATIN_RATIO = 0.5
+
+
+def is_latin_script_language(code: str | None) -> bool:
+    """Is *code* a catalog language written in the Latin alphabet?
+
+    ``None`` (auto-detect, or an unpinned code-switch pair) is NOT Latin-script: with
+    no pin there is nothing for a decode to contradict.
+    """
+    if not code:
+        return False
+    return code.split("-")[0].lower() in LATIN_SCRIPT_LANGUAGES
+
+
+def _is_latin_letter(ch: str) -> bool:
+    """Is *ch* a letter of the LATIN script?
+
+    Unicode's own character name is the test, not ``str.isascii()``: Vietnamese is a
+    Latin-script language and writes "chuyển" with three non-ASCII letters, so an ASCII
+    check would report a correct `vi` transcript as foreign-script and fire the very
+    tripwire this feeds.
+    """
+    return unicodedata.name(ch, "").startswith("LATIN")
+
+
+def latin_letter_ratio(text: str) -> float:
+    """Share of *text*'s LETTERS that are Latin, in ``[0.0, 1.0]``.
+
+    Digits, punctuation and whitespace are ignored, so "12:30" and "..." do not vote —
+    only alphabetic characters do. Empty (or letter-less) text returns ``1.0``: there
+    is no evidence of a foreign script, and the callers must not treat "no letters" as
+    a mismatch.
+    """
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return 1.0
+    latin = sum(1 for ch in letters if _is_latin_letter(ch))
+    return latin / len(letters)
 
 
 def _is_pair_prompt_capable(engine: AiModelFormat) -> bool:
