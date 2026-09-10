@@ -1,6 +1,6 @@
 # TASK-944 — Cold-start timeouts and secret hot-reload
 
-**Status:** Review (A, C, B1, B2 all merged to `dev-2.2`; B2 awaits in-cluster verification once BOTH halves deploy)
+**Status:** Completed (A, C, B1, B2 merged and verified in-cluster)
 **Type:** bugfix
 **Opened:** 2026-09-10
 **Found by:** live verification of the `hope-v2-dev` k3s deployment (pipeline #862, rev `50b2db5`)
@@ -781,6 +781,44 @@ resolution is removed, but its share of that figure was never isolated from
 `PyannoteEmbeddingService`'s own load in the captured logs). All three need a deploy of
 BOTH halves — see the deploy-order note above.
 
+## B2 in-cluster verification (2026-09-10, pipeline #1171 -> Argo `fe150465`)
+
+Both halves deployed (gateway sends `libraryName`, `apps/stt` selects on it).
+Gateway `0.0.0-dev-2-2.5f2314b3`.
+
+**The warm now SKIPS, at INFO, and says why** — the whole point of the lane:
+
+```
+level: info
+event:  "Skipped warming the embedding model: its runtime owns the weights"
+reason: "Model 'wespeaker-voxceleb-resnet34' declares serving library
+         'pyannote-audio', which this model cache does not load. It is executed
+         by stt.diarization.pyannote_embedding.PyannoteEmbeddingService
+         (pyannote.audio Model.from_pretrained reads config.yaml; transformers
+         cannot). This is a LOADER-SELECTION outcome, not a missing or
+         mislocated model: do not go looking for the weights."
+```
+
+**Cold streaming-session create, measured through the public gateway:**
+
+| | cold | warm |
+|---|---|---|
+| before lane A (hardcoded 15 000 ms) | `503` — STT answered `201` at 16 870 ms | — |
+| after A, before B2 | **17 340 ms** `201` (≈16.6 s of it the doomed load) | 0.4–0.5 s |
+| after B2 | **7 970 ms** `201` | **2 780 ms** |
+
+The doomed transformers resolution is gone: ~9.4 s recovered, which matches the
+9.33 s the failed warm cost in the original capture. The lane's own prediction —
+that the seconds would become *productive* rather than disappear — was wrong in a
+useful way: the work was never needed here at all, because the real loader runs
+elsewhere and the cache warm was duplicating it.
+
+LLM path unaffected: `POST /agents/example-summarization/invocations?mode=stream`
+answers `200` with `event: done`, 836 tokens, lm-studio/gemma-4-e2b-it-qat, 31.1 s
+warm (84.3 s on the first call after LM Studio's own restart).
+
+**All four lanes (A, C, B1, B2) are now verified in-cluster.**
+
 ## Change History
 
 | Date | Change |
@@ -800,3 +838,4 @@ BOTH halves — see the deploy-order note above.
 | 2026-09-10 | B2 correction to this ticket's own Lane B text: the warm failure did NOT disable the speaker-embedding stage. `pipeline_embedding_service` is built by `_get_pipeline_embedding_service`, never by the cache; the warm only lost the pin. What it cost was ~9.3 s of cold start and a WARNING that read like a broken model. |
 | 2026-09-10 | B2 gates recorded above: `stt:test:unit` 3329 passed / 1 pre-existing failure, `stt:lint`, `stt:typecheck`, `@arcaai/database` (1739), the cross-language ASR-spec contract (both halves), `pnpm lint` (0 errors) and the `@arcaai/applications` build all green; the one `applications` file failure proven pre-existing (test DB :5433 closed, 0 test-level failures). **Deploy-order note: the wire field is omit-when-absent, so STT deployed WITHOUT the gateway half keeps the old `format` behaviour.** Worktree left UNMERGED. |
 | 2026-09-10 | B2 merged as `227b41420`. Post-merge gates re-run on `dev-2.2`: stt unit 3329 passed, contract parity 18/18, stt lint/typecheck clean, applications build exit 0, `pnpm lint` 39/39 with 0 errors. Awaiting deploy of both halves before the in-cluster warm can be re-measured. |
+| 2026-09-10 | B2 verified in-cluster after pipeline #1171 / Argo `fe150465`: the warm skips at INFO naming the owning runtime, and cold session-create falls 17.34 s -> 7.97 s. Ticket Completed. |
