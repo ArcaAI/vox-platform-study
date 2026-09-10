@@ -35,7 +35,7 @@ import socket
 
 import httpx
 
-from hope_env.build_info import BuildInfo
+from hope_env.build_info import _UNKNOWN_SERVICE, BuildInfo
 
 logger = logging.getLogger(__name__)
 
@@ -164,12 +164,25 @@ def start_registration(
     instance_id_: str | None = None,
     interval_s: float = DEFAULT_HEARTBEAT_INTERVAL_S,
     timeout_s: float = DEFAULT_REGISTER_TIMEOUT_S,
-) -> asyncio.Task[None]:
+) -> asyncio.Task[None] | None:
     """Fire-and-forget: schedule the initial registration + heartbeat loop as
 
     one background task and return it immediately (never awaited on the boot
     path). Cancel it with `stop_registration` on shutdown.
+
+    Returns ``None`` — and schedules nothing — when the build info is the
+    DEGRADED fallback (no ``/app/build-info.json``, ``service == "unknown"``):
+    every local dev process is in that state, has no release to register, and
+    the gateway rejected its payload on every heartbeat
+    (``service_registration.rejected``, TASK-946). ``stop_registration`` already
+    accepts ``None``, so no caller needs a branch.
     """
+    if build_info.service == _UNKNOWN_SERVICE:
+        logger.info(
+            "service_registration.skipped_no_build_info",
+            extra={"version": build_info.version, "environment": environment},
+        )
+        return None
     payload = build_payload(build_info, environment, instance_id_ or instance_id())
     return asyncio.create_task(
         _run(http_client, gateway_url, service_token, payload, interval_s, timeout_s),

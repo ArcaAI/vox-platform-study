@@ -247,3 +247,67 @@ class TestHeartbeatScheduling:
         # None must never raise — a lifespan that skipped start_registration
         # (e.g. because build-info was unreadable) still calls stop unconditionally.
         await stop_registration(None)
+
+
+class _FailIfCalledTransport(httpx.AsyncBaseTransport):
+    """A transport that proves NO request was made."""
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected request to {request.url}")
+
+
+class TestDegradedBuildInfoSkipsRegistration:
+    """TASK-946 — a process with no `/app/build-info.json` (every local dev
+    process) has nothing to register: `service` is `unknown` and the gateway
+    rejects the payload on every heartbeat (`service_registration.rejected`,
+    7 per restart per process on the dev box). Skip, once, at INFO."""
+
+    def _degraded(self) -> BuildInfo:
+        return BuildInfo(
+            service="unknown",
+            version="0.0.0-dev-2-2.eec2daa1",
+            release_tag=None,
+            git_branch="dev-2.2",
+            git_commit_sha="eec2daa1f4f5c8ac3bec39893bf4921d1f91c9de",
+            build_at="1970-01-01T00:00:00.000Z",
+            ci_pipeline_id=None,
+            ci_pipeline_url=None,
+        )
+
+    async def test_unknown_service_never_posts_and_returns_none(self) -> None:
+        client = httpx.AsyncClient(transport=_FailIfCalledTransport())
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=self._degraded(),
+                environment="dev",
+                instance_id_="text-pod-1",
+                interval_s=0.01,
+            )
+            await asyncio.sleep(0.05)
+            assert task is None
+            await stop_registration(task)  # None is still a safe argument
+        finally:
+            await client.aclose()
+
+    async def test_real_build_info_still_registers(self) -> None:
+        transport = _RecordingTransport(lambda request: httpx.Response(202, json={"ok": True}))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="text-pod-1",
+                interval_s=9999,
+            )
+            await asyncio.sleep(0.05)
+            assert task is not None
+            assert len(transport.calls) == 1
+        finally:
+            await stop_registration(task)
+            await client.aclose()

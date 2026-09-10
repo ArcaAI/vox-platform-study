@@ -155,3 +155,4 @@ default, never an invented one.
 | Date | Change |
 |---|---|
 | 2026-09-10 | Raised from the TASK-939 replay. Owner chose option (a) — wire the declared context rather than stub `language` — and said go. |
+| 2026-09-10 | **Correction from TASK-946.** The verification run cited here (`patchCount 5, sectionCount 4`) executed on the ASR decode configuration of `e3d61eefb`, which an offline A/B and a single-session live probe show produces ~2 % Latin script on this English recording; no transcript was read. The `trigger` root fix itself holds (zero `prompt_variable_unresolved` across three later trials), but "proven end to end" over-claims. Two gaps this ticket left are now TASK-946 D1 (the DURABLE lane publishes `trigger` flattened, so the seeded `trigger.context.visit_type` never evaluates there — `n_visit` errors "no such key: 'context'" on both branches in all 11 ArcaAI graphs) and OD-3 (the live handoff carries no `visit_type`/`current_department`/`language`). |
