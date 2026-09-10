@@ -245,12 +245,16 @@ describe('everything that legitimately resolves NOTHING', () => {
   });
 
   it('a value that is not a string — the payload schema already ruled on its type', async () => {
-    await service('machine').invokeText(
-      agent(frozen(SOLE_KIND_SCHEMA, { kindKey: 'context', field: 'consultant_id' })),
-      TENANT,
-      { text: 'summarise', context: { context: { consultant_id: 4471 } } },
-      'blocking',
-    );
+    // The frozen payload schema types the property as a string, so the CONTEXT GATE refuses the
+    // request (400) before identity resolution is ever reached: nothing resolves, nothing provisions.
+    await expect(
+      service('machine').invokeText(
+        agent(frozen(SOLE_KIND_SCHEMA, { kindKey: 'context', field: 'consultant_id' })),
+        TENANT,
+        { text: 'summarise', context: { context: { consultant_id: 4471 } } },
+        'blocking',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(resolveOrProvision).not.toHaveBeenCalled();
   });
@@ -304,7 +308,7 @@ describe('ordering: after the context gate, before the model', () => {
     // Answering as though the field had not been sent would run the agent under no acting user
     // and leave nothing behind saying a clinician was named.
     await expect(
-      service('machine', undefined).invokeText(
+      service('machine', null).invokeText(
         agent(frozen(SOLE_KIND_SCHEMA, { kindKey: 'context', field: 'consultant_id' })),
         TENANT,
         { text: 'summarise', context: { context: { consultant_id: 'DR-4471' } } },
@@ -317,7 +321,7 @@ describe('ordering: after the context gate, before the model', () => {
 
   it('an unwired resolver is IRRELEVANT when the schema declares no marker', async () => {
     // The 503 is about a request that carries an identity, not about the dependency existing.
-    await expect(service('machine', undefined).invokeText(agent(frozen(SOLE_KIND_SCHEMA)), TENANT, { text: 'summarise' }, 'blocking')).resolves.toMatchObject(
+    await expect(service('machine', null).invokeText(agent(frozen(SOLE_KIND_SCHEMA)), TENANT, { text: 'summarise' }, 'blocking')).resolves.toMatchObject(
       { text: 'ok' },
     );
   });

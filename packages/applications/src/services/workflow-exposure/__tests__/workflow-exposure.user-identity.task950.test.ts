@@ -296,7 +296,7 @@ describe('ordering: before the run row and the dispatch', () => {
       definition(compiledWith(withMarker({ kindKey: 'context', field: 'consultant_id' }))),
     );
 
-    await expect(build(undefined).invoke('triage_flow', { input: { context: { consultant_id: 'DR-4471' } } }, {})).rejects.toBeInstanceOf(
+    await expect(build(null).invoke('triage_flow', { input: { context: { consultant_id: 'DR-4471' } } }, {})).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
 
