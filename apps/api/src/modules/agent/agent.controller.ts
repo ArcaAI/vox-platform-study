@@ -89,6 +89,11 @@ export interface AgentTextInvocationResponse {
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+  /**
+   * TASK-947 (OD-11) — which prompt fragments of a COMPOSITE instruction this call ran, KEYS
+   * only; `null` for the two single-body forms. Never a condition string or a fragment body.
+   */
+  promptFragments: { selected: string[] } | null;
 }
 
 /**
@@ -302,6 +307,7 @@ export class AgentController {
       provider: result.provider,
       model: result.model,
       usage: result.usage,
+      promptFragments: result.promptFragments ?? null,
     };
     res.status(HttpStatus.OK).json(payload);
   }
