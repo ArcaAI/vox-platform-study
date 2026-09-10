@@ -8,6 +8,8 @@ export interface User extends BaseResource {
   externalId?: string;
   isServiceAccount: boolean;
   UserRoleAssignments?: UserRoleAssignment[];
+  /** e.g. `['auto-provisioned']` on a user HOPE created from a context-schema identity field (TASK-950). */
+  tags?: string[];
 }
 
 export interface CreateUserRequest {
@@ -101,6 +103,8 @@ export interface UserProfile extends BaseResource {
   phone?: string;
   avatarId?: string;
   preferredPromptTemplateId?: string;
+  /** Tenant staff identifier (TASK-950) — unique per tenant; `null` means cleared. */
+  staffId?: string | null;
   userId: string;
 }
 
@@ -111,6 +115,8 @@ export interface UpdateUserProfileRequest {
   phone?: string;
   avatarId?: string;
   preferredPromptTemplateId?: string | null;
+  /** `null` clears it. Omit to leave the current value untouched. */
+  staffId?: string | null;
 }
 
 export interface VoiceProfile {
