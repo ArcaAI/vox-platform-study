@@ -178,8 +178,32 @@ export interface InspectorPanelProps {
  * resolve the producing socket and run the compatibility check.
  */
 
+/**
+ * TASK-949 D-8 — one path convention, so a finding can find its field.
+ *
+ * A `WorkflowFinding.path` is documented as (and emitted as) a JSON POINTER —
+ * `/overrides/generation/temperature` (`publish-findings.ts`) — while a `FieldDescriptor.path` is
+ * DOTTED, `overrides.generation.temperature` (`schema-form.ts`). The two were compared with
+ * `===`, so no pointer-shaped finding ever matched a field and `OVERRIDE_OUT_OF_RANGE` /
+ * `GUARDRAIL_OPTED_OUT` fell silently into the graph-level bucket. Normalizing the pointer form
+ * onto the descriptor form fixes both the field lookup and the graph-level residue, which must
+ * agree or a matched finding renders twice.
+ *
+ * A path that is already dotted is returned unchanged, so findings emitted in either convention
+ * land on the same field.
+ */
+function normalizeFindingPath(path: string | undefined): string {
+  if (!path) return '';
+  if (!path.startsWith('/')) return path;
+  return path
+    .slice(1)
+    .split('/')
+    .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+    .join('.');
+}
+
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
-  return problems.filter((problem) => (problem.path ?? '') === path).map((problem) => problem.message);
+  return problems.filter((problem) => normalizeFindingPath(problem.path) === path).map((problem) => problem.message);
 }
 
 function flattenPaths(descriptors: FieldDescriptor[]): string[] {
@@ -430,7 +454,7 @@ export function InspectorPanel({
     // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
     const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
     const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
-    const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
+    const graphLevelErrors = problems.filter((problem) => !knownPaths.has(normalizeFindingPath(problem.path)));
 
     // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
     // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
@@ -517,7 +541,7 @@ export function InspectorPanel({
             descriptor={descriptor}
             config={node.config}
             onConfigChange={onConfigChange}
-            errors={errorsForPath(problems, descriptor.path)}
+            errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
           />
@@ -528,7 +552,7 @@ export function InspectorPanel({
             descriptor={descriptor}
             config={node.config}
             onConfigChange={onConfigChange}
-            errors={errorsForPath(problems, descriptor.path)}
+            errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
             fieldOverrides={fieldOverrides}
