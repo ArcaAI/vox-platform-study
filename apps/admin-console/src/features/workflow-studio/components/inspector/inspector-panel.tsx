@@ -77,6 +77,7 @@ import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
 import { AgentPickerField } from './agent-picker-field';
+import { AgentSummarySection } from './agent-summary-section';
 import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer, type FieldRenderContext } from './field-renderers';
@@ -506,6 +507,10 @@ export function InspectorPanel({
             disabled={readOnly}
           />
         ) : null}
+        {/* TASK-949 L1 — what the referenced agent actually is: model, fallbacks and its
+            task-typed hyper-parameters, projected from the SAME `useAgentOptions` payload the
+            picker reads. Read-only: the node references an agent, it does not own it. */}
+        {isCoreAgent ? <AgentSummarySection agent={referencedAgent} config={node.config} /> : null}
         {isCoreTrigger ? (
           <ContextSchemaRefField
             idPrefix={node.id}
