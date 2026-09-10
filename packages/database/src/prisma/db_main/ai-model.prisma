@@ -23,7 +23,7 @@
 // `NOT_APPLICABLE` for availability.
 //
 // No FK from the pipeline surface — models are referenced by slug in pipeline
-// YAML and by `AiTaskDefault.modelSlug`; the ONE exception is
+// YAML; the ONE exception is
 // `AiRoutingPolicy.modelId` (see the relation comment below).
 // =============================================================================
 
@@ -188,7 +188,7 @@ model AiModel {
   //
   // Historically: "NO RELATIONS — models are referenced by slug in pipeline
   // YAML". That convention still holds for the PIPELINE surface (AsrPipeline
-  // stages, harness weight lookups) and for `AiTaskDefault.modelSlug`.
+  // stages, harness weight lookups).
   //
   // makes ONE exception, deliberately: `AiRoutingPolicy.modelId` is a
   // real FK, because finding F-6 identified the by-slug join as the mechanical

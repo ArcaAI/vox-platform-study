@@ -1,6 +1,6 @@
 /**
  * TASK-862 — `AiRoutingPolicyService.resolveDefault`, the one "default model
- * for non-agent task X" resolution `AiTaskDefaultService` now fronts.
+ * for non-agent task X" resolution.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';

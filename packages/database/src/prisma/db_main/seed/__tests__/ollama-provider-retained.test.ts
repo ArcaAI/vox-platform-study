@@ -29,7 +29,7 @@
  *
  * The pair is the whole point. A provider with no catalog rows is not a
  * contradiction here — it is BYO: the model id arrives from the tenant's own
- * `AiModel` row / `AiTaskDefault`, never from a platform-seeded default.
+ * `AiModel` row / `AiRoutingPolicy`, never from a platform-seeded default.
  */
 
 import { describe, it, expect } from 'vitest';

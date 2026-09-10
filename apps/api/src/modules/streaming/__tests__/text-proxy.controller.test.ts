@@ -961,7 +961,7 @@ describe('TextProxyController', () => {
   });
 
   // The guardrail listing reads ENABLED GUARDRAIL registry rows and
-  // marks the effective `guardrail.validate` default (AiTaskDefault cascade).
+  // marks the effective `guardrail.validate` default (AiRoutingPolicy cascade).
   // NO upstream probe: an empty registry simply means "not configured".
   describe('GET /text/guardrail-providers (registry-backed)', () => {
     it('groups ENABLED GUARDRAIL rows by provider and marks the effective guardrail.validate default', async () => {

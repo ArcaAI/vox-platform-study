@@ -11,7 +11,7 @@ import { isCloudByoProvider } from '../ai-provider-connection/constants';
  * `Record<string, unknown>` (`CompiledNode.config` in
  * `@arcaai/workflow-contract`'s `compiler.ts`) — this scans it for the
  * ESTABLISHED `provider` field-naming convention already used across the
- * codebase (`TextGenerateRequest.provider`, `AiTaskDefault.provider`,
+ * codebase (`TextGenerateRequest.provider`, `AiRoutingPolicy.provider`,
  * `AiProviderConnection.provider`) rather than inventing a new signal.
  * `CLOUD_BYO_PROVIDERS`/`isCloudByoProvider` (`ai-provider-connection/constants.ts`)
  * is the SAME authoritative cloud-vs-local classification the BYO-credential

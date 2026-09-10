@@ -9,7 +9,7 @@
 // the cascade, and NOT a place to add fields — a value that has no home on
 // `TenantStorageConfig` does not belong here (D-2: never invent a third home).
 //
-// This mirrors how `models.*` resolves: `EffectiveSettingsService` delegates to
+// This mirrors how `models.*` resolved: `EffectiveSettingsService` delegated to
 // `AiTaskDefaultService` rather than re-implementing data access, because the
 // service that owns the table owns the semantics.
 //

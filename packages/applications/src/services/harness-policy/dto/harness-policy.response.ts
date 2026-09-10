@@ -68,7 +68,7 @@ export class HarnessPolicyResponse {
   textModel: string | null;
 
   // ── LLM-as-judge selection (resolved from the SYSTEM-only
-  // `harness.judge` AiTaskDefault; SUPER_ADMIN-managed). The harness worker's
+  // `harness.judge` routing election; SUPER_ADMIN-managed). The harness worker's
   // `fetch_policy` activity reads these to pick the judge backend; null on both
   // ⇒ the harness falls back to its env/code judge default. `judgeProvider` is
   // normalised to a harness `JudgeProvider` value (e.g. `lm-studio` → `openai_compat`). ──

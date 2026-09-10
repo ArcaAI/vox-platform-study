@@ -22,7 +22,8 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * A policy is the ORDERED N-way candidate chain that serves one AI task: which
  * providers, in what order, and what may happen when the first one fails. It
  * sits above `AiProviderConnection` (where a provider lives + how to
- * authenticate to it) and `AiTaskDefault` (one default model per task).
+ * authenticate to it); one-default-model-per-task resolution now lives on this
+ * service itself (`resolveDefault` — TASK-881 absorbed `AiTaskDefault`).
  *
  * ## GOVERNANCE — a super-admin-only surface over per-tenant data
  *
@@ -37,7 +38,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * permission decorator (there is no "super admin" subject), so it is enforced
  * IMPERATIVELY in `AiRoutingPolicyService` — see the per-route `AUTH-NOTE:`
  * markers below and the `SUPER_ADMIN_ONLY_TASK_PREFIXES` precedent in
- * `AiTaskDefaultService`.
+ * `ai-routing-policy/constants.ts`.
  *
  * The two failure modes stay distinct: a caller who is not a super admin gets
  * **403** (a privilege rule on a resource they are addressing legitimately); a

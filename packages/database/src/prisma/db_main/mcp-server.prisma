@@ -5,7 +5,7 @@
 // clinical documentation harness may call out to over the MCP streamable-HTTP
 // transport (AD-5). It is a STANDARD tenant-scoped config model (tenantId +
 // resourceStatus soft-delete + _version OCC + audit), mirroring AiModel /
-// AiTaskDefault — NOT the telemetry posture of AgentTrajectoryStep.
+// AiRoutingPolicy — NOT the telemetry posture of AgentTrajectoryStep.
 //
 // Posture (deliberate, security-load-bearing):
 //   - SYSTEM-tenant rows only, initially: servers are registered by a global

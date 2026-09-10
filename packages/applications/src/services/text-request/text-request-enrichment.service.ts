@@ -24,7 +24,7 @@ import { readAgentReasoning, reasoningExtra } from '../agent/agent-reasoning';
  * fail-open/fail-closed semantics live.
  *
  * Model IDENTITY is deliberately NOT here: the proxy resolves it through
- * `HarnessPolicyService`, the prompt-test path through `IAiTaskDefaultService`.
+ * `HarnessPolicyService`, the prompt-test path through `TextAgentResolverService`.
  * Which model to run is each caller's own concern.
  */
 @Injectable()

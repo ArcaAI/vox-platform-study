@@ -7,7 +7,7 @@
 // `null` FOREVER. Three Phase-2 lanes hit that wall independently.
 //
 // The fix is a DISPATCH branch, not a new store: each key family goes to the
-// service that owns its table, exactly as `models.*` delegates to
+// service that owns its table, exactly as `models.*` delegated to
 // `AiTaskDefaultService`. This file pins the properties that make the branch
 // safe to widen later.
 

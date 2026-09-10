@@ -312,7 +312,7 @@ enum ResourceType {
 
   // Tenant NLP task instructions. Tenant-writable topic/intent
   // instruction content for `nlp.topic`/`nlp.intent` — deliberately separate
-  // from AiTaskDefault's model-selection governance (see
+  // from AiRoutingPolicy's model-selection governance (see
   // tenant-nlp-task-instructions.prisma). Emitted as audit `resourceType` by
   // TenantNlpTaskInstructionsService.broadcastSysEvent.
   TenantNlpTaskInstructions

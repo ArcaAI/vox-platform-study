@@ -311,7 +311,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
 });
 
 // The route runs TWO models — a symptom-extraction NER feeding a
-// disease classifier — so it resolves TWO AiTaskDefault keys and injects both.
+// disease classifier — so it resolves TWO AiRoutingPolicy keys and injects both.
 // Before this, only `nlp.diagnosis` was injected and the NER half ran a
 // hardcoded `blaze999/Medical-NER` literal inside apps/nlp, which made half of
 // a clinical route un-configurable. `nlp.ner` is the SAME key the playground

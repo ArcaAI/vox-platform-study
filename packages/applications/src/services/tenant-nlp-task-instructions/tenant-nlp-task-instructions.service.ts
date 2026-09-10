@@ -13,12 +13,12 @@ import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsReque
 /**
  * Tenant-writable topic/intent instruction content service.
  *
- * Deliberately separate from `AiTaskDefaultService`: this table carries
+ * Deliberately separate from `AiRoutingPolicyService`: this table carries
  * tenant-authored CONTENT for `nlp.topic`/`nlp.intent` only, never a
  * `modelSlug`, and is NOT under the `nlp.*` super-admin-only write lock —
  * an ordinary tenant admin (`manage:TenantNlpTaskInstructions`, enforced by
  * the gateway controller's authorization decorator) owns these rows. Model
- * selection for these two task keys still resolves through `AiTaskDefault`
+ * selection for these two task keys still resolves through `AiRoutingPolicy`
  * under its unmodified lock.
  */
 @Injectable()

@@ -164,7 +164,7 @@ export type AiModelServedBy = (typeof AI_MODEL_SERVED_BY)[number];
  * must be removed"). It reverses the 2026-08-16 directive that removed the
  * provider outright. The platform ships no Ollama model because it standardises
  * on one LM Studio model; a tenant that brings its own Ollama endpoint supplies
- * its own `AiModel` row and `AiTaskDefault`. Pinned by
+ * its own `AiModel` row and `AiRoutingPolicy`. Pinned by
  * `seed/__tests__/ollama-provider-retained.test.ts`.
  */
 export const AI_MODEL_PROVIDERS = [

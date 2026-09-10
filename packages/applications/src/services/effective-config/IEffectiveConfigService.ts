@@ -205,7 +205,7 @@ export interface EffectiveConfigResponse {
    */
   settings?: Record<string, EffectiveSetting>;
   /**
-   * Model slug → weight source, for the models this service's `AiTaskDefault`
+   * Model slug → weight source, for the models this service's `AiRoutingPolicy`
    * rows select. Served only to services that materialise weights in their own
    * process; omitted (never empty) when there are none.
    */

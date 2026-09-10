@@ -101,7 +101,7 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
 
     // The guardrail engine settings (GUARDRAIL_PROVIDER /
     // GUARDRAIL_MODEL / GUARDRAIL_AZURE_DEPLOYMENT) were RETIRED: superseded
-    // by the AiTaskDefault table (guardrail.validate) + the AiModel registry.
+    // by the AiRoutingPolicy table (guardrail.validate) + the AiModel registry.
     for (const prefix of SETTING_PREFIXES) {
       for (const suffix of ['GUARDRAIL_PROVIDER', 'GUARDRAIL_MODEL', 'GUARDRAIL_AZURE_DEPLOYMENT']) {
         const key = `${prefix}_${suffix}`;

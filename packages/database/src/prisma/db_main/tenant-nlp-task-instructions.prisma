@@ -7,8 +7,8 @@
 // topic list / intent list / free-text guidance that apps/nlp's peer call to
 // `text` injects into the generation prompt.
 //
-// Deliberately a SEPARATE model from `AiTaskDefault` (ai-task-default.prisma)
-// rather than an extension of its `configJson` — `AiTaskDefault`'s
+// Deliberately a SEPARATE model from `AiRoutingPolicy` (ai-routing-policy.prisma)
+// rather than an extension of its `configJson` — `AiRoutingPolicy`'s
 // `guardrail.`/`nlp.`/`harness.` task-key prefixes are SUPER_ADMIN-ONLY
 // (MODEL/PROVIDER SELECTION governance, `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
 // packages/applications/src/services/ai-task-default/constants.ts). A
@@ -17,10 +17,10 @@
 // the two would either lock tenants out of authoring their own lists or
 // require weakening the existing model-selection lock. Model/provider
 // selection for `nlp.topic`/`nlp.intent` still resolves through
-// `AiTaskDefault` under the unmodified `nlp.*` lock; this table carries
+// `AiRoutingPolicy` under the unmodified `nlp.*` lock; this table carries
 // INSTRUCTIONS ONLY and never a `modelSlug`.
 //
-// Unlike `AiTaskDefault`/`TenantSttConfig`/`TenantTtsConfig` there is no
+// Unlike `AiRoutingPolicy`/`TenantSttConfig`/`TenantTtsConfig` there is no
 // SYSTEM-tenant platform-default row here — a topic/intent list has no
 // meaningful platform-wide default, so this model is NOT in
 // SYSTEM_SHARED_READ_MODELS (plain tenant-scoped resource, the
