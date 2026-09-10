@@ -194,30 +194,47 @@ of the same root cause.
 > "Only in graph mode: the legacy engine's contract is 'one document, global offsets', and emitting
 > section patches from it would claim a granularity it does not have."
 
-And the graph executor is **off by default**:
+And the graph executor's CODE default is off:
 
 ```ts
 // consultation-gates.constants.ts:165
 [CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY]: false,
 ```
 
-`isGraphExecutorEnabled` (`:1654-1670`) resolves tenant → SYSTEM → this code default, and every
-failure path also returns `false` ("absence resolves to the LEGACY engine, which is both fail-safe and
-today's behaviour").
+> ### ⚠ CORRECTED 2026-09-09, during implementation
+>
+> **An earlier revision of this section concluded from that code default that the incremental plane
+> does not run on a default tenant. That was wrong, and it was wrong in the direction that matters.**
+>
+> The SEED ships the row ON, into the SYSTEM tenant — the platform-configuration tier every tenant
+> inherits from (`seed/11c-consultation-gate-settings.ts:81-87`, `value: 'true'`,
+> `defaultValue: 'false'`, written at `tenantId: SYSTEM_TENANT_ID`), pinned by
+> `consultation-graph-executor-seed.test.ts` ("ships ON while leaving the fail-safe default OFF").
+>
+> The CODE default is the fail-safe for two narrow cases — an UNSEEDED environment, and an explicit
+> "reset to default" — not the effective value. Since the cascade is tenant → SYSTEM and SYSTEM
+> carries `true`, **graph mode is already the effective default on any seeded deployment.**
+>
+> Consequences: **OD-8(a) requires no flag flip — it is already satisfied**, the turn contract on the
+> graph lane is what actually runs in production, and TASK-891's "0 `DocumentSection` rows
+> cluster-wide" is explained by its own evidence (53 of 55 generations dropped stale, both survivors
+> `textFailed` with `sectionCount 0`) rather than by the plane being disabled.
+>
+> The lesson for this ticket's own method: a resolved configuration value is the CASCADE's answer, and
+> reading a code default is not reading the cascade (`09-infrastructure-devops.md`
+> §"Tenant-first resolution").
 
-**So unless a tenant has explicitly switched it on, the realtime lane is LEGACY, and on that lane
-there is no `DocumentSection` plane at all** — no rows, no `section.patch`, no per-section state
-machine, no revision gating, nothing for the clinician to confirm. The console falls through to the
-legacy branch (`case-note-column.tsx:707`), fed by `useSnapshotStream`'s `setSnapshot(parsed)`
-(`hooks.ts:257`) — a wholesale replace of the entire note object on every flush.
+`isGraphExecutorEnabled` (`:1654-1670`) resolves tenant → SYSTEM → that code default, and every
+failure path returns `false` ("absence resolves to the LEGACY engine, which is both fail-safe and
+today's behaviour"). So the legacy lane is reached only by an UNSEEDED environment, a tenant that has
+explicitly opted out, or a settings-resolution failure — and on that lane there is no
+`DocumentSection` plane at all: no rows, no `section.patch`, no per-section state machine, nothing for
+the clinician to confirm. The console falls through to the legacy branch
+(`case-note-column.tsx:707`), fed by `useSnapshotStream`'s `setSnapshot(parsed)` (`hooks.ts:257`) — a
+wholesale replace of the entire note object on every flush.
 
-That is the owner's symptom in its most literal form: on a default deployment the case note really is
-torn down and re-rendered whole, every ~21 s, because **the only incremental machinery in the system
-is behind a flag that is off**. It is also consistent with TASK-891 §2.1's observation that
-`core."DocumentSection"` held **0 rows cluster-wide**.
-
-This changes the shape of the ticket: §2.1–§2.3 describe what the graph lane does wrong *when it
-runs*; §2.8 says that for most tenants it does not run. Both have to be answered — see OD-8.
+So §2.1–§2.3 describe what the graph lane does wrong when it runs, which under OD-8(a) is the lane
+that matters; the legacy lane keeps its pre-ticket behaviour and is out of scope by that decision.
 
 ### 2.9 The seeded prompt explicitly orders the behaviour the owner is reporting
 
@@ -349,7 +366,7 @@ reversal costs one wave, not the ticket.
 | **OD-5** | **Console confirm affordance** (R4) in this ticket, or split? | In this ticket — without it nothing ever reaches CONFIRMED and OD-3 is untestable end to end |
 | **OD-6** | **Config lane.** Move the 9 constructor-frozen `LIVE_DOC_*` knobs into registry descriptors now, or only `minIntervalMs`? | Only the cadence-relevant ones now (`minIntervalMs`); declare the rest in `turbo.json#globalEnv` and leave the migration to a config-governance ticket |
 | **OD-7** | **Test asset.** The converted 16 kHz WAV is 24.4 MB — too big to commit. Keep it out of the repo behind `STREAM_E2E_WAV`, or commit a trimmed 2–3 min excerpt as a fixture? | Env-var path for the full run **plus** a committed ~2 min excerpt so CI has something deterministic |
-| **OD-8** | **Which lane, and does the flag flip?** The incremental plane exists only in graph mode, and `consultation.realtime.graphExecutor.enabled` defaults to **`false`** (§2.8) — so most tenants have no incremental machinery in the path at all. (a) turn graph mode ON as the realtime default and fix only that lane; (b) fix graph and additionally build a section plane for legacy; (c) fix graph, leave the flag off, ship this as opt-in | **(a)**. (b) means building a second incremental plane on an engine whose own contract is "one document, global offsets" — inventing granularity it does not have. (c) leaves the reported defect in place for every default tenant. (a) needs its own rollout evidence, which the §6 harness is exactly the instrument for — so I would gate the flip on the AFTER-churn measurement, not ship it blind |
+| **OD-8** | **Which lane, and does the flag flip?** The incremental plane exists only in graph mode. (a) graph mode is the realtime default and only that lane is fixed; (b) fix graph and additionally build a section plane for legacy; (c) fix graph, leave it opt-in | **(a)**. (b) means building a second incremental plane on an engine whose own contract is "one document, global offsets" — inventing granularity it does not have. **NOTE, found during implementation:** the premise that a flip was needed was wrong — the seed already ships the gate ON at the SYSTEM tier, so (a) needed no code change at all (§2.8 correction) |
 | **OD-9** | **Session continuity (R9).** Seeding `lastPayload` from the persisted note on restart means a resumed session inherits machine text it did not produce. Accept, or scope R9 out? | Accept — the alternative is that every stop→restart silently discards the note so far, which is the same defect in a rarer costume |
 
 ## 5. Implementation Plan (on go)
@@ -484,10 +501,142 @@ pnpm --filter @arcaai/applications test → 12650 passed | 6 skipped (12656)
 The guard test was verified by MUTATION: removing the `contradiction` requirement from `applyTurn`
 failed exactly one test (`THE GUARD: a revision with no contradiction is REFUSED`) and nothing else.
 
-### Still to land
+### Wave 3E follow-up — a COLD reload now hydrates (R4, the half wave 3E could not close)
 
-OD-8(a) flag flip, the churn metric (R7), session continuity (R9–R11), the console lane (R4, in its
-own worktree) and the replay harness (R8).
+Wave 3E gave `useDocumentSectionsStream` a durable read, but could only fire it for a document the
+fold had ALREADY learned from a `section.patch`. That covers a reconnect and a stop/restart within
+one mount; it does not cover the case R4 was actually raised for — a browser reloaded mid-encounter,
+which has no fold, no keys, and therefore nothing to ask about. The keyed route
+(`GET :id/documents/:documentKey/sections`) takes the key as a PATH PARAM, and no route in the API
+enumerated a consultation's documents, so the console could not discover one. The pane sat on a
+skeleton until the next flush — the exact symptom.
+
+**Chosen fix: the gateway discovery read** (the alternative was persisting observed keys in
+`sessionStorage`).
+
+| | why |
+|---|---|
+| **Rejected** — client-side key cache | `sessionStorage` is a per-TAB cache of state the SERVER owns. It rescues only "same tab, reloaded" and fails every other resume case: a new tab, another browser or device, a second clinician opening the encounter, a cleared session, a first-ever load on that machine. It can also lie — a remembered key whose document no longer exists renders a heading with nothing behind it, and nothing on the client can tell |
+| **Chosen** — `GET :id/documents/sections` | Authoritative, works from any client, and the query ALREADY EXISTED with no caller: `DocumentSectionRepository.findByConsultation` — *"every section of every document of a consultation, ordered by `(documentKey, idx)`"* |
+
+Shape: the AGGREGATE, not a keys-only discovery route. A keys-only route forces a
+discover-then-fetch waterfall for the same data, whereas a flat `DocumentSectionResponse[]` drops
+straight into the console's existing `foldHydratedDocumentSections` — which let the hook DELETE its
+per-document `Promise.all` fan-out rather than grow one.
+
+- **Gateway** (`consultation.controller.ts#listAllDocumentSections`) — the same `verifyConsultationAccess`
+  gate, the same scope posture and the same manifest row as its keyed sibling (`svcScopes: []`,
+  API-key scope inherited): discovery is not a weaker gate, and a test pins that a caller with no
+  relationship to the consultation is refused BEFORE the service is asked anything.
+- **Service** (`DocumentSectionService.listAllSections`) — ordering belongs to the repository and the
+  service must not re-sort it. `(documentKey, idx)` is deliberate: a cold read has no stream order to
+  inherit, and a deterministic one is what makes two clients hydrating the same encounter agree.
+- **Console** — hydration now fires BLIND on mount. Documents the stream named keep their first-seen
+  position and hydrated ones are APPENDED, so a document already on screen never jumps because the
+  durable read sorts alphabetically. A 404 hydrates nothing rather than failing a pane the SSE lane
+  may still be feeding (an unwritten document answers `[]`, so 404 means "not visible", not "empty").
+
+Verified by MUTATION: restoring the `documentOrder.length > 0` gate on the hydrate query fails
+exactly the two cold-mount tests and nothing else.
+
+```
+pnpm --filter @arcaai/applications build            → clean
+pnpm --filter @arcaai/applications test             → 12662 passed | 6 skipped (12668)
+                                                      (1 live-DB integration file needs `pnpm setup:test`)
+pnpm api:build                                      → clean
+apps/api unit suite                                 → 4340 passed | 1 failed | 4 skipped
+                                                      the 1 failure is PRE-EXISTING and another lane's:
+                                                      `summary-provenance.spec.ts` expects a provenance
+                                                      DTO without `redactionApplied`. Reproduced with this
+                                                      controller change reverted. Flagged, not fixed
+pnpm --filter @arcaai/admin-console build lint test → clean; 304 files, 2797 passed
+```
+
+All five API artifacts regenerated together and their gates re-run green — `api:openapi:check`,
+`api:portal:check`, `vox-node gen:admin:check` ("no drift"). The `gen:admin` run also picked up the
+churn-metric fields another lane had committed without regenerating (`schemas.ts`), which is that
+gate's own output, not a change of this wave's making.
+
+Two things this wave did NOT do, said plainly:
+
+- **No runtime pass in a running app.** Observing hydration needs a live gateway plus a consultation
+  that already HAS flushed `DocumentSection` rows, i.e. the R8 replay — which is another lane's
+  in-flight work in this same checkout, and standing the dev stack up would take it over. The
+  behaviour is pinned by the mutation-verified hook tests and by controller/service tests either
+  side of the route; the runtime confirmation belongs with R8's harness run.
+- **No `@arcaai/vox-node` method.** The consultation plane there is hand-authored and adding
+  `hope.consultations.documents.list()` is a published-surface decision, not console scope. The
+  route is in `openapi.json` and the manifest, so the SDK can pick it up whenever that is wanted.
+
+The keyed console wrapper `listDocumentSections` was DELETED, not kept: this change orphaned it (the
+aggregate read replaced its only caller), and a caller-less client function is how the fan-out gets
+reintroduced by someone who does not know why it went. The gateway's keyed route is untouched.
+
+### Wave 3 — console (R4), merged from its own worktree
+
+Per-section **Confirm** wired to the gateway PATCH that had never had a caller (`provisional` only,
+`If-Match` from the durable GET, 412/409 surfaced as distinct toasts); the newly-appended tail
+rendered with a ring+tint emphasis rather than re-animating the whole section; hydration of the fold
+from the durable list route. Verified independently in the worktree AND again after the merge: 304
+test files / 2796 tests, `eslint --max-warnings 0` clean, `tsc --noEmit` clean.
+
+Two claims in the lane's report were checked against the tree rather than taken on trust — the
+reduced-motion treatment does rest on a real global reset (`packages/ui/src/styles/globals.css:832`
+zeroes every motion token and forces `animation-duration: 0.01ms`), and `duration-normal` is a real
+project `@utility` (`globals.css:798`), not a guessed Tailwind class.
+
+**Residual gap, accepted and spun off:** hydration reconciles only documents the fold already knows,
+so a COLD reload before any `section.patch` has ever streamed still shows a skeleton until the next
+flush. The list route is keyed by `documentKey` and nothing could enumerate a consultation's
+documents, so closing it needed a new backend discovery route — a decision the lane correctly
+declined to invent.
+
+### Wave 3 — configuration (R7)
+
+`LIVE_DOC_MIN_INTERVAL_MS` became `agentic.context.liveFlush.minIntervalMs`: resolved per flush on the
+registry's own contract (stored > env override > code default), read at the two synchronous call sites
+off `lastAgenticContext` like `idleMs` already was. It was the one cadence knob an operator would most
+want to turn and the only one that needed a redeploy.
+
+Deliberately NOT done: hand-declaring the other ~17 `LIVE_DOC_*` variables in `turbo.json#globalEnv`.
+That file is GENERATED by `scripts/env-sync.mts`; a hand edit is reverted by the next `pnpm env:sync`
+(tried, and watched it vanish). The generator misses them because they are read through
+`configService.get(...)` rather than `process.env` — a real gap, and several of those knobs are the
+same constructor freeze and belong in the registry rather than in `globalEnv`. Spun off as its own
+ticket instead of bolted on here; `pnpm env:sync:check` stays green.
+
+### Wave 4 — measurement (R8)
+
+`tests/helpers/note-churn.helper.ts` turns the requirement into a number, unit-tested (9 cases)
+including the cases that would make it LIE: out-of-order delivery sorted rather than scored as churn,
+duplicate deliveries ignored, degrade patches skipped so an outage is not counted as a rewrite, and an
+"append" that broke the prefix rule flagged as *not* a declared replace — a lying write is worse than
+an honest one. Output is PHI-free by construction.
+
+`apps/api/tests/e2e/task-939-note-accumulation-replay.spec.ts` drives a real recording through the
+real stack and asserts the invariant, attaching the report either way so a BEFORE/AFTER comparison
+needs no code reading. The feed is real-time on purpose: the cadence under test is driven by how
+transcript segments arrive over time, and a burst collapses every turn into one.
+
+> **HONEST LIMIT — this spec has NOT been executed.** Playwright's `globalSetup` requires a live
+> gateway, so NO e2e in this repo can run without the stack, and the local one is down. Verified
+> instead: it compiles (`pnpm typecheck:all`, 0 errors) and Playwright lists it; its skip conditions
+> copy the committed `test.skip(!created.ok, …)` pattern the other streaming specs use. **The
+> BEFORE/AFTER churn numbers against the owner's recording are therefore still outstanding** — that is
+> the one piece of evidence this ticket claims and has not produced.
+
+### The five API artifacts — deliberately NOT regenerated here
+
+`LiveDocSessionStatsResponse` gained five fields, so `openapi.json`, `route-manifest.json`, the two
+portal documents and `@arcaai/vox-node`'s admin schemas all need regenerating (`05-nestjs-api.md` DoD).
+They were regenerated, and then **reverted**: two OTHER sessions are working in this same checkout and
+one of them is mid-flight adding a `GET :id/documents/sections` discovery route (the console gap
+above). The regenerated artifacts therefore described a route that exists in no commit.
+
+Since that session's change ADDS a route, regenerating all five is already in its own definition of
+done, and this ticket's DTO fields are committed in source — so one regeneration there converges both.
+Committing them from here would have published a phantom route. **Until that lands, the artifacts are
+stale with respect to the five new stats fields.**
 
 ## 8. Change History
 
@@ -497,3 +646,5 @@ own worktree) and the replay harness (R8).
 | 2026-09-09 | Continuity audit returned; its three findings (C-1/C-2/C-3) re-verified here and recorded as §2.9 + R9–R11. **Its ranking was corrected**: it proposed C-1 (a resumed session never reloads the note) as the primary cause of the reported symptom, but `start()` fires on `POST :id/recording/start` — once per recording, not per turn — so partial summarizations run inside one session where `lastPayload` is intact. C-1 is a real second defect (stop→restart, pod restart, ownership handoff), not this one. Separately verified that `consultation.realtime.graphExecutor.enabled` defaults to `false`, so on a default tenant the incremental plane does not run at all (§2.8) — this reshapes OD-8. |
 | 2026-09-09 | Harness/graph audit returned; findings re-verified here. **The decisive one**: the seeded platform prompt bound to `general-medicine-summarization` literally instructs *"re-emit the whole note each time"* (`07-prompt-template.ts:1733`), contradicting the runtime operating frame in the same prompt — recorded as §2.9 and given its own **wave 0**. Also confirmed: no node/action/capability anywhere expresses "merge" as distinct from "generate" — accumulation is a prompt convention, not a mechanism (§2.10); `runGraphLane` threads `priorNote`+delta identically to legacy, so §2.2 applies to both lanes; the Python harness realtime-summary node has no prior-note input and no merge, but is retired as a node type and unreachable, so it is a reactivation hazard, not today's cause. |
 | 2026-09-09 | **Owner answered: OD-1 new ticket TASK-939, OD-2 (a), OD-8 (a), and said go.** §4 rewritten as the answer table; the six unnamed ODs taken on the recorded recommendations. Status → `In Progress`. Execution starts at wave 0. |
+| 2026-09-10 | **Wave 3E follow-up — the cold-reload half of R4.** Wave 3E's hydration could only fire for a document a `section.patch` had already named, so a true cold reload mid-encounter still showed a skeleton. Closed with the gateway DISCOVERY read `GET :id/documents/sections` (new route + `DocumentSectionService.listAllSections`, over the already-present, caller-less `DocumentSectionRepository.findByConsultation`), chosen over a `sessionStorage` key cache — a per-tab cache of server-owned state that rescues only "same tab, reloaded" and can render a heading for a document that no longer exists. The console hook now hydrates blind on mount and drops its per-document fan-out. Five API artifacts regenerated; gates green. |
+| 2026-09-09 | **Waves 0–4 implemented and merged to `dev-2.2`.** Wave 0 prompt fix (`efac0bbb2`); append mechanism (`d8f4a4394`); turn contract (`85dfd4a89`); churn metric (`f6d509880`); console lane merged from its worktree (`561485d0e`, worktree removed after the merge and the post-merge gates); session continuity R9–R11 (`cbbe5c257`); cadence knob into the registry (`8320ea15c`); measurement harness (`d54dc03ab`). Gates: `@arcaai/applications` 12660 passed, `@arcaai/domains` 1910 passed, `@arcaai/database` 1726 passed (1 PRE-EXISTING TASK-938 ASR-default failure, spun off), `@arcaai/admin-console` 2796 passed + lint + typecheck clean, `pnpm typecheck:all` 0 errors, `pnpm env:sync:check` OK. Two fixes were found by MUTATION testing rather than assumed: the turn guard, and the R11 race test (whose first two versions passed with the fix reverted — it had to move to the LEGACY lane and stop reading `prompts.at(-1)`). **Outstanding: the replay numbers against the owner's recording (needs the local stack), and the five API artifacts (deferred to the concurrent session that is adding a route).** |
