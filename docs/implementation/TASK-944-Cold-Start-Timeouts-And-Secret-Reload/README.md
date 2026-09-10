@@ -1,6 +1,6 @@
 # TASK-944 — Cold-start timeouts and secret hot-reload
 
-**Status:** Review
+**Status:** In Progress (lanes A + C done; lane B reopened as B1/B2)
 **Type:** bugfix
 **Opened:** 2026-09-10
 **Found by:** live verification of the `hope-v2-dev` k3s deployment (pipeline #862, rev `50b2db5`)
@@ -382,6 +382,75 @@ the cold start today.
 
 Neither defect is a regression from this ticket: (2) predates it, and (1) was
 previously masked because the import died before the token was ever needed.
+
+## Reopened 2026-09-10 — Lane B follow-ons (B1, B2)
+
+Lane B's ABI/import fix landed and is confirmed. It moved the failure one step
+later rather than clearing it, so speaker embedding / diarization / voice
+profiles are STILL disabled and the cold start is still ~17 s. Two defects, both
+pinned against the running cluster in the Post-deploy Verification section above.
+Neither is a regression from lane B.
+
+### B1 — `asyncio.run()` inside a running event loop
+
+`apps/stt/src/stt/diarization/embedding_service.py:52`
+
+```python
+token = asyncio.run(_resolve(None))     # called from async request context
+```
+
+`asyncio.run()` raises when a loop is already running. The coroutine is then
+never awaited (Python emits `RuntimeWarning: coroutine 'resolve_hf_token' was
+never awaited`), and the bare `except Exception` downgrades it to
+`"Could not resolve the platform HuggingFace token; continuing unauthenticated"`.
+
+So the platform HF token is **never** resolved on this path, whatever it is set
+to — `HF_TOKEN` is present in the pod env and still unused. Any gated repo would
+fail with a confusing 401 rather than the real cause.
+
+Fix the call so it works from async context. Do NOT simply widen or silence the
+`except` — the swallow is half the defect: a control-plane fault and a
+programming error currently produce the same log line.
+
+### B2 — the model identifier does not match the published repo
+
+The mount and offline mode are wired CORRECTLY (verified in-pod):
+`HF_HOME=/mnt/models-bucket/hf`, `HF_HUB_CACHE=/mnt/models-bucket/hf/hub`,
+`HF_HUB_OFFLINE=1`, and the weights ARE published at
+`/mnt/models-bucket/hf/hub/models--pyannote--wespeaker-voxceleb-resnet34-LM`.
+
+The `AiModel` row, however, is:
+
+```
+slug        wespeaker-voxceleb-resnet34
+provider    built-in
+format      PYTORCH
+_metadata   {"embedding": {"dimension": 256}}      <-- no HF repo id
+```
+
+so the loader asks the hub for the bare slug `wespeaker-voxceleb-resnet34`, which
+matches neither the Hub nor the cached directory
+(`pyannote/wespeaker-voxceleb-resnet34-LM`), and fails after ~16.6 s.
+
+**The decision this lane must make and document:** is the repo id DATA (a field on
+the `AiModel` row / its `_metadata`, seeded) or is it RESOLUTION (a loader mapping
+from a built-in slug to its canonical hub id)? Pick one and say why.
+
+**Constraint that shapes it:** the dev cluster DB is already seeded and the
+migrate Job runs with `RUN_SEED=none`, so editing the seed alone does NOT fix the
+deployed row. If the answer is data, the lane must also supply the mechanism that
+reaches an existing database (a migration or a documented backfill) — do not
+assume a re-seed. Applying anything to the live cluster is the orchestrator's
+surface, not the lane's.
+
+### Verification criteria (B1, B2)
+
+- A test proves the token resolver returns the configured token when called from
+  async context, and that a genuine control-plane fault is still tolerated but is
+  distinguishable in the logs from a programming error.
+- A test pins the resolved hub identifier for the built-in embedding model to the
+  repo that is actually published.
+- Both are hermetic — no network, no GPU, no live cluster.
 
 ## Change History
 
