@@ -64,7 +64,6 @@ import {
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  renderTemplate,
   resolveGuardrailDecision,
   type ComposableResolvedPrompt,
   type ComposedPrompt,
