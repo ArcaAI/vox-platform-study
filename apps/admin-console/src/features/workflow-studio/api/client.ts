@@ -247,7 +247,9 @@ export function listPromptTemplateVersions(promptTemplateId: string): Promise<Pr
  * paginated `{ data: [...] }` envelope or a bare array, so the picker keeps working whichever
  * shape TASK-863's admin list settles on; a 404 (route not landed yet) is the caller's fallback.
  */
-export async function listAgentOptions(task: string): Promise<AgentOption[]> {
+export async function listAgentOptions(task?: string): Promise<AgentOption[]> {
+  // TASK-949 L0 — an ABSENT task lists every task (`buildQuery` drops `undefined`). A `core.agent`
+  // node may reference an agent of any task, so filtering to one hid ASR/NER/TTS agents entirely.
   const result = await getJson<Paginated<AgentOption> | AgentOption[]>(AGENTS_PATH, { task, status: 'PUBLISHED', limit: 200 });
   return Array.isArray(result) ? result : result.data;
 }
