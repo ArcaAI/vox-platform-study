@@ -1459,6 +1459,10 @@ async def _run_text_generation(
         await record_generation_and_flush(
             payload,
             started=started,
+            # TASK-947 OD-11 — which fragments of a composite instruction ran, KEYS only, on the
+            # node step. Passed only when there is something to say, so a single-body agent's
+            # record is byte-identical to before.
+            **({"node_stats": {"prompt_fragments": prompt_fragments}} if prompt_fragments else {}),
             stats=_generation_stats(
                 result,
                 provider=provider,

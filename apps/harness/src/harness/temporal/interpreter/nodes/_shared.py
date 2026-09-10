@@ -44,11 +44,19 @@ MISSING = object()
 
 
 async def record_and_flush(
-    payload: NodeActivityInput, *, status: str, started: Any, error_code: str | None = None
+    payload: NodeActivityInput,
+    *,
+    status: str,
+    started: Any,
+    error_code: str | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> None:
     """One NODE trajectory step per node activity (mirrors `interpreter/activities.py`'s own
     seed-node helper — deliberately not imported from there to keep this package's five node
-    modules free of a dependency on the seed noop/passthrough module)."""
+    modules free of a dependency on the seed noop/passthrough module).
+
+    ``stats`` is node-level PROVENANCE (TASK-947 OD-11: ``{"prompt_fragments": [keys]}``), never
+    a billable block — the gateway bills LLM_CALL steps only (``harness-usage.mapper.ts``)."""
     batch = TrajectoryBatch(get_settings(), payload.trajectory)
     batch.record(
         step_type=STEP_NODE,
@@ -56,12 +64,17 @@ async def record_and_flush(
         status=status,
         started=started,
         error_code=error_code,
+        stats=stats,
     )
     await batch.flush()
 
 
 async def record_generation_and_flush(
-    payload: NodeActivityInput, *, started: Any, stats: dict[str, Any]
+    payload: NodeActivityInput,
+    *,
+    started: Any,
+    stats: dict[str, Any],
+    node_stats: dict[str, Any] | None = None,
 ) -> None:
     """The node step PLUS the LLM_CALL step a generation is BILLED from (F14).
 
@@ -84,6 +97,9 @@ async def record_generation_and_flush(
         name=payload.node_type,
         status=STATUS_OK,
         started=started,
+        # TASK-947 OD-11 — provenance on the NODE step only; the LLM_CALL step below keeps the
+        # billable block verbatim.
+        stats=node_stats,
     )
     batch.record(
         step_type=STEP_LLM_CALL,
