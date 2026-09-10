@@ -245,8 +245,15 @@ Two corrections, both found by reading the hits:
 live comments (`text-proxy.controller.ts` ×4, `ai-inference.controller.ts` ×2,
 `ai-routing-policy-admin.controller.ts` ×2) plus one `@ApiProperty` description that ships
 in the public OpenAPI document ("absorbed from `AiTaskDefault.configJson`"). Those are
-deliberately out of this ticket and worth their own small sweep; the OpenAPI one is
-operator-visible, so it is the one I would do first. Note also
+deliberately out of this ticket and are now **[TASK-942](../TASK-942-AiTaskDefault-Prose-Retirement/README.md)**.
+
+**Two corrections to this paragraph, found while filing that ticket.** The count above is the
+`apps/api` subset only — the TypeScript total is **238 hits across 134 files**, because
+`packages/` carries 215 more. And I recommended fixing the OpenAPI one FIRST; on reading it,
+it says "absorbed from `AiTaskDefault.configJson`", which is PROVENANCE of exactly the shape
+R4 deliberately kept in guardrail, so it should probably not be changed at all. TASK-942 puts
+that to the owner as its OD-1 and prioritises the 14 `apps/api` comments instead — those are
+the ones that describe current behaviour through a dropped table. Note also
 `apps/harness/.../test_task881_judge_selection_source.py`, which asserts
 `"AiTaskDefault" not in sql` — that name must STAY, because there it is the assertion.
 
@@ -295,3 +302,4 @@ comment. Regenerating for R3 fixed both, which is why the `globalEnv` delta is 5
 |---|---|
 | 2026-09-10 | Filed from TASK-870's close-out at the owner's request, carrying the four residual items (TASK-870 items 3, 5, 8, 9) out of a Completed program. Every claim re-verified by inspection on `0d7ed352f`: R1's commented SQL located at `…_task_870_wave3a_schema_retirement/migration.sql:77-82`; R2's rule at `policy-catalogue.ts:278-291`; R3 measured at 3 legacy fields + 8 call sites in `apps/harness` and 3 env names still set across `hope-v2-deployment/deployment/k8s/**`; R4 measured at 76 mentions across 44 files, 14 of them tests — and no hit anywhere is a compared value (checked), so every one is prose, a docstring or an assertion failure message. No code changed. |
 | 2026-09-10 | **All four complete.** Owner answers: R1 soft-retire, R2 keep-as-confirmed, R3+R4 do them. Four corrections to this ticket's own §2 recorded in §5: `service_token` is not retirable (inbound guard) and was excluded from R3; no deployment-repo commit was needed; R4's hits include user-visible response values and operator guidance, not only prose; and R4's successor differs by service, so a blanket rename would have been wrong in 11 places. R1's plan step "delete the commented block" was NOT followed — `02-database-prisma.md` forbids editing a committed migration; measured that Prisma 7 flags a comment-only edit on neither `migrate deploy` nor `migrate status`, so the hazard is latent, and the execution is recorded in the deprecation register instead. Offered back to the owner as a one-line change. |
+| 2026-09-10 | R4's out-of-scope remainder filed as **TASK-942**. Measuring it for that ticket corrected this one's §5 twice: the TypeScript total is 238 hits / 134 files (the "~25" was the `apps/api` subset), and the OpenAPI `@ApiProperty` I had recommended fixing first is provenance that should likely be kept — now TASK-942 OD-1. |
