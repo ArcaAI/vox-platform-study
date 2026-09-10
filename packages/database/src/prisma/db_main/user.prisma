@@ -167,6 +167,15 @@ model UserProfile {
   // Backend preferred prompt template — soft reference
   preferredPromptTemplateId String?
 
+  // Tenant staff identifier, mapped from the field a tenant admin marks as
+  // the "user identity" field on a ConsultationContextSchema version
+  // (TASK-950). NOT unique at the DB level — this table has no tenant
+  // column, so a user's tenant comes from its UserRoleAssignment/
+  // UserDepartment rows, not from this one. Per-tenant uniqueness is
+  // enforced in the application (ContextUserIdentityService's advisory
+  // lock + the admin profile write path's 409 STAFF_ID_TAKEN check).
+  staffId String?
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -184,6 +193,7 @@ model UserProfile {
 
   // indexing
   @@index([email], name: "UserProfile_email_idx")
+  @@index([staffId], name: "UserProfile_staffId_idx")
   @@schema("core")
 }
 

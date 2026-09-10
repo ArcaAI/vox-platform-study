@@ -1,6 +1,14 @@
 import type { CorePrismaClient } from '../../../client';
 import { ResourceStatusType, ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import {
+  SEED_CUSTOMER_TENANT_IDS,
+  SEED_TENANT_ID,
+  SEED_USER_IDS,
+  SEED_GLOBAL_SETTING_IDS,
+  SEED_ROLE_IDS,
+  SYSTEM_TENANT_ID,
+  SYSTEM_USER_ID,
+} from './00-constants';
 
 /**
  * Per-Tenant Global Settings Seed Data
@@ -510,6 +518,57 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     dataType: ValueType.Boolean,
     description:
       'Gates TEXT input and output moderation (TASK-871). ON since TASK-890 D-2. A tenant may opt OUT per agent / workflow / node; nothing can turn screening on that this switch turns off. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
+  // TASK-950 — identity auto-provisioning platform defaults (owner ask, 2026-09-11).
+  //
+  // A service-account request naming a context-schema "user identity" field resolves it to a
+  // tenant User, provisioning one when no existing profile matches
+  // (`ContextUserIdentityService`). These two `db-config` rows are the tenant -> SYSTEM cascade
+  // fallback (`00-project-context.md` Configuration Principles rule 2): a tenant with no opinion
+  // of its own inherits these; a tenant that writes its own row through the governed
+  // settings-registry lane wins.
+  //
+  // `identity.autoProvision.departmentId` is DELIBERATELY NOT seeded here — departments are
+  // per-tenant, so there is no platform-wide default to fall back to. Its resolution fails closed
+  // (400 `USER_IDENTITY_DEPARTMENT_UNRESOLVED`) when a tenant has set no department and the
+  // request carries none.
+  //
+  // `identity.autoProvision.enabled` follows the same shape as the three ON-by-default rows
+  // above: `value: 'true'` is the deliberate platform flip (OD-3 — the owner's ask says HOPE
+  // "will create a user"), `defaultValue: 'false'` is the fail-safe a reset reverts to (silently
+  // minting User accounts is the riskier default, so a reset turns provisioning back OFF rather
+  // than re-arming it).
+  {
+    id: '00000000-0000-0000-0002-000000000005',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'identity',
+    name: 'Identity Auto-Provision Enabled',
+    key: 'identity.autoProvision.enabled',
+    value: 'true',
+    defaultValue: 'false',
+    dataType: ValueType.Boolean,
+    description:
+      'Platform default (open-to-default) for whether a service-account request naming a context-schema user-identity field may provision a new tenant User when no existing profile matches (TASK-950). A tenant may opt out with its own row. Locked — only SUPER_ADMIN may change the platform default.',
+    locked: true,
+  },
+  // `identity.autoProvision.roleId` — selection is `closed` (fail-mode): an unresolved value
+  // raises rather than substituting a code literal, so the platform default lives HERE, as a seed
+  // row, not in application code. Seeded to the SYSTEM `DOCTOR` role
+  // (`SEED_ROLE_IDS.DOCTOR`) — the seeded clinical role carrying `consultation-own-manage`, the
+  // ability `assertNamedClinicianMayOwnConsultation` requires. `value` and `defaultValue` are the
+  // same id: unlike a capability flag, there is no "safer" fallback role to revert to on reset.
+  {
+    id: '00000000-0000-0000-0002-000000000006',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'identity',
+    name: 'Identity Auto-Provision Role',
+    key: 'identity.autoProvision.roleId',
+    value: SEED_ROLE_IDS.DOCTOR,
+    defaultValue: SEED_ROLE_IDS.DOCTOR,
+    dataType: ValueType.String,
+    description:
+      'Platform default role (closed selection) assigned to a tenant User auto-provisioned from a context-schema identity field (TASK-950). Seeded to the SYSTEM DOCTOR role; a tenant may point this at its own cloned role. Locked — only SUPER_ADMIN may change the platform default.',
     locked: true,
   },
 ];
