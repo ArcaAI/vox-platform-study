@@ -239,11 +239,33 @@ Two corrections, both found by reading the hits:
    translation paths say `AiRoutingPolicy`. 17 hand edits. A single blanket rename would have
    been wrong in 11 places.
 
+**Scope stated, not silently narrowed.** TASK-870 item 9 scoped R4 to
+`apps/{text,guardrail,nlp}`, and that is what was swept. The same staleness exists in
+**`apps/api` and the generated `openapi.json` — 242 further mentions**, several of them in
+live comments (`text-proxy.controller.ts` ×4, `ai-inference.controller.ts` ×2,
+`ai-routing-policy-admin.controller.ts` ×2) plus one `@ApiProperty` description that ships
+in the public OpenAPI document ("absorbed from `AiTaskDefault.configJson`"). Those are
+deliberately out of this ticket and worth their own small sweep; the OpenAPI one is
+operator-visible, so it is the one I would do first. Note also
+`apps/harness/.../test_task881_judge_selection_source.py`, which asserts
+`"AiTaskDefault" not in sql` — that name must STAY, because there it is the assertion.
+
 Four hits kept as accurate HISTORY rather than stale description (`tenant_config.py:8`,
 `:308`, `:325`, `test_tenant_config.py:597`) — rewriting those deletes the record of the
 migration instead of completing it. Three sentences also named `AiRuntimeProfile`, removed by
 TASK-862; correcting half a two-item list would leave a newly misleading sentence, so those
 became `Agent.parameters` in the same edit.
+
+### One self-cleaning follow-on inside R3
+
+`scripts/generate-env-file.sh`'s `_SUPERSEDED_KEYS` held exactly the three retired token
+names, to blank them rather than write `CHANGE_ME`. With the pydantic fields gone the names
+no longer appear in any `.env.sample`, so those entries matched nothing — dead members of a
+hand-maintained list beside a generated one, which is the precise shape of the
+`_CARRY_FORWARD_KEYS` drift TASK-870's change history records. The array is now declared and
+EMPTY rather than deleted, because `env-sync.test.ts` reads it by name when it proves every
+declared secret is classified; deleting it would break that check instead of simplifying it.
+`shellcheck` clean, `bash -n` clean, env-sync suite 52/52.
 
 ### Verification
 
