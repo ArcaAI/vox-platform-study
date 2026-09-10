@@ -145,6 +145,15 @@ _CORE_PATCH = "task-864-core-vocabulary"
 # (`_capture_interpreter_replay_fixture.py`), per contracts/versioning.md rule 3.
 _LIVE_HANDOFF_PATCH = "task-932-live-handoff"
 
+# TASK-946 D3 / OD-4 — the EMPTY-GATE marker. SIXTH gate, and it exists because this change
+# REMOVES a command: a `core.humanReview` whose bound payload is empty no longer starts its
+# `ReviewGateWorkflow` child. An execution recorded before this ticket DID start one — that is
+# precisely the defect — so replaying it through the new code without a marker fails the
+# workflow task with a non-determinism error and wedges the run at the gate it is parked on.
+# The cheap operand (the payload being empty) is checked FIRST, so a gate that has something to
+# review never consults the marker and never records one.
+_REVIEW_SKIP_PATCH = "task-946-review-skip-empty-payload"
+
 #: How long the walk parks between two handoff reads. A timer plus one short activity per
 #: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
 #: ceiling, and the finalize starts within one interval of the clinician pressing stop.
@@ -245,6 +254,33 @@ def _activity_error_reason(error: BaseException) -> str:
     if len(reason) <= _ACTIVITY_REASON_MAX_CHARS:
         return reason
     return reason[: _ACTIVITY_REASON_MAX_CHARS - 3] + "..."
+
+
+def _is_empty_review_payload(payload: dict[str, Any]) -> bool:
+    """Whether a `core.humanReview`'s bound payload gives a clinician NOTHING to decide on.
+
+    PURE, and it runs inside the workflow body, so it reads only the already-deserialised bound
+    inputs — the same values on the original run and on every replay.
+
+    True when the payload has no keys at all (nothing upstream bound anything — a DEGRADED
+    `core.agent` stores no output, which is the shape the 2026-09-10 trials hit) or when every
+    value it does carry is absent or empty. `None`, `""`, `{}`, `[]` and an empty tuple/set are
+    nothing; **`0` and `False` are ANSWERS** and keep the gate open, which is why this is a
+    length test on the container types rather than a truthiness test — a gate that hides a
+    legitimate zero from a clinician is the same class of defect as one that shows them nothing.
+
+    It does not recurse. `{"sections": {}}` is a note the generator SHAPED, and whether its
+    contents satisfy the graph is `core.output`'s schema check to make; the interpreter refuses
+    the gate only where it can be certain, which is that nothing was bound or what was bound is
+    empty.
+    """
+    for value in payload.values():
+        if value is None:
+            continue
+        if isinstance(value, (str, bytes, list, tuple, set, dict)) and len(value) == 0:
+            continue
+        return False
+    return True
 
 
 @workflow.defn(name="WorkflowInterpreter")
@@ -853,9 +889,52 @@ class WorkflowInterpreter:
     def _run_context(self) -> dict[str, Any]:
         """The run context `{trigger, vars, nodes}` (TASK-864 §3.2), from the output cache.
 
-        `trigger` is the `core.trigger` node's published context; `vars` is every
-        `core.variable` node's declared map, merged in stage order; `nodes` is the whole cache
-        keyed by node id. Pure derived state.
+        `trigger` is the `core.trigger` node's published context — flat, PLUS the canonical
+        `trigger.context` namespace this ticket adds; `vars` is every `core.variable` node's
+        declared map, merged in stage order; `nodes` is the whole cache keyed by node id. Pure
+        derived state.
+
+        ## TASK-946 D1 / OD-3 — `trigger.context.*` is canonical on BOTH lanes
+
+        The eleven seeded ArcaAI department graphs route the visit type on
+
+            trigger.context.visit_type == 'new-visit' | 'revisit'
+
+        and that read RAISED here: measured on run `01a08a8d-65fb-742b-824e-1c94af99e898`
+        (2026-09-10), `interpreter.core_condition` completed
+        `{"errors":[{"branch":"new_visit","error":"no such key: 'context'"}, …],
+        "taken_handle":"else"}`, so a follow-up encounter was documented with the new-visit note
+        shape on every consultation the platform has ever run. The graphs are not wrong: the
+        REALTIME lane publishes `{trigger: {context}, vars, nodes}`
+        (`live-documentation.service.ts#realtimeRunContext`) and the seed was authored against
+        it. The durable lane published the flattened context AS `trigger`, so the namespace the
+        seed names did not exist here. OD-3 moves this side.
+
+        ## Why the flat top level STAYS
+
+        The nesting is ADDITIVE. Everything that reads `trigger.<key>` today keeps reading it: a
+        published graph's `core.loop` `over` path, `resolve_dotted_path(run_context, over)`, the
+        run subject on `trigger.consultationId`, and — the one that would have failed silently —
+        `_prompt_scope`'s `context` ALIAS (`nodes/core.py`), which the seeded
+        `casenote-finalization` instruction reads as `{{context.dna_style_text | default("")}}`.
+        That alias is `trigger` itself under the sole-kind rule, so moving `dna_style_text` out
+        of the top level would have emptied the clinician's writing style out of the prompt
+        while every test that renders it by hand stayed green.
+
+        ## What goes IN the namespace
+
+        The authored context overlaid by the live handoff's. `trigger.context` is unwrapped
+        first when the published payload is already a single-kind ENVELOPE (`{"context": {…}}`,
+        which is what a graph bound to `consultation_legacy_v1` publishes) — otherwise
+        `trigger.context.safe_age` would become `trigger.context.context.safe_age` and every
+        seeded read would move one level down.
+
+        ## TASK-932 R-16a — the handoff WINS
+
+        The clinician's effective DNA writing style is resolved GATEWAY-side at handoff time and
+        arrives here; it is not, and must never be, something a caller can put in the run
+        payload, so the handoff's value overrides an identically-named key that arrived with the
+        invocation — in both views.
         """
         trigger: dict[str, Any] = {}
         variables: dict[str, Any] = {}
@@ -865,22 +944,46 @@ class WorkflowInterpreter:
                 trigger = output["context"]
             elif node_type == "core.variable" and isinstance(output.get("vars"), dict):
                 variables.update(output["vars"])
-        # TASK-932 R-16a — the live handoff's context, overlaid onto `trigger`.
-        #
-        # `_prompt_scope` (`nodes/core.py`) exposes `trigger` under the alias `context`, which is
-        # what the seeded `casenote-finalization` instruction reads:
-        # `{{context.dna_style_text | default("")}}`. The clinician's effective DNA writing style
-        # is resolved GATEWAY-side at handoff time and arrives here; it is not, and must never
-        # be, something a caller can put in the run payload, so the handoff's value WINS over an
-        # identically-named key that arrived with the invocation.
-        if self._live_context:
-            trigger = {**trigger, **self._live_context}
-        return {"trigger": trigger, "vars": variables, "nodes": dict(self._node_outputs)}
+        envelope = trigger.get("context")
+        authored = envelope if isinstance(envelope, dict) else trigger
+        published = {
+            **trigger,
+            **self._live_context,
+            "context": {**authored, **self._live_context},
+        }
+        return {"trigger": published, "vars": variables, "nodes": dict(self._node_outputs)}
 
     async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
         """Dispatch a `core.humanReview` as a `ReviewGateWorkflow` child and TAKE its outcome
         as a branch. `approved` and `rejected` are both decisions the graph routes (SUCCEEDED);
-        `timedOut` is the absence of one (DEGRADED, reason `review_timed_out`) — never approval."""
+        `timedOut` is the absence of one (DEGRADED, reason `review_timed_out`) — never approval.
+
+        TASK-946 D3 / OD-4 — a gate is never opened on an EMPTY payload. Measured on the three
+        trials of 2026-09-10: the upstream `n_finalize` degraded ("core.agent: nothing bound on
+        `in`/`context` to generate from"), the gate was started on `{}`, a clinician was
+        asked to sign nothing for the full 3,600 s deadline, and only then did `n_output` fail
+        its schema — so the run closed FAILED an hour after the consultation had stopped. The
+        hour is pure loss: there is no payload a clinician could approve, and no decision they
+        could make that would produce one. The node degrades instead, exactly as a
+        `review_timed_out` does, and the walk reaches its real terminal state in seconds.
+
+        The degrade is deliberate — not a FAILED. This is the same outcome shape the timeout
+        branch returns, so the run's cause of death stays whatever the graph was actually unable
+        to produce (`n_output`'s schema check) rather than moving onto the gate.
+        """
+        payload = self._resolve_bound_inputs(node)
+        if _is_empty_review_payload(payload) and workflow.patched(_REVIEW_SKIP_PATCH):
+            # No decision was made, so NO handle is taken and NO `decision` output is published:
+            # every branch guarded on `approved`/`rejected`/`timedOut` skips as
+            # `branch_not_taken`, and nothing downstream can read a decision that never happened.
+            # Recording `timedOut` here would be the one lie available — the gate did not time
+            # out, it was never opened.
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="review_skipped_empty_payload",
+            )
         config = node.config
         raw_escalation = config.get("escalation")
         escalation: dict[str, Any] = raw_escalation if isinstance(raw_escalation, dict) else {}
@@ -908,7 +1011,7 @@ class WorkflowInterpreter:
                 else 0
             ),
             allow_edit=config.get("allowEdit") is True,
-            payload=self._resolve_bound_inputs(node),
+            payload=payload,
             trajectory=TrajectoryContext(
                 tenant_id=inp.tenant_id,
                 seq=self._next_seq(),
