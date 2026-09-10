@@ -27,8 +27,8 @@ const capabilities = (over: Partial<RealtimeCapabilities> = {}): RealtimeCapabil
   ...over,
 });
 
-const resolving = (view: Partial<RealtimeResolvedAgentView> & Pick<RealtimeResolvedAgentView, 'task'>) =>
-  capabilities({ resolveAgent: vi.fn().mockResolvedValue({ slug: 'agent-x', ...view }) });
+const resolving = (view: Partial<RealtimeResolvedAgentView> & Pick<RealtimeResolvedAgentView, 'task'>, over: Partial<RealtimeCapabilities> = {}) =>
+  capabilities({ ...over, resolveAgent: vi.fn().mockResolvedValue({ slug: 'agent-x', ...view }) });
 
 const ctx = (bound: Record<string, unknown>, caps: RealtimeCapabilities, config: Record<string, unknown>) => ({
   bound,
@@ -73,9 +73,47 @@ describe('core.agent dispatches on the RESOLVED task (§7.4)', () => {
     const caps = resolving({ task: 'SPEECH_TO_TEXT' });
     const run = await agent.run(ctx({}, caps, { agentRef: { slug: 'realtime-transcription' } }));
     expect(run.capability).toBe('transcribe');
-    expect(run.output).toEqual({ transcript: 'raw transcript', pipelineId: 'pipeline-7' });
+    // `transcript` stays the TEXT: it is published on a socket typed `transcript`, a refined TEXT
+    // primitive, and every node downstream binds it as a string.
+    expect(run.output.transcript).toBe('raw transcript');
+    expect(run.output.pipelineId).toBe('pipeline-7');
     expect(caps.resolveAgent).toHaveBeenCalledWith({ slug: 'realtime-transcription' }, undefined);
     expect(caps.generateDocument).not.toHaveBeenCalled();
+  });
+
+  it('SPEECH_TO_TEXT publishes the per-utterance timing on `data`, and normalizes a host that reports none', async () => {
+    const timed = resolving(
+      { task: 'SPEECH_TO_TEXT' },
+      {
+        transcribe: vi.fn().mockResolvedValue({
+          transcript: 'cough since monday',
+          segments: [{ text: 'cough since monday', start: 1.25, end: 2.5, charStart: 0, charEnd: 18, utteranceIndex: 3, speaker: 'Speaker 0', receivedAtMs: 1_700_000_002_600 }],
+          audio: { kind: 'stream', sessionId: 'stt-1', epochMs: 1_700_000_000_000 },
+          pipelineId: 'pipeline-7',
+        }),
+      },
+    );
+    const run = await agent.run(ctx({}, timed, { agentRef: { slug: 'realtime-transcription' } }));
+
+    // The `data` socket is the declared home of the structured half — the same split the NER
+    // branch makes with `data: { entities }`.
+    expect(run.output.data).toEqual({
+      segments: [{ text: 'cough since monday', start: 1.25, end: 2.5, charStart: 0, charEnd: 18, utteranceIndex: 3, speaker: 'Speaker 0', receivedAtMs: 1_700_000_002_600 }],
+      audio: { kind: 'stream', sessionId: 'stt-1', epochMs: 1_700_000_000_000 },
+      language: null,
+    });
+    // The anchor is what makes a producer-relative segment clock absolute, and the arithmetic has
+    // to work out: the utterance ended before this lane received it.
+    const [segment] = run.output.segments as Array<{ end: number; receivedAtMs: number; charStart: number; charEnd: number }>;
+    const audio = run.output.audio as { epochMs: number };
+    expect(audio.epochMs + segment.end * 1000).toBeLessThan(segment.receivedAtMs);
+    // The offsets locate the utterance in the transcript published on the SAME result.
+    expect((run.output.transcript as string).slice(segment.charStart, segment.charEnd)).toBe('cough since monday');
+
+    // A host with nothing to report gets `[]` / `{}`, never a fabricated segment.
+    const bare = await agent.run(ctx({}, resolving({ task: 'SPEECH_TO_TEXT' }), { agentRef: { slug: 'realtime-transcription' } }));
+    expect(bare.output.segments).toEqual([]);
+    expect(bare.output.audio).toEqual({});
   });
 
   it('NAMED_ENTITY_RECOGNITION extracts over the bound `in` text: data = { entities }, text passed through', async () => {

@@ -83,9 +83,85 @@ export type RealtimeAgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_
 /** The capability a node instance ran — what an outcome is keyed by. */
 export type RealtimeCapabilityKey = 'transcribe' | 'extractEntities' | 'generateDocument' | 'proposeCorrections' | 'extractFindings';
 
+/** Per-word timing, when the engine reports it. Mirrors `SttWordTimestamp` on the STT wire. */
+export interface RealtimeTranscriptWord {
+  text: string;
+  /** Seconds on the capture clock — the same clock the enclosing segment's `start`/`end` are on. */
+  start: number;
+  end: number;
+  confidence?: number;
+}
+
+/**
+ * ONE utterance of the transcript this turn contributes, with the correlation that ties it to the
+ * audio it came from. The mirror of `TRANSCRIPT_SEGMENT_SCHEMA` in `@arcaai/workflow-contract` —
+ * that schema is the published contract, this is the shape the lane actually moves.
+ *
+ * Every field but `text`/`start`/`end` is optional because the producers genuinely differ: an
+ * engine that does not diarize, does not detect language or does not report word timings must be
+ * able to say nothing rather than emit a zero a consumer would read as a measurement.
+ */
+export interface RealtimeTranscriptSegment {
+  text: string;
+  /** Seconds from the start of the capture. Absolute only through {@link RealtimeAudioSync.epochMs}. */
+  start: number;
+  end: number;
+  isFinal?: boolean;
+  speaker?: string;
+  speakerConfidence?: number;
+  /** On a partial, the committed-prefix length of `text`. */
+  stableChars?: number;
+  /** The PRODUCER's utterance ordinal — what pairs a `gloss` with the final it translates. */
+  utteranceIndex?: number;
+  resultType?: 'segment' | 'gloss';
+  /** The GATEWAY's monotonic transcript sequence — what a dropped socket resumes from. Not `utteranceIndex`. */
+  seq?: number;
+  language?: string;
+  /** Half-open [charStart, charEnd) offsets into the joined `transcript` text of the same result. */
+  charStart?: number;
+  charEnd?: number;
+  /** Epoch ms at which this lane received the utterance — the consumer end of the speech-to-transcript lag. */
+  receivedAtMs?: number;
+  inferenceMs?: number;
+  /** Per-utterance provenance: a mid-session engine switch splits one transcript across two bindings. */
+  pipelineId?: string;
+  words?: RealtimeTranscriptWord[];
+}
+
+/**
+ * The CAPTURE the segments were cut from — the anchor that makes their clock absolute.
+ *
+ * `epochMs` is the wall clock that segment time `0` maps to. Without it `start`/`end` are a
+ * producer-relative measurement and a caller cannot line them up against audio it sent; with it,
+ * `epochMs + end * 1000` is when the utterance ENDED and a segment's `receivedAtMs` is when it
+ * came back, so the lag is a subtraction rather than a guess.
+ */
+export interface RealtimeAudioSync {
+  kind?: 'artifact' | 'stream';
+  /** `stream`: the realtime STT session. */
+  sessionId?: string;
+  /** `artifact`: the uploaded media row. */
+  mediaId?: string;
+  sampleRate?: number;
+  epochMs?: number;
+}
+
 export interface TranscribeResult {
   /** The transcript this turn contributes. Raw ASR output — never generated text. */
   transcript: string;
+  /**
+   * The per-utterance structure over {@link TranscribeResult.transcript}, in spoken order.
+   *
+   * OPTIONAL, and absent is not the same as empty: a host that has no segmentation to report says
+   * nothing here, and the handler publishes `[]` so a consumer sees "no segments" rather than a
+   * fabricated one. Every offset in it indexes THIS result's `transcript`, not the session's
+   * whole transcript — the two differ on any turn that sends a delta.
+   */
+  segments?: RealtimeTranscriptSegment[];
+  /** The capture the segments were cut from. Absent when the host cannot name one. */
+  audio?: RealtimeAudioSync;
+  /** The capture-level detected language, when there is one. */
+  language?: string;
   /** The ASR binding this capture ran on, or null on the tenant's default. */
   pipelineId: string | null;
 }
@@ -309,8 +385,28 @@ class CoreAgentHandler implements RealtimeNodeHandler {
 
     switch (task) {
       case 'SPEECH_TO_TEXT': {
-        const { transcript, pipelineId } = await ctx.capabilities.transcribe(ctx.signal);
-        return { capability: 'transcribe', output: { transcript, pipelineId } };
+        const { transcript, segments, audio, language, pipelineId } = await ctx.capabilities.transcribe(ctx.signal);
+        // The SAME split the NER branch makes, for the same reason: `transcript` is the TEXT and
+        // goes on the `transcript` socket (a refined TEXT primitive — every node downstream binds
+        // it as a string), while the structured half rides the `data` socket. Publishing the
+        // segments on `transcript` instead would type-check at the lattice, which types the
+        // channel and not the payload, and then read as empty at every consumer.
+        //
+        // The top-level copies mirror `entities` on the NER branch: the `data` key is the declared
+        // port, the top-level ones are what the flush projection reads without unwrapping it.
+        const declaredSegments = segments ?? [];
+        const declaredAudio = audio ?? {};
+        return {
+          capability: 'transcribe',
+          output: {
+            transcript,
+            data: { segments: declaredSegments, audio: declaredAudio, language: language ?? null },
+            segments: declaredSegments,
+            audio: declaredAudio,
+            language: language ?? null,
+            pipelineId,
+          },
+        };
       }
       case 'NAMED_ENTITY_RECOGNITION': {
         const sourceText = boundText(ctx, 'in');
