@@ -98,7 +98,17 @@ import {
   type IFindAllProps,
   type PromptTemplate,
 } from '@arcaai/domains';
-import { CORE_PALETTE_KEY, WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
+// TASK-947 OD-9 — `primaryTemplateId` / `boundTemplateRefs` are the ONE traversal of a
+// TEXT_GENERATION instruction's three forms. Both tiers below read an agent as a POINTER to a
+// governed template, and a hand-rolled `instruction.promptTemplateId` sees only form 1.
+import {
+  boundTemplateRefs,
+  CORE_PALETTE_KEY,
+  primaryTemplateId,
+  WORKFLOW_NODE_REGISTRY,
+  type WorkflowGraph,
+  type WorkflowGraphNode,
+} from '@arcaai/workflow-contract';
 
 import { IAgentAssignmentService } from '../../agent-assignment/IAgentAssignmentService';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
@@ -729,8 +739,11 @@ export class PromptResolutionService {
       if (!agent) return null;
 
       const instruction = agent.instruction as Record<string, unknown> | null | undefined;
-      const templateId = instruction && typeof instruction === 'object' ? instruction.promptTemplateId : undefined;
-      if (typeof templateId !== 'string' || templateId.length === 0) return null;
+      // TASK-947 OD-9 — the POINTER rule for all three instruction forms: the bound id (form 1),
+      // the first UNCONDITIONAL TEMPLATE fragment (form 3), or `null` and this tier falls through
+      // exactly as it already does for an agent that binds no template at all.
+      const templateId = primaryTemplateId(instruction);
+      if (templateId === null) return null;
       if (!(await this.isApprovedTemplate(templateId))) {
         this.logger.warn({
           message: 'Tag-selected agent binds a template that is not APPROVED — falling through to the ordinary chain',
@@ -1386,8 +1399,11 @@ export class PromptResolutionService {
         if (!agent || String(agent.task) !== String(AgentTask.TEXT_GENERATION)) continue;
 
         const instruction = agent.instruction as Record<string, unknown> | null | undefined;
-        const templateId = instruction && typeof instruction === 'object' ? instruction.promptTemplateId : undefined;
-        if (typeof templateId !== 'string' || templateId.length === 0) continue;
+        // TASK-947 OD-9 — the same POINTER rule as the tag-selected tier (see
+        // `resolveTagSelectedPrompt`): form 1's bound id, form 3's first unconditional TEMPLATE
+        // fragment, else `null` and this candidate is skipped like any agent binding no template.
+        const templateId = primaryTemplateId(instruction);
+        if (templateId === null) continue;
 
         const template = await this.promptTemplateRepository.findById(templateId);
         if (!template || template.status !== 'APPROVED') {
@@ -1404,12 +1420,13 @@ export class PromptResolutionService {
 
         // A pin ON THE NODE wins over the agent's own: the node is the more specific binding,
         // and it is the one an author edits to hold a single graph at a version.
-        const agentPin = instruction?.promptVersionNumber;
-        const targetVersionNumber =
-          readPromptVersionPin(node) ??
-          (typeof agentPin === 'number' && Number.isInteger(agentPin) && agentPin > 0 ? agentPin : null) ??
-          template.approvedVersionNumber ??
-          null;
+        //
+        // TASK-947 — the agent's pin travels WITH the ref the pointer resolved, so for a composite
+        // it is that FRAGMENT's `promptVersionNumber`, not an instruction-root field a form-3
+        // instruction does not have. `boundTemplateRefs` already normalises "a pin, or `null` for
+        // follow-the-approved-version", which is exactly the guard this line used to spell out.
+        const agentPin = boundTemplateRefs(instruction).find((ref) => ref.templateId === templateId)?.versionNumber ?? null;
+        const targetVersionNumber = readPromptVersionPin(node) ?? agentPin ?? template.approvedVersionNumber ?? null;
         const version =
           targetVersionNumber !== null
             ? await this.promptVersionRepository.findByVersionNumber(template.id, targetVersionNumber)
