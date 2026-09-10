@@ -204,13 +204,76 @@ async function copyPromptTemplates(client: CorePrismaClient, tenantId: string): 
   return added;
 }
 
+/** A prompt-template clone the target tenant carries for one SYSTEM template. */
+export interface PromptTemplateClone {
+  readonly id: string;
+  readonly approvedVersionNumber: number | null;
+}
+
+const nonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+
+/**
+ * TASK-947 — every template id a TEXT_GENERATION instruction binds: form 1's single
+ * `promptTemplateId`, or each TEMPLATE fragment's of a composite (`fragments[]`); nothing for an
+ * inline instruction. In authored order, de-duplicated.
+ *
+ * This is the one deliberate twin of `boundTemplateRefs` in `@arcaai/workflow-contract`: this
+ * package carries no contract dependency (see the file header), so the traversal is repeated
+ * here and pinned by `__tests__/task-947-reference-set-agent-fragments.test.ts`.
+ */
+export function boundTemplateIdsOf(instruction: Record<string, unknown> | null): string[] {
+  if (!instruction) return [];
+  if (Array.isArray(instruction['fragments'])) {
+    const ids: string[] = [];
+    for (const raw of instruction['fragments'] as unknown[]) {
+      const id = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>)['promptTemplateId'] : undefined;
+      if (nonEmptyString(id) && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
+  return nonEmptyString(instruction['promptTemplateId']) ? [instruction['promptTemplateId']] : [];
+}
+
+/**
+ * Re-point every bound template at the tenant's clone (`clones` keyed by the SOURCE id); a
+ * binding with no clone travels verbatim and `publish()` names it in its findings. The clone's
+ * version lineage restarts at 1, so the SOURCE's pin numbers a version the target does not have:
+ * the pin becomes the clone's approved version, or is dropped when it has none. Pure — a NEW
+ * object; the input is never mutated.
+ */
+export function repointInstructionTemplates(
+  instruction: Record<string, unknown> | null,
+  clones: ReadonlyMap<string, PromptTemplateClone>,
+): Record<string, unknown> | null {
+  if (!instruction) return instruction;
+  const repoint = (holder: Record<string, unknown>): Record<string, unknown> => {
+    const boundId = holder['promptTemplateId'];
+    const clone = nonEmptyString(boundId) ? clones.get(boundId) : undefined;
+    if (!clone) return holder;
+    const next: Record<string, unknown> = { ...holder, promptTemplateId: clone.id };
+    if (clone.approvedVersionNumber === null) delete next['promptVersionNumber'];
+    else next['promptVersionNumber'] = clone.approvedVersionNumber;
+    return next;
+  };
+  if (Array.isArray(instruction['fragments'])) {
+    return {
+      ...instruction,
+      fragments: (instruction['fragments'] as unknown[]).map((raw) =>
+        raw !== null && typeof raw === 'object' ? repoint(raw as Record<string, unknown>) : raw,
+      ),
+    };
+  }
+  return repoint(instruction);
+}
+
 /**
  * Clone every PUBLISHED + ACTIVE SYSTEM agent into one tenant, PUBLISHED and ACTIVE.
  *
  * A DRAFT reference set would leave the tenant's assignments pointing at a slug
  * `findPublishedActiveBySlug` cannot serve — the fail-closed hole provisioning exists to
- * prevent. `compiledConfig` travels verbatim (see the file header for why that is sound); the
- * prompt binding in `instruction` is re-pointed at the tenant's own clone when it has one.
+ * prevent. `compiledConfig` travels verbatim (see the file header for why that is sound); every
+ * prompt binding in `instruction` — the single template, or each template fragment of a
+ * composite (TASK-947) — is re-pointed at the tenant's own clone when it has one.
  */
 async function copyAgents(client: CorePrismaClient, tenantId: string): Promise<number> {
   const sources = await client.agent.findMany({
@@ -223,19 +286,17 @@ async function copyAgents(client: CorePrismaClient, tenantId: string): Promise<n
     if (existing) continue;
 
     let instruction = source.instruction as Record<string, unknown> | null;
-    const boundTemplateId = typeof instruction?.['promptTemplateId'] === 'string' ? (instruction['promptTemplateId'] as string) : null;
-    if (boundTemplateId) {
-      const clone = await client.promptTemplate.findFirst({
-        where: { tenantId, sourceTemplateId: boundTemplateId, resourceStatus: 'ENABLED' },
-        select: { id: true, approvedVersionNumber: true },
-      });
-      if (clone) {
-        instruction = { ...instruction, promptTemplateId: clone.id };
-        // The clone's version lineage restarts at 1, so the SOURCE's pin numbers a version the
-        // target does not have.
-        if (clone.approvedVersionNumber === null) delete (instruction as Record<string, unknown>)['promptVersionNumber'];
-        else (instruction as Record<string, unknown>)['promptVersionNumber'] = clone.approvedVersionNumber;
+    const boundTemplateIds = boundTemplateIdsOf(instruction);
+    if (boundTemplateIds.length > 0) {
+      const clones = new Map<string, PromptTemplateClone>();
+      for (const boundTemplateId of boundTemplateIds) {
+        const clone = await client.promptTemplate.findFirst({
+          where: { tenantId, sourceTemplateId: boundTemplateId, resourceStatus: 'ENABLED' },
+          select: { id: true, approvedVersionNumber: true },
+        });
+        if (clone) clones.set(boundTemplateId, clone);
       }
+      instruction = repointInstructionTemplates(instruction, clones);
     }
 
     const id = cloneId(tenantId, 'agent', source.id);
