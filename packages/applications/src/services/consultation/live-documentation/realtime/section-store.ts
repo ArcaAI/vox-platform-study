@@ -51,6 +51,19 @@ export interface TranscriptContradiction {
   readonly reason: string;
 }
 
+/**
+ * How a flush means its `content`.
+ *
+ * TASK-939 — `replace` is the original behaviour and still the only way a section's existing text
+ * can change. `append` means "`content` is the NEW PART, add it": the prior body is carried
+ * forward byte-for-byte, which is what makes it legitimate on a CONFIRMED section (an append
+ * cannot destroy what the clinician wrote) and what makes a turn's cost proportional to what was
+ * actually said rather than to the whole note.
+ *
+ * Default is `replace`, so every pre-existing caller keeps its semantics unchanged.
+ */
+export type SectionWriteMode = 'replace' | 'append';
+
 export interface SectionWriteInput {
   readonly consultationId: string;
   readonly tenantId: string;
@@ -58,7 +71,10 @@ export interface SectionWriteInput {
   readonly sectionKey: string;
   readonly title: string;
   readonly idx: number;
+  /** The whole new body when `mode` is `replace`; the NEW PART ONLY when `mode` is `append`. */
   readonly content: string;
+  /** @see SectionWriteMode — absent ⇒ `replace`. */
+  readonly mode?: SectionWriteMode;
   readonly annotations?: SectionAnnotationDto[];
   readonly provenance?: SectionProvenanceDto[];
   readonly documentTemplateVersionId?: string | null;
@@ -85,7 +101,14 @@ export interface SectionWriteInput {
 }
 
 export type SectionWriteRefusal =
-  'locked' | 'confirmed-no-overwrite' | 'deletion-without-contradiction' | 'stale-generation' | 'occ-conflict' | 'unavailable';
+  | 'locked'
+  | 'confirmed-no-overwrite'
+  | 'deletion-without-contradiction'
+  /** TASK-939 — an `append` whose new part was empty. Not a failure; there was simply nothing to add. */
+  | 'nothing-to-append'
+  | 'stale-generation'
+  | 'occ-conflict'
+  | 'unavailable';
 
 export type SectionWriteResult =
   | { readonly applied: true; readonly patch: SectionPatchDto; readonly section: DocumentSectionEntity }
@@ -141,9 +164,23 @@ export class DocumentSectionStore {
    * Refuses, in this order: a superseded generation, a LOCKED section, a
    * CONFIRMED section (a flush may not overwrite a clinician), and a deletion
    * with no transcript contradiction to point at.
+   *
+   * TASK-939 — the last two apply to a `replace` ONLY. An `append` (`mode: 'append'`, where
+   * `content` is the new part rather than the whole body) is refused only by LOCKED and by having
+   * nothing to add, because it cannot destroy prior text: that is the distinction this class has
+   * documented since it was written ("a flush may APPEND to it but must never overwrite it") and
+   * did not have.
    */
   async applyFlushPatch(input: SectionWriteInput): Promise<SectionWriteResult> {
     if (!this.repository) return { applied: false, reason: 'unavailable' };
+
+    const appending = input.mode === 'append';
+    // Checked BEFORE the row read: an append with nothing in it needs no I/O to answer, and
+    // answering it early keeps the generation watermark from advancing on a turn that wrote
+    // nothing — a later real append for the same generation must not then look stale.
+    if (appending && input.content.trim().length === 0) {
+      return { applied: false, reason: 'nothing-to-append' };
+    }
 
     const address = sectionAddress(input);
     const seen = this.lastGeneration.get(address);
@@ -160,13 +197,19 @@ export class DocumentSectionStore {
     }
 
     if (section && !section.isWritable()) return { applied: false, reason: 'locked' };
-    if (section && !section.machineMayOverwrite()) return { applied: false, reason: 'confirmed-no-overwrite' };
+    // REPLACE only. An append leaves the clinician's text in place, so there is nothing here for
+    // this guard to protect — see the method doc.
+    if (!appending && section && !section.machineMayOverwrite()) return { applied: false, reason: 'confirmed-no-overwrite' };
 
     // A deletion must name what contradicts the removed content. Note the guard is
     // on the TRANSITION (had content -> has none), not on emptiness itself: a
     // section that has always been EMPTY is a normal state and needs no reason.
+    //
+    // Also REPLACE only: an append can never empty a section, and an append with nothing in it
+    // was already answered as `nothing-to-append` above — which is a turn with nothing to say,
+    // not a removal, and so needs no justification.
     const hadContent = Boolean(section && section.revision > 0 && (section.content ?? '').trim().length > 0);
-    if (hadContent && input.content.trim().length === 0 && !input.contradiction) {
+    if (!appending && hadContent && input.content.trim().length === 0 && !input.contradiction) {
       return { applied: false, reason: 'deletion-without-contradiction' };
     }
 
@@ -182,24 +225,26 @@ export class DocumentSectionStore {
           documentTemplateVersionId: input.documentTemplateVersionId ?? null,
           createdBy: input.userId ?? null,
         });
-        created.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+        if (appending) created.appendMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+        else created.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
         this.stampContradiction(created, input.contradiction);
         await this.encrypt(created);
         await this.repository.create(created);
         this.lastGeneration.set(address, input.generation);
-        return { applied: true, patch: this.toPatch(created, input.consultationId), section: created };
+        return { applied: true, patch: this.toPatch(created, input.consultationId, appending ? input.content.trim() : undefined), section: created };
       }
 
       const expectedVersion = section.version;
       section.title = input.title;
       section.idx = input.idx;
       if (input.documentTemplateVersionId !== undefined) section.documentTemplateVersionId = input.documentTemplateVersionId;
-      section.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+      if (appending) section.appendMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
+      else section.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
       this.stampContradiction(section, input.contradiction);
       await this.encrypt(section);
       await this.repository.updateWithVersion(section.id, section, expectedVersion);
       this.lastGeneration.set(address, input.generation);
-      return { applied: true, patch: this.toPatch(section, input.consultationId), section };
+      return { applied: true, patch: this.toPatch(section, input.consultationId, appending ? input.content.trim() : undefined), section };
     } catch (error) {
       if (error instanceof OptimisticConcurrencyException) {
         // The clinician (or a sibling document's writer) got there first. The flush
@@ -270,9 +315,17 @@ export class DocumentSectionStore {
     }
   }
 
-  /** The `section.patch` event for one section — the SSE wire shape */
-  toPatch(section: DocumentSectionEntity, consultationId: string): SectionPatchDto {
+  /**
+   * The `section.patch` event for one section — the SSE wire shape.
+   *
+   * `appended` (TASK-939) is present only on an append and carries just the new part. `content`
+   * stays the WHOLE body on every patch, so a consumer that knows nothing about appends — the
+   * published `@arcaai/vox-node` `onSectionPatch`, the browser SDK, the console's revision-gated
+   * fold — behaves exactly as before. A renderer that wants to mark what just arrived now can.
+   */
+  toPatch(section: DocumentSectionEntity, consultationId: string, appended?: string): SectionPatchDto {
     return {
+      ...(appended ? { appended } : {}),
       event: 'section.patch',
       consultationId,
       documentKey: section.documentKey,
