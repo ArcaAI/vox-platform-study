@@ -831,13 +831,21 @@
       "AgentTestAckResponse": {
         "properties": {
           "assembledSystemPrompt": {
-            "description": "The rendered system prompt, or null when the agent has none.",
+            "description": "The rendered system prompt, or null when the agent has none. For a COMPOSITE instruction this is the SELECTED fragments rendered and joined — the bytes that would go to TEXT — not the static projection.",
             "nullable": true,
             "type": "string"
           },
           "assembledUserPrompt": {
             "description": "The rendered user prompt — exactly the bytes that would go to TEXT.",
             "type": "string"
+          },
+          "composition": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentTestCompositionResponse"
+              }
+            ],
+            "description": "COMPOSITE instructions only — which prompt fragments ran and which were excluded. Absent for a single template or an inline prompt."
           },
           "findings": {
             "description": "Non-blocking findings from compiling the draft in memory.",
@@ -870,6 +878,54 @@
           "findings",
           "assembledUserPrompt",
           "resolved"
+        ],
+        "type": "object"
+      },
+      "AgentTestCompositionExclusionResponse": {
+        "properties": {
+          "detail": {
+            "description": "The evaluator’s message, for `condition_error` only. Diagnostic; never part of the prompt.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The fragment key, as authored in `instruction.fragments[].key`.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`condition_false` — the condition evaluated to false. `condition_error` — it could not be evaluated, so the fragment was dropped.",
+            "enum": [
+              "condition_false",
+              "condition_error"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "AgentTestCompositionResponse": {
+        "properties": {
+          "excluded": {
+            "description": "The fragments that were not rendered, and why.",
+            "items": {
+              "$ref": "#/components/schemas/AgentTestCompositionExclusionResponse"
+            },
+            "type": "array"
+          },
+          "selected": {
+            "description": "The fragment keys that were rendered, in authored order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "selected",
+          "excluded"
         ],
         "type": "object"
       },
@@ -4878,7 +4934,7 @@
           },
           "instruction": {
             "additionalProperties": true,
-            "description": "Task-specific instruction: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` or `{ systemPrompt }` (TEXT_GENERATION); `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH).",
+            "description": "Task-specific instruction. TEXT_GENERATION binds exactly ONE of three forms: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` (a single approved template), `{ systemPrompt }` (an inline body), or `{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite — an ordered list of 1–16 fragments, each optionally guarded by a CEL `when` over the render scope; at least one fragment must be unconditional, and the selected ones are rendered separately and joined with a blank line). `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH).",
             "type": "object"
           },
           "modelId": {
@@ -20821,6 +20877,7 @@
           },
           "instruction": {
             "additionalProperties": true,
+            "description": "Task-specific instruction, REPLACED wholesale. TEXT_GENERATION binds exactly ONE of three forms: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }`, `{ systemPrompt }`, or `{ fragments: [{ key, promptTemplateId | systemPrompt, promptVersionNumber?, when? }], variables?, evalGate? }` (composite).",
             "type": "object"
           },
           "modelId": {
