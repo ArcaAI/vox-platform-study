@@ -131,13 +131,22 @@ describe('the credential class the SDK assumes is the one the gateway enforces',
   );
 
   /**
-   * AMENDED TASK-931. This used to assert `svcScopes: []` on EVERY route here, which is what
-   * `assertApiKeyPlane()` refused early on behalf of. TASK-930 §3 splits the two planes: the
-   * unbound one gains service-account scopes, the consultation-bound one deliberately does not
-   * — running a workflow that writes into a clinical record is not a machine-identity power.
+   * AMENDED TASK-931, then SUPERSEDED by TASK-933. The TASK-931 text asserted `svcScopes: []`
+   * here — TASK-930 §3 had split the two planes, giving the unbound one service-account scopes
+   * and withholding them from the consultation-bound one, on the reasoning that running a
+   * workflow which writes into a clinical record is not a machine-identity power.
+   *
+   * The owner reversed that on 2026-09-09 (TASK-933 OQ-2, "all permissions for vox-node to
+   * handle realtime consultation"): `CONSULTATION_REALTIME_SCOPE_SOURCES` declares
+   * `svc:workflows:execute` on this plane, and the SDK's `ConsultationWorkflowsResource`
+   * overrode its `assertCredentialClass()` to a no-op to match. So the assertion is INVERTED,
+   * not deleted: the grant is now the thing that must not regress silently.
+   *
+   * The scope stays outside the `svc:workflow:` prefix for the same reason its API-key twin
+   * does — a credential holding the unbound run scopes must not inherit the clinical plane.
    */
-  it.each(CONSULTATION_ROUTES)('$method $path stays service-account-DENIED', ({ method, path }) => {
-    expect(find(method, path)!.svcScopes ?? []).toEqual([]);
+  it.each(CONSULTATION_ROUTES)('$method $path is service-account-REACHABLE', ({ method, path }) => {
+    expect(find(method, path)!.svcScopes ?? []).toEqual(['svc:workflows:execute']);
   });
 
   it.each(UNBOUND_ROUTES.filter((r) => !PENDING_GATEWAY_ROUTES.has(`${r.method} ${r.path}`)))(

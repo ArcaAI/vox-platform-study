@@ -18,13 +18,29 @@
  * Needs the full local stack (gateway + STT + infra) and an audio file. It SELF-SKIPS when either is
  * missing, so it is inert in CI and on a laptop with nothing running:
  *
+ * The ASR agent slug matters: `streaming.helper.ts` defaults to `example-transcription`, which the
+ * DEV seed does not carry (it seeds `realtime-transcription`). Set `STREAM_E2E_AGENT_SLUG`
+ * accordingly, or the session creation 404s and this spec SKIPS rather than failing.
+ *
  * ```bash
  * pnpm setup:test && pnpm test:up:api            # terminal 1
  * # 16 kHz mono PCM16. Convert any recording with:
  * #   ffmpeg -i <input> -ac 1 -ar 16000 -sample_fmt s16 out.wav
- * TASK939_REPLAY_WAV=/abs/path/out.wav \
+ * TASK939_REPLAY_WAV=/abs/path/out.wav STREAM_E2E_AGENT_SLUG=realtime-transcription \
  *   npx dotenv -e .env.test -- npx playwright test task-939-note-accumulation-replay
  * ```
+ *
+ * Against the DEV gateway instead of the test one (what the TASK-939 run used, because the test
+ * Postgres/Redis ports were held by another project):
+ *
+ * ```bash
+ * SKIP_DB_PRECHECK=true RESET_DB=false API_URL=http://localhost:8868/api/v1 \
+ *   STREAM_E2E_AGENT_SLUG=realtime-transcription TASK939_REPLAY_WAV=/abs/path/out.wav \
+ *   npx playwright test task-939-note-accumulation
+ * ```
+ *
+ * `SKIP_DB_PRECHECK=true` matters: globalSetup otherwise performs three seeded logins, and
+ * `auth/login` is throttled at 5/min, so the run dies on a 429 before reaching the test.
  *
  * `TASK939_REPLAY_SECONDS` caps how much audio is fed (default 180 s) — a 13-minute consultation is
  * 13 minutes of wall clock, because the feed is REAL TIME. Feeding faster would not reproduce the
@@ -65,12 +81,18 @@ const REPLAY_SECONDS = Number(process.env.TASK939_REPLAY_SECONDS ?? '180');
  * `@arcaai/vox-node` does: a header-bearing request is required and `EventSource` cannot set one.
  */
 function collectSectionPatches(baseURL: string, token: string, consultationId: string) {
+  // The Playwright `baseURL` is `http://host:port/api/v1` (config `use.baseURL`). Relative
+  // `request.*` paths work because a LEADING SLASH replaces the whole path, but plain string
+  // concatenation does not — `${baseURL}/api/v1/...` yields `/api/v1/api/v1/...` and 404s. Take the
+  // ORIGIN and build the path once. (The same concatenation appears in
+  // `task-635-live-agent-lineage.spec.ts`; this is not a copy of that mistake.)
+  const url = `${new URL(baseURL).origin}/api/v1/consultations/${consultationId}/live-summary/stream`;
   const patches: ChurnPatch[] = [];
   const controller = new AbortController();
 
   const done = (async () => {
     try {
-      const response = await fetch(`${baseURL}/api/v1/consultations/${consultationId}/live-summary/stream`, {
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
         signal: controller.signal,
       });
