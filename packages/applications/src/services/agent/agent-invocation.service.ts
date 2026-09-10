@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { ClsService } from 'nestjs-cls';
 import type { Readable } from 'node:stream';
 import { AsrPipelineRepository, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
@@ -13,10 +14,17 @@ import {
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
+import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
-import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
+import {
+  CONTEXT_NAMESPACE_ROOT,
+  soleContextKindSchema,
+  unwrapSingleKindContextPayload,
+  type UserIdentityBinding,
+} from '../consultation-context-schema/context-schema-definition';
+import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import { buildAgentPromptScope } from './agent-prompt-scope';
 import { wireModelIdOf } from './agent-wire-model';
 
@@ -87,6 +95,20 @@ export class AgentInvocationService {
     private readonly textRequestEnrichment: TextRequestEnrichmentService,
     @Optional() private readonly secretsService?: SecretsService,
     @Optional() private readonly asrPipelineRepository?: AsrPipelineRepository,
+    // TASK-950 (D-5) — this service is the ONLY place the agent plane can see WHO is calling,
+    // and it needs to: a machine caller resolves the schema's user-identity field and a human
+    // one must not. `@Optional()` and TRAILING because the class does not extend `BaseService`
+    // (it broadcasts nothing and tracks no entity) and every existing unit test constructs it
+    // with three positional arguments; a required parameter here would break them, and a
+    // base-class change would give every invocation an audit row nobody asked for. Absent CLS
+    // means no service account is observable, so the identity path is simply not taken —
+    // exactly the answer a human caller already gets.
+    @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
+    // The find-or-provision resolver (TASK-950 L1), wired by `AgentServiceModule`. `@Optional()`
+    // for the same construction reason, but NEVER silently skipped: a call that HAS a frozen
+    // binding, a machine caller and a supplied value and finds no resolver raises 503. Silence
+    // there would drop the clinician on the floor and leave nothing behind saying so.
+    @Optional() @Inject(IContextUserIdentityService) private readonly userIdentity?: IContextUserIdentityService,
   ) {
     // Bootstrap TRANSPORT address (rule 00): the only sanctioned env default.
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -160,6 +182,17 @@ export class AgentInvocationService {
         findings: contextProblems,
       });
     }
+
+    // TASK-950 (D-3/D-5/D-6) — the schema's USER-IDENTITY field, resolved to a tenant user.
+    //
+    // AFTER the context gate on purpose: a context the agent's frozen schema does not admit is a
+    // 400, and a refused request must never provision a user as a side effect. BEFORE the model
+    // call for the mirror-image reason — the acting clinician is decided, and any refusal about
+    // them raised, while nothing has been spent.
+    //
+    // Covers BOTH modes: `blocking` and `stream` reach the model through this one method, so
+    // there is one insertion here and no second gate to keep in step.
+    await this.resolveContextUserIdentity(resolved, tenantId, input);
 
     const compiled = resolved.compiledConfig;
     const parameters = asRecord(compiled.parameters);
@@ -356,6 +389,90 @@ export class AgentInvocationService {
   }
 
   /**
+   * TASK-950 §C5 — resolve the schema-declared user identity for a MACHINE caller, or answer
+   * `null` because there is nothing to resolve.
+   *
+   * Four ways this legitimately answers `null`, none of them an error:
+   *   · a HUMAN caller (a JWT, or an API key bound to a human) — D-5: the caller already IS the
+   *     clinician, so naming a different one would be an impersonation, not a mapping;
+   *   · the agent's frozen schema declares no `userIdentity` marker;
+   *   · the marker is declared but this request supplied no value (D-2: presence is governed by
+   *     the schema's own `required` flags, never by the marker);
+   *   · the supplied value is not a string — the payload schema already ruled on its type, so
+   *     this is a shape check, not a second validator.
+   *
+   * The binding is read STRUCTURALLY off the FROZEN `compiledConfig`, never from a schema row
+   * (TASK-890 invariant 4): a tenant that edits its schema after publishing does not silently
+   * change which field a published agent treats as identity.
+   *
+   * Everything the resolver refuses — 400 `USER_IDENTITY_INVALID` /
+   * `USER_IDENTITY_DEPARTMENT_UNRESOLVED`, 404 `USER_IDENTITY_UNKNOWN` /
+   * `USER_IDENTITY_NOT_USABLE`, 409 `USER_IDENTITY_AMBIGUOUS`, 409 seat quota — propagates
+   * VERBATIM. This lane adds no translation layer: an integrator that has to fix its staff-id
+   * mapping needs the resolver's own code, not a paraphrase of it.
+   */
+  private async resolveContextUserIdentity(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>): Promise<string | null> {
+    const serviceAccount = this.clsService?.get('serviceAccount') ?? null;
+    if (!serviceAccount) return null;
+
+    const binding = boundUserIdentityBinding(resolved);
+    if (binding === null) return null;
+
+    const staffId = identityValueOf(resolved, input.context, binding);
+    if (staffId === undefined) return null;
+
+    if (!this.userIdentity) {
+      // Fail LOUD. An unwired resolver on a request that CARRIES a clinician is not the same
+      // thing as a request without one: answering as though the field had not been sent would
+      // run the agent under no acting user and leave no record that one was named.
+      throw new ServiceUnavailableException({
+        message: 'This agent binds a context schema that declares a user-identity field, but the identity resolver is not configured.',
+        code: 'USER_IDENTITY_RESOLVER_UNAVAILABLE',
+      });
+    }
+
+    const { userId, provisioned } = await this.userIdentity.resolveOrProvision({
+      tenantId,
+      staffId,
+      // D-9/OD-8 — an agent invocation names no department, so the resolver falls to the tenant's
+      // `identity.autoProvision.departmentId` setting and fails closed when that is unset too.
+      // `null` is this plane HAVING no department, never "any department will do".
+      departmentId: null,
+      provenance: {
+        plane: 'agent-invocation',
+        kindKey: binding.kindKey,
+        field: binding.field,
+        serviceAccountId: serviceAccount.id,
+        ...(resolved.compiledConfig.contextSchema
+          ? { schemaId: resolved.compiledConfig.contextSchema.schemaId, versionNumber: resolved.compiledConfig.contextSchema.versionNumber }
+          : {}),
+      },
+    });
+
+    // ATTRIBUTION, such as this plane has. `AgentInvocationService` broadcasts no sys-event and
+    // writes no `AgentTrajectory` row — trajectories belong to the consultation and harness
+    // lanes, and a standalone invocation is neither — so there is no existing durable record to
+    // stamp an `actingUserId` onto, and minting one would give every invocation an audit row
+    // nobody asked for. The DURABLE trail is the resolver's own `ResourceCreated` events (which
+    // carry this `provenance`, service account included) plus `_metadata.provisioning` on the new
+    // `User`; this line is the operational one. NEVER the staff id itself — it is the tenant's own
+    // identifier for a person and may be PII (D-8), which is also why it never enters a username.
+    this.logger.log({
+      message: 'agent.invocation.identity_resolved',
+      agentSlug: resolved.slug,
+      agentVersionId: resolved.agentVersionId,
+      tenantId,
+      kindKey: binding.kindKey,
+      field: binding.field,
+      serviceAccountId: serviceAccount.id,
+      actingUserId: userId,
+      provisioned,
+    });
+
+    return userId;
+  }
+
+  /**
    * The provider-native id for this agent's primary model, or a NAMED refusal.
    *
    * Every provider `apps/text` serves is engine-served or cloud (lm-studio, ollama, vllm,
@@ -512,6 +629,51 @@ function boundContextPayloadSchema(resolved: ResolvedAgent): Record<string, unkn
   return payloadSchema !== null && typeof payloadSchema === 'object' && !Array.isArray(payloadSchema)
     ? (payloadSchema as Record<string, unknown>)
     : null;
+}
+
+/**
+ * TASK-950 (D-3) — the agent's FROZEN user-identity binding, or `null` when it declares none.
+ *
+ * Read structurally for the same reason {@link boundContextPayloadSchema} is: the key is landed
+ * on `AgentCompiledConfig.contextSchema` by another lane, and a compiled config stamped before it
+ * existed simply carries nothing. Absent is "this schema names no identity field", never
+ * "invalid" — the marker is additive-optional by construction.
+ *
+ * A MALFORMED marker (missing or empty `kindKey`/`field`) also reads as absent rather than
+ * raising: the publish gate is what refuses a bad marker, and a runtime that started 500ing on
+ * artifacts published before that gate would take working agents down over a field they never used.
+ */
+function boundUserIdentityBinding(resolved: ResolvedAgent): UserIdentityBinding | null {
+  // Through `asRecord` rather than a cast, so this compiles whether or not the declared
+  // `AgentCompiledConfig.contextSchema` type has learned the key yet — the compiled config is
+  // JSON on the wire either way.
+  const marker = asRecord(resolved.compiledConfig.contextSchema).userIdentity;
+  if (marker === null || typeof marker !== 'object' || Array.isArray(marker)) return null;
+  const { kindKey, field } = marker as { kindKey?: unknown; field?: unknown };
+  if (typeof kindKey !== 'string' || kindKey.length === 0) return null;
+  if (typeof field !== 'string' || field.length === 0) return null;
+  return { kindKey, field };
+}
+
+/**
+ * The identity value this invocation supplied, in EITHER shape the agent plane accepts.
+ *
+ * J3-5 is why there are two: a schema declaring ONE kind keyed `context` may be invoked with the
+ * flat kind object (`{ consultant_id }`) or with the envelope (`{ context: { consultant_id } }`),
+ * and `contextProblems` already validates both against the same schema. Reading only the envelope
+ * would resolve the clinician for one of those callers and silently not for the other — the same
+ * request, two different acting users. The envelope is tried first because it is the shape
+ * `payloadSchemaFromDefinition` declares; the flat fallback applies ONLY under the sole-kind rule
+ * and only when the marker names that kind, so no other schema's top-level key space is guessed at.
+ */
+function identityValueOf(resolved: ResolvedAgent, context: unknown, binding: UserIdentityBinding): string | undefined {
+  const envelopeValue = extractUserIdentityValue(asRecord(context), binding);
+  if (envelopeValue !== undefined) return envelopeValue;
+
+  const payloadSchema = boundContextPayloadSchema(resolved);
+  if (binding.kindKey !== CONTEXT_NAMESPACE_ROOT || soleContextKindSchema(payloadSchema) === null) return undefined;
+  const value = asRecord(unwrapSingleKindContextPayload(payloadSchema, context))[binding.field];
+  return typeof value === 'string' ? value : undefined;
 }
 
 /**

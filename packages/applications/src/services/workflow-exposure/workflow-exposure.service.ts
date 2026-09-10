@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -24,6 +24,8 @@ import { IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
 import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
+import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
 import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { deterministicRunId } from './deterministic-run-id';
@@ -126,6 +128,12 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // an unwired settings graph degrades to the pre-TASK-932 env read rather than
     // to a DI error (the `resolveTextTimeoutMs` shape).
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-950 (D-6) — the find-or-provision resolver for the schema-declared user identity on a
+    // STANDALONE machine run. `@Optional()` like every other cross-cutting dependency here (a
+    // minimal fixture must still construct the service), but never silently skipped: a run that
+    // HAS a frozen binding, a machine caller and a supplied value and finds no resolver raises
+    // 503 rather than dispatching with no acting clinician.
+    @Optional() @Inject(IContextUserIdentityService) private readonly userIdentity?: IContextUserIdentityService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -259,6 +267,19 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new BadRequestException(`Workflow '${slug}' has no compiled configuration.`);
     }
 
+    // TASK-950 (D-6, OD-5) — the trigger schema's USER-IDENTITY field, for a STANDALONE machine
+    // run only.
+    //
+    // A CONSULTATION-BOUND run resolves nothing: identity is fixed at `open` and read from the
+    // row (`Consultation.doctorId`), so a field arriving here is ordinary content and is IGNORED
+    // rather than re-decided per run. Two answers for one consultation is the failure OD-5 rules
+    // out; `subject` above is untouched on that lane.
+    //
+    // Placed HERE — after the reserved-key gate and the definition lookup, before the claim-check
+    // mint and `recordRunStarted` — so a refusal from the resolver (400/404/409) leaves no
+    // half-started run row behind and nothing billed.
+    const actingUserId = consultationBound ? null : await this.resolveTriggerUserIdentity(definition.compiledConfig, tenantId, dto.input);
+
     // (owner ruling, 2026-08-20): a publicly-exposed workflow MAY select a cloud AI
     // provider — the tenant carries the risk (BYOK), consistent with the platform's BYO-first
     // posture. This used to gate on `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` (decision #6, R-8);
@@ -316,6 +337,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       subject,
     });
 
+    const serviceAccount = this.requestServiceAccount;
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: definition.id,
       data: {
@@ -323,12 +345,24 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         runId,
         slug: definition.slug,
         workflowVersionNumber: definition.versionNumber,
-        principalType: opts.apiKeyId ? 'apiKey' : 'user',
+        // TASK-950 — a SERVICE ACCOUNT used to be recorded as `'user'` here, which is the one
+        // principal class this plane cannot have: `requestUserId` is null for a machine, so the
+        // event named a person who was never in the request. The three classes are mutually
+        // exclusive (a key is bound to a human, a service-account token carries no human), so the
+        // order below is a readability choice, not a precedence rule.
+        principalType: opts.apiKeyId ? 'apiKey' : serviceAccount ? 'serviceAccount' : 'user',
         apiKeyId: opts.apiKeyId ?? null,
+        serviceAccountId: serviceAccount?.id ?? null,
         idempotencyKey: opts.idempotencyKey ?? null,
         // Attributable by construction: which consultation this run may write to, as the SERVER
         // resolved it. Never the caller's claim.
         consultationId: subject?.consultationId ?? null,
+        // TASK-950 — the clinician this run acts FOR, as resolved from the trigger schema's
+        // identity field. Business data beside the actor, never instead of it (D-11): the ACTOR
+        // stays `responsibleServiceAccountId` on the envelope, which `BaseService` stamps.
+        // `null` on a human caller, on a consultation-bound run, and whenever the schema declares
+        // no identity field — three different reasons, one honest absence.
+        actingUserId,
       },
     });
 
@@ -582,6 +616,68 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
   }
 
   /**
+   * TASK-950 §C5 — the trigger schema's user-identity field for a STANDALONE machine run, or
+   * `null` because there is nothing to resolve (human caller / no marker / no value supplied).
+   *
+   * `dto.input` on this plane is the ENVELOPE the interpreter validates (`payload.<kindKey>` is
+   * what a trigger's `context_binding` resolves against), so the value is read at
+   * `input[kindKey][field]` and there is no flat-payload variant to consider — unlike the agent
+   * invocation route, whose J3-5 rule admits both shapes.
+   *
+   * ## What this deliberately does NOT do
+   *
+   * It does not put the resolved user on the run's `subject`. `StartWorkflowRunSubject` requires
+   * `consultationId` (`consultation/harness/harness-gateway.service.ts:244-248`), and so does the
+   * dispatcher's own `RunSubject` (`apps/harness/src/harness/temporal/interpreter/models.py:174`,
+   * `extra="forbid"`) — a subject carrying only `userId` is a 422 from the harness, which would
+   * break every standalone run rather than attribute one. Carrying the clinician INTO an unbound
+   * run therefore needs both of those to admit a consultation-less subject; until they do, the
+   * resolution's effects are the durable ones — the user exists, is reusable by staff id, and the
+   * `ResourceCreated` event names it as `actingUserId`.
+   *
+   * Every refusal from the resolver (400 `USER_IDENTITY_INVALID` /
+   * `USER_IDENTITY_DEPARTMENT_UNRESOLVED`, 404 `USER_IDENTITY_UNKNOWN` /
+   * `USER_IDENTITY_NOT_USABLE`, 409 `USER_IDENTITY_AMBIGUOUS`, 409 seat quota) propagates verbatim.
+   */
+  private async resolveTriggerUserIdentity(
+    compiledConfig: unknown,
+    tenantId: string,
+    input: Record<string, unknown> | undefined,
+  ): Promise<string | null> {
+    const serviceAccount = this.requestServiceAccount;
+    // D-5 — a human caller (or an API key bound to one) already IS the clinician.
+    if (!serviceAccount) return null;
+
+    const binding = triggerUserIdentityBinding(compiledConfig);
+    if (binding === null) return null;
+
+    const staffId = extractUserIdentityValue(input, binding);
+    if (staffId === undefined) return null;
+
+    if (!this.userIdentity) {
+      throw new ServiceUnavailableException({
+        message: 'This workflow binds a context schema that declares a user-identity field, but the identity resolver is not configured.',
+        code: 'USER_IDENTITY_RESOLVER_UNAVAILABLE',
+      });
+    }
+
+    const { userId } = await this.userIdentity.resolveOrProvision({
+      tenantId,
+      staffId,
+      // D-9/OD-8 — an unbound run names no department, so the resolver falls to the tenant
+      // `identity.autoProvision.departmentId` setting and fails closed when that is unset too.
+      departmentId: null,
+      provenance: {
+        plane: 'workflow-run',
+        kindKey: binding.kindKey,
+        field: binding.field,
+        serviceAccountId: serviceAccount.id,
+      },
+    });
+    return userId;
+  }
+
+  /**
    * The run's clinical subject, re-resolved from the PATH `consultationId` against the caller's
    * tenant (lane A — the invariant states).
    *
@@ -683,4 +779,44 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // by the cache service itself; never a reason to fail the invoke that already succeeded.
     }
   }
+}
+
+/** The graph's one mandatory entry node — the same string `compiledTriggerContextSchema` matches. */
+const TRIGGER_NODE_TYPE = 'core.trigger';
+
+function asPlainObject(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+/**
+ * TASK-950 (D-3) — the user-identity marker FROZEN onto the compiled `core.trigger` node, or
+ * `null`.
+ *
+ * Structurally identical to `compiledTriggerContextSchema` in `@arcaai/workflow-contract`
+ * (`core-contract.ts`), and deliberately reading the same address: the marker sits BESIDE
+ * `contextSchema.resolved`, so both facts about the trigger's schema are found the same way and
+ * neither depends on a database read at invoke time (TASK-890 invariant 4).
+ *
+ * A malformed marker reads as ABSENT rather than raising — the publish gate is what refuses a bad
+ * one, and an artifact compiled before the marker existed simply carries nothing here.
+ */
+function triggerUserIdentityBinding(compiledConfig: unknown): UserIdentityBinding | null {
+  const stages = asPlainObject(compiledConfig)?.stages;
+  if (!Array.isArray(stages)) return null;
+  for (const stage of stages) {
+    const nodes = asPlainObject(stage)?.nodes;
+    if (!Array.isArray(nodes)) continue;
+    for (const node of nodes) {
+      const compiled = asPlainObject(node);
+      if (compiled?.type !== TRIGGER_NODE_TYPE) continue;
+      const marker = asPlainObject(asPlainObject(compiled.config)?.contextSchema)?.userIdentity;
+      const shape = asPlainObject(marker);
+      if (shape === undefined) return null;
+      const { kindKey, field } = shape as { kindKey?: unknown; field?: unknown };
+      if (typeof kindKey !== 'string' || kindKey.length === 0) return null;
+      if (typeof field !== 'string' || field.length === 0) return null;
+      return { kindKey, field };
+    }
+  }
+  return null;
 }

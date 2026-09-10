@@ -11,6 +11,7 @@ import { ConsultationContextSchemaServiceModule } from '../consultation-context-
 import { InferenceReadinessServiceModule } from '../ai-readiness/inference-readiness.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
+import { ContextUserIdentityServiceModule } from '../user/identity';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
@@ -48,6 +49,12 @@ import { IAgentService } from './IAgentService';
     InferenceReadinessServiceModule,
     EntitlementsServiceModule,
     UsageLedgerServiceModule,
+    // TASK-950 (D-5/D-6) — `IContextUserIdentityService`, which `AgentInvocationService`
+    // uses to turn a schema-declared staff identifier into a tenant user on a MACHINE
+    // invocation. Named here for the same reason the four above are: the injection is
+    // `@Optional()` so a minimal fixture still constructs, and an unnamed module would
+    // mean a published agent with an identity marker quietly answering 503 in production.
+    ContextUserIdentityServiceModule,
   ],
   providers: [
     AgentService,
