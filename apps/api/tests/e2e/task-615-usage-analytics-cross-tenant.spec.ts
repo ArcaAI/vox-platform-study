@@ -1,8 +1,9 @@
 /**
  * Cross-tenant posture for the usage-analytics surface
  * (AdminUsageController `admin/usage/*` + MyUsageController `tenants/me/usage-*`),
- * following the pattern (see `ai-task-defaults-cross-tenant.spec.ts`
- * and `task-615-billing-cross-tenant.spec.ts` for the canonical probe shape).
+ * following the pattern (see `ai-provider-connections-cross-tenant.spec.ts`,
+ * `tenant-bucket-cross-tenant.spec.ts` and `task-615-billing-cross-tenant.spec.ts`
+ * for the canonical probe shape).
  *
  * Two governance postures are exercised, per rule 05:
  *   1. `admin/usage/summary` (+ timeseries/cost-per-encounter) — a tenant-scoped

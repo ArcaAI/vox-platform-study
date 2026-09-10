@@ -253,13 +253,39 @@ directory simply moved. A pointer is only fixed if the thing it points at is rea
 A fifth copy lives in `migrations/20260901051803_task_843_ai_task_taxonomy/migration.sql:37` and
 stays: committed migrations are never edited.
 
-**A separate dangling-pointer class was found and deliberately NOT swept.** Five e2e specs cite
-`ai-task-defaults-cross-tenant.spec.ts` as their pattern exemplar
-(`task-615-billing`, `task-615-usage-analytics`, `task-635-prompt-test-bench`,
-`task-641-allowed-origins` ×2) and that file is DELETED, so the pointer leads nowhere. It is the
-same defect shape but it needs a judgement this ticket has no mandate for — which surviving
-cross-tenant spec should become the named exemplar (`ai-provider-connections-cross-tenant.spec.ts`
-is the closest analogue). Reported rather than guessed.
+### The dangling e2e exemplar pointers, repointed on the owner's instruction (2026-09-10)
+
+Five e2e specs cited `ai-task-defaults-cross-tenant.spec.ts` as their pattern exemplar and that
+file is DELETED. Repointed to `ai-provider-connections-cross-tenant.spec.ts` as instructed, with
+two refinements that came out of checking the target against what each pointer actually CLAIMS:
+
+1. **Two of the six hits were not pointers at all** and were left alone:
+   `task-615-billing:65` and `task-615-usage-analytics:56` describe the `/row` tenant-discovery
+   trick and already say *"TASK-881 retired the ai-task-defaults one"* / *"moved it off the retired
+   ai-task-defaults surface"*. That is correct history about a removed surface, so rewriting it
+   would erase the record. Five pointers, not six.
+2. **Three pointers claim "the canonical shape of these probes", and the named target disclaims
+   exactly that.** `ai-provider-connections-cross-tenant.spec.ts`'s own header says its contract 2
+   is "403 (a privilege rule on the caller's OWN tenant, **not** the 404-over-403 existence
+   posture)", and it carries zero `toBe(404)` assertions. `tenant-bucket-cross-tenant.spec.ts` is
+   the real 404-over-403 exemplar — five such assertions, and a header about the tenant-ownership
+   guard. So those three now name **both**, which makes the pointer true rather than approximately
+   true. The owner's target is present in all five either way.
+
+Where the instruction fit precisely, it fit very precisely: `task-641:26` claims "same auth/bootstrap
+helpers (`loginUser`, `SEEDED_USERS`, `DEFAULT_TENANT_KEY`)" and `:37` claims a "`superAdmin` login
+pattern" — the target imports exactly those three helpers at `:21` and logs in a super admin at
+`:63`. Verified before editing rather than assumed.
+
+**Gate for this fix:** every `*.spec.ts` filename cited in any e2e comment now resolves to a real
+file — 74 distinct citations, **0 dangling**. (The scan's one apparent miss,
+`` `-cross-user.spec.ts` `` in `task-779-core-business.spec.ts:6`, is a legible shorthand for
+`consultation-job-cross-user.spec.ts`, which exists.)
+
+**Found while doing this, NOT fixed:** `.claude/rules/05-nestjs-api.md:90` states "Cross-tenant
+contracts are locked by `apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`" — and no
+`task-307-*` spec exists. The rule file carries the same class of dangling pointer, and editing a
+rules file is outside this ticket.
 
 ### Verification
 
@@ -290,3 +316,4 @@ the retirement record byte-for-byte intact.
 | 2026-09-10 | OD-1 answered: KEEP the OpenAPI provenance — so no `@ApiProperty` is touched and `openapi*.json` stays byte-identical (no five-artifact regeneration). Owner guard recorded: TASK-870 is history, not a spec; nothing may un-retire or restore a removed implementation. Execution begun as three read-only classifiers (sonnet / opus / sonnet) with the orchestrator as single writer — rationale and tier choices in §5. |
 | 2026-09-10 | **Completed.** 66 repointed / 110 kept; 238 → 176 survivors, all of them committed migrations (35), generated files (43) or deliberate record/assertion (98). Two wrong agent patches caught by verification (a self-referential precedent citation, and a false "`AiRoutingPolicy` has no `provider` column" claim — it does, at `ai-routing-policy.prisma:77`). One edit flagged as DATA rather than prose: a seed `AiModel.description` that the seed's UPDATE path propagates. Generated Prisma client byte-identical, `openapi*.json` untouched, every lint count exactly at baseline. |
 | 2026-09-10 | **Stale-PATH class swept** on the owner's instruction. Agent C's single find turned out to be four live references across three files, invisible to the ticket's grep because the directory name is kebab-case. All four repointed to `ai-routing-policy/constants.ts`, each verified by confirming the cited symbol is declared there (`AI_TASK_KEYS:37`, `AI_TASK_MODEL_TASK_TYPES:120`, `AI_TASK_KIND_BY_TASK_KEY`, `SUPER_ADMIN_ONLY_TASK_PREFIXES:187`). A fifth copy in a committed migration stays. Separately found and NOT swept: five e2e specs cite the deleted `ai-task-defaults-cross-tenant.spec.ts` as an exemplar — same defect shape, but choosing its replacement is a judgement this ticket has no mandate for. `prisma validate` OK, generated client unchanged, applications lint 182 = baseline, 88 files / 1744 tests green. |
+| 2026-09-10 | **Five dangling e2e exemplar pointers repointed** to `ai-provider-connections-cross-tenant.spec.ts` on the owner's instruction. Two refinements from verification: two of the six hits were historical `/row` notes, not pointers, and were left intact; and three pointers that claim "the canonical shape of these probes" now ALSO name `tenant-bucket-cross-tenant.spec.ts`, because the instructed target's own header disclaims the 404-over-403 posture and carries zero `toBe(404)` assertions. The target's helper/superAdmin claims were verified present (`:21`, `:63`) before editing. Gate: 74 spec citations across the e2e tree, 0 dangling. Separately found and not fixed: `05-nestjs-api.md:90` points at `task-307-*-cross-tenant.spec.ts`, which does not exist. apps/api lint 65 = baseline, build clean. |
