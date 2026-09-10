@@ -325,6 +325,18 @@ export class LiveSummaryEventDto {
   })
   textFailed?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-946 D6 — true when this flush produced NO note at all: the document generation did not succeed, or an `onError: "fail"` node stopped the realtime lane. Absent (never `false`) on a healthy flush, so a consumer written before this field sees the payload it always saw. It is not a synonym for `textFailed`, which names one STAGE — a lane can fail at capture with TEXT never called.',
+  })
+  flushFailed?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-946 D6 — WHY the flush failed, as a code from the closed vocabulary: `no_case_notes`, `context_overflow`, `text_unavailable`, `timeout`, `generation_failed`, or a realtime-executor reason code (`disabled_by_config`, `superseded_after_completion`, …). Present exactly when `flushFailed` is. NEVER a transport message — this field is published to the clinician`s live feed, so a model`s refusal text must not be able to travel in it.',
+  })
+  degradeReason?: string;
+
   /**
    * WHICH engine produced this snapshot.
    *

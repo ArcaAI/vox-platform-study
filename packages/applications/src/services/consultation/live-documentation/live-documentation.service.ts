@@ -144,6 +144,8 @@ import { LiveToolRegistry } from './live-tool-registry';
 // the realtime graph executor. The flush no longer runs a hardcoded
 // sequence; it walks a LANE, and which lane it walks is data.
 import { GUARDRAIL_GROUNDEDNESS_TOOL } from './live-tool-registry';
+// TASK-946 D6 — the CLOSED vocabulary of PHI-safe degrade codes, shared with the warm start.
+import { LIVE_DEGRADE_FALLBACK, degradeCode } from './degrade-codes';
 import {
   DocumentSectionStore,
   GuardMemo,
@@ -154,6 +156,9 @@ import {
   realtimeCapabilityOf,
   realtimeDocumentTemplateSlug,
   realtimeNodeIsTogglable,
+  // TASK-946 D2 — the lane's routing decision, evaluated at session start so the frozen note
+  // SHAPE and the summary node that actually runs cannot disagree about the visit.
+  resolveBranchHandles,
   runRealtimeLane,
   type RealtimeAgentRef,
   type RealtimeAgentTask,
@@ -786,18 +791,25 @@ function storedNumber(result: { value: unknown; sourceScope: string }): number |
  * both degraded at once — TEXT on a 20 s timeout, NLP on `ECONNREFUSED` — and only the
  * first explains the empty note.)
  *
- * `RealtimeDegradeEvent.reason` is contractually a reason code or an error name, never
- * clinical text, which is what makes it safe to put on the clinician's feed.
- *
  * TASK-893 — WHICH node is the summary one is answered by its CAPABILITY, never by a type
  * string: every realtime node is a `core.agent` now, so matching on the type would pick the
  * transcription node's reason as often as the summary node's.
+ *
+ * TASK-946 D6 — and the answer is now a CODE from the closed vocabulary in `degrade-codes.ts`.
+ * It used to be `${status}: ${reason}`, and `reason` on a TEXT failure is the transport's own
+ * message, so the clinician's `section.patch` envelope carried
+ * `degraded: Request failed with status code 502` — the HTTP client's words, on the field whose
+ * whole job is to say what happened to the note. A node whose reason is ALREADY a code (every
+ * skip, every stale, every budget) keeps that code, which is more specific than any
+ * classification of it.
  */
 function realtimeDegradeReason(run: RealtimeRunResult, lane: RealtimeLane): string | undefined {
   if (run.events.length === 0) return undefined;
   const capabilities = realtimeCapabilityIndex(lane);
   const event = run.events.find((e) => capabilities.get(e.nodeId) === 'generateDocument') ?? run.events[0];
-  return `${event.status}: ${event.reason}`;
+  // The STATUS is the more reliable signal for a timeout: the executor reports it as `timed-out`
+  // whatever the underlying call said.
+  return event.status === 'timed-out' ? 'timeout' : degradeCode(event.reason, LIVE_DEGRADE_FALLBACK);
 }
 
 /**
@@ -1333,6 +1345,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // promise must exist before the gate can await it. Kicking both off here rather than
     // chaining them keeps the lane resolving concurrently with the gate's own consultation read.
     session.lanePromise = this.ensureLaneResolved(session);
+    session.substratePromise = this.ensureSubstrateResolved(session);
     // Same fire-and-forget shape, same reason: freeze the document
     // shape at session start so a mid-consultation publish cannot change the
     // note being produced. `flush()` awaits the memoized promise.
@@ -1340,8 +1353,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-891 D7 — AFTER the lane, and that order is load-bearing: the note's shape is
     // named by the governing workflow's realtime summary node, so the template cannot be
     // resolved until the lane it is named on exists.
+    //
+    // TASK-946 D2 — and AFTER the substrate read, which is the second load-bearing edge. The
+    // shape is named by the summary node the VISIT BRANCH reaches, and the visit type is frozen
+    // off the consultation row by `ensureSubstrateResolved`. Kicked off in this order (and
+    // awaited inside `ensureTemplateResolved`) so the branch is evaluated against a frozen
+    // `session.visitType` rather than against `undefined` — which is exactly what the previous
+    // ordering would have handed it.
     session.templatePromise = this.ensureTemplateResolved(session);
-    session.substratePromise = this.ensureSubstrateResolved(session);
     // TASK-932 D-9 — the WARM START, kicked off with the same fire-and-forget shape as everything
     // above it and for the same reason: `start()` is synchronous for the recording controller.
     //
@@ -1612,6 +1631,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * NEVER throws. `resolveForGeneration` already fails open to the platform
    * shape; this catch is the belt-and-braces half for a broken injection.
+   *
+   * ## TASK-946 D2 — the shape follows the VISIT BRANCH
+   *
+   * A graph that splits its per-turn summary by visit type names a template on BOTH summary
+   * nodes, and the seed declares the new-visit one first, so reading "the first node that names
+   * one" froze the new-visit shape on every revisit. The lane already carried the decision, so
+   * the fix is to make it: evaluate the lane's conditions ONCE, against the same run context the
+   * flush evaluates them against, and take the slug off a node that decision can reach.
    */
   private async ensureTemplateResolved(session: LiveSession): Promise<ResolvedDocumentTemplate> {
     if (!this.documentTemplateService) {
@@ -1626,7 +1653,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // while its own workflow named a template. `null` keeps the previous behaviour
       // exactly: the tenant's default template, then the platform fallback.
       const lane = session.laneSnapshot !== undefined ? session.laneSnapshot : await (session.lanePromise ?? this.ensureLaneResolved(session));
-      const laneSlug = realtimeDocumentTemplateSlug(lane);
+      // TASK-946 D2 — the visit type is frozen by the SUBSTRATE read (`start()` kicks it off
+      // immediately before this promise), and the branch cannot be evaluated without it.
+      // Awaited rather than re-invoked: a second `ensureSubstrateResolved` would repeat the
+      // stand-down decision, and this method must not be able to tear a session down twice.
+      if (session.substratePromise) await session.substratePromise;
+      const branchHandles = lane && lane.conditions.length > 0 ? resolveBranchHandles(lane, await this.realtimeRunContext(session)) : [];
+      const laneSlug = realtimeDocumentTemplateSlug(lane, branchHandles);
       const resolved = await this.documentTemplateService.resolveForGeneration(session.tenantId, laneSlug ?? undefined);
       session.templateSnapshot = resolved;
       this.logger.log({
@@ -1637,6 +1670,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         versionNumber: resolved.versionNumber,
         // WHERE the shape came from: the workflow's own node, or the tenant default.
         requestedSlug: laneSlug,
+        // ...and WHICH branch reached it. PHI-safe: node ids and branch handles only. Absent on
+        // an unbranched lane, which is every lane authored before the visit-type split.
+        visitType: session.visitType ?? null,
+        branchHandles: branchHandles.map(({ nodeId, handle, matched }) => ({ nodeId, handle, matched })),
       });
       return resolved;
     } catch (error) {
@@ -2715,6 +2752,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
      */
     let cursorAdvanceTo: number | null = null;
     let textFailed = false;
+    /**
+     * TASK-946 D6 — the LEGACY path's reason code, when its one TEXT call threw.
+     *
+     * The graph path takes its reason off the lane's degrade events; the legacy path has no
+     * events, so the classification happens where the error is actually in hand. `undefined`
+     * everywhere else, which is what makes "a reason exists" mean "something went wrong".
+     */
+    let legacyDegradeReason: string | undefined;
     let textLatencyMs = 0;
     // AD-1 generation stats for this flush (null unless TEXT
     // returned a stats block); surfaced on the payload as `metadata.stats`.
@@ -2879,9 +2924,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       } catch (error) {
         if (isStale()) return this.dropStale(session);
         textFailed = true;
+        // TASK-946 D6 — classified HERE, where the error is in hand; the message stays in the
+        // server log and only the code reaches the clinician's feed.
+        legacyDegradeReason = degradeCode(error, LIVE_DEGRADE_FALLBACK);
         this.logger.warn({
           message: 'TEXT running-summary call failed',
           consultationId,
+          degradeReason: legacyDegradeReason,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -2999,6 +3048,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         }
       : null;
 
+    /**
+     * TASK-946 D6 — the flush's own verdict, which nothing computed before.
+     *
+     * `turnDegraded` is a QUALITY signal about a flush that SUCCEEDED (the turn contract fell back
+     * to a whole-document rewrite) and `textFailed` names one stage, so a reader of the stats had
+     * no field that said "this flush produced no note". Two conditions make one:
+     *   - the document generation did not succeed (`textFailed`), or
+     *   - an `onError: 'fail'` node stopped the lane (`run.failed`), which no stats field carried.
+     */
+    const laneDegradeReason = graph ? realtimeDegradeReason(graph.run, lane) : legacyDegradeReason;
+    const flushFailed = textFailed || graph?.run.failed === true;
+    const flushDegradeReason = flushFailed ? (laneDegradeReason ?? LIVE_DEGRADE_FALLBACK) : undefined;
+
     const payload: LiveSummaryEventDto = {
       consultationId,
       runningSummary,
@@ -3022,6 +3084,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         : {}),
       ...(vitals ? { vitals } : {}),
       ...(textFailed ? { textFailed: true } : {}),
+      // TASK-946 D6 — additive and OMITTED on a healthy flush, so a consumer that never looks at
+      // them sees the payload it saw before this ticket.
+      ...(flushFailed ? { flushFailed: true } : {}),
+      ...(flushDegradeReason ? { degradeReason: flushDegradeReason } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -3054,8 +3120,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         writes: turnWrites,
         // TASK-891 B5 — WHY this flush produced nothing, when it produced nothing. The
         // summary node's own reason wins over any other node's: it is the one that
-        // decides whether there is a note at all.
-        degradeReason: realtimeDegradeReason(graph.run, lane),
+        // decides whether there is a note at all. TASK-946 D6 — as a CODE.
+        degradeReason: laneDegradeReason,
       });
 
       // TASK-939 R10 — fold the clinician's CONFIRMED text back into the session's last-good note.
@@ -3093,6 +3159,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnSectionsRewritten: turnWrites.filter((write) => write.mode === 'replace').length,
       turnRefusedRewrites: turnRefusals.length,
       turnDegraded,
+      // TASK-946 D6 — the flush's own verdict, beside the two stage flags. `turnDegraded` is a
+      // quality signal about a SUCCESSFUL flush; this is the one that says there is no note.
+      flushFailed,
+      ...(flushDegradeReason ? { degradeReason: flushDegradeReason } : {}),
       textLatencyMs,
       nlpLatencyMs,
       textFailed,
@@ -3131,6 +3201,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnSectionsRewritten: turnWrites.filter((write) => write.mode === 'replace').length,
       turnRefusedRewrites: turnRefusals.length,
       turnDegraded,
+      // TASK-946 D6 — the flush verdict and its PHI-safe reason code.
+      flushFailed,
+      ...(flushDegradeReason ? { degradeReason: flushDegradeReason } : {}),
     });
 
     // Emit the ordered per-flush trajectory. Non-fatal: a
@@ -3706,19 +3779,29 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private async resolveDepartmentName(session: LiveSession): Promise<string | null> {
     if (session.departmentName !== undefined) return session.departmentName;
-    if (!session.departmentId || !this.departmentRepository) return null;
+    session.departmentName = await this.departmentNameOf(session.departmentId ?? null);
+    return session.departmentName;
+  }
+
+  /**
+   * One department id → its NAME, or `null`. Never throws.
+   *
+   * Extracted from {@link resolveDepartmentName} by TASK-946 OD-3 so the live handoff resolves
+   * `current_department` through the same read — the alternative was a second copy of "look it
+   * up, swallow the failure, fall back to the builder's default", which is exactly how the two
+   * surfaces would come to disagree about a department that cannot be read.
+   */
+  private async departmentNameOf(departmentId: string | null): Promise<string | null> {
+    if (!departmentId || !this.departmentRepository) return null;
     try {
-      const department = await this.departmentRepository.findById(session.departmentId);
-      session.departmentName = department?.name ?? null;
-      return session.departmentName;
+      const department = await this.departmentRepository.findById(departmentId);
+      return department?.name ?? null;
     } catch (error) {
       this.logger.warn({
-        message: 'Department lookup failed — the agent’s `current_department` falls back to its declared default',
-        consultationId: session.consultationId,
+        message: 'Department lookup failed — `current_department` falls back to its declared default',
+        departmentId,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Cached as null so a broken read is not retried on every flush of a long consultation.
-      session.departmentName = null;
       return null;
     }
   }
@@ -5706,8 +5789,58 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * A THROWN gate or a failed decrypt is the one case where the halves are not independent: it
    * costs the WHOLE context. That is the fail-closed posture both resolvers document — nothing
    * rides a governance read that did not complete.
+   *
+   * ## TASK-946 OD-3 — the CLINICAL half, which was missing entirely
+   *
+   * The durable interpreter builds its `trigger.context` from this object, and the seeded
+   * `n_visit` condition compares `trigger.context.visit_type`. This method published only the
+   * DNA keys — and `{}` outright whenever DNA did not apply — so the condition evaluated against
+   * an absent variable and every one of the eleven published ArcaAI graphs took `else` on the
+   * durable lane, documenting every revisit as a first visit. The clinical keys are therefore
+   * ALWAYS present once the consultation row is readable, and the DNA half layers on top exactly
+   * as it did before: absent means absent, never a placeholder.
    */
   private async resolveHandoffContext(consultation: ConsultationEntity | null): Promise<Record<string, unknown>> {
+    if (!consultation) return {};
+    return { ...(await this.handoffClinicalContext(consultation)), ...(await this.resolveHandoffDnaContext(consultation)) };
+  }
+
+  /**
+   * TASK-946 OD-3 — the clinical half of the handoff context.
+   *
+   * Built from the CONSULTATION ROW, not from the live session, because by the time the durable
+   * interpreter reads the handoff the session has been torn down by `stop()`. That costs nothing
+   * in fidelity: the row is the very source `ensureSubstrateResolved` freezes
+   * `visitType` / `summaryLanguage` / `departmentId` from, so the two lanes read one fact.
+   *
+   * Values come from `buildPreSummaryVariables` — the same surface-neutral builder
+   * `realtimeRunContext` uses — so a field the platform has no value for inherits v1's declared
+   * default rather than a newly invented one, and the two lanes cannot drift on what an absent
+   * value means. `visit_type` is therefore the catalogue KEY (`new-visit` / `revisit`), which is
+   * the enum the seeded CEL compares; `language` is the consultation's declared language CODE
+   * beside the builder's `language_name`, exactly as the realtime context spells the pair.
+   *
+   * `chief_complaint` and `formatted_vitals` are deliberately NOT published: the first is an
+   * empty-string placeholder the workflow's own trigger-context schema already defaults, and the
+   * second is this recording's extracted vitals — session state that no longer exists here, so
+   * any value would be stale or invented.
+   */
+  private async handoffClinicalContext(consultation: ConsultationEntity): Promise<Record<string, unknown>> {
+    const language = readSummaryLanguage(consultation.metadata);
+    const shared = buildPreSummaryVariables({
+      currentDepartment: await this.departmentNameOf(consultation.departmentId ?? null),
+      // Derived exactly as `ensureSubstrateResolved` derives the session's own copy, from the
+      // consultation's parent link. `forConsultation` is pure.
+      visitType: DEFAULT_VISIT_TYPE_SERVICE.forConsultation(consultation.tenantId, {
+        isFollowUp: Boolean(consultation.parentConsultationId),
+      }).key,
+      language,
+    });
+    return { ...shared, language: (language ?? '').trim() };
+  }
+
+  /** The DNA half — unchanged from before OD-3, including its `{}` on every non-applying state. */
+  private async resolveHandoffDnaContext(consultation: ConsultationEntity | null): Promise<Record<string, unknown>> {
     const doctorId = consultation?.doctorId;
     if (!consultation || !doctorId || !this.dnaReportRepository || !this.secretsService) return {};
     try {
@@ -5929,6 +6062,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnSectionsRewritten: number;
       turnRefusedRewrites: number;
       turnDegraded: boolean;
+      /** TASK-946 D6 — this flush produced no note. See `LiveDocSessionStatsResponse`. */
+      flushFailed: boolean;
+      /** TASK-946 D6 — the PHI-safe code from `degrade-codes.ts`; absent on a healthy flush. */
+      degradeReason?: string;
     },
   ): Promise<void> {
     const snapshot: LiveDocSessionStatsResponse = {
@@ -5952,6 +6089,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       turnSectionsRewritten: metrics.turnSectionsRewritten,
       turnRefusedRewrites: metrics.turnRefusedRewrites,
       turnDegraded: metrics.turnDegraded,
+      flushFailed: metrics.flushFailed,
+      // Absent, never `''`: a reason exists exactly when something went wrong.
+      ...(metrics.degradeReason ? { degradeReason: metrics.degradeReason } : {}),
       // Omitted entirely when nothing degraded, so a healthy session's snapshot keeps the
       // shape it had before B4.
       ...(metrics.nodeDegrades && metrics.nodeDegrades.length > 0 ? { nodeDegrades: metrics.nodeDegrades } : {}),
