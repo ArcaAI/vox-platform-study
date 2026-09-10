@@ -23,7 +23,9 @@ const PLATFORM_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
  *
  * Note: doctorId is NOT in request for a HUMAN caller - it comes from the authenticated user
  * (JWT or API key). A SERVICE ACCOUNT has no user, so it names the clinician it acts for with
- * `clinicianUserId` (TASK-933) - see that field.
+ * `clinicianUserId` (TASK-933) - see that field - OR carries that clinician's STAFF IDENTIFIER
+ * inside `context`, in whichever field the tenant's context schema marks as its user identity
+ * (TASK-950) - see `context`.
  */
 export class OpenConsultationRequest {
   @ApiProperty({ description: 'Patient identifier' })
@@ -121,10 +123,17 @@ export class OpenConsultationRequest {
    * consultation at all, and papering over that by writing the account's own id into `doctorId`
    * would corrupt every one of those consumers at once.
    *
-   * Honoured ONLY for a service-account caller, and REQUIRED for one:
+   * Honoured ONLY for a service-account caller:
    *   · a JWT / API-key caller that supplies it -> 400 `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER`
    *     (their clinician is their own identity; naming another would be impersonation);
-   *   · a service-account caller that omits it -> 400 `CLINICIAN_REQUIRED`.
+   *   · a service-account caller that supplies NEITHER this NOR a resolvable user-identity
+   *     value in `context` -> 400 `CLINICIAN_REQUIRED`.
+   *
+   * TASK-950 D-7 - this field and the schema's user-identity field may BOTH be sent, and when
+   * both are they must AGREE: naming one clinician while the context payload identifies another
+   * is a 400 `CLINICIAN_MISMATCH`, never a silent precedence. Either one alone is enough, which
+   * is what keeps every TASK-933 integrator working unchanged while an integrator that knows
+   * only its own staff identifiers never has to learn HOPE user ids at all.
    *
    * The named user is then validated like any other cross-aggregate reference - tenant
    * membership - PLUS their own CASL ability must grant `create:Consultation`. Every failure is
@@ -135,7 +144,7 @@ export class OpenConsultationRequest {
    */
   @ApiPropertyOptional({
     description:
-      'The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) and refused for every other credential class, whose clinician is the authenticated caller. The named user must belong to the tenant and be able to create consultations; anything else is a 404.',
+      'The clinician this consultation belongs to. Required when the caller is a SERVICE ACCOUNT (which has no user of its own) unless `context` carries the value of the schema-declared user-identity field, and refused for every other credential class, whose clinician is the authenticated caller. Both may be sent only when they agree (otherwise 400 `CLINICIAN_MISMATCH`). The named user must belong to the tenant and be able to create consultations; anything else is a 404.',
     format: 'uuid',
     // A synthetic UUIDv7, NOT a seeded id: `check-openapi-coverage.ts` refuses the reserved
     // `70000000-…` / `60000000-…` prefixes in a published example.
@@ -145,6 +154,55 @@ export class OpenConsultationRequest {
   @IsString()
   @Matches(PLATFORM_ID_PATTERN, { message: 'clinicianUserId must be a 36-character hyphenated hex user id' })
   clinicianUserId?: string;
+
+  /**
+   * TASK-950 §D-6 - the consultation-context payload, as the tenant's own schema declares it.
+   *
+   * Shape is the ENVELOPE `{ [kindKey]: payload }` - the same shape the agent plane's `context`
+   * takes, the same shape `payloadSchemaFromDefinition` derives, and the same shape
+   * `@arcaai/vox-codegen --tenant` types. One entry per declared kind the caller has a value
+   * for; a key the schema does not declare is a violation, not an ignored extra.
+   *
+   * WHICH schema it is validated against is the DEPARTMENT-effective bundle (owner answer OD-4):
+   * `departmentId` on this same request narrows to the department default, and a tenant with no
+   * department-scoped schema falls back to its tenant default - the identical cascade
+   * `GET /tenants/me/context-schema` advertises and every case-note write already validates
+   * against. Validated live, before anything is written; every problem is reported at once as
+   * 400 `CONTEXT_SCHEMA_VIOLATION` with a `problems` array.
+   *
+   * Only STRUCTURED kinds are accepted here. TEXT / DOCUMENT / IMAGE / STREAM_AUDIO kinds carry
+   * no inline `payload` - they are written after open through `POST /consultations/:id/context`
+   * and its media routes - so naming one here is refused rather than silently dropped.
+   *
+   * ## Why this field exists at all: user identity
+   *
+   * A tenant may mark ONE string property of ONE STRUCTURED kind as its USER IDENTITY field
+   * (`userIdentity: { field }` on the kind declaration). For a SERVICE-ACCOUNT caller the value
+   * in that field is the clinician's STAFF IDENTIFIER: HOPE resolves it to a tenant user by
+   * `UserProfile.staffId` and, when the tenant has auto-provisioning enabled and no such user
+   * exists, creates one - and that user becomes `doctorId`. An integrator therefore never has
+   * to learn, store or synchronise HOPE user ids: it sends the id its own roster already uses.
+   *
+   * For a HUMAN caller (JWT or API key) the field is validated as ORDINARY CONTENT and
+   * otherwise IGNORED (D-5): that caller - or the key's bound human - already IS the clinician,
+   * and resolving someone else from a body field would be impersonation with no gate.
+   *
+   * This payload is NOT persisted as context items by `open`; identity resolution is all it
+   * does here. Persisting the values is `POST /consultations/:id/context`, unchanged.
+   *
+   * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
+   * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
+   */
+  @ApiPropertyOptional({
+    description:
+      "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. For a SERVICE-ACCOUNT caller the schema's declared user-identity field resolves - or provisions - the clinician recorded as `doctorId`; for every other credential class it is content and nothing more.",
+    type: 'object',
+    additionalProperties: true,
+    example: { vitals: { bloodPressure: '128/82', heartRate: 72, consultant_id: 'DR-1042' } },
+  })
+  @IsOptional()
+  @IsObject()
+  context?: Record<string, unknown>;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
   @IsOptional()
