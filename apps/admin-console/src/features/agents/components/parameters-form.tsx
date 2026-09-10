@@ -8,45 +8,13 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { useModelCatalogue, type CatalogueAsrProfile } from '@/shared/catalog';
+// TASK-949 L1 — the schema walk moved to `shared/` so the workflow studio's read-only
+// `AgentParametersView` reads the same per-task contract this editor does. A feature may not
+// import another feature, and two copies of `setPath` would be two ways to drop a knob.
+import { getPath, labelOf, props, setPath, type Schema, type Value } from '@/shared/agent-parameters';
 import type { AgentTask } from '../api';
 import { JsonField } from './json-field';
 import { useTaskModelCatalogue } from './model-picker';
-
-type Schema = Record<string, unknown>;
-type Value = Record<string, unknown>;
-
-function props(schema: Schema): Record<string, Schema> {
-  return (schema.properties as Record<string, Schema> | undefined) ?? {};
-}
-
-function labelOf(key: string): string {
-  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
-}
-
-function getPath(value: Value, path: string[]): unknown {
-  let cursor: unknown = value;
-  for (const key of path) {
-    if (cursor === null || typeof cursor !== 'object') return undefined;
-    cursor = (cursor as Value)[key];
-  }
-  return cursor;
-}
-
-/** Immutable set; deletes the key (and empty parents) when `next` is undefined so untouched knobs stay absent. */
-function setPath(value: Value, path: string[], next: unknown): Value {
-  if (path.length === 0) return value;
-  const [head, ...rest] = path;
-  const copy: Value = { ...value };
-  if (rest.length === 0) {
-    if (next === undefined || next === '') delete copy[head];
-    else copy[head] = next;
-    return copy;
-  }
-  const child = setPath(((copy[head] as Value | undefined) ?? {}) as Value, rest, next);
-  if (Object.keys(child).length === 0) delete copy[head];
-  else copy[head] = child;
-  return copy;
-}
 
 /**
  * TASK-887 — a registry-model REFERENCE, picked rather than typed.
