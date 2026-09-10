@@ -371,6 +371,9 @@ class ModelRegistryReader:
             source_uri=model.source_uri,
             source_revision=model.source_revision,
             format=model_format,
+            # TASK-944 (B2) — the DECLARED loader-selection key, carried on this
+            # deprecated path too so it selects like the spec-driven one.
+            library_name=getattr(model, "library_name", None),
             memory_size_mb=model.memory_size_mb,
             compute_type=model.compute_type,
             download_status=AiModelDownloadStatus(model.download_status),

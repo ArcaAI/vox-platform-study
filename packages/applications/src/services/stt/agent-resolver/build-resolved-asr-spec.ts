@@ -137,6 +137,9 @@ function toSpecModel(model: ResolvedAgentModel, role: AsrSpecModelRole, metadata
     slug: model.slug,
     taskType: ASR_SPEC_ROLE_TASK_TYPE[role],
     format: model.format,
+    // TASK-944 (B2) — the field `apps/stt` selects its loader with; omitted, never
+    // `null`, so the two halves stay independently deployable against `extra: forbid`.
+    ...(model.libraryName ? { libraryName: model.libraryName } : {}),
     sourceUri: model.sourceUri,
     sourceRevision: model.sourceRevision ?? null,
     // Already DERIVED by `AgentResolverService` (TASK-890 §3.11); forwarded verbatim.

@@ -89,6 +89,23 @@ class ModelLoadError(ModelError):
     error_code = "MODEL_LOAD_ERROR"
 
 
+class ModelNotCacheServedError(ModelLoadError):
+    """The row's DECLARED serving library is executed by a dedicated runtime, not by this cache.
+
+    TASK-944 lane B2. A ``ModelLoadError`` subclass so every existing handler
+    keeps catching it, but a DISTINCT type so "this cache does not load that
+    kind of artifact" can never again be mistaken for "the weights are missing".
+    The two used to be indistinguishable: a pyannote checkpoint handed to
+    ``transformers`` fails offline with *"couldn't connect to huggingface.co ...
+    couldn't find them in the cached files"*, which reads exactly like an absent
+    snapshot, and twice sent this ticket looking at the data.
+
+    The message MUST name the declared library and the runtime that owns it.
+    """
+
+    error_code = "MODEL_NOT_CACHE_SERVED"
+
+
 class ModelDownloadError(ModelError):
     """Failed to download model from source."""
 

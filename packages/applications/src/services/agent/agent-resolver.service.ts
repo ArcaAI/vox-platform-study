@@ -249,6 +249,10 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     wireModelId: model.wireModelId ?? null,
     checksum: model.checksum ?? null,
     format: String(model.format),
+    // TASK-944 (B2) — the loader-SELECTION facet (TASK-860). NOT NULL on the row;
+    // guarded anyway so a partially-built test entity does not emit `undefined`
+    // as a declared library, which the STT side would fail closed on.
+    ...(model.libraryName ? { libraryName: String(model.libraryName) } : {}),
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
     tenantId: model.tenantId,

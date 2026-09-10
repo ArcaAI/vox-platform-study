@@ -194,12 +194,18 @@ class AsrSpecModelMetadata(_Wire):
 class AsrSpecModel(_Wire):
     """One resolved registry row — the fields the model loaders consume."""
 
-    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"metadata"})
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"metadata", "library_name"})
 
     role: AsrSpecModelRole
     slug: str
     task_type: str
     format: str
+    #: TASK-944 (B2) — ``AiModel.libraryName``, the loader-SELECTION field since
+    #: TASK-860; ``format`` beside it has been descriptive ever since. OPTIONAL
+    #: (omit-when-absent) so the gateway and this service stay independently
+    #: deployable against ``extra='forbid'``: absent means the sender predates the
+    #: field and ``ModelCache`` falls back to the ``format`` key, exactly as before.
+    library_name: str | None = None
     source_uri: str
     source_revision: str | None
     local_path: str | None
@@ -493,6 +499,11 @@ def to_ai_model_config(model: AsrSpecModel) -> AiModelConfig:
         source_uri=model.source_uri,
         source_revision=model.source_revision,
         format=model_format,
+        # TASK-944 (B2) — the DECLARED loader-selection key. Unvalidated here on
+        # purpose: `ModelCache.loader_for` owns the vocabulary and fails closed on
+        # a library it has no loader for, so a catalogue that grows a library this
+        # runtime cannot serve is reported by name rather than mapped to a guess.
+        library_name=model.library_name,
         memory_size_mb=None,
         compute_type=model.compute_type,
         download_status=(
