@@ -118,9 +118,25 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
     expect(knobs.idleMs).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs']);
     expect(knobs.transcriptMode).toBe(AGENTIC_CONTEXT_DEFAULTS['transcript.mode']);
     expect(knobs.tokenBudgetPerRun).toBe(AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun']);
+    expect(knobs.minIntervalMs).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.minIntervalMs']);
   });
 
-  it('resolves ALL FIVE live knobs through the facade', async () => {
+  it('TASK-939 R7 — the flush cadence FLOOR is governed, not frozen at construction', async () => {
+    // `LIVE_DOC_MIN_INTERVAL_MS` was read once in the constructor, which made the one cadence knob
+    // an operator would most want to turn the one that needed a redeploy — the exact freeze this
+    // module's header calls out as what made the control plane decorative.
+    const stored = await buildService({ 'liveFlush.minIntervalMs': 12_000 }).service.resolveAgenticContext(TENANT);
+    expect(stored.minIntervalMs).toBe(12_000);
+
+    // Env remains an override, and LOSES to a stored value, like every other knob here.
+    const envOnly = await buildService({}, { LIVE_DOC_MIN_INTERVAL_MS: '250' }).service.resolveAgenticContext(TENANT);
+    expect(envOnly.minIntervalMs).toBe(250);
+
+    const bothSet = await buildService({ 'liveFlush.minIntervalMs': 9_000 }, { LIVE_DOC_MIN_INTERVAL_MS: '250' }).service.resolveAgenticContext(TENANT);
+    expect(bothSet.minIntervalMs).toBe(9_000);
+  });
+
+  it('resolves ALL SIX live knobs through the facade', async () => {
     // claimCheck.minBytes was removed (F-21): the claim-check offload is a
     // Temporal-history concern owned entirely by the harness
     // (HARNESS_CLAIM_CHECK_MIN_BYTES); it never governed anything in the live
@@ -134,6 +150,8 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
       [
         'agentic.context.liveDelta.maxChars',
         'agentic.context.liveFlush.idleMs',
+        // TASK-939 R7 — the cadence floor joined the governed set.
+        'agentic.context.liveFlush.minIntervalMs',
         'agentic.context.liveFlush.segmentThreshold',
         'agentic.context.tokenBudget.perRun',
         'agentic.context.transcript.mode',

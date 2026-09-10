@@ -661,6 +661,8 @@ export interface AgenticContextKnobs {
   liveDeltaMaxChars: number;
   segmentThreshold: number;
   idleMs: number;
+  /** TASK-939 R7 — minimum ms between TEXT calls for one session (was a constructor env freeze). */
+  minIntervalMs: number;
   transcriptMode: AgenticTranscriptMode;
   tokenBudgetPerRun: number;
 }
@@ -822,7 +824,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private lastAgenticContext: AgenticContextKnobs;
   private readonly enabled: boolean;
-  private readonly minIntervalMs: number;
+  private readonly envMinIntervalMs?: number;
   private readonly durableSnapshotMs: number;
   private readonly textMaxTokens: number;
   /**
@@ -1019,8 +1021,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.heartbeatMs = Number(this.configService.get('LIVE_DOC_HEARTBEAT_MS') ?? 15000);
     // Kill-switch (P2): any value other than the literal 'false' keeps it on.
     this.enabled = String(this.configService.get('LIVE_DOC_ENABLED') ?? 'true') !== 'false';
-    // Min seconds between TEXT calls for one session — protects the small local LM pool (P0-A).
-    this.minIntervalMs = Number(this.configService.get('LIVE_DOC_MIN_INTERVAL_MS') ?? 4000);
+    // Min ms between TEXT calls for one session — protects the small local LM pool (P0-A).
+    //
+    // TASK-939 R7 — the env value is an OVERRIDE now, not the answer: the effective value is
+    // re-resolved per flush through `agentic.context.liveFlush.minIntervalMs`, so a super admin's
+    // registry write governs the very next flush with no redeploy. Seeded here so the value before
+    // the first flush is the one that flush would resolve.
+    this.envMinIntervalMs = readNumericEnv(this.configService, 'LIVE_DOC_MIN_INTERVAL_MS');
     // Durable-snapshot throttle: 0 disables periodic durable writes (P1-C).
     this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
@@ -2351,9 +2358,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!transcript && !notes) return null;
 
     // Min-interval throttle (P0-A): coalesce a burst into a single trailing re-run so
-    // a busy session never exceeds one TEXT call per `LIVE_DOC_MIN_INTERVAL_MS`.
+    // a busy session never exceeds one TEXT call per `agentic.context.liveFlush.minIntervalMs`.
+    //
+    // Read off `lastAgenticContext` — the snapshot the synchronous ingest/debounce paths already
+    // use for `idleMs` — because this gate runs BEFORE this flush resolves its own knobs. So a
+    // registry write governs from the flush after the one that observes it, which is the same
+    // one-flush lag `scheduleFlush` has always had and is what keeps this path synchronous.
     const elapsed = Date.now() - session.lastFlushAt;
-    if (!opts?.force && elapsed < this.minIntervalMs) {
+    if (!opts?.force && elapsed < this.lastAgenticContext.minIntervalMs) {
       this.scheduleThrottledFlush(session);
       return session.lastPayload ?? null;
     }
@@ -3829,7 +3841,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private scheduleThrottledFlush(session: LiveSession): void {
     if (session.throttleTimer) return; // already pending
-    const delay = Math.max(0, this.minIntervalMs - (Date.now() - session.lastFlushAt));
+    const delay = Math.max(0, this.lastAgenticContext.minIntervalMs - (Date.now() - session.lastFlushAt));
     session.throttleTimer = setTimeout(() => {
       session.throttleTimer = undefined;
       void this.flush(session.consultationId);
@@ -4378,12 +4390,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const ctx = { tenantId };
-      const [delta, threshold, idle, mode, budget] = await Promise.all([
+      const [delta, threshold, idle, mode, budget, minInterval] = await Promise.all([
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveDelta.maxChars`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.segmentThreshold`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.idleMs`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}transcript.mode`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}tokenBudget.perRun`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.minIntervalMs`, ctx),
       ]);
       const resolved: AgenticContextKnobs = {
         liveDeltaMaxChars: storedNumber(delta) ?? fallback.liveDeltaMaxChars,
@@ -4391,6 +4404,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         idleMs: storedNumber(idle) ?? fallback.idleMs,
         transcriptMode: storedMode(mode) ?? fallback.transcriptMode,
         tokenBudgetPerRun: storedNumber(budget) ?? fallback.tokenBudgetPerRun,
+        minIntervalMs: storedNumber(minInterval) ?? fallback.minIntervalMs,
       };
       this.lastAgenticContext = resolved;
       return resolved;
@@ -4477,6 +4491,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       liveDeltaMaxChars: this.envLiveDeltaMaxChars ?? AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'],
       segmentThreshold: this.envSegmentThreshold ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'],
       idleMs: this.envDebounceMs ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs'],
+      minIntervalMs: this.envMinIntervalMs ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.minIntervalMs'],
       transcriptMode: this.envTranscriptMode ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
       tokenBudgetPerRun: this.envTokenBudgetPerRun ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
     };
