@@ -1,6 +1,6 @@
 # TASK-947 — Composable agent instructions: conditional prompt fragments for TEXT_GENERATION agents
 
-**Status:** In Progress — owner's go 2026-09-10; OD-1…OD-14 taken as recommended (§3), an override is recorded in §6
+**Status:** Review — every lane, fix and artifact merged into `dev-2.2` (`8818de526` is the last code merge), gates green (§5.3), reviewers R1/R2 acted on; awaiting the owner's confirmation (rule 01 Phase 5). Not proven live: the realtime and durable lanes (unit + parity evidence only)
 **Type:** feature
 **Opened:** 2026-09-10
 **Requested by:** owner, 2026-09-10 — "tenant admin … build the text-generation/summarization agents with conditional logic for selecting and combining prompt/instruction templates and context variables to have the final instruction prompt with context details at runtime"; option C chosen over A (graph-only) and B (grammar conditionals)
@@ -283,7 +283,7 @@ Why these tiers (rule 14 §1): Lane 0 is the API every other lane codes against 
 
 ## 5. Implementation Summary
 
-_Draft while the reviewers (R1 parity, R2 security, R3 live) run; their findings and any fixes are appended to §6 and reflected here before the status flips._
+_R1 (parity) and R2 (security) reported and were acted on (§6, `8818de526`); R3 (live) stalled and the orchestrator completed the invocation- and bench-lane proofs and the cleanup itself. The realtime and durable lanes are covered by unit and parity evidence only._
 
 ### 5.1 What a tenant admin can do now
 
@@ -318,19 +318,20 @@ KEYS ran — never a body or a condition.
 | `fe3ba9547` | the five API artifacts regenerated (`e49f6554f`) |
 | `8818de526` | **reviewer fixes** (`176fb5b2a`) — one `context` view on every lane, `primaryTemplateRef`, authored fragment index, refuse-by-name parity, nesting cap + Python parse guard, `__proto__` map key, invocation-lane exclusion log, bench detail redaction |
 
-### 5.3 Gates (post-merge, in the primary unless noted)
+### 5.3 Gates (after the last merge, `8818de526`, run on that exact tree in the fixes worktree — the primary's dist is held by the other session's running gateway)
 
 | Surface | Result |
 |---|---|
-| `@arcaai/workflow-contract` | 916/916, tsc 0, lint 0 errors, build OK |
+| `@arcaai/workflow-contract` | 50 files / 931 passed, tsc 0, lint 0 errors, build OK |
 | `@arcaai/types` | build OK |
-| `tests/contracts` loaders | prompt-composition 18/18 (16 cases + guards), prompt-template 30/30 |
+| `tests/contracts` loaders | prompt-composition 21/21 (19 cases + guards), prompt-template 31/31 — Python mirrors 105/105 over both extended fixtures |
 | `@arcaai/database` (seed) | reference-set suites 20/20, typecheck 0 |
-| `@arcaai/applications` | 775 files / 12852 passed; ONE file red in every run — `membership-bounded-sync.integration.test.ts` (live-DB suite, port 5433 down on this box; environmental) ; build 0; lint 0 errors / 182 warnings (unchanged count) |
-| `apps/api` | `api:build` 12/12; agent controller unit 26/26 |
-| `apps/admin-console` | 310 files / 2837 passed; `eslint --max-warnings 0`; `next build` OK (94/94 pages; five Edge-runtime warnings on `instrumentation.ts` pre-date this ticket) |
-| `apps/harness` | 2388 passed (incl. parity 19/19 → 20/20 after case 16, trajectory 6/6, replay-compat 23/23); ruff; mypy 151 files; `black --check` red on 22 files that pre-date the ticket (black 26.5.1 vs tree) |
-| `@arcaai/vox-node` | 33 files / 486 passed on the regenerated schemas; `gen:admin:check`, `api:openapi:check`, `api:portal:check` all "no drift" (run in the worktree on the same tree state) |
+| `@arcaai/applications` | 777 files / 12866 passed; ONE file red in every run — `membership-bounded-sync.integration.test.ts` (live-DB suite, port 5433 down on this box; environmental, red on the baseline); build 0; lint 0 errors / 182 warnings (the count the ticket started with) |
+| `apps/api` | `api:build` 12/12; agent module unit 6 files / 65 passed (controller 26/26 incl. `promptFragments`) |
+| `apps/admin-console` | 310 files / 2837 passed; `eslint --max-warnings 0`; `next build` OK (94/94 pages; five Edge-runtime warnings on `instrumentation.ts` pre-date this ticket) — unchanged by the fixes |
+| `apps/harness` | full suite 2388 passed at `5df88d28e`; after the fixes the interpreter subset 690 passed (parity 20/20, recursion 4/4, trajectory 6/6, templating 39/39, replay-compat 23/23); ruff "All checks passed"; mypy 151 files clean; `black --check` red on 22 files that pre-date the ticket (black 26.5.1 vs tree), the ticket's own files clean |
+| `@arcaai/vox-node` | 33 files / 486 passed on the regenerated schemas; `gen:admin:check`, `api:openapi:check`, `api:portal:check` all "no drift" |
+| Live (shared dev stack, pre-fix build) | invocation lane: 200 + `promptFragments.selected` on two contexts, the correct 400 on an unresolved variable; bench lane: three contexts render and report `composition` exactly per §4.1 (§6, 2026-09-10 R3 entry) |
 
 ### 5.4 Files changed (by lane; the §6 record has the per-lane stats)
 
