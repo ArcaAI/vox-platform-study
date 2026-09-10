@@ -1,6 +1,6 @@
 # TASK-944 — Cold-start timeouts and secret hot-reload
 
-**Status:** In Progress (lanes A + C done; lane B reopened as B1/B2)
+**Status:** Review (lanes A + C merged and confirmed live; B1 + B2 implemented, UNMERGED)
 **Type:** bugfix
 **Opened:** 2026-09-10
 **Found by:** live verification of the `hope-v2-dev` k3s deployment (pipeline #862, rev `50b2db5`)
@@ -452,6 +452,129 @@ surface, not the lane's.
   repo that is actually published.
 - Both are hermetic — no network, no GPU, no live cluster.
 
+## Implementation Summary — B1 and B2 (2026-09-10)
+
+**Both implemented, TDD, RED observed for each. Branch `task-944-lane-b1-b2`, UNMERGED**
+(worktree `.claude/worktrees/agent-a6b07f1e6f4b6fe67`). Lanes A and C are untouched.
+
+### B1 — one resolver, two thread contexts; two failure kinds, two log lines
+
+| File | Change |
+|---|---|
+| `apps/stt/src/stt/diarization/embedding_service.py` | NEW `_run_resolver_blocking(make_coro)`: `asyncio.run` when the calling thread owns no loop (unchanged path), otherwise a one-shot `ThreadPoolExecutor` that gives the resolution a thread — and a loop — of its own. `_resolve_hf_token` now splits its `except`: `CredentialUnavailable` → WARNING (tolerated, and it now names the cause), anything else → `logger.exception` at ERROR, explicitly labelled a defect on the STT side. `CredentialUnavailable` is imported EAGERLY at module level — an `except` clause cannot name a class a failed import left unbound. |
+| `apps/stt/tests/unit/test_task944_hf_token_async_context.py` | NEW — 5 hermetic cases (no network, no GPU, no gateway; the resolver and `huggingface_hub` are both stubbed). |
+
+**Which caller was actually on the loop — the ticket said "async request context", and it is
+`SileroVADService.initialize`.** `apps/stt/src/stt/vad/silero_service.py:73` calls
+`self._resolve_model_path()` DIRECTLY from a coroutine, and that reaches `_resolve_hf_token`
+(line 277). The three diarization callers
+(`pyannote_embedding` / `speechbrain_embedding` / `segmentation_service`) all run under
+`asyncio.to_thread`, where `asyncio.run` was already correct — which is why the module's old
+docstring ("there is no loop to await on") was true of the callers it was written for and false
+of the one added later. The fix covers both rather than moving the problem to the next caller.
+
+RED reproduced the live symptom exactly, including its line number:
+
+```
+tests/unit/test_task944_hf_token_async_context.py::test_token_resolves_when_called_from_a_running_event_loop
+  apps/stt/src/stt/diarization/embedding_service.py:57: RuntimeWarning:
+  coroutine '_resolves_to' was never awaited
+FAILED ... ::test_token_resolves_when_called_from_a_running_event_loop
+FAILED ... ::test_a_programming_error_is_distinguishable_from_a_control_plane_fault
+```
+
+**What "distinguishable" means concretely.** A control-plane fault is the module's own declared
+signal — `CredentialUnavailable`, raised by `raise_if_unusable` for `DENIED`/`UNAVAILABLE` — and
+keeps the WARNING and the "continuing unauthenticated" wording an operator already greps for.
+Everything else (a `RuntimeError` from a bad dispatch, a `TypeError` from a changed signature, a
+missing gateway key) is ERROR + traceback, and says in the message that it is a defect on the STT
+side and not a control-plane fault. Both are still TOLERATED — the posture is unchanged, only the
+diagnosis is — because a public pyannote repo loads anonymously and a gated one fails later with
+the hub's own explicit 401.
+
+### B2 — DECISION: the hub repo id is DATA, on `AiModel.sourceUri`
+
+**Not resolution.** Three reasons, in order of weight:
+
+1. `09-infrastructure-devops.md` §"No hardcoded configuration" — a model id is configuration and
+   never a literal in application code. A `built-in` slug → repo table inside `apps/stt` is the
+   textbook "constant with a real default wearing a config costume".
+2. **The column already exists and is already plumbed end to end, with no code default anywhere
+   on the path**: `AiModel.sourceUri` → `ResolvedAgentModel.sourceUri`
+   (`agent-resolver.service.ts:243`) → `AsrSpecModel.sourceUri`
+   (`build-resolved-asr-spec.ts:140`) → `AiModelConfig.source_uri` (`pipeline/spec.py:493`) →
+   `resolve_weights_or_hf_id` (`models/source_resolver.py:188`). Nothing is missing; one row holds
+   a wrong value. A loader map would add a SECOND statement of the same fact, and the two would
+   drift silently — which is the failure the rule exists to prevent.
+3. `provider = 'built-in'` is a catalogue LABEL, not a resolution tier. Every other HuggingFace row
+   in the catalogue resolves through `sourceUri`; a map for built-in rows alone would make this one
+   row resolve unlike its ~30 siblings.
+
+**The seed was already right.** `seed/ai-models/audio.ts:595` has declared
+`sourceUri: 'pyannote/wespeaker-voxceleb-resnet34-LM'` since TASK-860, and `seedAiModels` re-syncs
+that column on every re-seed. That is itself the strongest evidence the intended design is data:
+the defect is a STALE ROW in a database that is never re-seeded, not a missing mapping.
+
+| File | Change |
+|---|---|
+| `packages/database/src/prisma/db_main/migrations/20260910190000_task_944_wespeaker_embedding_source_uri/migration.sql` | NEW — pure DATA migration, modelled on `20260902090000_task_855_ai_model_source_uri_fix`. One guarded `UPDATE`. |
+| `packages/database/src/__tests__/task944-embedding-model-source-uri.test.ts` | NEW — 5 text-level pins (no DB, no Prisma client), in the idiom of `global-setting-tenant-key-migration.test.ts`. |
+
+**The mechanism that reaches an already-seeded database: a migration.** The deployed DB is seeded
+and the k3s `hope-db-migrate` Job runs `RUN_SEED=none`, so a seed correction never lands there;
+`prisma migrate deploy` — which that same PreSync Job already runs — is the only path that does.
+The statement is therefore the re-seed of exactly one column of exactly one row, and can clobber
+nothing a re-seed would have preserved. It matches by `slug` and does NOT filter `tenantId` (older
+seeds cloned SYSTEM catalogue rows into customer tenants with a fresh id and the same slug — the
+sweep pattern `retireLegacyAiModels` and task_855 both use), and it is guarded with
+`IS DISTINCT FROM` so re-running it — or applying it to a freshly seeded database — touches no row.
+
+**What the tests pin.** The seeded `sourceUri`; that its derived HuggingFace cache directory is
+exactly `models--pyannote--wespeaker-voxceleb-resnet34-LM`, the directory verified present on the
+mount (the pin that would actually have caught this, rather than one that merely looks plausible);
+that the migration writes exactly the literal the seed declares, so the one fact now stated twice
+cannot drift; that the migration is data-only and guarded; and a CLASS invariant — no
+HuggingFace-source row in the catalogue may locate itself by its own bare slug, or by anything that
+is not an `<org>/<repo>` hub id. That last one holds across the whole catalogue today, which is
+further evidence the deployed row diverged from the seed rather than the seed being wrong.
+
+### Adjacent finding — NOT fixed, deliberately out of B1/B2 scope
+
+`HuggingFaceLoader.load` passes `cache_dir=settings.huggingface_cache_dir` to `from_pretrained`,
+and that setting defaults to **`HF_HOME`** (`apps/stt/src/stt/core/config/settings.py:285-290`,
+and the same in its `_resolve_huggingface_cache_dir` validator) — the PARENT of the hub cache, not
+the hub cache. In the pod that is `/mnt/models-bucket/hf`, while the snapshot lives at
+`/mnt/models-bucket/hf/hub/models--pyannote--wespeaker-voxceleb-resnet34-LM`. With
+`HF_HUB_OFFLINE=1`, an explicit wrong `cache_dir` produces the SAME
+"couldn't find them in the cached files" message as a wrong repo id, so the observed error does not
+discriminate between the two. Note the field's own inconsistency: the env branch yields `HF_HOME`
+while the literal fallback yields `~/.cache/huggingface/hub` — one is a hub cache, the other its
+parent. `HUGGINGFACE_CACHE_DIR` is a declared var (`turbo.json#globalEnv`,
+`apps/stt/.env.sample:80`) whose documented shape is a `.../hub` path, and it appears unset in the
+pod. Two candidate remedies, both outside this lane: set
+`HUGGINGFACE_CACHE_DIR=/mnt/models-bucket/hf/hub` in the deployment repo's STT config, or make the
+default derive `$HF_HOME/hub`. **Read the deployed row's `sourceUri` before assuming which cause is
+live** — the in-pod evidence in this ticket listed `slug`, `provider`, `format` and `_metadata`, but
+not `sourceUri`, which is the column that actually carries the repo id.
+
+### Gate results (B1/B2 branch)
+
+| Gate | Result |
+|---|---|
+| `pnpm stt:test:unit` | **1 failed, 3290 passed** — the single failure is `test_task799_env_surface.py::TestNoCredentialHasARealCodeDefault::test_minio_credentials_default_to_empty`, the documented pre-existing one (the local `.env.test` sets `MINIO_ACCESS_KEY`). All 5 new cases pass. |
+| `pnpm stt:lint` | PASS — "All checks passed!" |
+| `pnpm stt:typecheck` | PASS — "Success: no issues found in 141 source files" |
+| `pnpm --filter @arcaai/applications build` | PASS |
+| `pnpm --filter @arcaai/applications test` | **12 775 passed, 6 skipped; 1 FILE failed** — `agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts`, PRE-EXISTING: it needs the live test DB on :5433, which is down. Zero test-level failures. |
+| `pnpm --filter @arcaai/database` (the two model-catalogue suites) | PASS — 2 files, 29 tests |
+| `pnpm lint` | PASS — 39/39 tasks, 0 errors. The 65 warnings are pre-existing `eslint-comments/require-description` in untouched `apps/api` files. |
+
+`pnpm stt:test` (the full suite) was deliberately NOT run: it rewrites the tracked
+`stt-loss-report.json` / `stt-quality-scorecard.json` with garbage on a machine with no models.
+
+**Not verified here, and it cannot be:** that the deployed row is repaired, that the embedding
+model then loads, and what the cold start costs afterwards. All three need the cluster.
+
 ## Change History
 
 | Date | Change |
@@ -463,3 +586,6 @@ surface, not the lane's.
 | 2026-09-10 | Lane A: `sttStreaming.sessionCreateTimeoutMs` descriptor (`global-kv`, system scope, `open-to-default`, default 60000); `StreamingSessionService` resolves it per call. Lane B: root cause identified as the ML image installing `stt[ml-gpu]` and `stt[nemo]` — extras the root pyproject DECLARES as conflicting — into one venv; the nemo install and its `transformers==5.5.4` override removed, guarded by a hermetic Dockerfile/pyproject contract test. Commit `2eeae45cd`. |
 | 2026-09-10 | Lane C: `resolveJwtSecret()` becomes the one source for sign and verify (`JwtStrategy` moves to `secretOrKeyProvider`); OIDC's hard-coded fallback removed; `SecretsInvalidationSubscriber` wired, which answers the ticket's open question — `arca:secrets:invalidate` had NO production subscriber at all. A latent circular import (`config.service` → the `../secrets` barrel) surfaced and was fixed. Rotation contract documented in `docs/operations/jwt-secret-rotation.md`; the Vault runbook's inaccurate claim corrected. Commit `34603b4a8`. |
 | 2026-09-10 | Gates run and recorded above: `pnpm test:unit`, `stt:lint`, `stt:typecheck` and `pnpm lint` green; the residual `applications` and `stt` failures proven pre-existing. Status → Review. Worktree left UNMERGED pending the orchestrator's target-branch call. |
+| 2026-09-10 | **B1** — `_resolve_hf_token` now crosses the async boundary from EITHER side (`_run_resolver_blocking`); the caller that was on the loop is identified as `SileroVADService.initialize` → `_resolve_model_path`, not a diarization constructor. Its single `except` splits: `CredentialUnavailable` stays a tolerated WARNING, everything else is an ERROR + traceback labelled a defect on the STT side. RED reproduced the live `RuntimeWarning: coroutine ... was never awaited` at `embedding_service.py:57`. Branch `task-944-lane-b1-b2`. |
+| 2026-09-10 | **B2** — decision recorded: the hub repo id is **DATA on `AiModel.sourceUri`**, not a loader-side slug→repo map (owner rule "no hardcoded configuration"; the column is already plumbed end to end with no code default; `provider = built-in` is a label, not a resolution tier). The seed has always been correct, so the mechanism supplied is the one that reaches an already-seeded database: a guarded data migration, `20260910190000_task_944_wespeaker_embedding_source_uri`, applied by the existing `hope-db-migrate` PreSync Job. Pinned by 5 text-level tests, including a class invariant that no HuggingFace row may locate itself by its own bare slug. |
+| 2026-09-10 | Adjacent finding recorded and deliberately NOT fixed: `settings.huggingface_cache_dir` defaults to `HF_HOME`, the PARENT of the hub cache, so `HuggingFaceLoader` may miss an offline snapshot even with a correct `sourceUri`. Read the deployed row's `sourceUri` before assuming which cause is live. |

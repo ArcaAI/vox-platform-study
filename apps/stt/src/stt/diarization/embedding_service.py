@@ -15,15 +15,54 @@ import asyncio
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, cast
+from collections.abc import Callable, Coroutine
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar, cast
 
 import numpy as np
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import EmbeddingExtractionError
+
+# Imported EAGERLY, unlike `resolve_hf_token` below: an `except` clause cannot
+# name a class that a failed import left unbound, and "the import blew up" is
+# exactly one of the defects this module now has to tell apart from a
+# control-plane fault.
+from ..core.model_credentials import CredentialUnavailable
 from .dto import SpeakerEmbedding
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+def _run_resolver_blocking(make_coro: Callable[[], Coroutine[Any, Any, _T]]) -> _T:
+    """Run an async resolver from a SYNCHRONOUS caller — loop or no loop.
+
+    ``_resolve_hf_token`` has callers on both sides of the async boundary and
+    always has had: the pyannote/speechbrain model constructors run under
+    ``asyncio.to_thread`` (a worker thread that owns no loop), while
+    ``SileroVADService.initialize`` calls ``_resolve_model_path`` — and so this —
+    directly from a coroutine. ``asyncio.run`` is correct only for the first:
+    on the loop's own thread it raises before the coroutine is ever started
+    (``RuntimeWarning: coroutine 'resolve_hf_token' was never awaited``), so the
+    platform token was never resolved on that path whatever it was set to.
+
+    ``make_coro`` is a FACTORY rather than a coroutine so that exactly one
+    coroutine object is created, on the thread that is about to run it — an
+    orphaned coroutine is the symptom this function exists to remove.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(make_coro())
+
+    # A loop owns this thread. Give the resolution a thread — and a loop — of its
+    # own. This blocks the caller, which is what a synchronous caller already
+    # asked for; the resolution is a single bounded gateway call behind a TTL
+    # cache, and its callers here are one-time model loads, never the hot path.
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="hf-token") as pool:
+        return pool.submit(lambda: asyncio.run(make_coro())).result()
 
 
 def _resolve_hf_token(settings: Any) -> str | None:
@@ -35,9 +74,18 @@ def _resolve_hf_token(settings: Any) -> str | None:
     every tenant shares is fetched with the PLATFORM's credential, never with
     the quota of whichever tenant's job happened to trigger the load first.
 
-    Synchronous by necessity: this runs inside ``asyncio.to_thread`` under the
-    model constructors, so there is no loop to await on. ``asyncio.run`` on a
-    worker thread is safe here precisely because that thread has no running loop.
+    Synchronous because its callers are: model constructors and
+    ``_resolve_model_path`` are plain functions. ``_run_resolver_blocking``
+    carries it across the async boundary from either side.
+
+    TWO failure kinds, TWO log lines. A control-plane fault
+    (``CredentialUnavailable`` — the gateway is down, or the tier vetoed the
+    provider) is TOLERATED at WARNING: a public pyannote/speechbrain repo loads
+    anonymously, and a GATED one fails later with the hub's own explicit 401
+    rather than a config error here. Anything else is a DEFECT in this path and
+    is logged at ERROR with its traceback. They used to share one warning, which
+    is why a `RuntimeError` from ``asyncio.run`` read for weeks as "the control
+    plane could not answer".
 
     Falls back to the local ``huggingface_hub`` cache when no tier has an
     opinion, unchanged — that is a machine-local artifact of a prior interactive
@@ -49,13 +97,16 @@ def _resolve_hf_token(settings: Any) -> str | None:
     try:
         from stt.core.model_credentials import resolve_hf_token as _resolve
 
-        token = asyncio.run(_resolve(None))
-    except Exception:
-        # A control-plane fault must not take diarization down: a public
-        # pyannote/speechbrain repo loads anonymously, and a GATED one fails
-        # later with the hub's own explicit 401 rather than a config error here.
+        token = _run_resolver_blocking(lambda: _resolve(None))
+    except CredentialUnavailable as exc:
         logger.warning(
-            "Could not resolve the platform HuggingFace token; continuing unauthenticated"
+            "Could not resolve the platform HuggingFace token; continuing unauthenticated: %s",
+            exc,
+        )
+    except Exception:
+        logger.exception(
+            "Platform HuggingFace token resolution FAILED UNEXPECTEDLY — this is a defect on "
+            "the STT side, not a control-plane fault; continuing unauthenticated"
         )
 
     if not token:
