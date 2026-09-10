@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { IConfigService, IWorkflowRunService, createWorkerSession, interpreterSessionId } from '@arcaai/applications';
+import { HarnessInternalService, IConfigService, IWorkflowRunService, createWorkerSession, interpreterSessionId } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING, parseAsyncEnvelope } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
@@ -61,6 +61,11 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // TASK-946 OD-4 — the consultation lifecycle's single writer for this outcome. `@Optional()`
+    // so a Nest context without the harness-internal plane still records run terminality; absent
+    // ⇒ a failed consultation run leaves the consultation to the 24h timeout sweep, which is the
+    // pre-existing behaviour rather than a new failure.
+    @Optional() private readonly harnessInternal?: HarnessInternalService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
@@ -102,13 +107,35 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
         if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
         const status = terminalStatusOf((envelope.payload as { status?: unknown } | undefined)?.status);
         if (status === null) return;
-        await this.record(tenantId, runId, status, String((envelope.payload as { status?: unknown }).status), envelope.occurredAt, consultationId);
+        await this.recordTerminal(
+          tenantId,
+          runId,
+          status,
+          String((envelope.payload as { status?: unknown }).status),
+          envelope.occurredAt,
+          consultationId,
+        );
         return;
       }
     }
   }
 
-  private async record(
+  /**
+   * Apply ONE run's terminal outcome. The watcher loop's only side effect, and the seam this
+   * service's tests drive directly (there is no other way to reach it without a live Redis).
+   *
+   * TWO INDEPENDENT WRITES, deliberately. The read-model row and the consultation's lifecycle
+   * are different systems of record, and on 2026-09-10 the failure of the first is exactly what
+   * left the second stranded. Each is therefore attempted and logged on its own: a run row that
+   * cannot be resolved must not stop a consultation from reaching a terminal state, and a
+   * consultation that refuses the transition must not lose the run's terminal status.
+   *
+   * Node counts (`nodeCount`/`failedNodeCount`/`degradedNodeCount`) are NOT reported here. The
+   * interpreter's `workflow.run.completed` payload carries `status` and an optional `reason` and
+   * nothing else (`apps/harness/.../interpreter/activities.py::_envelope_for`), so passing a
+   * count would mean inventing one; the columns are left untouched instead.
+   */
+  async recordTerminal(
     tenantId: string,
     runId: string,
     status: 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT',
@@ -123,15 +150,44 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     await this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'workflow-run-completion' }));
-      await this.workflowRunService.recordRunFinished({
-        tenantId,
-        sessionId: interpreterSessionId(runId),
-        runId,
-        status,
-        endedAt: new Date(endedAt),
-        terminalReason: reason,
-        consultationId,
-      });
+
+      try {
+        await this.workflowRunService.recordRunFinished({
+          tenantId,
+          // `recordRunFinished` resolves BOTH conventional session keys (TASK-946 D3), so a
+          // consultation-dispatched run — anchored as `wf-<runId>` — reaches its own row.
+          sessionId: interpreterSessionId(runId),
+          runId,
+          status,
+          endedAt: new Date(endedAt),
+          terminalReason: reason,
+          consultationId,
+        });
+      } catch (err) {
+        this.logger.warn({
+          message: 'run terminal status could not be recorded on the run read model',
+          runId,
+          status,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // TASK-946 OD-4 — a governed consultation whose run ended with no clinical result reaches
+      // `CLOSED_INCOMPLETE` instead of sitting in `DRAINING` until the 24h sweep. `COMPLETED`
+      // (SUCCEEDED/DEGRADED) changes nothing: `persistDraft`/`finalizeAssurance` own success.
+      // `CANCELED` is likewise left alone — whoever cancelled the run owns what happens next.
+      if (consultationId && (status === 'FAILED' || status === 'TIMED_OUT')) {
+        try {
+          await this.harnessInternal?.failGovernedRun(consultationId, { tenantId, runId, status, reason, at: new Date(endedAt) });
+        } catch (err) {
+          this.logger.warn({
+            message: 'governed consultation could not be closed after its run failed — it falls back to the session-timeout sweep',
+            runId,
+            consultationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
     });
   }
 

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
@@ -24,6 +25,8 @@ import {
   SYSTEM_TENANT_ID,
   ResourceStatusType,
   NotificationType,
+  ResourceType,
+  SysEventType,
 } from '@arcaai/domains';
 import { BusinessException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
@@ -47,9 +50,9 @@ import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { IUsageLedgerService } from '../../usageLedger';
 import { INotificationService } from '../../notification';
 import type { CreateNotificationRequest } from '../../notification/dto';
-import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
+import { assertEqualTenants, BaseService, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_TERMINAL_STAGE } from './dto';
+import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from './dto';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import type {
   HarnessAssembleRequest,
@@ -70,6 +73,24 @@ import type {
   HarnessSegmentCitationRef,
 } from './dto';
 
+/** TASK-946 OD-4 — what the gateway's run-completion watcher reports about a terminal run. */
+export interface FailGovernedRunInput {
+  tenantId: string;
+  runId: string;
+  /** Only the two outcomes that leave the consultation with nothing to sign. */
+  status: 'FAILED' | 'TIMED_OUT';
+  /** The interpreter's own terminal reason. PHI-free; `null` when the envelope carried none. */
+  reason?: string | null;
+  /** When the run ended, from the terminal envelope. Defaults to now. */
+  at?: Date;
+}
+
+/** The consultation's status AFTER the call — `transitioned: false` means it was left alone. */
+export interface FailGovernedRunResult {
+  transitioned: boolean;
+  status: ConsultationStatus;
+}
+
 /**
  * HarnessInternalService.
  *
@@ -82,7 +103,7 @@ import type {
  * HarnessAudit machinery — no new business logic, just orchestration.
  */
 @Injectable()
-export class HarnessInternalService {
+export class HarnessInternalService extends BaseService {
   private readonly logger = new Logger(HarnessInternalService.name);
 
   // Warm-start switch: `HarnessPolicy.warmStartEnabled`, resolved per call (see
@@ -245,7 +266,15 @@ export class HarnessInternalService {
     // HarnessProgressServiceModule. Absent ⇒ no push, which is the pre-existing behaviour
     // (the console's bounded post-stop poll still finds the note).
     @Optional() @Inject(HarnessProgressService) private readonly progressService?: HarnessProgressService,
-  ) {}
+    // TASK-946 OD-4 — `failGovernedRun` is the first operation on this surface that changes a
+    // consultation's lifecycle on behalf of NO caller (a background watcher, not a Temporal
+    // activity carrying a jobId), so it must fan out as a `Consultation` sys-event like every
+    // other lifecycle writer. Optional + trailing so every existing positional unit fixture
+    // keeps its arity; absent ⇒ the transition still persists and only the broadcast is skipped.
+    @Optional() @Inject(EventEmitter2) eventEmitter?: EventEmitter2,
+  ) {
+    super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
+  }
 
   /**
    * F11 — resolve ONE registry model by slug for the harness worker,
@@ -629,6 +658,117 @@ export class HarnessInternalService {
       }
       throw error;
     }
+  }
+
+  /**
+   * TASK-946 OD-4 — the terminal state for a governed consultation whose interpreter run ended
+   * FAILED or TIMED_OUT.
+   *
+   * WHY THIS EXISTS. Measured 2026-09-10: a degraded `n_finalize` opened a `ReviewGate` on an
+   * empty payload, the gate timed out an hour later, `n_output` failed its schema, and the
+   * workflow closed FAILED. Nothing on the gateway acted on that: every consultation stopped
+   * that day stayed `DRAINING` until `ConsultationTimeoutSweepService` would have closed it
+   * 24h later, and the caller saw nothing but harness-progress heartbeats in the meantime.
+   * `CLOSED_INCOMPLETE` is the honest state — the note was never written, so there is nothing
+   * to sign — and `reopenConsultation` is the way back.
+   *
+   * The guard is an EXPLICIT `DRAINING` check, not the broader
+   * `canTransitionTo(CLOSED_INCOMPLETE)`. `DRAFT_PENDING_SENSORS` also legally reaches that
+   * state, but a consultation there HAS a persisted draft; closing it incomplete because a
+   * later node of the same run failed would discard a written note. Every other state —
+   * `PENDING_REVIEW`, `SIGNED`, either `CLOSED_*` — is a consultation that has already moved
+   * past this run, and a retry after the flip lands on `CLOSED_INCOMPLETE` itself, so this is
+   * idempotent by the same check rather than by a dedup key (the watcher carries no
+   * Idempotency-Key: it is not a Temporal activity).
+   *
+   * 404-over-403 throughout: an unknown, cross-tenant or soft-deleted consultation id is
+   * indistinguishable to the caller, exactly as on every other operation of this surface.
+   */
+  async failGovernedRun(consultationId: string, input: FailGovernedRunInput): Promise<FailGovernedRunResult> {
+    const tenantId = input.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      // No clinician — a failed run is a workflow-initiated event, so the worker session's
+      // `system-harness-internal` sentinel is the actor (mirrors `recordEscalation`).
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+
+      const consultation = await this.consultationRepository.findById(consultationId);
+      assertEqualTenants(consultation, { tenantId });
+      this.assertConsultationWritable(consultation);
+      // `assertConsultationWritable` already threw on null; the guard is for the type narrowing.
+      if (!consultation) {
+        throw new NotFoundException('Resource not found');
+      }
+
+      if (consultation.status !== ConsultationStatus.DRAINING) {
+        this.logger.log({
+          message: 'Governed run ended without a clinical result, but the consultation has already moved past DRAINING — status left unchanged',
+          consultationId,
+          runId: input.runId,
+          runStatus: input.status,
+          currentStatus: consultation.status,
+        });
+        return { transitioned: false, status: consultation.status };
+      }
+
+      const at = (input.at ?? new Date()).toISOString();
+      const reason = input.reason ?? null;
+      const expectedVersion = consultation.version;
+
+      // Provenance on the row itself, so an operator reading the consultation can see WHICH run
+      // closed it and why — PHI-free (ids, a status and the interpreter's own reason string).
+      const existingMetadata =
+        typeof consultation.metadata === 'object' && consultation.metadata !== null && !Array.isArray(consultation.metadata)
+          ? (consultation.metadata as Record<string, unknown>)
+          : {};
+      consultation.metadata = {
+        ...existingMetadata,
+        terminalReason: { runId: input.runId, status: input.status, reason, at },
+      } as ConsultationEntity['metadata'];
+
+      // `transitionTo` stays the single writer of `status` (DRAINING → CLOSED_INCOMPLETE is a
+      // matrix row, so this always applies); `applyTransition` maps a refusal to a named 409.
+      this.applyTransition(consultation, ConsultationStatus.CLOSED_INCOMPLETE, 'system', 'failGovernedRun');
+      await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+
+      if (this.eventEmitter) {
+        this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+          resourceId: consultationId,
+          data: { action: 'failGovernedRun', status: ConsultationStatus.CLOSED_INCOMPLETE, runId: input.runId, runStatus: input.status, reason },
+        });
+      }
+
+      // Best-effort, like every other push on this surface: the caller has been watching a
+      // heartbeat feed for an hour, so telling it the run failed matters — but a Redis hiccup
+      // must never roll back the already-persisted terminal state.
+      try {
+        await this.progressService?.reportProgress(consultationId, {
+          tenantId,
+          stage: HARNESS_PROGRESS_FAILED_STAGE,
+          label: (reason ?? (input.status === 'TIMED_OUT' ? 'Documentation workflow timed out' : 'Documentation workflow failed')).slice(0, 256),
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'Harness progress FAILED publish failed (best-effort — the consultation is already CLOSED_INCOMPLETE)',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      this.logger.warn({
+        message: 'Governed consultation closed incomplete — its workflow run ended without a clinical result',
+        consultationId,
+        runId: input.runId,
+        runStatus: input.status,
+        reason,
+      });
+
+      return { transitioned: true, status: ConsultationStatus.CLOSED_INCOMPLETE };
+    });
   }
 
   /**
