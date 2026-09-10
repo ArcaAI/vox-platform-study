@@ -181,6 +181,13 @@ import {
 } from '../../settings-registry/descriptors/agentic-context.descriptors';
 import {
   CONSULTATION_REALTIME_DEFAULTS,
+  CONSULTATION_REALTIME_DURABLE_SNAPSHOT_MS_KEY,
+  CONSULTATION_REALTIME_GROUNDEDNESS_MAX_RETRIES_KEY,
+  CONSULTATION_REALTIME_GROUNDEDNESS_RETRY_BACKOFF_MS_KEY,
+  CONSULTATION_REALTIME_GROUNDEDNESS_TIMEOUT_MS_KEY,
+  CONSULTATION_REALTIME_HEARTBEAT_MS_KEY,
+  CONSULTATION_REALTIME_STATS_TTL_SEC_KEY,
+  CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY,
   CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY,
 } from '../../settings-registry/descriptors/consultation-realtime.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
@@ -667,6 +674,25 @@ export interface AgenticContextKnobs {
   tokenBudgetPerRun: number;
 }
 
+/**
+ * TASK-940 — the effective `consultation.realtime.*` budgets for one resolution.
+ *
+ * These seven were constructor-frozen `LIVE_DOC_*` env reads. They are refreshed
+ * per flush by {@link LiveDocumentationService.resolveRealtimeBudgets}, the same
+ * shape `AgenticContextKnobs` uses, so a registry write governs the next flush
+ * with no redeploy. `heartbeatMs` is the one whose consumer is a SUBSCRIPTION
+ * rather than a flush — see its descriptor for the granularity that follows.
+ */
+export interface RealtimeBudgets {
+  heartbeatMs: number;
+  durableSnapshotMs: number;
+  statsTtlSec: number;
+  textMaxTokens: number;
+  groundednessTimeoutMs: number;
+  groundednessMaxRetries: number;
+  groundednessRetryBackoffMs: number;
+}
+
 /** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
 function readNumericEnv(configService: ConfigService, key: string): number | undefined {
   const raw = configService.get(key);
@@ -797,7 +823,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly nlpServiceUrl: string;
   private readonly textServiceUrl: string;
   private readonly guardrailServiceUrl: string;
-  private readonly heartbeatMs: number;
   // `agentic.context.*` env FALLBACKS. These are no longer the
   // effective values: the authority is the settings registry, resolved per call
   // through `resolveAgenticContext`'s `EffectiveSettingsService`.
@@ -825,8 +850,28 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private lastAgenticContext: AgenticContextKnobs;
   private readonly enabled: boolean;
   private readonly envMinIntervalMs?: number;
-  private readonly durableSnapshotMs: number;
-  private readonly textMaxTokens: number;
+  /**
+   * TASK-940 — the EFFECTIVE realtime budgets, refreshed by
+   * {@link resolveRealtimeBudgets} on every flush. Was seven `readonly` fields
+   * read once in the constructor, which made every one of them a redeploy.
+   *
+   * Held as one object rather than seven fields for the same reason
+   * `lastAgenticContext` is: the synchronous consumers (`subscribeToLiveSummary`'s
+   * heartbeat, the durable-snapshot gate) cannot await, so they read the last
+   * resolved snapshot — and one snapshot updated atomically per flush cannot be
+   * half-new the way seven independently-assigned fields can.
+   */
+  private realtimeBudgets: RealtimeBudgets;
+  /**
+   * The env OVERRIDES for the four budgets that kept one, or undefined where the
+   * deployment does not pin them. Captured, never treated as the effective value:
+   * the authority is the `consultation.realtime.*` descriptor resolved per flush.
+   * Two (`heartbeatMs`, `statsTtlSec`) had their env names RETIRED — nothing set
+   * either in any deployment or any fixture. `durableSnapshotMs` kept its name
+   * because three fixtures set it (one to `0`, a meaningful value) through a
+   * harness that wires no settings facade at all.
+   */
+  private readonly envRealtimeBudgets: Partial<RealtimeBudgets>;
   /**
    * TASK-891 B1 — the ENV OVERRIDE for the realtime TEXT budget, or `undefined` when
    * unset. Captured here, never used as the effective value: the authority is the
@@ -846,7 +891,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // `HarnessPolicyServiceModule`, so the env seed was unreachable in every
   // deployed path — while contradicting TASK-876's rule that the tenant's
   // assigned TEXT_GENERATION agent selects and an engine id is never an env var.
-  private readonly statsTtl: number;
   /**
    * TASK-932 D-4 - the env OVERRIDE for the groundedness gate, or undefined when
    * the deployment does not pin it. It is no longer the answer: the stored
@@ -869,9 +913,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * unconditional and stay literal.
    */
   private readonly toolEnvDefaults: { ner: boolean; vitals: boolean; groundedness: boolean };
-  private readonly groundednessTimeoutMs: number;
-  private readonly groundednessMaxRetries: number;
-  private readonly groundednessRetryBackoffMs: number;
+  /**
+   * TASK-940 — the groundedness tool's dependency bundle, held by IDENTITY by
+   * `LiveToolRegistry` (a session's tool plan is frozen at start). Its three
+   * numeric budgets are mutated in place by {@link resolveRealtimeBudgets}, which
+   * is the only way a later flush's resolved value reaches a plan already built —
+   * exactly the mechanism `toolEnvDefaults` uses for the groundedness GATE.
+   */
+  private readonly groundednessToolBudgets: {
+    httpService: HttpService;
+    guardrailServiceUrl: string;
+    logger: LiveDocumentationService['logger'];
+    secretsService?: SecretsService;
+    timeoutMs: number;
+    maxRetries: number;
+    retryBackoffMs: number;
+  };
   /**
    * The config-driven tool layer. Owns the two executors the flush
    * dispatches (`nlp.classify-tokens`, `guardrail.groundedness`) and answers
@@ -1022,7 +1079,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const rawMode = this.configService.get('AGENTIC_CONTEXT_TRANSCRIPT_MODE');
     this.envTranscriptMode = rawMode === undefined || rawMode === null ? undefined : toTranscriptMode(rawMode);
     this.lastAgenticContext = this.envFallbackContext();
-    this.heartbeatMs = Number(this.configService.get('LIVE_DOC_HEARTBEAT_MS') ?? 15000);
+    // TASK-940 — the seven former constructor freezes. Env is captured as an
+    // OVERRIDE for the four that kept one; the effective values are re-resolved
+    // per flush by `resolveRealtimeBudgets`, so a registry write governs the next
+    // flush with no redeploy. Seeded here so the value before the first flush is
+    // the one that flush would resolve.
+    this.envRealtimeBudgets = {
+      durableSnapshotMs: readNumericEnv(this.configService, 'LIVE_DOC_DURABLE_SNAPSHOT_MS'),
+      textMaxTokens: readNumericEnv(this.configService, 'LIVE_DOC_TEXT_MAX_TOKENS'),
+      groundednessTimeoutMs: readNumericEnv(this.configService, 'LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS'),
+      groundednessMaxRetries: readNumericEnv(this.configService, 'LIVE_DOC_GROUNDEDNESS_MAX_RETRIES'),
+      groundednessRetryBackoffMs: readNumericEnv(this.configService, 'LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS'),
+    };
+    this.realtimeBudgets = this.realtimeBudgetFallback();
     // Kill-switch (P2): any value other than the literal 'false' keeps it on.
     this.enabled = String(this.configService.get('LIVE_DOC_ENABLED') ?? 'true') !== 'false';
     // Min ms between TEXT calls for one session — protects the small local LM pool (P0-A).
@@ -1032,10 +1101,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // registry write governs the very next flush with no redeploy. Seeded here so the value before
     // the first flush is the one that flush would resolve.
     this.envMinIntervalMs = readNumericEnv(this.configService, 'LIVE_DOC_MIN_INTERVAL_MS');
-    // Durable-snapshot throttle: 0 disables periodic durable writes (P1-C).
-    this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
-    this.textMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
     // TASK-891 B1 — the env value is an OVERRIDE, not the answer, and it loses to a
     // stored registry value. The old hard-coded `?? 20000` fallback sat below the
     // measured p50 of the generation it bounded, so every realtime flush timed out.
@@ -1044,7 +1110,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TTL on the per-session Redis stats snapshot + active set. A
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
-    this.statsTtl = Number(this.configService.get('LIVE_DOC_STATS_TTL_SEC') ?? 300);
     // Output groundedness gate. Off by default (dev/CI bypass); enabling is
     // the clinical/ops rollout
     // step and requires the guardrail's self-hosted NLI model staged. Degrade-safe →
@@ -1058,9 +1123,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // flush would resolve.
     this.envGroundednessEnabled = readBooleanEnv(this.configService, 'LIVE_DOC_GROUNDEDNESS_ENABLED');
     this.groundednessEnabled = this.envGroundednessEnabled ?? false;
-    this.groundednessTimeoutMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS') ?? 5000);
-    this.groundednessMaxRetries = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_MAX_RETRIES') ?? 1);
-    this.groundednessRetryBackoffMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS') ?? 200);
 
     // `envDefaults` is the PRE-C4 answer for every tool: NER and
     // vitals always ran; groundedness ran iff `LIVE_DOC_GROUNDEDNESS_ENABLED`.
@@ -1069,6 +1131,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `toolConfig` reproduces today's behavior byte for byte.
     // Held by identity - see the field's doc.
     this.toolEnvDefaults = { ner: true, vitals: true, groundedness: this.groundednessEnabled };
+    this.groundednessToolBudgets = {
+      httpService: this.httpService,
+      guardrailServiceUrl: this.guardrailServiceUrl,
+      logger: this.logger,
+      secretsService: this.secretsService,
+      timeoutMs: this.realtimeBudgets.groundednessTimeoutMs,
+      maxRetries: this.realtimeBudgets.groundednessMaxRetries,
+      retryBackoffMs: this.realtimeBudgets.groundednessRetryBackoffMs,
+    };
     this.toolRegistry = new LiveToolRegistry({
       nlp: {
         httpService: this.httpService,
@@ -1078,15 +1149,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         routingPolicies: this.routingPolicies,
         secretsService: this.secretsService,
       },
-      groundedness: {
-        httpService: this.httpService,
-        guardrailServiceUrl: this.guardrailServiceUrl,
-        logger: this.logger,
-        secretsService: this.secretsService,
-        timeoutMs: this.groundednessTimeoutMs,
-        maxRetries: this.groundednessMaxRetries,
-        retryBackoffMs: this.groundednessRetryBackoffMs,
-      },
+      // TASK-940 — the three numeric budgets are MUTATED in place by
+      // `resolveRealtimeBudgets` rather than re-passed, because `LiveToolRegistry`
+      // captures this object by identity in a session's frozen tool plan. Same
+      // mechanism `toolEnvDefaults` uses one line below, and for the same reason:
+      // reassigning a field on the service would never reach a plan already built.
+      groundedness: this.groundednessToolBudgets,
       envDefaults: this.toolEnvDefaults,
     });
   }
@@ -2424,6 +2492,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // control-plane contract: a super admin's write governs the next flush, no redeploy.
     await this.resolveTextTimeoutMs(session.tenantId);
     await this.resolveGroundednessEnabled(session.tenantId);
+    // TASK-940 — the seven former constructor freezes, on the same contract.
+    await this.resolveRealtimeBudgets(session.tenantId);
 
     // TASK-939 R9 — resume the note a previous session already wrote.
     //
@@ -2715,8 +2785,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           // regenerating it buys nothing and costs a second model call on the clinician's live
           // path. Without this, switching to the turn contract silently doubled the calls for
           // every provider that answers with the document.
-          shouldRepair: (first) =>
-            first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, template.compiled) === null,
+          shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text) && parseDocumentJson(first.text, template.compiled) === null,
         });
         if (isStale()) return this.dropStale(session);
 
@@ -2832,7 +2901,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // from one transcript the same guard is asked the same question repeatedly,
       // and this is what stops that becoming N groundedness round-trips per turn.
       // The key carries the guard's CONFIG, so two thresholds stay two verdicts.
-      const guardConfig = { timeoutMs: this.groundednessTimeoutMs, maxRetries: this.groundednessMaxRetries };
+      const guardConfig = { timeoutMs: this.realtimeBudgets.groundednessTimeoutMs, maxRetries: this.realtimeBudgets.groundednessMaxRetries };
       groundedness = await guards.resolve(GUARDRAIL_GROUNDEDNESS_TOOL, guardConfig, `${runningSummary}\u0000${guardSource}`, () =>
         this.toolRegistry.guardrail().execute({ summary: runningSummary, sourceText: guardSource, tenantId: session.tenantId }, signal),
       );
@@ -2940,9 +3009,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // patch for a refused section (none was published), so it is still rendering the confirmed
       // text it already holds. The only consumer this corrects is the next prompt.
       if (reconciled.size > 0) {
-        const corrected = payload.sections.map((section, idx) =>
-          reconciled.has(idx) ? { ...section, content: reconciled.get(idx)! } : section,
-        );
+        const corrected = payload.sections.map((section, idx) => (reconciled.has(idx) ? { ...section, content: reconciled.get(idx)! } : section));
         payload.sections = corrected;
         payload.runningSummary = buildRunningSummary(corrected);
         session.lastPayload = payload;
@@ -3704,7 +3771,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
     return sseFromRedisChannel(this.redisSubscriber, this.logger, {
       channel: this.channel(consultationId),
-      heartbeatMs: this.heartbeatMs,
+      // TASK-940 — the last RESOLVED heartbeat. This call site is synchronous and
+      // holds no tenant, so it reads the snapshot the most recent flush refreshed;
+      // the descriptor documents that granularity rather than claiming per-flush.
+      heartbeatMs: this.realtimeBudgets.heartbeatMs,
       loadSnapshot: () => this.loadLiveSummaryLateJoin(consultationId),
       isDuplicateOfSnapshot: (raw, _snapshot, emitted) => this.isDuplicateOfLiveSummarySnapshot(raw, emitted),
       // This channel is MULTIPLEXED, so the frame says which kind it carries: `section.patch` and
@@ -4037,7 +4107,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // frozen template slug; null (every earlier row, and a session whose
     // template never resolved) keeps its exact legacy meaning.
     const documentKey = session.templateSnapshot?.slug ?? null;
-    if (!opts.force && (this.durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < this.durableSnapshotMs)) return;
+    const durableSnapshotMs = this.realtimeBudgets.durableSnapshotMs;
+    if (!opts.force && (durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < durableSnapshotMs)) return;
 
     const content = payload.runningSummary?.trim();
     if (!content) return;
@@ -4434,6 +4505,86 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * Never throws: a settings-backend failure keeps the env/default budget for this flush
    * rather than failing the note the clinician is waiting for.
    */
+  /**
+   * TASK-940 — the realtime budgets for THIS flush.
+   *
+   * Seven knobs that were `Number(configService.get('LIVE_DOC_…') ?? literal)` in
+   * the constructor, so every one of them was a redeploy. Same contract and same
+   * failure posture as {@link resolveTextTimeoutMs}: a stored row wins, env is an
+   * override that loses to it, and an unresolvable read KEEPS THE PREVIOUS ANSWER
+   * for this flush rather than lurching to a default mid-consultation.
+   *
+   * Resolved as one batch and assigned once, so a consumer can never observe a
+   * half-updated set — `writeStats` reading a new TTL beside an old heartbeat
+   * would be a state no registry write ever asked for.
+   */
+  async resolveRealtimeBudgets(tenantId: string): Promise<RealtimeBudgets> {
+    const fallback = this.realtimeBudgetFallback();
+    if (!this.effectiveSettings) {
+      this.realtimeBudgets = fallback;
+      return fallback;
+    }
+    const ctx = { tenantId };
+    try {
+      const [heartbeat, durable, statsTtl, maxTokens, gTimeout, gRetries, gBackoff] = await Promise.all([
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_HEARTBEAT_MS_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_DURABLE_SNAPSHOT_MS_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_STATS_TTL_SEC_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GROUNDEDNESS_TIMEOUT_MS_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GROUNDEDNESS_MAX_RETRIES_KEY, ctx),
+        this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GROUNDEDNESS_RETRY_BACKOFF_MS_KEY, ctx),
+      ]);
+      // `storedNumber` returns undefined for a `code-default` source, which is what
+      // lets a kept env override win over the descriptor default without ever
+      // beating a real stored row.
+      this.realtimeBudgets = {
+        heartbeatMs: storedNumber(heartbeat) ?? fallback.heartbeatMs,
+        // 0 is MEANINGFUL here (it disables periodic durable writes), so this must
+        // never be written as `|| fallback` — `??` is load-bearing.
+        durableSnapshotMs: storedNumber(durable) ?? fallback.durableSnapshotMs,
+        statsTtlSec: storedNumber(statsTtl) ?? fallback.statsTtlSec,
+        textMaxTokens: storedNumber(maxTokens) ?? fallback.textMaxTokens,
+        groundednessTimeoutMs: storedNumber(gTimeout) ?? fallback.groundednessTimeoutMs,
+        groundednessMaxRetries: storedNumber(gRetries) ?? fallback.groundednessMaxRetries,
+        groundednessRetryBackoffMs: storedNumber(gBackoff) ?? fallback.groundednessRetryBackoffMs,
+      };
+    } catch (error) {
+      this.logger.warn({
+        message: 'consultation.realtime.* budget resolution failed — keeping the previous values for this flush',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // Push the three groundedness budgets into the object the tool registry holds
+    // by identity. Done unconditionally, including on the catch path, so the
+    // registry and this snapshot can never disagree about the current answer.
+    this.groundednessToolBudgets.timeoutMs = this.realtimeBudgets.groundednessTimeoutMs;
+    this.groundednessToolBudgets.maxRetries = this.realtimeBudgets.groundednessMaxRetries;
+    this.groundednessToolBudgets.retryBackoffMs = this.realtimeBudgets.groundednessRetryBackoffMs;
+    return this.realtimeBudgets;
+  }
+
+  /** env override (where one survives) → descriptor code default. */
+  private realtimeBudgetFallback(): RealtimeBudgets {
+    const env = this.envRealtimeBudgets;
+    return {
+      // `heartbeatMs` and `statsTtlSec` had their env names retired — nothing set
+      // either one in any deployment OR any fixture — so the descriptor default IS
+      // the pre-resolution value for them.
+      heartbeatMs: CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_HEARTBEAT_MS_KEY],
+      statsTtlSec: CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_STATS_TTL_SEC_KEY],
+      // `??` is load-bearing: 0 is a MEANINGFUL value here (it disables periodic
+      // durable writes) and a fixture relies on passing it, so `||` would silently
+      // promote an explicit "never" to the 30 s default.
+      durableSnapshotMs: env.durableSnapshotMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_DURABLE_SNAPSHOT_MS_KEY],
+      textMaxTokens: env.textMaxTokens ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_MAX_TOKENS_KEY],
+      groundednessTimeoutMs: env.groundednessTimeoutMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_GROUNDEDNESS_TIMEOUT_MS_KEY],
+      groundednessMaxRetries: env.groundednessMaxRetries ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_GROUNDEDNESS_MAX_RETRIES_KEY],
+      groundednessRetryBackoffMs:
+        env.groundednessRetryBackoffMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_GROUNDEDNESS_RETRY_BACKOFF_MS_KEY],
+    };
+  }
+
   private async resolveTextTimeoutMs(tenantId: string): Promise<number> {
     const fallback = this.envTextTimeoutMs ?? CONSULTATION_REALTIME_DEFAULTS[CONSULTATION_REALTIME_TEXT_TIMEOUT_MS_KEY];
     if (!this.effectiveSettings) {
@@ -4699,7 +4850,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `generation` is that agent's authored `parameters.generation`, carried out of the seam so
     // its reasoning posture can ride the `extra` ride-along below. Without it the live agent was
     // selected and inert. Only the posture is read here: the token budget stays this lane's own
-    // (`this.textMaxTokens`), as it was before the split.
+    // (`this.realtimeBudgets.textMaxTokens`), as it was before the split.
     // `resolveTextSelection` is the ONLY source of provider/model: selection belongs
     // to the tenant's assigned TEXT_GENERATION agent (TASK-876), never to an env
     // default. An unwired resolver leaves both undefined and TEXT applies its own
@@ -4725,7 +4876,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       system_prompt: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
       provider,
       model,
-      max_tokens: this.textMaxTokens,
+      max_tokens: this.realtimeBudgets.textMaxTokens,
       stream: false as const,
       // the strict schema COMPILED from the session's pinned template
       // shape, not a frozen literal. This is the whole of "the template IS the
@@ -4788,7 +4939,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
-      max_tokens: numberOrUndefined(generation.maxTokens) ?? this.textMaxTokens,
+      max_tokens: numberOrUndefined(generation.maxTokens) ?? this.realtimeBudgets.textMaxTokens,
       top_p: numberOrUndefined(generation.topP),
       stream: false as const,
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
@@ -4975,7 +5126,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       system_prompt: systemPrompt,
       provider,
       model,
-      max_tokens: this.textMaxTokens,
+      max_tokens: this.realtimeBudgets.textMaxTokens,
       stream: false as const,
     };
     // layer the SELECTED agent's engine ride-alongs (its reasoning posture, as
@@ -5080,7 +5231,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       system_prompt: systemPrompt,
       provider,
       model,
-      max_tokens: this.textMaxTokens,
+      max_tokens: this.realtimeBudgets.textMaxTokens,
       stream: false as const,
     };
     // layer the SELECTED agent's engine ride-alongs (its reasoning posture, as
@@ -5649,10 +5800,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
 
     try {
-      await this.cacheService.setex(this.statsKey(session.consultationId), this.statsTtl, JSON.stringify(snapshot));
+      await this.cacheService.setex(this.statsKey(session.consultationId), this.realtimeBudgets.statsTtlSec, JSON.stringify(snapshot));
       await this.cacheService.sadd(this.activeSetKey(session.tenantId), session.consultationId);
       // Backstop crash cleanup: a fully-dead tenant set expires on its own.
-      await this.cacheService.expire(this.activeSetKey(session.tenantId), this.statsTtl);
+      await this.cacheService.expire(this.activeSetKey(session.tenantId), this.realtimeBudgets.statsTtlSec);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to publish live-doc session stats',

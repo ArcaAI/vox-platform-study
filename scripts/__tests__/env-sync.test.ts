@@ -329,13 +329,24 @@ describe('env:sync — ConfigService reads (TASK-940)', () => {
 
   it('sees the real live-documentation reads in the repo, by both shapes', () => {
     const found = scanTypeScriptReads();
-    // direct `.get()` …
-    for (const name of ['LIVE_DOC_HEARTBEAT_MS', 'LIVE_DOC_ENABLED', 'LIVE_DOC_STATS_TTL_SEC', 'LIVE_DOC_TEXT_MAX_TOKENS']) {
+    // direct `.get()` — the two surviving members of that shape. Lane 3 moved the
+    // rest onto the helper shape below and retired `LIVE_DOC_HEARTBEAT_MS` /
+    // `LIVE_DOC_STATS_TTL_SEC` outright.
+    for (const name of ['LIVE_DOC_ENABLED', 'AGENTIC_CONTEXT_TRANSCRIPT_MODE']) {
       expect(found.has(name), `${name} must be detected`).toBe(true);
     }
-    // … and second-argument helper indirection.
-    for (const name of ['LIVE_DOC_SEGMENT_THRESHOLD', 'LIVE_DOC_DEBOUNCE_MS', 'LIVE_DOC_MIN_INTERVAL_MS']) {
+    // … and second-argument helper indirection, which is most of them.
+    for (const name of ['LIVE_DOC_SEGMENT_THRESHOLD', 'LIVE_DOC_DEBOUNCE_MS', 'LIVE_DOC_MIN_INTERVAL_MS', 'LIVE_DOC_TEXT_MAX_TOKENS', 'LIVE_DOC_DURABLE_SNAPSHOT_MS', 'LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS']) {
       expect(found.has(name), `${name} must be detected`).toBe(true);
+    }
+  });
+
+  it('no longer sees the names TASK-940 retired — the scanner tracks reality, not history', () => {
+    // The complement, and the assertion that would catch a revert: a retired name
+    // reappearing in `globalEnv` means a read came back.
+    const found = scanTypeScriptReads();
+    for (const name of ['LIVE_DOC_TEXT_PROVIDER', 'LIVE_DOC_TEXT_MODEL', 'LIVE_DOC_HEARTBEAT_MS', 'LIVE_DOC_STATS_TTL_SEC']) {
+      expect(found.has(name), `${name} was retired — nothing should read it`).toBe(false);
     }
   });
 

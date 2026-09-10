@@ -54,7 +54,10 @@ export type AgenticContextKnobKey = keyof typeof AGENTIC_CONTEXT_DEFAULTS;
 // `turbo.json#globalEnv` can hash a name the gateway genuinely reads, without
 // rendering a control-plane key into any operator-facing `.env.sample` —
 // see `SettingDescriptor.envOverride` (TASK-940).
-const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataType']; label: string; description: string; envOverride: readonly string[] }> = {
+const META: Record<
+  AgenticContextKnobKey,
+  { dataType: SettingDescriptor['dataType']; label: string; description: string; envOverride: readonly string[] }
+> = {
   'liveDelta.maxChars': {
     dataType: 'number',
     label: 'Live delta max chars',
