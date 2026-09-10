@@ -202,6 +202,19 @@ export interface AsrSpecDecoding {
   noRepeatNgramSize?: number;
   prevTextContextWords?: number;
   /**
+   * TASK-946 (OD-1) — the TASK-937 R-4 switch: may the engine append
+   * `instruction.hotwords` to its decoder prompt?
+   *
+   * Resolved on the same two tiers as the knobs above (agent `parameters.decoding`
+   * first, the ASR row's `_metadata.asr.decoding` second) and, like them, OMITTED when
+   * neither spoke — `apps/stt`'s mirror reads absence as "no opinion, keep my own
+   * default", and for whisper.cpp that default is OFF. `null` is never written here.
+   *
+   * It gates the PROMPT only. `instruction.hotwords` still travels, and still feeds the
+   * lexicon correction stage (`postProcessing.lexicon`), whatever this says.
+   */
+  hotwordsInPrompt?: boolean;
+  /**
    * TASK-934 — which TIER supplied each knob whose value two tiers could have decided
    * (`'agent'` = the agent's `parameters`, `'model'` = the ASR row's `_metadata.asr`
    * profile). Covers this block's knobs plus `hotwords`, `initialPrompt` and

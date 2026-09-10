@@ -401,24 +401,31 @@ class WhisperCppAsrAdapter:
         )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
-        # TASK-934 / TASK-938 — the profile's (or agent's) ``hotwords`` become decoder
-        # prompt vocabulary: whisper.cpp has no hotword API, and listing the terms in the
-        # prompt is the established biasing technique. Empty entries are dropped.
+        # TASK-946 (OD-1) — the hotword append is now PER MODEL, which is what TASK-937
+        # R-4 asked for. whisper.cpp has no hotword API, so the only way to bias it
+        # toward a term is to list the terms in the ``initial_prompt``; on the seeded
+        # ml-en fine-tune that append is also what destroys the decode. Measured offline
+        # on the owner's recording (7 s spans, ``language=en``, temperature 0): no prompt
+        # → 100 % Latin; the agent prompt alone → 100 %; the terms alone → 80 % with
+        # "carcinoid" looping 30×; priming prompt + agent prompt + terms (what production
+        # ran after TASK-938) → **2 %**. TASK-935 had already removed this exact append
+        # for this exact failure.
         #
-        # TASK-935 REMOVED this after the first live run of it (the run was only possible
-        # once TASK-935 fixed the per-session spec lookup) collapsed this ml-en fine-tune's
-        # decode into script garbage on the discharge fixture, with SIX terms as badly as
-        # twenty. It is restored by owner directive (2026-09-09) as one arm of the TASK-938
-        # A/B, alongside both priming-prompt switches — a configuration that has never been
-        # measured as a whole. If the garbage returns, THIS is the first knob to drop:
-        # unlike the priming prompts it adds no linguistic signal, only vocabulary, and the
-        # same terms already reach the lexicon correction stage after the decode.
-        # TASK-937 R-4 is where this becomes a per-model ``decoding.hotwordsInPrompt``
-        # switch instead of a global one.
+        # So the ENGINE DEFAULT is OFF and a row opts in:
+        # ``AiModel._metadata.asr.decoding.hotwordsInPrompt`` → ``decoding.hotwordsInPrompt``
+        # → ``InferenceConfig.hotwords_in_prompt``. Absent, ``None`` and ``False`` all
+        # leave the prompt exactly as the caller composed it.
+        #
+        # The TERMS are kept either way. They are still the lexicon correction stage's
+        # vocabulary (TASK-935 OD-5 a), so turning the prompt off costs decode BIAS and
+        # never the clinical vocabulary itself.
         raw_hotwords = getattr(inference_config, "hotwords", None) or []
         self._hotwords: list[str] = [
             w.strip() for w in raw_hotwords if isinstance(w, str) and w.strip()
         ]
+        self._hotwords_in_prompt: bool = bool(
+            getattr(inference_config, "hotwords_in_prompt", False)
+        )
         self._lock = _get_model_lock(loaded_model.model_id)
         _ensure_log_capture_installed()
 
@@ -644,9 +651,13 @@ class WhisperCppAsrAdapter:
         # composed with the per-utterance carry-forward by the caller
         # (``compose_prompt``). ``""`` rather than ``None`` because the binding's
         # setter rejects None and the shared context persists params across calls.
-        effective_prompt = " ".join(
-            part for part in ((prompt or "").strip(), ", ".join(self._hotwords)) if part
-        )
+        #
+        # TASK-946 (OD-1) — the hotwords join the prompt ONLY when this model's row
+        # opted in (``decoding.hotwordsInPrompt``). Off by default; see ``__init__``.
+        parts = [(prompt or "").strip()]
+        if self._hotwords_in_prompt:
+            parts.append(", ".join(self._hotwords))
+        effective_prompt = " ".join(part for part in parts if part)
         # Word-timestamp mode forces near-word-sized segments (``max_len=1``,
         # ``split_on_word``) so each segment carries its own (t0, t1). This is
         # only requested when the pipeline consumes word timings; otherwise a
