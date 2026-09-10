@@ -65,6 +65,16 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
     expect(container.textContent).not.toContain('Document Template Slug');
   });
 
+  it('withholds the standalone prompt-template picker too', () => {
+    // Rendered outside the schema (its path is not a descriptor), so `withheld` cannot reach it
+    // and it needs its own check -- found by driving the real app, not by the suite.
+    const llm = renderNode(agentNode('gen-summary'), [LLM_AGENT]);
+    expect(llm.container.textContent).toContain('Prompt template');
+    llm.unmount();
+    const asr = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
+    expect(asr.container.textContent).not.toContain('Prompt template');
+  });
+
   it('keeps the task-neutral fields for every task', () => {
     const { container } = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
     // `execution` (lane/cadence), `guardrail` and `onError` are properties of the INSTANCE,

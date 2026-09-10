@@ -118,7 +118,7 @@ const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
  * Split in two because the mechanisms differ: `withheld` filters the top-level descriptor list
  * and cannot reach inside a group, so the three `overrides.*` fields go through `fieldOverrides`.
  */
-const LLM_ONLY_TOP_LEVEL_PATHS = ['dna', 'documentTemplateId', 'documentTemplateSlug', 'documentVersionNumber'] as const;
+const LLM_ONLY_TOP_LEVEL_PATHS = ['dna', 'documentTemplateId', 'documentTemplateSlug', 'documentVersionNumber', PROMPT_TEMPLATE_PATH] as const;
 const LLM_ONLY_NESTED_PATHS = [PROMPT_VARIABLES_PATH, 'overrides.generation', 'overrides.carryForward'] as const;
 /** Namespace for a secondary input's DOM id and its finding path. Not a config key: the binding
  *  itself is an edge (see the note above `SecondaryInputsSection`), so nothing is written here. */
@@ -637,7 +637,10 @@ export function InspectorPanel({
             versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
           />
         ) : null}
-        {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
+        {/* TASK-949 L2 — this picker is rendered standalone (the path is not a schema descriptor,
+            which is why `withheld` cannot reach it), so it needs the task check spelled out. A
+            prompt template on an ASR or NER node is the same category error as a temperature. */}
+        {!knownPaths.has(PROMPT_TEMPLATE_PATH) && !suppressLlmOnlyFields ? (
           <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
         ) : null}
         {graphLevelErrors.length > 0 ? (
