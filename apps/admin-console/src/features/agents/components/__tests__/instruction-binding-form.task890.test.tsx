@@ -42,9 +42,12 @@ function stubFetch() {
 }
 
 const INITIAL: InstructionBindingValue = {
+  mode: 'template',
   promptTemplateId: null,
   promptVersionNumber: null,
   variables: {},
+  systemPrompt: '',
+  fragments: [],
   contextSchemaId: null,
   contextSchemaVersionNumber: null,
 };
