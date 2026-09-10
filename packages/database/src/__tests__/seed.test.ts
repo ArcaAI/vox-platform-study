@@ -1396,14 +1396,31 @@ describe('STT Seed Data', () => {
         },
       );
 
-      it('should include the ArcaAI ML-EN whisper.cpp fine-tune (q8_0, the row the seeded agent serves) as the platform ASR default', () => {
-        // TASK-934 OD-2: the platform default is the quantisation the seeded realtime-transcription agent binds.
-        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf-q8_0');
+      it('should include the ArcaAI ML-EN whisper.cpp fine-tune (f16, the row the seeded agent serves) as the platform ASR default', () => {
+        // TASK-934 OD-2 states the RULE, not the row: the platform default is whichever
+        // quantisation the seeded `realtime-transcription` agent serves as primary. TASK-938 D-3
+        // moved that primary back to f16 (`seed/25-agents.ts`), so the election moved with it —
+        // the rule is unchanged. The invariant itself (exactly one elected ASR row, and it is the
+        // agent's primary) is owned by `seed/__tests__/task-934-asr-model-geometry.test.ts`,
+        // which asserts it against the agent spec rather than a slug; this test only pins the
+        // shape of the two GGUF rows.
+        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf');
         expect(row).toBeDefined();
         expect(row?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
         expect(row?.source).toBe(AiModelSource.HUGGINGFACE);
         expect(row?.libraryName).toBe('whisper.cpp');
         expect(row?.isPlatformDefaultFor).toEqual(['SPEECH_TO_TEXT']);
+      });
+
+      it('should include the q8_0 quantisation as a fallback row that does NOT elect itself', () => {
+        // Same Hub repo, selected by `computeType`; it is first in the agent's fallback chain
+        // (TASK-938) and must not carry a second SPEECH_TO_TEXT election.
+        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf-q8_0');
+        expect(row).toBeDefined();
+        expect(row?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+        expect(row?.source).toBe(AiModelSource.HUGGINGFACE);
+        expect(row?.libraryName).toBe('whisper.cpp');
+        expect(row?.isPlatformDefaultFor ?? []).not.toContain('SPEECH_TO_TEXT');
       });
 
       it('should include the faster-whisper CT2 int8 model', () => {

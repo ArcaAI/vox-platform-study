@@ -99,7 +99,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF)',
     slug: 'arcaai-whisper-large-ml-en-gguf',
     description:
-      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding. First fallback behind the q8_0 platform default.',
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding. Platform default for speech-to-text — the row the seeded realtime-transcription agent actually serves.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -149,7 +149,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF q8_0)',
     slug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
     description:
-      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding. Platform default for speech-to-text — the row the seeded realtime-transcription agent actually serves.',
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding. First fallback behind the f16 platform default.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
