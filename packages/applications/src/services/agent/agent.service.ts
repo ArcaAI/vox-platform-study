@@ -596,7 +596,13 @@ export class AgentService extends BaseService implements IAgentService {
     // Built through the same failure mapping as the render below: a `{ path }` binding resolves
     // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
     const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
-    const assembledSystemPrompt = compiled.resolvedPrompt ? this.render(compiled.resolvedPrompt.content, scope, 'instruction') : null;
+    // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
+    // what production sends: a composite is SELECTED and joined here, never served as its static
+    // projection (which would show an author the base prompt and hide the branch they came to test).
+    const composed: ComposedPrompt = this.renderMapped(() =>
+      composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }),
+    );
+    const assembledSystemPrompt = composed.prompt;
     const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
 
     const resolved = await this.testTarget(entity, model as AiModelEntity, dto);
@@ -604,6 +610,20 @@ export class AgentService extends BaseService implements IAgentService {
       mode: 'dry-run',
       findings: report.findings as AgentTestAckResponse['findings'],
       assembledSystemPrompt,
+      // OD-11 — only a composite HAS a composition; the two single-body forms would carry an
+      // empty pair that reads as "nothing was selected", which is a different and wrong claim.
+      ...(compiled.resolvedPrompt?.source === 'composite'
+        ? {
+            composition: {
+              selected: [...composed.selected],
+              excluded: composed.excluded.map((exclusion) => ({
+                key: exclusion.key,
+                reason: exclusion.reason,
+                ...(exclusion.detail === undefined ? {} : { detail: exclusion.detail }),
+              })),
+            },
+          }
+        : {}),
       assembledUserPrompt,
       resolved,
     };
@@ -714,11 +734,22 @@ export class AgentService extends BaseService implements IAgentService {
     return this.renderMapped(() => renderTemplate(content, scope, { templateRef }));
   }
 
-  /** The grammar's two named failures, as the 400s a bench caller can act on. */
+  /** The grammar's named failures, as the 400s a bench caller can act on. */
   private renderMapped<T>(work: () => T): T {
     try {
       return work();
     } catch (error) {
+      // TASK-947 (OD-6) — every fragment's condition was false or failed. Publish enforces an
+      // unconditional base, so a draft reaching this has already been refused by
+      // `PROMPT_COMPOSITION_NO_BASE`; this is the defensive half, and it still names the keys so
+      // the answer is "none of these ran" rather than a silent empty prompt.
+      if (error instanceof PromptCompositionEmptyError) {
+        throw new BadRequestException({
+          message: 'No prompt fragment was selected for this test: every fragment’s condition was false or could not be evaluated.',
+          code: 'PROMPT_COMPOSITION_EMPTY',
+          excluded: error.excluded.map((exclusion) => ({ key: exclusion.key, reason: exclusion.reason })),
+        });
+      }
       if (error instanceof PromptVariableUnresolvedError) {
         throw new BadRequestException({ message: error.message, code: 'PROMPT_VARIABLE_UNRESOLVED', path: error.path });
       }
