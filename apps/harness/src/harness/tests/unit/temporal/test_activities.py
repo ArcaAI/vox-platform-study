@@ -189,35 +189,31 @@ class TestToolClientFactoriesSendServiceToken:
     factories entirely, so they never would have caught it).
 
     Since the one-shared-token migration the factories resolve through
-    ``Settings.peer_service_token``: the shared ``INTERNAL_ACCESS_TOKEN`` wins and
-    the per-peer ``*_SERVICE_TOKEN`` is the fallback. Every case below therefore
-    pins ``internal_access_token`` explicitly — the ambient `.env.dev`/`.env.test`
-    legitimately set it to a real secret, and an unpinned one would silently
-    decide the assertion."""
+    ``Settings.peer_service_token``. TASK-941 R3 then RETIRED the per-target
+    fallbacks (``HARNESS_{TEXT,NLP,GUARDRAIL}_SERVICE_TOKEN``), so for these two
+    hops the shared ``INTERNAL_ACCESS_TOKEN`` is now the ONLY credential — there is
+    no second source left for it to win over. The cases below pin it explicitly
+    either way: the ambient `.env.dev`/`.env.test` legitimately set it to a real
+    secret, and an unpinned one would silently decide the assertion.
 
-    def test_text_client_carries_the_configured_token(self) -> None:
-        settings = Settings(internal_access_token="", text_service_token="tok-text")
-        client = activities._text_client(settings)
-        assert client._service_token == "tok-text"
+    The two cases that used to assert the per-target fallback are gone with the
+    fields; what survives is the guarantee that actually protects the hop — the
+    factory passes through whatever ``peer_service_token`` resolves, rather than
+    reading a secret directly and bypassing it."""
 
-    def test_nlp_client_carries_the_configured_token(self) -> None:
-        settings = Settings(internal_access_token="", nlp_service_token="tok-nlp")
-        client = activities._nlp_client(settings)
-        assert client._service_token == "tok-nlp"
-
-    def test_shared_token_wins_over_the_legacy_peer_token(self) -> None:
-        settings = Settings(
-            internal_access_token="shared-tok",
-            text_service_token="tok-text",
-            nlp_service_token="tok-nlp",
-        )
+    def test_text_client_carries_the_shared_token(self) -> None:
+        settings = Settings(internal_access_token="shared-tok")
         assert activities._text_client(settings)._service_token == "shared-tok"
+
+    def test_nlp_client_carries_the_shared_token(self) -> None:
+        settings = Settings(internal_access_token="shared-tok")
         assert activities._nlp_client(settings)._service_token == "shared-tok"
 
-    def test_clients_carry_no_token_when_unset(self) -> None:
+    def test_clients_carry_no_token_when_the_shared_one_is_unset(self) -> None:
         # Explicit empty, not a bare Settings() — the ambient .env.dev/.env.test
-        # legitimately set these to real secrets, so this stays hermetic.
-        settings = Settings(internal_access_token="", text_service_token="", nlp_service_token="")
+        # legitimately set this to a real secret, so this stays hermetic. An empty
+        # token is the local dev-bypass, not a failure.
+        settings = Settings(internal_access_token="")
         assert activities._text_client(settings)._service_token == ""
         assert activities._nlp_client(settings)._service_token == ""
 

@@ -82,7 +82,7 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
         # the right credential for this hop (apps/guardrail validates its OWN
         # `GUARDRAIL_SERVICE_TOKEN`), so the legacy fallback here is deliberately
         # guardrail's token, not harness's.
-        service_token=settings.peer_service_token(settings.guardrail_service_token),
+        service_token=settings.peer_service_token(),
         timeout=settings.guardrail_timeout_s,
     )
     try:

@@ -240,10 +240,13 @@ async def ping_activity(payload: PingInput) -> PingResult:
 
 
 # Owner decision D-D (2026-08-17): every outbound hop PRESENTS the ONE shared
-# `INTERNAL_ACCESS_TOKEN`. The legacy per-target secrets (`HARNESS_NLP_SERVICE_TOKEN`,
-# `HARNESS_TEXT_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`) remain only as the fallback
-# for an environment that has not been migrated yet — `peer_service_token` encodes
-# "shared first, legacy second" in one place so no factory can drift from it.
+# `INTERNAL_ACCESS_TOKEN`. TASK-941 R3 then RETIRED the three per-target fallbacks
+# (`HARNESS_{TEXT,NLP,GUARDRAIL}_SERVICE_TOKEN`) once the migration they were waiting
+# for was verified complete, so those hops now call `peer_service_token()` with nothing
+# to fall back to. `HARNESS_SERVICE_TOKEN` SURVIVES and is still passed on the
+# harness→apps/api hops: it is also harness's own inbound guard, so it is not a
+# retirable per-target copy. `peer_service_token` still encodes "shared first, legacy
+# second" in one place so no factory can drift from it.
 # every peer call out of an activity must carry the tenant its work
 # belongs to. The workflow input models all carry it (required on the newer ones,
 # additive-optional with "" on `GenerateInput`/`ApplyRedactionInput` so an OLD
@@ -269,7 +272,7 @@ def _nlp_client(settings: Settings) -> NlpClient:
     return NlpClient(
         settings.nlp_base_url,
         timeout=settings.nlp_timeout_s,
-        service_token=settings.peer_service_token(settings.nlp_service_token),
+        service_token=settings.peer_service_token(),
     )
 
 
@@ -287,7 +290,7 @@ def _text_client(settings: Settings) -> TextClient:
     return TextClient(
         settings.text_base_url,
         timeout=settings.text_timeout_s,
-        service_token=settings.peer_service_token(settings.text_service_token),
+        service_token=settings.peer_service_token(),
         credential_resolver=_resolve_llm_connection,
     )
 
@@ -624,7 +627,7 @@ def _safety_screen_client(settings: Settings, tenant_id: str) -> GuardrailSafety
             # The shared `INTERNAL_ACCESS_TOKEN`, legacy-falling-back to guardrail's own
             # token — NOT `HARNESS_SERVICE_TOKEN`, which apps/guardrail never accepts.
             # Same credential choice as the interpreter lane's guardrail hop (D-D).
-            service_token=settings.peer_service_token(settings.guardrail_service_token),
+            service_token=settings.peer_service_token(),
             timeout=settings.guardrail_timeout_s,
         ),
         tenant_id=tenant_id,

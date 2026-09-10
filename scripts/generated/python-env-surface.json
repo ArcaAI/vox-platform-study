@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 356,
+  "distinctNames": 350,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -1319,18 +1319,6 @@
           "description": "Peer service \u2014 the summarization palette's `guardrail.check` node calls apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap floor pattern (rule 09 \u00a7Configuration Tiers: a `*_URL` transport address is the ONE sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call."
         },
         {
-          "name": "HARNESS_GUARDRAIL_SERVICE_TOKEN",
-          "aliases": [],
-          "class": "Settings",
-          "field": "guardrail_service_token",
-          "prefix": "HARNESS_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Legacy fallback for the harness\u2192guardrail hop (env HARNESS_GUARDRAIL_SERVICE_TOKEN), i.e. apps/guardrail's own GUARDRAIL_SERVICE_TOKEN. Superseded by the shared INTERNAL_ACCESS_TOKEN; before D-D this hop wrongly presented HARNESS_SERVICE_TOKEN, which apps/guardrail never accepts."
-        },
-        {
           "name": "HARNESS_GUARDRAIL_TIMEOUT_S",
           "aliases": [],
           "class": "Settings",
@@ -1448,18 +1436,6 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:8864",
-          "description": ""
-        },
-        {
-          "name": "HARNESS_NLP_SERVICE_TOKEN",
-          "aliases": [],
-          "class": "Settings",
-          "field": "nlp_service_token",
-          "prefix": "HARNESS_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
           "description": ""
         },
         {
@@ -1667,18 +1643,6 @@
           "description": "Text generation defaults (None => let the Text service choose)."
         },
         {
-          "name": "HARNESS_TEXT_SERVICE_TOKEN",
-          "aliases": [],
-          "class": "Settings",
-          "field": "text_service_token",
-          "prefix": "HARNESS_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Peer-service auth: harness's own copy of apps/text's TEXT_SERVICE_TOKEN and apps/nlp's NLP_SERVICE_TOKEN, presented as X-Service-Token on outbound calls (mirrors the api_client pattern above, and apps/nlp's own ExternalTextConfig when it calls apps/text). Each target validates against exactly one configured secret with no OR-fallback, so this must match that target's own value, not HARNESS_SERVICE_TOKEN. Empty = auth disabled (local dev-bypass), same as above."
-        },
-        {
           "name": "HARNESS_TEXT_TIMEOUT_S",
           "aliases": [],
           "class": "Settings",
@@ -1870,7 +1834,7 @@
           "secret": true,
           "dataType": "secret",
           "default": null,
-          "description": "CANONICAL internal credential (owner decision D-D, 2026-08-17) ONE shared access token for ALL internal service-to-service communication, identical across every HOPE service, set by the DevOps engineer, internal use only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) \u2014 it belongs to no single service. This is what the service ACCEPTS inbound as `X-Service-Token` and PRESENTS on every outbound peer call. The legacy per-service token below stays accepted / used as a zero-cost backward-compatibility fallback; both empty \u21d2 auth bypassed (dev / CI)."
+          "description": "CANONICAL internal credential (owner decision D-D, 2026-08-17) ONE shared access token for ALL internal service-to-service communication, identical across every HOPE service, set by the DevOps engineer, internal use only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) \u2014 it belongs to no single service. This is what the service ACCEPTS inbound as `X-Service-Token` and PRESENTS on every outbound peer call. It is the ONLY accepted credential on this service \u2014 the legacy per-service `NLP_SERVICE_TOKEN` was REMOVED (see the note below), so a peer that presents anything else is answered 401. Empty \u21d2 auth bypassed (dev / CI). Guardrail presents this same value via `peer_service_token()`."
         },
         {
           "name": "NLP_ENVIRONMENT",
@@ -3878,15 +3842,6 @@
     ],
     "QDRANT_PORT": [
       "infrastructure/docker/scripts/init-qdrant-collections.py"
-    ],
-    "STT_BENCH_CORPUS": [
-      "apps/stt/scripts/benchmark_pipelines.py"
-    ],
-    "STT_BENCH_PIPELINES": [
-      "apps/stt/scripts/benchmark_pipelines.py"
-    ],
-    "STT_BENCH_REFERENCE_DIR": [
-      "apps/stt/scripts/benchmark_pipelines.py"
     ],
     "WHISPER_MLEN_GGUF": [
       "apps/stt/scripts/mlen_scorecard.py"
