@@ -459,6 +459,14 @@ interface LiveSession {
   lastSegmentId?: string;
   timer?: ReturnType<typeof setTimeout>;
   lastPayload?: LiveSummaryEventDto;
+  /**
+   * TASK-939 R9 — the one-per-session attempt to resume the PERSISTED note.
+   *
+   * A promise rather than a boolean, and awaited by every flush, so the resume costs every
+   * generation the same single microtask instead of handicapping the first one — see the call site.
+   * Settles once; never rejects.
+   */
+  resumePromise?: Promise<void>;
   sttSubscription?: Subscription;
   /** Cross-instance "stop" control-channel reader. */
   controlSubscription?: Subscription;
@@ -2289,6 +2297,47 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * aborts the prior in-flight TEXT/NLP call and only the latest generation may
    * publish, advance the incremental cursor, or persist.
    */
+  /**
+   * Seed `session.lastPayload` from the PERSISTED `DocumentSection` rows, once per session.
+   *
+   * `lastPayload` lives only in this process's `LiveSession`: `stop()` deletes the session, a lost
+   * owner lock tears it down, and a pod restart or ownership handoff builds a fresh one. The next
+   * flush then saw an EMPTY prior note and `buildTextUserPrompt` switched to its FIRST-TURN
+   * instruction — so a second recording segment, or a reconnect after a restart, silently RESTARTED
+   * the case note instead of continuing it. Nothing read the persisted note back:
+   * `findLiveSnapshotRow` deliberately touches only `_metadata`.
+   *
+   * The rows are the right source rather than the durable snapshot blob, because they are what the
+   * turn contract folds onto AND they carry the clinician's CONFIRMED text.
+   *
+   * Never throws and never rejects: this is on the live flush path, and a failed resume must degrade
+   * to the previous behaviour (a fresh note) rather than fail the flush.
+   */
+  private async resumePersistedNote(session: LiveSession, template: ResolvedDocumentTemplate): Promise<void> {
+    if (session.lastPayload) return;
+    const resumed = await this.sections().readDocument(
+      session.tenantId,
+      session.consultationId,
+      template.slug,
+      template.compiled.checklist.map(({ key, title }) => ({ key, title })),
+    );
+    // A consultation with no rows, or with rows that are all empty, is an ordinary first recording.
+    if (!resumed || !resumed.some((section) => section.content.trim().length > 0)) return;
+    // Re-checked after the await: a flush that published while this read was in flight owns the
+    // note, and overwriting its payload with the older persisted rows would undo it.
+    if (session.lastPayload) return;
+
+    const runningSummary = buildRunningSummary(resumed);
+    session.lastPayload = { ...this.emptyPayload(session.consultationId), sections: resumed, runningSummary };
+    this.logger.log({
+      message: 'Resumed the persisted case note for a new live session',
+      consultationId: session.consultationId,
+      sectionCount: resumed.length,
+      // PHI-safe: a size, never the note.
+      summaryChars: runningSummary.length,
+    });
+  }
+
   private async runFlush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
     if (!session) return null;
@@ -2361,6 +2410,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // control-plane contract: a super admin's write governs the next flush, no redeploy.
     await this.resolveTextTimeoutMs(session.tenantId);
     await this.resolveGroundednessEnabled(session.tenantId);
+
+    // TASK-939 R9 — resume the note a previous session already wrote.
+    //
+    // Awaited by EVERY flush through a memoised promise, exactly like the agent, template,
+    // substrate and lane resolutions above — and for a reason that is not merely stylistic. A
+    // once-only `await` on the first flush is ASYMMETRIC: the first generation ends up one microtask
+    // behind every later one, so a forced flush (`stop()`'s) reaches the model FIRST while the
+    // opening flush is still resolving. That is an observable reordering of which generation issues
+    // which model call, and a background read has no business causing it. Awaiting the same settled
+    // promise on every flush costs one microtask for all of them and changes no ordering at all.
+    await (session.resumePromise ??= this.resumePersistedNote(session, template));
 
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
@@ -2497,6 +2557,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let turnRefusals: TurnRefusal[] = [];
     /** True when the turn contract could not be honoured and this flush fell back to a full rewrite. */
     let turnDegraded = false;
+    /**
+     * TASK-939 R11 — where the transcript cursor WOULD advance to, applied only once this flush has
+     * survived every staleness check.
+     *
+     * The cursor used to be written the moment TEXT returned, while two `await`s (the NLP call, and
+     * the graph lane's degrade publish) still stood between that point and the final `isStale()`.
+     * A `stop()`-forced flush superseding inside either window returned through `dropStale` without
+     * ever reaching `session.lastPayload = payload` — so the generation's content was discarded
+     * while the cursor stayed advanced past the transcript that produced it, and that stretch of
+     * the encounter never reached any note again.
+     */
+    let cursorAdvanceTo: number | null = null;
     let textFailed = false;
     let textLatencyMs = 0;
     // AD-1 generation stats for this flush (null unless TEXT
@@ -2568,7 +2640,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         turnWrites = graph.turnWrites;
         turnRefusals = graph.turnRefusals;
         turnDegraded = graph.turnDegraded;
-        session.flushedTranscriptCount = deltaEnd;
+        cursorAdvanceTo = deltaEnd;
       }
       textFailed = graph.textFailed;
       textLatencyMs = graph.textLatencyMs;
@@ -2653,7 +2725,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         turnRefusals = applied.refusals;
         // Advance only over the segments actually sent (C5-04): on a truncated
         // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
-        session.flushedTranscriptCount = deltaEnd;
+        //
+        // TASK-939 R11 — RECORDED, not written. The write happens after the LAST staleness check
+        // (see `cursorAdvanceTo`'s declaration); writing it here left the cursor advanced past a
+        // delta whose content a later `dropStale` then discarded.
+        cursorAdvanceTo = deltaEnd;
       } catch (error) {
         if (isStale()) return this.dropStale(session);
         textFailed = true;
@@ -2808,6 +2884,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // at which this flush's generation has won every staleness check, so what is recorded is
     // what the clinician actually saw.
     if (graph) this.captureLiveNodeOutputs(session, graph.run);
+    // TASK-939 R11 — the cursor advances HERE, past the last staleness check and immediately before
+    // the payload becomes the session's last-good. Content and cursor now move together or not at
+    // all, so a superseded generation can no longer strand the transcript it consumed.
+    if (cursorAdvanceTo !== null) session.flushedTranscriptCount = cursorAdvanceTo;
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
@@ -2816,7 +2896,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the legacy engine's contract is "one document, global offsets", and
     // emitting section patches from it would claim a granularity it does not have.
     if (graph) {
-      await this.publishSectionPatches(session, {
+      const reconciled = await this.publishSectionPatches(session, {
         sections,
         runningSummary,
         entities,
@@ -2831,6 +2911,28 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // decides whether there is a note at all.
         degradeReason: realtimeDegradeReason(graph.run, lane),
       });
+
+      // TASK-939 R10 — fold the clinician's CONFIRMED text back into the session's last-good note.
+      //
+      // `session.lastPayload` is what the NEXT turn's prompt is built from, and it was assigned
+      // unconditionally from this flush's MACHINE output a few lines above — including for sections
+      // the store had just refused to overwrite because a clinician owned them. The row was
+      // protected; the conversation with the model was not, so it kept being shown its own
+      // superseded text and kept re-proposing over the edit. The facilitator's "live adjustments"
+      // step requires the opposite: once the clinician has corrected a section, that correction is
+      // what the assistant works from.
+      //
+      // Mutating the already-published payload is deliberate and safe: the console never saw a
+      // patch for a refused section (none was published), so it is still rendering the confirmed
+      // text it already holds. The only consumer this corrects is the next prompt.
+      if (reconciled.size > 0) {
+        const corrected = payload.sections.map((section, idx) =>
+          reconciled.has(idx) ? { ...section, content: reconciled.get(idx)! } : section,
+        );
+        payload.sections = corrected;
+        payload.runningSummary = buildRunningSummary(corrected);
+        session.lastPayload = payload;
+      }
     }
 
     session.flushCount += 1;
@@ -3220,14 +3322,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
        */
       writes: readonly TurnSectionWrite[];
     },
-  ): Promise<void> {
+  ): Promise<Map<number, string>> {
+    // TASK-939 R10 — sections whose AUTHORITATIVE body differs from what this flush produced,
+    // keyed by render ordinal. Today that is exactly the clinician-CONFIRMED ones a replace was
+    // refused on; the caller folds them back into the session's last-good note so the NEXT turn's
+    // prompt shows the clinician's text instead of the machine's superseded version.
+    const reconciled = new Map<number, string>();
+
     if (ctx.sections.length === 0) {
       await this.publishSectionDegrade(session, ctx.template, ctx.degradeReason);
-      return;
+      return reconciled;
     }
     // A turn that touched nothing publishes nothing — and is NOT a degrade: the note stands as it
     // was, which for a stretch of transcript with no clinical content is the correct outcome.
-    if (ctx.writes.length === 0) return;
+    if (ctx.writes.length === 0) return reconciled;
 
     // The document this lane is producing. One document today; the key is what
     // makes a second one addressable without reshaping anything.
@@ -3259,6 +3367,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         if (result.applied === true) {
           await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(result.patch));
         } else if (result.reason !== 'unavailable') {
+          // TASK-939 R10 — a CONFIRMED section hands back its real body so the next prompt is
+          // built from what the clinician wrote.
+          if (result.current !== undefined) reconciled.set(idx, result.current);
           // PHI-safe: the refusal REASON, never the content that was refused.
           this.logger.log({
             message: 'Section patch refused',
@@ -3277,6 +3388,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
+
+    return reconciled;
   }
 
   /**
