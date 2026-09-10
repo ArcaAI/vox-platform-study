@@ -54,9 +54,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       secretOrKeyProvider: (_request: unknown, _rawJwtToken: string, done: (err: Error | null, secret?: string) => void): void => {
         resolveJwtSecret(secretsService)
           .then((secret) =>
-            secret
-              ? done(null, secret)
-              : done(new Error('JWT_SECRET_KEY could not be resolved from SecretsService; refusing to verify this token.')),
+            secret ? done(null, secret) : done(new Error('JWT_SECRET_KEY could not be resolved from SecretsService; refusing to verify this token.')),
           )
           .catch((error: unknown) => done(error instanceof Error ? error : new Error(String(error))));
       },
