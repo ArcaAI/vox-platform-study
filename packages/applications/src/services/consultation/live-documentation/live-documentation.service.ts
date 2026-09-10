@@ -2840,6 +2840,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       consultationId,
       generation: myGeneration,
       flushCount: session.flushCount,
+      // TASK-939 — sizes and counts only, never text. `noteChurnChars: 0` is the healthy line: the
+      // turn added without rewriting anything the clinician had already read.
+      noteChurnChars: this.noteChurnChars(priorSections, sections),
+      turnSectionsAppended: turnWrites.filter((write) => write.mode === 'append').length,
+      turnSectionsRewritten: turnWrites.filter((write) => write.mode === 'replace').length,
+      turnRefusedRewrites: turnRefusals.length,
+      turnDegraded,
       textLatencyMs,
       nlpLatencyMs,
       textFailed,
@@ -2870,6 +2877,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // TASK-891 B4 — WHICH node degraded and why, beside the two boolean stage flags.
       // Empty on a clean flush and on the legacy engine, which has no nodes.
       nodeDegrades: graph ? graph.run.events.map(({ nodeId, type, status, reason }) => ({ nodeId, type, status, reason })) : [],
+      // TASK-939 R7 — the defect, measured. Computed from the note BEFORE and AFTER this turn
+      // rather than from the writes, so it reports what a reader actually experienced and cannot
+      // be satisfied by a write that claims to be an append while replacing.
+      noteChurnChars: this.noteChurnChars(priorSections, sections),
+      turnSectionsAppended: turnWrites.filter((write) => write.mode === 'append').length,
+      turnSectionsRewritten: turnWrites.filter((write) => write.mode === 'replace').length,
+      turnRefusedRewrites: turnRefusals.length,
+      turnDegraded,
     });
 
     // Emit the ordered per-flush trajectory. Non-fatal: a
@@ -4126,6 +4141,33 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
 
     return rendered.join('\n\n');
+  }
+
+  /**
+   * TASK-939 R7 — how many characters the clinician had ALREADY READ that this turn rewrote.
+   *
+   * For each section, if the new body still STARTS WITH the old one, nothing the reader had seen
+   * changed and the churn is zero however much was added. Otherwise the whole prior body was
+   * rewritten, and its length is what churned.
+   *
+   * Measured on the before/after NOTE rather than on the write list, deliberately: the write list is
+   * this code's own claim about what it did, and a metric that reads it could never catch an append
+   * path that silently replaced. The prefix test is the same invariant the accumulation test and the
+   * replay harness assert, so one number means the same thing in all three.
+   *
+   * Sections are paired POSITIONALLY, which is how the whole realtime lane pairs them; a turn that
+   * changed the section COUNT (the first turn of a session, or a degrade to the prose fallback) has
+   * no comparable predecessor for the extra sections, so those contribute nothing.
+   */
+  private noteChurnChars(before: readonly LiveSummarySectionDto[], after: readonly LiveSummarySectionDto[]): number {
+    let churn = 0;
+    for (const [idx, priorSection] of before.entries()) {
+      const prior = (priorSection.content ?? '').trim();
+      if (prior.length === 0) continue;
+      const next = (after[idx]?.content ?? '').trim();
+      if (!next.startsWith(prior)) churn += prior.length;
+    }
+    return churn;
   }
 
   private buildTextUserPrompt(
@@ -5439,6 +5481,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       summaryChars: number;
       /** TASK-891 B4 — the lane's non-success node outcomes for this flush (empty on the legacy engine). */
       nodeDegrades?: LiveDocNodeDegradeResponse[];
+      /** TASK-939 R7 — the accumulation metrics. See `LiveDocSessionStatsResponse` for what each means. */
+      noteChurnChars: number;
+      turnSectionsAppended: number;
+      turnSectionsRewritten: number;
+      turnRefusedRewrites: number;
+      turnDegraded: boolean;
     },
   ): Promise<void> {
     const snapshot: LiveDocSessionStatsResponse = {
@@ -5457,6 +5505,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       entityCount: metrics.entityCount,
       sectionCount: metrics.sectionCount,
       summaryChars: metrics.summaryChars,
+      noteChurnChars: metrics.noteChurnChars,
+      turnSectionsAppended: metrics.turnSectionsAppended,
+      turnSectionsRewritten: metrics.turnSectionsRewritten,
+      turnRefusedRewrites: metrics.turnRefusedRewrites,
+      turnDegraded: metrics.turnDegraded,
       // Omitted entirely when nothing degraded, so a healthy session's snapshot keeps the
       // shape it had before B4.
       ...(metrics.nodeDegrades && metrics.nodeDegrades.length > 0 ? { nodeDegrades: metrics.nodeDegrades } : {}),

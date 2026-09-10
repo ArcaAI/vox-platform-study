@@ -91,6 +91,33 @@ export class LiveDocSessionStatsResponse {
     type: [LiveDocNodeDegradeResponse],
   })
   nodeDegrades?: LiveDocNodeDegradeResponse[];
+
+  @ApiProperty({
+    description:
+      'TASK-939 — NOTE CHURN: how many characters of text the clinician had ALREADY READ this flush rewrote. `0` is the healthy value and the design target: an additive turn appends, so previously published text is a prefix of what replaces it. A non-zero value means a section was rewritten rather than extended, which is the defect this ticket exists to remove — it is legitimate only where the model named a transcript contradiction (`turnSectionsRewritten`). Characters only, never text: this is a PHI-safe size.',
+  })
+  noteChurnChars: number;
+
+  @ApiProperty({ description: 'TASK-939 — sections this flush EXTENDED (the ordinary, cheap case).' })
+  turnSectionsAppended: number;
+
+  @ApiProperty({
+    description:
+      'TASK-939 — sections this flush REPLACED. Each one should be a transcript contradiction the model named; a session where this is routinely high is regenerating rather than accumulating.',
+  })
+  turnSectionsRewritten: number;
+
+  @ApiProperty({
+    description:
+      'TASK-939 — rewrites the turn contract REFUSED because no contradiction was named. The prior text stood. A high count means the model is trying to restate itself and the guard is doing its job.',
+  })
+  turnRefusedRewrites: number;
+
+  @ApiProperty({
+    description:
+      'TASK-939 — true when the generation could not be read as a TURN and this flush fell back to a whole-document rewrite (a provider that ignores `response_format`, typically). That is the PRE-ticket behaviour, so a tenant permanently in this state still sees the whole note re-render and is a finding, not a detail.',
+  })
+  turnDegraded: boolean;
 }
 
 /** A tenant's active live-documentation sessions (`GET /admin/harness/live/sessions`). */

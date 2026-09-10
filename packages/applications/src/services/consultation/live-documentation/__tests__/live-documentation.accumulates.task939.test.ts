@@ -252,3 +252,88 @@ describe('TASK-939 — the case note ACCUMULATES across partial-summary turns', 
     expect(final!.runningSummary).toContain('Likely viral URI.');
   });
 });
+
+describe('TASK-939 R7 — the churn metric makes the defect measurable', () => {
+  /**
+   * `noteChurnChars` is computed from the note BEFORE and AFTER the turn, not from the write list:
+   * a metric that read this code's own claims about what it did could never catch an "append" that
+   * actually replaced. Zero is the design target.
+   */
+  const statsOf = (cache: { setexCalls: Array<{ key: string; raw: string }> }) =>
+    cache.setexCalls.filter((c) => c.key.startsWith('live-doc:stats:')).map((c) => JSON.parse(c.raw) as Record<string, unknown>);
+
+  function statsCache() {
+    const setexCalls: Array<{ key: string; raw: string }> = [];
+    const base = cacheMock();
+    return Object.assign(base, {
+      setexCalls,
+      setex: vi.fn(async (key: string, _ttl: number, raw: string) => {
+        setexCalls.push({ key, raw });
+      }),
+    });
+  }
+
+  async function driveWithStats(turns: string[], segments: string[]) {
+    const cache = statsCache();
+    const sections = sectionRepositoryDouble();
+    const { service } = buildService(cache as never, turns, sections);
+    service.start({ consultationId: CID, tenantId: TENANT });
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const [idx, text] of segments.entries()) {
+      service.ingestSegment(CID, { text, isFinal: true, segmentId: `s${idx}` });
+      await service.flush(CID, { force: true });
+    }
+    // Snapshots are read BEFORE `stop()`. Stop runs a final forced flush, and with no new
+    // transcript that turn legitimately has nothing to add (the model repeats itself and
+    // `applyTurn` drops an addition the section already contains), so it publishes a zero-write
+    // snapshot that would make `at(-1)` the wrong sample for every assertion here.
+    const captured = statsOf(cache);
+    await service.stop(CID, { persistSnapshot: false });
+    return captured;
+  }
+
+  it('reports ZERO churn for a purely additive session — the healthy line', async () => {
+    const stats = await driveWithStats(
+      [turn({ subjective: { addition: 'Cough for three days.' } }), turn({ subjective: { addition: 'Now reports fever.' } })],
+      ['cough', 'fever'],
+    );
+
+    expect(stats.length).toBeGreaterThanOrEqual(2);
+    for (const snapshot of stats) expect(snapshot.noteChurnChars).toBe(0);
+    expect(stats.at(-1)!.turnSectionsAppended).toBe(1);
+    expect(stats.at(-1)!.turnSectionsRewritten).toBe(0);
+  });
+
+  it('reports the churn of a JUSTIFIED rewrite — legitimate, but still counted', async () => {
+    const stats = await driveWithStats(
+      [
+        turn({ objective: { addition: 'Temp 37.8.' } }),
+        turn({ objective: { revision: 'Temp 39.1.', contradiction: 'Nurse restated the reading.' } }),
+      ],
+      ['temp', 'correction'],
+    );
+
+    expect(stats.at(-1)!.noteChurnChars).toBe('Temp 37.8.'.length);
+    expect(stats.at(-1)!.turnSectionsRewritten).toBe(1);
+  });
+
+  it('counts a refused rewrite without charging churn for it — the prior text stood', async () => {
+    const stats = await driveWithStats(
+      [turn({ objective: { addition: 'Temp 37.8.' } }), turn({ objective: { revision: 'Thirty-seven point eight degrees.' } })],
+      ['temp', 'restated'],
+    );
+
+    expect(stats.at(-1)!.turnRefusedRewrites).toBe(1);
+    expect(stats.at(-1)!.noteChurnChars).toBe(0);
+  });
+
+  it('flags the whole-document DEGRADE, so a tenant stuck on the old behaviour is visible', async () => {
+    // A provider that answers with the document rather than with its contribution.
+    const stats = await driveWithStats(
+      [JSON.stringify({ subjective: 'Cough for three days.', objective: null, assessment: null, plan: null })],
+      ['cough'],
+    );
+
+    expect(stats.at(-1)!.turnDegraded).toBe(true);
+  });
+});
