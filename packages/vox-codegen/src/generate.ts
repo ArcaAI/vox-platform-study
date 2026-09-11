@@ -71,8 +71,7 @@ const MATERIALIZE_AS_CASE_NOTE_ANNOTATION =
   '@materializeAs CASE_NOTE — every array entry of this payload is ALSO written as one CASE_NOTE context item at open() (TASK-951).';
 
 /** JSDoc text attached at the TYPE level for a `streamContext: true` kind (TASK-951). */
-const STREAM_CONTEXT_ANNOTATION =
-  '@streamContext — echoed verbatim on every transcript segment of the STT session it was submitted to (TASK-951).';
+const STREAM_CONTEXT_ANNOTATION = '@streamContext — echoed verbatim on every transcript segment of the STT session it was submitted to (TASK-951).';
 
 /**
  * `{ [field]: annotation }` for every marker on `entry` (`userIdentity`,
@@ -85,7 +84,10 @@ const STREAM_CONTEXT_ANNOTATION =
  * below wins for that field, which is an acceptable, harmless tie-break
  * since the authoring gate limits each role to at most one property anyway.
  */
-function roleAnnotations(entry: ContextKindDeclaration | ContextOutputDeclaration, fields: Record<string, unknown>): Record<string, string> | undefined {
+function roleAnnotations(
+  entry: ContextKindDeclaration | ContextOutputDeclaration,
+  fields: Record<string, unknown>,
+): Record<string, string> | undefined {
   const properties = isPlainObject(fields.properties) ? fields.properties : undefined;
   if (!properties) return undefined;
   const record = entry as Record<string, unknown>;
@@ -162,10 +164,7 @@ function renderEntries<T extends ContextKindDeclaration | ContextOutputDeclarati
     const expr = jsonSchemaSubsetToTs(entry.fields, { path: `${entry.key}.fields`, annotations: roleAnnotations(entry, entry.fields) });
     const label = entry.label ? ` — ${entry.label}` : '';
     const typeTags = typeLevelAnnotations(entry);
-    const doc =
-      typeTags.length === 0
-        ? `/** \`${entry.key}\`${label} */`
-        : `/**\n * \`${entry.key}\`${label}\n * ${typeTags.join('\n * ')}\n */`;
+    const doc = typeTags.length === 0 ? `/** \`${entry.key}\`${label} */` : `/**\n * \`${entry.key}\`${label}\n * ${typeTags.join('\n * ')}\n */`;
     rendered.push({
       key: entry.key,
       typeName,
