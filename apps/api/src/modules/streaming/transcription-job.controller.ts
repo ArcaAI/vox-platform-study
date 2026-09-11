@@ -16,6 +16,7 @@ import {
   IEntitlementsService,
   ITenantBucketService,
   ITenantSttConfigService,
+  jsonSchemaValueProblems,
   PipelineService,
   StreamingSessionService,
   TranscriptionJobService,
@@ -44,6 +45,7 @@ import {
   HttpStatus,
   Optional,
   Param,
+  PayloadTooLargeException,
   Post,
   Query,
   Res,
@@ -64,6 +66,7 @@ import {
   BatchTranscribeResponse,
   BatchTranscriptionLimitsResponse,
   CreateStreamSessionRequest,
+  MAX_STREAM_SESSION_CONTEXT_BYTES,
   MAX_UPLOAD_HARD_CEILING,
   SttFallbackProviderResponse,
   StreamSessionResponse,
@@ -726,6 +729,10 @@ export class TranscriptionJobController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a WebSocket streaming session' })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
+  // TASK-951 R2 — the two refusals `context` introduces. Documented here because a client that
+  // cannot tell "too big" from "wrong shape" cannot fix either one.
+  @ApiResponse({ status: 400, description: '`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the schema the resolved ASR agent binds' })
+  @ApiResponse({ status: 413, description: '`CONTEXT_TOO_LARGE` — `context` exceeds 4096 bytes of canonical JSON' })
   async createStreamSession(@Body() body: CreateStreamSessionRequest, @Res({ passthrough: true }) res?: Response): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
@@ -733,6 +740,14 @@ export class TranscriptionJobController {
     // also means an ownerless caller is refused BEFORE any STT or bucket I/O runs.
     const ownerId = this.resolveStreamOwnerId();
     const sampleRate = body.sampleRate ?? 16000;
+    // TASK-951 R2 — the session's creation instant. Taken HERE, once, so the value the client is
+    // told, the value stored on the binding, and the value every transcript echoes are the same
+    // number. Segment times are relative to the session, so this is the only thing that lets a
+    // caller running one session per microphone put them on a single timeline.
+    const sessionEpochMs = Date.now();
+    // The SIZE bound runs before anything else — it needs no tenant read, no agent resolution and
+    // no STT round trip, so an oversized body is refused without consuming any of them.
+    const context = this.assertStreamContextWithinBound(body.context);
     // TASK-861 — the agent path is the default; the deprecated `pipelineId`
     // path is taken ONLY when the caller sends one (and answers with the
     // deprecation headers).
@@ -782,6 +797,10 @@ export class TranscriptionJobController {
         : this.resolveAsrAgent(tenantId, body.agentSlug),
       resolveAudioBucket(),
     ]);
+
+    // TASK-951 R2 (D-8) — the context gate, once the agent that governs it is known. It runs
+    // BEFORE the STT session is created so a refused request leaves nothing behind upstream.
+    this.assertStreamContextConforms(context, resolved);
 
     // The fallback + credentials for this session. Agent path: the spec's own
     // `fallback` block (autoSwitch + threshold are the agent's governance) and
@@ -856,7 +875,14 @@ export class TranscriptionJobController {
       // session belongs to one clinician, and every gate downstream (ticket
       // mint, refresh-ticket, WS handshake, close/switch) compares against it.
       this.streamSessionTenantBinding.bind(result.sessionId, tenantId, ownerId),
-      this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, { sampleRate }),
+      // TASK-951 R2 — the echo rides on the SAME meta record the gateway already reads once at
+      // handshake, so the WS path costs no extra Redis round trip and cannot see a context that
+      // disagrees with the sampleRate it was negotiated with.
+      this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, {
+        sampleRate,
+        ...(context ? { context } : {}),
+        sessionEpochMs,
+      }),
     ]);
 
     // Preseed contract — capture voiceProfileSeeded if the
@@ -879,7 +905,60 @@ export class TranscriptionJobController {
       ...(result.activeEngine ? { activeEngine: result.activeEngine } : {}),
       // TASK-861 — the agent identity the session resolved to.
       ...(resolved ? { agentSlug: resolved.spec.agent.slug, agentVersionId: resolved.spec.agent.versionId } : {}),
+      // TASK-951 R2 — what the session will echo, confirmed at create rather than discovered on
+      // the first utterance.
+      ...(context ? { context } : {}),
+      sessionEpochMs,
     };
+  }
+
+  /**
+   * TASK-951 R2 (D-8) — the SIZE half of the `context` gate.
+   *
+   * Measured on the canonical JSON in UTF-8 BYTES, not `.length`: the field carries client labels
+   * that may be non-ASCII, and a character count would admit an object several times the intended
+   * Redis/wire cost. Returns the object unchanged so the caller reads as a pipeline.
+   */
+  private assertStreamContextWithinBound(context?: Record<string, unknown>): Record<string, unknown> | undefined {
+    if (context === undefined) return undefined;
+    const bytes = Buffer.byteLength(JSON.stringify(context), 'utf8');
+    if (bytes > MAX_STREAM_SESSION_CONTEXT_BYTES) {
+      throw new PayloadTooLargeException({
+        code: 'CONTEXT_TOO_LARGE',
+        message: `Session context is ${bytes} bytes; the maximum is ${MAX_STREAM_SESSION_CONTEXT_BYTES}.`,
+      });
+    }
+    return context;
+  }
+
+  /**
+   * TASK-951 R2 (D-8) — the SCHEMA half of the `context` gate.
+   *
+   * Checked against the resolved ASR agent's FROZEN `compiledConfig.contextSchema.payloadSchema`
+   * — the envelope `{ [kindKey]: payload }` verbatim, the same artifact
+   * `AgentInvocationService.contextProblems` uses for the invocation plane, so a tenant that
+   * publishes one schema gets one answer about what its vocabulary admits on both planes.
+   *
+   * An agent that binds NO schema declares no vocabulary, so there is nothing to refuse: the
+   * object is accepted on the size bound alone. That is deliberate and matches the invocation
+   * plane's `[]` for the same case — "this agent has no opinion" must not read as
+   * "everything is invalid".
+   */
+  private assertStreamContextConforms(context: Record<string, unknown> | undefined, resolved?: ResolvedAsrSession): void {
+    if (context === undefined) return;
+    const payloadSchema = resolved?.contextSchema?.payloadSchema;
+    if (!payloadSchema) return;
+
+    const problems = jsonSchemaValueProblems(payloadSchema, context, '');
+    if (problems.length > 0) {
+      throw new BadRequestException({
+        code: 'CONTEXT_SCHEMA_VIOLATION',
+        message: `The supplied context does not satisfy the schema agent '${resolved?.spec.agent.slug}' binds (version ${
+          resolved?.contextSchema?.versionNumber ?? 'unknown'
+        }).`,
+        problems,
+      });
+    }
   }
 
   /**

@@ -33,6 +33,20 @@ export interface ResolvedAsrSession {
    * reads under the key the loader actually used to bill engine-time.
    */
   fundingTier?: ProviderFunding;
+  /**
+   * TASK-951 R2 (D-8) — the context schema the resolved agent BINDS, exactly as frozen into
+   * `compiledConfig.contextSchema` at publish time, or `undefined` when it binds none.
+   *
+   * Surfaced here because the agent row is resolved inside this service and nowhere else on the
+   * STT entry path: without it the gateway would have to resolve the same agent a SECOND time
+   * just to learn what `context` it may accept. Frozen, never re-read — a tenant that edits its
+   * schema after publishing does not silently change what a live agent accepts (the same
+   * invariant `AgentInvocationService.contextProblems` relies on).
+   *
+   * It is deliberately NOT part of `ResolvedAsrSpec`: the spec is the cross-language contract
+   * `apps/stt` consumes (pydantic mirror + parity fixture), and the echo never reaches `apps/stt`.
+   */
+  contextSchema?: NonNullable<ResolvedAgent['compiledConfig']['contextSchema']>;
 }
 
 const rec = (value: unknown): Record<string, unknown> =>
@@ -110,7 +124,16 @@ export class AsrAgentResolverService {
     }
 
     const { providerOverrides, fundingTier } = await this.resolveCredentials(spec, agent, fallbackAgent, tenantId);
-    return { spec, ...(providerOverrides ? { providerOverrides } : {}), ...(fundingTier ? { fundingTier } : {}) };
+    // TASK-951 — the PRIMARY agent's bound schema. The fallback agent's is deliberately ignored:
+    // a session's accepted `context` is decided once, at create, and must not change under the
+    // caller when the engine fails over mid-session.
+    const contextSchema = agent.compiledConfig.contextSchema ?? undefined;
+    return {
+      spec,
+      ...(providerOverrides ? { providerOverrides } : {}),
+      ...(fundingTier ? { fundingTier } : {}),
+      ...(contextSchema ? { contextSchema } : {}),
+    };
   }
 
   /**

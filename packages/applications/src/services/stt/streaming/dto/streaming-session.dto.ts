@@ -249,6 +249,28 @@ export type StreamingClientMessage = StreamingAudioMessage | StreamingStopMessag
 
 export type StreamingServerMessageType = 'transcript' | 'status' | 'error';
 
+/**
+ * TASK-951 R2 (D-8) — what a stream session echoes back to its client.
+ *
+ * The client declares `context` when it CREATES the session
+ * (`CreateStreamSessionRequest.context`); the gateway stamps `sessionEpochMs`
+ * at the same moment. Both are stored on the gateway-side session binding, read
+ * ONCE at WS attach, and attached to every transcript of that session — never
+ * forwarded to `apps/stt`, which knows nothing about either.
+ *
+ * The pair travels TOGETHER on purpose. A session that declared no `context`
+ * gets neither field, so its transcript wire is byte-identical to the one every
+ * client parses today; the epoch is only useful to a caller that is aligning
+ * several sessions, and such a caller is exactly the one that declares a
+ * context.
+ */
+export interface StreamSessionEcho {
+  /** Verbatim client-declared session context (`{ [kindKey]: payload }`). */
+  context?: Record<string, unknown>;
+  /** Epoch milliseconds at session creation — segment times are relative to it. */
+  sessionEpochMs?: number;
+}
+
 export interface StreamingTranscriptMessage {
   type: 'transcript';
   /** Transcribed text */
@@ -306,6 +328,25 @@ export interface StreamingTranscriptMessage {
   speakerConfidence?: number;
   /** Per-word timestamps, if enabled in pipeline config */
   wordTimestamps?: Array<{ word: string; start: number; end: number; confidence: number | null }>;
+  /**
+   * TASK-951 R2 — the session's client-declared context, echoed VERBATIM.
+   *
+   * The object the client sent to `POST audio/transcription-jobs/stream/session`
+   * as `context` (`{ [kindKey]: payload }`), unchanged. It is per-SESSION, not
+   * per-segment: one standalone session per microphone is how a caller gets
+   * per-mic attribution without HOPE's mixer or diarization knowing about it
+   * (D-8 / OD-8). Absent for a session that declared none.
+   */
+  context?: Record<string, unknown>;
+  /**
+   * TASK-951 R2 — epoch milliseconds at session creation.
+   *
+   * `sessionEpochMs + startTime * 1000` is the wall-clock instant of a segment,
+   * which is what lets a caller interleave several concurrent sessions whose
+   * `startTime`s are each relative to their own session. Travels with
+   * {@link StreamingTranscriptMessage.context} ({@link StreamSessionEcho}).
+   */
+  sessionEpochMs?: number;
 }
 
 export interface StreamingStatusMessage {
