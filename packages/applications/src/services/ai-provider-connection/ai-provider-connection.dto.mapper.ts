@@ -1,5 +1,6 @@
 import { AiModelEntity, AiProviderConnectionEntity } from '@arcaai/domains';
 import { AiProviderConnectionResponse, ConnectionModelResponse } from './dto';
+import { sanitizeProviderExtras } from './provider-extras';
 
 /**
  * Entity → masked response projection.
@@ -22,7 +23,22 @@ export class AiProviderConnectionDtoMapper {
       hasKey: entity.hasKey,
       keyVersion: entity.keyVersion ?? null,
       enabled: entity.enabled,
-      extraJson: (entity.extraJson as Record<string, unknown> | null) ?? null,
+      // TASK-952 — SANITISED on the way out, not raw.
+      //
+      // `provider-extras.ts` declares the read path as "anything inadmissible is
+      // DROPPED, never thrown ... a row stored before this validator existed must
+      // degrade to 'that key is missing', never to a failed request". The wire
+      // fold honours that; this projection did not, so the console received keys
+      // the adapter would never be given — and, once the console started echoing
+      // the stored envelope back on save (D-6, so it stops wiping keys it has no
+      // field for), an inadmissible legacy value would come straight back as a
+      // 400 on the next save. That is the same failure class the sanitiser exists
+      // to prevent, reached from the other direction.
+      //
+      // `null` is PRESERVED rather than flattened to `{}`: "no extras" and "an
+      // empty extras object" are different stored states, and the response DTO
+      // has always distinguished them.
+      extraJson: entity.extraJson == null ? null : sanitizeProviderExtras(entity.extraJson),
       maxConcurrent: entity.maxConcurrent ?? null,
       rpmLimit: entity.rpmLimit ?? null,
       tpmLimit: entity.tpmLimit ?? null,
