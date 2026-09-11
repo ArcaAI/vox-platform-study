@@ -57,6 +57,13 @@
 
 # ── Per-service container scans ──────────────────────────────────────────────
 
+# An `SDK-<ver>` tag publishes the npm SDK family and builds NO image (build.yml
+# keys image builds off `<SVC>-` / `ALL-` prefixes), yet `.rules-always` would
+# select every image scan below. A scan whose `build-*` `needs` is absent makes
+# GitLab refuse the whole pipeline at creation ("job needs 'build-api' … does
+# not exist") — which is exactly how SDK-3.2.0 (#1174) died with zero jobs. The
+# SDK tag guard therefore rides on the same `when: never` line as the other
+# image-less pipeline types.
 scan-api:
   extends: .trivy-scan
   needs:
@@ -65,7 +72,7 @@ scan-api:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-api, rules]
@@ -78,7 +85,7 @@ scan-stt:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-stt, rules]
@@ -91,7 +98,7 @@ scan-text:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-text, rules]
@@ -104,7 +111,7 @@ scan-nlp:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-nlp, rules]
@@ -118,7 +125,7 @@ scan-nlp:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-compat-playground, rules]
@@ -158,7 +165,7 @@ scan-guardrail:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-guardrail, rules]
@@ -171,7 +178,7 @@ scan-harness:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-harness, rules]
@@ -184,7 +191,7 @@ scan-tts:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-tts, rules]
@@ -197,7 +204,7 @@ scan-admin-console:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-admin-console, rules]
@@ -210,7 +217,7 @@ scan-database:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-database, rules]
@@ -223,7 +230,7 @@ scan-stt-worker:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-stt, rules]
@@ -259,7 +266,7 @@ scan-harness-worker:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $CI_COMMIT_TAG =~ /^SDK-/
       when: never
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-harness, rules]
