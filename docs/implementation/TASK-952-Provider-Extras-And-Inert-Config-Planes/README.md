@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | bugfix + refactor (console) · feature (harness) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-11 |
@@ -131,10 +131,53 @@ primary checkout, all DB/infra commands, and this document.
 
 ## Implementation Summary
 
-_Filled in as lanes land._
+Five lanes, all merged into `dev-2.2`. Nothing pushed.
+
+| Lane | Merge | Delivered |
+|---|---|---|
+| B | `eee62f360` | The four inert / override-wins `model` extras fields removed from the STT cards, plus a drift guard so they cannot return. |
+| A | `0f53040ed` | `buildBody()`: blanks OMITTED (D-2), `extraJson` sent whenever the provider declares extras (D-2b), envelope MERGED over the stored one (D-6), models-editor signpost on an unsaved BYO row (D-3). RED verified — 4 of 8 new tests fail against the previous implementation. |
+| C | `4de67dad8` | Reason codes rendered as guidance (D-5); unknown codes still fall through verbatim. |
+| D | `a0caf7a6f` | Harness reads the qdrant `collection` prefix (D-1b) and the embeddings endpoint/key/model (D-1c) from the connection plane, plus the gateway `extras` passthrough the plan wrongly assumed was unnecessary. |
+| E | `ad81bca8e` | The platform embeddings tier gets its own provider id, `embeddings:tei-embed`, so it stops being gated as vendor spend; SYSTEM row seeded; `text-embedding-bge-m3` literal retired; platform card added. |
+
+Two defects found in orchestrator review, outside any lane:
+
+- `1cea8e80c` — **the read projection returned `extraJson` raw.** Harmless while the console rebuilt the envelope from its own field list; load-bearing the moment lane A made it echo the stored envelope back, since an inadmissible legacy value would then return as a 400 on the next save. `toResponse` now sanitises, `null` preserved.
+- `0449cc180` — **`no-usable-model` left rendering raw.** Lane C found a sixth reason code and excluded it under the "unknown codes fall through" rule; that rule is for codes nobody has SEEN. Mapped with its own wording (it is the Hope GROUP summary, whose fix is not on AI Providers).
+
+### Four places this plan was wrong, corrected by the lanes
+
+1. **"No gateway lane is needed for D-1b/D-1c."** `HarnessProviderCredentialResponse` allow-listed `model` and dropped every other extras key, so `vector:qdrant`'s `collection` was validated, stored, and discarded one hop before its only consumer. Lane D added the passthrough.
+2. **"Seed a keyless SYSTEM row."** `ai-provider-connection.service.ts:653` drops `!row.enabled || !row.encryptedApiKey` on BOTH tiers, so a literally keyless row resolves `absent` and delivers nothing. The row carries `SELF_HOST_PLACEHOLDER_API_KEY`, exactly as the four `llm` engines do.
+3. **"Widening happens only on ABSENCE."** A tenant with no embeddings row does not resolve `ABSENT` on the BYO pair — it resolves `DENIED`, always, because the entitlement gate is evaluated without reference to any row. The rule was unsatisfiable as written. The gateway now stamps a machine-readable `denial` (`tenant-veto` | `platform-entitlement`) and the harness widens on the entitlement one only; a VETO is never widened past, and an unknown or absent cause fails closed.
+4. **`BUILT_IN_PROVIDERS_BY_SERVICE` had no consumer.** `platform-provider-sections.tsx` rendered the flat card list under a hardcoded `service="llm"`, so a new platform card would have written an `llm:tei-embed` row nothing resolves. The section now carries the service with the card, pinned by a drift assertion.
+
+### Verification (primary checkout, after every merge)
+
+| Suite | Result |
+|---|---|
+| `pnpm harness:test` (incl. replay-compat) | 2488 passed |
+| `pnpm harness:lint` / `harness:typecheck` | ruff clean · mypy clean, 151 files |
+| `@arcaai/applications` — ai-provider-connection + consultation/harness | 564 passed (31 files) |
+| `tests/contracts` + `tests/cross-tenant` | 359 passed (27 files) |
+| `@arcaai/database` | 1756 passed (89 files) |
+| `@arcaai/admin-console` — ai-providers + agents | 184 passed (23 files) |
+| `@arcaai/admin-console` lint / typecheck | clean |
+
+### Outstanding
+
+- **A re-seed is required** before the platform embeddings lane resolves at runtime — `pnpm db:seed` (create-only), with `SECRETS_PROVIDER=vault` so the placeholder ciphertext is written. No migration: no schema changed. Until then, retrieval with `enabled: true` degrades visibly with `error_code="embeddings_model_unresolved"` rather than embedding on an invented model.
+- `embeddings_dim` deliberately stays an env-tier sizing knob: it describes the Qdrant COLLECTION as much as the model, and a connection row has nowhere to declare one. Co-locating it (`extraJson.dim` + a fold) changes what "reset to default" means for an existing collection — an owner call, not a silent one.
+- `pnpm harness:format:check` is red on `dev-2.2` INDEPENDENTLY of this ticket (24 files, 23 of them untouched here). A repo-wide `pnpm harness:format` as its own commit clears it.
+- `membership-bounded-sync.integration.test.ts` fails on a live-DB credential error, environmental and pre-existing.
+- Not addressed, flagged by lane A: `handleTest()` skips every `store: 'extra'` field when building the probe body, so a typed-but-unsaved `vertex:project` probes a different configuration than the save will store.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-11 | Ticket opened; investigation, extras audit and owner decisions recorded; four lanes briefed. |
+| 2026-09-11 | Lanes B, A, C merged; two orchestrator-review defects fixed (read-projection sanitise, `no-usable-model` mapping). |
+| 2026-09-11 | Lane D merged. Its embeddings half was unreachable — `featurePlatformDefaultCredential` is false on every plan, so the entitlement gate answered `denied` for `embeddings:openai` regardless of rows, and `retrieve_context` degraded to empty context. Latent only (`RetrievalConfig.enabled` defaults false). Owner chose to finish rather than defer. |
+| 2026-09-11 | Lane E merged: `embeddings:tei-embed` classified as platform self-host, SYSTEM row seeded, hardcoded model literal retired, `denial` discriminator added so a veto and an entitlement suppression are distinguishable on the wire. All gates green; status → Review pending owner sign-off and a dev re-seed. |
