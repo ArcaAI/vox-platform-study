@@ -30,9 +30,9 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { usePublishContextSchema } from '../api/hooks';
 import type { ContextKindDeclaration, ContextOutputDeclaration, ContextSchemaDefinition } from '../api/types';
 import { publishRejection } from '../lib/publish-error';
+import { FieldRoleTable } from './field-role-table';
 import { KindForm } from './kind-form';
 import { OutputForm } from './output-form';
-import { UserIdentityFieldSelect } from './user-identity-field-select';
 
 function defaultKind(): ContextKindDeclaration {
   return {
@@ -143,13 +143,38 @@ export function DefinitionEditor({
                         Identity
                       </Badge>
                     ) : null}
+                    {kind.department ? (
+                      <Badge variant="secondary" aria-label={`Department field: ${kind.department.field} (by ${kind.department.by})`}>
+                        Department
+                      </Badge>
+                    ) : null}
+                    {kind.visitType ? (
+                      <Badge variant="secondary" aria-label={`Visit type field: ${kind.visitType.field}`}>
+                        Visit type
+                      </Badge>
+                    ) : null}
+                    {kind.externalRef ? (
+                      <Badge variant="secondary" aria-label={`External ref field: ${kind.externalRef.field}`}>
+                        Ext. ref
+                      </Badge>
+                    ) : null}
+                    {kind.streamContext ? (
+                      <Badge variant="secondary" aria-label={`Stream context kind: ${kind.key}`}>
+                        Stream
+                      </Badge>
+                    ) : null}
+                    {kind.materializeAs ? (
+                      <Badge variant="secondary" aria-label="Case notes field: notes">
+                        Case notes
+                      </Badge>
+                    ) : null}
                     {kind.deprecated ? <Badge variant="secondary">Deprecated</Badge> : null}
                   </span>
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="flex flex-col gap-4">
                     <KindForm kind={kind} onChange={(next) => updateKind(index, next)} onRemove={() => removeKind(index)} />
-                    <UserIdentityFieldSelect kind={kind} index={index} kinds={definition.kinds} onChange={(next) => updateKind(index, next)} />
+                    <FieldRoleTable kind={kind} index={index} kinds={definition.kinds} onChange={(next) => updateKind(index, next)} />
                   </div>
                 </AccordionContent>
               </AccordionItem>
