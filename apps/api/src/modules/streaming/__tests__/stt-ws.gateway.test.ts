@@ -63,6 +63,10 @@ const createMockSessionBinding = () => ({
   // default ticket carries, so existing cases connect as the OWNER.
   lookupBinding: vi.fn().mockResolvedValue({ tenantId: 'tenant-abc', userId: 'user-123' }),
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
+  // TASK-951 lane E2: read in the SAME Promise.all as the meta — an unmocked method rejects the pair and
+  // silently drops the negotiated sampleRate, which is what the C5 tests then report.
+  lookupMetadataMarks: vi.fn().mockResolvedValue({ spans: [], audioSec: 0 }),
+  bindMetadataMarks: vi.fn().mockResolvedValue(undefined),
   clear: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -202,7 +206,10 @@ describe('SttWsGateway', () => {
       // Subscribes with the stable 'captions' consumer
       // group so the bridge resumes from the persisted cursor on a
       // re-subscription (never a 0-0 re-read).
-      expect(mockBridgeService.subscribeToResults).toHaveBeenCalledWith('sess-sub', { consumerGroup: 'captions' });
+      expect(mockBridgeService.subscribeToResults).toHaveBeenCalledWith('sess-sub', {
+        consumerGroup: 'captions',
+        sessionEcho: { metadataSpans: expect.any(Function) },
+      });
     });
 
     // Every handshake-rejection
