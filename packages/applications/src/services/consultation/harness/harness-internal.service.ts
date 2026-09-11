@@ -521,15 +521,32 @@ export class HarnessInternalService extends BaseService {
     }
 
     const outcome = resolved.platformDefault;
+    // TASK-952 D-1c — both branches below answer `denied`, and a consumer with a
+    // fallback provider must treat them DIFFERENTLY, so each now carries a
+    // machine-readable `denial` beside the prose `reason`. Nothing should ever
+    // have to parse the sentence to decide whether it may widen.
     if (outcome?.vetoed.includes(provider)) {
-      return { outcome: 'denied', reason: `tenant veto: '${provider}' is disabled for service '${service}'` };
+      return {
+        outcome: 'denied',
+        denial: 'tenant-veto',
+        reason: `tenant veto: '${provider}' is disabled for service '${service}'`,
+      };
     }
     // The entitlement gate governs platform SPEND on a VENDOR account, so it
     // only denies a CLOUD provider. A SYSTEM row for a self-host engine is
     // platform INFRASTRUCTURE and stays reachable — the same `isCloudByoProvider`
     // split the cascade itself applies, read here rather than re-derived.
+    //
+    // It is therefore NOT a statement about the capability, only about this
+    // vendor pair: a caller that has a `PLATFORM_SELF_HOST_PROVIDERS` row to fall
+    // back on (the harness's `embeddings:tei-embed`) may use it. A tenant VETO
+    // above is the opposite and must never be widened past.
     if (outcome?.entitlementSuppressed && isCloudByoProvider(typedService, provider)) {
-      return { outcome: 'denied', reason: 'the platform-default credential entitlement is not granted for this tenant' };
+      return {
+        outcome: 'denied',
+        denial: 'platform-entitlement',
+        reason: 'the platform-default credential entitlement is not granted for this tenant',
+      };
     }
 
     return { outcome: 'absent' };

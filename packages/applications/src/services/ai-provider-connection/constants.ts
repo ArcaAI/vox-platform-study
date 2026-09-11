@@ -135,6 +135,25 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
  */
 export const PLATFORM_SELF_HOST_PROVIDERS: Readonly<Partial<Record<ProviderService, readonly string[]>>> = Object.freeze({
   tts: Object.freeze(['kokoro', 'indic_parler', 'indic_f5'] as const),
+  // TASK-952 D-1c — `tei-embed` is the platform's OWN dense-embeddings server
+  // (HuggingFace text-embeddings-inference; `hope-tei-embed` in
+  // `infrastructure/docker/docker-compose.dev.yml`, and the one embedding
+  // provider `apps/text` registers). It is listed here rather than added to
+  // `CLOUD_BYO_PROVIDERS.embeddings` because the two lists answer different
+  // questions and this one has only one honest answer: a self-hosted server has
+  // no vendor account for a tenant to bring, so a tenant row is a 403 and only
+  // the SYSTEM row serves.
+  //
+  // WHY THE PLATFORM TIER NEEDED ITS OWN PROVIDER ID AT ALL. The platform's
+  // embeddings default used to have to be an `embeddings:openai` SYSTEM row —
+  // a CLOUD pair, so R6 (`mayConsumePlatformDefault`) governs it, and
+  // `featurePlatformDefaultCredential` is granted on no plan. Every tenant's
+  // resolve therefore came back `entitlementSuppressed`, the harness projected
+  // that to `denied`, and retrieval degraded to empty context for everyone. The
+  // entitlement gate governs platform SPEND ON A VENDOR ACCOUNT; the platform's
+  // own server is not that, so it belongs on a pair the gate does not touch.
+  // `embeddings:{azure,openai}` stay exactly as they were — the tenant-BYO lane.
+  embeddings: Object.freeze(['tei-embed'] as const),
 });
 
 /** Whether `(service, provider)` names one of the platform's own self-hosted serving engines. */

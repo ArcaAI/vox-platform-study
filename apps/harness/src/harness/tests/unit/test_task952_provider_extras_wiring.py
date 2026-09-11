@@ -38,13 +38,18 @@ import harness.api.endpoints.knowledge as knowledge
 from harness.core.config import RetrievalConfig, Settings
 from harness.core.provider_credentials import (
     EMBEDDINGS_CONNECTION_PROVIDER,
+    EMBEDDINGS_PLATFORM_PROVIDER,
     VECTOR_COLLECTION_EXTRA,
     VECTOR_CONNECTION_PROVIDER,
     CredentialOutcome,
+    CredentialUnavailable,
+    DenialCause,
     ProviderCredential,
     apply_embeddings_credential,
     apply_vector_credential,
     prefixed_collection,
+    require_embeddings_model,
+    resolve_embeddings_credential,
 )
 from harness.services.api_client import ApiClient
 from harness.services.embeddings_client import EmbeddingsClient
@@ -55,6 +60,20 @@ TENANT = "11111111-1111-1111-1111-111111111111"
 
 def _resolved(**kwargs: Any) -> ProviderCredential:
     return ProviderCredential(outcome=CredentialOutcome.RESOLVED, funding="tenant", **kwargs)
+
+
+def _settings_with_embeddings_model(model: str = "test-embeddings") -> Settings:
+    """Settings whose retrieval carries an embeddings model (TASK-952 D-1c).
+
+    `embeddings_model` has no code default and no env path any more — a model id
+    is a SELECTION, so it resolves from `AiProviderConnection.extraJson.model` and
+    `_hybrid_retriever` fails closed without one. A test that is about SOMETHING
+    ELSE (the collection prefix, the endpoint floor) injects one the same way the
+    runtime fold does.
+    """
+    settings = Settings()
+    settings.retrieval.embeddings_model = model
+    return settings
 
 
 def _client(handler) -> ApiClient:
@@ -181,7 +200,9 @@ class TestCollectionPrefixReachesTheStore:
             api_key=SecretStr("qdrant-tenant-key"), extras={VECTOR_COLLECTION_EXTRA: "hope"}
         )
         with patch("qdrant_client.QdrantClient"):
-            retriever_collection = activities._hybrid_retriever(Settings(), cred)._store._collection
+            retriever_collection = activities._hybrid_retriever(
+                _settings_with_embeddings_model(), cred
+            )._store._collection
         assert retriever_collection == self._store_collection(cred) == "hope_knowledge_chunks"
 
     def test_no_prefix_extra_leaves_the_platform_collection_untouched(self):
@@ -313,10 +334,14 @@ class TestTheEmbeddingsCredentialActuallyReachesTheClient:
         assert embeddings._api_key == "sk-tenant-embeddings"
 
     def test_an_absent_credential_leaves_the_client_unauthenticated_on_the_floor(self):
-        floor = Settings().retrieval
+        # The ENDPOINT floor survives an absent credential (it is an env-tier
+        # transport address); the MODEL has no floor left to fall to (TASK-952
+        # D-1c), so it is injected here exactly as a resolved row injects it.
+        settings = _settings_with_embeddings_model()
+        floor = settings.retrieval
         with patch("qdrant_client.QdrantClient"):
             embeddings = activities._hybrid_retriever(
-                Settings(), None, ProviderCredential(outcome=CredentialOutcome.ABSENT)
+                settings, None, ProviderCredential(outcome=CredentialOutcome.ABSENT)
             )._embeddings
 
         assert embeddings.model == floor.embeddings_model
@@ -426,3 +451,292 @@ class TestTheEmbeddingsProviderIsTheWireProtocol:
         reached on that row by its `baseUrl`, exactly as `llm:lm-studio` is."""
         assert EMBEDDINGS_CONNECTION_PROVIDER == "openai"
         assert VECTOR_CONNECTION_PROVIDER == "qdrant"
+
+
+# ─────────────── D-1c: the PLATFORM lane of the embeddings connection ───────────────
+
+
+class _FakeRetriever:
+    """Stand-in :class:`HybridRetriever` that records nothing and degrades never."""
+
+    async def retrieve(self, *, query: str, tenant_id: str):  # noqa: ARG002
+        from harness.guides.retrieval.retriever import RetrievalResult
+
+        return RetrievalResult(chunks=[], degraded=False)
+
+
+class _AllowConsentClient:
+    """Stub `ConsentClient`, always allowed.
+
+    `retrieve_context` gates on consent BEFORE it resolves any credential, and an
+    input without `external_patient_id` is reported `unavailable` — which degrades
+    for a reason that has nothing to do with this ticket. Stubbing it (and passing
+    an id) is what makes "did not degrade" mean "the credential chain worked".
+    """
+
+    async def check(self, **_kwargs):  # noqa: ANN201
+        from harness.core.consent_client import ConsentDecision
+
+        return ConsentDecision(allowed=True)
+
+
+#: A consent-complete retrieval input, so the assertions below are about
+#: credentials rather than about the consent gate in front of them.
+def _retrieve_input():
+    from harness.temporal.models import RetrieveContextInput
+
+    return RetrieveContextInput(
+        tenant_id=TENANT,
+        entities=[],
+        retrieval_enabled=True,
+        external_patient_id="PAT-1",
+        consultation_id="c-1",
+    )
+
+
+def _platform_row() -> ProviderCredential:
+    """What the SYSTEM `embeddings:tei-embed` row resolves to."""
+    return _resolved(
+        api_key=SecretStr("not-needed"),
+        base_url="http://localhost:8871/v1",
+        model="BAAI/bge-m3",
+    )
+
+
+def _entitlement_denied() -> ProviderCredential:
+    """What `embeddings:openai` answers for a tenant that owns no row.
+
+    Not a hypothetical: `featurePlatformDefaultCredential` is granted on NO plan,
+    and the gate is evaluated before any row is consulted, so EVERY tenant with no
+    embeddings connection of its own lands here.
+    """
+    return ProviderCredential(
+        outcome=CredentialOutcome.DENIED,
+        denial=DenialCause.PLATFORM_ENTITLEMENT,
+        reason="the platform-default credential entitlement is not granted for this tenant",
+    )
+
+
+def _tenant_veto() -> ProviderCredential:
+    return ProviderCredential(
+        outcome=CredentialOutcome.DENIED,
+        denial=DenialCause.TENANT_VETO,
+        reason="tenant veto: 'openai' is disabled for service 'embeddings'",
+    )
+
+
+class TestTheTwoLaneEmbeddingsChain:
+    """`resolve_embeddings_credential` — tenant BYO, then the platform's own
+    server, widening only where widening is legitimate."""
+
+    @staticmethod
+    async def _run(answers: dict[str, ProviderCredential], seen: list[str] | None = None):
+        async def resolve(service: str, provider: str) -> ProviderCredential:
+            assert service == "embeddings"
+            if seen is not None:
+                seen.append(provider)
+            return answers[provider]
+
+        return await resolve_embeddings_credential(resolve)
+
+    @pytest.mark.asyncio
+    async def test_a_tenant_row_wins_and_the_platform_is_never_consulted(self):
+        seen: list[str] = []
+        tenant = _resolved(api_key=SecretStr("sk-tenant"), model="text-embedding-3-large")
+        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: tenant}, seen)
+        assert out is tenant
+        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
+
+    @pytest.mark.asyncio
+    async def test_no_opinion_widens_to_the_platform_row(self):
+        seen: list[str] = []
+        platform = _platform_row()
+        out = await self._run(
+            {
+                EMBEDDINGS_CONNECTION_PROVIDER: ProviderCredential(
+                    outcome=CredentialOutcome.ABSENT
+                ),
+                EMBEDDINGS_PLATFORM_PROVIDER: platform,
+            },
+            seen,
+        )
+        assert out is platform
+        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER, EMBEDDINGS_PLATFORM_PROVIDER]
+
+    @pytest.mark.asyncio
+    async def test_the_entitlement_denial_widens_to_the_platform_row(self):
+        """THE REGRESSION. Every tenant with no embeddings row gets this denial,
+        and treating it as fatal is what made retrieval return empty context for
+        everyone. The gate governs platform SPEND on a VENDOR account; the
+        platform's own self-hosted server is not that."""
+        seen: list[str] = []
+        platform = _platform_row()
+        out = await self._run(
+            {
+                EMBEDDINGS_CONNECTION_PROVIDER: _entitlement_denied(),
+                EMBEDDINGS_PLATFORM_PROVIDER: platform,
+            },
+            seen,
+        )
+        assert out is platform
+        assert out.outcome is CredentialOutcome.RESOLVED
+        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER, EMBEDDINGS_PLATFORM_PROVIDER]
+
+    @pytest.mark.asyncio
+    async def test_a_tenant_VETO_is_never_widened_past(self):
+        """The other direction of the same bug. `CONNECTION_ENABLED_SEMANTICS`:
+        a disabled row blocks the pair in BOTH tiers and "the call fails rather
+        than falling through to another provider"."""
+        seen: list[str] = []
+        veto = _tenant_veto()
+        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: veto}, seen)
+        assert out is veto
+        assert out.usable is False
+        # The platform row was never even asked for.
+        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "unusable",
+        [
+            ProviderCredential(outcome=CredentialOutcome.UNAVAILABLE, reason="gateway down"),
+            # An older gateway that sends no `denial` at all: unclassifiable, so
+            # fail closed. Never read absence as permission to widen.
+            ProviderCredential(outcome=CredentialOutcome.DENIED, reason="unlabelled"),
+        ],
+    )
+    async def test_a_fault_or_an_unclassified_denial_fails_closed(self, unusable):
+        seen: list[str] = []
+        out = await self._run({EMBEDDINGS_CONNECTION_PROVIDER: unusable}, seen)
+        assert out is unusable
+        assert seen == [EMBEDDINGS_CONNECTION_PROVIDER]
+
+    def test_an_unrecognised_denial_cause_parses_to_none_rather_than_a_guess(self):
+        parsed = ProviderCredential.from_payload(
+            {"outcome": "denied", "reason": "x", "denial": "something-new"}
+        )
+        assert parsed.outcome is CredentialOutcome.DENIED
+        assert parsed.denial is None
+
+    def test_the_two_causes_are_parsed_off_the_wire(self):
+        for wire, expected in (
+            ("tenant-veto", DenialCause.TENANT_VETO),
+            ("platform-entitlement", DenialCause.PLATFORM_ENTITLEMENT),
+        ):
+            parsed = ProviderCredential.from_payload({"outcome": "denied", "denial": wire})
+            assert parsed.denial is expected
+
+
+class TestRetrievalNoLongerDegradesForATenantWithNoRow:
+    """The activity-level statement of the same regression, and of its guard."""
+
+    @staticmethod
+    def _answers(monkeypatch, byo: ProviderCredential, platform: ProviderCredential | None):
+        async def _by_provider(_settings, service, provider, _tenant_id):
+            if service != "embeddings":
+                return ProviderCredential(outcome=CredentialOutcome.ABSENT)
+            if provider == EMBEDDINGS_CONNECTION_PROVIDER:
+                return byo
+            assert provider == EMBEDDINGS_PLATFORM_PROVIDER
+            assert platform is not None, "the platform row must not be consulted here"
+            return platform
+
+        monkeypatch.setattr(activities, "_resolve_provider_credential", _by_provider)
+        monkeypatch.setattr(activities, "_consent_client", lambda _s: _AllowConsentClient())
+
+    @pytest.mark.asyncio
+    async def test_an_unentitled_tenant_with_no_row_retrieves_on_the_platform_server(
+        self, monkeypatch
+    ):
+        self._answers(monkeypatch, _entitlement_denied(), _platform_row())
+        seen: dict[str, Any] = {}
+
+        def _capture(settings, vector_credential=None, embeddings_credential=None):
+            seen["embeddings"] = embeddings_credential
+            return _FakeRetriever()
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _capture)
+
+        out = await activities.retrieve_context(_retrieve_input())
+
+        assert out.degraded is False
+        assert seen["embeddings"].outcome is CredentialOutcome.RESOLVED
+        assert seen["embeddings"].base_url == "http://localhost:8871/v1"
+        assert seen["embeddings"].model == "BAAI/bge-m3"
+
+    @pytest.mark.asyncio
+    async def test_the_platform_credential_builds_a_real_client_on_its_own_endpoint(
+        self, monkeypatch
+    ):
+        """No stubbed retriever: the platform row alone must satisfy
+        `require_embeddings_model`, which is the whole point of seeding it."""
+        self._answers(monkeypatch, _entitlement_denied(), _platform_row())
+
+        built: dict[str, Any] = {}
+        real_factory = activities._hybrid_retriever
+
+        def _spy(settings, *credentials):
+            retriever = real_factory(settings, *credentials)
+            built["model"] = retriever._embeddings.model
+            built["base_url"] = retriever._embeddings._base_url
+            return _FakeRetriever()
+
+        with patch("qdrant_client.QdrantClient"):
+            monkeypatch.setattr(activities, "_hybrid_retriever", _spy)
+            out = await activities.retrieve_context(_retrieve_input())
+
+        assert out.degraded is False
+        assert built == {"model": "BAAI/bge-m3", "base_url": "http://localhost:8871/v1"}
+
+    @pytest.mark.asyncio
+    async def test_a_tenant_VETO_still_degrades_and_never_reaches_the_platform_row(
+        self, monkeypatch
+    ):
+        # `platform=None` makes the stub ASSERT if the chain widens past the veto.
+        self._answers(monkeypatch, _tenant_veto(), None)
+
+        def _must_not_build(*_a, **_k):
+            raise AssertionError("the retriever must never be built past a tenant veto")
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _must_not_build)
+
+        out = await activities.retrieve_context(_retrieve_input())
+
+        assert out.degraded is True
+        assert out.chunks == []
+
+
+class TestTheEmbeddingsModelFailsClosed:
+    """D-1c retired `text-embedding-bge-m3`. A model id is a SELECTION, so
+    an unresolved one RAISES; nothing is substituted."""
+
+    def test_the_config_default_is_gone(self):
+        assert Settings().retrieval.embeddings_model is None
+
+    def test_require_raises_when_no_tier_supplied_one(self):
+        with pytest.raises(CredentialUnavailable) as exc:
+            require_embeddings_model(Settings().retrieval)
+        assert "extraJson.model" in str(exc.value)
+
+    def test_require_returns_the_resolved_model(self):
+        folded = apply_embeddings_credential(Settings().retrieval, _platform_row())
+        assert require_embeddings_model(folded) == "BAAI/bge-m3"
+
+    @pytest.mark.asyncio
+    async def test_retrieval_degrades_rather_than_embedding_with_an_invented_model(
+        self, monkeypatch
+    ):
+        """An `ABSENT` credential on BOTH lanes leaves no model anywhere. That is
+        a visible degrade, not an activity failure and not a guess."""
+
+        async def _absent(*_a, **_k):
+            return ProviderCredential(outcome=CredentialOutcome.ABSENT)
+
+        monkeypatch.setattr(activities, "_resolve_provider_credential", _absent)
+        monkeypatch.setattr(activities, "_consent_client", lambda _s: _AllowConsentClient())
+
+        with patch("qdrant_client.QdrantClient"):
+            out = await activities.retrieve_context(_retrieve_input())
+
+        assert out.degraded is True
+        assert out.chunks == []
