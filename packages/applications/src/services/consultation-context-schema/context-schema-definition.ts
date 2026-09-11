@@ -41,6 +41,31 @@ import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
  * with and without it), and the row column every consumer reads is still the one the
  * gateway writes. It declares a MAPPING from a declared field to
  * `UserProfile.staffId`, and nothing more.
+ *
+ * ## The OPEN-TIME markers generalise that idea, one key per role
+ *
+ * TASK-951 D-1/OD-10 adds four siblings to `userIdentity`, in the same grammar and for the
+ * same reason: a client states a fact in a kind it already declares, and the schema says what
+ * HOPE does with it at `open`.
+ *
+ * | Marker | Declares | Shape |
+ * |---|---|---|
+ * | `userIdentity` | the field carrying the tenant's staff identifier | `{ field }` |
+ * | `department` | the field naming the department that selects the workflow | `{ field, by: 'code' \| 'name' }` |
+ * | `visitType` | the field stating the visit type that selects the prompt | `{ field }` |
+ * | `externalRef` | the field carrying the caller's own encounter/event id | `{ field }` |
+ * | `streamContext` | that this kind IS the stream-identity object echoed on transcripts | `true` |
+ * | `materializeAs` | that this kind is ALSO written as platform context items | `'CASE_NOTE'` |
+ *
+ * Five of the six are **one per definition** — a second `department` is not a fault of either
+ * kind, it is a fault of the pair, so it is a DEFINITION-level problem. `materializeAs` is
+ * deliberately not: several kinds may each materialise, because materialising is a property of
+ * the kind's own payload rather than a role only one kind can hold.
+ *
+ * Everything the `userIdentity` paragraph above says still holds for all six: they authorize
+ * nobody, {@link payloadSchemaFromDefinition} is byte-identical with and without them, and a
+ * definition-diff classifies adding, moving or removing one as ADDITIVE — they name properties
+ * a client already sends, so no previously valid payload stops being valid.
  */
 
 /** The CLOSED set of platform primitives. Extending it is a platform change, never a tenant one. */
@@ -91,6 +116,11 @@ const KIND_KEYS = [
   'description',
   'deprecated',
   'userIdentity',
+  'department',
+  'visitType',
+  'externalRef',
+  'materializeAs',
+  'streamContext',
 ] as const;
 const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description'] as const;
 const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
@@ -98,6 +128,42 @@ const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
 const DEPRECATED_KEYS = ['since', 'migrateBy', 'message'] as const;
 /** The only keys a `userIdentity` block may carry. */
 const USER_IDENTITY_KEYS = ['field'] as const;
+/** The only keys a `department` block may carry. `by` is REQUIRED — see {@link DEPARTMENT_RESOLVE_BY}. */
+const DEPARTMENT_KEYS = ['field', 'by'] as const;
+/**
+ * TASK-951 D-2 — how a stated department is looked up. `code` is unique per tenant
+ * (`@@unique([tenantId, code])`); `name` is NOT, so it resolves case-insensitively and answers
+ * `DEPARTMENT_AMBIGUOUS` on more than one match. Which of the two a schema declares is an
+ * authoring decision and therefore REQUIRED — a marker that left it unstated would make the
+ * resolution rule depend on a default nobody wrote down.
+ */
+const DEPARTMENT_RESOLVE_BY = ['code', 'name'] as const;
+/** The only keys a `visitType` block may carry. */
+const VISIT_TYPE_KEYS = ['field'] as const;
+/** The only keys an `externalRef` block may carry. */
+const EXTERNAL_REF_KEYS = ['field'] as const;
+/**
+ * TASK-951 D-3 — the visit-type KEYS a `visitType`-marked property may enumerate.
+ *
+ * A deliberate HARD PIN of the two keys in
+ * `packages/applications/src/services/consultation/visit-type/visit-type.catalogue.ts`
+ * (`CONSULTATION_VISIT_TYPES_DEFAULT` — `new-visit`, `revisit`), NOT an import: this module is the
+ * publish-time grammar and importing the consultation catalogue would make a schema
+ * definition depend on the consultation service tree. The catalogue is the source of truth;
+ * this list mirrors it, and the mirror is pinned by test. Aliases (`follow-up`,
+ * `new-patient`, …) are for `VisitTypeService.match` at RUNTIME — a schema declares the
+ * canonical keys so the console can render a fixed picker.
+ */
+const CONTEXT_VISIT_TYPE_KEYS = ['new-visit', 'revisit'] as const;
+/** The only values `materializeAs` may take. Extending it is a platform change, never a tenant one. */
+const CONTEXT_MATERIALIZE_TARGETS = ['CASE_NOTE'] as const;
+/**
+ * The kind-level markers that name a ROLE only ONE kind in a definition may hold.
+ *
+ * `materializeAs` is deliberately ABSENT: materialising is a property of a kind's own payload,
+ * not a role, so several kinds may each declare it.
+ */
+const SINGLETON_KIND_ROLES = ['userIdentity', 'department', 'visitType', 'externalRef', 'streamContext'] as const;
 /** `YYYY-MM-DD`, deliberately loose (a calendar date, not a full timestamp). */
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -131,6 +197,54 @@ export interface UserIdentityBinding {
   field: string;
 }
 
+/**
+ * TASK-951 D-1 — WHERE one open-time fact is carried: a declared kind, and one of that kind's
+ * own `fields.properties`.
+ *
+ * The same two halves {@link UserIdentityBinding} carries, and for the same reason — a payload
+ * is keyed by kind ({@link payloadSchemaFromDefinition}), so the field alone would not locate a
+ * value. Named separately rather than reusing `UserIdentityBinding` because the two say
+ * different things: that one is about identity, this one is the shape every ROLE shares.
+ */
+export interface KindFieldBinding {
+  kindKey: string;
+  field: string;
+}
+
+/**
+ * TASK-951 D-1 — every open-time mapping a definition declares, derived in one pass by
+ * {@link openBindingsFromDefinition}.
+ *
+ * **A key is ABSENT when the definition declares no marker for that role.** Never `null`,
+ * never an empty array: this object is frozen into checksummed artifacts (an agent's
+ * `compiledConfig`, a workflow's compiled trigger), so a key that always appeared would move
+ * the checksum of every artifact that never used it.
+ *
+ * `userIdentity` is restated here rather than left to
+ * {@link userIdentityBindingFromDefinition} so a consumer reading open-time mappings reads ONE
+ * object. The older accessor stays — it is what TASK-950's freeze sites call, and it answers
+ * `null` where this one omits the key.
+ */
+export interface OpenBindings {
+  /** The field carrying the tenant's staff identifier (TASK-950's marker, restated). */
+  userIdentity?: KindFieldBinding;
+  /** The field naming the department, and HOW to look it up. */
+  department?: KindFieldBinding & { by: 'code' | 'name' };
+  /** The field stating the visit type, whose values are visit-type catalogue keys. */
+  visitType?: KindFieldBinding;
+  /** The field carrying the caller's own encounter/event id. */
+  externalRef?: KindFieldBinding;
+  /**
+   * Kinds that are ALSO written as platform context items, in DECLARATION order.
+   *
+   * A list, not a single binding: materialising is a property of a kind's payload rather than
+   * a role only one kind may hold. Omitted entirely when no kind declares one.
+   */
+  materialize?: { kindKey: string; as: 'CASE_NOTE' }[];
+  /** The kind that IS the stream-identity object echoed on every transcript segment. */
+  streamContext?: { kindKey: string };
+}
+
 export interface ContextKindDeclaration {
   key: string;
   label: string;
@@ -155,6 +269,39 @@ export interface ContextKindDeclaration {
    * with a value when there is one, never that there must be one.
    */
   userIdentity?: { field: string };
+  /**
+   * TASK-951 D-1/D-2 — this kind's `fields.properties[field]` names the DEPARTMENT that
+   * selects the consultation workflow, looked up `by` code (unique per tenant) or name
+   * (case-insensitive, ambiguous on duplicates). `by` is required — see
+   * {@link DEPARTMENT_RESOLVE_BY}.
+   */
+  department?: { field: string; by: 'code' | 'name' };
+  /**
+   * TASK-951 D-1/D-3 — this kind's `fields.properties[field]` states the VISIT TYPE that
+   * selects the prompt. The named property must declare an `enum` whose every value is a
+   * visit-type catalogue key ({@link CONTEXT_VISIT_TYPE_KEYS}).
+   */
+  visitType?: { field: string };
+  /**
+   * TASK-951 D-1/D-4 — this kind's `fields.properties[field]` carries the CALLER's own
+   * encounter/event id. Recorded against the consultation; never part of the re-open
+   * idempotency key.
+   */
+  externalRef?: { field: string };
+  /**
+   * TASK-951 D-5 — this kind's payload is ALSO written as platform context items of the named
+   * type. `CASE_NOTE` requires the payload to be `{ notes: [{ text, … }] }` (one item per
+   * entry), which is what makes the existing warm-start `findCaseNotes()` read see them.
+   *
+   * Unlike the five role markers, SEVERAL kinds in one definition may declare this.
+   */
+  materializeAs?: 'CASE_NOTE';
+  /**
+   * TASK-951 D-8 — this kind IS the stream-identity object: what a client sends when it
+   * creates an STT stream session, echoed VERBATIM on every transcript segment of that
+   * session. Literally `true`; there is nothing else to configure.
+   */
+  streamContext?: true;
 }
 
 export interface ContextOutputDeclaration {
@@ -216,16 +363,22 @@ export function contextSchemaDefinitionProblems(value: unknown): string[] {
   const seenKindKeys = new Set<string>();
   value.kinds.forEach((kind, index) => problems.push(...kindProblems(kind, `definition.kinds[${index}]`, seenKindKeys)));
 
-  // TASK-950 D-1 — a DEFINITION-level invariant, so it cannot be checked per kind: a
-  // second marker is not a fault of either kind, it is a fault of the pair. One problem
-  // naming both, because the admin has to choose between them.
-  const markedKindKeys = value.kinds
-    .filter((kind): kind is Record<string, unknown> => isPlainObject(kind) && kind.userIdentity !== undefined)
-    .map((kind) => (typeof kind.key === 'string' ? kind.key : String(kind.key)));
-  if (markedKindKeys.length > 1) {
-    problems.push(
-      `definition: at most one kind may declare \`userIdentity\`; ${markedKindKeys.length} do (${markedKindKeys.map((key) => `\`${key}\``).join(', ')})`,
-    );
+  // TASK-950 D-1, generalised over the five roles by TASK-951 OD-10 — a DEFINITION-level
+  // invariant, so it cannot be checked per kind: a second marker is not a fault of either
+  // kind, it is a fault of the pair. One problem PER ROLE naming both, because the admin has
+  // to choose between them, and one problem per role rather than one for all of them because
+  // the two choices are independent.
+  //
+  // `materializeAs` is deliberately not in this list — see SINGLETON_KIND_ROLES.
+  for (const role of SINGLETON_KIND_ROLES) {
+    const markedKindKeys = value.kinds
+      .filter((kind): kind is Record<string, unknown> => isPlainObject(kind) && kind[role] !== undefined)
+      .map((kind) => (typeof kind.key === 'string' ? kind.key : String(kind.key)));
+    if (markedKindKeys.length > 1) {
+      problems.push(
+        `definition: at most one kind may declare \`${role}\`; ${markedKindKeys.length} do (${markedKindKeys.map((key) => `\`${key}\``).join(', ')})`,
+      );
+    }
   }
 
   if (Array.isArray(outputs)) {
@@ -304,8 +457,91 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
   if (kind.userIdentity !== undefined) {
     problems.push(...userIdentityProblems(kind.userIdentity, kind, `${at}.userIdentity`));
   }
+  if (kind.department !== undefined) {
+    problems.push(...departmentProblems(kind.department, kind, `${at}.department`));
+  }
+  if (kind.visitType !== undefined) {
+    problems.push(...visitTypeProblems(kind.visitType, kind, `${at}.visitType`));
+  }
+  if (kind.externalRef !== undefined) {
+    problems.push(...fieldMarkerProblems(kind.externalRef, kind, `${at}.externalRef`, EXTERNAL_REF_KEYS).problems);
+  }
+  if (kind.materializeAs !== undefined) {
+    problems.push(...materializeAsProblems(kind.materializeAs, kind, `${at}.materializeAs`));
+  }
+  if (kind.streamContext !== undefined) {
+    problems.push(...streamContextProblems(kind.streamContext, kind, `${at}.streamContext`));
+  }
 
   return problems;
+}
+
+/**
+ * TASK-950 D-1, TASK-951 D-1 — the HOST checks every kind-level marker shares.
+ *
+ * A marker points at (or stands for) a single object the caller sends, so the primitive
+ * decides whether there IS a property table and the cardinality decides whether one value is
+ * even meaningful. Both are checked at AUTHORING time rather than anywhere later, because a
+ * mapping that cannot be located is a defect the author can fix and a live consultation
+ * cannot.
+ */
+function markerHostProblems(kind: Record<string, unknown>, at: string): string[] {
+  const problems: string[] = [];
+  if (kind.primitive !== 'STRUCTURED') {
+    problems.push(`${at} is only allowed on a STRUCTURED kind (this kind is \`${String(kind.primitive)}\`)`);
+  }
+  if (kind.cardinality !== 'ONE') {
+    problems.push(`${at} is only allowed on a kind with cardinality ONE (this kind is \`${String(kind.cardinality)}\`)`);
+  }
+  return problems;
+}
+
+/**
+ * The shape shared by `userIdentity`, `department`, `visitType` and `externalRef`: an object
+ * whose `field` names a `string` property of the kind's own `fields.properties`.
+ *
+ * Returns the DECLARED property schema alongside the problems, so a caller with a further
+ * constraint on it (`visitType`'s enum) checks the same object this resolved rather than
+ * walking `fields.properties` a second time.
+ */
+function fieldMarkerProblems(
+  marker: unknown,
+  kind: Record<string, unknown>,
+  at: string,
+  allowedKeys: readonly string[],
+): { problems: string[]; declared?: Record<string, unknown> } {
+  if (!isPlainObject(marker)) {
+    return { problems: [`${at} must be a JSON object when present`] };
+  }
+
+  const problems: string[] = [];
+  for (const key of Object.keys(marker)) {
+    if (!allowedKeys.includes(key)) {
+      problems.push(`${at}: unknown key \`${key}\``);
+    }
+  }
+
+  problems.push(...markerHostProblems(kind, at));
+
+  const field = marker.field;
+  if (typeof field !== 'string' || field.trim().length === 0) {
+    problems.push(`${at}.field must be a non-empty string naming a property of \`fields.properties\``);
+    return { problems };
+  }
+
+  const fields = kind.fields;
+  const properties = isPlainObject(fields) ? fields.properties : undefined;
+  const declared = isPlainObject(properties) ? properties[field] : undefined;
+  if (declared === undefined) {
+    problems.push(`${at}.field \`${field}\` names a property that \`fields.properties\` does not declare`);
+    return { problems };
+  }
+  if (!isPlainObject(declared) || declared.type !== 'string') {
+    problems.push(`${at}.field \`${field}\` must name a property of type \`string\``);
+    return { problems };
+  }
+
+  return { problems, declared };
 }
 
 /**
@@ -319,42 +555,109 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
  * fix and a live consultation cannot.
  */
 function userIdentityProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
-  if (!isPlainObject(marker)) {
-    return [`${at} must be a JSON object when present`];
-  }
+  return fieldMarkerProblems(marker, kind, at, USER_IDENTITY_KEYS).problems;
+}
 
-  const problems: string[] = [];
-  for (const key of Object.keys(marker)) {
-    if (!(USER_IDENTITY_KEYS as readonly string[]).includes(key)) {
-      problems.push(`${at}: unknown key \`${key}\``);
-    }
-  }
+/**
+ * TASK-951 D-2 — `kinds[].department`: the field marker plus a REQUIRED `by`.
+ *
+ * `by` is checked even when the field half failed, because the two are independent authoring
+ * mistakes and an admin fixing a large definition should see both at once.
+ */
+function departmentProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
+  const { problems } = fieldMarkerProblems(marker, kind, at, DEPARTMENT_KEYS);
+  if (!isPlainObject(marker)) return problems;
 
-  if (kind.primitive !== 'STRUCTURED') {
-    problems.push(`${at} is only allowed on a STRUCTURED kind (this kind is \`${String(kind.primitive)}\`)`);
+  if (!(DEPARTMENT_RESOLVE_BY as readonly unknown[]).includes(marker.by)) {
+    problems.push(`${at}.by is required and must be one of ${DEPARTMENT_RESOLVE_BY.join(' | ')}`);
   }
-  if (kind.cardinality !== 'ONE') {
-    problems.push(`${at} is only allowed on a kind with cardinality ONE (this kind is \`${String(kind.cardinality)}\`)`);
-  }
+  return problems;
+}
 
-  const field = marker.field;
-  if (typeof field !== 'string' || field.trim().length === 0) {
-    problems.push(`${at}.field must be a non-empty string naming a property of \`fields.properties\``);
+/**
+ * TASK-951 D-3 — `kinds[].visitType`: the field marker, plus the ENUM the named property must
+ * declare.
+ *
+ * The enum is what makes a stated visit type resolvable: HOPE matches it through
+ * `VisitTypeService.match` at runtime, so a schema enumerating a value the catalogue has never
+ * heard of would publish cleanly and then fail at `open`. Checking the enum here moves that to
+ * authoring time. Values are the CANONICAL keys ({@link CONTEXT_VISIT_TYPE_KEYS}); aliases are
+ * a runtime matching concern, not a declarable vocabulary.
+ */
+function visitTypeProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
+  const { problems, declared } = fieldMarkerProblems(marker, kind, at, VISIT_TYPE_KEYS);
+  if (declared === undefined) return problems;
+
+  const values = declared.enum;
+  if (!Array.isArray(values) || values.length === 0) {
+    problems.push(`${at}.field must name a property declaring a non-empty \`enum\` of ${CONTEXT_VISIT_TYPE_KEYS.join(' | ')}`);
     return problems;
   }
+
+  const unknownValues = values.filter((value) => !(CONTEXT_VISIT_TYPE_KEYS as readonly unknown[]).includes(value));
+  if (unknownValues.length > 0) {
+    problems.push(
+      `${at}.field declares enum value(s) ${unknownValues.map((value) => `\`${String(value)}\``).join(', ')} that are not visit types (${CONTEXT_VISIT_TYPE_KEYS.join(' | ')})`,
+    );
+  }
+  return problems;
+}
+
+/**
+ * TASK-951 D-5 — `kinds[].materializeAs`: the target, and the PAYLOAD SHAPE it implies.
+ *
+ * `CASE_NOTE` means "write one `CASE_NOTE` context item per entry", so the payload has to BE a
+ * list of entries each carrying text. Declaring the target without that shape would produce a
+ * kind HOPE accepts at publish and cannot materialise at `open` — the shape is checked here
+ * for exactly the reason the field markers are.
+ */
+function materializeAsProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
+  if (!(CONTEXT_MATERIALIZE_TARGETS as readonly unknown[]).includes(marker)) {
+    return [`${at} must be one of ${CONTEXT_MATERIALIZE_TARGETS.join(' | ')}`];
+  }
+
+  const problems = markerHostProblems(kind, at);
 
   const fields = kind.fields;
-  const properties = isPlainObject(fields) ? fields.properties : undefined;
-  const declared = isPlainObject(properties) ? properties[field] : undefined;
-  if (declared === undefined) {
-    problems.push(`${at}.field \`${field}\` names a property that \`fields.properties\` does not declare`);
+  if (!isPlainObject(fields) || fields.type !== 'object') {
+    problems.push(`${at} requires \`fields\` to be an object schema`);
     return problems;
   }
-  if (!isPlainObject(declared) || declared.type !== 'string') {
-    problems.push(`${at}.field \`${field}\` must name a property of type \`string\``);
+  const properties = isPlainObject(fields.properties) ? fields.properties : undefined;
+  const notes = properties !== undefined && isPlainObject(properties.notes) ? properties.notes : undefined;
+  if (notes === undefined || notes.type !== 'array') {
+    problems.push(`${at} requires \`fields.properties.notes\` to be an array`);
+    return problems;
   }
-
+  const items = isPlainObject(notes.items) ? notes.items : undefined;
+  if (items === undefined || items.type !== 'object') {
+    problems.push(`${at} requires \`fields.properties.notes.items\` to be an object schema`);
+    return problems;
+  }
+  const itemProperties = isPlainObject(items.properties) ? items.properties : undefined;
+  const text = itemProperties !== undefined && isPlainObject(itemProperties.text) ? itemProperties.text : undefined;
+  if (text === undefined || text.type !== 'string') {
+    problems.push(`${at} requires \`fields.properties.notes.items.properties.text\` to be a property of type \`string\``);
+  }
+  const required = Array.isArray(items.required) ? items.required : [];
+  if (!required.includes('text')) {
+    problems.push(`${at} requires \`fields.properties.notes.items.required\` to include \`text\``);
+  }
   return problems;
+}
+
+/**
+ * TASK-951 D-8 — `kinds[].streamContext`: literally `true`, on a STRUCTURED/ONE kind.
+ *
+ * `true` rather than an object because there is nothing to configure: the kind IS the
+ * echoed object, whole. `false` is rejected rather than treated as absent — a marker that
+ * can be written two ways to mean the same thing is a marker two readers will disagree about.
+ */
+function streamContextProblems(marker: unknown, kind: Record<string, unknown>, at: string): string[] {
+  if (marker !== true) {
+    return [`${at} must be \`true\` when present`];
+  }
+  return markerHostProblems(kind, at);
 }
 
 /** Validate a `kinds[].deprecated` block. */
@@ -539,6 +842,88 @@ export function userIdentityBindingFromDefinition(definition: unknown): UserIden
   }
 
   return null;
+}
+
+/**
+ * TASK-951 D-1 — EVERY open-time mapping a definition declares, in ONE pass.
+ *
+ * The THIRD derivation off the same definition, beside
+ * {@link payloadSchemaFromDefinition} and {@link userIdentityBindingFromDefinition}, and a
+ * sibling of both for the same reason they are siblings of each other: they answer different
+ * questions off one document, and all of them are frozen at the same two moments (agent
+ * publish, workflow compile) so no plane re-reads a schema row at run time.
+ *
+ * One function rather than five accessors because the CALLER wants all of them: `open` reads
+ * every mapping the tenant declared and acts on each. Five accessors would walk `kinds` five
+ * times and, worse, would let a later change teach one of them a rule the others never learnt.
+ *
+ * Two properties the freeze sites depend on:
+ *
+ *  - **TOTAL.** A definition this cannot read yields `{}` rather than throwing — the publish
+ *    gate already refused anything malformed, so an unreadable marker here means "not
+ *    declared", never "unknown". A `department` whose `by` is neither `code` nor `name` is
+ *    skipped for the same reason: the gate refuses it, so honouring it would mean inventing a
+ *    resolution rule no author wrote.
+ *  - **Keys are ABSENT when unset**, never `null` and never `[]`. The result is frozen into
+ *    checksummed artifacts; a key that always appeared would move the checksum of every
+ *    artifact that declares no mappings, including the committed seed agents.
+ *
+ * At most one kind may hold each of the five ROLES (the definition-level gate), so the first
+ * match IS the answer for those. `materialize` is a LIST in declaration order, because several
+ * kinds may each materialise.
+ */
+export function openBindingsFromDefinition(definition: unknown): OpenBindings {
+  const bindings: OpenBindings = {};
+  if (!isPlainObject(definition) || !Array.isArray(definition.kinds)) return bindings;
+
+  const materialize: { kindKey: string; as: 'CASE_NOTE' }[] = [];
+
+  for (const kind of definition.kinds) {
+    if (!isPlainObject(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
+    const kindKey = kind.key;
+
+    const userIdentityField = markedField(kind.userIdentity);
+    if (userIdentityField !== null && bindings.userIdentity === undefined) {
+      bindings.userIdentity = { kindKey, field: userIdentityField };
+    }
+
+    const departmentMarker = kind.department;
+    const departmentField = markedField(departmentMarker);
+    const by = isPlainObject(departmentMarker) ? departmentMarker.by : undefined;
+    if (departmentField !== null && (DEPARTMENT_RESOLVE_BY as readonly unknown[]).includes(by) && bindings.department === undefined) {
+      bindings.department = { kindKey, field: departmentField, by: by as 'code' | 'name' };
+    }
+
+    const visitTypeField = markedField(kind.visitType);
+    if (visitTypeField !== null && bindings.visitType === undefined) {
+      bindings.visitType = { kindKey, field: visitTypeField };
+    }
+
+    const externalRefField = markedField(kind.externalRef);
+    if (externalRefField !== null && bindings.externalRef === undefined) {
+      bindings.externalRef = { kindKey, field: externalRefField };
+    }
+
+    if (kind.streamContext === true && bindings.streamContext === undefined) {
+      bindings.streamContext = { kindKey };
+    }
+
+    const materializeAs = kind.materializeAs;
+    if ((CONTEXT_MATERIALIZE_TARGETS as readonly unknown[]).includes(materializeAs)) {
+      materialize.push({ kindKey, as: materializeAs as 'CASE_NOTE' });
+    }
+  }
+
+  if (materialize.length > 0) bindings.materialize = materialize;
+
+  return bindings;
+}
+
+/** The `field` of a `{ field }`-shaped marker, or `null` when there is no usable one. */
+function markedField(marker: unknown): string | null {
+  if (!isPlainObject(marker)) return null;
+  const field = marker.field;
+  return typeof field === 'string' && field.length > 0 ? field : null;
 }
 
 /**

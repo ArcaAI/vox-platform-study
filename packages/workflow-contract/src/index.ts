@@ -233,6 +233,8 @@ export type {
   CompiledPolicyBindings,
   CompiledContextSchemaRef,
   CompiledUserIdentityBinding,
+  CompiledKindFieldBinding,
+  CompiledOpenBindings,
   ResolvedTriggerContextSchema,
   CompiledCaps,
   CompiledRetryPolicy,

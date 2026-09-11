@@ -2194,6 +2194,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         // beside `resolved`. Omitted when the version declares no identity field, which is
         // what keeps every previously compiled artifact byte-identical.
         ...(resolution.userIdentity ? { userIdentity: resolution.userIdentity } : {}),
+        // TASK-951 D-1 — the same carry-through for the four markers beside identity. The
+        // resolver omits the key when the version declares nothing, so there is never an
+        // empty object to forward.
+        ...(resolution.openBindings ? { openBindings: resolution.openBindings } : {}),
       },
     };
   }
