@@ -17,9 +17,9 @@ const CATALOGUE = {
     { id: 'byo:stt:sarvam', group: 'byo', name: 'Sarvam', providerClass: 'cloud-byo', connectionId: null, usable: false, reason: 'no-enabled-connection', modelCount: 1 },
     { id: 'byo:stt:openai', group: 'byo', name: 'OpenAI', providerClass: 'cloud-byo', connectionId: 'conn-2', usable: false, reason: 'credential-missing', modelCount: 1 },
     { id: 'byo:stt:azure', group: 'byo', name: 'Azure', providerClass: 'cloud-byo', connectionId: 'conn-3', usable: true, reason: null, modelCount: 1 },
-    // 'no-usable-model' is a real code the service emits for the Hope group summary
-    // (aiModel.service.ts:824) but is deliberately NOT in the D-5 guidance map — it
-    // must fall through verbatim, proving the fallback is wired end to end.
+    // The Hope GROUP summary (aiModel.service.ts:824). Its fix is not on AI
+    // Providers — every platform model for the task is itself unusable — so it
+    // carries its own wording rather than the BYO two-step text.
     { id: 'hope', group: 'hope', name: 'Hope provider', providerClass: null, connectionId: null, usable: false, reason: 'no-usable-model', modelCount: 1 },
   ],
   models: [
@@ -77,7 +77,7 @@ describe('reasonGuidance', () => {
 
   it('falls through an unknown code verbatim, never a generic "unavailable"', () => {
     expect(reasonGuidance('some-future-code')).toBe('some-future-code');
-    expect(reasonGuidance('no-usable-model')).toBe('no-usable-model');
+    expect(reasonGuidance('')).toBe('');
   });
 });
 
@@ -90,7 +90,7 @@ describe('ModelPicker reason guidance (rendered)', () => {
       'Sarvam (BYO) — enable it with a credential on AI Providers',
       'OpenAI (BYO) — enable it with a credential on AI Providers',
       'Azure (BYO)',
-      'Hope provider — no-usable-model',
+      'Hope provider — no platform model is ready for this task',
     ]);
   });
 
