@@ -357,6 +357,34 @@ gates and artifact regeneration run in a dedicated worktree `../hope-v2-task-950
 (the ALaaS stack holds ports 5433/6380), so API e2e runs against the worktree gateway with
 `RESET_DB=false`, as the TASK-933 spec documents.
 
+## Owner decisions 2 and 3 — options (requested 2026-09-11, owner decides)
+
+Facts these rest on (verified in code): `StartWorkflowRunSubject.consultationId` is required and the
+harness `RunSubject` mirrors it with `extra="forbid"`; every one of the 17 `run_identity(...)`
+readers in the harness already guards on a missing `consultation_id`; `WorkflowRun` has no actor
+column but a `_metadata` JSONB; `AgentInvocationService` writes no row and broadcasts no event,
+while every LLM call already lands an `AiUsageEvent` row whose `doctorId` the agent controller
+leaves `null`; `AuditLog.data` persists arbitrary JSON verbatim (the run's `ResourceCreated`
+event already carries `actingUserId`), and every existing "second actor" (impersonation,
+TASK-950 provenance) lives in a JSONB bag, never in an actor column.
+
+### Decision 2 — standalone workflow runs and the acting user
+
+| | Fast win (minimum change) | Best fit with the new implementation |
+|---|---|---|
+| What | Stamp `actingUserId` into `WorkflowRun._metadata` at `recordRunStarted` (new optional `metaData` on `RecordRunStartedInput`, set by the exposure plane) and surface it on `WorkflowRunStatusResponse`. The run's audit event already carries it. | Make the subject consultation-optional on BOTH sides: `StartWorkflowRunSubject.consultationId?` and harness `RunSubject.consultation_id: str \| None` (+ the same `is not None` guard in `as_run_payload_identity` the other two fields have). The exposure plane then sends `subject: { userId }` for a standalone machine run, so `run_identity(...).user_id` is available to every node on the same non-composable channel consultation runs use. Add a real `WorkflowRun.actingUserId` column for queryability. |
+| Touches | `record-run.input.ts`, `workflow-run.service.ts`, `workflow-exposure.service.ts`, one DTO mapper + unit tests | the two subject types, `workflow-exposure.service.ts`, harness `models.py` + `test_compiled_config`/parity fixture, a migration + `WorkflowRun` trio, DTO mapper, e2e |
+| Risk | none to the harness contract | the harness change is additive; the 17 readers already tolerate absence; parity fixture must be regenerated |
+| Recommendation | Do this now regardless — it is the durable, queryable half either way. | Do this when a node needs the acting user for BEHAVIOUR (not only attribution); until then the fast win covers the audit need. |
+
+### Decision 3 — agent invocations and the acting user
+
+| | Fast win (minimum change) | Best fit with the new implementation |
+|---|---|---|
+| What | Return the resolved `actingUserId` from `invokeText`/stream to the agent controller and pass it as `doctorId` to the existing usage collector (`collector.take({ …, doctorId })`). Every invocation then has a durable, indexed, billing-grade row (`AiUsageEvent.doctorId`) — the same channel consultation calls use, and the one BYOK/CLOUD funding derivation already reads. | Fast win PLUS a per-invocation audit event: give `AgentInvocationService` an event channel (inject `EventEmitter2`, or extend `BaseService`) and broadcast `ResourceCreated` on `Agent` with `{ action: 'invoke', agentSlug, agentVersionId, principalType, serviceAccountId, actingUserId, provisioned }` — the exposure plane's exact shape. Cost: one `AuditLog` row per invocation (a deliberate compliance choice). |
+| Touches | `agent-invocation.service.ts` (return value), `agent.controller.ts` (collector call), unit tests | + `agent.service.module.ts` providers, the sys-event fan-out, an e2e asserting the audit row |
+| Recommendation | Do now. | Do if an attributable per-call audit trail is a compliance requirement; otherwise the usage row is the record. |
+
 ## Change History
 
 | Date | Entry |
@@ -364,3 +392,4 @@ gates and artifact regeneration run in a dedicated worktree `../hope-v2-task-950
 | 2026-09-11 | Ticket opened from the owner's requirement. Discovery (three read-only lanes) and plan written; status Pending, awaiting OD-0…OD-10 and an explicit go. |
 | 2026-09-11 | Owner directive: maximise parallel lanes, tiered models, no lane runs gates. Seven worktree lanes spawned against pinned contracts; A, B, C, D, E, F, G merged into `dev-2.2` with per-lane gates (table above). Deviations 1–9 accepted on evidence. |
 | 2026-09-11 | Mid-run a peer session ran `git checkout -b asr-transcript-timing-metadata` in the primary checkout, so the G/C/D/E merges landed on that branch; `dev-2.2` was fast-forwarded to `ca0d836fd` (every commit on the peer's branch was this ticket's) and all later work moved to the `../hope-v2-task-950-verify` worktree, which now checks out `dev-2.2`. Artifacts regenerated (`20e9b3f86`), full suites + lints run, e2e green for both TASK-950 specs, two environmental regressions attributed. Lane worktrees removed after `merge-base --is-ancestor` confirmed each merge. Status → **Review**; the owner's console click-through is the one open gate. |
+| 2026-09-11 | Owner verified the console (auto_* users and the identity field picker) — the last gate is closed; dev DB reseeded by the owner. Options for decisions 2 and 3 written (fast win vs best fit); owner to decide. TASK-951 opened for the ArcaAI two-schema consolidation and the ALaaS realtime contract. |
