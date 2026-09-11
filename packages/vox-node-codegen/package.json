@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vox-node-codegen",
-  "version": "3.0.1",
+  "version": "3.3.0",
   "private": true,
   "description": "Build-time generator for @arcaai/vox-node's /api/v1/admin/** resource surface  — never a dependency of the published SDK.",
   "type": "commonjs",
