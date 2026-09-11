@@ -138,7 +138,23 @@ const LLM_PROVIDERS: readonly ProviderMeta[] = [
   },
 ];
 
-/** STT tab — mirrors `CLOUD_BYO_PROVIDERS.stt`. */
+/**
+ * STT tab — mirrors `CLOUD_BYO_PROVIDERS.stt`.
+ *
+ * TASK-952 D-1: none of these four cards offers a `model` extras field any
+ * more. Azure Speech and Azure Foundry never read one at all —
+ * `azure_foundry_loader.py:105` resolves the model from the bound `AiModel`
+ * row's `source_uri` and fails closed by design, so the field was a pin with
+ * nowhere to land. Sarvam and OpenAI DID read theirs
+ * (`sarvam_loader.py:80`, `openai_loader.py:76`:
+ * `override.get('model') or model_name`), but as an OVERRIDE-WINS global pin
+ * that silently overrode whatever model the agent had bound — model identity
+ * is `AiModel`, declared against the connection and bound to an agent by FK
+ * (`connection-models-editor.tsx`, TASK-890 §3.1), not a value to re-type
+ * into a text box here. The `extraJson.model` column and the gateway API are
+ * unchanged and still accept the key; only this console stops offering the
+ * pin. Sarvam had no other field, so its card is now `fields: []`.
+ */
 const STT_PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 'azure-speech',
@@ -146,7 +162,6 @@ const STT_PROVIDERS: readonly ProviderMeta[] = [
     fields: [
       { name: 'region', label: 'Region', placeholder: 'eastus' },
       { name: 'baseUrl', label: 'Custom endpoint (optional)', placeholder: 'https://<region>.api.cognitive.microsoft.com' },
-      { name: 'model', label: 'Model (optional)', placeholder: 'mai-transcribe-1.5', store: 'extra' },
     ],
   },
   {
@@ -157,23 +172,17 @@ const STT_PROVIDERS: readonly ProviderMeta[] = [
     // has always accepted this row; it had no card until now.
     id: 'azure-foundry',
     label: 'Azure AI Foundry',
-    fields: [
-      { name: 'baseUrl', label: 'Endpoint (Foundry resource)', placeholder: 'https://<resource>.cognitiveservices.azure.com' },
-      { name: 'model', label: 'Model (optional)', placeholder: 'mai-transcribe-1.5', store: 'extra' },
-    ],
+    fields: [{ name: 'baseUrl', label: 'Endpoint (Foundry resource)', placeholder: 'https://<resource>.cognitiveservices.azure.com' }],
   },
   {
     id: 'sarvam',
     label: 'Sarvam',
-    fields: [{ name: 'model', label: 'Model (optional)', placeholder: 'saaras:v4', store: 'extra' }],
+    fields: [],
   },
   {
     id: 'openai',
     label: 'OpenAI',
-    fields: [
-      { name: 'baseUrl', label: 'Base URL (optional)', placeholder: 'https://api.openai.com/v1' },
-      { name: 'model', label: 'Model (optional)', placeholder: 'gpt-4o-transcribe', store: 'extra' },
-    ],
+    fields: [{ name: 'baseUrl', label: 'Base URL (optional)', placeholder: 'https://api.openai.com/v1' }],
   },
 ];
 
