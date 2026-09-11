@@ -112,6 +112,32 @@ export interface DispatchForConsultationInput {
    */
   readonly parentConsultationId?: string | null;
   /**
+   * TASK-951 §D-3 — the visit type RECORDED on the consultation (`metadata.visitType`), when the
+   * caller stated one through its context schema.
+   *
+   * Threaded in for exactly the reason `parentConsultationId` is: this service is best-effort by
+   * contract, so it must not grow a read. It RANKS ABOVE the parent link in
+   * `VisitTypeService.forConsultation`, which is the whole point — a client that says "revisit"
+   * for a same-day review with no parent row in HOPE selects the revisit template, and one that
+   * says nothing keeps the pre-TASK-951 derivation exactly.
+   *
+   * Absent (`undefined`/`null`) means "the caller stated nothing", never "new visit".
+   */
+  readonly visitType?: string | null;
+  /**
+   * TASK-951 §D-6 — the VALIDATED `open.context`, forwarded as the interpreter run's `payload`
+   * so a graph's `trigger.context.*` references resolve to what the client actually sent.
+   *
+   * Before this, `_authored_context(run_payload)` was `{}` for every consultation-open run, so a
+   * `core.trigger` bound to the tenant's schema saw nothing and a `core.condition` on
+   * `trigger.context.visit_type` could never be true.
+   *
+   * It rides the run's `payload` channel, which the dispatcher strips every
+   * `RESERVED_RUN_IDENTITY_KEYS` entry out of before forwarding — identity travels on `subject`
+   * and only there, so threading client-authored content here cannot forge a subject.
+   */
+  readonly authoredContext?: Record<string, unknown>;
+  /**
    * the caller's workflow selection, taking precedence over the assignment
    * cascade for the `consultation` palette (the INDEPENDENT `stt`-palette assignment is
    * unaffected — the two lanes are separate).

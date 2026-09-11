@@ -9,6 +9,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { GateEditMiningService } from './gate-edit-mining.service';
 import { GateEditMiningJob, IGateEditMiningQueue } from './IGateEditMiningQueue';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
+import { readRecordedVisitType } from '../consultation/consultation/open-markers';
 
 /**
  * The enqueue half of the gate-edit learning loop.
@@ -104,8 +105,11 @@ export class GateEditMiningProcessor extends WorkerHost {
         // The mined retrieval facet carries the TENANT's visit-type key
         // , so a tenant that defines its own vocabulary
         // mines and retrieves exemplars under it rather than under a platform
-        // literal. `parentConsultationId` remains the follow-up signal.
+        // literal. TASK-951 §D-3 — the visit type the caller STATED at open ranks above the
+        // parent link, so an exemplar is mined under the facet the note was actually written
+        // for; `parentConsultationId` remains the follow-up signal when nothing was stated.
         visitType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+          recorded: readRecordedVisitType(consultation?.metadata),
           isFollowUp: Boolean(consultation?.parentConsultationId),
         }).key,
         gateDecision,

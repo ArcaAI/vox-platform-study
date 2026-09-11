@@ -187,18 +187,38 @@ export class OpenConsultationRequest {
    * otherwise IGNORED (D-5): that caller - or the key's bound human - already IS the clinician,
    * and resolving someone else from a body field would be impersonation with no gate.
    *
-   * This payload is NOT persisted as context items by `open`; identity resolution is all it
-   * does here. Persisting the values is `POST /consultations/:id/context`, unchanged.
+   * ## TASK-951 - the other three mappings, and persistence
+   *
+   * Identity is no longer the only thing this payload DOES. A tenant may mark three more fields
+   * of a STRUCTURED kind, one each per definition, and `open` MAPS every one of them rather than
+   * merely validating it (D-1):
+   *
+   * | Marker | Effect | Refusals |
+   * |---|---|---|
+   * | `department: { field, by }` | the stated code (default) or name resolves to this tenant's department, and THAT is the consultation's `departmentId` - and the schema every other kind is checked against | 404 `DEPARTMENT_UNKNOWN`, 400 `DEPARTMENT_AMBIGUOUS` (by name, >1 match), 400 `DEPARTMENT_MISMATCH` (disagrees with `departmentId`) |
+   * | `visitType: { field }` | alias-matched against the platform vocabulary (`referral` -> `new-visit`, `follow-up` -> `revisit`) and recorded on the row, where it RANKS ABOVE the `parentConsultationId` derivation for prompt and workflow selection | 400 `VISIT_TYPE_INVALID` |
+   * | `externalRef: { field }` | the caller's own encounter id, recorded on the row. NOT part of the re-open idempotency key, which stays `(patientId, appointmentDate, doctorId)` | - |
+   *
+   * And the payload IS now persisted (D-5), which it was not under TASK-950: on CREATE, every
+   * validated kind becomes a PRE context item carrying its `kindKey`, and a kind the schema marks
+   * `materializeAs: 'CASE_NOTE'` additionally becomes one `CASE_NOTE` item per entry - so the
+   * warm-start pre-summary sees notes a client sent at open, and an integrator no longer needs a
+   * separate "push the prior notes" loop. On a RE-open (the get-or-create branch) nothing is
+   * persisted again, and the same validated payload is threaded into the governing workflow's
+   * trigger context (D-6).
    *
    * Declared here because it has to be: the gateway's global pipe runs `forbidNonWhitelisted`,
    * so an undeclared field REJECTS THE WHOLE OPEN with a 400 rather than being ignored.
    */
   @ApiPropertyOptional({
     description:
-      "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. For a SERVICE-ACCOUNT caller the schema's declared user-identity field resolves - or provisions - the clinician recorded as `doctorId`; for every other credential class it is content and nothing more.",
+      "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. Fields the schema MARKS are mapped, not just validated: the user-identity field resolves - or provisions - the clinician recorded as `doctorId` for a SERVICE-ACCOUNT caller; a marked department field selects the consultation's department by code or name; a marked visit-type field is recorded and outranks the parent-link derivation; a marked external-reference field is recorded as a label. Every validated kind is also persisted as a PRE context item and threaded into the governing workflow's trigger context.",
     type: 'object',
     additionalProperties: true,
-    example: { vitals: { bloodPressure: '128/82', heartRate: 72, consultant_id: 'DR-1042' } },
+    example: {
+      encounter: { doctor_id: 'DR-1042', event_id: 'EVT-88213', department_code: 'GEN', visit_type: 'new-visit' },
+      vitals: { bloodPressure: '128/82', heartRate: 72 },
+    },
   })
   @IsOptional()
   @IsObject()
