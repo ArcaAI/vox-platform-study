@@ -26,6 +26,7 @@ import {
 } from '../../../../common';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
+import { readRecordedVisitType } from '../../consultation/open-markers';
 
 // boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -365,12 +366,17 @@ export class PreSummaryProcessor extends WorkerHost {
   }
 
   /**
-   * The consultation's visit type — one of the platform's two, selected by the
-   * consultation's own follow-up signal (`parentConsultationId`) through the one
+   * The consultation's visit type — one of the platform's two, through the one
    * vocabulary every caller shares rather than a literal repeated at each call site.
+   *
+   * TASK-951 §D-3 — the value the CALLER stated at open (`metadata.visitType`) ranks above the
+   * consultation's own follow-up signal (`parentConsultationId`), which is what
+   * `selectVisitType` has always done with a recorded value; until this ticket nothing on this
+   * path ever supplied one. A consultation with no stated visit type derives exactly as before.
    */
-  private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
+  private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null; metadata?: unknown }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {
+      recorded: readRecordedVisitType(consultation.metadata),
       isFollowUp: Boolean(consultation.parentConsultationId),
     });
   }

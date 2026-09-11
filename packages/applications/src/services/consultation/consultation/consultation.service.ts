@@ -16,6 +16,8 @@ import {
   ConsultationRepository,
   ConsultationFactory,
   ConsultationStatus,
+  ContextItemSource,
+  ContextItemType,
   DepartmentRepository,
   HarnessAuditAction,
   ResourceType,
@@ -45,6 +47,8 @@ import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch
 import { readGoverningEngineMarker } from '../governing-engine';
 import { withWorkflowSelectionMarker } from './workflow-selection';
 import { withSummaryLanguage } from './summary-language';
+import { type ConsultationVisitTypeKey, readRecordedVisitType, withExternalRefMarker, withVisitTypeMarker } from './open-markers';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PolicyEngine } from '../../../authorization/policy.engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
@@ -52,8 +56,57 @@ import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultatio
 // context-schema symbols come from their own files rather than that package's barrel, which
 // re-exports the service, the module and the DTO surface for the three symbols wanted here.
 import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
-import { findKind, type UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
+import type { ConsultationContextSchemaBundleResponse } from '../../consultation-context-schema/dto';
+import { openBindingsFromDefinition, type UserIdentityBinding } from '../../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../../user/identity';
+// TASK-951 §D-5 — `open` now PERSISTS the context it validated, and it does so through the one
+// service that already knows how (schema pin, canonical content, Vault-Transit encryption, the
+// v1 audit version, the live fan-out). Reproducing those five things here is how they drift.
+import { IContextService } from '../context/IContextService';
+
+/**
+ * TASK-951 — everything `open` learned from the caller's `context`, in one value.
+ *
+ * Carried between the four steps that need it (identity resolution, the row write, persistence,
+ * dispatch) rather than re-derived at each one: the department may have been resolved FROM the
+ * payload, so "which schema was this validated against" is a fact with a single answer per
+ * request and re-deriving it is how two steps would eventually pick different ones.
+ */
+interface ResolvedOpenContext {
+  /** The department the consultation is written under — request-supplied, or schema-resolved. */
+  departmentId?: string;
+  /** The catalogue key the caller stated, when a `visitType` binding carried one. */
+  visitTypeKey: ConsultationVisitTypeKey | null;
+  /** The caller's own encounter id, when an `externalRef` binding carried one. */
+  externalRef: string | null;
+  /** Kind keys that validated, in request order. */
+  validatedKindKeys: string[];
+  /** The identity binding to resolve a clinician through, when the schema declares one AND its kind was sent. */
+  identityBinding: UserIdentityBinding | null;
+  /** Validated kinds the schema marks for materialization into `CASE_NOTE` items. */
+  materializeKindKeys: string[];
+  /** The effective bundle the payload was validated against — the provenance stamped on a provisioned user. */
+  bundle: ConsultationContextSchemaBundleResponse | null;
+}
+
+/**
+ * The string a `{ kindKey, field }` binding points at inside an `{ [kindKey]: payload }` envelope,
+ * or `null`.
+ *
+ * Deliberately NOT `extractUserIdentityValue`, though the traversal is the same: that helper is
+ * shared by THREE PLANES (consultation open, agent invocation, workflow run) and its contract is
+ * about identity specifically, so widening it to serve three consultation-open-only bindings
+ * would make it a general utility three unrelated callers depend on for a different reason. The
+ * tolerance rule is identical on purpose — presence is the schema's `required` flags and type is
+ * the validator, both of which have already run; a second refusal here would be a competing
+ * validator.
+ */
+function readBindingString(context: Record<string, unknown>, binding: { kindKey: string; field: string }): string | null {
+  const kind = context[binding.kindKey];
+  if (typeof kind !== 'object' || kind === null || Array.isArray(kind)) return null;
+  const value = (kind as Record<string, unknown>)[binding.field];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
 
 /**
  * Consultation Service
@@ -129,6 +182,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
     @Optional()
     @Inject(IContextUserIdentityService)
     private readonly userIdentityService?: IContextUserIdentityService,
+    // TASK-951 §D-3 — optional + trailing (append-only DI). Matches the visit type a caller
+    // STATES against the platform vocabulary, aliases honoured. Holds no state and does no I/O,
+    // so `DEFAULT_VISIT_TYPE_SERVICE` is an exact stand-in when unwired — the same
+    // `?? DEFAULT_VISIT_TYPE_SERVICE` fallback the other eight consumers use.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-951 §D-5 — optional + trailing. Persists each validated `context` kind as a PRE
+    // context item once the consultation row exists. Absent ⇒ the values are still mapped
+    // (department / visit type / external ref / clinician) and threaded into the run payload,
+    // but nothing is written as an item, which is logged rather than silent. NOT a 503: unlike
+    // validation, persistence is not a claim the open response makes.
+    @Optional() @Inject(IContextService) private readonly contextService?: IContextService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -361,12 +425,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * payload, and opening the consultation with it silently unchecked would be a claim this
    * deployment cannot make.
    *
-   * @returns the kind keys that validated, in request order - the input to the identity step.
+   * TASK-951 - `departmentId` is a PARAMETER rather than `request.departmentId`, because the
+   * department may itself have been resolved FROM the payload (D-2). The schema a payload is
+   * checked against must be the one the consultation is actually written under; see
+   * {@link resolveOpenContext} for why that takes two passes.
+   *
+   * @returns the kind keys that validated, in request order - the input to the mapping steps.
    */
-  private async assertContextConformsToSchema(request: OpenConsultationRequest): Promise<string[]> {
-    const context = request.context;
-    if (!context || Object.keys(context).length === 0) return [];
-
+  private async assertContextConformsToSchema(context: Record<string, unknown>, departmentId?: string): Promise<string[]> {
     if (!this.contextSchemaService) {
       this.logger.error({
         message: 'A context payload was supplied on open but context-schema validation is NOT WIRED - refusing rather than accepting it unchecked',
@@ -383,7 +449,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
         await this.contextSchemaService.validateContextPayload({
           kindKey,
           payload: payload as Record<string, unknown>,
-          departmentId: request.departmentId ?? undefined,
+          departmentId,
         });
         validatedKindKeys.push(kindKey);
       } catch (err) {
@@ -416,6 +482,210 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
+   * TASK-951 §D-2/D-3/D-4 - everything `open` MAPS out of the context payload, in one pass over
+   * the tenant's own declarations.
+   *
+   * TASK-950 shipped one mapping (the user identity) and read it with an ad-hoc `findKind` walk.
+   * Three more mappings arrive here - department, visit type, external reference - and reading
+   * four markers with four walks is how two of them would eventually disagree about which schema
+   * they came from. `openBindingsFromDefinition` is the single derivation; this method is the
+   * single READ of it.
+   *
+   * ## Why this takes TWO validation passes
+   *
+   * The department a payload is validated against is the department that SELECTS the schema
+   * (`getEffectiveBundle`: department default -> tenant default). When the payload itself names
+   * the department (D-2), that is circular, and the circle has to be cut deliberately:
+   *
+   *   1. Resolve the bundle for the department the REQUEST carried (or the tenant default), and
+   *      validate ONLY the kind the `department` binding sits on. A failure here is not reported
+   *      - it just leaves the department unresolved - because pass 2 re-validates the same kind
+   *      alongside every other one and reports every problem at once, which is the posture
+   *      TASK-950 established and this must not weaken.
+   *   2. Resolve the department, then validate EVERY kind against the bundle that department
+   *      actually selects, re-deriving the bindings from it when it changed.
+   *
+   * So a tenant whose department-scoped schema declares different kinds than its tenant default
+   * gets a violation naming the department's own schema - which is the honest answer, because
+   * that is the schema the consultation will be written under.
+   *
+   * A caller that sends no `context` at all reaches none of this: the result is the request's own
+   * `departmentId` and four absent mappings, which is exactly the pre-TASK-951 behaviour.
+   */
+  private async resolveOpenContext(tenantId: string, request: OpenConsultationRequest): Promise<ResolvedOpenContext> {
+    const context = request.context;
+    const empty: ResolvedOpenContext = {
+      departmentId: request.departmentId ?? undefined,
+      visitTypeKey: null,
+      externalRef: null,
+      validatedKindKeys: [],
+      identityBinding: null,
+      materializeKindKeys: [],
+      bundle: null,
+    };
+    if (!context || Object.keys(context).length === 0) return empty;
+
+    if (!this.contextSchemaService) {
+      // Same refusal `assertContextConformsToSchema` raises, reached one step earlier because
+      // the bindings are read before validation runs. Stated here rather than delegated so the
+      // 503 cannot depend on which of the two happens to be called first.
+      this.logger.error({
+        message: 'A context payload was supplied on open but context-schema validation is NOT WIRED - refusing rather than accepting it unchecked',
+        kindKeys: Object.keys(context),
+      });
+      throw new ServiceUnavailableException('Consultation context validation is not available on this deployment');
+    }
+
+    let bundle = await this.contextSchemaService.getEffectiveBundle(request.departmentId ?? undefined);
+    let bindings = openBindingsFromDefinition(bundle?.definition);
+
+    // ── Pass 1: the department, and nothing else ────────────────────────────
+    let departmentId = request.departmentId ?? undefined;
+    const departmentBinding = bindings.department;
+    if (departmentBinding && context[departmentBinding.kindKey] !== undefined) {
+      const stated = await this.readDepartmentBindingValue(context, departmentBinding, departmentId);
+      if (stated !== null) {
+        const resolvedDepartmentId = await this.resolveDepartmentByBinding(tenantId, stated, departmentBinding.by);
+
+        // D-2 - the two routes must AGREE. Deliberately the same posture as `CLINICIAN_MISMATCH`:
+        // a caller that names a department twice and means two different ones has a broken
+        // mapping table, and silent precedence either way would hide it until a note came out
+        // under the wrong department's prompt.
+        if (request.departmentId && request.departmentId !== resolvedDepartmentId) {
+          throw new BadRequestException({
+            message:
+              '`departmentId` and the department named by the context payload are two different departments. Send one, or send both agreeing; this consultation belongs to exactly one.',
+            code: 'DEPARTMENT_MISMATCH',
+          });
+        }
+
+        if (resolvedDepartmentId !== departmentId) {
+          departmentId = resolvedDepartmentId;
+          bundle = await this.contextSchemaService.getEffectiveBundle(departmentId);
+          bindings = openBindingsFromDefinition(bundle?.definition);
+        }
+      }
+    }
+
+    // ── Pass 2: every kind, against the department that will be written ─────
+    const validatedKindKeys = await this.assertContextConformsToSchema(context, departmentId);
+    const validated = new Set(validatedKindKeys);
+
+    return {
+      departmentId,
+      visitTypeKey: bindings.visitType && validated.has(bindings.visitType.kindKey) ? this.matchStatedVisitType(tenantId, context, bindings.visitType) : null,
+      externalRef: bindings.externalRef && validated.has(bindings.externalRef.kindKey) ? readBindingString(context, bindings.externalRef) : null,
+      validatedKindKeys,
+      identityBinding: bindings.userIdentity && validated.has(bindings.userIdentity.kindKey) ? bindings.userIdentity : null,
+      materializeKindKeys: (bindings.materialize ?? []).filter((entry) => validated.has(entry.kindKey)).map((entry) => entry.kindKey),
+      bundle,
+    };
+  }
+
+  /**
+   * Pass 1's narrow validation: the department binding's kind ALONE, against the bundle the
+   * request's own `departmentId` selected.
+   *
+   * A validation refusal returns `null` rather than throwing - pass 2 will re-validate this same
+   * kind with every other one and report the full set (see {@link resolveOpenContext}). Anything
+   * that is NOT a validation refusal (a repository outage, a decryption failure) propagates
+   * untouched, exactly as it does in `assertContextConformsToSchema`.
+   */
+  private async readDepartmentBindingValue(
+    context: Record<string, unknown>,
+    binding: { kindKey: string; field: string },
+    departmentId: string | undefined,
+  ): Promise<string | null> {
+    try {
+      await this.contextSchemaService!.validateContextPayload({
+        kindKey: binding.kindKey,
+        payload: context[binding.kindKey] as Record<string, unknown>,
+        departmentId,
+      });
+    } catch (err) {
+      if (!(err instanceof BadRequestException)) throw err;
+      return null;
+    }
+    return readBindingString(context, binding);
+  }
+
+  /**
+   * TASK-951 §D-2 - the tenant's department a stated code (or name) refers to.
+   *
+   * `by: 'code'` is the default and the only one ArcaAI uses: `Department.code` is
+   * `@@unique([tenantId, code])`, so the answer is a row or nothing. `by: 'name'` exists because
+   * some rosters carry no codes, and it is deliberately the AWKWARD one: names are not unique
+   * (ArcaAI itself carries two rows called "General Medicine", which is what
+   * `findAllByTenant`'s `id` tiebreak was added for), so more than one match is a 400 the caller
+   * has to fix rather than a coin toss between two rows with completely different prompt
+   * configuration.
+   *
+   * Both misses are 404 `DEPARTMENT_UNKNOWN`, which is the house posture for a cross-aggregate
+   * reference the caller named and this tenant does not have (`assertParentInScope`'s own rule) -
+   * an unknown code and another tenant's code are indistinguishable, on purpose.
+   */
+  private async resolveDepartmentByBinding(tenantId: string, stated: string, by: 'code' | 'name'): Promise<string> {
+    if (by === 'code') {
+      const department = await this.departmentRepository.findByCode(tenantId, stated);
+      if (!department) {
+        throw new NotFoundException({
+          message: `No department of this tenant carries the code '${stated}'.`,
+          code: 'DEPARTMENT_UNKNOWN',
+        });
+      }
+      return department.id;
+    }
+
+    const wanted = stated.trim().toLowerCase();
+    // ENABLED rows only (the repository's default), so a disabled department is "unknown" rather
+    // than selectable - the same rule `findByCode` applies on the other branch.
+    const matches = (await this.departmentRepository.findAllByTenant(tenantId)).filter((row) => (row.name ?? '').trim().toLowerCase() === wanted);
+
+    if (matches.length === 0) {
+      throw new NotFoundException({
+        message: `No department of this tenant is named '${stated}'.`,
+        code: 'DEPARTMENT_UNKNOWN',
+      });
+    }
+    if (matches.length > 1) {
+      throw new BadRequestException({
+        message: `More than one department of this tenant is named '${stated}'. Name it by code, or send \`departmentId\`.`,
+        code: 'DEPARTMENT_AMBIGUOUS',
+      });
+    }
+    return matches[0].id;
+  }
+
+  /**
+   * TASK-951 §D-3 - the visit type the caller STATED, as a catalogue key.
+   *
+   * Matched through `VisitTypeService.match`, so every alias the vocabulary already honours
+   * resolves here too (`referral` -> `new-visit`, `follow-up` -> `revisit`). An UNMATCHABLE value
+   * is a 400 rather than a silent fall-through to the parent link: the schema declared this field
+   * as the visit type, so a value it cannot express is a caller error, and quietly documenting the
+   * encounter under the other visit type's prompt is a wrong-prompt clinical failure.
+   *
+   * An ABSENT value is not an error - `required` on the kind is the tenant's own decision to make,
+   * and a marker says what to do with a value when there is one (TASK-950 D-2).
+   */
+  private matchStatedVisitType(tenantId: string, context: Record<string, unknown>, binding: { kindKey: string; field: string }): ConsultationVisitTypeKey | null {
+    const stated = readBindingString(context, binding);
+    if (stated === null) return null;
+
+    const matched = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).match(tenantId, stated);
+    if (!matched) {
+      throw new BadRequestException({
+        message: `'${stated}' is not a visit type this platform knows. Send one of its keys or aliases (for example 'new-visit', 'referral', 'revisit', 'follow-up').`,
+        code: 'VISIT_TYPE_INVALID',
+      });
+    }
+    // `match` returned a catalogue ENTRY, so its key is one of the vocabulary's own. The cast
+    // NAMES that fact rather than re-listing the two keys in a second file, which is exactly the
+    // drift `visit-type.catalogue.ts` was written to end.
+    return matched.key as ConsultationVisitTypeKey;
+  }
+
+  /**
    * TASK-950 §D-6 (b) - the clinician a SERVICE-ACCOUNT caller identified by STAFF ID.
    *
    * The tenant may mark ONE string property of ONE STRUCTURED kind as its user identity
@@ -423,10 +693,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * resolved to a tenant user by `UserProfile.staffId` - provisioning one when the tenant allows
    * it - and that user becomes the acting clinician.
    *
-   * The definition comes from the SAME cascade the validation above resolved against
-   * (`getEffectiveBundle(departmentId)`: department default -> tenant default), so a marker can
-   * never be read from a schema the payload was not checked against. Only kinds that VALIDATED
-   * are considered, which is what makes "the marked field carries a string" a safe read.
+   * The binding comes from the SAME cascade the validation resolved against, and only for kinds
+   * that VALIDATED - both facts are settled in {@link resolveOpenContext}, which is why this now
+   * takes a resolution rather than re-deriving one. TASK-951 makes that matter: with a
+   * department binding in play, "the schema the payload was checked against" can be the
+   * department's own, not the request's.
    *
    * Absent marker, absent kind, or a non-string value => `undefined`, and the caller falls back
    * to `clinicianUserId`. Everything else - an unknown staff id, an unusable user, an ambiguous
@@ -436,22 +707,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
   private async resolveIdentityClinicianId(
     tenantId: string,
     request: OpenConsultationRequest,
-    validatedKindKeys: string[],
+    resolved: ResolvedOpenContext,
     serviceAccountId: string,
   ): Promise<string | undefined> {
-    if (validatedKindKeys.length === 0 || !this.contextSchemaService) return undefined;
-
-    const bundle = await this.contextSchemaService.getEffectiveBundle(request.departmentId ?? undefined);
-    if (!bundle?.definition) return undefined;
-
-    let binding: UserIdentityBinding | undefined;
-    for (const kindKey of validatedKindKeys) {
-      const field = findKind(bundle.definition, kindKey)?.userIdentity?.field;
-      if (typeof field === 'string' && field.length > 0) {
-        binding = { kindKey, field };
-        break;
-      }
-    }
+    const binding = resolved.identityBinding;
     if (!binding) return undefined;
 
     const staffId = extractUserIdentityValue(request.context, binding);
@@ -467,21 +726,24 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new ServiceUnavailableException('Context user-identity resolution is not available on this deployment');
     }
 
-    const resolved = await this.userIdentityService.resolveOrProvision({
+    const bundle = resolved.bundle;
+    const provisioned = await this.userIdentityService.resolveOrProvision({
       tenantId,
       staffId,
-      departmentId: request.departmentId ?? null,
+      // TASK-951 - the RESOLVED department, so a user provisioned from a payload that named its
+      // department by code lands in that department rather than in none.
+      departmentId: resolved.departmentId ?? null,
       provenance: {
         plane: 'consultation-open',
         kindKey: binding.kindKey,
         field: binding.field,
         serviceAccountId,
-        ...(bundle.schemaId ? { schemaId: bundle.schemaId } : {}),
-        ...(typeof bundle.versionNumber === 'number' ? { versionNumber: bundle.versionNumber } : {}),
+        ...(bundle?.schemaId ? { schemaId: bundle.schemaId } : {}),
+        ...(typeof bundle?.versionNumber === 'number' ? { versionNumber: bundle.versionNumber } : {}),
       },
     });
 
-    return resolved.userId;
+    return provisioned.userId;
   }
 
   /**
@@ -506,15 +768,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
     tenantId: string,
     request: OpenConsultationRequest,
     callerClinicianId: string,
+    resolved: ResolvedOpenContext,
   ): Promise<{ clinicianId: string; named: boolean }> {
-    const validatedKindKeys = await this.assertContextConformsToSchema(request);
     const serviceAccount = this.requestServiceAccount;
 
     if (!serviceAccount) {
       return { clinicianId: callerClinicianId, named: Boolean(request.clinicianUserId) };
     }
 
-    const resolvedFromIdentity = await this.resolveIdentityClinicianId(tenantId, request, validatedKindKeys, serviceAccount.id);
+    const resolvedFromIdentity = await this.resolveIdentityClinicianId(tenantId, request, resolved, serviceAccount.id);
     const namedByCaller = request.clinicianUserId;
 
     if (namedByCaller && resolvedFromIdentity && namedByCaller !== resolvedFromIdentity) {
@@ -538,6 +800,141 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
+   * TASK-951 §D-5 - the validated context, written down.
+   *
+   * Runs AFTER the consultation row exists and BEFORE dispatch, and that order is the whole
+   * point of doing it here rather than leaving it to the caller: the warm-start pre-summary
+   * reads `CASE_NOTE` items (`findCaseNotes()`), and a graph dispatched before they exist warm-
+   * starts on nothing. It is also what lets an integrator drop its own post-open "push the prior
+   * notes" loop - the values it already sent at open are the values that get persisted.
+   *
+   * Two writes per declaration, and they are different claims:
+   *
+   *   · one `STRUCTURED` item per validated kind, carrying `kindKey` and the canonical payload -
+   *     "the client stated this, under this name, against this schema version";
+   *   · for a kind the schema marks `materializeAs: 'CASE_NOTE'`, one `CASE_NOTE` per `notes[]`
+   *     entry - "these are case notes", in the one shape every existing reader already knows.
+   *
+   * BEST-EFFORT, per item, and loudly. The row is already created and `ResourceCreated` already
+   * broadcast, so throwing here would answer 500 for a consultation that exists - and because
+   * `getOrCreate` is get-or-CREATE, the retry would return that same consultation and never
+   * re-attempt the write. A failure therefore degrades to "the note is generated without the
+   * prior context", which is a quality loss, not a blocked clinician; it is logged at ERROR with
+   * the consultation and the kind so it is recoverable rather than invisible. The identical
+   * argument the dispatch call below makes, for the identical reason.
+   */
+  private async persistOpenContext(consultationId: string, context: Record<string, unknown>, resolved: ResolvedOpenContext): Promise<void> {
+    if (resolved.validatedKindKeys.length === 0) return;
+
+    if (!this.contextService) {
+      this.logger.warn({
+        message: 'Context persistence is NOT WIRED - the values sent at open were mapped but no context item was written',
+        consultationId,
+        kindKeys: resolved.validatedKindKeys,
+      });
+      return;
+    }
+
+    const materialize = new Set(resolved.materializeKindKeys);
+
+    for (const kindKey of resolved.validatedKindKeys) {
+      const payload = context[kindKey] as Record<string, unknown> | undefined;
+      if (!payload) continue;
+
+      try {
+        await this.contextService.addContext(consultationId, {
+          type: ContextItemType.STRUCTURED,
+          source: ContextItemSource.USER,
+          kindKey,
+          payload,
+        });
+      } catch (error) {
+        this.logger.error({
+          message: 'A context kind validated at open could not be persisted as a context item',
+          consultationId,
+          kindKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Deliberately CONTINUE: one unwritable kind must not cost the others, and the case
+        // notes below are the ones the warm-start actually reads.
+      }
+
+      if (materialize.has(kindKey)) {
+        await this.materializeCaseNotes(consultationId, kindKey, payload);
+      }
+    }
+  }
+
+  /**
+   * TASK-951 §D-6 - the validated context, as the graph's trigger payload, or `null` when there
+   * is none.
+   *
+   * Static and pure: it takes no decision, so keeping it off the instance says plainly that the
+   * run payload is a PROJECTION of what was already validated, not a second source of facts.
+   */
+  private static authoredContextOf(context: Record<string, unknown> | undefined, validatedKindKeys: string[]): Record<string, unknown> | null {
+    if (!context || validatedKindKeys.length === 0) return null;
+    const authored: Record<string, unknown> = {};
+    for (const kindKey of validatedKindKeys) {
+      if (context[kindKey] !== undefined) authored[kindKey] = context[kindKey];
+    }
+    return Object.keys(authored).length > 0 ? authored : null;
+  }
+
+  /**
+   * TASK-951 §D-5 - one `CASE_NOTE` item per entry of a kind marked `materializeAs`.
+   *
+   * The entries live under `notes`, which is the property name the marker's own publish gate
+   * requires (an array of objects each carrying a string `text`) - so this reads a shape the
+   * schema has already guaranteed rather than guessing at one. A payload that does not have it
+   * writes nothing and says so; it cannot be a 400, because the payload VALIDATED.
+   *
+   * `title` and `text` are joined rather than stored separately because `ContextItem` has one
+   * content column, and every reader of a case note (`findCaseNotes`, prompt assembly, the
+   * shared-context join) reads exactly that column. The remaining fields (`date`, `department`,
+   * `doctor`) stay addressable on the STRUCTURED item written beside these.
+   */
+  private async materializeCaseNotes(consultationId: string, kindKey: string, payload: Record<string, unknown>): Promise<void> {
+    const notes = payload.notes;
+    if (!Array.isArray(notes)) {
+      this.logger.warn({
+        message: "A kind marked `materializeAs: 'CASE_NOTE'` carried no `notes` array - nothing was materialized",
+        consultationId,
+        kindKey,
+      });
+      return;
+    }
+
+    for (const [index, entry] of notes.entries()) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const note = entry as Record<string, unknown>;
+      const text = typeof note.text === 'string' ? note.text : '';
+      if (text.length === 0) continue;
+      const title = typeof note.title === 'string' && note.title.length > 0 ? note.title : null;
+
+      try {
+        await this.contextService!.addContext(consultationId, {
+          type: ContextItemType.CASE_NOTE,
+          source: ContextItemSource.USER,
+          content: title ? `${title}\n${text}` : text,
+          // Provenance, so a later reader can tell a note the client sent AT OPEN from one a
+          // clinician wrote during the visit - they are the same type on purpose (every existing
+          // reader must see both), and this is the only thing that distinguishes them.
+          metadata: { origin: 'open.context', kindKey, index },
+        });
+      } catch (error) {
+        this.logger.error({
+          message: 'A case note supplied at open could not be persisted',
+          consultationId,
+          kindKey,
+          index,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
    * Get or create consultation for (patientId, doctorId, appointmentDate)
    *
    * - If consultation exists: returns existing
@@ -558,16 +955,29 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-950 §D-6 — validate the context payload and settle WHO this consultation is for,
-    // BEFORE the tenant guard below and before anything is written. Ordering is deliberate: a
-    // provisioned clinician must exist before `assertCrossAggregateRefsInTenant` asks whether
-    // they belong to the tenant, and a schema violation must be a 400 rather than a 404 about a
-    // clinician the caller never named.
-    const { clinicianId: actingClinicianId, named: clinicianWasNamed } = await this.resolveActingClinician(tenantId, request, doctorId);
+    // TASK-950 §D-6 / TASK-951 §D-2…D-4 — validate the context payload, MAP everything the
+    // tenant's schema declares out of it (department, visit type, external reference), and settle
+    // WHO this consultation is for — all BEFORE the tenant guard below and before anything is
+    // written. Ordering is deliberate: a provisioned clinician must exist before
+    // `assertCrossAggregateRefsInTenant` asks whether they belong to the tenant, a schema
+    // violation must be a 400 rather than a 404 about a clinician the caller never named, and the
+    // DEPARTMENT has to be settled before either, because it selects the schema the rest is
+    // checked against.
+    const openContext = await this.resolveOpenContext(tenantId, request);
+    const { clinicianId: actingClinicianId, named: clinicianWasNamed } = await this.resolveActingClinician(
+      tenantId,
+      request,
+      doctorId,
+      openContext,
+    );
 
     await this.assertCrossAggregateRefsInTenant(tenantId, {
       doctorId: actingClinicianId,
-      departmentId: request.departmentId,
+      // The RESOLVED department. When the payload named it, this is the row its code resolved to;
+      // the guard still re-checks tenancy, because a repository answer is a reference like any
+      // other. (`findByCode` is already tenant-scoped, so this can only ever agree — which is the
+      // point: nothing reaches the factory without having passed the same guard.)
+      departmentId: openContext.departmentId,
       parentConsultationId: request.parentConsultationId,
     });
 
@@ -601,6 +1011,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const existing = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, actingClinicianId);
 
     if (existing) {
+      // TASK-951 §D-5/D-6 — nothing is persisted or dispatched on this branch, for the same
+      // reason the selection below is ignored: this consultation was already opened, with its own
+      // context, and re-opening it must not append a second copy of the client's PRE items or
+      // start a second governing run. The mappings above still ran, so a payload the schema does
+      // not admit is still a 400 here rather than a silent 200.
+      //
       // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
       // so there is no dispatch left to steer. Say so rather than let the caller believe their
       // pick took effect — `GET /consultations/:id/workflow` reports what actually governs.
@@ -647,14 +1063,20 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // and the finalize prompt read one value rather than each re-deriving one. Applied AFTER the
     // selection marker for the same reason that one merges rather than replaces: client metadata
     // from `OpenConsultationRequest` survives untouched, and the two markers are independent.
-    const metadata = request.language ? withSummaryLanguage(withSelection, request.language) : withSelection;
+    const withLanguage = request.language ? withSummaryLanguage(withSelection, request.language) : withSelection;
+    // TASK-951 §D-3/D-4 — the two facts the caller STATED through its schema. Applied last, so a
+    // schema-declared value wins over the same key hand-posted in `metadata`: this one was
+    // validated against the tenant's pinned schema and alias-matched through the visit-type
+    // catalogue, and that one was neither. See `open-markers.ts` for why neither is stripped.
+    const withVisitType = openContext.visitTypeKey ? withVisitTypeMarker(withLanguage, openContext.visitTypeKey) : withLanguage;
+    const metadata = openContext.externalRef ? withExternalRefMarker(withVisitType, openContext.externalRef) : withVisitType;
 
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
       patientId: request.patientId,
       appointmentDate,
       doctorId: actingClinicianId,
-      departmentId: request.departmentId,
+      departmentId: openContext.departmentId,
       metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
       createdBy: userId ?? undefined,
     });
@@ -698,6 +1120,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
       await this.consentGrantService.ensureConsultationConsent(saved.patientId);
     }
 
+    // TASK-951 §D-5 — write the validated context down, BEFORE dispatch. The warm-start
+    // pre-summary reads `CASE_NOTE` items, so a graph dispatched first would warm-start on
+    // nothing. Best-effort by contract — see `persistOpenContext`.
+    if (request.context) {
+      await this.persistOpenContext(saved.id, request.context, openContext);
+    }
+
     // the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
     // Fires only on CREATE: `getOrCreate`'s existing-consultation branch returns earlier, so a
     // re-opened consultation is never dispatched twice. Best-effort by contract — the dispatch
@@ -707,6 +1136,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // including "the dispatcher is not wired" and "no tenant workflow is assigned" — is logged.
     // Both of those were previously SILENT, so a consultation that quietly fell through to the
     // default engine was indistinguishable from one the dispatcher had never been asked about.
+    // TASK-951 §D-6 — built from the VALIDATED kind keys rather than from `request.context`
+    // wholesale. The two are the same set whenever validation passed (it throws on any problem),
+    // so this is not a filter so much as a statement: only what the tenant's own schema admits
+    // reaches the graph's trigger context.
+    const authoredContext = ConsultationService.authoredContextOf(request.context, openContext.validatedKindKeys);
+
     if (!this.workflowDispatchService) {
       this.logger.warn({
         message: 'Consultation workflow dispatch is NOT WIRED — the default loop governs by omission, not by decision',
@@ -730,6 +1165,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
         // contract, so a DB read inside it would change its failure profile. `saved` already
         // carries this fact (set a few lines above), so no extra read is needed here either.
         parentConsultationId: saved.parentConsultationId ?? null,
+        // TASK-951 §D-3 — the RECORDED visit type, read off the row rather than from
+        // `openContext`, so the dispatcher's selector tag is derived from exactly the value every
+        // LATER reader (summary, pre-summary, harness assemble, gate-edit mining) will read.
+        visitType: readRecordedVisitType(saved.metadata),
+        // TASK-951 §D-6 — the AUTHORED context, so `trigger.context.*` resolves to what the
+        // client actually sent. It rides `payload`, which the dispatcher strips every reserved
+        // identity key out of before forwarding — identity travels on `subject` and only there.
+        authoredContext: authoredContext ?? undefined,
       });
       this.logger.log({
         message: dispatch.dispatched

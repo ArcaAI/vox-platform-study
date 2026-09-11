@@ -11,6 +11,8 @@ import { ConsentServiceModule } from '../../consent/consent-grant.service.module
 import { AuthorizationModule } from '../../../authorization/authorization.module';
 import { ConsultationContextSchemaServiceModule } from '../../consultation-context-schema/consultation-context-schema.service.module';
 import { ContextUserIdentityServiceModule } from '../../user/identity';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { ContextServiceModule } from '../context/context.service.module';
 
 @Module({
   // HarnessAuditServiceModule resolves the @Optional
@@ -46,6 +48,17 @@ import { ContextUserIdentityServiceModule } from '../../user/identity';
     // surface, which knows nothing about consultations.
     ConsultationContextSchemaServiceModule,
     ContextUserIdentityServiceModule,
+    // TASK-951 §D-3 — `VisitTypeService`, so a caller can STATE its visit type through the
+    // schema and have it alias-matched against the one platform vocabulary. The module takes no
+    // dependency at all (the tenant catalogue it used to read was retired by TASK-882), so there
+    // is nothing here that could close a cycle.
+    VisitTypeServiceModule,
+    // TASK-951 §D-5 — `IContextService`, so the values validated at open are PERSISTED as context
+    // items through the one service that already owns schema pinning, canonical content,
+    // encryption, the v1 audit version and the live fan-out. One-way: `ContextServiceModule`
+    // imports `CommonServiceModule`, `CoreDatabaseModule` and the context-schema module only,
+    // none of which lead back here.
+    ContextServiceModule,
   ],
   providers: [
     ConsultationService,
