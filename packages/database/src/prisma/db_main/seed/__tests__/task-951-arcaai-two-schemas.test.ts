@@ -338,7 +338,9 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
     return true;
   };
 
+  const ops: string[] = [];
   const client: any = {
+    $transaction: async (fn: (tx: any) => Promise<unknown>) => fn(client),
     consultationContextSchema: {
       findFirst: async ({ where }: any) => schemas.find((row) => matches(row, where)) ?? null,
       create: async ({ data }: any) => {
@@ -371,10 +373,12 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
       create: async ({ data }: any) => {
         const row = { id: `agent-v${data.versionNumber}`, ...data };
         agentCreates.push(row);
+        ops.push(`create:v${data.versionNumber}`);
         return row;
       },
       update: async ({ where, data }: any) => {
         agentUpdates.push({ where, data });
+        ops.push(`update:${where.id}`);
         if (agent && agent.id === where.id) Object.assign(agent, data);
         return data;
       },
@@ -387,7 +391,7 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
       },
     },
   };
-  return { client, schemas, versions, agent, agentUpdates, agentCreates, fallbackCreates };
+  return { client, schemas, versions, agent, agentUpdates, agentCreates, fallbackCreates, ops };
 }
 
 /** The columns `bindTranscriptionAgent` copies into the branched version. */
@@ -538,7 +542,9 @@ describe('TASK-951 — the ASR agent binding branches a version (agent_immutabil
     expect(fake.fallbackCreates).toEqual([
       { tenantId: ARCAAI, agentId: 'agent-v2', priority: 1, modelId: 'model-fallback', enabled: true, createdBy: expect.any(String) },
     ]);
-    // The old version is retired through the columns the guard leaves writable — and NOTHING else.
+    // The old version is retired FIRST (Agent_tenant_slug_active_unique: one active version per slug),
+    // through the columns the guard leaves writable — and NOTHING else.
+    expect(fake.ops).toEqual(['update:agent-1', 'create:v2']);
     expect(fake.agentUpdates).toHaveLength(1);
     expect(fake.agentUpdates[0]!.where).toEqual({ id: 'agent-1' });
     expect(Object.keys(fake.agentUpdates[0]!.data).sort()).toEqual(['deprecatedAt', 'isActive', 'status', 'updatedBy']);
