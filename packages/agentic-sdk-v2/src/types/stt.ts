@@ -356,18 +356,28 @@ export interface WsTranscriptResult {
    */
   sessionEpochMs?: number;
   /**
-   * The metadata that was in force over THIS segment's audio, time-synced to
-   * it (TASK-951). Set with `SttWebSocketClient.setMetadata` while streaming;
-   * each entry covers a stretch of this segment, with `from`/`to` in the same
-   * session-relative seconds as `startTime`/`endTime` and already clipped to
-   * it. Two or more entries mean the metadata changed mid-utterance.
+   * The metadata in force over THIS segment's audio, verbatim and flat (TASK-951):
+   * the object last passed to `SttWebSocketClient.setMetadata` before this
+   * stretch of audio — sticky, so audio sent without a new declaration inherits
+   * the last. Labelling code reads `metadata.mic_id`, the v1 shape. If the
+   * declaration changed mid-segment this is the value in force over the larger
+   * share of it (a tie goes to the earlier); the exact bounds are in
+   * {@link WsTranscriptResult.metadataSpans}.
    *
-   * Absent (not `[]`) on a session that never set any — which is what keeps
-   * the wire byte-identical for every existing consumer. Independent of
+   * Absent on a session that never set any — which is what keeps the wire
+   * byte-identical for every existing consumer. Independent of
    * {@link WsTranscriptResult.context}: that is what the session IS, this is
    * what was happening while it recorded.
    */
-  metadata?: WsMetadataSpan[];
+  metadata?: Record<string, unknown>;
+  /**
+   * The same declarations time-synced within this segment (TASK-951): each
+   * entry covers a stretch of it, with `from`/`to` in the same session-relative
+   * seconds as `startTime`/`endTime` and already clipped to it. Two or more
+   * entries mean the declaration changed mid-utterance. Present exactly when
+   * `metadata` is.
+   */
+  metadataSpans?: WsMetadataSpan[];
 }
 
 /**

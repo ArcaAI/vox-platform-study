@@ -158,10 +158,10 @@ describe('TASK-951 — schema 1, the standalone transcription contract (R2)', ()
     expect(kindsOf(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION).map((entry) => entry.key)).toEqual(['audio_stream', 'stream']);
     const stream = kind(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION, 'stream');
     expect(stream).toMatchObject({ primitive: 'STRUCTURED', cardinality: 'ONE', lifecycle: 'PRE', producedBy: ['CLIENT'], streamContext: true });
-    // The clarified R2 shape: one, two or more microphones live at once, and the set changes while
-    // recording — so a SET of ids, never a single `mic_id`.
-    expect(stream.fields.required).toEqual(['mic_ids']);
-    expect(stream.fields.properties.mic_ids).toEqual({ type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 });
+    // The owner's R2 shape: ONE microphone live at a time, re-declared when it changes and sticky
+    // until the next declaration — a single `mic_id`, never a set.
+    expect(stream.fields.required).toEqual(['mic_id']);
+    expect(stream.fields.properties.mic_id).toEqual({ type: 'string', minLength: 1 });
     // "exactly the same metadata things" back — a curated subset would not be an echo.
     expect(stream.fields.additionalProperties).toBe(true);
   });
@@ -420,8 +420,8 @@ describe('TASK-951 — seeding is create-only and the retirement sweep is idempo
   });
 
   it('a seed-owned v1 whose definition drifted from this file is refreshed IN PLACE, by our id', async () => {
-    // A dev database seeded before the R2 clarification carries the `mic_id` shape; the agent is
-    // re-frozen to `mic_ids` (below), and the version row must say the same thing the gate enforces.
+    // A dev database seeded with an earlier definition (or a hand edit) must converge: the agent is
+    // re-frozen (below), and the version row must say the same thing the gate enforces.
     const fake = fakeClient({ schemas: [noteContextClone(), ...retiredDepartmentRows()] });
     await seedArcaaiTwoContextSchemas(fake.client);
     const transcription = fake.versions.find((row) => row.schemaId === SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION)!;
@@ -503,7 +503,7 @@ describe('TASK-951 — the ASR agent binding', () => {
 
   it('RE-FREEZES an agent that pins OUR schema with a stale artifact — the pin itself is untouched', async () => {
     // The dev-database state this ticket met: bound under lane A with a blob that carried no
-    // `openBindings` (so the metadata gate never engaged) and the pre-clarification `mic_id` shape.
+    // `openBindings`, so the metadata gate never engaged.
     const stale = {
       schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
       versionNumber: 1,

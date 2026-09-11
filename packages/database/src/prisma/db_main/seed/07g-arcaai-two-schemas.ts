@@ -72,17 +72,19 @@ export const ARCAAI_RETIRED_DEPARTMENT_SCHEMA_SLUGS: readonly string[] = ['consu
 // =============================================================================
 
 /**
- * The standalone transcription contract (R2, as clarified by the owner on 2026-09-11).
+ * The standalone transcription contract (R2, as the owner clarified it on 2026-09-11).
  *
  * `stream` is the kind that carries whatever the client wants handed back. ALaaS records ONE
- * session with one, two or more microphones live at a time and the set changes while recording,
- * so `mic_ids` (an array, at least one) is the only required property; `additionalProperties:
- * true` is deliberate — the echo is "exactly the same metadata things" the client sent, not a
- * platform-curated subset of them. The kind is read in two places: `context.stream` at session
- * create (the initial declaration, validated against the whole payload schema), and every
- * `{ type: 'metadata' }` socket frame afterwards, validated against THIS kind's `fields` and
- * handed back on each transcript as time-synced spans. `streamContext: true` is the marker that
- * names this kind for the second use (lane B's grammar; frozen as
+ * session and declares ONE microphone at a time — `mic_id` — whenever the live mic changes; a
+ * frame that declares nothing inherits the last declaration (sticky), and each transcript comes
+ * back with the `mic_id` that was live over its audio. So `mic_id` (one string) is the only
+ * required property, and `additionalProperties: true` is deliberate — the echo is "exactly the
+ * same metadata things" the client sent, not a platform-curated subset of them. The kind is read
+ * in two places: `context.stream` at session create (the initial declaration, validated against
+ * the whole payload schema), and every `{ type: 'metadata' }` socket frame afterwards, validated
+ * against THIS kind's `fields` and handed back on each transcript as `metadata` (the object in
+ * force) plus `metadataSpans` (its exact bounds within the segment). `streamContext: true` is the
+ * marker that names this kind for the second use (lane B's grammar; frozen as
  * `openBindings.streamContext.kindKey`).
  */
 export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> = {
@@ -107,16 +109,16 @@ export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> =
       lifecycle: 'PRE',
       producedBy: ['CLIENT'],
       description:
-        'Client-owned identification of the microphones live on this audio stream. Declared as `context.stream` at create, re-declared on the socket as a `metadata` frame whenever the microphone set changes, and handed back VERBATIM on every transcript segment as time-synced spans.',
+        'Client-owned identification of the microphone live on this audio stream — one at a time. Declared as `context.stream` at create, re-declared on the socket as a `metadata` frame whenever the live microphone changes (sticky until the next declaration), and handed back VERBATIM on every transcript segment as the object in force over its audio.',
       fields: {
         type: 'object',
         properties: {
-          mic_ids: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
+          mic_id: { type: 'string', minLength: 1 },
           speaker_label: { type: 'string' },
           channel: { type: 'string' },
           source: { type: 'string' },
         },
-        required: ['mic_ids'],
+        required: ['mic_id'],
         additionalProperties: true,
       },
       streamContext: true,
@@ -338,7 +340,7 @@ const SCHEMA_SEEDS: ArcaaiSchemaSeed[] = [
     slug: ARCAAI_REALTIME_TRANSCRIPTION_SLUG,
     name: 'Realtime Transcription',
     description:
-      'The standalone realtime-transcription contract: one audio stream plus the client-owned `stream` metadata (the live microphone ids, speaker label) that every time-synced transcript segment of the session hands back verbatim, as spans over its own audio window.',
+      'The standalone realtime-transcription contract: one audio stream plus the client-owned `stream` metadata (the live microphone id, speaker label) that every time-synced transcript segment of the session hands back verbatim — the object in force over its audio, with its exact bounds.',
     // NOT the tenant default: this schema governs standalone STT sessions, not consultations.
     // A DEFAULT would be what discovery serves for a consultation that names no schema.
     isDefault: false,

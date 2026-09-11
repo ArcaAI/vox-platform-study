@@ -60,8 +60,9 @@ const WsCtor = WebSocket as unknown as StreamWsCtor;
 const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
 const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
 
-const ONE_MIC = { mic_ids: ['mic-1'] };
-const TWO_MICS = { mic_ids: ['mic-1', 'mic-2'] };
+/** One microphone live at a time — the owner's contract. `mic_id` is the seeded kind's one required key. */
+const MIC_1 = { mic_id: 'mic-1' };
+const MIC_2 = { mic_id: 'mic-2' };
 
 /** 503 = STT is down, 404 = no ASR agent resolvable for this tenant. Neither is an authz fact. */
 const TRANSPORT_STATUSES = [404, 503];
@@ -138,13 +139,13 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
     const socket = await openReady(session);
 
     try {
-      setMetadata(socket, { mic_ids: ['mic-1'], note: 'x'.repeat(2048) });
+      setMetadata(socket, { mic_id: 'mic-1', note: 'x'.repeat(2048) });
 
       const error = await socket.waitForMessage((raw) => raw.type === 'error', 10_000);
       expect(error?.code).toBe('METADATA_TOO_LARGE');
 
       // Still alive: a subsequent frame is still accepted, and the socket was never closed.
-      setMetadata(socket, ONE_MIC);
+      setMetadata(socket, MIC_1);
       const stillUp = await socket.waitForMessage((raw) => raw.type === 'error' && raw.code !== 'METADATA_TOO_LARGE', 2_000);
       expect(stillUp, 'a valid frame after a refused one must not be answered with an error').toBeNull();
       expect(socket.closeInfo, 'the session must survive a refused metadata frame').toBeUndefined();
@@ -165,7 +166,7 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
     const socket = await openReady(session);
 
     try {
-      setMetadata(socket, TWO_MICS);
+      setMetadata(socket, MIC_2);
 
       expect(await socket.waitForMessage((raw) => raw.type === 'error', 2_000)).toBeNull();
       expect(socket.closeInfo).toBeUndefined();
@@ -175,15 +176,14 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
     }
   });
 
-  test('the ArcaAI agent binds the `stream` kind: a frame without `mic_ids` is refused WITH the problem, one carrying it is accepted', async ({
+  test('the ArcaAI agent binds the `stream` kind: a frame without `mic_id` is refused WITH the problem, one carrying it is accepted', async ({
     request,
   }) => {
     // The seeded CONTENT, not only the transport. `realtime-transcription` freezes
     // `arcaai_realtime_transcription`, whose `stream` kind is marked `streamContext` and requires
-    // `mic_ids` — the clarified R2 shape (one, two or more microphones live at once). Naming the
-    // agent pins this test to that schema instead of to whatever the cascade resolves for the
-    // service account's tenant; an agent binding no stream kind would accept both frames and
-    // prove nothing about the gate.
+    // `mic_id` — ONE microphone at a time, the owner's contract. Naming the agent pins this test to
+    // that schema instead of to whatever the cascade resolves for the service account's tenant; an
+    // agent binding no stream kind would accept both frames and prove nothing about the gate.
     const res = await createSession(request, svcToken, { agentSlug: 'realtime-transcription' });
     expect([201, ...TRANSPORT_STATUSES], await res.text()).toContain(res.status());
     test.skip(TRANSPORT_STATUSES.includes(res.status()), `no live streaming session on the ArcaAI agent: ${res.status()}`);
@@ -193,20 +193,20 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
     const socket = await openReady(session);
 
     try {
-      // The pre-clarification shape (a single `mic_id`) and a camelCase spelling are the two ways an
-      // integrator gets this wrong; both are missing the one required property.
-      setMetadata(socket, { mic_id: 'mic-1', micIds: ['mic-1'] });
+      // A set of ids, or a camelCase spelling, are the two ways an integrator gets this wrong;
+      // both are missing the one required property.
+      setMetadata(socket, { mic_ids: ['mic-1'], micId: 'mic-1' });
       const refused = await socket.waitForMessage((raw) => raw.type === 'error', 10_000);
       expect(refused?.code).toBe('METADATA_SCHEMA_VIOLATION');
       // The refusal names the shape it wanted — a client cannot fix a schema it is not shown.
-      expect(refused?.problems).toContain('/mic_ids: required property is missing');
+      expect(refused?.problems).toContain('/mic_id: required property is missing');
       expect(socket.closeInfo, 'a refused frame must not end the session').toBeUndefined();
 
       // The seeded shape is accepted silently: no NEW error frame follows it.
       const errorsBefore = socket.messages.filter((m) => m.raw.type === 'error').length;
-      setMetadata(socket, TWO_MICS);
+      setMetadata(socket, MIC_2);
       await socket.waitForMessage(() => false, 1_500);
-      expect(socket.messages.filter((m) => m.raw.type === 'error').length, 'a `mic_ids` frame was refused').toBe(errorsBefore);
+      expect(socket.messages.filter((m) => m.raw.type === 'error').length, 'a `mic_id` frame was refused').toBe(errorsBefore);
       expect(socket.closeInfo).toBeUndefined();
     } finally {
       socket.close();
@@ -234,12 +234,12 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
       const pcm = loadPcm16(undefined, { maxSeconds: 20 });
       const half = Math.floor(pcm.length / 2 / 2) * 2; // whole PCM16 samples
 
-      // One microphone, then two, with audio either side. The declaration carries NO timestamp:
+      // Microphone 1, then microphone 2, with audio either side. The declaration carries NO timestamp:
       // the gateway places each one at its own count of the audio received so far, which is the
       // same quantity `apps/stt` derives `startTime`/`endTime` from.
-      setMetadata(socket, ONE_MIC);
+      setMetadata(socket, MIC_1);
       await feedFramesRealtime(socket, pcm.subarray(0, half), { frameMs: 80 });
-      setMetadata(socket, TWO_MICS);
+      setMetadata(socket, MIC_2);
       await feedFramesRealtime(socket, pcm.subarray(half), { frameMs: 80 });
       socket.sendStop();
 
@@ -249,38 +249,42 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
       const transcripts = socket.messages.map((m) => m.raw).filter((raw) => raw.type === 'transcript');
       expect(transcripts.length).toBeGreaterThan(0);
 
-      const seenValues: string[] = [];
+      const seenMics: string[] = [];
       for (const t of transcripts) {
-        const spans = t.metadata as Span[] | undefined;
+        const metadata = t.metadata as Record<string, unknown> | undefined;
+        const spans = t.metadataSpans as Span[] | undefined;
         const startTime = t.startTime as number;
         const endTime = t.endTime as number;
 
-        // Every segment of a session that declared metadata is covered — it is only ever absent
+        // Every segment of a session that declared metadata is labelled — it is only ever absent
         // where no declaration was in force, and the first one here preceded all the audio.
-        expect(spans, `a transcript at ${startTime}–${endTime} carried no metadata`).toBeDefined();
-        expect(spans!.length).toBeGreaterThan(0);
+        // `metadata` is FLAT and VERBATIM: `metadata.mic_id` reads exactly as it did on the v1
+        // wire, one of the two objects sent, never a normalized or re-keyed version.
+        expect(metadata, `a transcript at ${startTime}–${endTime} carried no metadata`).toBeDefined();
+        expect([MIC_1, MIC_2]).toContainEqual(metadata);
+        seenMics.push(String(metadata!.mic_id));
 
+        // The bounds ride beside it, CLIPPED TO THIS SEGMENT: a consumer reads them against
+        // `startTime`/`endTime` and is never handed a bound outside them — that is what
+        // "time-synced" buys. Contiguous and in time order; the flat object is one of them.
+        expect(spans, `a transcript at ${startTime}–${endTime} carried no metadataSpans`).toBeDefined();
+        expect(spans!.length).toBeGreaterThan(0);
         for (const span of spans!) {
-          // CLIPPED TO THIS SEGMENT. A consumer reads these against `startTime`/`endTime` and
-          // must never be handed a bound outside them — that is what "time-synced" buys.
           expect(span.from).toBeGreaterThanOrEqual(startTime);
           expect(span.to).toBeLessThanOrEqual(endTime);
           expect(span.to).toBeGreaterThanOrEqual(span.from);
-          // VERBATIM: one of the two objects sent, not a normalized or re-keyed version.
-          expect([ONE_MIC, TWO_MICS]).toContainEqual(span.value);
-          seenValues.push(JSON.stringify(span.value));
+          expect([MIC_1, MIC_2]).toContainEqual(span.value);
         }
-
-        // In time order, and contiguous within the segment: consecutive spans meet exactly.
         for (let i = 1; i < spans!.length; i++) {
           expect(spans![i]!.from).toBe(spans![i - 1]!.to);
         }
+        expect(spans!.map((span) => span.value)).toContainEqual(metadata);
       }
 
-      // Both declarations reached the transcripts. If only the first ever did, the platform is
-      // stamping a session-level value and the mid-recording change was lost — which is exactly
+      // Both microphones reached the transcripts. If only the first ever did, the platform is
+      // stamping a session-level value and the mid-recording switch was lost — which is exactly
       // the failure this ticket fixes, and it would pass every assertion above.
-      expect(new Set(seenValues).size, `only one metadata value was ever reported: ${seenValues[0]}`).toBeGreaterThan(1);
+      expect(new Set(seenMics).size, `only one mic_id was ever reported: ${seenMics[0]}`).toBeGreaterThan(1);
     } finally {
       socket.close();
       await closeSession(request, svcToken, session.sessionId);
@@ -308,6 +312,7 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
 
       for (const t of socket.messages.map((m) => m.raw).filter((raw) => raw.type === 'transcript')) {
         expect(t.metadata).toBeUndefined();
+        expect(t.metadataSpans).toBeUndefined();
       }
     } finally {
       socket.close();

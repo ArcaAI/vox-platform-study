@@ -31,6 +31,7 @@ import {
   parseMetadataMarks,
   setMetadataAt,
   type MetadataSpan,
+  metadataInForce,
 } from '../stream-metadata-timeline';
 
 const ONE = { micIds: ['mic-1'] };
@@ -291,5 +292,57 @@ describe('TASK-951 — parseMetadataMarks', () => {
       { from: 13.4, to: 20, value: TWO },
       { from: 20, to: null, value: THREE },
     ]);
+  });
+});
+
+describe('metadataInForce — the one label a segment is reported under (the v1 `metadata.mic_id` shape)', () => {
+  const MIC = (id: string) => ({ mic_id: id });
+
+  it('is the value in force over the largest share of the segment', () => {
+    expect(
+      metadataInForce([
+        { from: 12, to: 13.4, value: MIC('1') },
+        { from: 13.4, to: 15.1, value: MIC('2') },
+      ]),
+    ).toEqual(MIC('2'));
+    expect(
+      metadataInForce([
+        { from: 12, to: 14.8, value: MIC('1') },
+        { from: 14.8, to: 15.1, value: MIC('2') },
+      ]),
+    ).toEqual(MIC('1'));
+  });
+
+  it('a tie goes to the EARLIER span — what was in force when the segment started', () => {
+    expect(
+      metadataInForce([
+        { from: 0, to: 1, value: MIC('1') },
+        { from: 1, to: 2, value: MIC('2') },
+      ]),
+    ).toEqual(MIC('1'));
+  });
+
+  it('a zero-width window (a partial whose bounds coincide) reports its one instantaneous span', () => {
+    expect(metadataInForce([{ from: 3, to: 3, value: MIC('2') }])).toEqual(MIC('2'));
+  });
+
+  it('is undefined with no spans, so the caller omits the field', () => {
+    expect(metadataInForce([])).toBeUndefined();
+  });
+
+  it("reproduces the owner's sequence: a frame that declares nothing inherits the last mic, and each segment reports the mic live over it", () => {
+    // | time | mic_id sent | returned metadata.mic_id |   (one frame per second, one segment per frame)
+    // |  1   |     1       |           1              |
+    // |  2   |             |           1              |
+    // |  3   |     2       |           2              |
+    // |  4   |     1       |           1              |
+    // |  5   |     2       |           2              |
+    // |  6   |             |           2              |
+    let spans = setMetadataAt([], 0, MIC('1'));
+    spans = setMetadataAt(spans, 2, MIC('2'));
+    spans = setMetadataAt(spans, 3, MIC('1'));
+    spans = setMetadataAt(spans, 4, MIC('2'));
+    const label = (from: number, to: number) => metadataInForce(clipSpansToWindow(spans, from, to, 6))?.mic_id;
+    expect([label(0, 1), label(1, 2), label(2, 3), label(3, 4), label(4, 5), label(5, 6)]).toEqual(['1', '1', '2', '1', '2', '2']);
   });
 });

@@ -473,10 +473,10 @@ export class SttWebSocketClient {
    * Declare the metadata in force from HERE ON in this session's audio (TASK-951).
    *
    * The browser-side twin of `RealtimeSttSocket.setMetadata`. Call it whenever what is being
-   * captured changes — a second microphone opens, a participant leaves — and every transcript
-   * comes back carrying `metadata`: the spans of ITS OWN window and the object in force over
-   * each, clipped to that segment. A change mid-utterance is reported as two spans on that
-   * utterance rather than one wrong label.
+   * captured changes — the live microphone switches, a participant takes over — and every
+   * transcript comes back carrying `metadata`, the object in force over ITS OWN audio (sticky:
+   * audio sent without a new declaration inherits the last), plus `metadataSpans`, its exact
+   * bounds within the segment when a switch fell inside one.
    *
    * No timestamp is sent, and none could be: the client cannot know how much of its audio has
    * been forwarded, and a wall clock would not survive buffering or a reconnect. The gateway
@@ -1086,13 +1086,18 @@ export class SttWebSocketClient {
       normalized.sessionEpochMs = sessionEpochMs;
     }
 
-    // Per-span metadata. Each entry is validated on its own and a malformed one is skipped
-    // rather than discarding the caption: a mislabelled span is a labelling loss, a dropped
-    // transcript is a clinical one. An array that yields nothing usable stays ABSENT, never
-    // `[]`, so "the session sent no metadata" and "this segment had none" read the same way
-    // they do on the wire.
-    if (Array.isArray(msg.metadata)) {
-      const spans = msg.metadata
+    // The in-force metadata object (flat, verbatim — the v1 shape) and its time-synced spans.
+    // Each span is validated on its own and a malformed one is skipped rather than discarding
+    // the caption: a mislabelled span is a labelling loss, a dropped transcript is a clinical
+    // one. Anything that yields nothing usable stays ABSENT, never `{}` or `[]`, so "the session
+    // sent no metadata" and "this segment had none" read the same way they do on the wire.
+    const rawMetadata = (msg as { metadata?: unknown }).metadata;
+    if (typeof rawMetadata === 'object' && rawMetadata !== null && !Array.isArray(rawMetadata)) {
+      normalized.metadata = rawMetadata as Record<string, unknown>;
+    }
+    const rawSpans = (msg as { metadataSpans?: unknown }).metadataSpans;
+    if (Array.isArray(rawSpans)) {
+      const spans = rawSpans
         .filter(
           (span): span is WsMetadataSpan =>
             typeof span === 'object' &&
@@ -1105,7 +1110,7 @@ export class SttWebSocketClient {
         )
         .map((span) => ({ from: span.from, to: span.to, value: span.value }));
       if (spans.length > 0) {
-        normalized.metadata = spans;
+        normalized.metadataSpans = spans;
       }
     }
 
