@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/noise-filter",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "AI-powered noise cancellation plugin for @arcaai/room using RNNoise WebAssembly",
   "deprecated": "DEPRECATED (TASK-865) — removed in R4, two releases after R2. Client-side denoise is retired; the tenant's ASR Agent runs denoise server-side. The browser never runs a model. See docs/operations/deprecation-register.md.",
   "private": false,
