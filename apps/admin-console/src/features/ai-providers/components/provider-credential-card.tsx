@@ -181,19 +181,47 @@ export function ProviderCredentialCard({
   const keyOptional = providerClass !== 'cloud-byo';
   const canSave = invalidCeilings.length === 0 && !putMutation.isPending && (keyOptional || apiKey.trim().length > 0 || hasKey);
 
+  /**
+   * The PUT body, and the three things `extraJson` gets wrong if written like a
+   * column (TASK-952 D-2/D-2b/D-6):
+   *
+   *  - **a blank extras field is an OMITTED key, never `null`.**
+   *    `validateProviderExtras` admits scalars and scalar arrays only, so
+   *    `{ model: null }` is a 400 — which made four cards unsavable in their
+   *    documented default state. (`''` would also pass, but omitting leaves no
+   *    junk key in the stored row, and the read path drops `''` anyway.)
+   *    Column-backed fields keep sending `null`: that is how a column is cleared.
+   *  - **`extraJson` goes out whenever the provider declares ANY extras field.**
+   *    An omitted `extraJson` means "leave the stored value untouched", so with
+   *    blanks omitted an all-blank form could otherwise never CLEAR the last
+   *    stored value.
+   *  - **the stored extras are the base, not the card's field list.** The
+   *    service replaces `extraJson` wholesale, so a stored key this card has no
+   *    field for (e.g. `inheritsPlatformStorage` on the seeded S3 row) would be
+   *    destroyed on save. Filled fields set their key, blank fields DELETE it,
+   *    every other stored key passes through.
+   *
+   * Known limitation, deliberately not engineered around: `storedValue` renders
+   * a non-string stored value as `''`, so a NUMERIC extra under a card field
+   * name would read as blank and be deleted. Every card field is a string field
+   * today; a non-string one needs `storedValue` widened first.
+   */
   function buildBody(): Record<string, unknown> {
     const body: Record<string, unknown> = { enabled };
     if (apiKey.trim().length > 0) body.apiKey = apiKey.trim();
-    const extra: Record<string, unknown> = {};
+    const extra: Record<string, unknown> = { ...(current.extraJson ?? {}) };
+    let declaresExtras = false;
     for (const field of meta.fields) {
-      const value = valueOf(field).trim() || null;
+      const value = valueOf(field).trim();
       if (field.store === 'extra') {
-        extra[field.name] = value;
+        declaresExtras = true;
+        if (value) extra[field.name] = value;
+        else delete extra[field.name];
       } else {
-        body[field.name] = value;
+        body[field.name] = value || null;
       }
     }
-    if (Object.keys(extra).length > 0) {
+    if (declaresExtras) {
       body.extraJson = extra;
     }
     for (const ceiling of CONNECTION_CEILINGS) {
@@ -411,15 +439,24 @@ export function ProviderCredentialCard({
         outright (403 — "platform models are declared in /admin/ai-models"), so
         the editor could only ever fail there. One home per fact.
       */}
-      {!platformTier && current.version > 0 && declarableService(service) ? (
-        <ConnectionModelsEditor
-          service={service}
-          provider={meta.id}
-          label={meta.label}
-          tenantId={tenantId}
-          models={current.models ?? []}
-          discoveredModels={testMutation.data?.discoveredModels}
-        />
+      {!platformTier && declarableService(service) ? (
+        current.version > 0 ? (
+          <ConnectionModelsEditor
+            service={service}
+            provider={meta.id}
+            label={meta.label}
+            tenantId={tenantId}
+            models={current.models ?? []}
+            discoveredModels={testMutation.data?.discoveredModels}
+          />
+        ) : (
+          // TASK-952 D-3 — on an unsaved row the editor cannot exist, and its
+          // absence is SILENT: an admin has no way to learn the model step is
+          // coming, which is how this trapped a real user. Say it in one line.
+          <p className="text-muted-foreground text-xs">
+            The models this connection serves are declared here once the credential is saved.
+          </p>
+        )
       ) : null}
 
       <OccConflictAlert
