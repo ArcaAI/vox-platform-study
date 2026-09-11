@@ -54,6 +54,7 @@ import { assertEqualTenants, BaseService, createWorkerSession, encryptPhiFields 
 import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from './dto';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
+import { readRecordedVisitType } from '../consultation/open-markers';
 import type {
   HarnessAssembleRequest,
   HarnessAssembleResponse,
@@ -1013,9 +1014,11 @@ export class HarnessInternalService extends BaseService {
         // (the harness runs outside the API-edge CLS middleware).
         tenantId,
         departmentId: consultation?.departmentId ?? undefined,
-        // The visit type comes from the shared vocabulary, not a literal:
-        // `parentConsultationId` supplies the follow-up signal.
+        // The visit type comes from the shared vocabulary, not a literal: the value the caller
+        // STATED at open (TASK-951 §D-3) first, `parentConsultationId` as the follow-up signal
+        // when it stated none.
         promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+          recorded: readRecordedVisitType(consultation?.metadata),
           isFollowUp: Boolean(consultation?.parentConsultationId),
         }).key,
         transcript,
