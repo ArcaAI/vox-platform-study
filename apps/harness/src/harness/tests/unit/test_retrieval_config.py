@@ -40,7 +40,14 @@ class TestRetrievalConfig:
         assert c.qdrant_url == "http://localhost:6333"
         # Dense embeddings + query stay on the self-hosted LM Studio path (PHI-safe).
         assert c.embeddings_base_url.endswith("/v1")
-        assert c.embeddings_model
+        # TASK-952 D-1c — INVERTED deliberately. The model id had a hardcoded
+        # `"text-embedding-bge-m3"` default; a model id is a SELECTION, which
+        # rule 09 keeps out of both a literal and an env var, so it now resolves
+        # from `AiProviderConnection.extraJson.model` (tenant → the SYSTEM
+        # `embeddings:tei-embed` row) and is `None` until a row supplies one.
+        # Unresolved fails CLOSED — `require_embeddings_model` raises rather than
+        # letting a corpus be embedded by a model nobody chose.
+        assert c.embeddings_model is None
         # BAAI/bge-m3 default dim (1536 only if a 1536-dim model is loaded).
         assert c.embeddings_dim == 1024
         assert c.reranker_base_url
@@ -53,6 +60,10 @@ class TestRetrievalConfig:
         monkeypatch.setenv("HARNESS_RETRIEVAL_QDRANT_URL", "http://qdrant:6333")
         monkeypatch.setenv("HARNESS_RETRIEVAL_COLLECTION", "kb")
         monkeypatch.setenv("HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL", "http://lmstudio:1234/v1")
+        # TASK-952 D-1c — `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` is retired, and the
+        # field carries a dead `validation_alias` so setting it does nothing. It is
+        # asserted below rather than merely dropped, so a reinstated env path fails
+        # here instead of silently reopening the plane.
         monkeypatch.setenv("HARNESS_RETRIEVAL_EMBEDDINGS_MODEL", "BAAI/bge-m3")
         monkeypatch.setenv("HARNESS_RETRIEVAL_EMBEDDINGS_DIM", "1536")
         monkeypatch.setenv("HARNESS_RETRIEVAL_RERANKER_BASE_URL", "http://reranker:80")
@@ -63,7 +74,7 @@ class TestRetrievalConfig:
         assert c.qdrant_url == "http://qdrant:6333"
         assert c.collection == "kb"
         assert c.embeddings_base_url == "http://lmstudio:1234/v1"
-        assert c.embeddings_model == "BAAI/bge-m3"
+        assert c.embeddings_model is None
         assert c.embeddings_dim == 1536
         assert c.reranker_base_url == "http://reranker:80"
         assert c.top_k_retrieval == 30

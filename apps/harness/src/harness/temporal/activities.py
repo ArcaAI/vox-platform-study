@@ -34,13 +34,15 @@ from harness.core.effective_config import get_effective_config_client
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.core.provider_credentials import (
-    EMBEDDINGS_CONNECTION_PROVIDER,
     VECTOR_CONNECTION_PROVIDER,
     CredentialOutcome,
+    CredentialUnavailable,
     ProviderCredential,
     apply_embeddings_credential,
     apply_vector_credential,
     connection_provider_for_judge,
+    require_embeddings_model,
+    resolve_embeddings_credential,
 )
 from harness.eval.config import JudgeProvider
 from harness.eval.judge.base import JudgeClient
@@ -859,7 +861,10 @@ def _hybrid_retriever(
 
     * ``vector:qdrant`` — the credential, the tenant's own cluster URL, and
       (D-1b) its ``collection`` prefix;
-    * ``embeddings:openai`` — (D-1c) the endpoint, the key and the model.
+    * ``embeddings:{openai,tei-embed}`` — (D-1c) the endpoint, the key and the
+      MODEL, the last of which now has no code default at all: `require_embeddings_model`
+      raises `CredentialUnavailable` when no tier supplied one, and the caller
+      degrades rather than embedding a corpus with a model it invented.
 
     ``None`` or outcome ``ABSENT`` keeps the platform floor and the
     unauthenticated path, which is what local dev Qdrant and the platform's own
@@ -873,7 +878,7 @@ def _hybrid_retriever(
     return HybridRetriever(
         embeddings=EmbeddingsClient(
             rc.embeddings_base_url,
-            model=rc.embeddings_model,
+            model=require_embeddings_model(rc),
             timeout=rc.embeddings_timeout_s,
             api_key=rc.embeddings_api_key.get_secret_value() if rc.embeddings_api_key else None,
         ),
@@ -1785,11 +1790,18 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         settings, "vector", VECTOR_CONNECTION_PROVIDER, payload.tenant_id
     )
     # D-1c — the embeddings endpoint/key/model resolve the SAME way, and fail
-    # closed the same way. Two resolves rather than one because they are two
-    # different connections: the vector store and the embedding service are
+    # closed the same way. A separate resolve from the Qdrant one because they are
+    # two different connections: the vector store and the embedding service are
     # separate rows a tenant configures independently.
-    embeddings_credential = await _resolve_provider_credential(
-        settings, "embeddings", EMBEDDINGS_CONNECTION_PROVIDER, payload.tenant_id
+    #
+    # It is a two-lane CHAIN rather than a single provider, because the platform
+    # tier has its OWN provider id (`embeddings:tei-embed`) that the entitlement
+    # gate does not touch — see `resolve_embeddings_credential`, which also owns
+    # the rule that a tenant VETO is never widened past.
+    embeddings_credential = await resolve_embeddings_credential(
+        lambda service, provider: _resolve_provider_credential(
+            settings, service, provider, payload.tenant_id
+        )
     )
     unusable = next((c for c in (qdrant_credential, embeddings_credential) if not c.usable), None)
     if unusable is not None:
@@ -1808,10 +1820,28 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         await batch.flush()
         return RetrievedContext(degraded=True)
 
+    # D-1c — the embeddings MODEL has no code default, so "no tier supplied one"
+    # is a real state and it must degrade exactly like an unusable credential
+    # does above, not escape as an activity failure and retry-storm.
+    try:
+        retriever = _hybrid_retriever(settings, qdrant_credential, embeddings_credential)
+    except CredentialUnavailable as exc:
+        activity.logger.warning(
+            "harness.retrieval.embeddings_model_unresolved", extra={"cause": str(exc)}
+        )
+        batch.record(
+            step_type=STEP_RETRIEVAL,
+            name="retrieve_context",
+            status=STATUS_ERROR,
+            started=started,
+            stats={"enabled": True, "chunk_count": 0},
+            error_code="embeddings_model_unresolved",
+        )
+        await batch.flush()
+        return RetrievedContext(degraded=True)
+
     query = build_query(payload.entities)
-    result = await _hybrid_retriever(settings, qdrant_credential, embeddings_credential).retrieve(
-        query=query, tenant_id=payload.tenant_id
-    )
+    result = await retriever.retrieve(query=query, tenant_id=payload.tenant_id)
     # Build the StrictCitations block from the FULL chunk text FIRST (it needs the text),
     # THEN offload each chunk's text so the reranked chunk texts don't enter
     # Temporal history; the inferential citation-verify pass resolves them inline-or-ref.

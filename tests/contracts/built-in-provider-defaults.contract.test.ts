@@ -44,9 +44,22 @@ function seedRow(key: string) {
 const LM_STUDIO_SEED_OVERRIDE = (process.env.SEED_LMSTUDIO_BASE_URL ?? '').trim();
 
 describe('BUILT_IN_CONNECTION_DEFAULTS ↔ seed 17 parity', () => {
-  it('declares a default for the four built-in engines and both model-registry rows, and nothing else', () => {
+  it('declares a default for the four built-in engines, the platform embeddings server and both model-registry rows, and nothing else', () => {
     expect(Object.keys(BUILT_IN_CONNECTION_DEFAULTS).sort()).toEqual(
-      ['llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm', 'model-registry:huggingface', 'model-registry:s3'].sort(),
+      [
+        'llm:llama-cpp',
+        'llm:lm-studio',
+        'llm:ollama',
+        'llm:vllm',
+        // TASK-952 D-1c — the platform's own dense-embeddings server. It is a
+        // platform-managed row like the four engines above (a tenant row for it
+        // is a 403), so it ships a default and a Reset button for the same
+        // reason: deleting the row is not "back to the default", it is a
+        // harness retrieval that degrades to empty context.
+        'embeddings:tei-embed',
+        'model-registry:huggingface',
+        'model-registry:s3',
+      ].sort(),
     );
   });
 
