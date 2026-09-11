@@ -31,9 +31,15 @@ _DOC = (
 
 
 class _FakeEmbeddings:
-    def __init__(self, *, dim: int = 4, error: Exception | None = None) -> None:
+    def __init__(
+        self, *, dim: int = 4, error: Exception | None = None, model: str | None = None
+    ) -> None:
         self._dim = dim
         self._error = error
+        # The chunk descriptor now records the model that ACTUALLY embedded
+        # (D-1c), so the fake has to carry one. Defaults to the platform
+        # floor so the existing contract assertion is unchanged.
+        self.model = model or Settings().retrieval.embeddings_model
         self.calls: list[list[str]] = []
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -90,7 +96,7 @@ async def harness_app(monkeypatch) -> AsyncGenerator[tuple, None]:
     emb = _FakeEmbeddings()
     sparse = _FakeSparse()
     store = _FakeStore()
-    monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: emb)
+    monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: emb)
     monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: sparse)
     monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
 
@@ -197,7 +203,7 @@ class TestIngestAuth:
         # internal token empty, shared token set -> the shared token is accepted.
         settings = _settings(internal_token="", shared_token="shared-secret")
         app = create_app(settings_override=settings)
-        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
+        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: _FakeStore())
         transport = ASGITransport(app=app)
@@ -209,7 +215,7 @@ class TestIngestAuth:
     async def test_empty_tokens_disable_the_guard(self, monkeypatch):
         settings = _settings(internal_token="", shared_token="")
         app = create_app(settings_override=settings)
-        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
+        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: _FakeStore())
         transport = ASGITransport(app=app)
@@ -224,7 +230,7 @@ class TestIngestDegrade:
         settings = _settings()
         app = create_app(settings_override=settings)
         emb = _FakeEmbeddings(error=EmbeddingsServiceError("no model loaded"))
-        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: emb)
+        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: emb)
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         store = _FakeStore()
         monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
@@ -239,7 +245,7 @@ class TestIngestDegrade:
     async def test_qdrant_failure_returns_503(self, monkeypatch):
         settings = _settings()
         app = create_app(settings_override=settings)
-        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
+        monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         store = _FakeStore(error=RuntimeError("qdrant down"))
         monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)

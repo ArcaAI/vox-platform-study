@@ -487,6 +487,23 @@ export class HarnessInternalService extends BaseService {
 
     const entry = resolved.overrides[provider];
     if (entry) {
+      // TASK-952 D-1b — split the wire entry into "the row's own column-backed
+      // fields" and "everything else", exactly as `resolveCredential` does on the
+      // sibling contract. This route used to allow-list `model` and drop the rest,
+      // which is why `vector:qdrant`'s `collection` prefix was stored and then
+      // discarded one hop before the only thing that reads it. Destructuring the
+      // reserved keys out is the belt-and-braces half of the rule
+      // `provider-extras.ts` already enforces on write: `extras` can never carry
+      // the credential, the endpoint, or the derived `funding` label.
+      const {
+        api_key: _apiKey,
+        funding: _funding,
+        base_url: _baseUrl,
+        region: _region,
+        api_version: _apiVersion,
+        deployment_name: _deploymentName,
+        ...extras
+      } = entry;
       return {
         outcome: 'resolved',
         apiKey: entry.api_key,
@@ -495,7 +512,11 @@ export class HarnessInternalService extends BaseService {
         ...(entry.region ? { region: entry.region } : {}),
         ...(entry.api_version ? { apiVersion: entry.api_version } : {}),
         ...(entry.deployment_name ? { deploymentName: entry.deployment_name } : {}),
+        // `model` stays DECLARED beside `extras` (it is also in the block): the
+        // harness has read it by name since before this ticket, and a consumer on
+        // an older build must keep seeing it exactly where it was.
         ...(typeof entry.model === 'string' ? { model: entry.model } : {}),
+        ...(Object.keys(extras).length > 0 ? { extras } : {}),
       };
     }
 
