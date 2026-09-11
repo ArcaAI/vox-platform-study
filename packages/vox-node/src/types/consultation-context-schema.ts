@@ -81,6 +81,52 @@ export interface ContextKindDeclaration {
    * governed by the kind/property's own `required` flags, not by this marker.
    */
   userIdentity?: { field: string };
+  /**
+   * Marks the ONE property of a `STRUCTURED`, `cardinality: 'ONE'` kind's
+   * `fields.properties` that names the DEPARTMENT this consultation belongs
+   * to (TASK-951). At most one kind in a definition carries this. HOPE
+   * resolves the submitted value against the tenant's own departments — by
+   * the unique `code` (the default), or by `name` (case-insensitive; more
+   * than one match is ambiguous) — and the result SELECTS the consultation's
+   * `departmentId`, exactly as if it had been sent directly on `open()`.
+   * This is a mapping declaration only, never an authorization: it says
+   * WHERE a value lives, not who may set it.
+   */
+  department?: { field: string; by: 'code' | 'name' };
+  /**
+   * Marks the ONE property carrying the VISIT TYPE (`'new-visit'` |
+   * `'revisit'`, plus the platform catalogue's own aliases) (TASK-951). The
+   * submitted value is matched through that catalogue and recorded on the
+   * consultation, where it takes precedence over the
+   * `parentConsultationId`-derived signal every downstream reader otherwise
+   * falls back to.
+   */
+  visitType?: { field: string };
+  /**
+   * Marks the ONE property carrying an EXTERNAL system's own identifier for
+   * this encounter (TASK-951) — persisted on the consultation's metadata.
+   * It is NOT part of the get-or-create idempotency key, so submitting it
+   * never changes which row `open()` returns.
+   */
+  externalRef?: { field: string };
+  /**
+   * Marks this kind's array-of-objects payload for MATERIALIZATION as
+   * `CASE_NOTE` context items at `open()` — one item per array entry, in
+   * addition to the ordinary PRE context item the whole kind already becomes
+   * (TASK-951). This is what lets the existing warm-start `findCaseNotes()`
+   * read see client-supplied prior notes without a separate write. The only
+   * value the platform understands today is `'CASE_NOTE'`.
+   */
+  materializeAs?: 'CASE_NOTE';
+  /**
+   * Marks this kind as the STREAM-IDENTITY payload of an STT session
+   * `context` (TASK-951) — informational only; nothing in the platform
+   * branches on its presence. See
+   * `CreateStreamSessionRequest.context` (`stt.ts`) for the mechanism this
+   * documents: a client-owned object echoed verbatim on the session and on
+   * every transcript segment of it.
+   */
+  streamContext?: true;
   [key: string]: unknown;
 }
 

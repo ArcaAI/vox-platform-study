@@ -58,6 +58,22 @@ export interface CreateStreamSessionRequest {
    * mono. Default 1.
    */
   channelCount?: number;
+  /**
+   * Client-owned identification of THIS session, `{ [kindKey]: payload }` —
+   * the same envelope shape as `OpenConsultationRequest.context` (TASK-951).
+   * At most 4 KB serialized. When the resolved ASR agent binds a context
+   * schema (`Agent.contextSchemaId`), each kind is validated against that
+   * agent's FROZEN `compiledConfig.contextSchema`: a violation is 400
+   * `CONTEXT_SCHEMA_VIOLATION`, oversize is 413 `CONTEXT_TOO_LARGE`. Without a
+   * bound schema, any object at or under the size cap is accepted as-is.
+   *
+   * Echoed VERBATIM on {@link StreamSessionResponse.context} and on every
+   * {@link SttTranscriptResult.context} of this session — this is the
+   * mechanism for running several UNMIXED sessions (one per microphone) and
+   * later re-associating each transcript with the source that produced it,
+   * without keeping an out-of-band map.
+   */
+  context?: Record<string, unknown>;
 }
 
 /** Lifecycle of a streaming session. */
@@ -90,6 +106,15 @@ export interface StreamSessionResponse {
   /** Engine live at create; `'fallback'` when the primary could not load or was not asked for. */
   activeEngine?: 'primary' | 'fallback';
   voiceProfileSeeded?: boolean;
+  /** Echoed verbatim from {@link CreateStreamSessionRequest.context}, when the request carried one. */
+  context?: Record<string, unknown>;
+  /**
+   * Epoch milliseconds at which the gateway attached this session's clock.
+   * `sessionEpochMs + segment.startTime * 1000` is the wall-clock anchor for
+   * aligning segments across sessions opened moments apart from each other —
+   * e.g. several per-microphone sessions for one consultation.
+   */
+  sessionEpochMs: number;
 }
 
 /** Response of `POST …/stream/session/:sessionId/refresh-ticket`. */
@@ -178,6 +203,10 @@ export interface SttTranscriptResult {
   inference?: number;
   /** Per-utterance provenance: can differ from the session's after a mid-session engine switch. */
   pipelineId?: string;
+  /** Echoed verbatim from the session's {@link CreateStreamSessionRequest.context}, when it carried one. */
+  context?: Record<string, unknown>;
+  /** This segment's session {@link StreamSessionResponse.sessionEpochMs}, repeated for convenience. */
+  sessionEpochMs?: number;
   [key: string]: unknown;
 }
 
