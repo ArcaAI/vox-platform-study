@@ -9,7 +9,7 @@ import {
   traceCarrierToArgs,
   withTraceContext,
 } from '../../baseServices/observability/trace-propagation';
-import { StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
+import { StreamSessionEcho, StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 
 /**
@@ -48,6 +48,17 @@ export interface SubscribeResultOptions {
   consumerGroup?: string;
   /** Consumer name within the group (default: generated per subscription). */
   consumerName?: string;
+  /**
+   * TASK-951 R2 (D-8) — the session's client-declared context + creation epoch,
+   * attached VERBATIM to every transcript this subscription emits.
+   *
+   * Supplied by the caller that already holds the session binding (the WS
+   * gateway reads it ONCE at attach), never re-read per message: the echo is a
+   * property of the SESSION, so a Redis read per transcript would buy nothing
+   * and cost one round trip per utterance. Omit it — as every non-caption
+   * subscriber does — and transcripts are byte-identical to today.
+   */
+  sessionEcho?: StreamSessionEcho;
 }
 
 /**
@@ -358,7 +369,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     if (reader) {
       ctrl.reader = reader;
       // Start reading in background
-      this.readResultStream(streamKey, subject, ctrl, reader, group, consumer).catch((error) => {
+      this.readResultStream(streamKey, subject, ctrl, reader, group, consumer, options?.sessionEcho).catch((error) => {
         this.logger.error({
           message: 'Result stream reader error',
           sessionId,
@@ -454,6 +465,8 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     reader: Redis,
     group: string,
     consumer: string,
+    /** TASK-951 R2 — per-session echo attached to every transcript (undefined ⇒ today's wire). */
+    sessionEcho?: StreamSessionEcho,
   ): Promise<void> {
     try {
       await this.ensureResultGroup(reader, streamKey, group);
@@ -469,7 +482,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
         try {
           // Hand off a dead reader's in-flight once on start (XAUTOCLAIM).
           if (!reclaimedStale) {
-            await this.reclaimResultPending(reader, streamKey, group, consumer, subject);
+            await this.reclaimResultPending(reader, streamKey, group, consumer, subject, sessionEcho);
             reclaimedStale = true;
             if (ctrl.abort) break;
           }
@@ -505,7 +518,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
             for (const [entryId, fields] of entries) {
               ackIds.push(entryId);
               delivered++;
-              const terminal = this.parseAndEmitResult(subject, fields);
+              const terminal = this.parseAndEmitResult(subject, fields, sessionEcho);
               if (terminal) {
                 // Ack what we saw, then complete on the terminal status (closed/cancelled).
                 if (ackIds.length > 0) {
@@ -577,6 +590,8 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     group: string,
     consumer: string,
     subject: Subject<StreamingServerMessage>,
+    /** TASK-951 R2 — a RECLAIMED result is a result: it carries the same session echo. */
+    sessionEcho?: StreamSessionEcho,
   ): Promise<void> {
     try {
       const res = (await reader.xautoclaim(streamKey, group, consumer, RESULT_CLAIM_MIN_IDLE_MS, '0-0', 'COUNT', 100)) as XAutoClaimReply;
@@ -585,7 +600,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       const ackIds: string[] = [];
       for (const [entryId, fields] of claimed) {
         ackIds.push(entryId);
-        if (fields) this.parseAndEmitResult(subject, fields);
+        if (fields) this.parseAndEmitResult(subject, fields, sessionEcho);
       }
       if (ackIds.length > 0) await reader.xack(streamKey, group, ...ackIds).catch(() => {});
     } catch (error) {
@@ -693,7 +708,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * synthesizes its own closing frame in `complete:`, so relaying them would
    * double-send `closed`.
    */
-  private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
+  private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[], sessionEcho?: StreamSessionEcho): boolean {
     // The STT worker stamps its producing trace context on every result entry
     // (W3C trace context). Lift it out of the RAW field array — never out of the
     // parsed `data` object below, which holds transcript text — and emit under
@@ -707,11 +722,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // (`StreamingTranscriptEvent` mapping) projects a fixed field set, so an
     // added field would be silently discarded there anyway.
     const traceCarrier = traceCarrierFromFields(fields);
-    return withTraceContext(traceCarrier, () => this.projectAndEmitResult(subject, fields));
+    return withTraceContext(traceCarrier, () => this.projectAndEmitResult(subject, fields, sessionEcho));
   }
 
   /** Field-array → client message projection (runs inside the producer's trace context). */
-  private projectAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
+  private projectAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[], sessionEcho?: StreamSessionEcho): boolean {
     // Parse fields array into key-value pairs
     const data: Record<string, string> = {};
     for (let i = 0; i < fields.length; i += 2) {
@@ -800,6 +815,15 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
       ...(wordTimestamps ? { wordTimestamps } : {}),
+      // TASK-951 R2 (D-8) — the session's client-declared context, VERBATIM, and the
+      // gateway's session epoch. Spread LAST but they cannot collide: `context` and
+      // `sessionEpochMs` are gateway-owned names that `apps/stt` never publishes on
+      // `stt:result` (no Python change was needed for this ticket, by design).
+      //
+      // Both ride only on a session that declared a context, so a session without one
+      // emits exactly the fields it emitted before this ticket.
+      ...(sessionEcho?.context ? { context: sessionEcho.context } : {}),
+      ...(sessionEcho?.context && sessionEcho.sessionEpochMs != null ? { sessionEpochMs: sessionEcho.sessionEpochMs } : {}),
     });
     return false;
   }
