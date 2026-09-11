@@ -593,7 +593,9 @@ export const seedArcaaiTwoContextSchemas = async (client: CorePrismaClient) => {
         if (current && current.checksum !== version.checksum) {
           await client.consultationContextSchemaVersion.updateMany({
             where: { id: current.id },
-            data: { definition: version.definition as never, checksum: version.checksum, updatedBy: SYSTEM_USER_ID },
+            // An immutable-by-design row (no `updatedBy`/`updatedAt`): the rewrite is a seed-owned correction, and
+            // `_version` is bumped so an OCC reader sees that the content moved.
+            data: { definition: version.definition as never, checksum: version.checksum, version: { increment: 1 } },
           });
           refreshed += 1;
         }
