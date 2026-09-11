@@ -57,6 +57,39 @@ const TRAJECTORY_RETENTION_DAYS_KEY = 'agentic.trajectory.retentionDays';
 const TRAJECTORY_RETENTION_DAYS_DEFAULT = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * TASK-950 (decision 2, fast win) — put the caller's bookkeeping into the `_metadata` column of a
+ * run row that has just been built and not yet persisted.
+ *
+ * ## Why this reaches past the entity's public surface
+ *
+ * `WorkflowRunEntity` exposes NO `metaData` accessor. `IBaseEntity.metaData` is declared but was
+ * never wired on `BaseEntity` (no backing field, no getter, no setter), and unlike `AiModelEntity`
+ * — which declares its own `_metaData` precisely because of that gap — this entity never added
+ * one. So the entity header's claim that `_metadata` "round-trips through the shared
+ * BaseTenantEntity / Repository machinery" is true of the COLUMN and of the Prisma MODEL
+ * (`BaseDataModel.metaData`), but not of the entity in between.
+ *
+ * `WorkflowRunEntityMapper.toPersistence` maps the entity's own enumerable fields via
+ * `toObject()`, which strips one leading underscore — so writing the backing field here is what
+ * puts the value on the CREATE payload, and it is the only way to do so without changing
+ * `packages/domains`. `setProperty` is not used (it is `protected`, and this runs before the row
+ * exists, so there is no change to track).
+ *
+ * ## The half this does NOT buy, stated plainly
+ *
+ * `toDomainEntity` drops the column again on the way back, so nothing can READ this through the
+ * entity, the repository, or `WorkflowRunResponse`. It is queryable in SQL
+ * (`_metadata->>'actingUserId'`) and that is the "durable, queryable half" the ticket asked for.
+ * Surfacing it on `WorkflowRunStatusResponse` needs the field promoted properly first —
+ * `_metaData` + getter/setter on `WorkflowRunEntity`, `metaData?` on `WorkflowRunFactory`, then
+ * `metaData` on `WorkflowRunResponse` + its DTO mapper.
+ */
+function stampRunMetaData(entity: WorkflowRunEntity, metaData: Record<string, unknown> | undefined): void {
+  if (!metaData || Object.keys(metaData).length === 0) return;
+  (entity as unknown as { _metaData?: Record<string, unknown> })._metaData = metaData;
+}
+
 function buildDateRange(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
   if (!from && !to) return undefined;
   const range: { gte?: Date; lte?: Date } = {};
@@ -325,6 +358,7 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
       isSandbox: input.isSandbox ?? false,
       startedAt: input.startedAt ?? new Date(),
     });
+    stampRunMetaData(entity, input.metaData);
     const saved = await this.workflowRunRepository.create(entity);
     // NO sys-event — telemetry exemption (see WorkflowRunEntity header).
     return WorkflowRunDtoMapper.toResponse(saved);

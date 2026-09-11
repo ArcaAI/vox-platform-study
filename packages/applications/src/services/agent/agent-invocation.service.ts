@@ -42,6 +42,28 @@ export interface AgentTextInvocationResult {
    * ran, and it is all telemetry ever needs.
    */
   promptFragments: { selected: string[] } | null;
+  /**
+   * TASK-950 (decision 3, fast win) — the clinician this invocation acted FOR, as resolved from
+   * the agent's frozen context schema for a MACHINE caller.
+   *
+   * INTERNAL, and deliberately not on `AgentTextInvocationResponse`: the caller supplied the staff
+   * id, so echoing the user it maps to adds nothing but a directory lookup for anyone holding a
+   * credential. Its one consumer is the gateway's usage emission, which stamps it as
+   * `AiUsageEvent.doctorId` — the same durable, indexed, billing-grade column a consultation call
+   * already fills.
+   *
+   * ABSENT means there was nothing to resolve, which `resolveContextUserIdentity` documents four
+   * honest ways (human caller · no `userIdentity` marker · marker declared but no value sent ·
+   * value not a string). Anything the resolver REFUSES throws instead of arriving here.
+   */
+  actingUserId?: string;
+}
+
+/** The `mode: 'stream'` return of {@link AgentInvocationService.invokeText}. */
+export interface AgentTextStreamInvocation {
+  stream: Readable;
+  /** Same contract as {@link AgentTextInvocationResult.actingUserId} — resolved before the model call, so it is known at stream START. */
+  actingUserId?: string;
 }
 
 /** TASK-930 §2.3 — ONE extracted span, in the agent's output vocabulary rather than `apps/nlp`'s. */
@@ -157,13 +179,13 @@ export class AgentInvocationService {
   }
 
   async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'blocking'): Promise<AgentTextInvocationResult>;
-  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'stream'): Promise<{ stream: Readable }>;
+  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'stream'): Promise<AgentTextStreamInvocation>;
   async invokeText(
     resolved: ResolvedAgent,
     tenantId: string,
     input: Record<string, unknown>,
     mode: 'blocking' | 'stream',
-  ): Promise<AgentTextInvocationResult | { stream: Readable }> {
+  ): Promise<AgentTextInvocationResult | AgentTextStreamInvocation> {
     if (resolved.task !== 'TEXT_GENERATION') {
       throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; invocations apply to TEXT_GENERATION agents only.`);
     }
@@ -192,7 +214,13 @@ export class AgentInvocationService {
     //
     // Covers BOTH modes: `blocking` and `stream` reach the model through this one method, so
     // there is one insertion here and no second gate to keep in step.
-    await this.resolveContextUserIdentity(resolved, tenantId, input);
+    //
+    // TASK-950 (decision 3, fast win) — the answer is now RETURNED as well as logged, so the
+    // gateway can stamp it on this call's usage row (`AiUsageEvent.doctorId`). Captured here, at
+    // the single resolution point, and carried to both returns below: the stream return happens
+    // after the model call, and re-resolving there could provision a second time.
+    const actingUserId = await this.resolveContextUserIdentity(resolved, tenantId, input);
+    const actingUser: { actingUserId?: string } = actingUserId ? { actingUserId } : {};
 
     const compiled = resolved.compiledConfig;
     const parameters = asRecord(compiled.parameters);
@@ -288,7 +316,7 @@ export class AgentInvocationService {
         headers: { ...headers, Accept: 'text/event-stream' },
         responseType: 'stream',
       });
-      return { stream: response.data as Readable };
+      return { stream: response.data as Readable, ...actingUser };
     }
 
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, { headers });
@@ -305,6 +333,7 @@ export class AgentInvocationService {
       model: data.model ?? wireModel,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
       promptFragments,
+      ...actingUser,
     };
   }
 
