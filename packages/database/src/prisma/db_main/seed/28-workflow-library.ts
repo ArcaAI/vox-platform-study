@@ -289,8 +289,20 @@ export interface WorkflowSeedTarget {
   name: string;
   description: string;
   graph: SeedGraph;
-  /** The tenant's `consultation_note_context` version row (frozen into `policyBindings`). */
+  /** The version row of the schema the trigger binds (frozen into `policyBindings`). */
   contextSchemaVersionId: string;
+  /**
+   * TASK-951 — the DEFINITION the trigger's `contextSchemaId` resolves to, so the regen script
+   * can derive this target's payload schema instead of assuming one.
+   *
+   * It used to assume `NOTE_CONTEXT_SCHEMA_DEFINITION` for EVERY target, which was true only
+   * while every seeded graph triggered on `consultation_note_context`. The 11 ArcaAI workflows
+   * now trigger on `arcaai_consultation_scribe`, and the payload schema the compiler freezes is
+   * what the harness validates a run's authored context against — so an assumed one would reject
+   * exactly the fields this ticket exists to accept. ABSENT means "the note context", so every
+   * pre-existing target compiles to the bytes it already has.
+   */
+  contextSchemaDefinition?: Record<string, unknown>;
   tags: string[];
   /** `null` on the authored (Global) row; the slug on the promoted (SYSTEM) copy. */
   sourceTemplateSlug: string | null;
