@@ -122,6 +122,50 @@ export interface ContextKindDeclaration {
    * only says what to do with the value when it is sent.
    */
   userIdentity?: { field: string };
+  /**
+   * Marks `field` — a string property of this kind's `fields.properties` —
+   * as the tenant's department selector (TASK-951 D-1/D-2). Allowed only on
+   * a `STRUCTURED` kind with `cardinality: 'ONE'`; at most one kind per
+   * definition may carry it. `by` selects how HOPE resolves the value at
+   * `open`: `'code'` (default, unique per tenant) or `'name'`
+   * (case-insensitive; ambiguous matches are refused).
+   */
+  department?: { field: string; by: 'code' | 'name' };
+  /**
+   * Marks `field` as the tenant's visit-type selector (TASK-951 D-1/D-3).
+   * Allowed only on a `STRUCTURED` kind with `cardinality: 'ONE'`, and only
+   * when `field`'s declared JSON Schema is a string whose `enum` is a
+   * subset of `['new-visit', 'revisit']`. At most one kind per definition
+   * may carry it. The stated value is matched through the visit-type
+   * catalogue (aliases honoured) and wins over the parent-link derivation.
+   */
+  visitType?: { field: string };
+  /**
+   * Marks `field` as the tenant's external (encounter/event) reference id
+   * (TASK-951 D-1/D-4). Allowed only on a `STRUCTURED` kind with
+   * `cardinality: 'ONE'`; at most one kind per definition may carry it.
+   * Persisted on `Consultation.metadata.externalRef` — never part of the
+   * re-open idempotency key.
+   */
+  externalRef?: { field: string };
+  /**
+   * Marks this kind's payload as the client-owned identity of an audio
+   * stream (TASK-951 D-1/D-8) — echoed verbatim on every transcript
+   * segment of the STT session it accompanies. Allowed only on a
+   * `STRUCTURED` kind with `cardinality: 'ONE'`; at most one kind per
+   * definition may carry it. Informational only — it does not change
+   * validation.
+   */
+  streamContext?: true;
+  /**
+   * Additionally persists each entry of this kind's `notes` array as a
+   * `CASE_NOTE` context item (TASK-951 D-1/D-5). Allowed only on a
+   * `STRUCTURED` kind with `cardinality: 'ONE'` whose
+   * `fields.properties.notes` is a JSON Schema array of objects each
+   * declaring a string `text` property. Several kinds in one definition
+   * may carry it.
+   */
+  materializeAs?: 'CASE_NOTE';
 }
 
 export interface ContextOutputDeclaration {
