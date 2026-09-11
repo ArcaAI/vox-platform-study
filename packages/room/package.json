@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/room",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "React-based audio processing package with configurable features and plugin architecture",
   "private": false,
   "main": "./dist/index.cjs",

@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vox-codegen",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Build-time TypeScript codegen CLI for a tenant's consultation context schema  — an accessory to @arcaai/vox's runtime discovery, never a replacement.",
   "type": "commonjs",
   "main": "./dist/index.js",
