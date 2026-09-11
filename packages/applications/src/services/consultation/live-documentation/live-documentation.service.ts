@@ -119,6 +119,12 @@ import {
   type TurnSectionWrite,
 } from './realtime/turn-contract';
 import { readSummaryLanguage, summaryLanguageName } from '../consultation/summary-language';
+// TASK-951 D-3 — the visit type the CLIENT recorded at `open`, which wins over the parent-link
+// derivation. Read through lane C's one reader so the marker's storage stays its business.
+import { readRecordedVisitType } from '../consultation/open-markers';
+// TASK-951 D-7 — the SAME cap the carried prior-visit summary is bounded by, applied here so a
+// client-supplied history is a bounded prompt input rather than an unbounded one.
+import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 // TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
 // instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
 // no dependency and derives the answer from the consultation's own parent link, so the facade
@@ -755,6 +761,17 @@ interface LiveSession {
   departmentId?: string | null;
   departmentName?: string | null;
   /**
+   * TASK-951 D-7 — the CLIENT-supplied clinical inputs (`vitals`, `previous_case_notes`) this
+   * consultation was opened with, resolved at most once per session.
+   *
+   * A promise rather than a value, and memoized, so two flushes racing the first resolution share
+   * one read instead of issuing two — the same discipline `agentPromise` / `templatePromise` /
+   * `lanePromise` use, and for the stronger reason that this read DECRYPTS. Settles once; never
+   * rejects: a history that cannot be read must degrade to "no prior visits", never to no note.
+   */
+  clientContextPromise?: Promise<LiveClientContext>;
+  clientContext?: LiveClientContext;
+  /**
    * TASK-932 R-16a — the live lane's LAST SUCCESSFUL output per node id, accumulated across
    * flushes and handed to the durable interpreter at `stop()`.
    *
@@ -850,6 +867,178 @@ function formatVitalsForPrompt(vitals?: LiveSummaryVitalsDto): string | undefine
   if (vitals.temperatureC != null) parts.push(`Temp ${vitals.temperatureC}\u00b0C`);
   if (vitals.weightKg != null) parts.push(`Weight ${vitals.weightKg} kg`);
   return parts.length > 0 ? parts.join(', ') : undefined;
+}
+
+/**
+ * TASK-951 (owner amendment to OD-4) — the NORMALISED vitals object a client may state at `open`.
+ *
+ * Every field is optional, which is the whole point: a client sends the readings it took, and a
+ * missing field means "not measured", never zero. `bloodPressure` is a STRING because that is how
+ * the pair is recorded and read (`128/82`); splitting it into two numbers here would invent a
+ * precision the source does not have. `temperature` is °C and `oxygenSaturation` is a percentage —
+ * the units are fixed by the declaration rather than carried per reading, so there is no unit to
+ * mis-read at render time.
+ *
+ * Deliberately declared HERE rather than imported: the kind's JSON Schema (lane B/A) is the
+ * contract, and this is the narrow projection this one renderer needs from a payload that has
+ * already been validated against it.
+ */
+interface ClientVitalsPayload {
+  bloodPressure?: string;
+  heartRate?: number;
+  respiratoryRate?: number;
+  temperature?: number;
+  oxygenSaturation?: number;
+  weightKg?: number;
+  heightCm?: number;
+  bmi?: number;
+  bloodGlucose?: number;
+  painScore?: number;
+  recordedAt?: string;
+  notes?: string;
+}
+
+/**
+ * TASK-951 D-7 — render a CLIENT-supplied vitals object as the `{{formatted_vitals}}` line, or
+ * `undefined` when it states nothing.
+ *
+ * `undefined` rather than `''` for the same reason {@link formatVitalsForPrompt} returns it: the
+ * caller then falls through to the next source, and finally to the DECLARED absence value
+ * (`Not available`), instead of handing the model a blank where a reading belongs.
+ *
+ * Why this outranks {@link formatVitalsForPrompt}: that one reports what the SESSION extracted from
+ * the conversation — a model's reading of speech. This one is what the clinic MEASURED and sent. A
+ * measured reading is not a competing opinion to a transcribed one; it is the fact the transcription
+ * is at best an echo of, so when both exist the measured one is what the note should carry.
+ *
+ * `recordedAt` rides on the same line rather than being dropped, because a vitals set with no time
+ * reads as "now" to a model, and a set taken at triage two hours before the consultation is a
+ * different clinical statement from one taken during it. `notes` takes a second line: it is free
+ * text of unbounded length and folding it into the reading list would make the readings unparsable
+ * by eye.
+ */
+function formatClientVitalsForPrompt(vitals: ClientVitalsPayload | undefined): string | undefined {
+  if (!vitals) return undefined;
+  const parts: string[] = [];
+  const bp = vitals.bloodPressure?.trim();
+  if (bp) parts.push(`BP ${bp} mmHg`);
+  if (vitals.heartRate != null) parts.push(`HR ${vitals.heartRate} bpm`);
+  if (vitals.respiratoryRate != null) parts.push(`RR ${vitals.respiratoryRate} /min`);
+  if (vitals.temperature != null) parts.push(`Temp ${vitals.temperature} °C`);
+  if (vitals.oxygenSaturation != null) parts.push(`SpO2 ${vitals.oxygenSaturation} %`);
+  if (vitals.weightKg != null) parts.push(`Wt ${vitals.weightKg} kg`);
+  if (vitals.heightCm != null) parts.push(`Ht ${vitals.heightCm} cm`);
+  if (vitals.bmi != null) parts.push(`BMI ${vitals.bmi}`);
+  if (vitals.bloodGlucose != null) parts.push(`Glucose ${vitals.bloodGlucose} mg/dL`);
+  if (vitals.painScore != null) parts.push(`Pain ${vitals.painScore}/10`);
+
+  // A `recordedAt` (or a note) with NO readings states nothing about the patient: emitting
+  // `recorded 09:40` on its own would tell the model a vitals set exists when none was sent.
+  if (parts.length === 0) return undefined;
+
+  const notes = vitals.notes?.trim();
+  const recordedAt = vitals.recordedAt?.trim();
+  if (recordedAt) parts.push(`recorded ${recordedAt}`);
+  const line = parts.join(' · ');
+  return notes ? `${line}\n${notes}` : line;
+}
+
+/** One entry of the client-supplied `previous_case_notes` kind. Only `text` is required. */
+interface ClientPreviousCaseNote {
+  date?: string;
+  department?: string;
+  doctor?: string;
+  title?: string;
+  text?: string;
+}
+
+/**
+ * TASK-951 D-7 / OD-5 — render the CLIENT-supplied previous case notes as
+ * `{{formatted_previous_visits}}`, or `''` when there are none.
+ *
+ * `''` rather than `undefined`, because that is the value the workflow's own trigger-context
+ * schema declares for this name and the realtime lane published before this ticket — an absent
+ * history and a supplied-but-empty one are the same statement to the prompt, and both are "no
+ * prior visits to report", never a missing variable the agent would fail closed on.
+ *
+ * ## Ordering
+ *
+ * Most recent first, because a prompt that runs out of budget should lose the oldest visit rather
+ * than the last one. The sort is applied only to notes whose `date` actually PARSES: a free-text
+ * date ("last monsoon") is not evidence of position, so those keep the order the client sent them
+ * in and fall after the dated ones. `Array.prototype.sort` is stable, which is what makes that
+ * second half a statement rather than an accident.
+ *
+ * ## Bounding
+ *
+ * Through the SAME {@link truncatePriorVisitSummary} the carried prior-visit summary uses, marker
+ * and all — a truncated history must not read as a complete one. Whole notes are not dropped to
+ * fit: cutting mid-note leaves the marker visible, whereas silently omitting a visit would make
+ * the history look shorter than it is.
+ */
+function formatPreviousVisitsForPrompt(notes: readonly ClientPreviousCaseNote[] | undefined): string {
+  if (!notes || notes.length === 0) return '';
+
+  const dated = notes.map((note, index) => {
+    const parsed = note.date ? Date.parse(note.date) : Number.NaN;
+    return { note, index, at: Number.isNaN(parsed) ? null : parsed };
+  });
+  dated.sort((a, b) => {
+    if (a.at === null && b.at === null) return a.index - b.index;
+    if (a.at === null) return 1;
+    if (b.at === null) return -1;
+    return b.at - a.at;
+  });
+
+  const rendered = dated
+    .map(({ note }) => {
+      const heading = [note.date, note.department, note.doctor, note.title].map((part) => part?.trim()).filter((part): part is string => !!part);
+      const text = note.text?.trim() ?? '';
+      if (!text) return '';
+      return heading.length > 0 ? `${heading.join(' · ')}\n${text}` : text;
+    })
+    .filter((entry) => entry.length > 0);
+
+  return rendered.length > 0 ? truncatePriorVisitSummary(rendered.join('\n\n')) : '';
+}
+
+/**
+ * TASK-951 D-7 — the client-supplied prompt inputs this session resolved from its consultation's
+ * PRE context items, resolved ONCE per session.
+ *
+ * Both halves are written at `open` and never change for the life of the consultation, so this is
+ * frozen exactly as `summaryLanguage` / `visitType` / `departmentId` are — a flush every few
+ * seconds must not re-read and re-decrypt two rows that cannot have moved.
+ */
+interface LiveClientContext {
+  vitals?: ClientVitalsPayload;
+  previousVisits: readonly ClientPreviousCaseNote[];
+}
+
+/** The kind keys the realtime prompt lane reads. Both are declared by the tenant's scribe schema. */
+const CLIENT_VITALS_KIND_KEY = 'vitals';
+const CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY = 'previous_case_notes';
+
+/** A JSON object — not an array, not null. The shape every declared STRUCTURED kind persists as. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The NEWEST context item carrying this kind key, or `null`.
+ *
+ * Newest rather than first: a kind declared `ONE` is written once at `open`, but a re-open or a
+ * later correction can leave two rows behind, and the prompt must carry what the client last said.
+ * The comparison is on `createdAt` rather than on position, so the answer does not depend on the
+ * finder's sort staying ascending.
+ */
+function latestContextItemOfKind(items: readonly ContextItemEntity[], kindKey: string): ContextItemEntity | null {
+  let latest: ContextItemEntity | null = null;
+  for (const item of items) {
+    if (item.kindKey !== kindKey) continue;
+    if (!latest || item.createdAt >= latest.createdAt) latest = item;
+  }
+  return latest;
 }
 
 /** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
@@ -1861,8 +2050,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // operating frame costs no extra I/O on the start path.
       session.summaryLanguage = readSummaryLanguage(consultation?.metadata);
       // ...and the visit type off the same row, for the same reason. `forConsultation` is pure.
+      //
+      // TASK-951 D-3 — the RECORDED value wins over the parent link. A client that stated
+      // `visit_type` at `open` knows something the link does not: a first visit at this department
+      // for a patient who has a prior consultation elsewhere is still a new visit, and a revisit
+      // whose earlier encounter never existed in HOPE is still a revisit. `selectVisitType` falls
+      // back to the link whenever nothing was recorded, so an untouched consultation is unchanged.
       session.visitType = DEFAULT_VISIT_TYPE_SERVICE.forConsultation(session.tenantId, {
         isFollowUp: Boolean(consultation?.parentConsultationId),
+        recorded: readRecordedVisitType(consultation?.metadata),
       }).key;
       // TASK-943 — and the department, for the third time for the same reason: the agent declares
       // `current_department`, and resolving it from anywhere else would be a second read of a row
@@ -3876,15 +4072,42 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * which case they are reported. Claiming `Not available` while the session holds readings is a
    * falsehood, not a default.
    *
-   * `formatted_previous_visits` stays empty deliberately. The warm-start pre-summary IS prior-visit
-   * material, but feeding it to the note changes what a clinician's record is generated FROM, and
-   * that is an input decision with clinical weight rather than part of restoring generation.
+   * `formatted_previous_visits` stayed empty deliberately, and TASK-951 OD-5 ENDS that — see the
+   * paragraph below.
+   *
+   * ## TASK-951 D-7 / OD-5 — what the CLIENT sent now reaches the prompt
+   *
+   * Two of these names had no source in the v2 data model when this method was written, and the
+   * defaults above were the honest answer. They are no longer the honest answer: since TASK-951 a
+   * client states `vitals` and `previous_case_notes` at `open`, HOPE validates them against the
+   * tenant's own context schema and persists them as PRE context items, and this lane reads them.
+   *
+   *  - `formatted_vitals` prefers what the clinic MEASURED over what the session's NLP tool
+   *    extracted from speech. The tool output is a model's reading of a conversation; the client's
+   *    object is the reading itself, and where both exist the note should carry the measurement.
+   *  - `formatted_previous_visits` is the client's history, newest first and bounded by the same
+   *    cap the carried prior-visit summary uses. The old "empty by design" posture was a statement
+   *    about the WARM-START pre-summary — feeding a previous NOTE into the next one is an input
+   *    decision with clinical weight — and it is untouched: what is rendered here is material the
+   *    client explicitly supplied AS prior-visit context, not something this lane went looking for.
+   *
+   * Absence is unchanged in every direction: no client kind, an unreadable one, or one that states
+   * nothing all land on exactly the defaults documented above.
    */
   private async realtimeRunContext(session: LiveSession): Promise<Record<string, ExpressionValue>> {
+    const client = await this.resolveClientContext(session);
+    const clientVitals = formatClientVitalsForPrompt(client.vitals);
+
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.resolveDepartmentName(session),
       visitType: session.visitType,
       language: session.summaryLanguage,
+      // TASK-951 D-7 — the two the builder has always declared and this surface has never had a
+      // source for. Passed THROUGH the builder rather than assigned after it, so `safe_vitals` and
+      // `formatted_previous_visits` inherit v1's own `|| default` semantics instead of a second
+      // copy of them, and an empty client history still reads as `''`.
+      vitals: clientVitals,
+      previousVisits: formatPreviousVisitsForPrompt(client.previousVisits),
     });
 
     const context: Record<string, ExpressionValue> = {
@@ -3893,10 +4116,107 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // differently (`language_name`, `safe_vitals`) or does not carry (`chief_complaint`).
       language: (session.summaryLanguage ?? '').trim(),
       chief_complaint: '',
-      formatted_vitals: formatVitalsForPrompt(session.lastPayload?.vitals) ?? shared.safe_vitals,
+      formatted_vitals: clientVitals ?? formatVitalsForPrompt(session.lastPayload?.vitals) ?? shared.safe_vitals,
     };
 
     return { trigger: { context }, vars: {}, nodes: {} };
+  }
+
+  /**
+   * TASK-951 D-7 — the client-supplied `vitals` / `previous_case_notes` for this session, resolved
+   * at most ONCE and cached on it.
+   *
+   * Memoized through a promise rather than a boolean-plus-value, so two flushes racing the first
+   * resolution share one read; the rows are written at `open` and cannot change for the life of
+   * the consultation, which is what makes caching them correct rather than merely cheap.
+   */
+  private async resolveClientContext(session: LiveSession): Promise<LiveClientContext> {
+    if (session.clientContext) return session.clientContext;
+    if (!session.clientContextPromise) {
+      session.clientContextPromise = this.readClientContext(session).then((resolved) => {
+        session.clientContext = resolved;
+        return resolved;
+      });
+    }
+    return session.clientContextPromise;
+  }
+
+  /**
+   * Read the two client-supplied kinds off the consultation's PRE context items. Never throws.
+   *
+   * Filtered by `kindKey` and NOT by `ContextItemType`: the kind key is what the tenant's schema
+   * declares and what the writer stamps, and binding this read to a type as well would make it
+   * disagree with the writer the moment either side chose a different enum member for the same
+   * declared kind.
+   *
+   * A failure — no repository, an unreadable row, a body that will not decrypt, a payload that is
+   * not the declared shape — degrades to "the client sent nothing", which is exactly the state
+   * every consultation opened before this ticket is in. The alternative, raising, would stop a
+   * note being produced over context that is by definition supplementary.
+   */
+  private async readClientContext(session: LiveSession): Promise<LiveClientContext> {
+    const none: LiveClientContext = { previousVisits: [] };
+    if (!this.contextItemRepository) return none;
+
+    try {
+      const items = await this.contextItemRepository.findByConsultation(session.consultationId);
+      const [vitalsPayload, notesPayload] = await Promise.all([
+        this.readClientKindPayload(latestContextItemOfKind(items, CLIENT_VITALS_KIND_KEY)),
+        this.readClientKindPayload(latestContextItemOfKind(items, CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY)),
+      ]);
+
+      const rawNotes = notesPayload?.notes;
+      return {
+        vitals: vitalsPayload ? (vitalsPayload as ClientVitalsPayload) : undefined,
+        previousVisits: Array.isArray(rawNotes) ? (rawNotes.filter(isPlainRecord) as ClientPreviousCaseNote[]) : [],
+      };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Client-supplied consultation context could not be read — the prompt keeps its declared defaults',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return none;
+    }
+  }
+
+  /**
+   * One context item's body as the object it was persisted as, or `null`.
+   *
+   * `content` is Vault-Transit ciphertext at rest (the plaintext column was dropped), so a read
+   * that skips the decrypt gets an empty body for a row that HAS one — the same defect
+   * `findLatestPreSummaryWithDecryptedContent` exists to avoid. The transient `content` populated
+   * by decrypt-on-read is the fallback for fixtures and for the no-secrets dev path, mirroring
+   * `HarnessObservabilityService.decryptSummaryText`.
+   */
+  private async readClientKindPayload(entity: ContextItemEntity | null): Promise<Record<string, unknown> | null> {
+    if (!entity) return null;
+
+    let raw = entity.content ?? null;
+    if (this.secretsService && this.contextItemRepository && entity.encryptedContent) {
+      try {
+        raw = await this.contextItemRepository.decryptContentFromEntity(entity, this.secretsService);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Client context item could not be decrypted — the prompt keeps its declared default for that kind',
+          contextItemId: entity.id,
+          kindKey: entity.kindKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    }
+    if (!raw?.trim()) return null;
+
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return isPlainRecord(parsed) ? parsed : null;
+    } catch {
+      // A body that is not the JSON the kind declares is not a crash — PHI-safe: the key, never
+      // the body.
+      this.logger.warn({ message: 'Client context item is not a JSON object — ignored', contextItemId: entity.id, kindKey: entity.kindKey });
+      return null;
+    }
   }
 
   /**
@@ -6078,10 +6398,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const language = readSummaryLanguage(consultation.metadata);
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.departmentNameOf(consultation.departmentId ?? null),
-      // Derived exactly as `ensureSubstrateResolved` derives the session's own copy, from the
-      // consultation's parent link. `forConsultation` is pure.
+      // Derived exactly as `ensureSubstrateResolved` derives the session's own copy — TASK-951 D-3
+      // included, so the value the durable lane's `n_visit` condition compares is the one the
+      // realtime lane branched on. Reading the same row through the same two inputs is what keeps
+      // the two lanes from disagreeing about which visit this is. `forConsultation` is pure.
       visitType: DEFAULT_VISIT_TYPE_SERVICE.forConsultation(consultation.tenantId, {
         isFollowUp: Boolean(consultation.parentConsultationId),
+        recorded: readRecordedVisitType(consultation.metadata),
       }).key,
       language,
     });
