@@ -73,6 +73,10 @@ class _StubDense:
     async def embed_one(self, text: str) -> list[float]:
         return [0.1] * _DIM
 
+    #: The ingest endpoint records the model that actually embedded the chunk
+    #: (D-1c), so the stub declares one.
+    model = "stub-dense"
+
 
 class _IdentityReranker:
     """Identity reranker (no TEI): preserves the fused order, score by position."""
@@ -169,7 +173,7 @@ async def ingest_http(monkeypatch, store, sparse_embedder):
     from harness.main import create_app
 
     fastapi_app = create_app(settings_override=settings)
-    monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _StubDense())
+    monkeypatch.setattr(knowledge, "_embeddings_client", lambda s, *_c: _StubDense())
     monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: sparse_embedder)
     monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
     transport = ASGITransport(app=fastapi_app)

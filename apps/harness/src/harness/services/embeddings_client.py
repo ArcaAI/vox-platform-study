@@ -2,8 +2,16 @@
 
 Phase-3 retrieval embeds both the institutional corpus (at ingest) and the
 entity-derived query (at retrieval) through the **self-hosted** LM Studio
-endpoint: the query can contain PHI, so it must never egress to a cloud provider
-(that would trip the fail-closed PHI guard). The client posts the OpenAI shape
+endpoint by default: the query can contain PHI, so the PLATFORM never egresses it
+to a cloud provider.
+
+D-1c changes WHO may point this elsewhere, not that rule. A tenant
+that enables its own `AiProviderConnection(service='embeddings')` row redirects
+its OWN embeddings to its OWN account — a BYO decision the connection plane
+exists to express (`CLOUD_BYO_PROVIDERS.embeddings` has listed `azure`/`openai`
+since the plane was widened, and the console has offered the card all along; the
+only thing that was missing was anything reading it). With no row, nothing moves:
+the platform floor stays self-hosted. The client posts the OpenAI shape
 ``{model, input:[...]}`` to ``{base_url}/embeddings`` and returns the per-input
 vectors ordered by the response ``index`` (the server may return them out of
 order). It mirrors the :class:`~harness.services.nlp_client.NlpClient` httpx
@@ -33,12 +41,28 @@ class EmbeddingsClient:
         *,
         model: str,
         timeout: float = 30.0,
+        api_key: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout
+        # D-1c — a bearer only when a connection row supplied one. The
+        # platform's own embeddings server authenticates nobody, so `None` (the
+        # unauthenticated call) is a CORRECT resolved state, not a missing value,
+        # and `""` is never sent as a credential.
+        self._api_key = api_key or None
         self._transport = transport
+
+    @property
+    def model(self) -> str:
+        """The model id this client posts — the tenant's when a row pinned one.
+
+        Read by the ingest endpoint for the ``embeddingModel`` chunk descriptor,
+        so a persisted chunk records what actually embedded it rather than what
+        the platform floor would have used.
+        """
+        return self._model
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed ``texts`` and return one dense vector per input (index-ordered)."""
@@ -46,10 +70,11 @@ class EmbeddingsClient:
             return []
         url = f"{self._base_url}/embeddings"
         body = {"model": self._model, "input": list(texts)}
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else None
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 
             async def _send() -> httpx.Response:
-                resp = await client.post(url, json=body)
+                resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
                 return resp
 

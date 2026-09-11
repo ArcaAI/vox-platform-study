@@ -34,8 +34,12 @@ from harness.core.effective_config import get_effective_config_client
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.core.provider_credentials import (
+    EMBEDDINGS_CONNECTION_PROVIDER,
+    VECTOR_CONNECTION_PROVIDER,
     CredentialOutcome,
     ProviderCredential,
+    apply_embeddings_credential,
+    apply_vector_credential,
     connection_provider_for_judge,
 )
 from harness.eval.config import JudgeProvider
@@ -839,33 +843,39 @@ def _effective_mcp_allowlist(
 
 
 def _hybrid_retriever(
-    settings: Settings, credential: ProviderCredential | None = None
+    settings: Settings,
+    credential: ProviderCredential | None = None,
+    embeddings_credential: ProviderCredential | None = None,
 ) -> HybridRetriever:
     """Build the JIT hybrid retriever from the (flag-gated) ``RetrievalConfig``.
 
     Factored out (like the other client factories) so ``retrieve_context`` builds it
-    once and the tests can monkeypatch it with a fake. The dense query stays on the
-    self-hosted LM Studio path (the query can contain PHI).
+    once and the tests can monkeypatch it with a fake.
 
-    The Qdrant CREDENTIAL (and, when the tenant brings its own cluster, its URL)
-    comes from a gateway-resolved
-    ``AiProviderConnection(service='vector', provider='qdrant')`` row, tenant →
-    SYSTEM. ``credential=None`` or outcome ``ABSENT`` keeps the unauthenticated
-    path, which is what local dev Qdrant needs and is NOT a fallback to env — the
-    env path is closed (`RetrievalConfig.qdrant_api_key`). A DENIED/UNAVAILABLE
-    credential is rejected by the CALLER before this is reached.
+    BOTH backends resolve tenant → SYSTEM through the same per-activity gateway
+    pull, and both folds are the shared ones in
+    :mod:`harness.core.provider_credentials` so this site and the ingest endpoint
+    can never derive a different collection or a different embeddings model:
+
+    * ``vector:qdrant`` — the credential, the tenant's own cluster URL, and
+      (D-1b) its ``collection`` prefix;
+    * ``embeddings:openai`` — (D-1c) the endpoint, the key and the model.
+
+    ``None`` or outcome ``ABSENT`` keeps the platform floor and the
+    unauthenticated path, which is what local dev Qdrant and the platform's own
+    embeddings server need, and is NOT a fallback to env — both env paths are
+    closed (`RetrievalConfig.qdrant_api_key` / `embeddings_api_key`). A
+    DENIED/UNAVAILABLE credential is rejected by the CALLER before this is
+    reached, so a resolve FAULT can never present as "use the platform's".
     """
-    rc = settings.retrieval
-    if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
-        rc = rc.model_copy(
-            update={
-                "qdrant_api_key": credential.api_key,
-                **({"qdrant_url": credential.base_url} if credential.base_url else {}),
-            }
-        )
+    rc = apply_vector_credential(settings.retrieval, credential)
+    rc = apply_embeddings_credential(rc, embeddings_credential)
     return HybridRetriever(
         embeddings=EmbeddingsClient(
-            rc.embeddings_base_url, model=rc.embeddings_model, timeout=rc.embeddings_timeout_s
+            rc.embeddings_base_url,
+            model=rc.embeddings_model,
+            timeout=rc.embeddings_timeout_s,
+            api_key=rc.embeddings_api_key.get_secret_value() if rc.embeddings_api_key else None,
         ),
         sparse=SparseBm25Embedder(),
         store=KnowledgeQdrantStore(
@@ -1762,9 +1772,9 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         await batch.flush()
         return RetrievedContext(degraded=True)
 
-    # Resolve the Qdrant credential from the BYO plane, INSIDE this activity, and
-    # discard it when the retriever is done: Temporal history is durable, so it
-    # never travels on an input, a result or a heartbeat.
+    # Resolve the retrieval credentials from the BYO plane, INSIDE this activity,
+    # and discard them when the retriever is done: Temporal history is durable, so
+    # they never travel on an input, a result or a heartbeat.
     #
     # A DENIED (tenant veto) or UNAVAILABLE (gateway fault) credential degrades
     # this activity exactly like a retrieval-backend outage — empty context,
@@ -1772,12 +1782,20 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     # env key. `ABSENT` is not a failure: it is the unauthenticated in-boundary
     # Qdrant that local dev and a keyless cluster both run.
     qdrant_credential = await _resolve_provider_credential(
-        settings, "vector", "qdrant", payload.tenant_id
+        settings, "vector", VECTOR_CONNECTION_PROVIDER, payload.tenant_id
     )
-    if not qdrant_credential.usable:
+    # D-1c — the embeddings endpoint/key/model resolve the SAME way, and fail
+    # closed the same way. Two resolves rather than one because they are two
+    # different connections: the vector store and the embedding service are
+    # separate rows a tenant configures independently.
+    embeddings_credential = await _resolve_provider_credential(
+        settings, "embeddings", EMBEDDINGS_CONNECTION_PROVIDER, payload.tenant_id
+    )
+    unusable = next((c for c in (qdrant_credential, embeddings_credential) if not c.usable), None)
+    if unusable is not None:
         activity.logger.warning(
             "harness.retrieval.credential_unavailable",
-            extra={"outcome": qdrant_credential.outcome.value, "reason": qdrant_credential.reason},
+            extra={"outcome": unusable.outcome.value, "reason": unusable.reason},
         )
         batch.record(
             step_type=STEP_RETRIEVAL,
@@ -1785,13 +1803,13 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
             status=STATUS_ERROR,
             started=started,
             stats={"enabled": True, "chunk_count": 0},
-            error_code=f"credential_{qdrant_credential.outcome.value}",
+            error_code=f"credential_{unusable.outcome.value}",
         )
         await batch.flush()
         return RetrievedContext(degraded=True)
 
     query = build_query(payload.entities)
-    result = await _hybrid_retriever(settings, qdrant_credential).retrieve(
+    result = await _hybrid_retriever(settings, qdrant_credential, embeddings_credential).retrieve(
         query=query, tenant_id=payload.tenant_id
     )
     # Build the StrictCitations block from the FULL chunk text FIRST (it needs the text),

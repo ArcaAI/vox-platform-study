@@ -156,6 +156,62 @@ describe('HarnessInternalService.resolveProviderCredential', () => {
     expect(providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('llm', TENANT);
   });
 
+  // TASK-952 D-1b — the route used to allow-list `model` and drop every other
+  // `extraJson` key, so `vector:qdrant`'s `collection` prefix was validated,
+  // stored, and then discarded one hop before its only consumer (the harness
+  // retrieval stack). Forwarding is a validated PASSTHROUGH, which is what
+  // `ResolvedProviderCredential.extras` already does on the sibling contract.
+  it('forwards the row\'s non-reserved extras (the collection prefix reaches the worker)', async () => {
+    providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: {
+        qdrant: { api_key: KEY, funding: 'tenant', base_url: 'https://t.qdrant.cloud', collection: 'hope' },
+      },
+    });
+
+    const out = await buildService().resolveProviderCredential('vector', 'qdrant', TENANT);
+
+    expect(out.outcome).toBe('resolved');
+    expect(out.extras).toEqual({ collection: 'hope' });
+    expect(out.baseUrl).toBe('https://t.qdrant.cloud');
+  });
+
+  it('never lets extras restate a reserved (column-backed) field', async () => {
+    providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: { qdrant: { api_key: KEY, funding: 'tenant', base_url: 'https://t.qdrant.cloud', collection: 'hope' } },
+    });
+
+    const out = await buildService().resolveProviderCredential('vector', 'qdrant', TENANT);
+
+    // The credential, the endpoint and the derived funding label travel in their
+    // own fields and NEVER inside the passthrough block.
+    for (const reserved of ['api_key', 'funding', 'base_url', 'region', 'api_version', 'deployment_name']) {
+      expect(out.extras).not.toHaveProperty(reserved);
+    }
+  });
+
+  it('omits the extras block entirely when the row carries none', async () => {
+    providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: { qdrant: { api_key: KEY, funding: 'tenant' } },
+    });
+
+    const out = await buildService().resolveProviderCredential('vector', 'qdrant', TENANT);
+
+    expect(out.extras).toBeUndefined();
+  });
+
+  it('keeps `model` declared in its own field beside the extras block', async () => {
+    // A consumer that has read `model` by name since before this ticket must keep
+    // seeing it exactly where it was — the block is additive, never a relocation.
+    providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: { openai: { api_key: KEY, funding: 'tenant', model: 'text-embedding-3-large' } },
+    });
+
+    const out = await buildService().resolveProviderCredential('embeddings', 'openai', TENANT);
+
+    expect(out.model).toBe('text-embedding-3-large');
+    expect(out.extras).toEqual({ model: 'text-embedding-3-large' });
+  });
+
   it('reports the SYSTEM tier as platform funding (derived, never stamped)', async () => {
     providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
       overrides: { qdrant: { api_key: KEY, funding: 'platform' } },

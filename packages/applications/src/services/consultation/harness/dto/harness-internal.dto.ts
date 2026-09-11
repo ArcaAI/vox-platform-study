@@ -778,6 +778,23 @@ export interface HarnessProviderCredentialResponse {
   deploymentName?: string;
   /** Provider-specific per-request target carried on the row's `extraJson`. */
   model?: string;
+  /**
+   * TASK-952 D-1b — every OTHER key of the row's validated `extraJson`, minus the
+   * reserved (column-backed) ones.
+   *
+   * The SAME block `ResolvedProviderCredential.extras` already carries on the
+   * sibling `resolveCredential` contract (`apps/stt` reads `extras.accessKeyId`
+   * off it). This route allow-listed `model` alone, so `vector:qdrant`'s
+   * `collection` prefix — a field the console has offered since the card was
+   * written — was validated, stored, and then dropped one hop before its only
+   * consumer. Forwarding is a VALIDATED PASSTHROUGH, not an allow-list, exactly
+   * as `ProviderOverrideEntry`'s index signature states: a new per-endpoint
+   * quirk needs a console write and nothing here.
+   *
+   * NEVER key material: `provider-extras.ts` refuses the reserved keys on write,
+   * and the projection destructures them out again on read.
+   */
+  extras?: Record<string, unknown>;
   funding?: HarnessCredentialFunding;
 }
 

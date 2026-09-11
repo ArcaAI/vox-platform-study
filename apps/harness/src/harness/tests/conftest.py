@@ -84,6 +84,10 @@ def _byo_credentials_absent(monkeypatch):
 
     monkeypatch.setattr(activities, "_resolve_provider_credential", _absent)
     monkeypatch.setattr(knowledge, "_resolve_qdrant_credential", _absent)
+    # D-1c added a SECOND connection the ingest endpoint resolves
+    # (`embeddings:openai`). Same reasoning as the Qdrant stub above: without it
+    # every ingest test would 503 on `UNAVAILABLE` while testing nothing.
+    monkeypatch.setattr(knowledge, "_resolve_embeddings_credential", _absent)
 
 
 @pytest.fixture
