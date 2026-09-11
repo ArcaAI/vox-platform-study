@@ -6607,6 +6607,11 @@
             "description": "Associated consultation ID",
             "type": "string"
           },
+          "context": {
+            "additionalProperties": true,
+            "description": "Client-owned session metadata, echoed verbatim on every transcript of this session. Context-schema envelope `{ [kindKey]: payload }`; validated against the resolved ASR agent’s bound schema when it has one. Max 4096 bytes of canonical JSON (413 above it).",
+            "type": "object"
+          },
           "language": {
             "description": "Override pipeline language (ISO 639-1 code, e.g. en, vi, auto)",
             "type": "string"
@@ -12887,11 +12892,16 @@
           },
           "context": {
             "additionalProperties": true,
-            "description": "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. For a SERVICE-ACCOUNT caller the schema's declared user-identity field resolves - or provisions - the clinician recorded as `doctorId`; for every other credential class it is content and nothing more.",
+            "description": "The consultation-context payload as `{ [kindKey]: payload }`, validated against the DEPARTMENT-effective context schema (`departmentId` narrows; the tenant default is the fallback). STRUCTURED kinds only. Violations answer 400 `CONTEXT_SCHEMA_VIOLATION` listing every problem. Fields the schema MARKS are mapped, not just validated: the user-identity field resolves - or provisions - the clinician recorded as `doctorId` for a SERVICE-ACCOUNT caller; a marked department field selects the consultation's department by code or name; a marked visit-type field is recorded and outranks the parent-link derivation; a marked external-reference field is recorded as a label. Every validated kind is also persisted as a PRE context item and threaded into the governing workflow's trigger context.",
             "example": {
+              "encounter": {
+                "department_code": "GEN",
+                "doctor_id": "DR-1042",
+                "event_id": "EVT-88213",
+                "visit_type": "new-visit"
+              },
               "vitals": {
                 "bloodPressure": "128/82",
-                "consultant_id": "DR-1042",
                 "heartRate": 72
               }
             },
@@ -18803,6 +18813,11 @@
             "description": "ASR Agent VERSION id the session runs on",
             "type": "string"
           },
+          "context": {
+            "additionalProperties": true,
+            "description": "The client-declared session context, as stored. Absent when none was sent.",
+            "type": "object"
+          },
           "currentActive": {
             "description": "Currently active sessions",
             "type": "number"
@@ -18814,6 +18829,10 @@
           "pipelineId": {
             "description": "The runtime key the session opened with: the ASR Agent VERSION id (agent path) or the resolved AsrPipeline id (deprecated path)",
             "type": "string"
+          },
+          "sessionEpochMs": {
+            "description": "Epoch ms at session creation; segment times are relative to it",
+            "type": "number"
           },
           "sessionId": {
             "description": "Session ID",
@@ -25158,6 +25177,11 @@
       },
       "WorkflowRunResponse": {
         "properties": {
+          "actingUserId": {
+            "description": "TASK-950 — the clinician this run acts FOR, read back from the row's `_metadata.actingUserId`. Recorded only for a STANDALONE machine-triggered run whose trigger schema declares a user-identity field; it sits BESIDE the actor the audit envelope already names (the service account), never instead of it. `null` for a human caller (the caller already IS the clinician), for a consultation-bound run (identity is `Consultation.doctorId`), and for a schema that declares no identity field — three different reasons, one honest absence.",
+            "nullable": true,
+            "type": "string"
+          },
           "createdAt": {
             "description": "Row creation instant (ISO-8601).",
             "type": "string"
@@ -25262,6 +25286,11 @@
       },
       "WorkflowRunStatusResponse": {
         "properties": {
+          "actingUserId": {
+            "description": "TASK-950 — the clinician this run acts FOR, sourced (like `resultRef`) from the durable run read model's `_metadata.actingUserId` rather than from Temporal. It sits BESIDE the actor the audit envelope names (the service account), never instead of it. `null` for a human caller, for a consultation-bound run (identity is `Consultation.doctorId`), and for a trigger schema that declares no identity field.",
+            "nullable": true,
+            "type": "string"
+          },
           "endedAt": {
             "nullable": true,
             "type": "string"
@@ -52216,6 +52245,12 @@
               }
             },
             "description": "Streaming session created"
+          },
+          "400": {
+            "description": "`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the schema the resolved ASR agent binds"
+          },
+          "413": {
+            "description": "`CONTEXT_TOO_LARGE` — `context` exceeds 4096 bytes of canonical JSON"
           }
         },
         "security": [
@@ -53591,10 +53626,10 @@
             "description": "Creating a ConsultationResponse"
           },
           "400": {
-            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; `CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; `CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); `USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; `USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department."
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a service-account caller identified no clinician, by either route; `CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; `CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; `CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); `DEPARTMENT_MISMATCH` — `departmentId` and the department named by the context payload are two different departments; `DEPARTMENT_AMBIGUOUS` — the schema resolves departments by NAME and more than one department of this tenant carries that name; `VISIT_TYPE_INVALID` — the stated visit type is not a key or alias of the platform vocabulary; `USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; `USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department."
           },
           "404": {
-            "description": "The named clinician is not a user of this tenant, or may not own a consultation. Also `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled."
+            "description": "The named clinician is not a user of this tenant, or may not own a consultation. Also `DEPARTMENT_UNKNOWN` — no department of this tenant carries the code (or name) the context payload stated; `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled."
           },
           "409": {
             "description": "`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries that staff id. Also the seat quota, when provisioning would exceed it."
