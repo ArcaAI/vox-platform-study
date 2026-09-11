@@ -15,6 +15,21 @@ export interface RecordRunStartedInput {
   trigger: string;
   isSandbox?: boolean;
   startedAt?: Date;
+  /**
+   * TASK-950 (decision 2, fast win) — non-PHI bookkeeping stored VERBATIM in the row's
+   * `_metadata` JSONB. The exposure plane uses it for `{ actingUserId }` on a STANDALONE machine
+   * run: the clinician the run acts FOR, recorded BESIDE the service account the audit envelope
+   * already names, never instead of it.
+   *
+   * OMITTED (not `{}`) means "this caller has nothing to record" — which is the honest answer for
+   * a human caller, for a consultation-bound run (its identity is `Consultation.doctorId`), and
+   * for a schema that declares no identity field alike.
+   *
+   * Write-only through this input, today: the value is queryable in SQL
+   * (`_metadata->>'actingUserId'`) but `WorkflowRunEntity` carries no `metaData` accessor, so it
+   * cannot be read back through the entity — see `WorkflowRunService.recordRunStarted`.
+   */
+  metaData?: Record<string, unknown>;
 }
 
 /** Called when the interpreter's run reaches a terminal state. */
