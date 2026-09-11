@@ -510,11 +510,14 @@ async function retireDepartmentSchemas(client: CorePrismaClient): Promise<number
  * never from the schema row. A local `db push` database carries no triggers, which is why the
  * in-place update passed every local reset and failed the first cluster reset (2026-09-11).
  *
- * So this does what `AgentService` does on publish: copy the servable row into version N+1
- * (`parentVersionId` = the old row, same slug/tenant/task/model/authored config, fallback chain
- * copied), PUBLISHED and active, carrying the pin and the frozen schema; then deprecate the old
- * version (lifecycle columns stay writable under the guard). Resolution is by slug, newest active
- * version first, so the new row is served immediately. A tenant admin who pinned something ELSE
+ * So this does what `AgentService` does on publish, in ONE transaction: retire version N first
+ * (`isActive: false`, DEPRECATED — lifecycle columns stay writable under the guard), then copy it
+ * into version N+1 (`parentVersionId` = N, same slug/tenant/task/model/authored config, fallback
+ * chain copied), PUBLISHED and active, carrying the pin and the frozen schema. The ORDER is forced
+ * by the second migration-only rule, `Agent_tenant_slug_active_unique` (task_863): at most one
+ * ACTIVE version per (tenant, slug), so N+1 cannot be inserted active while N still is. The
+ * transaction keeps the tenant from being left with no active ASR agent if the insert fails.
+ * Resolution is by slug, newest active version first, so the new row is served immediately. A tenant admin who pinned something ELSE
  * keeps their choice; a row already carrying the current frozen bytes is left alone (content
  * comparison — `jsonb` reorders keys); a seed-owned pin whose frozen bytes drifted branches again.
  */
@@ -537,58 +540,62 @@ async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'branch
 
   const now = new Date();
   const nextCompiled = compiled === null ? null : { ...compiled, contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA };
-  const next = await client.agent.create({
-    data: {
-      tenantId: agent.tenantId,
-      slug: agent.slug,
-      name: agent.name,
-      description: agent.description,
-      task: agent.task,
-      versionNumber: agent.versionNumber + 1,
-      parentVersionId: agent.id,
-      sourceAgentId: agent.sourceAgentId,
-      sourceTenantId: agent.sourceTenantId,
-      sourceSlug: agent.sourceSlug,
-      sourceVersionNumber: agent.sourceVersionNumber,
-      status: 'PUBLISHED',
-      isActive: true,
-      modelId: agent.modelId,
-      contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
-      contextSchemaVersionNumber: 1,
-      instruction: agent.instruction as never,
-      parameters: agent.parameters as never,
-      inputSchema: agent.inputSchema as never,
-      outputSchema: agent.outputSchema as never,
-      tools: agent.tools as never,
-      compiledConfig: nextCompiled as never,
-      compiledConfigChecksum: nextCompiled === null ? null : checksumOf(nextCompiled),
-      validatedAt: now,
-      publishedAt: now,
-      resourceStatus: 'ENABLED',
-      tags: agent.tags,
-      createdBy: SYSTEM_USER_ID,
-    },
-  });
-
-  // The fallback chain is part of a version's published bytes: it travels with the new row.
-  const fallbacks = await client.agentModelFallback.findMany({ where: { agentId: agent.id, resourceStatus: 'ENABLED' } });
-  if (fallbacks.length > 0) {
-    await client.agentModelFallback.createMany({
-      data: fallbacks.map((f) => ({
-        tenantId: f.tenantId,
-        agentId: next.id,
-        priority: f.priority,
-        modelId: f.modelId,
-        enabled: f.enabled,
-        createdBy: SYSTEM_USER_ID,
-      })),
+  await client.$transaction(async (tx) => {
+    // 1. Retire N — `status` / `isActive` / `deprecatedAt` are the columns the guard leaves writable,
+    //    and clearing `isActive` first is what lets N+1 be inserted active under the partial index.
+    await tx.agent.update({
+      where: { id: agent.id },
+      data: { status: 'DEPRECATED', isActive: false, deprecatedAt: now, updatedBy: SYSTEM_USER_ID },
     });
-  }
 
-  // Retire the version we branched from — `status` / `isActive` / `deprecatedAt` are writable.
-  await client.agent.update({
-    where: { id: agent.id },
-    data: { status: 'DEPRECATED', isActive: false, deprecatedAt: now, updatedBy: SYSTEM_USER_ID },
+    // 2. Version N+1: N's lineage and authored config, plus the pin and the frozen schema.
+    const next = await tx.agent.create({
+      data: {
+        tenantId: agent.tenantId,
+        slug: agent.slug,
+        name: agent.name,
+        description: agent.description,
+        task: agent.task,
+        versionNumber: agent.versionNumber + 1,
+        parentVersionId: agent.id,
+        sourceAgentId: agent.sourceAgentId,
+        sourceTenantId: agent.sourceTenantId,
+        sourceSlug: agent.sourceSlug,
+        sourceVersionNumber: agent.sourceVersionNumber,
+        status: 'PUBLISHED',
+        isActive: true,
+        modelId: agent.modelId,
+        contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
+        contextSchemaVersionNumber: 1,
+        instruction: agent.instruction as never,
+        parameters: agent.parameters as never,
+        inputSchema: agent.inputSchema as never,
+        outputSchema: agent.outputSchema as never,
+        tools: agent.tools as never,
+        compiledConfig: nextCompiled as never,
+        compiledConfigChecksum: nextCompiled === null ? null : checksumOf(nextCompiled),
+        validatedAt: now,
+        publishedAt: now,
+        resourceStatus: 'ENABLED',
+        tags: agent.tags,
+        createdBy: SYSTEM_USER_ID,
+      },
+    });
+
+    // 3. The fallback chain is part of a version's published bytes: it travels with the new row.
+    const fallbacks = await tx.agentModelFallback.findMany({ where: { agentId: agent.id, resourceStatus: 'ENABLED' } });
+    if (fallbacks.length > 0) {
+      await tx.agentModelFallback.createMany({
+        data: fallbacks.map((f) => ({
+          tenantId: f.tenantId,
+          agentId: next.id,
+          priority: f.priority,
+          modelId: f.modelId,
+          enabled: f.enabled,
+          createdBy: SYSTEM_USER_ID,
+        })),
+      });
+    }
   });
   return 'branched';
 }
