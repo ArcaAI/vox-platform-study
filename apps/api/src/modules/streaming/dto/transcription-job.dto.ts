@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 
@@ -50,6 +50,19 @@ export const ALLOWED_AUDIO_MIMES = new Set([
  * business plane).
  */
 export const AGENT_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+
+/**
+ * TASK-951 R2 (D-8) — ceiling on `CreateStreamSessionRequest.context`, measured as the UTF-8
+ * byte length of its canonical JSON.
+ *
+ * The object is stored in Redis for the session's lifetime and attached to EVERY transcript of
+ * that session, so its cost is paid per utterance, not once. 4 KB is generous for the identifying
+ * metadata this field exists to carry (a mic id, a speaker label, a channel) and small enough that
+ * a client cannot smuggle a payload down the caption stream. Over it is a 413, never a silent
+ * truncation — a truncated echo is worse than a refused one, because the client would believe the
+ * labels it reads back.
+ */
+export const MAX_STREAM_SESSION_CONTEXT_BYTES = 4096;
 
 export class TranscribeFileRequest {
   /**
@@ -159,6 +172,33 @@ export class CreateStreamSessionRequest {
   @Max(8)
   @IsOptional()
   channelCount?: number;
+
+  /**
+   * TASK-951 R2 (D-8) — client-owned metadata for THIS session, echoed verbatim on every
+   * transcript it produces.
+   *
+   * Shape is the context-schema envelope `{ [kindKey]: payload }`, the same shape
+   * `POST consultations/open` takes, so a tenant declares the vocabulary ONCE on a context schema
+   * and both planes speak it. When the session's resolved ASR agent BINDS a context schema, the
+   * object is validated against that agent's FROZEN `compiledConfig.contextSchema.payloadSchema`
+   * (400 `CONTEXT_SCHEMA_VIOLATION`); when it binds none, any object within the size bound is
+   * accepted — an agent that declares no vocabulary has nothing to refuse.
+   *
+   * HOPE never interprets it and never forwards it to `apps/stt`. It is how a caller that opens
+   * one session per microphone gets per-mic attribution back without HOPE's mixer, diarization or
+   * consultation binding knowing anything about microphones.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Client-owned session metadata, echoed verbatim on every transcript of this session. ' +
+      'Context-schema envelope `{ [kindKey]: payload }`; validated against the resolved ASR agent’s bound schema when it has one. ' +
+      'Max 4096 bytes of canonical JSON (413 above it).',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  context?: Record<string, unknown>;
 }
 
 export class StreamSessionResponse {
@@ -234,6 +274,30 @@ export class StreamSessionResponse {
   @IsBoolean()
   @IsOptional()
   voiceProfileSeeded?: boolean;
+
+  /**
+   * TASK-951 R2 — the accepted `context`, echoed back so a client can confirm what HOPE stored
+   * (and therefore what it will see on every transcript) without waiting for the first utterance.
+   * Absent when the request declared none.
+   */
+  @ApiPropertyOptional({
+    description: 'The client-declared session context, as stored. Absent when none was sent.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  context?: Record<string, unknown>;
+
+  /**
+   * TASK-951 R2 — epoch milliseconds at session creation, the clock every segment time of this
+   * session is relative to. Always populated by this gateway; typed optional so a client built
+   * against an older gateway keeps compiling.
+   */
+  @ApiPropertyOptional({ description: 'Epoch ms at session creation; segment times are relative to it' })
+  @IsNumber()
+  @IsOptional()
+  sessionEpochMs?: number;
 }
 
 export class BatchTranscribeResponse {

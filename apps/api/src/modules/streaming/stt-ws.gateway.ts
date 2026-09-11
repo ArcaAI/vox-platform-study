@@ -153,6 +153,15 @@ interface SessionInfo {
    * by `createStreamSession`. Defaults to 16000.
    */
   sampleRate: number;
+  /**
+   * TASK-951 R2 (D-8) — the client-declared session context, read from the SAME meta record as
+   * `sampleRate` at handshake and never re-read. Attached to every transcript this session
+   * relays. Undefined for a session that declared none, which is what keeps that session's wire
+   * byte-identical to the pre-TASK-951 contract.
+   */
+  streamContext?: Record<string, unknown>;
+  /** TASK-951 R2 — the session's creation epoch (ms), from the same meta record. */
+  sessionEpochMs?: number;
   /** Frames whose async Redis write failed. */
   droppedAudioFrames: number;
   /** Partials dropped because the WS egress buffer was over the threshold. */
@@ -558,10 +567,17 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // creation. Best-effort: a missing/corrupt record or a Redis blip falls
     // back to the historical 16000 and never rejects the handshake.
     let sampleRate: number = DEFAULT_SAMPLE_RATE;
+    // TASK-951 R2 — the per-session echo comes off the same one read. A failed/absent meta read
+    // leaves both undefined: the session still transcribes, it just echoes nothing, which is the
+    // same graceful posture the sampleRate fallback already takes.
+    let streamContext: Record<string, unknown> | undefined;
+    let sessionEpochMs: number | undefined;
     try {
       const meta = await this.sessionBinding.lookupSessionMeta(sessionId);
       if (meta) {
         sampleRate = meta.sampleRate;
+        streamContext = meta.context;
+        sessionEpochMs = meta.sessionEpochMs;
       }
     } catch (err) {
       this.logger.warn({
@@ -601,6 +617,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       userId: stored.userId,
       tenantId: stored.tenantId,
       sampleRate,
+      ...(streamContext ? { streamContext } : {}),
+      ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
       droppedAudioFrames: 0,
       droppedPartialResults: 0,
       partialDropSignalled: false,
@@ -692,35 +710,52 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private subscribeSessionResults(session: SessionInfo): void {
     session.resultSubscription?.unsubscribe();
-    session.resultSubscription = this.bridgeService.subscribeToResults(session.sessionId, { consumerGroup: WS_RESULT_CONSUMER_GROUP }).subscribe({
-      next: (msg) => {
-        this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
-      },
-      error: (err) => {
-        this.logger.warn({
-          message: 'Result stream error',
-          sessionId: session.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
-      },
-      complete: () => {
-        if (session.client.readyState === session.client.OPEN) {
-          session.client.send(
-            JSON.stringify({
-              type: 'status',
-              status: 'closed',
-              message: 'Transcription stream completed',
-            }),
-          );
-        }
-      },
-    });
+    session.resultSubscription = this.bridgeService
+      .subscribeToResults(session.sessionId, {
+        consumerGroup: WS_RESULT_CONSUMER_GROUP,
+        // TASK-951 R2 — read ONCE at handshake and handed to the reader, so the echo costs
+        // nothing per transcript. A grace-window rebind re-subscribes through this same method
+        // with the SessionInfo it kept, so a resumed session keeps echoing without a second read.
+        ...(session.streamContext ? { sessionEcho: { context: session.streamContext, sessionEpochMs: session.sessionEpochMs } } : {}),
+      })
+      .subscribe({
+        next: (msg) => {
+          this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
+        },
+        error: (err) => {
+          this.logger.warn({
+            message: 'Result stream error',
+            sessionId: session.sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
+        },
+        complete: () => {
+          if (session.client.readyState === session.client.OPEN) {
+            session.client.send(
+              JSON.stringify({
+                type: 'status',
+                status: 'closed',
+                message: 'Transcription stream completed',
+              }),
+            );
+          }
+        },
+      });
   }
 
   /** Explicit readiness ack the client gates its first send on. */
   private sendReady(session: SessionInfo): void {
-    this.sendJson(session.client, { type: 'ready', sessionId: session.sessionId, fromSeq: session.resultSeq + 1 });
+    this.sendJson(session.client, {
+      type: 'ready',
+      sessionId: session.sessionId,
+      fromSeq: session.resultSeq + 1,
+      // TASK-951 R2 — the session clock, on the FIRST frame the client receives. A caller aligning
+      // several per-microphone sessions needs it before any transcript arrives, and `ready` is a
+      // control frame, so an additive field here costs nothing per utterance. Absent only for a
+      // session whose meta record predates this ticket or could not be read.
+      ...(session.sessionEpochMs != null ? { sessionEpochMs: session.sessionEpochMs } : {}),
+    });
   }
 
   /**

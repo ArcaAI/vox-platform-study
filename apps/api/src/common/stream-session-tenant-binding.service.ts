@@ -55,16 +55,36 @@ export const STREAM_SESSION_TENANT_KEY_PREFIX = 'stream-session-tenant:';
 export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
 
 /**
- * Sibling key carrying gateway-relevant session meta
- * (currently the negotiated audio sampleRate). Written by
- * `createStreamSession`, read once by the WS gateway at handshake so audio
- * frames are forwarded at the rate the client actually negotiated instead
- * of a hardcoded 16000.
+ * Sibling key carrying gateway-relevant session meta: the negotiated audio
+ * sampleRate, and (TASK-951 R2) the client-declared session `context` plus the
+ * session's creation epoch. Written by `createStreamSession`, read once by the
+ * WS gateway at handshake — so audio frames are forwarded at the rate the
+ * client actually negotiated instead of a hardcoded 16000, and every transcript
+ * of the session carries the caller's own metadata back.
  */
 export const STREAM_SESSION_META_KEY_PREFIX = 'stream-session-meta:';
 
 export interface StreamSessionMeta {
   sampleRate: number;
+  /**
+   * TASK-951 R2 (D-8) — the client-declared session context
+   * (`CreateStreamSessionRequest.context`, `{ [kindKey]: payload }`), stored
+   * VERBATIM so every transcript of the session can echo it.
+   *
+   * It lives HERE, beside the sampleRate, rather than in a key of its own for
+   * one reason: the WS gateway already reads this record exactly once at
+   * handshake, so the echo costs no extra round trip and cannot drift out of
+   * step with the sampleRate it was negotiated alongside. It is bounded at
+   * 4 KB by the controller before it ever reaches Redis, and it is NEVER
+   * forwarded to `apps/stt` — the echo is a gateway concern end to end.
+   */
+  context?: Record<string, unknown>;
+  /**
+   * TASK-951 R2 — `Date.now()` at session creation. Segment times on the wire
+   * are relative to the session, so this is what lets a client that runs
+   * several concurrent sessions (one per microphone) place them on one clock.
+   */
+  sessionEpochMs?: number;
 }
 
 /**
@@ -172,7 +192,23 @@ export class StreamSessionTenantBindingService {
     try {
       const parsed = JSON.parse(raw) as Partial<StreamSessionMeta>;
       if (typeof parsed?.sampleRate === 'number' && Number.isFinite(parsed.sampleRate) && parsed.sampleRate > 0) {
-        return { sampleRate: parsed.sampleRate };
+        // TASK-951 — the two echo fields are read back INDEPENDENTLY of each other and
+        // of the sampleRate gate above: a record written before this ticket carries
+        // neither, and a record whose `context` is somehow not a plain object is read as
+        // "no context" rather than failing a handshake over a display concern.
+        const context =
+          parsed.context !== null && typeof parsed.context === 'object' && !Array.isArray(parsed.context)
+            ? (parsed.context as Record<string, unknown>)
+            : undefined;
+        const sessionEpochMs =
+          typeof parsed.sessionEpochMs === 'number' && Number.isFinite(parsed.sessionEpochMs) && parsed.sessionEpochMs > 0
+            ? parsed.sessionEpochMs
+            : undefined;
+        return {
+          sampleRate: parsed.sampleRate,
+          ...(context ? { context } : {}),
+          ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
+        };
       }
     } catch {
       // Corrupt record — treated as absent.
