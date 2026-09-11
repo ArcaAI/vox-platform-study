@@ -81,18 +81,30 @@ function lmStudioBaseUrl(): string {
  * literally the value `providers/openai_compat.py` substitutes when the field is
  * empty (`api_key=connection.api_key.get_secret_value() or "not-needed"`).
  *
- * NOT seeded, deliberately: `rerank:tei` and `vector:qdrant`. Their only
- * consumer is `apps/harness`'s retrieval stack, which has NO delivery path for a
- * connection row — it holds no DB handle (so `resolveConnection` is
- * unreachable), it runs inside a Temporal activity (so there is no gateway
- * request to inject into), and `EffectiveConfigResponse` carries no
- * `connections` block. That assessment is recorded at
- * `apps/harness/src/harness/core/config.py` "Why the endpoints below are still
- * env, and stay env", which keeps them env-tier transport addresses. Seeding
- * them here would be the exact silent no-op this section exists to prevent.
- * `embeddings:tei-embed` is the same story on the other side: `apps/text`'s TEI
- * embedding provider IS on the fold path, but no gateway route proxies
- * `POST /embeddings`, so nothing would ever build the override to deliver.
+ * A THIRD delivery path exists since TASK-952: the harness worker asks the
+ * gateway for ONE credential from INSIDE the activity that uses it
+ * (`GET /internal/harness/provider-credential`), which projects
+ * `resolveTenantCloudOverrides` onto a four-outcome wire contract. That is a
+ * FOLD-path consumer — it reads `resolved.overrides[provider]` — so everything
+ * this section says about keyless rows applies to it unchanged.
+ *
+ * `embeddings:tei-embed` IS seeded now, and it is seeded because of that path.
+ * The earlier text here said it could not be ("no gateway route proxies
+ * `POST /embeddings`, so nothing would ever build the override to deliver"),
+ * which was true of `apps/text`'s embeddings surface and is still true of it —
+ * but `apps/harness`'s retrieval stack reaches the SAME row through the
+ * per-activity pull, and its dense-embeddings client is what actually consumes
+ * the endpoint and the model id. Being a fold-path consumer is exactly why the
+ * row carries `SELF_HOST_PLACEHOLDER_API_KEY`: keyless, it would be dropped and
+ * the platform's endpoint would never be delivered.
+ *
+ * STILL NOT seeded, deliberately: `rerank:tei` and `vector:qdrant`. The
+ * reranker has no tenant opinion to express and no consumer that resolves a
+ * connection for it, and the platform Qdrant stays the harness's env-tier
+ * transport address (`RetrievalConfig.qdrant_url`) — TASK-952 D-1b wired the
+ * READ side for a TENANT that brings its own cluster, which needs no SYSTEM row
+ * at all. Both remain classified in `PLATFORM_SELF_HOST_CONNECTIONS` below so a
+ * future lane can seed one without editing a test.
  */
 
 /**
@@ -634,6 +646,61 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
+  },
+
+  // ── embeddings: the platform's OWN dense-embeddings server ────────────────
+  //
+  // TASK-952 D-1c. `apps/harness`'s retrieval stack embeds the institutional
+  // corpus (at ingest) and the entity-derived query (at retrieval) through this
+  // endpoint. The query can contain PHI, so the PLATFORM floor is self-hosted by
+  // construction; a tenant that wants its own cloud embeddings account brings it
+  // on an `embeddings:openai` row of its own, which wins for that tenant alone.
+  //
+  // WHY A SEPARATE PROVIDER ID FROM `openai`. The entitlement gate R6 governs
+  // platform SPEND on a VENDOR account and is scoped to `CLOUD_BYO_PROVIDERS`.
+  // A platform embeddings default carried on the CLOUD `embeddings:openai` pair
+  // is therefore suppressed for every tenant (`featurePlatformDefaultCredential`
+  // is granted on no plan), which the harness reads as `denied` and degrades to
+  // empty context. `tei-embed` is in `PLATFORM_SELF_HOST_PROVIDERS` instead, so
+  // the gate does not apply and the row serves every tenant — which is what a
+  // platform default is for.
+  //
+  // ADDRESS: `hope-tei-embed` in `infrastructure/docker/docker-compose.dev.yml`
+  // (`--model-id BAAI/bge-m3`, published on 8871). TEI exposes an
+  // OpenAI-compatible `POST /v1/embeddings` beside its native `/embed`, which is
+  // the shape `harness.services.embeddings_client` posts. There is no
+  // `hope-tei-embed` workload in `hope-v2-deployment/deployment/k8s/base/`, so —
+  // exactly like `llm:ollama` — the honest default is the address the engine
+  // actually listens on here, not an invented Service name. CREATE-ONLY: an
+  // operator repoints the row (console card `/ai-providers`, platform tier) and
+  // a re-seed never clobbers it.
+  //
+  // KEY: the non-secret `not-needed` PLACEHOLDER, for the reason in "Why a
+  // keyless row is not enough" — TEI authenticates nobody, but the override fold
+  // DROPS a keyless row on both tiers, and a dropped row delivers neither the
+  // endpoint nor the model id.
+  {
+    id: '87000000-0000-0000-0000-0000000000f1',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'embeddings',
+    provider: 'tei-embed',
+    baseUrl: 'http://localhost:8871/v1',
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
+    enabled: true,
+    // The model id the server serves. It lives HERE because it is a model
+    // SELECTION, which rule 09 §"No hardcoded configuration" bans from both a
+    // code literal and an env var — `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` and the
+    // `text-embedding-bge-m3` default it carried are retired by TASK-952 D-1c.
+    // The dense DIMENSION stays with the Qdrant collection it must match
+    // (`RetrievalConfig.embeddings_dim`): a connection row has nowhere to
+    // declare one, and a mismatch surfaces as a visible Qdrant rejection.
+    extraJson: { model: 'BAAI/bge-m3' },
+    metaData: { note: 'Platform dense-embeddings server (HF text-embeddings-inference); admin-tunable on this row (db-config tier).' },
   },
 
   // ── model-registry: the weight-fetch plane ─────────────────────

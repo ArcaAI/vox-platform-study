@@ -56,6 +56,25 @@ const loadSeed = async () => (await import('../17-ai-provider-connection')).seed
 /** The engines `apps/text` registers a self-host provider factory for. */
 const TEXT_SELF_HOST_ENGINES = ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:llama-cpp'];
 
+/**
+ * Every OTHER seeded row that carries the non-secret self-host placeholder.
+ *
+ * TASK-952 D-1c added `embeddings:tei-embed` — the platform's own
+ * text-embeddings-inference server. It is a SELF-HOST row, not a vendor account,
+ * and it carries the placeholder for the reason the four engines above do: the
+ * override fold DROPS a keyless row, and a dropped row delivers neither the
+ * endpoint nor the model id `apps/harness` has no code default for.
+ *
+ * Kept as a hand-written mirror rather than derived from
+ * `isPlatformSelfHostConnection`, so a row that gets MISCLASSIFIED in the seed
+ * still fails the keyless assertion below instead of classifying itself out of
+ * it. Widen it deliberately, never to make a red test green.
+ */
+const OTHER_SELF_HOST_ROWS = ['embeddings:tei-embed'];
+
+/** Rows for which a seeded (placeholder) key is correct. Everything else is CLOUD and must be keyless. */
+const KEYED_SELF_HOST_ROWS = [...TEXT_SELF_HOST_ENGINES, ...OTHER_SELF_HOST_ROWS];
+
 beforeEach(() => {
   vi.resetModules();
   writeMock.mockClear();
@@ -121,7 +140,7 @@ describe('seedAiProviderConnection — key material (SECRETS_PROVIDER=vault)', (
     const created: CreatedRow[] = [];
     await (await loadSeed())(fakeClient(created));
 
-    const cloud = created.filter((r) => !TEXT_SELF_HOST_ENGINES.includes(`${r.service}:${r.provider}`));
+    const cloud = created.filter((r) => !KEYED_SELF_HOST_ROWS.includes(`${r.service}:${r.provider}`));
     expect(cloud.length).toBeGreaterThan(0);
     cloud.forEach((r) => {
       expect(r.encryptedApiKey, `${r.service}:${r.provider} must stay keyless`).toBeUndefined();

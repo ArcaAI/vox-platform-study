@@ -28,7 +28,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_ENGINE_CARDS, MODEL_REGISTRY_CARDS, PROVIDERS_BY_SERVICE, classOf, cloudProvidersFor } from '../provider-meta';
+import {
+  BUILT_IN_ENGINE_CARDS,
+  BUILT_IN_PROVIDERS_BY_SERVICE,
+  BUILT_IN_PROVIDER_ENTRIES,
+  MODEL_REGISTRY_CARDS,
+  PROVIDERS_BY_SERVICE,
+  classOf,
+  cloudProvidersFor,
+} from '../provider-meta';
 
 /** `CLOUD_BYO_PROVIDERS`, verbatim, in the order an admin reads the cards. */
 const GATEWAY_CLOUD_BYO: Record<string, readonly string[]> = {
@@ -53,6 +61,22 @@ const GATEWAY_CLOUD_BYO: Record<string, readonly string[]> = {
  * its endpoint is the only thing standing between `apps/text` and a 503.
  */
 const GATEWAY_ENGINE_SERVED: readonly string[] = ['lm-studio', 'ollama', 'vllm', 'llama-cpp'];
+
+/**
+ * `PLATFORM_SELF_HOST_PROVIDERS`, verbatim — a DIFFERENT gateway constant from
+ * `ENGINE_SERVED_PROVIDERS` above, and the distinction is the point of
+ * TASK-952 D-1c: the `llm` engines are the platform's completion servers, while
+ * `embeddings:tei-embed` is its dense-embeddings server. Both are platform-tier
+ * only (a tenant row for either is a 403) but they are governed by separate
+ * lists, so this file mirrors both.
+ *
+ * The three `tts` entries are deliberately excluded below: those engines run
+ * IN-PROCESS inside `apps/tts` with no endpoint and no credential, so a card
+ * would have nothing on it — the same reason `built-in` has none.
+ */
+const GATEWAY_PLATFORM_SELF_HOST: Record<string, readonly string[]> = {
+  embeddings: ['tei-embed'],
+};
 
 /** The two rows that can exist under `model-registry`, per the seed and the gateway. */
 const GATEWAY_MODEL_REGISTRY: readonly string[] = ['huggingface', 's3'];
@@ -119,6 +143,34 @@ describe('the platform-managed cards mirror the gateway platform planes (TASK-93
 
   it('classes every engine card `engine-served`, so no tenant tier can render one', () => {
     for (const card of BUILT_IN_ENGINE_CARDS) expect(classOf(card)).toBe('engine-served');
+  });
+
+  it('renders a card for every platform self-host serving provider that has an endpoint (TASK-952 D-1c)', () => {
+    for (const [service, expected] of Object.entries(GATEWAY_PLATFORM_SELF_HOST)) {
+      const rendered = (BUILT_IN_PROVIDERS_BY_SERVICE[service as keyof typeof PROVIDERS_BY_SERVICE] ?? []).map((p) => p.id);
+      expect([...rendered].sort(), `${service} has a platform self-host provider with no card`).toEqual([...expected].sort());
+    }
+  });
+
+  it("names the TEI embeddings model — the harness has no default for it any more", () => {
+    // `embeddings_model` lost its `text-embedding-bge-m3` literal AND its env var
+    // (a model id is a SELECTION, not config-in-code). This row is the only home
+    // the platform's embeddings model has, and `PROVIDER_REQUIREMENTS` refuses an
+    // enabled row without it — so a card with no model field would leave a
+    // platform admin unable to satisfy the 400 they are shown.
+    const tei = (BUILT_IN_PROVIDERS_BY_SERVICE.embeddings ?? []).find((p) => p.id === 'tei-embed')!;
+    expect(tei, 'no `embeddings:tei-embed` card — the connection is writable and unreachable').toBeDefined();
+    expect(tei.fields.some((f) => f.name === 'baseUrl')).toBe(true);
+    expect(tei.fields.some((f) => f.name === 'model' && f.store === 'extra')).toBe(true);
+  });
+
+  it('pairs every platform card with its OWN service, never a hardcoded one', () => {
+    // The screen used to render every built-in card under a literal
+    // `service="llm"`. Writing the TEI endpoint to `llm:tei-embed` would create a
+    // row nothing resolves, so the service now travels WITH the card.
+    expect(BUILT_IN_PROVIDER_ENTRIES.map((e) => `${e.service}:${e.meta.id}`).sort()).toEqual(
+      ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:llama-cpp', 'embeddings:tei-embed'].sort(),
+    );
   });
 
   it('keeps the platform planes out of the cloud lists entirely', () => {

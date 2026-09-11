@@ -133,6 +133,26 @@ export const BUILT_IN_CONNECTION_DEFAULTS: Readonly<Record<string, BuiltInConnec
     apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
     extraJson: null,
   },
+  // TASK-952 D-1c — the platform's own dense-embeddings server (HF
+  // text-embeddings-inference). Endpoint and model mirror `hope-tei-embed` in
+  // `infrastructure/docker/docker-compose.dev.yml` (`--model-id BAAI/bge-m3`,
+  // published on 8871); TEI serves an OpenAI-compatible `POST /v1/embeddings`
+  // beside its native `/embed`, which is the shape the harness posts. There is
+  // no `hope-tei-embed` workload in the deployment repo's `base/`, so this keeps
+  // the address the engine actually listens on — the `llm:ollama` case, not the
+  // `hope-llama-cpp` one.
+  //
+  // It keeps the self-host PLACEHOLDER key for the reason every engine row does:
+  // the override fold drops a keyless row, and a dropped row delivers neither
+  // the endpoint nor the model id the harness now has no code default for.
+  'embeddings:tei-embed': {
+    service: 'embeddings',
+    provider: 'tei-embed',
+    baseUrl: 'http://localhost:8871/v1',
+    enabled: true,
+    apiKey: SELF_HOST_PLACEHOLDER_API_KEY,
+    extraJson: { model: 'BAAI/bge-m3' },
+  },
   // The Hub with NO token: public repos pull anonymously; a token is what reaches a gated one.
   'model-registry:huggingface': {
     service: 'model-registry',

@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 112 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 305 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
-| `turbo.json#globalEnv` entries | 497 |
+| Python declared fields | 304 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 349 |
+| `turbo.json#globalEnv` entries | 496 |
 
 ## Variables — the TypeScript platform surface
 
@@ -305,7 +305,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_COLLECTION` | `apps/harness` | no | no | `knowledge_chunks` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_DIM` | `apps/harness` | no | no | `1024` | commented | — |
-| `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` | `apps/harness` | no | no | `text-embedding-bge-m3` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_RETRIEVAL_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S` | `apps/harness` | no | no | `10` | commented | — |

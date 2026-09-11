@@ -82,6 +82,11 @@ class TestFactoriesPassApiKey:
 
         settings = Settings()
         settings.retrieval.qdrant_api_key = SecretStr(key) if key is not None else None
+        # TASK-952 D-1c — `embeddings_model` has NO code default any more (a model
+        # id is a SELECTION, so it lives on the connection row), and building the
+        # retriever without one fails closed. These tests are about the QDRANT
+        # key, so they inject a model the same way the runtime does.
+        settings.retrieval.embeddings_model = "test-embeddings"
         return settings
 
     def test_temporal_retriever_factory_forwards_the_key(self):

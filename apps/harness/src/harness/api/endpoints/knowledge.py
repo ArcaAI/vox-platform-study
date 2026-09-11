@@ -31,11 +31,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from harness.core.config import Settings
 from harness.core.logging import get_logger
 from harness.core.provider_credentials import (
-    EMBEDDINGS_CONNECTION_PROVIDER,
     VECTOR_CONNECTION_PROVIDER,
+    CredentialUnavailable,
     ProviderCredential,
     apply_embeddings_credential,
     apply_vector_credential,
+    require_embeddings_model,
+    resolve_embeddings_credential,
 )
 from harness.guides.retrieval.chunker import chunk_text
 from harness.guides.retrieval.qdrant_store import (
@@ -96,11 +98,16 @@ def _embeddings_client(
     tenant's corpus and its queries are embedded by the SAME model on the SAME
     endpoint. Deriving them separately would produce vectors a query can never
     match, which is a silent failure rather than a loud one.
+
+    Raises :class:`CredentialUnavailable` when no tier supplied a model id: the
+    literal default was retired (a model id is a SELECTION), and selection fails
+    CLOSED. The caller turns that into a 503 rather than embedding a corpus with
+    a model it chose itself.
     """
     rc = apply_embeddings_credential(settings.retrieval, credential)
     return EmbeddingsClient(
         rc.embeddings_base_url,
-        model=rc.embeddings_model,
+        model=require_embeddings_model(rc),
         timeout=rc.embeddings_timeout_s,
         api_key=rc.embeddings_api_key.get_secret_value() if rc.embeddings_api_key else None,
     )
@@ -118,9 +125,16 @@ async def _resolve_embeddings_credential(settings: Settings, tenant_id: str) -> 
     than a `service`/`provider` parameter on that one) so the hermetic suite can
     stub each plane independently and a test that pins one cannot accidentally
     pin the other. Never raises; see :mod:`harness.core.provider_credentials`.
+
+    Two lanes, tenant BYO then the platform's own server, through the SHARED
+    :func:`resolve_embeddings_credential` — so ingest and retrieval can never
+    disagree about which tier (and therefore which model) embedded a corpus.
     """
-    return await _connection_client(settings).resolve_provider_credential(
-        "embeddings", EMBEDDINGS_CONNECTION_PROVIDER, tenant_id=tenant_id
+    client = _connection_client(settings)
+    return await resolve_embeddings_credential(
+        lambda service, provider: client.resolve_provider_credential(
+            service, provider, tenant_id=tenant_id
+        )
     )
 
 
@@ -224,7 +238,20 @@ async def ingest_knowledge(body: IngestRequest, request: Request) -> dict[str, A
                 "detail": embeddings_credential.reason or embeddings_credential.outcome.value,
             },
         )
-    embeddings = _embeddings_client(settings, embeddings_credential)
+    try:
+        embeddings = _embeddings_client(settings, embeddings_credential)
+    except CredentialUnavailable as exc:
+        # D-1c — no tier supplied a model id. Same 503 + fail-closed posture as an
+        # unusable credential: never embed with a model this service picked.
+        logger.warning(
+            "harness.knowledge.ingest.embeddings_model_unresolved",
+            knowledge_document_id=body.knowledge_document_id,
+            cause=str(exc),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "embeddings_model_unresolved", "detail": str(exc)},
+        ) from exc
 
     try:
         dense_vectors = await embeddings.embed(texts)

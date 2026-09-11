@@ -210,15 +210,45 @@ class RetrievalConfig(BaseSettings):
     # is the tenant-first rule satisfied, not bypassed.
     #
     # `embeddings_model` and `embeddings_dim` are ONE coupled description: the dim
-    # MUST match the loaded model AND the Qdrant collection. A tenant row can move
-    # the model but has nowhere to declare a dim, so a tenant that pins a
-    # different-dimension model gets a Qdrant dimension rejection (visible,
-    # degrade-safe) rather than silently wrong vectors. Keep them adjacent.
+    # MUST match the loaded model AND the Qdrant collection. They nevertheless
+    # live in DIFFERENT tiers, and the split is deliberate — the model is a
+    # SELECTION and resolves from the connection row (tenant → platform); the dim
+    # is a property of the Qdrant collection, which no connection row can
+    # declare, so it stays here. A row that pins a different-dimension model gets
+    # a Qdrant dimension rejection (visible, degrade-safe) rather than silently
+    # wrong vectors. Keep them adjacent.
     embeddings_base_url: str = "http://localhost:1234/v1"
-    # Model id the engine exposes for the loaded dense embedding model. Operators
-    # override to match the loaded build (the plan's reference model is BAAI/bge-m3).
-    embeddings_model: str = "text-embedding-bge-m3"
-    # Dense vector dimension — MUST match the loaded model AND the Qdrant collection.
+    # ── The MODEL is a SELECTION, so it is neither a literal nor an env var ────
+    #
+    # D-1c retired `"text-embedding-bge-m3"` and the
+    # `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` variable that carried it. Rule 09
+    # §"No hardcoded configuration" is explicit that a model id is CONFIG and is
+    # not an env var, and rule 00 names "a `pydantic-settings` field with a real
+    # default" as the exact shape of the violation. Its home is
+    # `AiProviderConnection.extraJson.model` — the TENANT's on its own
+    # `embeddings:openai` row, the PLATFORM's on the SYSTEM
+    # `embeddings:tei-embed` row the seed writes (`BAAI/bge-m3`).
+    #
+    # The env path is CLOSED STRUCTURALLY (dead `validation_alias`;
+    # `populate_by_name` is OFF for this class), like the two credentials below,
+    # so the field is written by `model_copy` INJECTION only
+    # (`provider_credentials.apply_embeddings_credential`).
+    #
+    # Unresolved is FAIL-CLOSED, not "pick something": selection is
+    # `failMode: closed`, and `provider_credentials.require_embeddings_model`
+    # raises `CredentialUnavailable` so the retriever degrades visibly rather
+    # than embedding a corpus with one model and its queries with another.
+    embeddings_model: str | None = Field(
+        default=None,
+        validation_alias="HARNESS_RETRIEVAL_EMBEDDINGS_MODEL__ENV_REMOVED",
+    )
+    # Dense vector dimension — MUST match the loaded model AND the Qdrant
+    # collection, which is why it did NOT follow the model onto the connection
+    # row: the dim describes the COLLECTION as much as the model, and a
+    # connection row has nowhere to declare one. It therefore stays an env-tier
+    # sizing knob. A row that pins a different-dimension model gets a Qdrant
+    # dimension rejection — visible and degrade-safe — which is the same outcome
+    # the field comment above already promised for a tenant BYO model.
     embeddings_dim: int = 1024
     # ── BYO-only credential ─────────────────────────────
     # The platform's own embeddings server authenticates nobody, so this is `None`

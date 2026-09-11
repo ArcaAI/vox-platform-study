@@ -100,6 +100,40 @@ const BUILT_IN_ENGINE_PROVIDERS: readonly ProviderMeta[] = [
   },
 ];
 
+/**
+ * TASK-952 D-1c — the PLATFORM's own dense-embeddings server.
+ *
+ * It mirrors `PLATFORM_SELF_HOST_PROVIDERS` in @arcaai/applications, which is a
+ * DIFFERENT gateway list from `ENGINE_SERVED_PROVIDERS` above: both are
+ * platform-tier-only, but the engines there serve LLM completions and this one
+ * serves embeddings, and the two are governed by separate constants. Hence its
+ * own list rather than an entry in `BUILT_IN_ENGINE_PROVIDERS`.
+ *
+ * Both fields are REQUIRED by `PROVIDER_REQUIREMENTS['embeddings:tei-embed']`,
+ * and the model one is load-bearing: the harness retired its hardcoded
+ * `text-embedding-bge-m3` default, so this row is the only place the platform's
+ * embeddings model id lives. Blank it and retrieval degrades to empty context.
+ *
+ * The three `tts` in-process engines are the other `PLATFORM_SELF_HOST_PROVIDERS`
+ * entries and deliberately have NO card — they run inside `apps/tts` with no
+ * endpoint and no credential, so there is nothing on a card to configure (the
+ * same reason `built-in` has none).
+ */
+const BUILT_IN_EMBEDDINGS_PROVIDERS: readonly ProviderMeta[] = [
+  {
+    id: 'tei-embed',
+    label: 'TEI embeddings',
+    providerClass: 'engine-served',
+    hint: 'The platform’s own dense-embeddings server (HuggingFace text-embeddings-inference). It serves ONE model, so name it here — the harness has no default.',
+    keyLabel: 'API key (optional)',
+    keyPlaceholder: 'TEI needs none — leave blank',
+    fields: [
+      { name: 'baseUrl', label: 'Endpoint', placeholder: 'http://localhost:8871/v1' },
+      { name: 'model', label: 'Model id', placeholder: 'BAAI/bge-m3', store: 'extra' },
+    ],
+  },
+];
+
 /** LLM tab — mirrors `CLOUD_BYO_PROVIDERS.llm`. */
 const LLM_PROVIDERS: readonly ProviderMeta[] = [
   {
@@ -294,6 +328,7 @@ const MODEL_REGISTRY_PROVIDERS: readonly ProviderMeta[] = [
  */
 export const BUILT_IN_PROVIDERS_BY_SERVICE: Partial<Record<ProviderService, readonly ProviderMeta[]>> = {
   llm: BUILT_IN_ENGINE_PROVIDERS,
+  embeddings: BUILT_IN_EMBEDDINGS_PROVIDERS,
 };
 
 /** Per-service provider metadata, keyed to drive each tab's credential grid. */
@@ -333,8 +368,27 @@ export function cloudConfigurableServices(services: readonly ProviderService[]):
   return services.filter((service) => cloudProvidersFor(service).length > 0);
 }
 
-/** The built-in inference engines the PLATFORM runs, across every service. */
+/**
+ * The built-in inference engines the PLATFORM runs, for the `llm` service.
+ *
+ * Kept as the `llm`-only list because that is what it mirrors on the gateway
+ * (`ENGINE_SERVED_PROVIDERS`). Render from `BUILT_IN_PROVIDER_ENTRIES` below,
+ * not from this — a card has to be written against its OWN service, and this one
+ * was previously rendered under a hardcoded `service="llm"`.
+ */
 export const BUILT_IN_ENGINE_CARDS: readonly ProviderMeta[] = BUILT_IN_ENGINE_PROVIDERS;
+
+/**
+ * Every platform-managed inference card, PAIRED WITH ITS SERVICE (TASK-952 D-1c).
+ *
+ * The platform screen used to map `BUILT_IN_ENGINE_CARDS` under a literal
+ * `service="llm"`, which silently made "platform-managed" and "an LLM engine"
+ * the same thing. They are not: `embeddings:tei-embed` is platform-managed too,
+ * and writing it to `llm:tei-embed` would create a row nothing resolves.
+ */
+export const BUILT_IN_PROVIDER_ENTRIES: readonly { service: ProviderService; meta: ProviderMeta }[] = (
+  Object.entries(BUILT_IN_PROVIDERS_BY_SERVICE) as [ProviderService, readonly ProviderMeta[]][]
+).flatMap(([service, metas]) => metas.map((meta) => ({ service, meta })));
 
 /** The built-in weight-fetch plane (`model-registry`), platform tier only. */
 export const MODEL_REGISTRY_CARDS: readonly ProviderMeta[] = MODEL_REGISTRY_PROVIDERS;

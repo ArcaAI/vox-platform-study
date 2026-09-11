@@ -5,7 +5,7 @@ import type { ProviderService, ReadinessEngine } from '../api/types';
 import { useInferenceReadiness } from '../api/hooks';
 import { ProviderCredentialCard } from './provider-credential-card';
 import { ProviderCredentialsTabs } from './provider-credentials-tabs';
-import { BUILT_IN_ENGINE_CARDS, MODEL_REGISTRY_CARDS } from './provider-meta';
+import { BUILT_IN_PROVIDER_ENTRIES, MODEL_REGISTRY_CARDS } from './provider-meta';
 
 /**
  * `lmstudio` is the alias some seeded rows still carry beside `lm-studio`, and
@@ -66,13 +66,20 @@ export function PlatformProviderSections({ tenantId, enabled = true }: { tenantI
         <SectionHeading
           id="built-in-inference"
           title="Built-in inference services"
-          description="Engines this platform runs itself. Endpoint and availability are platform configuration — no tenant can bring an account for one, and every tenant is served by these."
+          description="Engines this platform runs itself — completions and embeddings. Endpoint and availability are platform configuration: no tenant can bring an account for one, and every tenant is served by these."
         />
         <div className="grid gap-4 lg:grid-cols-2">
-          {BUILT_IN_ENGINE_CARDS.map((meta) => (
+          {/*
+            Each card is written against its OWN service (TASK-952 D-1c). This was
+            a literal `service="llm"` while every platform-managed card happened to
+            be an LLM engine; `embeddings:tei-embed` is platform-managed too, and
+            under the old literal its endpoint and model would have been written to
+            an `llm:tei-embed` row that nothing resolves.
+          */}
+          {BUILT_IN_PROVIDER_ENTRIES.map(({ service, meta }) => (
             <ProviderCredentialCard
-              key={meta.id}
-              service={'llm' satisfies ProviderService}
+              key={`${service}:${meta.id}`}
+              service={service satisfies ProviderService}
               meta={meta}
               tenantId={tenantId}
               tier="platform"

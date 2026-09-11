@@ -759,6 +759,32 @@ export type HarnessCredentialOutcome = 'resolved' | 'absent' | 'denied' | 'unava
 export type HarnessCredentialFunding = 'tenant' | 'platform';
 
 /**
+ * TASK-952 D-1c — WHICH of the two rules produced a `denied`, machine-readably.
+ *
+ * They are different facts and a consumer may legitimately act differently on
+ * them, but `reason` is English prose and nothing should be parsing it:
+ *
+ *   `tenant-veto`          the tenant DISABLED its own row for this
+ *                          `(service, provider)`. `CONNECTION_ENABLED_SEMANTICS`
+ *                          says that blocks the pair in BOTH tiers and the call
+ *                          "fails rather than falling through to another
+ *                          provider" — so a consumer with a fallback provider
+ *                          must NOT use it.
+ *   `platform-entitlement` the tenant expressed no opinion AND may not draw on
+ *                          the platform's VENDOR accounts
+ *                          (`featurePlatformDefaultCredential`). The gate is
+ *                          scoped to `CLOUD_BYO_PROVIDERS` — it governs platform
+ *                          SPEND, and says nothing about the platform's own
+ *                          self-hosted infrastructure — so a consumer MAY widen
+ *                          to a `PLATFORM_SELF_HOST_PROVIDERS` row for the same
+ *                          capability.
+ *
+ * Optional on purpose: an older consumer that does not read it sees only
+ * `denied` and fails closed, which is the safe reading of either cause.
+ */
+export type HarnessCredentialDenial = 'tenant-veto' | 'platform-entitlement';
+
+/**
  * One resolved `AiProviderConnection` in the shape the harness worker consumes.
  *
  * `apiKey` is PLAINTEXT key material. It exists only on the wire of the
@@ -771,6 +797,8 @@ export interface HarnessProviderCredentialResponse {
   outcome: HarnessCredentialOutcome;
   /** Human-readable cause for `denied` / `unavailable`. NEVER key material. */
   reason?: string;
+  /** Machine-readable cause for `denied` — see `HarnessCredentialDenial`. */
+  denial?: HarnessCredentialDenial;
   apiKey?: string;
   baseUrl?: string;
   region?: string;
