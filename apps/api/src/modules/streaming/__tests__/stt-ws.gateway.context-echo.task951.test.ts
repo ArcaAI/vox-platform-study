@@ -51,7 +51,7 @@ const createMockSessionBinding = () => ({
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
   // TASK-951 lane E2 reads the metadata marks in the SAME Promise.all as the meta; a mock without it
   // throws inside the handshake and silently drops the echo — exactly the failure this file then reports.
-  lookupMetadataMarks: vi.fn().mockResolvedValue(null),
+  lookupMetadataMarks: vi.fn().mockResolvedValue({ spans: [], audioSec: 0 }),
   bindMetadataMarks: vi.fn().mockResolvedValue(undefined),
   clear: vi.fn().mockResolvedValue(undefined),
 });
@@ -139,7 +139,7 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
     expect(sessionBinding.lookupSessionMeta).toHaveBeenCalledTimes(1);
     expect(bridgeService.subscribeToResults).toHaveBeenCalledWith('sess-echo', {
       consumerGroup: WS_RESULT_CONSUMER_GROUP,
-      sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS },
+      sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS, metadataSpans: expect.any(Function) },
     });
   });
 
@@ -202,7 +202,7 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
     expect(bridgeService.subscribeToResults).toHaveBeenCalledTimes(2);
     expect(bridgeService.subscribeToResults).toHaveBeenLastCalledWith('sess-resume', {
       consumerGroup: WS_RESULT_CONSUMER_GROUP,
-      sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS },
+      sessionEcho: { context: STREAM_CONTEXT, sessionEpochMs: SESSION_EPOCH_MS, metadataSpans: expect.any(Function) },
     });
     expect(framesOn(second).find((f) => f.type === 'ready').sessionEpochMs).toBe(SESSION_EPOCH_MS);
   });

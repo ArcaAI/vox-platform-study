@@ -994,8 +994,7 @@ export class TranscriptionJobController {
    */
   private resolveStreamMetadataSchema(resolved?: ResolvedAsrSession): Record<string, unknown> | undefined {
     const contextSchema = resolved?.contextSchema as
-      | { payloadSchema?: unknown; openBindings?: { streamContext?: { kindKey?: unknown } } }
-      | undefined;
+      { payloadSchema?: unknown; openBindings?: { streamContext?: { kindKey?: unknown } } } | undefined;
 
     const kindKey = contextSchema?.openBindings?.streamContext?.kindKey;
     if (typeof kindKey !== 'string' || kindKey.length === 0) return undefined;
