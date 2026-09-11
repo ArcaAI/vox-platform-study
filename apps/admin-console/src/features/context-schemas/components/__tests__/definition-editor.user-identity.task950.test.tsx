@@ -1,10 +1,13 @@
 /**
- * TASK-950 (D-1/D-12a) — the "User identity field" picker on a STRUCTURED /
- * ONE kind: offers only that kind's string properties, writes/deletes
- * `kind.userIdentity`, enforces "at most one marker per definition" with a
- * visible reason, stays absent on kinds the marker cannot apply to, and
- * renders an `Identity` badge on a marked kind — plus an axe scan in both
- * themes.
+ * TASK-950 (D-1/D-12a) — the "Identity (user)" row of the field-role table
+ * (TASK-951 D-11 renamed the standalone "User identity field" picker into
+ * `FieldRoleTable`; this file keeps its original TASK-950 name and keeps
+ * testing the identity role's behavior end to end, updated for the new
+ * label/wording) on a STRUCTURED / ONE kind: offers only that kind's string
+ * properties, writes/deletes `kind.userIdentity`, enforces "at most one
+ * marker per definition" with a visible "Held by «kind»" reason, stays
+ * absent on kinds the marker cannot apply to, and renders an `Identity`
+ * badge on a marked kind — plus an axe scan in both themes.
  */
 
 import { useState } from 'react';
@@ -29,7 +32,7 @@ afterEach(() => {
   cleanup();
 });
 
-/** Expand a kind's collapsed Accordion item so its fields (and our select) render. */
+/** Expand a kind's collapsed Accordion item so its fields (and the field-role table) render. */
 async function expandKind(keyPattern: RegExp): Promise<void> {
   fireEvent.click(await screen.findByRole('button', { name: keyPattern }));
 }
@@ -80,7 +83,7 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
     renderWithProviders(<Harness initial={definitionWith([structuredOneKind()])} />);
     await expandKind(/context/);
 
-    const trigger = await screen.findByRole('combobox', { name: /User identity field/ });
+    const trigger = await screen.findByRole('combobox', { name: /Identity \(user\)/ });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     const options = await screen.findAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual(['None', 'consultant_id', 'visit_type']);
@@ -91,7 +94,7 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
     renderWithProviders(<Harness initial={definitionWith([structuredOneKind()])} onDefinition={(next) => (captured = next)} />);
     await expandKind(/context/);
 
-    const trigger = await screen.findByRole('combobox', { name: /User identity field/ });
+    const trigger = await screen.findByRole('combobox', { name: /Identity \(user\)/ });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('option', { name: 'consultant_id' }));
 
@@ -108,7 +111,7 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
 
     expect(await screen.findByText('Identity')).toBeDefined();
 
-    const trigger = await screen.findByRole('combobox', { name: /User identity field/ });
+    const trigger = await screen.findByRole('combobox', { name: /Identity \(user\)/ });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('option', { name: 'None' }));
 
@@ -117,7 +120,7 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
     expect(screen.queryByText('Identity')).toBeNull();
   });
 
-  it('disables a second kind’s select with a visible reason once another kind already carries the marker', async () => {
+  it('disables a second kind’s select with a visible "Held by" reason once another kind already carries the marker', async () => {
     const kinds = [
       structuredOneKind({ key: 'context', userIdentity: { field: 'consultant_id' } }),
       structuredOneKind({ key: 'other_context', label: 'Other Context' }),
@@ -126,11 +129,11 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
     await expandKind(/^context\b/);
     await expandKind(/other_context/);
 
-    const triggers = (await screen.findAllByRole('combobox', { name: /User identity field/ })) as HTMLButtonElement[];
+    const triggers = (await screen.findAllByRole('combobox', { name: /Identity \(user\)/ })) as HTMLButtonElement[];
     expect(triggers).toHaveLength(2);
     expect(triggers[0]!.disabled).toBe(false);
     expect(triggers[1]!.disabled).toBe(true);
-    const reason = screen.getByText(/Only one identity field per schema/);
+    const reason = screen.getByText(/Held by/);
     expect(reason.textContent).toContain('context');
   });
 
@@ -153,7 +156,7 @@ describe('DefinitionEditor — user identity field (TASK-950)', () => {
     await expandKind(/transcript_note/);
     await expandKind(/clinical_flags/);
 
-    const selects = await screen.findAllByRole('combobox', { name: /User identity field/ });
+    const selects = await screen.findAllByRole('combobox', { name: /Identity \(user\)/ });
     expect(selects).toHaveLength(1);
   });
 
