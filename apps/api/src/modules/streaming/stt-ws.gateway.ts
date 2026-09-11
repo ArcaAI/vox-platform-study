@@ -1419,15 +1419,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
     // Mirrored for a reconnect onto another instance. Not awaited and never fatal: the hot copy
     // above is what serves every transcript, so a Redis blip costs resumability, not labelling.
-    this.sessionBinding
-      .bindMetadataMarks(session.sessionId, { spans: next, audioSec: this.audioSecForwarded(session) })
-      .catch((err) =>
-        this.logger.warn({
-          message: 'Failed to persist stream metadata marks (in-memory timeline is unaffected)',
-          sessionId: session.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
+    this.sessionBinding.bindMetadataMarks(session.sessionId, { spans: next, audioSec: this.audioSecForwarded(session) }).catch((err) =>
+      this.logger.warn({
+        message: 'Failed to persist stream metadata marks (in-memory timeline is unaffected)',
+        sessionId: session.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 
   /** The schema refusal carries `problems` — a client cannot fix a shape it is not shown. */

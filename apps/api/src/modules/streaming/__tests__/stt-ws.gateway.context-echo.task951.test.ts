@@ -49,6 +49,10 @@ const createMockSessionBinding = () => ({
   // Default: NO meta record at all — the pre-TASK-951 world, and the baseline every
   // "nothing changed" assertion below is measured against.
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
+  // TASK-951 lane E2 reads the metadata marks in the SAME Promise.all as the meta; a mock without it
+  // throws inside the handshake and silently drops the echo — exactly the failure this file then reports.
+  lookupMetadataMarks: vi.fn().mockResolvedValue(null),
+  bindMetadataMarks: vi.fn().mockResolvedValue(undefined),
   clear: vi.fn().mockResolvedValue(undefined),
 });
 

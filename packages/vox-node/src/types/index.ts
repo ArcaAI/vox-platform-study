@@ -81,6 +81,7 @@ export type {
   SttServerMessage,
   SttStatusMessage,
   SttStopMessage,
+  SttMetadataSpan,
   SttTranscriptResult,
   SttWordTimestamp,
   StreamSessionResponse,
