@@ -311,6 +311,15 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       runId,
       trigger: opts.trigger ?? 'api invoke',
       isSandbox: false,
+      // TASK-950 (decision 2, fast win) — the DURABLE half of standalone-run attribution. The
+      // `ResourceCreated` event below already carries `actingUserId`, but an audit row is not
+      // queryable beside the run it describes; `_metadata->>'actingUserId'` on this row is.
+      //
+      // OMITTED rather than `{ actingUserId: null }`, because `actingUserId` is null for three
+      // different reasons (human caller · consultation-bound run · schema declares no identity
+      // field) and none of them is a fact about this run worth storing. An absent key is the one
+      // honest spelling of all three.
+      metaData: actingUserId ? { actingUserId } : undefined,
     });
 
     const started = await this.harnessGateway.startWorkflowRun({
