@@ -106,6 +106,8 @@ describe('summary provenance over HTTP (controller→service→mapper integratio
       entityFaithfulnessScore: 0.95,
       coverageScore: 0.9,
       ragTriadScore: 0.92,
+      // TASK-932: the provenance DTO carries whether redaction ran; `null` when the row predates it.
+      redactionApplied: null,
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, citationPresence: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', section: 'P', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
