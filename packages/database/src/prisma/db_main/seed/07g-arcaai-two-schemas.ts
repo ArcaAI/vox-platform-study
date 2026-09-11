@@ -191,7 +191,9 @@ export const ARCAAI_CONSULTATION_SCRIBE_DEFINITION: Record<string, unknown> = {
       cardinality: 'ONE',
       lifecycle: 'PRE',
       producedBy: ['CLIENT'],
-      required: true,
+      // NOT `required: true` at the KIND level: the derived trigger payload schema would then require
+      // `encounter` for EVERY run, and a console-opened consultation sends no authored context at all.
+      // Presence of the properties INSIDE the kind is what the client contract enforces.
       description: 'What the client states about this encounter at open: who, where, which visit, and its external id.',
       fields: {
         type: 'object',
@@ -276,6 +278,16 @@ export const ARCAAI_CONSULTATION_SCRIBE_DEFINITION: Record<string, unknown> = {
       lifecycle: 'ANY',
       producedBy: ['CLIENT'],
       description: "The clinician's own working notes for this consultation.",
+    },
+    {
+      key: 'case_note',
+      label: 'Case Note',
+      primitive: 'TEXT',
+      phiClass: 'PHI',
+      cardinality: 'MANY',
+      lifecycle: 'ANY',
+      producedBy: ['CLIENT'],
+      description: 'Clinical case notes contributed during or around the consultation (kept from consultation_note_context so a client naming kindKey case_note stays valid).',
     },
     {
       key: 'attachment',

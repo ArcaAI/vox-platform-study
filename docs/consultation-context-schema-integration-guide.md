@@ -446,7 +446,7 @@ Two things to get right:
 either lane. The seeded day-1 defaults are a working reference:
 [`07e-consultation-loop-defaults.ts`](../packages/database/src/prisma/db_main/seed/07e-consultation-loop-defaults.ts)
 (tenant scope) and
-[`07f-arcaai-department-context-schemas.ts`](../packages/database/src/prisma/db_main/seed/07f-arcaai-department-context-schemas.ts)
+[`07g-arcaai-two-schemas.ts`](../packages/database/src/prisma/db_main/seed/07g-arcaai-two-schemas.ts)
 (two contrasting department-scoped vocabularies).
 
 ---
