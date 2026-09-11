@@ -79,7 +79,13 @@ export function engineOutputFor(target: WorkflowSeedTarget, currentRegistryCheck
   const trigger = graph.nodes.find((node) => node.type === 'core.trigger');
   const contextSchemaId = (trigger?.config.contextSchema as { contextSchemaId?: string } | undefined)?.contextSchemaId;
   if (!contextSchemaId) problems.push('the trigger binds no context schema by reference');
-  const payloadSchema = payloadSchemaFromDefinition(NOTE_CONTEXT_SCHEMA_DEFINITION);
+  // TASK-951 — the payload schema is THIS target's, not an assumed one. It used to be
+  // `NOTE_CONTEXT_SCHEMA_DEFINITION` for every target, which was true only while every seeded
+  // graph triggered on `consultation_note_context`; the 11 ArcaAI workflows now trigger on
+  // `arcaai_consultation_scribe`. What is frozen here is what the harness validates a run's
+  // authored context against, so an assumed schema would reject the very fields the trigger
+  // declares. Absent ⇒ the note context, so every pre-existing target compiles unchanged.
+  const payloadSchema = payloadSchemaFromDefinition(target.contextSchemaDefinition ?? NOTE_CONTEXT_SCHEMA_DEFINITION);
 
   for (const problem of workflowEdgePortProblems(graph) as string[]) problems.push(`edge: ${problem}`);
 

@@ -11,6 +11,10 @@
  * `PromptAssemblyService.buildVariables` still populates — lives under ONE `STRUCTURED` kind keyed
  * `context`.
  *
+ * (The `07g-` stem named above is the RETIRED legacy-bridge file. It now belongs to
+ * `07g-arcaai-two-schemas.ts`, a different seed entirely — TASK-951's two ArcaAI schemas, one of
+ * which REFERENCES `NOTE_CONTEXT_PROMPT_KIND` below rather than retyping it.)
+ *
  * ## Who owns which row
  *
  * Global (the platform-admin playground) AUTHORS it; SYSTEM carries the promoted copy — the
@@ -92,7 +96,7 @@ export const NOTE_CONTEXT_SCHEMA_SLUG = 'consultation_note_context';
 export const NOTE_CONTEXT_KIND_KEY = 'context';
 
 /** The §8.2 fields, in the order the clinical templates read them. */
-const NOTE_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
+export const NOTE_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
   visit_type: { type: 'string', enum: ['new-visit', 'revisit'], description: 'Whether this is a new / referral visit or a follow-up (revisit).' },
   current_department: { type: 'string', description: "The consultation's department name; `General` when unknown." },
   language: { type: 'string', description: 'The consultation language code (`en`, `ml`).' },
@@ -105,14 +109,14 @@ const NOTE_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
 };
 
 /** The §8.2 fields that are always populated; `chief_complaint` is optional. */
-const NOTE_CONTEXT_REQUIRED_FIELDS = Object.keys(NOTE_CONTEXT_FIELDS).filter((name) => name !== 'chief_complaint');
+export const NOTE_CONTEXT_REQUIRED_FIELDS = Object.keys(NOTE_CONTEXT_FIELDS).filter((name) => name !== 'chief_complaint');
 
 /**
  * The v1 prompt vocabulary folded in from the retired `consultation_legacy_v1` bridge — every
  * name `PromptAssemblyService.buildVariables` can populate that is not already a §8.2 field.
  * All strings: the value builders serialise entities, note blocks and attachments to text.
  */
-const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
+export const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
   conversation_language: { type: 'string', description: 'The consultation language code (`en`, `ml`) — the v1 name of `language`.' },
   ner_entities: { type: 'string', description: 'Medical entities extracted from the transcript, serialised; empty when none.' },
   clinician_notes: { type: 'string', description: "The clinician's own working notes for this consultation." },
@@ -146,6 +150,32 @@ const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
 
 /** Every declared name under the `context` kind — the §8.2 fields first, the folded-in v1 names after. */
 export const NOTE_CONTEXT_FIELD_NAMES: readonly string[] = [...Object.keys(NOTE_CONTEXT_FIELDS), ...Object.keys(LEGACY_CONTEXT_FIELDS)];
+
+/**
+ * The platform-produced prompt-context kind, as ONE exported object.
+ *
+ * TASK-951 — extracted from the definition literal below (byte-identical content, so the
+ * checksum this file publishes is unchanged) because a SECOND ArcaAI schema now has to carry
+ * exactly this kind: `07g-arcaai-two-schemas.ts` REFERENCES it rather than retyping it, so the
+ * two definitions cannot drift into disagreeing about what `{{trigger.context.*}}` declares.
+ * Treat it as frozen: nothing may mutate it in place.
+ */
+export const NOTE_CONTEXT_PROMPT_KIND: Record<string, unknown> = {
+  key: NOTE_CONTEXT_KIND_KEY,
+  label: 'Consultation Prompt Context',
+  primitive: 'STRUCTURED',
+  phiClass: 'PHI',
+  cardinality: 'ONE',
+  lifecycle: 'ANY',
+  producedBy: ['SYSTEM', 'CLIENT'],
+  description:
+    'The fields the clinical prompts bind (`{{trigger.context.*}}`): visit type, department, language, the safe patient facts, prior visits and vitals — plus the v1 prompt vocabulary, so every variable the platform populates is declared.',
+  fields: {
+    type: 'object',
+    properties: { ...NOTE_CONTEXT_FIELDS, ...LEGACY_CONTEXT_FIELDS },
+    required: NOTE_CONTEXT_REQUIRED_FIELDS,
+  },
+};
 
 export const NOTE_CONTEXT_SCHEMA_DEFINITION: Record<string, unknown> = {
   schemaVersion: '1.0',
@@ -190,22 +220,7 @@ export const NOTE_CONTEXT_SCHEMA_DEFINITION: Record<string, unknown> = {
       producedBy: ['CLIENT'],
       description: 'A document attached to the consultation; its text is extracted before use.',
     },
-    {
-      key: NOTE_CONTEXT_KIND_KEY,
-      label: 'Consultation Prompt Context',
-      primitive: 'STRUCTURED',
-      phiClass: 'PHI',
-      cardinality: 'ONE',
-      lifecycle: 'ANY',
-      producedBy: ['SYSTEM', 'CLIENT'],
-      description:
-        'The fields the clinical prompts bind (`{{trigger.context.*}}`): visit type, department, language, the safe patient facts, prior visits and vitals — plus the v1 prompt vocabulary, so every variable the platform populates is declared.',
-      fields: {
-        type: 'object',
-        properties: { ...NOTE_CONTEXT_FIELDS, ...LEGACY_CONTEXT_FIELDS },
-        required: NOTE_CONTEXT_REQUIRED_FIELDS,
-      },
-    },
+    NOTE_CONTEXT_PROMPT_KIND,
   ],
   outputs: [{ key: 'case_note', label: 'Case Note', primitive: 'TEXT', description: 'The finalized case note the consultation workflow produces.' }],
 };

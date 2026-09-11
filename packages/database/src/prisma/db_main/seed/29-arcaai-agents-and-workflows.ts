@@ -18,20 +18,31 @@
  * declare no variables and carry no `{{…}}` placeholder (`07b-arcaai-clinical-content-v3.ts` —
  * only the pre-summary does), so there is nothing to bind (F6 says "every DECLARED variable").
  *
- * The trigger references ArcaAI's CLONE of `consultation_note_context` — the id phase 26 derives
- * (`cloneId`), so the reference is stable before the clone exists; the compiler freezes the
- * resolved payload schema either way. `createdBy` is the SYSTEM user: these rows assert no human
- * authorship. Still excluded from `safe` (`seed-mode.ts`): one customer's content is not platform
- * configuration.
+ * TASK-951 (D-10) — the trigger references `arcaai_consultation_scribe`, the tenant's OWN
+ * consultation contract (`07g-arcaai-two-schemas.ts`), not its clone of
+ * `consultation_note_context`. The scribe carries that clone's `context` kind verbatim, so every
+ * `{{trigger.context.*}}` a graph or prompt reads resolves exactly as before; what it ADDS is the
+ * `encounter` / `vitals` / `previous_case_notes` kinds a client states at open. The id is a
+ * STATIC seeded constant rather than a derivation, so the reference is stable before `07g` runs
+ * — phase 29 runs first, and the compiler freezes the resolved payload schema either way.
+ * `createdBy` is the SYSTEM user: these rows assert no human authorship. Still excluded from
+ * `safe` (`seed-mode.ts`): one customer's content is not platform configuration.
  *
  * Engine output (`graphChecksum` / `compiledConfig` / `validationReport`) lives in
  * `29-arcaai-agents-and-workflows.generated.ts`, written by `scripts/regen-workflow-seeds.ts`.
  */
 import type { CorePrismaClient } from '../../../client';
-import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import {
+  SEED_ARCAAI_CONTEXT_SCHEMA_IDS,
+  SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS,
+  SEED_CUSTOMER_TENANT_IDS,
+  SYSTEM_TENANT_ID,
+  SYSTEM_USER_ID,
+} from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
 import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
+import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
 import {
   PRE_SUMMARY_AGENT_SLUG,
   PRE_SUMMARY_PARAMETERS,
@@ -62,9 +73,19 @@ const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 export const VISIT_TYPES = ['new-visit', 'revisit'] as const;
 export type VisitType = (typeof VISIT_TYPES)[number];
 
-/** ArcaAI's clone of the SYSTEM `consultation_note_context` — the id phase 26 derives. */
+/**
+ * ArcaAI's clone of the SYSTEM `consultation_note_context` — the id phase 26 derives.
+ *
+ * TASK-951 demoted this row from the tenant default and UNBOUND it from the triggers below; it is
+ * still exported because it is still the row `07g`'s retirement sweep demotes, and naming it by
+ * derivation is the only way to identify a clone whose id nothing writes down.
+ */
 export const ARCAAI_NOTE_CONTEXT_SCHEMA_ID = cloneId(ARCAAI, 'context-schema', noteContextSchemaIdFor(SYSTEM_TENANT_ID));
 export const ARCAAI_NOTE_CONTEXT_SCHEMA_VERSION_ID = cloneId(ARCAAI, 'context-schema-version', noteContextSchemaVersionIdFor(SYSTEM_TENANT_ID));
+
+/** TASK-951 — what the 11 consultation triggers bind: ArcaAI's own `arcaai_consultation_scribe`. */
+export const ARCAAI_SCRIBE_CONTEXT_SCHEMA_ID = SEED_ARCAAI_CONTEXT_SCHEMA_IDS.CONSULTATION_SCRIBE;
+export const ARCAAI_SCRIBE_CONTEXT_SCHEMA_VERSION_ID = SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.CONSULTATION_SCRIBE;
 
 // =============================================================================
 // The table
@@ -169,7 +190,7 @@ export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_T
   name: `${row.name} Consultation`,
   description: `Realtime transcription, medical NER, the ${row.name} running note selected by visit type (new-visit / revisit), case-note finalization, clinician review and the {case_note, redactions} output.`,
   graph: buildConsultationGraph({
-    contextSchemaId: ARCAAI_NOTE_CONTEXT_SCHEMA_ID,
+    contextSchemaId: ARCAAI_SCRIBE_CONTEXT_SCHEMA_ID,
     summarizer: { kind: 'condition', newVisitSlug: arcaaiAgentSlug(row, 'new-visit'), revisitSlug: arcaaiAgentSlug(row, 'revisit') },
     // TASK-932 §3.7 — the note SHAPE, per department and per visit type. `realtimeDocumentTemplateSlug`
     // reads this off the frozen lane and hands it to `resolveForGeneration`, which is the third
@@ -181,7 +202,8 @@ export const ARCAAI_WORKFLOW_TARGETS: WorkflowSeedTarget[] = ARCAAI_DEPARTMENT_T
       n_summary_revisit: arcaaiDocumentTemplateSlug(row.slugPart, 'revisit'),
     },
   }),
-  contextSchemaVersionId: ARCAAI_NOTE_CONTEXT_SCHEMA_VERSION_ID,
+  contextSchemaVersionId: ARCAAI_SCRIBE_CONTEXT_SCHEMA_VERSION_ID,
+  contextSchemaDefinition: ARCAAI_CONSULTATION_SCRIBE_DEFINITION,
   tags: ['palette:core', 'kind:consultation', 'kind:api', 'tenant-authored', `specialty:${row.slugPart}`],
   sourceTemplateSlug: null,
 }));
