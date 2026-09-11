@@ -53,20 +53,82 @@ function uniqueName(base: string, taken: Set<string>): string {
 const IDENTITY_ANNOTATION =
   "@identity — the clinician's staff identifier; a service-account caller's `open()` resolves or provisions the HOPE user from it (TASK-950).";
 
+/** JSDoc text for a kind's marked `department` property (TASK-951). */
+function departmentAnnotation(by: string): string {
+  return `@role department (by ${by}) — selects the consultation's department, resolved against the tenant's own departments (TASK-951).`;
+}
+
+/** JSDoc text for a kind's marked `visitType` property (TASK-951). */
+const VISIT_TYPE_ANNOTATION =
+  "@role visitType — matched through the platform's visit-type catalogue and recorded on the consultation, taking precedence over the parent-consultation-derived signal (TASK-951).";
+
+/** JSDoc text for a kind's marked `externalRef` property (TASK-951). */
+const EXTERNAL_REF_ANNOTATION =
+  "@role externalRef — an external system's own identifier for this encounter, persisted on the consultation's metadata (TASK-951).";
+
+/** JSDoc text attached at the TYPE level for a `materializeAs: 'CASE_NOTE'` kind (TASK-951). */
+const MATERIALIZE_AS_CASE_NOTE_ANNOTATION =
+  '@materializeAs CASE_NOTE — every array entry of this payload is ALSO written as one CASE_NOTE context item at open() (TASK-951).';
+
+/** JSDoc text attached at the TYPE level for a `streamContext: true` kind (TASK-951). */
+const STREAM_CONTEXT_ANNOTATION =
+  '@streamContext — echoed verbatim on every transcript segment of the STT session it was submitted to (TASK-951).';
+
 /**
- * `{ [field]: IDENTITY_ANNOTATION }` when `entry` is a kind declaring
- * `userIdentity` AND the named field is actually one of `fields`'s own
- * properties — `undefined` otherwise (no marker, an output entry which never
- * carries one, or a marker naming a property this bundle does not have).
- * Never throws: a malformed marker on untrusted wire JSON just means no
- * annotation, not a broken generator run.
+ * `{ [field]: annotation }` for every marker on `entry` (`userIdentity`,
+ * `department`, `visitType`, `externalRef`) whose named field is actually one
+ * of `fields`'s own properties — `undefined` when none apply (no markers, an
+ * output entry which never carries one, or every marker names a property
+ * this bundle does not have). Never throws: a malformed marker on untrusted
+ * wire JSON just means no annotation for that role, not a broken generator
+ * run. Two roles could in principle name the same property; the later check
+ * below wins for that field, which is an acceptable, harmless tie-break
+ * since the authoring gate limits each role to at most one property anyway.
  */
-function identityAnnotations(entry: ContextKindDeclaration | ContextOutputDeclaration, fields: Record<string, unknown>): Record<string, string> | undefined {
-  const userIdentity = (entry as Record<string, unknown>).userIdentity;
-  if (!isPlainObject(userIdentity) || typeof userIdentity.field !== 'string' || userIdentity.field.length === 0) return undefined;
+function roleAnnotations(entry: ContextKindDeclaration | ContextOutputDeclaration, fields: Record<string, unknown>): Record<string, string> | undefined {
   const properties = isPlainObject(fields.properties) ? fields.properties : undefined;
-  if (!properties || !(userIdentity.field in properties)) return undefined;
-  return { [userIdentity.field]: IDENTITY_ANNOTATION };
+  if (!properties) return undefined;
+  const record = entry as Record<string, unknown>;
+  const annotations: Record<string, string> = {};
+
+  const userIdentity = record.userIdentity;
+  if (isPlainObject(userIdentity) && typeof userIdentity.field === 'string' && userIdentity.field.length > 0 && userIdentity.field in properties) {
+    annotations[userIdentity.field] = IDENTITY_ANNOTATION;
+  }
+
+  const department = record.department;
+  if (isPlainObject(department) && typeof department.field === 'string' && department.field.length > 0 && department.field in properties) {
+    const by = department.by;
+    if (by === 'code' || by === 'name') {
+      annotations[department.field] = departmentAnnotation(by);
+    }
+  }
+
+  const visitType = record.visitType;
+  if (isPlainObject(visitType) && typeof visitType.field === 'string' && visitType.field.length > 0 && visitType.field in properties) {
+    annotations[visitType.field] = VISIT_TYPE_ANNOTATION;
+  }
+
+  const externalRef = record.externalRef;
+  if (isPlainObject(externalRef) && typeof externalRef.field === 'string' && externalRef.field.length > 0 && externalRef.field in properties) {
+    annotations[externalRef.field] = EXTERNAL_REF_ANNOTATION;
+  }
+
+  return Object.keys(annotations).length > 0 ? annotations : undefined;
+}
+
+/**
+ * TYPE-LEVEL JSDoc lines for a `materializeAs`/`streamContext`-marked kind
+ * (TASK-951) — `[]` when neither marker is present (an output entry, or a
+ * kind declaring neither), which is what keeps an unmarked bundle's output
+ * byte-identical to before this ticket.
+ */
+function typeLevelAnnotations(entry: ContextKindDeclaration | ContextOutputDeclaration): string[] {
+  const record = entry as Record<string, unknown>;
+  const tags: string[] = [];
+  if (record.materializeAs === 'CASE_NOTE') tags.push(MATERIALIZE_AS_CASE_NOTE_ANNOTATION);
+  if (record.streamContext === true) tags.push(STREAM_CONTEXT_ANNOTATION);
+  return tags;
 }
 
 interface RenderedEntry {
@@ -97,12 +159,17 @@ function renderEntries<T extends ContextKindDeclaration | ContextOutputDeclarati
       continue;
     }
     const typeName = uniqueName(`${toPascalCase(entry.key)}${suffix}`, taken);
-    const expr = jsonSchemaSubsetToTs(entry.fields, { path: `${entry.key}.fields`, annotations: identityAnnotations(entry, entry.fields) });
+    const expr = jsonSchemaSubsetToTs(entry.fields, { path: `${entry.key}.fields`, annotations: roleAnnotations(entry, entry.fields) });
     const label = entry.label ? ` — ${entry.label}` : '';
+    const typeTags = typeLevelAnnotations(entry);
+    const doc =
+      typeTags.length === 0
+        ? `/** \`${entry.key}\`${label} */`
+        : `/**\n * \`${entry.key}\`${label}\n * ${typeTags.join('\n * ')}\n */`;
     rendered.push({
       key: entry.key,
       typeName,
-      declaration: `/** \`${entry.key}\`${label} */\nexport type ${typeName} = ${expr};`,
+      declaration: `${doc}\nexport type ${typeName} = ${expr};`,
     });
   }
 

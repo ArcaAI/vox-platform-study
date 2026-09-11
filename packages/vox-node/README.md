@@ -676,6 +676,21 @@ payload is validated against. `@arcaai/vox-codegen --tenant` generates TypeScrip
 types from the same bundle, and since 3.2.0 it accepts a service account rather
 than only a human's super-admin JWT.
 
+### Per-microphone transcription with echoed stream context (TASK-951)
+
+Open one STT session per microphone and hand each its own `context`; HOPE
+echoes it back on the session and on every transcript segment, so a caller
+tells captions apart by source without keeping an out-of-band map:
+
+```ts
+const session = await hope.stt.createStreamSession({
+  agentSlug: 'realtime-transcription',
+  context: { stream: { mic_id: 'left' } },
+});
+const socket = hope.stt.socket(session);
+socket.on('transcript', (t) => attribute(t.context?.stream, t.text));
+```
+
 ## Streaming
 
 Both stateless summarization methods have a streaming variant that yields

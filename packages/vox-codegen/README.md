@@ -231,6 +231,29 @@ from the kind's own `fields` is ignored rather than thrown on: the annotation
 is best-effort, exactly like the rest of this generator's stance on
 untrusted wire JSON.
 
+## The `@role`, `@materializeAs` and `@streamContext` annotations (TASK-951)
+
+Four more markers beside `userIdentity` document the mapping roles a tenant's
+schema may declare, all documentation hints only — never a type constraint,
+and never authorization:
+
+- `ContextKindDeclaration.department` / `.visitType` / `.externalRef` each
+  name ONE property of a `STRUCTURED` kind's `fields`. `generate.ts` renders
+  the marked property with a `/** @role department (by code|name) … */`,
+  `/** @role visitType … */` or `/** @role externalRef … */` JSDoc,
+  alongside — and using the identical field-level mechanism as — the
+  `@identity` annotation above. A marker naming an absent property is
+  ignored, exactly like `@identity`'s own dangling-marker behaviour.
+- `ContextKindDeclaration.materializeAs: 'CASE_NOTE'` and `.streamContext:
+  true` mark the KIND itself rather than one property, so `generate.ts`
+  attaches `@materializeAs CASE_NOTE` / `@streamContext` at the TYPE level —
+  the JSDoc block directly above the kind's `export type` declaration —
+  instead of on a member.
+
+An unmarked bundle's generated output is byte-identical to a run of this
+generator from before TASK-951; the annotation machinery is a no-op unless a
+kind actually declares one of these five markers.
+
 ## Known limitations
 
 - Constraint keywords with no TypeScript representation
