@@ -112,6 +112,36 @@ export interface OpenConsultationRequest {
    * error shape. For a JWT or API-key caller the field is validated as
    * ordinary content and otherwise ignored — that caller already IS the
    * clinician.
+   *
+   * Since TASK-951, a schema may mark up to four MORE roles beside
+   * `userIdentity`, each on at most one `STRUCTURED`, `cardinality: 'ONE'`
+   * kind's property (`ContextKindDeclaration`), and HOPE MAPS every one of
+   * them at `open()` — never merely validates them:
+   *
+   * - `department: { field, by: 'code' | 'name' }` — resolves the submitted
+   *   value against the tenant's own departments (by the unique `code`, or
+   *   by `name`, case-insensitively) and SELECTS the consultation's
+   *   `departmentId`, exactly as if it had been sent directly. An unknown
+   *   value is 404 `DEPARTMENT_UNKNOWN`; more than one `name` match is 400
+   *   `DEPARTMENT_AMBIGUOUS`; disagreement with an explicit `departmentId`
+   *   on this same request is 400 `DEPARTMENT_MISMATCH`.
+   * - `visitType: { field }` — the submitted value (matched through the
+   *   platform's visit-type catalogue, aliases included) is recorded on the
+   *   consultation and wins over the `parentConsultationId`-derived signal
+   *   at every downstream read site. An unmatched value is 400
+   *   `VISIT_TYPE_INVALID`.
+   * - `externalRef: { field }` — persisted on the consultation's metadata.
+   *   NOT part of the get-or-create idempotency key, so it never changes
+   *   which row `open()` returns.
+   * - `materializeAs: 'CASE_NOTE'` on a kind — every array entry of that
+   *   kind's payload is ALSO written as one `CASE_NOTE` context item,
+   *   beyond the ordinary PRE context item the kind already becomes, so the
+   *   warm-start pre-summary sees client-supplied prior notes without a
+   *   separate write.
+   *
+   * Every validated kind in this payload — marked or not — is persisted as
+   * a PRE context item, and the whole payload is threaded into the
+   * governing workflow's trigger context (`trigger.context.<kindKey>.*`).
    */
   context?: Record<string, unknown>;
   metadata?: Record<string, unknown>;

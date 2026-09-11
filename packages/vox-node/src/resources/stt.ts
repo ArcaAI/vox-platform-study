@@ -55,6 +55,16 @@ export class SttResource {
    * **Never retried.** The route accepts no idempotency key, so a retried POST
    * would leak a second live session against the tenant's concurrency ceiling —
    * `core/retry.ts#shouldRetry` leaves non-idempotent POSTs alone.
+   *
+   * **One session per microphone (TASK-951).** A single session carries no
+   * multiplexing of its own — to attribute captions to distinct mic sources,
+   * open one UNMIXED session per microphone, each with its own
+   * `request.context` naming which one it is (e.g.
+   * `{ stream: { mic_id: 'left' } }`). HOPE echoes that object verbatim on
+   * the response's `context` and on every transcript segment of that
+   * session, so a caller re-associates a transcript with its source without
+   * keeping an out-of-band map; `sessionEpochMs` on both is the wall-clock
+   * anchor for aligning segments across sessions opened moments apart.
    */
   async createStreamSession(request: CreateStreamSessionRequest = {}, options: SttRequestOptions = {}): Promise<StreamSessionResponse> {
     return this.transport.request<StreamSessionResponse>({

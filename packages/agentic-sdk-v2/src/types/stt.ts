@@ -340,6 +340,21 @@ export interface WsTranscriptResult {
    * that don't stamp it — consumers then keep their request-derived value.
    */
   pipelineId?: string;
+  /**
+   * Echoed verbatim from the session's `CreateStreamingSessionRequest`-side
+   * `context` (TASK-951), when one was sent at session creation. Optional:
+   * absent when the session carried no `context`, and for backward compat
+   * with a gateway that predates the echo.
+   */
+  context?: Record<string, unknown>;
+  /**
+   * This segment's session epoch (epoch milliseconds at which the gateway
+   * attached the session's clock), repeated on every segment for
+   * convenience (TASK-951). `sessionEpochMs + startTime * 1000` is the
+   * wall-clock anchor for aligning segments across sessions opened moments
+   * apart — e.g. several per-microphone sessions for one consultation.
+   */
+  sessionEpochMs?: number;
 }
 
 /**
@@ -396,6 +411,10 @@ export interface WsTranscriptWirePayload {
   inference_time?: unknown;
   pipelineId?: unknown;
   pipeline_id?: unknown;
+  /** Echoed session `context` (TASK-951) — no snake_case alias; the shape is an opaque object either way. */
+  context?: unknown;
+  sessionEpochMs?: unknown;
+  session_epoch_ms?: unknown;
   /** Absorbs any not-yet-modelled server field so `Record<string, unknown>` stays assignable. */
   [key: string]: unknown;
 }
