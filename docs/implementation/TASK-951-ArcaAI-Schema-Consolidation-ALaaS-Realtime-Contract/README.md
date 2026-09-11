@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending — plan awaiting owner decisions (OD-0…OD-11) and an explicit **go** |
+| **Status** | In Progress — owner go 2026-09-11; OD-0 = TASK-951, OD-4 amended (normalised GEN-style vitals object; ALaaS maps its payload), every other OD = the recommendation |
 | **Type** | feature (schema content + open-time mappings + STT session context echo); touches `packages/database` (seeds), `packages/applications`, `packages/workflow-contract`, `apps/api`, `apps/harness` (test + one model), `packages/vox-node`, `packages/vox-codegen`, `packages/agentic-sdk-v2` (type parity), `apps/admin-console` (marker picker), and a documented ALaaS change list (separate repo) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-11 |
@@ -207,3 +207,4 @@ _Pending — awaiting OD answers and go._
 | Date | Entry |
 |---|---|
 | 2026-09-11 | Opened from the owner's consolidation ask. Five read-only discovery lanes (ArcaAI schemas, STT protocol, open-time resolution, ALaaS broker, decision sizing). Plan + OD table written; status Pending. |
+| 2026-09-11 | Owner go. OD answers: 0 = TASK-951; 4 = the `vitals` kind is the NORMALISED object (bloodPressure, heartRate, respiratoryRate, temperature, oxygenSaturation, weightKg, heightCm, bmi, bloodGlucose, painScore, recordedAt, notes — all optional; ALaaS maps its payload into it); all other ODs = recommendations. Lanes A–G spawned in own worktrees (A/B/C/D/E opus, F/G sonnet) plus TASK-950 lane I; no lane runs gates — the orchestrator merges into `dev-2.2` and gates. Ownership split fixed one collision: `live-documentation.service.ts` (incl. its two visit-type call sites) is lane D's, the other eight call sites lane C's. |
