@@ -283,7 +283,13 @@ export class AgentController {
     const guardrail = await this.invocation.guardrailDisposition(resolved.guardrail);
 
     if (mode === 'stream') {
-      const { stream } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
+      const { stream, actingUserId } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
+      // TASK-950 (decision 3, fast win) — the clinician this call acted FOR, on every row the
+      // three teardown handlers below can emit. `AgentInvocationService` writes no row and
+      // broadcasts no event, so the usage ledger is this plane's ONLY durable, queryable record;
+      // `doctorId` is the column consultation-driven calls already fill, so both arrive on one
+      // channel rather than two. `null` for a human or API-key caller, exactly as today.
+      const doctorId = actingUserId ?? null;
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
@@ -302,7 +308,11 @@ export class AgentController {
       stream.on('end', () => {
         clearInterval(heartbeat);
         res.end();
-        this.emitInvocationUsage(collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER }), slug, guardrail);
+        this.emitInvocationUsage(
+          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, doctorId }),
+          slug,
+          guardrail,
+        );
       });
       stream.on('error', (err: Error) => {
         clearInterval(heartbeat);
@@ -310,7 +320,7 @@ export class AgentController {
         res.end();
         // The tokens seen before the socket died were still spent.
         this.emitInvocationUsage(
-          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
+          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true, doctorId }),
           slug,
           guardrail,
         );
@@ -319,7 +329,7 @@ export class AgentController {
         clearInterval(heartbeat);
         stream.destroy();
         this.emitInvocationUsage(
-          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true }),
+          collector.take({ tenantId, operation: 'generate.stream', trigger: AGENT_INVOCATION_TRIGGER, interrupted: true, doctorId }),
           slug,
           guardrail,
         );
@@ -624,6 +634,11 @@ export class AgentController {
       occurredAt: new Date(),
       inputTokens: result.usage.promptTokens,
       outputTokens: result.usage.completionTokens,
+      // TASK-950 (decision 3, fast win) — the clinician this call acted FOR, resolved from the
+      // agent's frozen context schema for a machine caller and handed back on the result. Same
+      // column, same meaning as on the stream path above and on a consultation-driven call;
+      // `null` for a human or API-key caller, exactly as today.
+      doctorId: result.actingUserId ?? null,
     });
     if (!batch) return null;
     // `costBasis` is never derived from `deployment` (usage-event.input.ts): a
