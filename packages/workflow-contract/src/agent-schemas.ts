@@ -750,15 +750,102 @@ export interface AgentIoDefaults {
   readonly outputSchema: NodeConfigSchema;
 }
 
+/**
+ * ONE utterance, and everything needed to tie it back to the AUDIO THAT PRODUCED IT.
+ *
+ * `start`/`end` are SECONDS ON THE PRODUCER'S OWN CLOCK, zeroed at the start of the capture —
+ * which is what every ASR engine reports and what `SegmentResult.start_time` / `end_time` carry
+ * (`apps/stt/src/stt/streaming/schemas.py`). On their own they cannot be reconciled with the
+ * audio a caller SENT: a client that uploads a file, replays a recording faster than realtime, or
+ * reconnects mid-session has a wall clock that ran at a different rate from the producer's. The
+ * anchor that makes them absolute is {@link TRANSCRIPT_AUDIO_SYNC_SCHEMA}`.epochMs`, declared on
+ * the agent's output beside the segments rather than on each one, because it is a property of the
+ * CAPTURE and repeating it per utterance invites two copies that disagree.
+ *
+ * The rest of the fields are the correlation the realtime wire has always carried and the agent
+ * contract used to drop on the floor (`SttTranscriptResult`, `packages/vox-node/src/types/stt.ts`):
+ *
+ *  - `utteranceIndex` is the PRODUCER's ordinal. A `gloss` (an opt-in English translation of a
+ *    final) reuses the index of the utterance it translates, so it is the only key that pairs the
+ *    two; array position does not, because a gloss arrives after its final and after any partial.
+ *  - `seq` is the GATEWAY's monotonic transcript sequence — a different number with a different
+ *    owner, and the one a dropped socket resumes from (`SttResumeRequest.lastSeq`). Both are
+ *    declared because collapsing them would make a replayed segment indistinguishable from a
+ *    re-transcribed one.
+ *  - `receivedAtMs` is when the CONSUMER saw this utterance. `receivedAtMs - (epochMs + end*1000)`
+ *    is the end-to-end lag between speech and transcript, which is the only honest way to say
+ *    whether a live surface is keeping up; `inferenceMs` is the engine's share of that.
+ *  - `charStart`/`charEnd` locate the utterance in the joined transcript text, so a claim grounded
+ *    at a character offset resolves to a segment and from there to a timestamp — the same
+ *    half-open span `TranscriptSegment.charStart/charEnd` persists.
+ *  - `pipelineId` is PER-UTTERANCE provenance, not per-session: a mid-session engine switch
+ *    (`provider_switched`) means two utterances of one transcript can come from different engines.
+ *
+ * Everything but `text`/`start`/`end` is optional, because an engine that does not report a thing
+ * must be able to stay silent about it rather than be forced to invent a zero.
+ */
 const TRANSCRIPT_SEGMENT_SCHEMA: NodeConfigSchema = Object.freeze({
   type: 'object',
   required: Object.freeze(['text', 'start', 'end']),
   properties: Object.freeze({
     text: Object.freeze({ type: 'string' }),
-    start: Object.freeze({ type: 'number', minimum: 0 }),
-    end: Object.freeze({ type: 'number', minimum: 0 }),
+    start: Object.freeze({
+      type: 'number',
+      minimum: 0,
+      description: 'Seconds from the capture start (the producer clock). Absolute only through `audio.epochMs`.',
+    }),
+    end: Object.freeze({ type: 'number', minimum: 0, description: 'Seconds from the capture start (the producer clock).' }),
     speaker: Object.freeze({ type: 'string' }),
+    speakerConfidence: Object.freeze({
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'Diarization confidence for `speaker`, when the engine reports one.',
+    }),
     isFinal: Object.freeze({ type: 'boolean' }),
+    stableChars: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description:
+        'On a PARTIAL, the committed-prefix length of `text`: characters before it will not be revised. Absent on a final and when the commit policy is off.',
+    }),
+    utteranceIndex: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description: "The PRODUCER's utterance ordinal. A `gloss` reuses the index of the final it translates — the only field that pairs them.",
+    }),
+    resultType: Object.freeze({
+      type: 'string',
+      enum: Object.freeze(['segment', 'gloss']),
+      description: 'Absent means `segment`. A `gloss` translates the final carrying the same `utteranceIndex`; it is not a second utterance.',
+    }),
+    seq: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description:
+        "The GATEWAY's monotonic transcript sequence — what a dropped socket resumes from. Not `utteranceIndex`, and not interchangeable with it.",
+    }),
+    language: Object.freeze({
+      type: 'string',
+      description: 'Per-utterance detected language, when the engine detects one. Can differ across a code-switched capture.',
+    }),
+    charStart: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description: 'Half-open [charStart, charEnd) offsets of this utterance in the joined `transcript` text.',
+    }),
+    charEnd: Object.freeze({ type: 'integer', minimum: 0 }),
+    receivedAtMs: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description: 'Epoch ms at which the CONSUMER received this utterance. With `audio.epochMs` + `end` it gives the speech-to-transcript lag.',
+    }),
+    inferenceMs: Object.freeze({ type: 'number', minimum: 0, description: "The engine's own time on this utterance — its share of the lag above." }),
+    pipelineId: Object.freeze({
+      type: 'string',
+      description:
+        'The ASR binding that produced THIS utterance. Per-utterance, because a mid-session engine switch splits one transcript across two.',
+    }),
     words: Object.freeze({
       type: 'array',
       items: Object.freeze({
@@ -768,8 +855,41 @@ const TRANSCRIPT_SEGMENT_SCHEMA: NodeConfigSchema = Object.freeze({
           text: Object.freeze({ type: 'string' }),
           start: Object.freeze({ type: 'number', minimum: 0 }),
           end: Object.freeze({ type: 'number', minimum: 0 }),
+          confidence: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
         }),
       }),
+    }),
+  }),
+});
+
+/**
+ * The CAPTURE this transcript came from — the anchor that makes the segment clock absolute.
+ *
+ * Declared once on the output rather than repeated on every segment: it describes the audio, not
+ * the utterance, and two copies of one anchor is two chances to disagree about where zero is.
+ *
+ * `epochMs` is the wall clock that `start`/`end` of `0` map to, as observed BY THE CONSUMER when
+ * it attached to the capture. That is a deliberately modest claim — it is not the microphone's
+ * clock and does not pretend to be — but it is the one number that lets a caller line a transcript
+ * up against audio it sent, and it is checkable: `epochMs + end*1000` should never lead a
+ * segment's `receivedAtMs`.
+ */
+const TRANSCRIPT_AUDIO_SYNC_SCHEMA: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  properties: Object.freeze({
+    kind: Object.freeze({
+      type: 'string',
+      enum: Object.freeze(['artifact', 'stream']),
+      description: 'Echoes the `audio.kind` the agent was invoked with.',
+    }),
+    sessionId: Object.freeze({ type: 'string', description: '`stream`: the realtime STT session the segments were cut from.' }),
+    mediaId: Object.freeze({ type: 'string', description: '`artifact`: the uploaded media row.' }),
+    sampleRate: Object.freeze({ type: 'integer', minimum: 1, description: 'Hz of the audio actually decoded — not what the caller asked for.' }),
+    epochMs: Object.freeze({
+      type: 'integer',
+      minimum: 0,
+      description:
+        'Epoch ms that segment time `0` maps to. Absent when the producer could not name one; segment times are then relative and nothing else.',
     }),
   }),
 });
@@ -814,12 +934,45 @@ export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = O
         language: Object.freeze({ type: 'string', minLength: 2, maxLength: 16 }),
       }),
     }),
+    /**
+     * `transcript` is the TEXT, and `segments` is the structure over it.
+     *
+     * It was declared as an array of segments, which no runtime has ever produced and no consumer
+     * could have accepted. `transcript` is a REFINED TEXT primitive in the port lattice
+     * (`port-model.ts`: "a transcript IS text", and it widens to `text`), it is published on a
+     * `transcript`-primitive socket under `outputKey: 'transcript'`, and every node downstream of
+     * an ASR agent — NER, the PHI hop, generation — binds it as a string. An array on that socket
+     * would have type-checked at publish time (the lattice types the CHANNEL, not the payload) and
+     * then read as empty at every consumer.
+     *
+     * So the array moves to `segments`, on the `data` socket, where the structured half of an
+     * agent's output already lives (the NER agent publishes `data: { entities }` the same way).
+     * That is additive for a consumer that only ever wanted the words, and it is the first time
+     * the per-utterance timing is reachable through the declared contract at all.
+     */
     outputSchema: Object.freeze({
       type: 'object',
       required: Object.freeze(['transcript']),
       properties: Object.freeze({
-        transcript: Object.freeze({ type: 'array', items: TRANSCRIPT_SEGMENT_SCHEMA }),
-        language: Object.freeze({ type: 'string' }),
+        transcript: Object.freeze({
+          type: 'string',
+          description: 'The transcript text — the utterances joined in spoken order. What the `transcript` socket carries.',
+        }),
+        segments: Object.freeze({
+          type: 'array',
+          items: TRANSCRIPT_SEGMENT_SCHEMA,
+          description:
+            'Per-utterance timing, speaker and correlation over `transcript`. Published on the `data` socket; empty when the producer reported no segmentation.',
+        }),
+        audio: TRANSCRIPT_AUDIO_SYNC_SCHEMA,
+        language: Object.freeze({
+          type: 'string',
+          description: 'The capture-level language. A per-utterance one, where it differs, is on the segment.',
+        }),
+        pipelineId: Object.freeze({
+          type: 'string',
+          description: "The session's ASR binding. A segment that came from a different one after a mid-session switch says so itself.",
+        }),
       }),
     }),
   }),
