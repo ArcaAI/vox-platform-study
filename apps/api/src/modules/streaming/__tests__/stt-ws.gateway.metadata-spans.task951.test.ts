@@ -73,11 +73,12 @@ const createMockStreamTicketService = () => ({
 });
 
 /** Every JSON frame the gateway pushed to this socket, parsed. */
-const framesOn = (client: ReturnType<typeof createMockSocket>) => client.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
+const framesOn = (client: ReturnType<typeof createMockSocket>) => client.send.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
 
 /** The live span accessor the gateway installed for `sessionId`. */
 const accessorFor = (bridge: ReturnType<typeof createMockBridgeService>, sessionId: string) => {
-  const call = bridge.subscribeToResults.mock.calls.findLast(([id]: [string]) => id === sessionId);
+  // The LAST subscribe for this session (a rebind re-subscribes). `findLast` needs lib es2023; the api targets ES2022.
+  const call = [...bridge.subscribeToResults.mock.calls].reverse().find((entry: unknown[]) => entry[0] === sessionId);
   expect(call, `subscribeToResults was never called for ${sessionId}`).toBeDefined();
   const spans = (call![1] as { sessionEcho?: { metadataSpans?: (s: number, e: number) => unknown } }).sessionEcho?.metadataSpans;
   expect(spans, 'the gateway must install a live metadata-span accessor').toBeTypeOf('function');
@@ -393,7 +394,7 @@ describe('TASK-951 — SttWsGateway per-span metadata', () => {
   it('keeps the caption consumer group — the metadata accessor rides alongside, it does not replace', async () => {
     await connect('sess-group');
 
-    const call = bridgeService.subscribeToResults.mock.calls.find(([id]: [string]) => id === 'sess-group');
+    const call = bridgeService.subscribeToResults.mock.calls.find((entry: unknown[]) => entry[0] === 'sess-group');
     expect((call![1] as { consumerGroup?: string }).consumerGroup).toBe(WS_RESULT_CONSUMER_GROUP);
   });
 
