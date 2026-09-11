@@ -200,7 +200,37 @@ Same gate list as TASK-950 (domains/applications/workflow-contract/harness/vox-n
 
 ## Implementation Summary
 
-_Pending — awaiting OD answers and go._
+### Lanes merged into `dev-2.2` (2026-09-11, same model as TASK-950: no lane ran a gate)
+
+| Lane | Tier | Commit | What landed |
+|---|---|---|---|
+| A seeds | opus | `5dee0149a` | `07g-arcaai-two-schemas.ts` (both rows, retirement sweep, STT agent bind with frozen `contextSchema`), 07f deleted, 29 triggers rebound; `regen-workflow-seeds.ts` reads `target.contextSchemaDefinition` |
+| B grammar | opus | `5c769bfc9` | `department`/`visitType`/`externalRef`/`materializeAs`/`streamContext` markers, `openBindingsFromDefinition`, frozen on agents + compiled triggers, harness admission test |
+| C open mappings | opus | `b1b4e4b4c` | two-pass resolution (department by code/name → bundle re-derived), `open-markers.ts`, PRE-item persistence via `addContext`, `CASE_NOTE` materialisation, authored context into the run payload, 7 visit-type call sites |
+| D realtime lane | opus | `c935bd79e` | `realtimeRunContext` prefers client `vitals` / `previous_case_notes`; two visit-type call sites |
+| E STT echo | opus | `cfae7bc86` | `CreateStreamSessionRequest.context` (≤ 4 KB, validated against the ASR agent's frozen schema via `ResolvedAsrSession.contextSchema`), stored on `StreamSessionMeta`, echoed with `sessionEpochMs` |
+| F SDKs | sonnet | `b1d141f2f` | vox-node/browser/codegen types, `` tags |
+| G console | sonnet | `72dd7a34e` | `FieldRoleTable` replaces the identity select |
+| I (TASK-950 FW) | opus | `2540ef1bb` | `actingUserId` on `WorkflowRun._metadata`; `doctorId` on agent-invocation usage rows |
+| I2 (TASK-950 FW) | opus | `5007b6c0f` | `WorkflowRun.metaData` accessors; `actingUserId` on run + status responses |
+
+Orchestrator fixups: `2580552e0` (STT fixture `sessionEpochMs`), `1ca0a8f88` (prettier), `780c39c94` (scribe `encounter` NOT kind-level required — the derived trigger schema would otherwise fail every console-opened consultation; `case_note` kind retained; doc link), `704a0c2ff` / the human-caller test (assertions aligned), `0dc2f3732` (status call passes `actingUserId`), regenerated `29-*.generated.ts` via `seed:regen:workflows`. Three lanes (D, F, G) were first spawned on a stale base (`c56b54e99`) by the worktree tool, stopped, and re-spawned with a mandatory `git merge --ff-only dev-2.2` first step; every lane's report states its HEAD before/after.
+
+### Accepted deviations
+
+| # | Plan said | Shipped | Why |
+|---|---|---|---|
+| 1 | `sessionEpochMs` on every transcript | on every transcript OF A SESSION THAT DECLARED `context`; always on the create response and the `ready` frame | a context-less session stays byte-identical to today (pinned with `toEqual`) |
+| 2 | `department.by` defaults to `code` | `by` is REQUIRED in the grammar; ArcaAI's schema declares `by: 'code'` | an implicit default in a publish gate is a second, quieter rule |
+| 3 | Schema 2 `encounter` `required: true` | kind-level `required` dropped; property-level `required` inside the kind kept | see fixup `780c39c94` |
+| 4 | Schema 2 kind list | `case_note` (TEXT/MANY) retained beside `work_note` | the note-context clone declared it; a client naming `kindKey: 'case_note'` must keep validating |
+| 5 | `subject.userId` for standalone runs (TASK-950 decision 2) | fast win: `WorkflowRun._metadata.actingUserId` + `actingUserId` on run/status responses | owner decision |
+| 6 | agent-plane attribution (TASK-950 decision 3) | fast win: `doctorId` on the `AiUsageEvent` row | owner decision |
+| 7 | 10 visit-type call sites | 9 changed (7 in lane C, 2 in lane D); `agentic-instructions.service.ts` untouched — it has no consultation | nothing recorded to pass |
+
+### Gate evidence
+
+_Appended below as each gate completes._
 
 ## Change History
 
