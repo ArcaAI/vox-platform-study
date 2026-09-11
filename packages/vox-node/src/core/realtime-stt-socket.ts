@@ -40,6 +40,13 @@
 import { SocketUnavailableError } from './errors';
 import type { SttErrorMessage, SttResumeFailedMessage, SttResumedMessage, SttStatusMessage, SttTranscriptResult } from '../types/stt';
 
+/**
+ * TASK-951 — hard ceiling on ONE {@link RealtimeSttSocket.setMetadata} object, in bytes of
+ * JSON. Restated here rather than imported because this package has zero runtime dependencies;
+ * the gateway enforces the same number and answers `METADATA_TOO_LARGE` to anything over it.
+ */
+export const MAX_STT_METADATA_BYTES = 2048;
+
 /** The ticket-bearing subset of a stream session this class needs. */
 export interface RealtimeSttSocketSession {
   sessionId: string;
@@ -229,6 +236,42 @@ export class RealtimeSttSocket {
   sendPcm16(frame: ArrayBuffer | ArrayBufferView): void {
     const socket = this.requireSocket();
     socket.send(frame);
+  }
+
+  /**
+   * TASK-951 — declare the metadata in force from HERE ON, in this session's audio.
+   *
+   * Call it whenever what you are capturing changes — a second microphone opens, a participant
+   * leaves — and HOPE returns the result time-synced: every transcript carries
+   * {@link SttTranscriptResult.metadata}, the spans of ITS OWN audio window and the object that
+   * was in force over each, clipped to that segment. A change mid-utterance produces two spans
+   * on that utterance rather than one wrong label.
+   *
+   * ```ts
+   * socket.setMetadata({ micIds: ['mic-1'] });          // before the first frame
+   * // …stream…
+   * socket.setMetadata({ micIds: ['mic-1', 'mic-2'] }); // a second mic joins
+   * ```
+   *
+   * There is no timestamp to pass, and that is deliberate: you cannot know how much of your
+   * audio the platform has ingested, and a wall clock would not survive buffering or a resume.
+   * The offset is the server's own count of the audio you have sent, which is the same quantity
+   * the ASR derives segment times from.
+   *
+   * Call it BEFORE the first `sendPcm16` to label a session from its first sample. Re-stating
+   * the value already in force is free — the server coalesces it — so a periodic re-send over a
+   * lossy link costs nothing.
+   *
+   * @throws RangeError when the object exceeds 2048 bytes of JSON. Thrown HERE rather than
+   * answered by the server, so the caller sees it at the call site instead of on an async error
+   * event two frames later.
+   */
+  setMetadata(value: Record<string, unknown>): void {
+    const bytes = new TextEncoder().encode(JSON.stringify(value)).length;
+    if (bytes > MAX_STT_METADATA_BYTES) {
+      throw new RangeError(`Stream metadata is ${bytes} bytes; the maximum is ${MAX_STT_METADATA_BYTES}.`);
+    }
+    this.requireSocket().send(JSON.stringify({ type: 'metadata', metadata: value }));
   }
 
   /**
