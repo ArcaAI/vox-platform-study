@@ -314,14 +314,19 @@ interface FakeRow {
   resourceStatus: string;
 }
 
-function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> | null } = {}) {
+function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> | null; fallbacks?: Array<Record<string, any>> } = {}) {
   const schemas: FakeRow[] = options.schemas ? [...options.schemas] : [];
   const versions: Array<Record<string, any>> = [];
-  const agent =
+  const agent: Record<string, any> | null =
     options.agent === undefined
-      ? { id: 'agent-1', contextSchemaId: null, compiledConfig: { task: 'SPEECH_TO_TEXT', contextSchema: null } }
-      : options.agent;
+      ? { id: 'agent-1', ...ASR_ROW, contextSchemaId: null, compiledConfig: { task: 'SPEECH_TO_TEXT', contextSchema: null } }
+      : options.agent === null
+        ? null
+        : { ...ASR_ROW, ...options.agent };
   const agentUpdates: Array<Record<string, any>> = [];
+  const agentCreates: Array<Record<string, any>> = [];
+  const fallbacks: Array<Record<string, any>> = options.fallbacks ? [...options.fallbacks] : [];
+  const fallbackCreates: Array<Record<string, any>> = [];
 
   const matches = (row: FakeRow, where: any): boolean => {
     if (where.tenantId !== undefined && row.tenantId !== where.tenantId) return false;
@@ -357,21 +362,57 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
       },
     },
     agent: {
-      findFirst: async () => agent,
-      update: async ({ data }: any) => {
-        agentUpdates.push(data);
-        // A re-freeze carries no `contextSchemaId`; Prisma leaves an omitted column alone, so must the fake.
-        if (agent)
-          Object.assign(agent, {
-            ...(data.contextSchemaId !== undefined ? { contextSchemaId: data.contextSchemaId } : {}),
-            compiledConfig: data.compiledConfig,
-          });
+      // The servable row: PUBLISHED + active, newest version first — over the seeded row AND the
+      // versions the seed itself branched, so a second run sees what the first one published.
+      findFirst: async () =>
+        [agent, ...agentCreates]
+          .filter((row): row is Record<string, any> => !!row && row.status === 'PUBLISHED' && row.isActive === true)
+          .sort((a, b) => b.versionNumber - a.versionNumber)[0] ?? null,
+      create: async ({ data }: any) => {
+        const row = { id: `agent-v${data.versionNumber}`, ...data };
+        agentCreates.push(row);
+        return row;
+      },
+      update: async ({ where, data }: any) => {
+        agentUpdates.push({ where, data });
+        if (agent && agent.id === where.id) Object.assign(agent, data);
         return data;
       },
     },
+    agentModelFallback: {
+      findMany: async ({ where }: any) => fallbacks.filter((f) => f.agentId === where.agentId),
+      createMany: async ({ data }: any) => {
+        fallbackCreates.push(...data);
+        return { count: data.length };
+      },
+    },
   };
-  return { client, schemas, versions, agent, agentUpdates };
+  return { client, schemas, versions, agent, agentUpdates, agentCreates, fallbackCreates };
 }
+
+/** The columns `bindTranscriptionAgent` copies into the branched version. */
+const ASR_ROW = {
+  tenantId: ARCAAI,
+  slug: ASR_AGENT_SLUG,
+  name: 'Realtime Transcription',
+  description: 'ASR',
+  task: 'SPEECH_TO_TEXT',
+  versionNumber: 1,
+  parentVersionId: null,
+  sourceAgentId: 'sys-asr',
+  sourceTenantId: '00000000-0000-0000-0000-000000000000',
+  sourceSlug: ASR_AGENT_SLUG,
+  sourceVersionNumber: 1,
+  status: 'PUBLISHED',
+  isActive: true,
+  modelId: 'model-asr',
+  instruction: null,
+  parameters: { decoding: { languageMode: 'ml-en' } },
+  inputSchema: null,
+  outputSchema: null,
+  tools: null,
+  tags: ['asr'],
+};
 
 const noteContextClone = (): FakeRow => ({
   id: 'clone-1',
@@ -394,7 +435,7 @@ describe('TASK-951 — seeding is create-only and the retirement sweep is idempo
     const fake = fakeClient({ schemas: [noteContextClone(), ...retiredDepartmentRows()] });
     const result = await seedArcaaiTwoContextSchemas(fake.client);
 
-    expect(result).toMatchObject({ created: 2, skipped: 0, demoted: 1, retired: 2, agent: 'bound' });
+    expect(result).toMatchObject({ created: 2, skipped: 0, demoted: 1, retired: 2, agent: 'branched' });
     expect(fake.versions).toHaveLength(2);
 
     const bySlug = new Map(fake.schemas.map((row) => [row.slug, row]));
@@ -454,19 +495,54 @@ describe('TASK-951 — seeding is create-only and the retirement sweep is idempo
   });
 });
 
-describe('TASK-951 — the ASR agent binding', () => {
-  it('binds the transcription schema AND freezes it into the compiled artifact, with a recomputed checksum', async () => {
+describe('TASK-951 — the ASR agent binding branches a version (agent_immutability_guard)', () => {
+  it('BRANCHES the servable agent into version N+1 that carries the pin AND the frozen schema, then deprecates N', async () => {
     const compiled = { task: 'SPEECH_TO_TEXT', service: 'stt', contextSchema: null };
-    const fake = fakeClient({ agent: { id: 'agent-1', contextSchemaId: null, compiledConfig: compiled } });
-    await seedArcaaiTwoContextSchemas(fake.client);
+    const fake = fakeClient({
+      agent: { id: 'agent-1', contextSchemaId: null, compiledConfig: compiled },
+      fallbacks: [
+        { id: 'fb-1', tenantId: ARCAAI, agentId: 'agent-1', priority: 1, modelId: 'model-fallback', enabled: true, resourceStatus: 'ENABLED' },
+      ],
+    });
+    const result = await seedArcaaiTwoContextSchemas(fake.client);
 
-    expect(fake.agentUpdates).toHaveLength(1);
-    const update = fake.agentUpdates[0]!;
-    expect(update.contextSchemaId).toBe(SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION);
-    expect(update.contextSchemaVersionNumber).toBe(1);
-    expect(update.compiledConfig.contextSchema).toEqual(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA);
+    expect(result.agent).toBe('branched');
+    // One new row: the same lineage (slug, tenant, task, model, authored config, provenance), one
+    // version up, parented on the row it replaces, PUBLISHED + active, pinned and frozen.
+    expect(fake.agentCreates).toHaveLength(1);
+    const created = fake.agentCreates[0]!;
+    expect(created).toMatchObject({
+      tenantId: ARCAAI,
+      slug: ASR_AGENT_SLUG,
+      task: 'SPEECH_TO_TEXT',
+      modelId: 'model-asr',
+      versionNumber: 2,
+      parentVersionId: 'agent-1',
+      sourceAgentId: 'sys-asr',
+      status: 'PUBLISHED',
+      isActive: true,
+      contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
+      contextSchemaVersionNumber: 1,
+      parameters: { decoding: { languageMode: 'ml-en' } },
+      tags: ['asr'],
+    });
+    expect(created.compiledConfig).toEqual({
+      task: 'SPEECH_TO_TEXT',
+      service: 'stt',
+      contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
+    });
     // The runtime never re-reads the schema row, so the artifact and its checksum must agree.
-    expect(update.compiledConfigChecksum).toBe(checksumOf(update.compiledConfig));
+    expect(created.compiledConfigChecksum).toBe(checksumOf(created.compiledConfig));
+    expect(created.publishedAt).toBeInstanceOf(Date);
+    // The fallback chain travels with the version.
+    expect(fake.fallbackCreates).toEqual([
+      { tenantId: ARCAAI, agentId: 'agent-v2', priority: 1, modelId: 'model-fallback', enabled: true, createdBy: expect.any(String) },
+    ]);
+    // The old version is retired through the columns the guard leaves writable — and NOTHING else.
+    expect(fake.agentUpdates).toHaveLength(1);
+    expect(fake.agentUpdates[0]!.where).toEqual({ id: 'agent-1' });
+    expect(Object.keys(fake.agentUpdates[0]!.data).sort()).toEqual(['deprecatedAt', 'isActive', 'status', 'updatedBy']);
+    expect(fake.agentUpdates[0]!.data).toMatchObject({ status: 'DEPRECATED', isActive: false });
     expect(ASR_AGENT_SLUG).toBe('realtime-transcription');
   });
 
@@ -474,11 +550,12 @@ describe('TASK-951 — the ASR agent binding', () => {
     const fake = fakeClient({ agent: { id: 'agent-1', contextSchemaId: 'an-admins-own-choice', compiledConfig: {} } });
     const result = await seedArcaaiTwoContextSchemas(fake.client);
     expect(result.agent).toBe('already-bound');
+    expect(fake.agentCreates).toHaveLength(0);
     expect(fake.agentUpdates).toHaveLength(0);
   });
 
-  it('leaves an agent that already carries the CURRENT frozen blob alone — even with jsonb key order', async () => {
-    // Postgres `jsonb` reorders object keys; the comparison is by content, or every seed run would rewrite.
+  it('leaves a version that already carries the CURRENT frozen blob alone — even with jsonb key order', async () => {
+    // Postgres `jsonb` reorders object keys; the comparison is by content, or every seed run would branch.
     const reordered = JSON.parse(
       JSON.stringify(
         ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
@@ -494,40 +571,41 @@ describe('TASK-951 — the ASR agent binding', () => {
       },
     };
     const fake = fakeClient({
-      agent: { id: 'agent-1', contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION, compiledConfig: compiled },
+      agent: { id: 'agent-2', versionNumber: 2, contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION, compiledConfig: compiled },
     });
     const result = await seedArcaaiTwoContextSchemas(fake.client);
     expect(result.agent).toBe('already-bound');
+    expect(fake.agentCreates).toHaveLength(0);
     expect(fake.agentUpdates).toHaveLength(0);
   });
 
-  it('RE-FREEZES an agent that pins OUR schema with a stale artifact — the pin itself is untouched', async () => {
-    // The dev-database state this ticket met: bound under lane A with a blob that carried no
-    // `openBindings`, so the metadata gate never engaged.
+  it('branches AGAIN when a seed-owned pin carries a stale frozen blob — never an in-place rewrite', async () => {
+    // The state lane A left behind: pinned, but frozen without `openBindings`, so the metadata gate
+    // never engaged. A PUBLISHED row cannot be rewritten (the guard), so version 3 carries the fix.
     const stale = {
       schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
       versionNumber: 1,
       versionId: SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.REALTIME_TRANSCRIPTION,
       payloadSchema: { type: 'object', properties: {} },
     };
-    const compiled = { task: 'SPEECH_TO_TEXT', service: 'stt', contextSchema: stale };
     const fake = fakeClient({
-      agent: { id: 'agent-1', contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION, compiledConfig: compiled },
+      agent: {
+        id: 'agent-2',
+        versionNumber: 2,
+        contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
+        compiledConfig: { task: 'SPEECH_TO_TEXT', service: 'stt', contextSchema: stale },
+      },
     });
 
     const result = await seedArcaaiTwoContextSchemas(fake.client);
 
-    expect(result.agent).toBe('refrozen');
+    expect(result.agent).toBe('branched');
+    expect(fake.agentCreates).toHaveLength(1);
+    expect(fake.agentCreates[0]).toMatchObject({ versionNumber: 3, parentVersionId: 'agent-2' });
+    expect(fake.agentCreates[0]!.compiledConfig.contextSchema).toEqual(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA);
     expect(fake.agentUpdates).toHaveLength(1);
-    const update = fake.agentUpdates[0]!;
-    expect(update.contextSchemaId).toBeUndefined();
-    expect(update.compiledConfig).toEqual({
-      task: 'SPEECH_TO_TEXT',
-      service: 'stt',
-      contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
-    });
-    expect(update.compiledConfigChecksum).toBe(checksumOf(update.compiledConfig));
-    expect(fake.agent!.contextSchemaId).toBe(SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION);
+    expect(fake.agentUpdates[0]!.data).toMatchObject({ status: 'DEPRECATED', isActive: false });
+    expect(fake.agentUpdates[0]!.data).not.toHaveProperty('compiledConfig');
   });
 
   it('reports an absent agent rather than failing the seed', async () => {

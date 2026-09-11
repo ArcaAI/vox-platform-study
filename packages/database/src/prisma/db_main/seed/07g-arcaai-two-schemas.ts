@@ -51,7 +51,7 @@ import {
   definitionChecksum,
   payloadSchemaFromDefinition,
 } from './07e-consultation-note-context-schema';
-import { ASR_AGENT_SLUG, checksumOf } from './25-agents';
+import { ASR_AGENT_SLUG, canonicalJson, checksumOf } from './25-agents';
 
 const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
@@ -443,18 +443,6 @@ export function openBindingsFromDefinition(definition: unknown): SeedOpenBinding
   return bindings;
 }
 
-/** Key-order-independent JSON, so a blob read back from `jsonb` (which reorders keys) compares by CONTENT. */
-const stableJson = (value: unknown): string =>
-  JSON.stringify(value, (_key, inner: unknown) =>
-    isSeedRecord(inner)
-      ? Object.fromEntries(
-          Object.keys(inner)
-            .sort()
-            .map((k) => [k, inner[k]]),
-        )
-      : inner,
-  );
-
 /**
  * What `AgentService.resolveContextSchema` freezes into `compiledConfig.contextSchema` at publish,
  * reproduced for the seeded ASR agent.
@@ -512,49 +500,97 @@ async function retireDepartmentSchemas(client: CorePrismaClient): Promise<number
 
 /**
  * Bind ArcaAI's `realtime-transcription` agent to the transcription schema, and freeze the
- * resolution into its compiled artifact.
+ * resolution into its compiled artifact — by BRANCHING A NEW VERSION.
  *
- * An agent whose `contextSchemaId` is still NULL is bound — phase 26 clones it that way
- * deliberately ("a context pin cannot travel by id"). A tenant admin who has since pinned
- * something ELSE keeps their choice. An agent pinning THIS seed's schema is RE-FROZEN when the
- * seed's blob no longer matches the artifact: the runtime never re-reads the schema row
- * (TASK-859 invariant 4), so a definition change under this ticket that stopped at the version
- * row would leave the gateway validating `metadata` frames against the shape it replaced.
+ * Why not an UPDATE: `core.agent_immutability_guard` (migration `task_863`) refuses any change to a
+ * PUBLISHED row's `compiledConfig` / checksum / model binding / lineage — "branch a new version
+ * instead". The pin columns (`contextSchemaId`, `contextSchemaVersionNumber`) ARE writable, but a pin
+ * the runtime cannot read is worse than none: the gateway resolves the metadata gate and the
+ * create-time `context` check from the FROZEN `compiledConfig.contextSchema` (TASK-859 invariant 4),
+ * never from the schema row. A local `db push` database carries no triggers, which is why the
+ * in-place update passed every local reset and failed the first cluster reset (2026-09-11).
+ *
+ * So this does what `AgentService` does on publish: copy the servable row into version N+1
+ * (`parentVersionId` = the old row, same slug/tenant/task/model/authored config, fallback chain
+ * copied), PUBLISHED and active, carrying the pin and the frozen schema; then deprecate the old
+ * version (lifecycle columns stay writable under the guard). Resolution is by slug, newest active
+ * version first, so the new row is served immediately. A tenant admin who pinned something ELSE
+ * keeps their choice; a row already carrying the current frozen bytes is left alone (content
+ * comparison — `jsonb` reorders keys); a seed-owned pin whose frozen bytes drifted branches again.
  */
-async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'bound' | 'refrozen' | 'already-bound' | 'absent'> {
+async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'branched' | 'already-bound' | 'absent'> {
   // The SERVABLE row, resolved the way `AgentAssignmentService` resolves it (slug + task +
   // PUBLISHED + active), newest version first — not merely "a row with this slug".
   const agent = await client.agent.findFirst({
     where: { tenantId: ARCAAI, slug: ASR_AGENT_SLUG, task: 'SPEECH_TO_TEXT', status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' },
     orderBy: { versionNumber: 'desc' },
-    select: { id: true, contextSchemaId: true, compiledConfig: true },
   });
   if (!agent) return 'absent';
 
   const compiled = (agent.compiledConfig ?? null) as unknown as Record<string, unknown> | null;
-  const nextCompiled = compiled === null ? null : { ...compiled, contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA };
-
   if (agent.contextSchemaId !== null) {
-    const ours = agent.contextSchemaId === SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION;
-    if (!ours || compiled === null || nextCompiled === null) return 'already-bound';
-    if (stableJson(compiled.contextSchema) === stableJson(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA)) return 'already-bound';
-    await client.agent.update({
-      where: { id: agent.id },
-      data: { compiledConfig: nextCompiled as never, compiledConfigChecksum: checksumOf(nextCompiled), updatedBy: SYSTEM_USER_ID },
-    });
-    return 'refrozen';
+    if (agent.contextSchemaId !== SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION) return 'already-bound';
+    if (compiled !== null && canonicalJson(compiled.contextSchema) === canonicalJson(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA)) {
+      return 'already-bound';
+    }
   }
 
-  await client.agent.update({
-    where: { id: agent.id },
+  const now = new Date();
+  const nextCompiled = compiled === null ? null : { ...compiled, contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA };
+  const next = await client.agent.create({
     data: {
+      tenantId: agent.tenantId,
+      slug: agent.slug,
+      name: agent.name,
+      description: agent.description,
+      task: agent.task,
+      versionNumber: agent.versionNumber + 1,
+      parentVersionId: agent.id,
+      sourceAgentId: agent.sourceAgentId,
+      sourceTenantId: agent.sourceTenantId,
+      sourceSlug: agent.sourceSlug,
+      sourceVersionNumber: agent.sourceVersionNumber,
+      status: 'PUBLISHED',
+      isActive: true,
+      modelId: agent.modelId,
       contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
       contextSchemaVersionNumber: 1,
-      ...(nextCompiled === null ? {} : { compiledConfig: nextCompiled as never, compiledConfigChecksum: checksumOf(nextCompiled) }),
-      updatedBy: SYSTEM_USER_ID,
+      instruction: agent.instruction as never,
+      parameters: agent.parameters as never,
+      inputSchema: agent.inputSchema as never,
+      outputSchema: agent.outputSchema as never,
+      tools: agent.tools as never,
+      compiledConfig: nextCompiled as never,
+      compiledConfigChecksum: nextCompiled === null ? null : checksumOf(nextCompiled),
+      validatedAt: now,
+      publishedAt: now,
+      resourceStatus: 'ENABLED',
+      tags: agent.tags,
+      createdBy: SYSTEM_USER_ID,
     },
   });
-  return 'bound';
+
+  // The fallback chain is part of a version's published bytes: it travels with the new row.
+  const fallbacks = await client.agentModelFallback.findMany({ where: { agentId: agent.id, resourceStatus: 'ENABLED' } });
+  if (fallbacks.length > 0) {
+    await client.agentModelFallback.createMany({
+      data: fallbacks.map((f) => ({
+        tenantId: f.tenantId,
+        agentId: next.id,
+        priority: f.priority,
+        modelId: f.modelId,
+        enabled: f.enabled,
+        createdBy: SYSTEM_USER_ID,
+      })),
+    });
+  }
+
+  // Retire the version we branched from — `status` / `isActive` / `deprecatedAt` are writable.
+  await client.agent.update({
+    where: { id: agent.id },
+    data: { status: 'DEPRECATED', isActive: false, deprecatedAt: now, updatedBy: SYSTEM_USER_ID },
+  });
+  return 'branched';
 }
 
 export const seedArcaaiTwoContextSchemas = async (client: CorePrismaClient) => {
