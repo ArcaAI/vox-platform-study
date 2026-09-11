@@ -151,7 +151,8 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
-    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug, parentConsultationId } = input;
+    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug, parentConsultationId, visitType, authoredContext } =
+      input;
 
     // resolved FIRST, and unconditionally, because the two palettes are separate
     // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
@@ -168,7 +169,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // the one that ran.
     const resolved: { workflowDefinitionSlug: string | null; source: ConsultationWorkflowDispatchResult['source'] } = workflowDefinitionSlug
       ? { workflowDefinitionSlug, source: 'caller-selected' }
-      : await this.assignments.resolve(tenantId, CORE_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId));
+      : await this.assignments.resolve(tenantId, CORE_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId, visitType));
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
@@ -244,6 +245,12 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         configRef,
         sandbox: false,
         subject: { consultationId, userId, externalPatientId: externalPatientId ?? undefined },
+        // TASK-951 §D-6 — the client's own validated context, so `trigger.context.*` resolves to
+        // something. Omitted entirely when there is none, which is byte-identical to before (the
+        // gateway sends `payload: input.payload ?? {}`). It cannot forge identity: the dispatcher
+        // strips every reserved identity key out of `payload` unconditionally and re-stamps them
+        // from `subject` above.
+        ...(authoredContext && Object.keys(authoredContext).length > 0 ? { payload: authoredContext } : {}),
       });
 
       // TASK-946 D3 — attach the terminal-status watcher for THIS run. Until now it was
@@ -361,12 +368,19 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    * exactly `VisitTypeService.forConsultation`'s own fallback for a consultation with no
    * recorded visit type and no parent link.
    *
+   * TASK-951 §D-3 — `recorded` is that missing half, now that a caller can STATE its visit type
+   * through the tenant's context schema. `forConsultation` ranks it above the parent link, so a
+   * stated value selects the assignment; absent, the derivation is byte-identical to before.
+   *
    * Pure and synchronous: `VisitTypeService` holds no state and does no I/O (see its own
    * header — the tenant-managed catalogue it used to read was retired by TASK-882), so this
    * cannot change the best-effort failure profile of the caller above it.
    */
-  private visitTypeSelectorTags(tenantId: string, parentConsultationId: string | null | undefined): string[] {
-    const visitType = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: Boolean(parentConsultationId) });
+  private visitTypeSelectorTags(tenantId: string, parentConsultationId: string | null | undefined, recorded?: string | null): string[] {
+    const visitType = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+      recorded,
+      isFollowUp: Boolean(parentConsultationId),
+    });
     return [`visit-type:${visitType.key}`];
   }
 }

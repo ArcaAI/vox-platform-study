@@ -514,13 +514,16 @@ export class ConsultationController {
       '`CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER` — a human caller supplied `clinicianUserId`; ' +
       '`CLINICIAN_MISMATCH` — `clinicianUserId` and the context user-identity value name two different clinicians; ' +
       '`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the effective consultation context schema (every problem listed); ' +
+      '`DEPARTMENT_MISMATCH` — `departmentId` and the department named by the context payload are two different departments; ' +
+      '`DEPARTMENT_AMBIGUOUS` — the schema resolves departments by NAME and more than one department of this tenant carries that name; ' +
+      '`VISIT_TYPE_INVALID` — the stated visit type is not a key or alias of the platform vocabulary; ' +
       '`USER_IDENTITY_INVALID` — the identity value is empty, over-long or carries control characters; ' +
       '`USER_IDENTITY_DEPARTMENT_UNRESOLVED` — a user had to be provisioned and neither the request nor the tenant setting supplied a department.',
   })
   @ApiResponse({
     status: 404,
     description:
-      'The named clinician is not a user of this tenant, or may not own a consultation. Also `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled.',
+      'The named clinician is not a user of this tenant, or may not own a consultation. Also `DEPARTMENT_UNKNOWN` — no department of this tenant carries the code (or name) the context payload stated; `USER_IDENTITY_UNKNOWN` — no user carries that staff id and this tenant does not auto-provision; and `USER_IDENTITY_NOT_USABLE` — the matching user is not enabled.',
   })
   @ApiResponse({
     status: 409,
