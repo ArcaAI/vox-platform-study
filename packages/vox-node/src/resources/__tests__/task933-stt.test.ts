@@ -29,6 +29,8 @@ const SESSION = {
   currentActive: 1,
   ticket: 'tkt-1',
   ticketExpiresAt: 1_800_000_000_000,
+  // TASK-951 — the gateway stamps the session epoch at creation; the response type requires it.
+  sessionEpochMs: 1_799_999_000_000,
   agentSlug: 'arcaai-asr',
   activeEngine: 'primary' as const,
 };
