@@ -37,7 +37,7 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * | Phase | Why |
  * |----------------------------------------|-----|
  * | `02-apikey` | Demo API keys embedding raw secrets, ACTIVE and broadly scoped |
- * | `07f-arcaai-department-context-schemas`| One CUSTOMER tenant's department context schemas, `createdBy` a named tenant admin |
+ * | `07g-arcaai-two-schemas` | One CUSTOMER tenant's consultation context schemas (TASK-951; replaced `07f-arcaai-department-context-schemas`) |
  * | `08-dna-writing-style` | Synthetic clinician writing samples |
  * | `09-consultation` | Synthetic, Vault-encrypted PHI |
  * | `10-audit-log` | Fabricated rows in the HIPAA audit trail |
@@ -72,7 +72,7 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  */
 export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '02-apikey',
-  '07f-arcaai-department-context-schemas',
+  '07g-arcaai-two-schemas',
   '08-dna-writing-style',
   '09-consultation',
   '10-audit-log',
