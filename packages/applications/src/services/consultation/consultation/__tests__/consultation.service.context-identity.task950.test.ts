@@ -281,7 +281,9 @@ describe('ConsultationService.getOrCreate — the context-schema user identity',
 
     expect(contextSchemaService.validateContextPayload).toHaveBeenCalledTimes(1);
     expect(userIdentityService.resolveOrProvision).not.toHaveBeenCalled();
-    expect(contextSchemaService.getEffectiveBundle).not.toHaveBeenCalled();
+    // TASK-951: the effective bundle IS read for every caller now — department / visit-type / external-ref
+    // markers and PRE-item persistence apply to humans too. Only IDENTITY resolution stays machine-only,
+    // which the `resolveOrProvision` assertion above still pins.
     expect(consultationRepository.create).toHaveBeenCalledWith(expect.objectContaining({ doctorId: HUMAN_CALLER }));
     // ...and nothing asks whether the caller may own a consultation: `@Authorize` already did.
     expect(policyEngine.buildAbility).not.toHaveBeenCalled();
