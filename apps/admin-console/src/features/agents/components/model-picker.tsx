@@ -49,6 +49,10 @@ const REASON_GUIDANCE: Record<string, string> = {
   'weights-not-available': 'model weights are not available yet',
   'connection-resolver-unavailable': 'provider connections are unavailable right now',
   'platform-credential-not-entitled': 'not included in your plan — add your own credential',
+  // The GROUP-level reason on the "Hope provider" entry: every platform model for
+  // this task is itself unusable (weights missing, or no enabled connection). The
+  // fix is not on AI Providers, so it must not read like the BYO codes above.
+  'no-usable-model': 'no platform model is ready for this task',
 };
 
 export function reasonGuidance(reason: string): string {
