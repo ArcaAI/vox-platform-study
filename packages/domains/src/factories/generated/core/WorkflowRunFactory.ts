@@ -26,6 +26,7 @@ export interface CreateWorkflowRunProps extends BaseEntityFactoryCreateProps {
   degradedNodeCount?: IWorkflowRunEntity['degradedNodeCount'];
   firstErrorCode?: IWorkflowRunEntity['firstErrorCode'];
   resultRef?: IWorkflowRunEntity['resultRef'];
+  metaData?: IWorkflowRunEntity['metaData'];
   Tenant?: IWorkflowRunEntity['Tenant'];
 
   createdAt?: IWorkflowRunEntity['createdAt'];
@@ -71,6 +72,16 @@ export class WorkflowRunFactory {
       // (M-2). Always null at CreateRun time — a run has delivered nothing
       // when it starts; `recordRunFinished` is what writes it.
       resultRef: props.resultRef ?? null,
+      // TASK-950 — non-PHI bookkeeping the caller wants stored on the row's `_metadata`
+      // (today: `{ actingUserId }` from `WorkflowRunService.recordRunStarted`).
+      //
+      // Deliberately NOT `?? null`, unlike every sibling above. `_metadata` has to keep three
+      // distinguishable states — OMITTED ("this caller had nothing to record"), `{}` ("measured,
+      // found nothing"), and a populated bag — and defaulting to `null` collapses the first into
+      // a stored fact that was never asserted. `BaseDataModel` coerces `undefined` to `null` at
+      // the mapper boundary anyway, so the INSERT is unchanged; what survives here is the
+      // absence, which `workflow-run.acting-user.task950.test.ts` pins on `toObject()`.
+      metaData: props.metaData,
       Tenant: props.Tenant ?? null,
     });
   }

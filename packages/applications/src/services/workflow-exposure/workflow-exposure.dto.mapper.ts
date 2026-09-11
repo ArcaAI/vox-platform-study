@@ -41,12 +41,22 @@ export class WorkflowExposureDtoMapper {
    * `resultRef` comes from the durable run READ MODEL, never from `upstream`: Temporal state
    *  carries per-node status only, which is precisely why the delivered output needed a column
    * .
+   *
+   * TASK-950 — `actingUserId` has the same provenance and for the same reason: it is a fact about
+   * who the run acts FOR, recorded on the row's `_metadata` at `recordRunStarted`, and Temporal
+   * never sees it. It arrives here ALREADY extracted and narrowed (`WorkflowRunResponse.actingUserId`,
+   * produced by `WorkflowRunDtoMapper`) rather than as a raw `_metadata` bag, so there is exactly
+   * one rule in the codebase for what counts as a valid value.
+   *
+   * Both default to `null`, which is also the honest answer for every caller that has no run row
+   * to read from.
    */
   static toStatusResponse(
     slug: string,
     workflowVersionNumber: number,
     upstream: GetWorkflowRunResult,
     resultRef: Record<string, unknown> | null = null,
+    actingUserId: string | null = null,
   ): WorkflowRunStatusResponse {
     return {
       runId: upstream.runId,
@@ -57,6 +67,7 @@ export class WorkflowExposureDtoMapper {
       startedAt: upstream.startedAt,
       endedAt: upstream.endedAt,
       resultRef,
+      actingUserId,
     };
   }
 
