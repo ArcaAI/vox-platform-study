@@ -42,6 +42,36 @@ export interface ContextKindDeclaration {
    * renders this as an `@identity` JSDoc annotation on that property.
    */
   userIdentity?: { field: string };
+  /**
+   * Names the ONE property carrying the DEPARTMENT this consultation
+   * belongs to (TASK-951), resolved by the tenant's own `code` (the
+   * default) or `name`. `generate.ts` renders this as a `@role department`
+   * JSDoc annotation on that property.
+   */
+  department?: { field: string; by: 'code' | 'name' };
+  /**
+   * Names the ONE property carrying the VISIT TYPE (TASK-951). `generate.ts`
+   * renders this as a `@role visitType` JSDoc annotation on that property.
+   */
+  visitType?: { field: string };
+  /**
+   * Names the ONE property carrying an EXTERNAL system's own identifier for
+   * this encounter (TASK-951). `generate.ts` renders this as a
+   * `@role externalRef` JSDoc annotation on that property.
+   */
+  externalRef?: { field: string };
+  /**
+   * Marks this kind's payload for materialization as `CASE_NOTE` context
+   * items at `open()` (TASK-951). `generate.ts` renders this as a
+   * type-level `@materializeAs CASE_NOTE` JSDoc annotation.
+   */
+  materializeAs?: 'CASE_NOTE';
+  /**
+   * Marks this kind as the stream-identity payload of an STT session
+   * `context` (TASK-951). `generate.ts` renders this as a type-level
+   * `@streamContext` JSDoc annotation.
+   */
+  streamContext?: true;
   [key: string]: unknown;
 }
 
