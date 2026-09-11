@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress — owner go 2026-09-11; OD-0 = TASK-951, OD-4 amended (normalised GEN-style vitals object; ALaaS maps its payload), every other OD = the recommendation |
+| **Status** | Review — shipped on `dev-2.2` (`c6ebc46d3` + this doc); every gate green or attributed; ALaaS lane H is the owner's next step |
 | **Type** | feature (schema content + open-time mappings + STT session context echo); touches `packages/database` (seeds), `packages/applications`, `packages/workflow-contract`, `apps/api`, `apps/harness` (test + one model), `packages/vox-node`, `packages/vox-codegen`, `packages/agentic-sdk-v2` (type parity), `apps/admin-console` (marker picker), and a documented ALaaS change list (separate repo) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-11 |
@@ -228,9 +228,28 @@ Orchestrator fixups: `2580552e0` (STT fixture `sessionEpochMs`), `1ca0a8f88` (pr
 | 6 | agent-plane attribution (TASK-950 decision 3) | fast win: `doctorId` on the `AiUsageEvent` row | owner decision |
 | 7 | 10 visit-type call sites | 9 changed (7 in lane C, 2 in lane D); `agentic-instructions.service.ts` untouched — it has no consultation | nothing recorded to pass |
 
-### Gate evidence
+### Gate evidence (orchestrator, verification worktree `../hope-v2-task-951-verify` on `dev-2.2`)
 
-_Appended below as each gate completes._
+| Gate | Result |
+|---|---|
+| `gen:model:check` / `gen:entity:check` / `gen:factory:check` | no drift (181 / 103 / 103); schema coverage OK (101 artifacts / 105 models) |
+| `/domains` test | 1929 passed (incl. `workflowRun.metadata.task950`) |
+| `/database` test | 1752 passed (incl. `task-951-arcaai-two-schemas`, `task-930-workflow-seeds` against the regenerated blobs) |
+| `/json-schema-subset` / `/workflow-contract` test | 18 / 945 passed |
+| `pnpm harness:test:unit` | 2426 passed (incl. `test_compiled_config_open_bindings_task951.py`) |
+| `/applications` FULL test | 13170 passed; the only failed file is `membership-bounded-sync.integration` (needs the live TEST DB — pre-existing, ports held by ALaaS); `workflow-exposure.service.test` fixed for `actingUserId: null` |
+| `/applications` build + lint | build OK; 0 errors; prettier warnings in ticket files fixed; the 11 `require-description` warnings in `streamingSession.service.ts` predate lane E |
+| `pnpm api:build`, `/api` vitest | build OK; 4379 passed; the only failure is the pre-existing `summary-provenance.spec` (TASK-932) |
+| `/api` lint | 0 errors after prettier on `task-951-open-mappings.spec.ts` |
+| `/vox-node` build / test / check:exports / lint / typecheck; `/vox-codegen` build / test / lint; `/vox` typecheck (deps built) | all exit 0 (35 test files; 76 tests) |
+| `/admin-console` test / lint / build (deps built) | 2890 passed; lint clean; build exit 0 |
+| Five artifacts | `route-manifest` unchanged; `openapi.json`, portal (admin 662 / business 200 ops), vox-node admin (49 areas, 422 routes, 428 schemas) regenerated, all `:check` no drift — merged `0a64878f3` |
+| Seed on the dev DB (`RUN_SEED=all`, no reset) | exit 0; ArcaAI rows: `arcaai_consultation_scribe` TENANT default PUBLISHED v1, `arcaai_realtime_transcription` TENANT, `consultation_gen_arcaai` + `consultation_rheum_arcaai` `DELETED`, `consultation_note_context` clone no longer default; `realtime-transcription` agent bound to `79000000-…-0020` v1 |
+| API e2e (worktree gateway 8869, `RESET_DB=false`, throttle toggled) | `task-951-open-mappings` **7/7**; `task-950-consultation-identity` **13/13** against the scribe (spec now resolves the schema GEN actually serves); `task-950-invocation-identity` **7/7**; `task-658` green after the reseed; `task-951-stt-context-echo` self-skipped (apps/stt not running → session create 503; unit-covered); `task-933` governing-run case fails only because the harness is down |
+
+### ALaaS hand-over (lane H, separate repo)
+
+The change list in §Implementation Plan stands, with OD-4: map the browser `vitals[] { componentName, value, date }` into the normalised object (`bloodPressure`, `heartRate`, `respiratoryRate`, `temperature`, `oxygenSaturation`, `weightKg`, `heightCm`, `bmi`, `bloodGlucose`, `painScore`, `recordedAt`, `notes`); send `context.encounter { doctor_id: consultantId, event_id, department_code: departmentId, department_name, visit_type }` and `previous_case_notes { notes[] }`; drop `pushPriorCaseNotes` once verified; per-mic `createStreamSession({ context: { stream: { mic_id } } })` for standalone transcription; `npm run hope:codegen`.
 
 ## Change History
 
@@ -238,3 +257,4 @@ _Appended below as each gate completes._
 |---|---|
 | 2026-09-11 | Opened from the owner's consolidation ask. Five read-only discovery lanes (ArcaAI schemas, STT protocol, open-time resolution, ALaaS broker, decision sizing). Plan + OD table written; status Pending. |
 | 2026-09-11 | Owner go. OD answers: 0 = TASK-951; 4 = the `vitals` kind is the NORMALISED object (bloodPressure, heartRate, respiratoryRate, temperature, oxygenSaturation, weightKg, heightCm, bmi, bloodGlucose, painScore, recordedAt, notes — all optional; ALaaS maps its payload into it); all other ODs = recommendations. Lanes A–G spawned in own worktrees (A/B/C/D/E opus, F/G sonnet) plus TASK-950 lane I; no lane runs gates — the orchestrator merges into `dev-2.2` and gates. Ownership split fixed one collision: `live-documentation.service.ts` (incl. its two visit-type call sites) is lane D's, the other eight call sites lane C's. |
+| 2026-09-11 | All nine lanes merged; seed blobs regenerated; five artifacts regenerated; full gates + e2e run (table above). Two spec fixes for the seeded scribe (identity marker moved onto `vitals`; schema resolved instead of a retired slug). Status → **Review**. |
