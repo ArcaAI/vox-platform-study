@@ -49,7 +49,7 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-import { IRedisCacheService } from '@arcaai/applications';
+import { IRedisCacheService, parseMetadataMarks, type StreamMetadataMarks } from '@arcaai/applications';
 
 export const STREAM_SESSION_TENANT_KEY_PREFIX = 'stream-session-tenant:';
 export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
@@ -63,6 +63,21 @@ export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
  * of the session carries the caller's own metadata back.
  */
 export const STREAM_SESSION_META_KEY_PREFIX = 'stream-session-meta:';
+
+/**
+ * TASK-951 R2 (clarified) — the session's metadata TIMELINE: the spans a client declared with
+ * `{type:'metadata'}` frames, plus the audio offset they were measured on.
+ *
+ * A key of its own rather than another field on the meta record above, for one reason: the meta
+ * record is written ONCE at create and read ONCE at attach, whereas this one is REWRITTEN on
+ * the audio path every time the client changes its metadata. Folding the two together would
+ * turn each of those writes into a read-modify-write that races the create path for a record
+ * whose other fields (sampleRate, the frozen schema) must never be rewritten at all.
+ *
+ * Same TTL and the same fail-soft posture as its siblings: a missing or corrupt record rebuilds
+ * as an EMPTY timeline, never an error.
+ */
+export const STREAM_SESSION_MARKS_KEY_PREFIX = 'stream-session-marks:';
 
 export interface StreamSessionMeta {
   sampleRate: number;
@@ -85,6 +100,23 @@ export interface StreamSessionMeta {
    * several concurrent sessions (one per microphone) place them on one clock.
    */
   sessionEpochMs?: number;
+  /**
+   * TASK-951 R2 (clarified) — the JSON Schema ONE `{type:'metadata'}` frame must satisfy, or
+   * absent when the session's ASR agent binds no stream-identity kind.
+   *
+   * It is the `fields` of the kind the agent's pinned context schema marked `streamContext`
+   * (`compiledConfig.contextSchema.openBindings.streamContext.kindKey`, looked up in the same
+   * artifact's `payloadSchema.properties`), resolved ONCE by `createStreamSession` and frozen
+   * here. The gateway validates every metadata frame against it without resolving an agent or
+   * touching the database on the audio path — a WS control frame cannot afford either, and the
+   * answer must not change under a live session because a tenant edited a schema row.
+   *
+   * ABSENT is meaningful and is NOT "reject everything": an agent that declares no
+   * stream-identity vocabulary has no opinion about what a client may label its audio with, so
+   * any object is accepted on the size bound alone. That is the same reading
+   * `assertStreamContextConforms` gives an agent with no bound schema at all.
+   */
+  metadataSchema?: Record<string, unknown>;
 }
 
 /**
@@ -204,16 +236,63 @@ export class StreamSessionTenantBindingService {
           typeof parsed.sessionEpochMs === 'number' && Number.isFinite(parsed.sessionEpochMs) && parsed.sessionEpochMs > 0
             ? parsed.sessionEpochMs
             : undefined;
+        // TASK-951 R2 (clarified) — read on exactly the same terms: independently of the other
+        // fields, and as "no schema" rather than a failed handshake when it is not an object.
+        const metadataSchema =
+          parsed.metadataSchema !== null && typeof parsed.metadataSchema === 'object' && !Array.isArray(parsed.metadataSchema)
+            ? (parsed.metadataSchema as Record<string, unknown>)
+            : undefined;
         return {
           sampleRate: parsed.sampleRate,
           ...(context ? { context } : {}),
           ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
+          ...(metadataSchema ? { metadataSchema } : {}),
         };
       }
     } catch {
       // Corrupt record — treated as absent.
     }
     return null;
+  }
+
+  /**
+   * TASK-951 R2 (clarified) — persist the session's metadata timeline.
+   *
+   * Called from the WS gateway whenever a `{type:'metadata'}` frame changes the spans, which is
+   * a control-frame cadence (a microphone opening or closing), NOT an audio-frame cadence — so
+   * this is nothing like a per-frame write. The gateway serves every transcript from its own
+   * in-memory copy; this record exists only so a session that reconnects onto a different
+   * gateway instance, or onto one that restarted, rebuilds the timeline instead of silently
+   * starting a second one at zero and reporting every later segment as unlabelled.
+   */
+  async bindMetadataMarks(sessionId: string, marks: StreamMetadataMarks, ttlSeconds: number = STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS): Promise<void> {
+    if (!this.isValidSessionId(sessionId)) {
+      return;
+    }
+    await this.cache.setex(this.marksKey(sessionId), Math.max(1, Math.floor(ttlSeconds)), JSON.stringify(marks));
+  }
+
+  /**
+   * The session's persisted metadata timeline, or an EMPTY one.
+   *
+   * Never null and never a throw: {@link parseMetadataMarks} is total, and a missing record is
+   * the ordinary case (every session that has not sent a `metadata` frame). The caller cannot
+   * tell "absent" from "corrupt", and deliberately should not — both mean "nothing to rebuild",
+   * and a live transcription must not be refused over an attribution aid.
+   */
+  async lookupMetadataMarks(sessionId: string): Promise<StreamMetadataMarks> {
+    if (!this.isValidSessionId(sessionId)) {
+      return { spans: [], audioSec: 0 };
+    }
+    const raw = await this.cache.get(this.marksKey(sessionId));
+    if (typeof raw !== 'string' || raw.length === 0) {
+      return { spans: [], audioSec: 0 };
+    }
+    try {
+      return parseMetadataMarks(JSON.parse(raw));
+    } catch {
+      return { spans: [], audioSec: 0 };
+    }
   }
 
   async clear(sessionId: string): Promise<void> {
@@ -243,5 +322,9 @@ export class StreamSessionTenantBindingService {
 
   private metaKey(sessionId: string): string {
     return `${STREAM_SESSION_META_KEY_PREFIX}${sessionId}`;
+  }
+
+  private marksKey(sessionId: string): string {
+    return `${STREAM_SESSION_MARKS_KEY_PREFIX}${sessionId}`;
   }
 }

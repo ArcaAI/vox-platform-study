@@ -1,11 +1,19 @@
 import {
   IOriginRegistry,
   ISocketRegistryService,
+  MAX_STREAM_METADATA_BYTES,
   StreamingAudioBridgeService,
   StreamingSessionService,
+  type ClippedMetadataSpan,
+  type MetadataSpan,
   type TraceCarrier,
+  clipSpansToWindow,
   extractTraceCarrier,
   injectTraceCarrier,
+  isMetadataObject,
+  jsonSchemaValueProblems,
+  metadataByteLength,
+  setMetadataAt,
 } from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
@@ -162,6 +170,33 @@ interface SessionInfo {
   streamContext?: Record<string, unknown>;
   /** TASK-951 R2 — the session's creation epoch (ms), from the same meta record. */
   sessionEpochMs?: number;
+  /**
+   * TASK-951 R2 (clarified) — the schema ONE `{type:'metadata'}` object must satisfy, from the
+   * same one meta read. Undefined = the session's agent declares no stream-identity vocabulary,
+   * and any object is accepted on the size bound alone.
+   */
+  metadataSchema?: Record<string, unknown>;
+  /**
+   * TASK-951 R2 (clarified) — the session's AUDIO CLOCK, in bytes forwarded upstream.
+   *
+   * Seconds are `bytes / (sampleRate * 2)` for PCM16 LE mono, which is the same quantity
+   * `apps/stt` derives a segment's `start_time`/`end_time` from (`total_samples_fed /
+   * target_sr` in `preprocessor.py`). Two counters over the same audio: no timestamp is ever
+   * transmitted, and the two agree by construction.
+   *
+   * It NEVER rewinds. A grace-window rebind keeps this `SessionInfo`, so the count carries
+   * across a reconnect exactly as the resume buffer and the seq do — a resume continues one
+   * audio timeline rather than starting a second one.
+   */
+  audioBytesForwarded: number;
+  /**
+   * TASK-951 R2 (clarified) — the metadata spans declared so far, newest last, last one open.
+   *
+   * The HOT COPY: every transcript is served from here, so the per-utterance cost of the echo
+   * is an array scan and no Redis round trip. `bindMetadataMarks` mirrors it to Redis on each
+   * change purely so a cross-instance reconnect can rebuild it.
+   */
+  metadataSpans: MetadataSpan[];
   /** Frames whose async Redis write failed. */
   droppedAudioFrames: number;
   /** Partials dropped because the WS egress buffer was over the threshold. */
@@ -572,12 +607,28 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // same graceful posture the sampleRate fallback already takes.
     let streamContext: Record<string, unknown> | undefined;
     let sessionEpochMs: number | undefined;
+    // TASK-951 R2 (clarified) — the metadata gate's schema and, for a session reconnecting onto
+    // a gateway that never saw its earlier frames, its persisted timeline. Both come off the
+    // SAME await as the sampleRate (one `Promise.all`, two keys), so the handshake still pays
+    // for one round trip's latency, and both degrade to "nothing" on any failure.
+    let metadataSchema: Record<string, unknown> | undefined;
+    let metadataSpans: MetadataSpan[] = [];
+    let audioBytesForwarded = 0;
     try {
-      const meta = await this.sessionBinding.lookupSessionMeta(sessionId);
+      const [meta, marks] = await Promise.all([this.sessionBinding.lookupSessionMeta(sessionId), this.sessionBinding.lookupMetadataMarks(sessionId)]);
       if (meta) {
         sampleRate = meta.sampleRate;
         streamContext = meta.context;
         sessionEpochMs = meta.sessionEpochMs;
+        metadataSchema = meta.metadataSchema;
+      }
+      if (marks.spans.length > 0) {
+        metadataSpans = marks.spans;
+        // Restore the CLOCK with the spans, not just the spans: a rebuilt timeline whose clock
+        // restarted at zero would place every later span before the ones it already holds.
+        // `audioSec` is the offset as of the last recorded mark, so this can lag by whatever
+        // audio flowed after it — understating the gap, never inventing coverage.
+        audioBytesForwarded = Math.max(0, Math.round(marks.audioSec * sampleRate * 2));
       }
     } catch (err) {
       this.logger.warn({
@@ -619,6 +670,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       sampleRate,
       ...(streamContext ? { streamContext } : {}),
       ...(sessionEpochMs != null ? { sessionEpochMs } : {}),
+      ...(metadataSchema ? { metadataSchema } : {}),
+      audioBytesForwarded,
+      metadataSpans,
       droppedAudioFrames: 0,
       droppedPartialResults: 0,
       partialDropSignalled: false,
@@ -716,7 +770,19 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         // TASK-951 R2 — read ONCE at handshake and handed to the reader, so the echo costs
         // nothing per transcript. A grace-window rebind re-subscribes through this same method
         // with the SessionInfo it kept, so a resumed session keeps echoing without a second read.
-        ...(session.streamContext ? { sessionEcho: { context: session.streamContext, sessionEpochMs: session.sessionEpochMs } } : {}),
+        //
+        // TASK-951 R2 (clarified) — the timeline accessor rides in the same object but is a
+        // CLOSURE OVER THE SESSION, not a value: it is called per transcript and must see the
+        // spans as they are THEN. `sessionEcho` is now installed for every session, because a
+        // session that declared no `context` may still send `metadata` frames — the two are
+        // independent client choices. A session that uses NEITHER still emits exactly the
+        // fields it emitted before this ticket: the bridge spreads `context` only when there is
+        // one, and `metadata` only when the clipped span list is non-empty.
+        sessionEcho: {
+          ...(session.streamContext ? { context: session.streamContext, sessionEpochMs: session.sessionEpochMs } : {}),
+          metadataSpans: (startTime: number, endTime: number): ClippedMetadataSpan[] =>
+            clipSpansToWindow(session.metadataSpans, startTime, endTime, this.audioSecForwarded(session)),
+        },
       })
       .subscribe({
         next: (msg) => {
@@ -1206,7 +1272,20 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         case 'audio': {
           const seq = typeof msg.seq === 'number' ? msg.seq : ++session.binarySeq;
           const data = Buffer.from(String(msg.data), 'base64');
+          // TASK-951 R2 (clarified) — a JSON audio frame may carry its metadata inline. SET
+          // FIRST, then forward: the value describes the audio in THIS frame, so it has to take
+          // effect at the offset BEFORE these bytes advance the clock. A refusal (too large,
+          // schema violation) rejects the metadata alone and the audio still flows — losing a
+          // second of a consultation because a label was malformed would be the wrong trade.
+          if (msg.metadata !== undefined) this.applyMetadataFrame(session, msg.metadata);
           this.forwardAudioFrame(session, seq, data);
+          break;
+        }
+
+        case 'metadata': {
+          // The control frame. From the session's CURRENT audio offset onward, this object is
+          // the metadata in force, until the next one.
+          this.applyMetadataFrame(session, msg.metadata);
           break;
         }
 
@@ -1253,6 +1332,16 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `lastSeq` resume protocol handles recovery.
    */
   private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
+    // TASK-951 R2 (clarified) — the session's audio clock, advanced on BOTH frame kinds (this
+    // is the one place binary and JSON audio converge, which is exactly why the counter lives
+    // here and not at the two call sites). One addition per frame: the binary fast path keeps
+    // its cost profile.
+    //
+    // It is counted on SUBMISSION, not on the Redis ack — the ack is deliberately not awaited
+    // here, and a clock that only advanced on success would drift backwards from the ASR's
+    // sample count on every transient write failure, which is the one thing it must never do.
+    session.audioBytesForwarded += data.length;
+
     // The carrier was derived ONCE at handshake — passing it
     // here is a reference copy, not propagator work, so the 10–125 frames/s/session
     // path keeps its cost profile.
@@ -1267,6 +1356,91 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
       this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
     });
+  }
+
+  /**
+   * The session's audio clock in SECONDS: bytes forwarded ÷ (sampleRate × 2), PCM16 LE mono.
+   *
+   * The same quantity `apps/stt` measures on its own side as
+   * `total_samples_fed / target_sr` (`streaming/preprocessor.py`), which is what a segment's
+   * `start_time`/`end_time` are derived from. Neither side transmits a timestamp; they agree
+   * because they are two counters over the same audio.
+   */
+  private audioSecForwarded(session: SessionInfo): number {
+    const bytesPerSecond = session.sampleRate * 2;
+    return bytesPerSecond > 0 ? session.audioBytesForwarded / bytesPerSecond : 0;
+  }
+
+  /**
+   * TASK-951 R2 (clarified) — apply one client metadata declaration to the session's timeline.
+   *
+   * > *"the ALaaS can send 1 or 2 or more than 2 mic ids when recordings […] hope platform must
+   * > return exactly the metadata contains mic ids time-synced with the generated transcript."*
+   *
+   * The frame says WHAT is true, and the gateway decides WHEN: from the session's current audio
+   * offset onward, until the next frame. That is why the client never sends a timestamp — it
+   * cannot know how much of its audio has been forwarded, and a wall clock would not survive
+   * buffering or a resume.
+   *
+   * Both refusals leave the SESSION UP and answer on the error channel. A metadata frame is a
+   * labelling concern; closing a live consultation's socket over one would turn an attribution
+   * problem into a clinical one.
+   */
+  private applyMetadataFrame(session: SessionInfo, raw: unknown): void {
+    if (!isMetadataObject(raw)) {
+      this.sendError(session.client, 'METADATA_INVALID', 'metadata must be a JSON object');
+      return;
+    }
+
+    const bytes = metadataByteLength(raw);
+    if (bytes > MAX_STREAM_METADATA_BYTES) {
+      this.sendError(session.client, 'METADATA_TOO_LARGE', `metadata is ${bytes} bytes; the maximum is ${MAX_STREAM_METADATA_BYTES}.`);
+      return;
+    }
+
+    // The schema was frozen onto the session meta at create, from the ASR agent's pinned
+    // context schema. No agent resolution and no database read on the audio path — and an
+    // agent that binds no stream-identity kind has no opinion, so anything within the size
+    // bound is accepted (the same reading the sibling HTTP gate gives an unbound agent).
+    if (session.metadataSchema) {
+      const problems = jsonSchemaValueProblems(session.metadataSchema, raw, '');
+      if (problems.length > 0) {
+        this.sendMetadataSchemaViolation(session, problems);
+        return;
+      }
+    }
+
+    const next = setMetadataAt(session.metadataSpans, this.audioSecForwarded(session), raw);
+    // `setMetadataAt` COALESCES a repeat of the value already in force and signals that by
+    // handing back the SAME array, so a broker that re-states its mic set every few seconds
+    // (a reasonable thing to do over a lossy link) neither grows the list nor rewrites Redis.
+    if (next === session.metadataSpans) return;
+    session.metadataSpans = next;
+
+    // Mirrored for a reconnect onto another instance. Not awaited and never fatal: the hot copy
+    // above is what serves every transcript, so a Redis blip costs resumability, not labelling.
+    this.sessionBinding
+      .bindMetadataMarks(session.sessionId, { spans: next, audioSec: this.audioSecForwarded(session) })
+      .catch((err) =>
+        this.logger.warn({
+          message: 'Failed to persist stream metadata marks (in-memory timeline is unaffected)',
+          sessionId: session.sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+  }
+
+  /** The schema refusal carries `problems` — a client cannot fix a shape it is not shown. */
+  private sendMetadataSchemaViolation(session: SessionInfo, problems: string[]): void {
+    if (session.client.readyState !== session.client.OPEN) return;
+    session.client.send(
+      JSON.stringify({
+        type: 'error',
+        code: 'METADATA_SCHEMA_VIOLATION',
+        message: 'The supplied metadata does not satisfy the schema this session’s ASR agent binds.',
+        problems,
+      }),
+    );
   }
 
   getActiveSessionCount(): number {

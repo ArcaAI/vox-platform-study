@@ -691,6 +691,33 @@ const socket = hope.stt.socket(session);
 socket.on('transcript', (t) => attribute(t.context?.stream, t.text));
 ```
 
+### Metadata that changes WHILE you record (TASK-951)
+
+When the set of live microphones changes during a recording, a session-level `context` cannot
+express it. `setMetadata` declares what is in force from the current point in the audio onward,
+and every transcript comes back carrying the spans of ITS OWN window — so a change mid-utterance
+is reported as two spans on that utterance, not one wrong label:
+
+```ts
+const socket = hope.stt.socket(session);
+await socket.connect();
+
+socket.setMetadata({ micIds: ['mic-1'] });            // the clinician's mic
+await pump(socket, firstChunk);
+socket.setMetadata({ micIds: ['mic-1', 'mic-2'] });   // the patient's mic joins
+await pump(socket, restOfTheRecording);
+
+socket.on('transcript', (t) => console.log(t.metadata));
+// [ { from: 12.0, to: 13.4, value: { micIds: ['mic-1'] } },
+//   { from: 13.4, to: 15.1, value: { micIds: ['mic-1', 'mic-2'] } } ]
+```
+
+`from`/`to` are in the same session-relative seconds as `startTime`/`endTime`, already clipped to
+the segment. You pass no timestamp: HOPE places each declaration on its own count of the audio you
+have sent, the same quantity the ASR derives segment times from. Re-stating the current value is
+free (the server coalesces it), an object over 2 KB throws `RangeError` at the call site, and a
+session that never calls `setMetadata` gets no `metadata` field at all.
+
 ## Streaming
 
 Both stateless summarization methods have a streaming variant that yields
