@@ -143,6 +143,18 @@ export const PROVIDER_REQUIREMENTS: Readonly<Record<string, ProviderRequirement>
     why: 'Bedrock is addressed per region — the region is part of the endpoint, not a preference — and the account is keyed.',
   },
 
+  // ── embeddings: the platform's own dense-embeddings server ────────────────
+  //
+  // TASK-952 D-1c. Deliberately NO `apiKey`: TEI authenticates nobody, and the
+  // non-secret `not-needed` placeholder the row carries exists only so the
+  // override fold has key material to deliver — requiring it here would make a
+  // self-hosted row unsayable, exactly as for the four `llm` engines above.
+  'embeddings:tei-embed': {
+    columns: ['baseUrl'],
+    extras: [{ key: 'model', label: 'the model id the server serves' }],
+    why: 'TEI serves ONE model chosen at startup, so the endpoint alone does not say what will answer — and since the harness retired its hardcoded embeddings model this row is the only place the model id lives, so a blank one is a retrieval that degrades to empty context hours later instead of a 400 here.',
+  },
+
   // ── model-registry: the weight-fetch plane ─────────────────────
   'model-registry:huggingface': {
     columns: ['apiKey'],

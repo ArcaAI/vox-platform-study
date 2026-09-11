@@ -50,7 +50,15 @@ security property:
 * ``DENIED``      — the tenant VETOED this ``(service, provider)`` by disabling
                     its row, or the platform-default entitlement is not granted.
                     Fail closed: degrade the consumer. NEVER fall through to
-                    another tier or another provider.
+                    another tier.
+                    D-1c added a machine-readable ``denial`` cause
+                    beside the prose ``reason``, because those two are different
+                    rules and exactly one of them permits a fallback PROVIDER:
+                    a ``TENANT_VETO`` never does, while a
+                    ``PLATFORM_ENTITLEMENT`` denial is a statement about platform
+                    SPEND on one vendor pair and says nothing about the
+                    platform's own self-hosted engine. See :class:`DenialCause`
+                    and :func:`resolve_embeddings_credential`.
 * ``UNAVAILABLE`` — the gateway could not answer. Fail closed. A fault must never
                     be read as "no opinion", or a Vault outage silently downgrades
                     an authenticated call to an unauthenticated one.
@@ -58,6 +66,7 @@ security property:
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -75,6 +84,34 @@ class CredentialOutcome(StrEnum):
     ABSENT = "absent"
     DENIED = "denied"
     UNAVAILABLE = "unavailable"
+
+
+class DenialCause(StrEnum):
+    """WHY a ``DENIED`` was denied — the gateway's machine-readable ``denial``.
+
+    ``reason`` is English prose for a log line; this is the field a consumer may
+    branch on, and the two causes are genuinely different rules:
+
+    * ``TENANT_VETO``          — the tenant DISABLED its own row for this
+                                 ``(service, provider)``. Per
+                                 ``CONNECTION_ENABLED_SEMANTICS`` that blocks the
+                                 pair in BOTH tiers and "the call fails rather
+                                 than falling through to another provider", so a
+                                 consumer with a fallback must NOT use it.
+    * ``PLATFORM_ENTITLEMENT`` — the tenant has no opinion AND may not spend the
+                                 platform's VENDOR account. The gate is scoped to
+                                 cloud providers and says nothing about the
+                                 platform's own self-hosted infrastructure, so a
+                                 consumer MAY widen to a self-host row for the
+                                 same capability.
+
+    An ABSENT or unrecognised value is ``None``, which every caller must read as
+    "fail closed" — an older gateway that does not send the field must never be
+    read as permission to widen.
+    """
+
+    TENANT_VETO = "tenant-veto"
+    PLATFORM_ENTITLEMENT = "platform-entitlement"
 
 
 class CredentialUnavailable(RuntimeError):
@@ -145,6 +182,9 @@ class ProviderCredential:
     funding: str | None = None
     #: Cause for DENIED / UNAVAILABLE. Never key material.
     reason: str = ""
+    #: MACHINE-READABLE cause for DENIED (D-1c). `None` when the gateway
+    #: did not send one, which is read as "fail closed" — see `DenialCause`.
+    denial: DenialCause | None = None
 
     @property
     def usable(self) -> bool:
@@ -195,7 +235,11 @@ class ProviderCredential:
 
         if outcome is not CredentialOutcome.RESOLVED:
             reason = payload.get("reason")
-            return cls(outcome=outcome, reason=reason if isinstance(reason, str) else "")
+            return cls(
+                outcome=outcome,
+                reason=reason if isinstance(reason, str) else "",
+                denial=_denial_or_none(payload.get("denial")),
+            )
 
         key = payload.get("apiKey")
         extras = payload.get("extras")
@@ -220,6 +264,21 @@ class ProviderCredential:
         therefore not returned by this accessor.
         """
         return _str_or_none(self.extras.get(key))
+
+
+def _denial_or_none(value: Any) -> DenialCause | None:
+    """The gateway's ``denial`` discriminator, or ``None``.
+
+    An UNRECOGNISED value is ``None``, never a guess: the field exists so a
+    consumer can widen past one specific denial, and a cause this build does not
+    understand must not be mistaken for that one.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return DenialCause(value)
+    except ValueError:
+        return None
 
 
 def _str_or_none(value: Any) -> str | None:
@@ -274,20 +333,33 @@ def to_provider_overrides(
 # the CALLER rejects them first (`ProviderCredential.usable`) — a fault must
 # never be quietly downgraded into "use the platform's endpoint".
 
-#: The connection row that serves the harness's dense-embeddings client.
+#: The TENANT's bring-your-own embeddings provider — the first lane of
+#: :func:`resolve_embeddings_credential`.
 #:
 #: `EmbeddingsClient` speaks ONE wire protocol — the OpenAI `{model, input}`
 #: shape at `{base_url}/embeddings` — so `openai` names the PROTOCOL the client
 #: implements, not a vendor choice, exactly as `JUDGE_CONNECTION_PROVIDER` above
-#: maps four judge transports onto the single `openai-compat` row. A `base_url`
-#: override is how a self-hosted OpenAI-compatible server (LM Studio, TEI) is
-#: reached on that same row, which is how `llm:lm-studio` already works.
+#: maps four judge transports onto the single `openai-compat` row.
 #:
 #: `azure` (the other `CLOUD_BYO_PROVIDERS.embeddings` entry) is deliberately NOT
 #: consulted: its embeddings API needs `api-version` + an `api-key` header, which
 #: this client does not speak. Resolving it would deliver a credential to a
 #: request shape that cannot use it. A future Azure adapter gets its own resolve.
 EMBEDDINGS_CONNECTION_PROVIDER = "openai"
+
+#: The PLATFORM's own dense-embeddings server — the second lane.
+#:
+#: D-1c. It is a DIFFERENT provider id from the BYO one on purpose, and
+#: that is the whole fix: a platform default carried on the CLOUD
+#: `embeddings:openai` pair is governed by the entitlement gate R6
+#: (`featurePlatformDefaultCredential`, granted on no plan), so every tenant's
+#: resolve came back `denied` and retrieval degraded to empty context for
+#: everyone. `tei-embed` is in `PLATFORM_SELF_HOST_PROVIDERS`, which the gate does
+#: not touch — the platform's own server is infrastructure, not vendor spend.
+#:
+#: A TENANT row for it is a gateway 403, which is correct and intended: a
+#: self-hosted server has no vendor account for a tenant to bring.
+EMBEDDINGS_PLATFORM_PROVIDER = "tei-embed"
 
 #: The connection row that serves the knowledge vector store. One provider under
 #: `vector`, so there is nothing to map.
@@ -358,3 +430,77 @@ def apply_embeddings_credential(
     if credential.model:
         update["embeddings_model"] = credential.model
     return retrieval.model_copy(update=update)
+
+
+async def resolve_embeddings_credential(
+    resolve: Callable[[str, str], Awaitable[ProviderCredential]],
+) -> ProviderCredential:
+    """The embeddings connection for this tenant: TENANT BYO, then PLATFORM.
+
+    D-1c. Two lanes, because the platform tier and the BYO tier are two
+    DIFFERENT provider ids under one service (see the two constants above), and
+    the order is the house rule — tenant first, widen only on ABSENCE:
+
+    * ``RESOLVED``  the tenant's own account (or the platform's vendor account
+                    where the tenant is entitled to it). Done; the platform's own
+                    server is never consulted.
+    * ``ABSENT``    no tier has an opinion on the BYO pair → widen to the
+                    platform's self-hosted server.
+    * ``DENIED`` with ``PLATFORM_ENTITLEMENT`` → ALSO widen. That denial says the
+                    tenant may not spend the platform's OpenAI account; the gate
+                    is scoped to `CLOUD_BYO_PROVIDERS` precisely because it is
+                    about vendor SPEND and not about platform infrastructure. It
+                    is the state EVERY tenant with no embeddings row is in today
+                    (the entitlement is granted on no plan), so treating it as
+                    fatal is the defect this function exists to fix.
+    * ``DENIED`` with ``TENANT_VETO`` (or no cause at all) → return it unchanged.
+                    A veto blocks the pair "INCLUDING the platform-provided key,
+                    and the call fails rather than falling through to another
+                    provider" (`CONNECTION_ENABLED_SEMANTICS`), and an absent
+                    cause is an older gateway whose denial we cannot classify —
+                    both fail closed.
+    * ``UNAVAILABLE`` a gateway FAULT. Returned unchanged: a fault must never be
+                    downgraded into "use the platform's".
+
+    The caller supplies ``resolve`` so both construction sites (the Temporal
+    activity and the ingest/delete endpoints) share ONE precedence rule while
+    keeping their own transports and their own monkeypatch seams.
+    """
+    byo = await resolve("embeddings", EMBEDDINGS_CONNECTION_PROVIDER)
+    if byo.outcome is CredentialOutcome.RESOLVED:
+        return byo
+    widen = byo.outcome is CredentialOutcome.ABSENT or (
+        byo.outcome is CredentialOutcome.DENIED and byo.denial is DenialCause.PLATFORM_ENTITLEMENT
+    )
+    if not widen:
+        return byo
+    return await resolve("embeddings", EMBEDDINGS_PLATFORM_PROVIDER)
+
+
+def require_embeddings_model(retrieval: RetrievalConfig) -> str:
+    """The resolved embeddings model id, or raise :class:`CredentialUnavailable`.
+
+    D-1c retired the hardcoded ``"text-embedding-bge-m3"`` default:
+    a model id is a SELECTION, which rule 09 §"No hardcoded configuration" keeps
+    out of both a code literal and an environment variable. Its home is the
+    connection row's ``extraJson.model`` — the tenant's on a BYO row, the
+    platform's on the SYSTEM ``embeddings:tei-embed`` row the seed writes.
+
+    Selection is ``failMode: closed``, so an unresolved model RAISES rather than
+    substituting one. Nothing here invents a model: embedding a corpus with a
+    different model than the queries is a corpus that silently never matches,
+    which is worse than a visible degrade.
+
+    The DIMENSION deliberately stays on ``RetrievalConfig.embeddings_dim``: it
+    describes the Qdrant COLLECTION as much as the model, a connection row has
+    nowhere to declare one, and a mismatch surfaces as a Qdrant rejection — see
+    the field comment in `core/config.py`.
+    """
+    model = (retrieval.embeddings_model or "").strip()
+    if not model:
+        raise CredentialUnavailable(
+            "no embeddings model resolved for embeddings/"
+            f"{EMBEDDINGS_CONNECTION_PROVIDER}|{EMBEDDINGS_PLATFORM_PROVIDER} "
+            "(the connection row carries no extraJson.model)"
+        )
+    return model

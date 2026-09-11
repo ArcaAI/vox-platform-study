@@ -185,6 +185,11 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
       .map((c) => `${c.service}:${c.provider}`)
       .sort();
     expect(enabled).toEqual([
+      // TASK-952 D-1c — the platform's own dense-embeddings server. Enabled
+      // Day-1 for the same reason the built-in llm engines are: it IS the
+      // platform default, and `apps/harness` retrieval resolves its endpoint and
+      // its model id from this row alone (the hardcoded default is retired).
+      'embeddings:tei-embed',
       'llm:built-in',
       'llm:llama-cpp',
       'llm:lm-studio',

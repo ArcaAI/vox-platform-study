@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 350,
+  "distinctNames": 349,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -860,7 +860,7 @@
           "secret": false,
           "dataType": "string",
           "default": "knowledge_chunks",
-          "description": ""
+          "description": "The PLATFORM's collection. A tenant that brings its own Qdrant may prefix it from its own connection row (`extraJson.collection`, the console's \"Collection prefix\"); the derivation lives in ONE place (`provider_credentials.apply_vector_credential`) so ingest, retrieval and delete can never disagree about which collection a tenant's vectors are in."
         },
         {
           "name": "HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL",
@@ -872,7 +872,7 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:1234/v1",
-          "description": "LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings client posts to ``{base_url}/embeddings``."
+          "description": "`embeddings_model` and `embeddings_dim` are ONE coupled description: the dim MUST match the loaded model AND the Qdrant collection. They nevertheless live in DIFFERENT tiers, and the split is deliberate \u2014 the model is a SELECTION and resolves from the connection row (tenant \u2192 platform); the dim is a property of the Qdrant collection, which no connection row can declare, so it stays here. A row that pins a different-dimension model gets a Qdrant dimension rejection (visible, degrade-safe) rather than silently wrong vectors. Keep them adjacent."
         },
         {
           "name": "HARNESS_RETRIEVAL_EMBEDDINGS_DIM",
@@ -884,19 +884,7 @@
           "secret": false,
           "dataType": "number",
           "default": 1024,
-          "description": "Dense vector dimension \u2014 MUST match the loaded model AND the Qdrant collection."
-        },
-        {
-          "name": "HARNESS_RETRIEVAL_EMBEDDINGS_MODEL",
-          "aliases": [],
-          "class": "RetrievalConfig",
-          "field": "embeddings_model",
-          "prefix": "HARNESS_RETRIEVAL_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "text-embedding-bge-m3",
-          "description": "Model id the engine exposes for the loaded dense embedding model. Operators override to match the loaded build (the plan's reference model is BAAI/bge-m3)."
+          "description": "Dense vector dimension \u2014 MUST match the loaded model AND the Qdrant collection, which is why it did NOT follow the model onto the connection row: the dim describes the COLLECTION as much as the model, and a connection row has nowhere to declare one. It therefore stays an env-tier sizing knob. A row that pins a different-dimension model gets a Qdrant dimension rejection \u2014 visible and degrade-safe \u2014 which is the same outcome the field comment above already promised for a tenant BYO model."
         },
         {
           "name": "HARNESS_RETRIEVAL_EMBEDDINGS_TIMEOUT_S",

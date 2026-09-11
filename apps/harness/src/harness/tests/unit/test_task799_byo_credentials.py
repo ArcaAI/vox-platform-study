@@ -330,12 +330,11 @@ class TestTheCredentialActuallyReachesTheClient:
     def test_a_resolved_key_reaches_the_qdrant_client(self, monkeypatch):
         from unittest.mock import patch
 
-        from harness.core.config import Settings
         from harness.temporal.activities import _hybrid_retriever
 
         with patch("qdrant_client.QdrantClient") as mock_client:
             _hybrid_retriever(
-                Settings(),
+                _settings_with_embeddings_model(),
                 ProviderCredential(
                     outcome=CredentialOutcome.RESOLVED,
                     api_key=SecretStr("qdrant-tenant-key"),
@@ -351,13 +350,31 @@ class TestTheCredentialActuallyReachesTheClient:
         """Local dev Qdrant is unauthenticated — absence must not become ""."""
         from unittest.mock import patch
 
-        from harness.core.config import Settings
         from harness.temporal.activities import _hybrid_retriever
 
         with patch("qdrant_client.QdrantClient") as mock_client:
-            _hybrid_retriever(Settings(), ProviderCredential(outcome=CredentialOutcome.ABSENT))
+            _hybrid_retriever(
+                _settings_with_embeddings_model(),
+                ProviderCredential(outcome=CredentialOutcome.ABSENT),
+            )
 
         assert mock_client.call_args.kwargs.get("api_key") is None
+
+
+def _settings_with_embeddings_model():
+    """Settings whose retrieval carries an embeddings model (TASK-952 D-1c).
+
+    `embeddings_model` lost its hardcoded default: it is a model SELECTION, so it
+    resolves from the connection row and `_hybrid_retriever` fails closed without
+    one. The tests in this file are about the QDRANT credential, so they inject a
+    model exactly as the runtime fold does rather than depending on a default that
+    no longer exists.
+    """
+    from harness.core.config import Settings
+
+    settings = Settings()
+    settings.retrieval.embeddings_model = "test-embeddings"
+    return settings
 
 
 class TestUnresolvableCredentialsFailClosed:
