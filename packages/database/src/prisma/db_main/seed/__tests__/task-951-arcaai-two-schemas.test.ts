@@ -23,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { SEED_ARCAAI_CONTEXT_SCHEMA_IDS, SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS, SEED_CUSTOMER_TENANT_IDS, SYSTEM_USER_ID } from '../00-constants';
+import { SEED_ARCAAI_CONTEXT_SCHEMA_IDS, SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS, SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
 import {
   NOTE_CONTEXT_PROMPT_KIND,
   NOTE_CONTEXT_SCHEMA_DEFINITION,
@@ -432,7 +432,8 @@ describe('TASK-951 — seeding is create-only and the retirement sweep is idempo
     expect(second).toMatchObject({ created: 0, skipped: 2, refreshed: 1 });
     expect(transcription.definition).toEqual(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION);
     expect(transcription.checksum).toBe(definitionChecksum(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION));
-    expect(transcription.updatedBy).toBe(SYSTEM_USER_ID);
+    // The version row carries no `updatedBy`; the rewrite bumps `_version` instead.
+    expect(transcription.version).toEqual({ increment: 1 });
   });
 
   it('never creates a row whose slug the tenant already carries (an admin edit survives a re-seed)', async () => {
