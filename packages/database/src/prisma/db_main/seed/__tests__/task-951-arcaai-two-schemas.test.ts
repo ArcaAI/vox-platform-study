@@ -164,13 +164,16 @@ describe('TASK-951 — schema 1, the standalone transcription contract (R2)', ()
 });
 
 describe('TASK-951 — schema 2, the consultation scribe (R1/R3)', () => {
-  it('declares the seven kinds, with the platform prompt context REFERENCED from 07e, not retyped', () => {
+  it('declares the eight kinds, with the platform prompt context REFERENCED from 07e, not retyped', () => {
+    // `case_note` stays (orchestrator fixup at merge): the note-context clone declared it, and a client that
+    // names `kindKey: 'case_note'` must keep validating against the scribe.
     expect(kindsOf(ARCAAI_CONSULTATION_SCRIBE_DEFINITION).map((entry) => entry.key)).toEqual([
       'audio_stream',
       'encounter',
       'vitals',
       'previous_case_notes',
       'work_note',
+      'case_note',
       'attachment',
       'context',
     ]);
@@ -182,7 +185,10 @@ describe('TASK-951 — schema 2, the consultation scribe (R1/R3)', () => {
 
   it('`encounter` carries all four open-time markers, each naming a property it declares', () => {
     const encounter = kind(ARCAAI_CONSULTATION_SCRIBE_DEFINITION, 'encounter');
-    expect(encounter).toMatchObject({ primitive: 'STRUCTURED', cardinality: 'ONE', lifecycle: 'PRE', producedBy: ['CLIENT'], required: true });
+    expect(encounter).toMatchObject({ primitive: 'STRUCTURED', cardinality: 'ONE', lifecycle: 'PRE', producedBy: ['CLIENT'] });
+    // NOT kind-level required: the derived trigger schema would then demand `encounter` on every run,
+    // and a console-opened consultation sends no authored context at all (orchestrator fixup at merge).
+    expect(encounter.required).toBeUndefined();
     expect(encounter.userIdentity).toEqual({ field: 'doctor_id' });
     expect(encounter.department).toEqual({ field: 'department_code', by: 'code' });
     expect(encounter.visitType).toEqual({ field: 'visit_type' });
