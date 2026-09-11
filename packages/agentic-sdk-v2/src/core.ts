@@ -406,6 +406,8 @@ export type {
   WsClientMessage,
   WsCloseMessage,
   WsErrorMessage,
+  WsMetadataMessage,
+  WsMetadataSpan,
   WsServerMessage,
   WsStatusMessage,
   WsStopMessage,

@@ -20,6 +20,8 @@
 import type {
   WsAudioFrame,
   WsErrorMessage,
+  WsMetadataMessage,
+  WsMetadataSpan,
   WsResumeFailedMessage,
   WsResumeRequest,
   WsResumedMessage,
@@ -28,6 +30,13 @@ import type {
   WsTranscriptWirePayload,
 } from '../types/stt';
 import type { ISDKLogger } from './logger';
+
+/**
+ * TASK-951 — hard ceiling on ONE {@link SttWebSocketClient.setMetadata} object, in bytes of
+ * JSON. The gateway enforces the same number and answers `METADATA_TOO_LARGE` above it; this
+ * copy exists so the SDK can refuse at the call site instead of on an async error frame.
+ */
+export const MAX_STREAM_METADATA_BYTES = 2048;
 
 interface DebugTranscriptEntry {
   segment: number;
@@ -458,6 +467,36 @@ export class SttWebSocketClient {
     }
     this.ws!.send(JSON.stringify(frame));
     return true;
+  }
+
+  /**
+   * Declare the metadata in force from HERE ON in this session's audio (TASK-951).
+   *
+   * The browser-side twin of `RealtimeSttSocket.setMetadata`. Call it whenever what is being
+   * captured changes — a second microphone opens, a participant leaves — and every transcript
+   * comes back carrying `metadata`: the spans of ITS OWN window and the object in force over
+   * each, clipped to that segment. A change mid-utterance is reported as two spans on that
+   * utterance rather than one wrong label.
+   *
+   * No timestamp is sent, and none could be: the client cannot know how much of its audio has
+   * been forwarded, and a wall clock would not survive buffering or a reconnect. The gateway
+   * places the declaration on its own count of the audio received.
+   *
+   * NOT subject to the audio backpressure policy: this is a rare control frame, and dropping it
+   * would silently mislabel everything that followed. Re-stating the current value is free —
+   * the gateway coalesces it.
+   *
+   * @throws RangeError when the object exceeds 2048 bytes of JSON, at the call site rather than
+   * asynchronously as a `METADATA_TOO_LARGE` error frame two utterances later.
+   */
+  setMetadata(value: Record<string, unknown>): void {
+    this.requireConnection();
+    const bytes = new TextEncoder().encode(JSON.stringify(value)).length;
+    if (bytes > MAX_STREAM_METADATA_BYTES) {
+      throw new RangeError(`Stream metadata is ${bytes} bytes; the maximum is ${MAX_STREAM_METADATA_BYTES}.`);
+    }
+    const frame: WsMetadataMessage = { type: 'metadata', metadata: value };
+    this.ws!.send(JSON.stringify(frame));
   }
 
   /** Count of frames dropped due to backpressure since last connect. */
@@ -1033,6 +1072,41 @@ export class SttWebSocketClient {
     const rawInference = typeof msg.inference === 'number' ? msg.inference : typeof msg.inference_time === 'number' ? msg.inference_time : undefined;
     if (typeof rawInference === 'number' && Number.isFinite(rawInference)) {
       normalized.inference = rawInference;
+    }
+
+    // Gateway-owned echo fields (TASK-951). `normalizeTranscript` projects a FIXED field set —
+    // anything it does not copy is dropped before a consumer ever sees it — so these three have
+    // to be lifted explicitly even though the wire and result types already declare them.
+    if (typeof msg.context === 'object' && msg.context !== null && !Array.isArray(msg.context)) {
+      normalized.context = msg.context as Record<string, unknown>;
+    }
+    const sessionEpochMs =
+      typeof msg.sessionEpochMs === 'number' ? msg.sessionEpochMs : typeof msg.session_epoch_ms === 'number' ? msg.session_epoch_ms : undefined;
+    if (typeof sessionEpochMs === 'number' && Number.isFinite(sessionEpochMs)) {
+      normalized.sessionEpochMs = sessionEpochMs;
+    }
+
+    // Per-span metadata. Each entry is validated on its own and a malformed one is skipped
+    // rather than discarding the caption: a mislabelled span is a labelling loss, a dropped
+    // transcript is a clinical one. An array that yields nothing usable stays ABSENT, never
+    // `[]`, so "the session sent no metadata" and "this segment had none" read the same way
+    // they do on the wire.
+    if (Array.isArray(msg.metadata)) {
+      const spans = msg.metadata
+        .filter(
+          (span): span is WsMetadataSpan =>
+            typeof span === 'object' &&
+            span !== null &&
+            typeof (span as WsMetadataSpan).from === 'number' &&
+            typeof (span as WsMetadataSpan).to === 'number' &&
+            typeof (span as WsMetadataSpan).value === 'object' &&
+            (span as WsMetadataSpan).value !== null &&
+            !Array.isArray((span as WsMetadataSpan).value),
+        )
+        .map((span) => ({ from: span.from, to: span.to, value: span.value }));
+      if (spans.length > 0) {
+        normalized.metadata = spans;
+      }
     }
 
     return normalized;

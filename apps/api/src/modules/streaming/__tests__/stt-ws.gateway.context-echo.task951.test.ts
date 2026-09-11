@@ -68,6 +68,27 @@ const createMockStreamTicketService = () => ({
 /** Every JSON frame the gateway pushed to this socket, parsed. */
 const framesOn = (client: ReturnType<typeof createMockSocket>) => client.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
 
+/**
+ * AMENDED BY LANE E2 (TASK-951 R2, clarified) — the three "subscribes exactly as before"
+ * assertions below now read `noEchoedContext`, not a whole-object equality.
+ *
+ * `sessionEcho` is installed on EVERY session since the per-span metadata timeline landed,
+ * because a session that declared no `context` may still send `{type:'metadata'}` frames — the
+ * two are independent client choices, and the accessor has to be in place before the first one
+ * arrives. What lane E was protecting is untouched and is what these assertions now state
+ * directly: such a session echoes NO context and NO epoch, so its transcript wire is still
+ * byte-identical (the bridge spreads `context` only when there is one, and `metadata` only when
+ * the clipped span list is non-empty).
+ */
+const noEchoedContext = (sessionId: string, bridge: { subscribeToResults: { mock: { calls: unknown[][] } } }) => {
+  const call = bridge.subscribeToResults.mock.calls.find(([id]) => id === sessionId);
+  expect(call, `subscribeToResults was never called for ${sessionId}`).toBeDefined();
+  const options = call![1] as { consumerGroup?: string; sessionEcho?: { context?: unknown; sessionEpochMs?: unknown } };
+  expect(options.consumerGroup).toBe(WS_RESULT_CONSUMER_GROUP);
+  expect(options.sessionEcho?.context).toBeUndefined();
+  expect(options.sessionEcho?.sessionEpochMs).toBeUndefined();
+};
+
 describe('TASK-951 — SttWsGateway stream-context echo', () => {
   let gateway: SttWsGateway;
   let bridgeService: ReturnType<typeof createMockBridgeService>;
@@ -140,7 +161,7 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
 
     await gateway.handleConnection(client as any, buildReq('sess-plain') as any);
 
-    expect(bridgeService.subscribeToResults).toHaveBeenCalledWith('sess-plain', { consumerGroup: WS_RESULT_CONSUMER_GROUP });
+    noEchoedContext('sess-plain', bridgeService);
     const ready = framesOn(client).find((f) => f.type === 'ready');
     expect(ready.sessionEpochMs).toBeUndefined();
   });
@@ -155,7 +176,7 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
 
     await gateway.handleConnection(client as any, buildReq('sess-epoch-only') as any);
 
-    expect(bridgeService.subscribeToResults).toHaveBeenCalledWith('sess-epoch-only', { consumerGroup: WS_RESULT_CONSUMER_GROUP });
+    noEchoedContext('sess-epoch-only', bridgeService);
     expect(framesOn(client).find((f) => f.type === 'ready').sessionEpochMs).toBe(SESSION_EPOCH_MS);
   });
 
@@ -192,6 +213,6 @@ describe('TASK-951 — SttWsGateway stream-context echo', () => {
     await gateway.handleConnection(client as any, buildReq('sess-blip') as any);
 
     expect(client.close).not.toHaveBeenCalled();
-    expect(bridgeService.subscribeToResults).toHaveBeenCalledWith('sess-blip', { consumerGroup: WS_RESULT_CONSUMER_GROUP });
+    noEchoedContext('sess-blip', bridgeService);
   });
 });

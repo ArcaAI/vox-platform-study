@@ -57,6 +57,11 @@ export interface SubscribeResultOptions {
    * property of the SESSION, so a Redis read per transcript would buy nothing
    * and cost one round trip per utterance. Omit it — as every non-caption
    * subscriber does — and transcripts are byte-identical to today.
+   *
+   * TASK-951 R2 (clarified) — its third member, `metadataSpans`, is the exception to
+   * "read once": it is an ACCESSOR the gateway installs, called per transcript, because the
+   * client's metadata changes DURING the session. It still costs no Redis round trip — the
+   * gateway serves it from the in-memory timeline it maintains on the audio path.
    */
   sessionEcho?: StreamSessionEcho;
 }
@@ -799,11 +804,20 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       }
     }
 
+    const startTime = parseFloat(data.start_time || '0');
+    const endTime = parseFloat(data.end_time || '0');
+
+    // TASK-951 R2 (clarified) — the metadata in force over THIS segment's audio, asked for at
+    // EMIT time so a mid-utterance microphone change is reported on the utterance it happened
+    // during. `undefined` when the session declared an accessor but nothing was ever set (and
+    // when it declared none at all), which is the difference between "no spans" and `[]`.
+    const metadataSpans = sessionEcho?.metadataSpans?.(startTime, endTime);
+
     subject.next({
       type: 'transcript',
       text: data.text || '',
-      startTime: parseFloat(data.start_time || '0'),
-      endTime: parseFloat(data.end_time || '0'),
+      startTime,
+      endTime,
       isFinal: data.is_final === '1',
       ...(stableChars != null ? { stableChars } : {}),
       ...(utteranceIndex != null ? { utteranceIndex } : {}),
@@ -824,6 +838,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       // emits exactly the fields it emitted before this ticket.
       ...(sessionEcho?.context ? { context: sessionEcho.context } : {}),
       ...(sessionEcho?.context && sessionEcho.sessionEpochMs != null ? { sessionEpochMs: sessionEcho.sessionEpochMs } : {}),
+      // TASK-951 R2 (clarified) — the time-synced half. Spread on a non-empty array only: a
+      // session that never sent a `metadata` frame must not start shipping an empty array to
+      // every consumer that has been parsing this wire for a year. Independent of `context`
+      // above — a client may use either, both or neither.
+      ...(metadataSpans && metadataSpans.length > 0 ? { metadata: metadataSpans } : {}),
     });
     return false;
   }

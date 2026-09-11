@@ -207,7 +207,39 @@ export interface SttTranscriptResult {
   context?: Record<string, unknown>;
   /** This segment's session {@link StreamSessionResponse.sessionEpochMs}, repeated for convenience. */
   sessionEpochMs?: number;
+  /**
+   * TASK-951 — the metadata that was in force over THIS segment's audio, TIME-SYNCED to it.
+   *
+   * Set with {@link RealtimeSttSocket.setMetadata} while you stream. Each entry covers a
+   * stretch of this segment and carries the object that was in force over it; `from`/`to` are
+   * in the same session-relative seconds as `startTime`/`endTime` and are already clipped to
+   * this segment, so you never have to reason about the session's clock to place them.
+   *
+   * ONE entry is the common case. TWO OR MORE mean you changed the metadata mid-utterance — a
+   * second microphone opened while someone was still speaking — and HOPE reports that rather
+   * than stamping the segment with whichever value was current when decoding finished.
+   *
+   * ABSENT (not `[]`) on a session that never called `setMetadata`. Independent of
+   * {@link SttTranscriptResult.context}: `context` is what the session IS, this is what was
+   * happening while it recorded.
+   */
+  metadata?: SttMetadataSpan[];
   [key: string]: unknown;
+}
+
+/**
+ * One stretch of a segment's audio and the metadata that was in force over it.
+ *
+ * `value` is YOUR object, verbatim — HOPE echoes it and never interprets it. The common shape
+ * is `{ micIds: ['mic-1', 'mic-2'] }`, but any JSON object under 2 KB is accepted (and, where
+ * the session's ASR agent binds a context schema with a stream-identity kind, must satisfy it).
+ */
+export interface SttMetadataSpan {
+  /** Session-relative seconds, clipped to the segment's own `startTime`. */
+  from: number;
+  /** Session-relative seconds, clipped to the segment's own `endTime`. */
+  to: number;
+  value: Record<string, unknown>;
 }
 
 /**
@@ -229,11 +261,30 @@ export interface SttStatusMessage {
   [key: string]: unknown;
 }
 
-/** A server-side error on the session. Does NOT necessarily close the socket. */
+/**
+ * A server-side error on the session. Does NOT necessarily close the socket.
+ *
+ * `code` is deliberately an open string — the wire contract is additive, and a closed union
+ * here would make a new server code unrepresentable rather than merely unhandled. The ones a
+ * {@link RealtimeSttSocket.setMetadata} caller meets (TASK-951), none of which ends the
+ * session:
+ *
+ * | `code` | Meaning |
+ * |---|---|
+ * | `METADATA_INVALID` | the frame's `metadata` was not a JSON object |
+ * | `METADATA_TOO_LARGE` | over 2048 bytes of JSON — `setMetadata` throws before sending, so this only reaches you from another client on the session |
+ * | `METADATA_SCHEMA_VIOLATION` | the object does not satisfy the schema this session's ASR agent binds; the frame additionally carries `problems: string[]` |
+ *
+ * In each case the frame is IGNORED and the previous metadata stays in force — audio keeps
+ * flowing and transcripts keep arriving, because a malformed label must never cost a
+ * consultation.
+ */
 export interface SttErrorMessage {
   type: 'error';
   code: string;
   message: string;
+  /** Present on `METADATA_SCHEMA_VIOLATION`: what about the object failed, path by path. */
+  problems?: string[];
 }
 
 /** The resume was accepted; replay of `seq > lastSeq` follows. */

@@ -7,6 +7,7 @@
 
 import type { ResolvedAsrSpec } from '@arcaai/types';
 import { StorageDescriptor } from '../../../baseServices/storage/providers/IBlobStorageProvider';
+import type { ClippedMetadataSpan } from '../stream-metadata-timeline';
 
 // ---------------------------------------------------------------------------
 // Requests
@@ -269,6 +270,21 @@ export interface StreamSessionEcho {
   context?: Record<string, unknown>;
   /** Epoch milliseconds at session creation — segment times are relative to it. */
   sessionEpochMs?: number;
+  /**
+   * TASK-951 R2 (clarified) — the session's LIVE metadata timeline, read at EMIT time.
+   *
+   * A function, not a value, and that is the whole design. `context` above is fixed for the
+   * life of the session, so it is read once and handed over. The metadata spans are not: a
+   * client changes which microphones are live WHILE it records, so a snapshot taken when the
+   * subscription was created would stamp every later segment with the set that happened to be
+   * in force at attach — exactly the failure the timeline exists to prevent.
+   *
+   * Returns the spans overlapping the segment's own `[startTime, endTime]`, already clipped to
+   * it. The bridge does not know the clock, the session or Redis; it asks the caller that does.
+   * Omit the accessor — as every non-caption subscriber does — and transcripts are byte-identical
+   * to today.
+   */
+  metadataSpans?: (startTime: number, endTime: number) => ClippedMetadataSpan[];
 }
 
 export interface StreamingTranscriptMessage {
@@ -347,6 +363,26 @@ export interface StreamingTranscriptMessage {
    * {@link StreamingTranscriptMessage.context} ({@link StreamSessionEcho}).
    */
   sessionEpochMs?: number;
+  /**
+   * TASK-951 R2 (clarified 2026-09-11) — the client's own metadata, TIME-SYNCED to THIS segment.
+   *
+   * Each entry is a stretch of THIS segment's audio and the metadata object that was in force
+   * over it, in time order, with both bounds already clipped to `[startTime, endTime]` — so a
+   * consumer never has to know the session's clock, only this segment's. The typical entry is
+   * `{ from, to, value: { micIds: [...] } }`, but `value` is whatever the client sent: HOPE
+   * echoes it verbatim and never interprets it.
+   *
+   * One entry means one metadata object covered the whole segment. TWO OR MORE mean the client
+   * changed it mid-utterance — a second microphone opened while someone was still speaking —
+   * and the segment is reported as exactly that, rather than being stamped with whichever value
+   * happened to be current when the ASR finished decoding it.
+   *
+   * ABSENT (not `[]`) for a session that never sent a `metadata` frame, which is what keeps the
+   * wire byte-identical for every client that does not use this. Independent of
+   * {@link StreamingTranscriptMessage.context}: that is what the session IS, this is what was
+   * happening while it recorded.
+   */
+  metadata?: ClippedMetadataSpan[];
 }
 
 export interface StreamingStatusMessage {
