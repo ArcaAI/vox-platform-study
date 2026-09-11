@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review — shipped on `dev-2.2` (`c6ebc46d3` + this doc); every gate green or attributed; ALaaS lane H is the owner's next step |
+| **Status** | In Progress — owner clarified R2 (2026-09-11): metadata is PER AUDIO SPAN, time-synced with each segment; lane E2 builds it |
 | **Type** | feature (schema content + open-time mappings + STT session context echo); touches `packages/database` (seeds), `packages/applications`, `packages/workflow-contract`, `apps/api`, `apps/harness` (test + one model), `packages/vox-node`, `packages/vox-codegen`, `packages/agentic-sdk-v2` (type parity), `apps/admin-console` (marker picker), and a documented ALaaS change list (separate repo) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-11 |
@@ -27,7 +27,7 @@ Restated:
 | # | Behaviour |
 |---|---|
 | **R1** | ArcaAI has exactly TWO consultation context schemas: `arcaai_realtime_transcription` and `arcaai_consultation_scribe`. Discovery and every ArcaAI workflow trigger / agent binding resolve to one of them. |
-| **R2** | A client of the standalone transcription agent sends a validated metadata object when it creates an STT stream session, and every time-synced transcript segment of that session echoes that object verbatim. |
+| **R2** | **(clarified 2026-09-11)** ALaaS sends one, two or more mic ids WHILE recording; each transcript segment HOPE returns carries exactly the metadata that was in force during that segment's time window — i.e. metadata is attached per AUDIO SPAN and time-synced with the segment (`startTime`/`endTime`), not per session. The session-level `context` echo shipped by lane E stays for static per-session facts; the time-synced channel is lane E2's `metadata` frame + `metadata[]` spans on every transcript. |
 | **R3** | The scribe schema carries, as client-supplied fields: doctor staff id (→ TASK-950 identity), external event id, department (required; selects the consultation workflow), visit type (required; selects the prompt), vitals, previous case notes. HOPE MAPS each of them at `open`, never just validates them. |
 | **R4** | ALaaS keeps its identity-mapping file (`clinicianUserId` + `departmentId` from the map) AND sends the staff id and the other facts in `context`; HOPE refuses disagreement between the two routes (as `CLINICIAN_MISMATCH` already does). |
 | **R5** | The facts a client sends at `open` reach the consultation: persisted as PRE context items and threaded into the governing workflow's trigger context. |
@@ -258,3 +258,4 @@ The change list in §Implementation Plan stands, with OD-4: map the browser `vit
 | 2026-09-11 | Opened from the owner's consolidation ask. Five read-only discovery lanes (ArcaAI schemas, STT protocol, open-time resolution, ALaaS broker, decision sizing). Plan + OD table written; status Pending. |
 | 2026-09-11 | Owner go. OD answers: 0 = TASK-951; 4 = the `vitals` kind is the NORMALISED object (bloodPressure, heartRate, respiratoryRate, temperature, oxygenSaturation, weightKg, heightCm, bmi, bloodGlucose, painScore, recordedAt, notes — all optional; ALaaS maps its payload into it); all other ODs = recommendations. Lanes A–G spawned in own worktrees (A/B/C/D/E opus, F/G sonnet) plus TASK-950 lane I; no lane runs gates — the orchestrator merges into `dev-2.2` and gates. Ownership split fixed one collision: `live-documentation.service.ts` (incl. its two visit-type call sites) is lane D's, the other eight call sites lane C's. |
 | 2026-09-11 | All nine lanes merged; seed blobs regenerated; five artifacts regenerated; full gates + e2e run (table above). Two spec fixes for the seeded scribe (identity marker moved onto `vitals`; schema resolved instead of a retired slug). Status → **Review**. |
+| 2026-09-11 | Owner clarified R2: metadata is per audio SPAN (one or more mic ids change while recording) and must come back time-synced on each segment. Session-level echo is insufficient. Lane E2 (opus, own worktree, no gates) spawned: `{type:'metadata'}` control frame, gateway audio clock (bytes ÷ (sampleRate×2)), span store in Redis, `metadata[]` spans clipped to each segment's window, validated against the schema's `streamContext` kind, SDK `setMetadata`. Status back to In Progress. |
