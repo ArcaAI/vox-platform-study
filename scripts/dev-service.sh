@@ -46,7 +46,7 @@
 #   worker       harness Temporal worker on task queue `harness-task-queue`.
 #
 # MACHINE-SPECIFIC MODEL:
-#   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the TEXT default
+#   LM_STUDIO_MODEL (default: gemma-4-e2b-it-qat — the catalogue's platform default) feeds both the TEXT default
 #   model and the harness worker's HARNESS_TEXT_MODEL. Export it in your shell
 #   profile if your LM Studio has a different model loaded.
 # ============================================================================
@@ -164,7 +164,7 @@ fi
 # ----------------------------------------------------------------------------
 # Per-service env defaults (user env always wins) + command
 # ----------------------------------------------------------------------------
-: "${LM_STUDIO_MODEL:=gemma-4-e4b-it-qat}"
+: "${LM_STUDIO_MODEL:=gemma-4-e2b-it-qat}"
 # Loopback by default; export HOST=0.0.0.0 to expose on the LAN (deliberate
 # opt-in — PHI-processing dev services must not be LAN-reachable by accident).
 : "${HOST:=127.0.0.1}"
