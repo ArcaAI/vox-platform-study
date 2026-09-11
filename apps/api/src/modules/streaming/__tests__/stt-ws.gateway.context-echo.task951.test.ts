@@ -70,7 +70,7 @@ const createMockStreamTicketService = () => ({
 });
 
 /** Every JSON frame the gateway pushed to this socket, parsed. */
-const framesOn = (client: ReturnType<typeof createMockSocket>) => client.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
+const framesOn = (client: ReturnType<typeof createMockSocket>) => client.send.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
 
 /**
  * AMENDED BY LANE E2 (TASK-951 R2, clarified) — the three "subscribes exactly as before"
