@@ -265,7 +265,11 @@ export class StreamSessionTenantBindingService {
    * gateway instance, or onto one that restarted, rebuilds the timeline instead of silently
    * starting a second one at zero and reporting every later segment as unlabelled.
    */
-  async bindMetadataMarks(sessionId: string, marks: StreamMetadataMarks, ttlSeconds: number = STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS): Promise<void> {
+  async bindMetadataMarks(
+    sessionId: string,
+    marks: StreamMetadataMarks,
+    ttlSeconds: number = STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS,
+  ): Promise<void> {
     if (!this.isValidSessionId(sessionId)) {
       return;
     }
