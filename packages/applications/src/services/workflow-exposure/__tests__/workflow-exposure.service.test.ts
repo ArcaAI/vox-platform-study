@@ -319,6 +319,7 @@ describe('WorkflowExposureService', () => {
       expect(result).toEqual({
         runId: 'run-1',
         slug: 'discharge_summary',
+        actingUserId: null, // TASK-950 fast win: absent on this run's metadata → null
         workflowVersionNumber: 1,
         status: 'RUNNING',
         stages: [{ stageIndex: 0 }],

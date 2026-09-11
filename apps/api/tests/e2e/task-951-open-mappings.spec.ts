@@ -244,7 +244,9 @@ test.describe('TASK-951 — a machine states the encounter once and HOPE maps ev
     const after = await request.get(`${SCHEMAS}/${schemaId}/versions`, { headers: adminHeaders(adminJwt) });
     expect(after.status(), await after.text()).toBe(200);
     const marked = ((await after.json()) as Array<{ versionNumber: number; definition: { kinds?: Array<Record<string, unknown>> } }>)
-      .filter((version) => (version.definition.kinds ?? []).some((kind) => (kind.department as { field?: string } | undefined)?.field === 'department_code'))
+      .filter((version) =>
+        (version.definition.kinds ?? []).some((kind) => (kind.department as { field?: string } | undefined)?.field === 'department_code'),
+      )
       .sort((a, b) => b.versionNumber - a.versionNumber)[0];
     expect(marked, 'a version carrying the department marker').toBeTruthy();
     if ((await publish.json()).pinnedVersionNumber !== marked!.versionNumber) {
