@@ -14,7 +14,7 @@ export const REGISTRY_CHECKSUM: string = "e5a5e4844ae5bf48cf002182735b8208065f0b
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "b34e5fe7dd720037a43208cb6c0595467bd0d87bfa4a6e38e03836dbeff16000",
+    "graphChecksum": "59218e01d613833fd2921ec0a1176bc11af8ac04defc1a0873b012da23f1ab72",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -48,7 +48,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -56,6 +56,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -631,14 +751,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -650,11 +770,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "538ee92f659a0af14f4844ba0ef8f3fc22f16853547e5ce5e9405012760aeb3c"
+      "checksum": "b894ef83909eab03f33f2c01284182ff897f6dea123600d9cd19f1783671cd45"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "1d50175bfe196b7864345ad1dcee9beb6b5adce965098440f447f6bca46d5b1a",
+    "graphChecksum": "a8088c038fdd6d1a098a49bb59054ff4c74950c2fd96ef7d097c9c69730167b4",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -688,7 +808,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -696,6 +816,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -1271,14 +1511,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -1290,11 +1530,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "9aa40635eefbd3117c7e637226df4fde38582a311b77e4ae4bd0468e7d8fbdf2"
+      "checksum": "ec2a6c64481a6c4c8d8bfbe8495d0a35eaa08041c46f5d10c8dd5e3db9e301eb"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "0b9102354869743c2ef73ff7df87e77eb9a171b16921fbf6a9a97703e8f15b25",
+    "graphChecksum": "18b09f35398a148fc4a65fdce2f99d8e6bb718a9b78999e96754213e3865ee5c",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1328,7 +1568,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -1336,6 +1576,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -1911,14 +2271,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -1930,11 +2290,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "2d58453e89aea48d03a510d4ac4ea0c412a17183a539609fa9bd856a54fa1554"
+      "checksum": "cd149d556c4b93a99f49704ba59ac735f1bdc3f33adc8b0aa5be7d6874638fc7"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "a2ae8890685dba0a4eda35b8d39d1882c5e3c49923869b64256f8f0efde9f145",
+    "graphChecksum": "837d535580b610db83748f717ecca0b2ddf210259008f03a3a9f28f3c14f0b06",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1968,7 +2328,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -1976,6 +2336,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -2551,14 +3031,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -2570,11 +3050,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a5d9114b4e4cc8d8428658b212604977658fb0089f9cb5899c436b4f475f2233"
+      "checksum": "5d0b4b2e3e90658feb5f1c1ee514e55a1be7eeeecf78883b9e601ea9563166c0"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "89829785ff70d8c764a43d0597c1e1da166e6086c58dabfd982260658a5f6d41",
+    "graphChecksum": "4342a42d2377909775b186e279974e92e4d05e6ec2f3a0746a0d33de9bdadc89",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2608,7 +3088,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -2616,6 +3096,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -3191,14 +3791,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -3210,11 +3810,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "dab565650c22273eb6aab1ea7703b23e9338355d8b01921fac667f3a418f8edb"
+      "checksum": "85beb3f13168696dd3bfa6ce7a77a90d314b342b0e5d45a3f3b2fcf1823f7e24"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "9e10e48fdf0725b81a9680ef94ad599adea6734d73d7b4c9a95abbe13c60b674",
+    "graphChecksum": "6626b0dabaa3025b704fd741d82449fb0e882d865c239e2d3ef2d5ca9c2c7e35",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3248,7 +3848,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -3256,6 +3856,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -3831,14 +4551,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -3850,11 +4570,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "76754193556d60aae35ce35e63dd2a69f22020634eb2e62f3ca48d26acf380d7"
+      "checksum": "ab282e213dfc7a38f2cbb692fdfc8338c50073c73bcd39f5d53ede67faf9e321"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "1742a84c46e72ae8cda71579d16fa498241176cf5ceff1a4b398fe3a3b659e39",
+    "graphChecksum": "a005a35fe9c401543ddf46f53ddafac6ca69eb85061d8d7d18fafe173788fbfa",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3888,7 +4608,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -3896,6 +4616,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -4471,14 +5311,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -4490,11 +5330,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "27111e65349b0e2fb615ba9741a993f33b04810f027182e6a493a98358962f27"
+      "checksum": "0a4542c9fd800ae92d55b86b171d86e869cfe497ef13b10636f86e796752c051"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "541fd6a986ea91002015183c7e6135af1239ad9bf677268a3930362b5fc42e56",
+    "graphChecksum": "3d9b4b8a29814b18700bad278496b354b0f8bede58808a94d334df4467e5a698",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -4528,7 +5368,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -4536,6 +5376,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -5111,14 +6071,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -5130,11 +6090,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "7117eb4792e2439a10cc2fc0741a8bcf07365731c0366a417f3d83c58dacc858"
+      "checksum": "0567cd4615b3c8cd9aef1a09882413f448664d16d0202ac42407af45e6866304"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "325eba3301cc98ec5f53f82a7671fe4fb4797c1cc57bbd214cabcd1a60d9e127",
+    "graphChecksum": "80761b4a451d70e4ed87fc715c2c822ae0c35593c9badc5b8ac4b48b6b85feb3",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5168,7 +6128,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -5176,6 +6136,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -5751,14 +6831,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -5770,11 +6850,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "1ead66e838c0d1a8711e73517faa9d36cbbf82bcbf5eda713c3154b8781718f5"
+      "checksum": "49582c77e230aafef5c6d329fd6ff4083f71cd235a8bcbd9cf89a53f143dd85d"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "f597e66c702d813143d94086030c14ac26e16329898e4e716c46b0f19f8ec2e1",
+    "graphChecksum": "d482b918dcdc8d0665b7a22cba83e943454b6385306bbf22f28a8169d8f7ec37",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5808,7 +6888,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -5816,6 +6896,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -6391,14 +7591,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -6410,11 +7610,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "973e07c036ad097065545f59bb385fb0e7a41e689624e827e0d8fa2289f84c58"
+      "checksum": "d3f05b7f55f68c636bd41dd5c515423af7404a05e69556d470bd90f30fa01904"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "7b85a03db856a9950d8e37794aebef8bd75e2dc6e205dcc2b523359b55069aba",
+    "graphChecksum": "a5d7a54b03447b9e69d74212ad2ebfb465640d5e50832a8f037925cae2030815",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -6448,7 +7648,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "api"
                 ],
                 "contextSchema": {
-                  "contextSchemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+                  "contextSchemaId": "79000000-0000-0000-0001-000000000021",
                   "versionNumber": 1,
                   "resolved": {
                     "type": "object",
@@ -6456,6 +7656,126 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "properties": {
                       "audio_stream": {
                         "type": "object"
+                      },
+                      "encounter": {
+                        "type": "object",
+                        "properties": {
+                          "doctor_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The clinician's staff identifier (ALaaS consultantId)."
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The external encounter/event id."
+                          },
+                          "department_code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Department code as registered in HOPE (GEN, BREN, …)."
+                          },
+                          "department_name": {
+                            "type": "string",
+                            "description": "Display name; informational."
+                          },
+                          "visit_type": {
+                            "type": "string",
+                            "enum": [
+                              "new-visit",
+                              "revisit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "doctor_id",
+                          "event_id",
+                          "department_code",
+                          "visit_type"
+                        ]
+                      },
+                      "vitals": {
+                        "type": "object",
+                        "properties": {
+                          "bloodPressure": {
+                            "type": "string",
+                            "description": "Systolic/diastolic, e.g. \"128/82\"."
+                          },
+                          "heartRate": {
+                            "type": "number",
+                            "description": "Beats per minute."
+                          },
+                          "respiratoryRate": {
+                            "type": "number",
+                            "description": "Breaths per minute."
+                          },
+                          "temperature": {
+                            "type": "number",
+                            "description": "Degrees Celsius."
+                          },
+                          "oxygenSaturation": {
+                            "type": "number",
+                            "description": "SpO2 as a percentage."
+                          },
+                          "weightKg": {
+                            "type": "number"
+                          },
+                          "heightCm": {
+                            "type": "number"
+                          },
+                          "bmi": {
+                            "type": "number"
+                          },
+                          "bloodGlucose": {
+                            "type": "number",
+                            "description": "mg/dL."
+                          },
+                          "painScore": {
+                            "type": "integer",
+                            "description": "0-10."
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "description": "ISO-8601 timestamp of the observation set."
+                          },
+                          "notes": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "previous_case_notes": {
+                        "type": "object",
+                        "properties": {
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "date": {
+                                  "type": "string"
+                                },
+                                "department": {
+                                  "type": "string"
+                                },
+                                "doctor": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "notes"
+                        ]
                       },
                       "work_note": {
                         "type": "object"
@@ -7031,14 +8351,14 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "redactionRuleSetId": null,
         "promptTemplateRefs": [],
         "documentTemplateRefs": [],
-        "contextSchemaVersionId": "e9060c68-aa80-8959-8058-ff5753a4c10f",
+        "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
         "contextSchemaRefs": [
           {
             "nodeId": "n_trigger",
-            "schemaId": "52fadc24-5c96-8df9-85f6-6a7967be25d1",
+            "schemaId": "79000000-0000-0000-0001-000000000021",
             "versionNumber": 1,
-            "versionId": "e9060c68-aa80-8959-8058-ff5753a4c10f"
+            "versionId": "89000000-0000-0000-0001-000000000021"
           }
         ],
         "guardrail": {
@@ -7050,7 +8370,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "90e46fa8f96d91ba1a39bc6bf24761a7fbd140b6b4e951e0fcbf6ec944cc6fef"
+      "checksum": "6606a8492fc017d3755361289200d251919bd3494d670ff2a6f2f3a94197d304"
     }
   }
 };
