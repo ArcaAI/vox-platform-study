@@ -130,3 +130,9 @@ it, `npm pack` includes everything not `.gitignore`d, bloating the tarball.
 - `@arcaai/pipeline` isn't part of `@arcaai/vox`'s dependency graph despite living
   alongside the other SDK packages — it needs its own build + publish step if a
   release should include it.
+
+## Release log
+
+| Date | Version | How | Notes |
+|---|---|---|---|
+| 2026-09-11 | 3.3.0 | This runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in the order above under the global `~/.npmrc` token (`npm whoami` → `dohuta`); every `npm view <pkg>@3.3.0` answers `3.3.0`. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — it is bumped for alignment only. The CI `publish-sdk` jobs on the `SDK-3.3.0` / `ALL-2.2.0` tag pipelines were cancelled so they could not race this path. Two of the "Known gaps" above are now stale: `@changesets/cli` IS installed (`.changeset/config.json`, nine-package `fixed` group) and `.gitlab/ci/publish.yml` DOES target GitHub Packages (`GITHUB_PACKAGES_TOKEN`); the `SDK-` tag pipeline itself was un-creatable until `a6e16b075` (image scans needed builds an SDK tag never runs). Until the owner adopts the CI path, this runbook stays the source of truth. |
