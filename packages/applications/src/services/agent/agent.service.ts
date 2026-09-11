@@ -83,7 +83,7 @@ import type { IProviderConnectionService as IProviderConnectionServicePort } fro
 import { MODEL_TASK_TYPE_SERVICE, providerClassOf, type ProviderClass, type ProviderService } from '../ai-provider-connection/constants';
 import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
 import { soleContextKindSchema, unwrapSingleKindContextPayload } from '../consultation-context-schema/context-schema-definition';
-import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
+import type { OpenBindings, UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
 import type {
   ContextSchemaReferenceResolution,
   IConsultationContextSchemaService as IConsultationContextSchemaServicePort,
@@ -171,6 +171,15 @@ interface FragmentTemplateVariables {
  */
 export type AgentCompiledContextSchema = NonNullable<AgentCompiledConfig['contextSchema']> & {
   userIdentity?: UserIdentityBinding;
+  /**
+   * TASK-951 D-1 — every open-time mapping the pinned version declares, frozen for exactly
+   * the reason `userIdentity` is: the planes that act on a client's stated department, visit
+   * type, external reference or materialisable payload must not re-read a schema row to learn
+   * WHERE those facts live. It rides as an intersection for the same reason its sibling does.
+   *
+   * OMITTED — never `{}` — when the pinned version declares none.
+   */
+  openBindings?: OpenBindings;
 };
 
 /**
@@ -1726,6 +1735,10 @@ export class AgentService extends BaseService implements IAgentService {
         // identifier. OMITTED when the pinned version declares none, so an agent that binds
         // no identity field compiles to exactly the bytes it did before this ticket.
         ...(outcome.userIdentity ? { userIdentity: outcome.userIdentity } : {}),
+        // TASK-951 D-1 — the same freeze, for the four markers beside identity. The resolver
+        // already omits the key when the version declares nothing, so this condition is about
+        // a producer that predates the field, not about an empty object.
+        ...(outcome.openBindings ? { openBindings: outcome.openBindings } : {}),
       },
       findings: [],
     };

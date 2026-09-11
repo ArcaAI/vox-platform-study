@@ -159,6 +159,46 @@ export interface CompiledUserIdentityBinding {
 }
 
 /**
+ * TASK-951 D-1 — WHERE a run payload carries ONE open-time fact: a declared kind, and one of
+ * that kind's own properties.
+ *
+ * Structurally identical to {@link CompiledUserIdentityBinding} and named separately for the
+ * same reason the applications side names `KindFieldBinding` separately: that one is about
+ * identity, this is the shape every ROLE shares.
+ */
+export interface CompiledKindFieldBinding {
+  kindKey: string;
+  field: string;
+}
+
+/**
+ * TASK-951 D-1 — every open-time mapping the trigger's pinned context-schema version declares.
+ *
+ * A structural MIRROR of `OpenBindings` in `@arcaai/applications`'
+ * `consultation-context-schema/context-schema-definition.ts`, restated here because this
+ * package must not depend on that one, and deliberately only the TYPE: the derivation
+ * (`openBindingsFromDefinition`) stays a single implementation on the applications side and its
+ * answer is handed in on {@link ResolvedTriggerContextSchema}, exactly as the derived payload
+ * schema and the identity binding are. A second derivation living here would eventually
+ * disagree about which field HOPE resolves a department — or a visit type — from.
+ *
+ * Every key is OPTIONAL and ABSENT when the version declares no marker for that role, because
+ * this object is frozen inside the CHECKSUMMED compiled artifact.
+ *
+ * Like its siblings it is a mapping declaration, never authorization, and the interpreter does
+ * not read it: `interpreter.core_trigger` validates against `resolved` / `inline` and nothing
+ * else. The gateway acts on these before a run is dispatched.
+ */
+export interface CompiledOpenBindings {
+  userIdentity?: CompiledKindFieldBinding;
+  department?: CompiledKindFieldBinding & { by: 'code' | 'name' };
+  visitType?: CompiledKindFieldBinding;
+  externalRef?: CompiledKindFieldBinding;
+  materialize?: { kindKey: string; as: 'CASE_NOTE' }[];
+  streamContext?: { kindKey: string };
+}
+
+/**
  * TASK-890 §3.4 — what the CALLER resolved about the trigger's `contextSchema.contextSchemaId`.
  *
  * The compiler never reads a database; the service resolves the reference in the caller's
@@ -176,6 +216,12 @@ export interface ResolvedTriggerContextSchema {
    * same definition as `payloadSchema`. Absent (or `null`) means this version declares none.
    */
   userIdentity?: CompiledUserIdentityBinding | null;
+  /**
+   * TASK-951 D-1 — every open-time mapping of the same version, derived by the same caller
+   * from the same definition. Absent means this version declares none; the caller never hands
+   * in an empty object.
+   */
+  openBindings?: CompiledOpenBindings | null;
 }
 
 export interface CompiledCaps {
@@ -346,6 +392,11 @@ function compileNode(
  * field compiles to exactly the bytes it did before this ticket and its checksum still
  * verifies. It never affects validation: `interpreter.core_trigger` reads `resolved` /
  * `inline` and nothing else.
+ *
+ * TASK-951 D-1 — `openBindings` freezes beside both, on the same terms and for the same
+ * reason: which field carries the department, the visit type or the external reference is a
+ * property of the version the workflow was PUBLISHED against. Omitted when the resolution
+ * declares none, so nothing that compiled before this ticket moves.
  */
 function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Record<string, unknown> {
   const config = node.config ?? {};
@@ -363,6 +414,7 @@ function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Recor
       ...contextSchema,
       resolved: resolved.payloadSchema,
       ...(resolved.userIdentity ? { userIdentity: resolved.userIdentity } : {}),
+      ...(resolved.openBindings ? { openBindings: resolved.openBindings } : {}),
     },
   };
 }
