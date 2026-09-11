@@ -64,6 +64,13 @@ export class WorkflowRunStatusResponse {
       'What the run DELIVERED (closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.',
   })
   resultRef: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "TASK-950 — the clinician this run acts FOR, sourced (like `resultRef`) from the durable run read model's `_metadata.actingUserId` rather than from Temporal. It sits BESIDE the actor the audit envelope names (the service account), never instead of it. `null` for a human caller, for a consultation-bound run (identity is `Consultation.doctorId`), and for a trigger schema that declares no identity field.",
+  })
+  actingUserId?: string | null;
 }
 
 /** Response of `POST /api/v1/workflows/:slug/runs/:runId/cancel`. */

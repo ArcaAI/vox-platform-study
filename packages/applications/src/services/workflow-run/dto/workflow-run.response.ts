@@ -70,6 +70,13 @@ export class WorkflowRunResponse {
   })
   resultRef: Record<string, unknown> | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "TASK-950 — the clinician this run acts FOR, read back from the row's `_metadata.actingUserId`. Recorded only for a STANDALONE machine-triggered run whose trigger schema declares a user-identity field; it sits BESIDE the actor the audit envelope already names (the service account), never instead of it. `null` for a human caller (the caller already IS the clinician), for a consultation-bound run (identity is `Consultation.doctorId`), and for a schema that declares no identity field — three different reasons, one honest absence.",
+  })
+  actingUserId?: string | null;
+
   @ApiProperty({ description: 'Row creation instant (ISO-8601).' })
   createdAt: string;
 }
