@@ -295,7 +295,8 @@ export class ContextUserIdentityService extends BaseService implements IContextU
       // attribute consultations to whichever row happened to sort first — different on different
       // days. An operator must merge them.
       throw new ConflictException({
-        message: 'More than one user in this tenant carries the supplied staff identifier. Staff identifiers must be unique per tenant; resolve the duplicate before retrying.',
+        message:
+          'More than one user in this tenant carries the supplied staff identifier. Staff identifiers must be unique per tenant; resolve the duplicate before retrying.',
         code: 'USER_IDENTITY_AMBIGUOUS',
       });
     }
@@ -307,7 +308,8 @@ export class ContextUserIdentityService extends BaseService implements IContextU
       // manufacture exactly the ambiguity above and would also route a clinical request to a
       // brand-new account while an administrator believes that clinician is deactivated.
       throw new NotFoundException({
-        message: 'A user in this tenant carries the supplied staff identifier but is not active. Re-enable that user rather than provisioning a second one.',
+        message:
+          'A user in this tenant carries the supplied staff identifier but is not active. Re-enable that user rather than provisioning a second one.',
         code: 'USER_IDENTITY_NOT_USABLE',
       });
     }

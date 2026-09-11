@@ -112,7 +112,7 @@ export const USER_IDENTITY_SETTINGS: SettingDescriptor[] = [
     category: USER_IDENTITY_CATEGORY,
     label: 'Role for auto-provisioned users',
     description:
-      "The `Role` assigned to a user provisioned from a context-schema identity field. The platform default is the seeded SYSTEM `DOCTOR` role, which carries the `create:Consultation` ability `assertNamedClinicianMayOwnConsultation` requires — a provisioned clinician that cannot own a consultation is useless. A tenant may point this at its own cloned role. `SUPER_ADMIN` is REFUSED at provisioning time (403) whatever this says, mirroring the identity-provider JIT guard: a machine request must never be able to mint a platform administrator. Unresolved is an error, never a substituted default.",
+      'The `Role` assigned to a user provisioned from a context-schema identity field. The platform default is the seeded SYSTEM `DOCTOR` role, which carries the `create:Consultation` ability `assertNamedClinicianMayOwnConsultation` requires — a provisioned clinician that cannot own a consultation is useless. A tenant may point this at its own cloned role. `SUPER_ADMIN` is REFUSED at provisioning time (403) whatever this says, mirroring the identity-provider JIT guard: a machine request must never be able to mint a platform administrator. Unresolved is an error, never a substituted default.',
     validate: requirePlatformId('identity.autoProvision.roleId'),
   },
   {
@@ -129,7 +129,7 @@ export const USER_IDENTITY_SETTINGS: SettingDescriptor[] = [
     category: USER_IDENTITY_CATEGORY,
     label: 'Fallback department for auto-provisioned users',
     description:
-      "The `Department` a provisioned user joins when the request itself names none (the agent-invocation and workflow-run planes often do not). Resolution order is request `departmentId` → this setting → refuse with 400 `USER_IDENTITY_DEPARTMENT_UNRESOLVED`. Failing closed is deliberate (plan OD-8): `assertUserBelongsToTenant` requires BOTH an enabled role assignment and an enabled department membership, so a user created without a department is an account that cannot log in and 404s the moment it is named as a clinician — a silent defect discovered much later. There is no platform default: a department id is a tenant-owned row, so a SYSTEM value would name a department no tenant owns. Set it per tenant.",
+      'The `Department` a provisioned user joins when the request itself names none (the agent-invocation and workflow-run planes often do not). Resolution order is request `departmentId` → this setting → refuse with 400 `USER_IDENTITY_DEPARTMENT_UNRESOLVED`. Failing closed is deliberate (plan OD-8): `assertUserBelongsToTenant` requires BOTH an enabled role assignment and an enabled department membership, so a user created without a department is an account that cannot log in and 404s the moment it is named as a clinician — a silent defect discovered much later. There is no platform default: a department id is a tenant-owned row, so a SYSTEM value would name a department no tenant owns. Set it per tenant.',
     validate: requirePlatformId('identity.autoProvision.departmentId'),
   },
 ];
