@@ -39,6 +39,7 @@ import {
   computeDefinitionChecksum,
   contextSchemaDefinitionProblems,
   findKind,
+  openBindingsFromDefinition,
   payloadSchemaFromDefinition,
   userIdentityBindingFromDefinition,
   type ContextPrimitive,
@@ -376,6 +377,12 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       return { outcome: 'failed', failure: 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
     }
 
+    // TASK-951 D-1 — the third derivation off the same definition, in the same place and for
+    // the same reason. OMITTED when it is empty rather than stamped `{}`: the freeze sites
+    // carry this straight into checksummed artifacts, so "declares no mappings" has to be
+    // absence, not an empty object that moves every checksum.
+    const openBindings = openBindingsFromDefinition(version.definition);
+
     return {
       outcome: 'resolved',
       schemaId: entity.id,
@@ -385,6 +392,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       // TASK-950 D-3 — derived from the SAME definition, once, here: the two freeze sites
       // (agent publish, workflow compile) receive this result and never the raw definition.
       userIdentity: userIdentityBindingFromDefinition(version.definition),
+      ...(Object.keys(openBindings).length > 0 ? { openBindings } : {}),
     };
   }
 

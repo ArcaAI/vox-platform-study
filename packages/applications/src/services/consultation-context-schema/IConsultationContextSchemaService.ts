@@ -1,4 +1,4 @@
-import type { ContextPrimitive, UserIdentityBinding } from './context-schema-definition';
+import type { ContextPrimitive, OpenBindings, UserIdentityBinding } from './context-schema-definition';
 import type { DefinitionChangeClassification } from './definition-diff';
 import type {
   ConsultationContextSchemaBundleResponse,
@@ -113,6 +113,20 @@ export type ContextSchemaReferenceResolution =
        * field", never "unknown".
        */
       userIdentity?: UserIdentityBinding | null;
+      /**
+       * TASK-951 D-1 — EVERY open-time mapping the version declares
+       * (`openBindingsFromDefinition`), derived from the same definition in the same pass,
+       * and frozen by the same two callers.
+       *
+       * `userIdentity` above is the TASK-950 accessor's answer and stays for the consumers
+       * written against it; this object restates it beside the four markers TASK-951 added,
+       * so an open-time caller reads ONE thing.
+       *
+       * OMITTED when the version declares no mappings at all — never `{}`. The freeze sites
+       * stamp this key only when it is present, so an artifact whose schema declares nothing
+       * is byte-identical to the one it was before this ticket.
+       */
+      openBindings?: OpenBindings;
     }
   | { outcome: 'failed'; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
 
