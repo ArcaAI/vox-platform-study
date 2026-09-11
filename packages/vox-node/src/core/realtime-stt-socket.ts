@@ -248,9 +248,9 @@ export class RealtimeSttSocket {
    * on that utterance rather than one wrong label.
    *
    * ```ts
-   * socket.setMetadata({ micIds: ['mic-1'] });          // before the first frame
+   * socket.setMetadata({ mic_ids: ['mic-1'] });          // before the first frame
    * // …stream…
-   * socket.setMetadata({ micIds: ['mic-1', 'mic-2'] }); // a second mic joins
+   * socket.setMetadata({ mic_ids: ['mic-1', 'mic-2'] }); // a second mic joins
    * ```
    *
    * There is no timestamp to pass, and that is deliberate: you cannot know how much of your

@@ -60,8 +60,8 @@ const WsCtor = WebSocket as unknown as StreamWsCtor;
 const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
 const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
 
-const ONE_MIC = { micIds: ['mic-1'] };
-const TWO_MICS = { micIds: ['mic-1', 'mic-2'] };
+const ONE_MIC = { mic_ids: ['mic-1'] };
+const TWO_MICS = { mic_ids: ['mic-1', 'mic-2'] };
 
 /** 503 = STT is down, 404 = no ASR agent resolvable for this tenant. Neither is an authz fact. */
 const TRANSPORT_STATUSES = [404, 503];
@@ -138,7 +138,7 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
     const socket = await openReady(session);
 
     try {
-      setMetadata(socket, { micIds: ['mic-1'], note: 'x'.repeat(2048) });
+      setMetadata(socket, { mic_ids: ['mic-1'], note: 'x'.repeat(2048) });
 
       const error = await socket.waitForMessage((raw) => raw.type === 'error', 10_000);
       expect(error?.code).toBe('METADATA_TOO_LARGE');
@@ -168,6 +168,45 @@ test.describe('TASK-951 R2 — time-synced stream metadata (service account)', (
       setMetadata(socket, TWO_MICS);
 
       expect(await socket.waitForMessage((raw) => raw.type === 'error', 2_000)).toBeNull();
+      expect(socket.closeInfo).toBeUndefined();
+    } finally {
+      socket.close();
+      await closeSession(request, svcToken, session.sessionId);
+    }
+  });
+
+  test('the ArcaAI agent binds the `stream` kind: a frame without `mic_ids` is refused WITH the problem, one carrying it is accepted', async ({
+    request,
+  }) => {
+    // The seeded CONTENT, not only the transport. `realtime-transcription` freezes
+    // `arcaai_realtime_transcription`, whose `stream` kind is marked `streamContext` and requires
+    // `mic_ids` — the clarified R2 shape (one, two or more microphones live at once). Naming the
+    // agent pins this test to that schema instead of to whatever the cascade resolves for the
+    // service account's tenant; an agent binding no stream kind would accept both frames and
+    // prove nothing about the gate.
+    const res = await createSession(request, svcToken, { agentSlug: 'realtime-transcription' });
+    expect([201, ...TRANSPORT_STATUSES], await res.text()).toContain(res.status());
+    test.skip(TRANSPORT_STATUSES.includes(res.status()), `no live streaming session on the ArcaAI agent: ${res.status()}`);
+
+    const session = await res.json();
+    expect(session.agentSlug).toBe('realtime-transcription');
+    const socket = await openReady(session);
+
+    try {
+      // The pre-clarification shape (a single `mic_id`) and a camelCase spelling are the two ways an
+      // integrator gets this wrong; both are missing the one required property.
+      setMetadata(socket, { mic_id: 'mic-1', micIds: ['mic-1'] });
+      const refused = await socket.waitForMessage((raw) => raw.type === 'error', 10_000);
+      expect(refused?.code).toBe('METADATA_SCHEMA_VIOLATION');
+      // The refusal names the shape it wanted — a client cannot fix a schema it is not shown.
+      expect(refused?.problems).toContain('/mic_ids: required property is missing');
+      expect(socket.closeInfo, 'a refused frame must not end the session').toBeUndefined();
+
+      // The seeded shape is accepted silently: no NEW error frame follows it.
+      const errorsBefore = socket.messages.filter((m) => m.raw.type === 'error').length;
+      setMetadata(socket, TWO_MICS);
+      await socket.waitForMessage(() => false, 1_500);
+      expect(socket.messages.filter((m) => m.raw.type === 'error').length, 'a `mic_ids` frame was refused').toBe(errorsBefore);
       expect(socket.closeInfo).toBeUndefined();
     } finally {
       socket.close();

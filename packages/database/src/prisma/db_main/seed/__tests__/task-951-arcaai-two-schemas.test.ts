@@ -23,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { SEED_ARCAAI_CONTEXT_SCHEMA_IDS, SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS, SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
+import { SEED_ARCAAI_CONTEXT_SCHEMA_IDS, SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS, SEED_CUSTOMER_TENANT_IDS, SYSTEM_USER_ID } from '../00-constants';
 import {
   NOTE_CONTEXT_PROMPT_KIND,
   NOTE_CONTEXT_SCHEMA_DEFINITION,
@@ -40,6 +40,7 @@ import {
   ARCAAI_RETIRED_DEPARTMENT_SCHEMA_SLUGS,
   ARCAAI_TWO_CONTEXT_SCHEMAS,
   ARCAAI_TWO_CONTEXT_SCHEMA_VERSIONS,
+  openBindingsFromDefinition,
   seedArcaaiTwoContextSchemas,
 } from '../07g-arcaai-two-schemas';
 import { ASR_AGENT_SLUG, checksumOf } from '../25-agents';
@@ -141,6 +142,15 @@ describe('TASK-951 — the definitions are publishable by the REAL validator', (
       expect(payloadSchemaFromDefinition(definition)).toEqual(definitionModule.payloadSchemaFromDefinition(definition));
     }
   });
+
+  it('the seed copy of openBindingsFromDefinition agrees with the real one for both definitions', () => {
+    // The scribe exercises every role (identity, department by code, visit type, external ref,
+    // materialise); the transcription contract exercises the one the runtime metadata gate reads.
+    for (const definition of [ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION, ARCAAI_CONSULTATION_SCRIBE_DEFINITION]) {
+      expect(openBindingsFromDefinition(definition)).toEqual(definitionModule.openBindingsFromDefinition(definition));
+    }
+    expect(openBindingsFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION)).toEqual({ streamContext: { kindKey: 'stream' } });
+  });
 });
 
 describe('TASK-951 — schema 1, the standalone transcription contract (R2)', () => {
@@ -148,7 +158,10 @@ describe('TASK-951 — schema 1, the standalone transcription contract (R2)', ()
     expect(kindsOf(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION).map((entry) => entry.key)).toEqual(['audio_stream', 'stream']);
     const stream = kind(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION, 'stream');
     expect(stream).toMatchObject({ primitive: 'STRUCTURED', cardinality: 'ONE', lifecycle: 'PRE', producedBy: ['CLIENT'], streamContext: true });
-    expect(stream.fields.required).toEqual(['mic_id']);
+    // The clarified R2 shape: one, two or more microphones live at once, and the set changes while
+    // recording — so a SET of ids, never a single `mic_id`.
+    expect(stream.fields.required).toEqual(['mic_ids']);
+    expect(stream.fields.properties.mic_ids).toEqual({ type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 });
     // "exactly the same metadata things" back — a curated subset would not be an echo.
     expect(stream.fields.additionalProperties).toBe(true);
   });
@@ -259,7 +272,10 @@ describe('TASK-951 — the bindings', () => {
     for (const target of ARCAAI_WORKFLOW_TARGETS) {
       const trigger = target.graph.nodes.find((node) => node.type === 'core.trigger');
       expect(trigger, target.key).toBeDefined();
-      expect((trigger!.config as any).contextSchema).toEqual({ contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.CONSULTATION_SCRIBE, versionNumber: 1 });
+      expect((trigger!.config as any).contextSchema).toEqual({
+        contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.CONSULTATION_SCRIBE,
+        versionNumber: 1,
+      });
       expect(target.contextSchemaVersionId).toBe(SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.CONSULTATION_SCRIBE);
       // The regen script derives THIS target's payload schema from here; without it the compiled
       // trigger would freeze the note-context payload and reject `encounter` at run time.
@@ -268,15 +284,21 @@ describe('TASK-951 — the bindings', () => {
   });
 
   it('the frozen ASR context schema is exactly what a real publish stamps', () => {
-    // `AgentService.resolveContextSchema` → `resolveReference`: the four fields, and
-    // `userIdentity` OMITTED (never `null`) when the pinned version declares none.
+    // `AgentService.resolveContextSchema` → `resolveReference`: the four fields, `userIdentity`
+    // OMITTED (never `null`) when the pinned version declares none, and `openBindings` PRESENT
+    // because the `stream` kind is marked `streamContext`. That last key is load-bearing:
+    // `TranscriptionJobController.resolveStreamMetadataSchema` finds the kind a `metadata` frame is
+    // validated against through `openBindings.streamContext.kindKey` on the FROZEN artifact — a blob
+    // without it leaves ArcaAI's agent accepting any object under the size bound.
     expect(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA).toEqual({
       schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
       versionNumber: 1,
       versionId: SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.REALTIME_TRANSCRIPTION,
       payloadSchema: definitionModule.payloadSchemaFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION),
+      openBindings: definitionModule.openBindingsFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION),
     });
     expect(Object.keys(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA)).not.toContain('userIdentity');
+    expect((ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA.openBindings as any).streamContext).toEqual({ kindKey: 'stream' });
   });
 });
 
@@ -295,7 +317,10 @@ interface FakeRow {
 function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> | null } = {}) {
   const schemas: FakeRow[] = options.schemas ? [...options.schemas] : [];
   const versions: Array<Record<string, any>> = [];
-  const agent = options.agent === undefined ? { id: 'agent-1', contextSchemaId: null, compiledConfig: { task: 'SPEECH_TO_TEXT', contextSchema: null } } : options.agent;
+  const agent =
+    options.agent === undefined
+      ? { id: 'agent-1', contextSchemaId: null, compiledConfig: { task: 'SPEECH_TO_TEXT', contextSchema: null } }
+      : options.agent;
   const agentUpdates: Array<Record<string, any>> = [];
 
   const matches = (row: FakeRow, where: any): boolean => {
@@ -321,12 +346,26 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
         return { count: hit.length };
       },
     },
-    consultationContextSchemaVersion: { create: async ({ data }: any) => versions.push(data) },
+    consultationContextSchemaVersion: {
+      create: async ({ data }: any) => versions.push(data),
+      findFirst: async ({ where }: any) =>
+        versions.find((row) => row.schemaId === where.schemaId && row.versionNumber === where.versionNumber) ?? null,
+      updateMany: async ({ where, data }: any) => {
+        const hit = versions.filter((row) => row.id === where.id);
+        for (const row of hit) Object.assign(row, data);
+        return { count: hit.length };
+      },
+    },
     agent: {
       findFirst: async () => agent,
       update: async ({ data }: any) => {
         agentUpdates.push(data);
-        if (agent) Object.assign(agent, { contextSchemaId: data.contextSchemaId, compiledConfig: data.compiledConfig });
+        // A re-freeze carries no `contextSchemaId`; Prisma leaves an omitted column alone, so must the fake.
+        if (agent)
+          Object.assign(agent, {
+            ...(data.contextSchemaId !== undefined ? { contextSchemaId: data.contextSchemaId } : {}),
+            compiledConfig: data.compiledConfig,
+          });
         return data;
       },
     },
@@ -334,9 +373,21 @@ function fakeClient(options: { schemas?: FakeRow[]; agent?: Record<string, any> 
   return { client, schemas, versions, agent, agentUpdates };
 }
 
-const noteContextClone = (): FakeRow => ({ id: 'clone-1', tenantId: ARCAAI, slug: NOTE_CONTEXT_SCHEMA_SLUG, isDefault: true, resourceStatus: 'ENABLED' });
+const noteContextClone = (): FakeRow => ({
+  id: 'clone-1',
+  tenantId: ARCAAI,
+  slug: NOTE_CONTEXT_SCHEMA_SLUG,
+  isDefault: true,
+  resourceStatus: 'ENABLED',
+});
 const retiredDepartmentRows = (): FakeRow[] =>
-  ARCAAI_RETIRED_DEPARTMENT_SCHEMA_SLUGS.map((slug, index) => ({ id: `dept-${index}`, tenantId: ARCAAI, slug, isDefault: true, resourceStatus: 'ENABLED' }));
+  ARCAAI_RETIRED_DEPARTMENT_SCHEMA_SLUGS.map((slug, index) => ({
+    id: `dept-${index}`,
+    tenantId: ARCAAI,
+    slug,
+    isDefault: true,
+    resourceStatus: 'ENABLED',
+  }));
 
 describe('TASK-951 — seeding is create-only and the retirement sweep is idempotent', () => {
   it('on a tenant seeded before this ticket: demotes the clone, retires the two department rows, creates two schemas', async () => {
@@ -363,17 +414,41 @@ describe('TASK-951 — seeding is create-only and the retirement sweep is idempo
     const after = JSON.parse(JSON.stringify(fake.schemas));
 
     const second = await seedArcaaiTwoContextSchemas(fake.client);
-    expect(second).toMatchObject({ created: 0, skipped: 2, demoted: 0, retired: 0, agent: 'already-bound' });
+    expect(second).toMatchObject({ created: 0, skipped: 2, refreshed: 0, demoted: 0, retired: 0, agent: 'already-bound' });
     expect(fake.versions).toHaveLength(2);
     expect(JSON.parse(JSON.stringify(fake.schemas))).toEqual(after);
   });
 
+  it('a seed-owned v1 whose definition drifted from this file is refreshed IN PLACE, by our id', async () => {
+    // A dev database seeded before the R2 clarification carries the `mic_id` shape; the agent is
+    // re-frozen to `mic_ids` (below), and the version row must say the same thing the gate enforces.
+    const fake = fakeClient({ schemas: [noteContextClone(), ...retiredDepartmentRows()] });
+    await seedArcaaiTwoContextSchemas(fake.client);
+    const transcription = fake.versions.find((row) => row.schemaId === SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION)!;
+    Object.assign(transcription, { definition: { schemaVersion: '1.0', kinds: [], outputs: [] }, checksum: 'stale' });
+
+    const second = await seedArcaaiTwoContextSchemas(fake.client);
+
+    expect(second).toMatchObject({ created: 0, skipped: 2, refreshed: 1 });
+    expect(transcription.definition).toEqual(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION);
+    expect(transcription.checksum).toBe(definitionChecksum(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION));
+    expect(transcription.updatedBy).toBe(SYSTEM_USER_ID);
+  });
+
   it('never creates a row whose slug the tenant already carries (an admin edit survives a re-seed)', async () => {
-    const operatorRow: FakeRow = { id: 'operator-authored', tenantId: ARCAAI, slug: ARCAAI_CONSULTATION_SCRIBE_SLUG, isDefault: true, resourceStatus: 'ENABLED' };
+    const operatorRow: FakeRow = {
+      id: 'operator-authored',
+      tenantId: ARCAAI,
+      slug: ARCAAI_CONSULTATION_SCRIBE_SLUG,
+      isDefault: true,
+      resourceStatus: 'ENABLED',
+    };
     const fake = fakeClient({ schemas: [operatorRow] });
     const result = await seedArcaaiTwoContextSchemas(fake.client);
     expect(result.created).toBe(1);
     expect(result.skipped).toBe(1);
+    // ...and never rewrites its versions either: the refresh is keyed on OUR id, not the slug.
+    expect(result.refreshed).toBe(0);
     expect(fake.schemas.find((row) => row.id === 'operator-authored')).toBeDefined();
   });
 });
@@ -394,11 +469,64 @@ describe('TASK-951 — the ASR agent binding', () => {
     expect(ASR_AGENT_SLUG).toBe('realtime-transcription');
   });
 
-  it('leaves an agent that already pins a schema alone', async () => {
+  it("leaves an agent that pins an admin's OWN choice of schema alone", async () => {
     const fake = fakeClient({ agent: { id: 'agent-1', contextSchemaId: 'an-admins-own-choice', compiledConfig: {} } });
     const result = await seedArcaaiTwoContextSchemas(fake.client);
     expect(result.agent).toBe('already-bound');
     expect(fake.agentUpdates).toHaveLength(0);
+  });
+
+  it('leaves an agent that already carries the CURRENT frozen blob alone — even with jsonb key order', async () => {
+    // Postgres `jsonb` reorders object keys; the comparison is by content, or every seed run would rewrite.
+    const reordered = JSON.parse(
+      JSON.stringify(
+        ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
+        Object.keys(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA).sort().reverse(),
+      ),
+    );
+    const compiled = {
+      task: 'SPEECH_TO_TEXT',
+      contextSchema: {
+        ...reordered,
+        payloadSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA.payloadSchema,
+        openBindings: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA.openBindings,
+      },
+    };
+    const fake = fakeClient({
+      agent: { id: 'agent-1', contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION, compiledConfig: compiled },
+    });
+    const result = await seedArcaaiTwoContextSchemas(fake.client);
+    expect(result.agent).toBe('already-bound');
+    expect(fake.agentUpdates).toHaveLength(0);
+  });
+
+  it('RE-FREEZES an agent that pins OUR schema with a stale artifact — the pin itself is untouched', async () => {
+    // The dev-database state this ticket met: bound under lane A with a blob that carried no
+    // `openBindings` (so the metadata gate never engaged) and the pre-clarification `mic_id` shape.
+    const stale = {
+      schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
+      versionNumber: 1,
+      versionId: SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.REALTIME_TRANSCRIPTION,
+      payloadSchema: { type: 'object', properties: {} },
+    };
+    const compiled = { task: 'SPEECH_TO_TEXT', service: 'stt', contextSchema: stale };
+    const fake = fakeClient({
+      agent: { id: 'agent-1', contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION, compiledConfig: compiled },
+    });
+
+    const result = await seedArcaaiTwoContextSchemas(fake.client);
+
+    expect(result.agent).toBe('refrozen');
+    expect(fake.agentUpdates).toHaveLength(1);
+    const update = fake.agentUpdates[0]!;
+    expect(update.contextSchemaId).toBeUndefined();
+    expect(update.compiledConfig).toEqual({
+      task: 'SPEECH_TO_TEXT',
+      service: 'stt',
+      contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
+    });
+    expect(update.compiledConfigChecksum).toBe(checksumOf(update.compiledConfig));
+    expect(fake.agent!.contextSchemaId).toBe(SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION);
   });
 
   it('reports an absent agent rather than failing the seed', async () => {
