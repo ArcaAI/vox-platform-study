@@ -166,12 +166,15 @@ import {
   runRealtimeLane,
   type RealtimeAgentRef,
   type RealtimeAgentTask,
+  type RealtimeAudioSync,
   type RealtimeCapabilities,
   type RealtimeCapabilityKey,
   type RealtimeLane,
   type RealtimeNode,
   type RealtimeResolvedAgentView,
   type RealtimeRunResult,
+  type RealtimeTranscriptSegment,
+  type RealtimeTranscriptWord,
   type SectionPatchDto,
 } from './realtime';
 import { PRE_SUMMARY_EVENT, type PreSummaryEventDto, type PreSummaryStatus } from './realtime/dto/section-patch.dto';
@@ -449,11 +452,39 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
 end
 return 0`;
 
-/** A live transcript segment fed into the watcher. */
+/**
+ * A live transcript segment fed into the watcher.
+ *
+ * Everything below `segmentId` is the CORRELATION the STT wire has always carried
+ * (`SttTranscriptResult`) and this service used to discard at the door: `attachSttStream` read
+ * `msg.text` and nothing else, so by the time a transcript reached the graph lane it was a string
+ * with no way back to the audio that produced it. Optional, because a caller that genuinely has
+ * only text (a manual ingest, a test) must stay able to say so — and because an engine that does
+ * not diarize or does not report word timings should be silent rather than emit a zero a consumer
+ * would read as a measurement.
+ */
 export interface LiveTranscriptSegment {
   text: string;
   isFinal: boolean;
   segmentId?: string;
+  /** Seconds from the start of the STT capture, as the engine reported them. */
+  startTime?: number;
+  endTime?: number;
+  /** The PRODUCER's utterance ordinal — what pairs a `gloss` with the final it translates. */
+  utteranceIndex?: number;
+  /** The GATEWAY's monotonic transcript sequence — what a dropped socket resumes from. Not `utteranceIndex`. */
+  seq?: number;
+  speaker?: string;
+  speakerConfidence?: number;
+  language?: string;
+  resultType?: 'segment' | 'gloss';
+  stableChars?: number;
+  inferenceMs?: number;
+  /** Per-utterance provenance: a mid-session engine switch splits one transcript across two bindings. */
+  pipelineId?: string;
+  words?: RealtimeTranscriptWord[];
+  /** Epoch ms at which this service received the utterance. Defaulted to `Date.now()` at ingest. */
+  receivedAtMs?: number;
 }
 
 /**
@@ -517,6 +548,26 @@ interface LiveSession {
   userId?: string;
   sessionId?: string;
   transcriptParts: string[];
+  /**
+   * The per-utterance metadata for `transcriptParts`, STRICTLY INDEX-ALIGNED with it.
+   *
+   * A parallel array rather than a richer `transcriptParts`, deliberately. That buffer is read by
+   * the drain loop, the delta windowing, the flush cursor and the whole-transcript join, all of
+   * which index into it; widening its element type would touch every one of those for no gain,
+   * because none of them wants anything but the text. Alignment is the invariant instead, and it
+   * holds because `ingestSegment` is the only writer and appends to both in the same breath.
+   */
+  transcriptSegments: LiveTranscriptSegment[];
+  /**
+   * Epoch ms that STT segment time `0` maps to — stamped when this service ATTACHES to the
+   * result stream, which is the closest observable the gateway gives us to the start of capture.
+   *
+   * A modest claim, and the doc comment on `RealtimeAudioSync.epochMs` says so: it is not the
+   * microphone's clock. It is still the only anchor that turns a producer-relative segment time
+   * into something a caller can line up against the audio it sent, and it is checkable —
+   * `epochMs + endTime * 1000` must never lead a segment's `receivedAtMs`.
+   */
+  sttStreamEpochMs?: number;
   /** F-28: true once a warn-threshold log has fired for `transcriptParts` (fire once, not per-append). */
   transcriptPartsWarned: boolean;
   /** F-28: true once a hard-cap-reached error log has fired for `transcriptParts` (fire once, not per-refusal). */
@@ -650,6 +701,17 @@ interface LiveSession {
    * and downstream nodes reach it only through the declared port.
    */
   pendingGraphTranscript?: string;
+  /**
+   * The per-utterance metadata for `pendingGraphTranscript`, with offsets into THAT string.
+   *
+   * Not the session's whole segment list: the capture node publishes the DELTA on most turns, so
+   * offsets taken against the session transcript would point past the end of what the node
+   * actually emitted. Rebuilt each flush from the same index range the delta was, which is what
+   * keeps `charStart`/`charEnd` resolvable in the string the consumer is holding.
+   */
+  pendingGraphSegments?: RealtimeTranscriptSegment[];
+  /** The capture anchor published beside `pendingGraphSegments`. Rebuilt each flush from the session's own. */
+  pendingGraphAudio?: RealtimeAudioSync;
   /**
    * The `AsrPipeline` this session's capture is bound to, when known.
    *
@@ -1346,6 +1408,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       userId: params.userId,
       sessionId: params.sessionId,
       transcriptParts: [],
+      transcriptSegments: [],
       transcriptPartsWarned: false,
       transcriptPartsCapLogged: false,
       contextNotes: [],
@@ -2375,6 +2438,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
 
     session.transcriptParts.push(text);
+    // Index-aligned with the push above — the invariant `transcriptSegments` documents. `text` is
+    // the TRIMMED text, which is what the transcript is joined from and therefore what any offset
+    // computed later has to be measured against; storing `segment.text` raw here would make every
+    // `charStart` off by the leading whitespace.
+    session.transcriptSegments.push({ ...segment, text, receivedAtMs: segment.receivedAtMs ?? Date.now() });
 
     if (session.transcriptParts.length > TRANSCRIPT_PARTS_WARN_THRESHOLD && !session.transcriptPartsWarned) {
       session.transcriptPartsWarned = true;
@@ -2666,6 +2734,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const flushUpTo = session.transcriptParts.length;
     const windowed = agenticContext.transcriptMode === 'windowed';
     const deltaSegments: string[] = [];
+    // The INDEX the delta starts at, tracked beside the text so the per-utterance metadata for
+    // exactly this delta can be rebuilt from `transcriptSegments` below. Both branches take a
+    // CONTIGUOUS range — `whole` from the cursor forward, `windowed` from the tail back — so a
+    // start and an end describe it completely.
+    let deltaStart = session.flushedTranscriptCount;
     let deltaEnd = session.flushedTranscriptCount;
     let deltaLen = 0;
     let deltaTruncated = false;
@@ -2695,6 +2768,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         deltaLen += separator + part.length;
       }
       elidedParts = flushUpTo - session.flushedTranscriptCount - deltaSegments.length;
+      deltaStart = flushUpTo - deltaSegments.length;
       deltaEnd = flushUpTo;
     } else {
       for (let i = session.flushedTranscriptCount; i < flushUpTo; i++) {
@@ -2827,6 +2901,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // the legacy path feeds NER, which is what makes the platform lane's
     // behaviour identical rather than merely similar.
     session.pendingGraphTranscript = delta || transcript;
+    // The metadata for exactly the string above, and over the same index range — `delta` is a
+    // WINDOW on most turns, so segments built against the whole session transcript would carry
+    // offsets pointing past the end of what the node actually published.
+    session.pendingGraphSegments = delta ? this.buildGraphSegments(session, deltaStart, deltaEnd) : this.buildGraphSegments(session, 0, flushUpTo);
+    session.pendingGraphAudio = {
+      kind: 'stream',
+      ...(session.sessionId === undefined ? {} : { sessionId: session.sessionId }),
+      ...(session.sttStreamEpochMs === undefined ? {} : { epochMs: session.sttStreamEpochMs }),
+    };
     const graph = lane
       ? await this.runGraphLane(session, lane, {
           buildPrompt: (sourceText) =>
@@ -3348,7 +3431,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // consultation palette with no producer of `transcript` and made
       // `extractEntities`' required input unsatisfiable. Here it is real: the
       // value is the live ASR stream this session ingested.
-      transcribe: async () => ({ transcript: session.pendingGraphTranscript ?? '', pipelineId: session.sttPipelineId ?? null }),
+      transcribe: async () => ({
+        transcript: session.pendingGraphTranscript ?? '',
+        segments: session.pendingGraphSegments ?? [],
+        audio: session.pendingGraphAudio ?? {},
+        pipelineId: session.sttPipelineId ?? null,
+      }),
 
       // TASK-930 (G-1) — WHICH capability a `core.agent` runs is a property of the AGENT, and a
       // slug-form reference carries no task, so the host must resolve it. Without this the lane
@@ -4142,10 +4230,67 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // Private helpers
   // ------------------------------------------------------------------
 
+  /**
+   * The per-utterance metadata for `transcriptParts[from, to)`, with offsets into the string that
+   * range JOINS to — which is what the capture node publishes, not the session transcript.
+   *
+   * The cursor walks EVERY part in the range while only TIMED parts are emitted, so the offsets
+   * stay true to the joined text even when some utterance carried no timing. That case is a manual
+   * `ingestSegment` (or a test); the STT bridge types `startTime`/`endTime` as required numbers, so
+   * a live capture times every utterance. An untimed part contributes its words to `transcript`
+   * and no entry here — deliberately, because the alternative is a segment claiming `start: 0`,
+   * and a fabricated measurement is worse than a missing one.
+   *
+   * The join rule is `parts.join(' ')` with parts already trimmed and non-empty at ingest, so
+   * `transcript.slice(charStart, charEnd) === segment.text` holds by construction rather than by
+   * a text search that a repeated phrase could fool.
+   */
+  private buildGraphSegments(session: LiveSession, from: number, to: number): RealtimeTranscriptSegment[] {
+    const built: RealtimeTranscriptSegment[] = [];
+    let cursor = 0;
+    for (let i = from; i < to; i++) {
+      const part = session.transcriptParts[i];
+      if (part === undefined) continue;
+      if (i > from) cursor += 1; // the single space `join(' ')` puts before this part
+      const charStart = cursor;
+      cursor += part.length;
+
+      const meta = session.transcriptSegments[i];
+      if (meta?.startTime === undefined || meta.endTime === undefined) continue;
+
+      built.push({
+        text: part,
+        start: meta.startTime,
+        end: meta.endTime,
+        charStart,
+        charEnd: cursor,
+        // Only finals reach `transcriptParts` (`ingestSegment` returns early on a partial), so
+        // this is a statement of that invariant rather than a passthrough of the frame's flag.
+        isFinal: true,
+        ...(meta.speaker === undefined ? {} : { speaker: meta.speaker }),
+        ...(meta.speakerConfidence === undefined ? {} : { speakerConfidence: meta.speakerConfidence }),
+        ...(meta.utteranceIndex === undefined ? {} : { utteranceIndex: meta.utteranceIndex }),
+        ...(meta.seq === undefined ? {} : { seq: meta.seq }),
+        ...(meta.resultType === undefined ? {} : { resultType: meta.resultType }),
+        ...(meta.stableChars === undefined ? {} : { stableChars: meta.stableChars }),
+        ...(meta.language === undefined ? {} : { language: meta.language }),
+        ...(meta.inferenceMs === undefined ? {} : { inferenceMs: meta.inferenceMs }),
+        ...(meta.pipelineId === undefined ? {} : { pipelineId: meta.pipelineId }),
+        ...(meta.receivedAtMs === undefined ? {} : { receivedAtMs: meta.receivedAtMs }),
+        ...(meta.words === undefined ? {} : { words: meta.words }),
+      });
+    }
+    return built;
+  }
+
   private attachSttStream(session: LiveSession, sessionId: string): void {
     session.sttSubscription?.unsubscribe();
     session.sessionId = sessionId;
     if (!this.audioBridge) return;
+
+    // The zero of the STT segment clock, as observed here. Stamped BEFORE the subscription so it
+    // cannot be later than the first segment it has to anchor.
+    session.sttStreamEpochMs = Date.now();
 
     try {
       session.sttSubscription = this.audioBridge.subscribeToResults(sessionId).subscribe({
@@ -4154,7 +4299,49 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
           // (provider_switched); narrow to transcripts before reading
           // transcript-only fields.
           if (msg?.type === 'transcript' && msg.isFinal && msg.text?.trim()) {
-            this.ingestSegment(session.consultationId, { text: msg.text, isFinal: true });
+            // Forward the CORRELATION, not just the words. Every field below is already on the
+            // frame (`SttTranscriptResult`); reading only `msg.text` here is what used to strand
+            // the timing at the socket, so the transcript the graph lane published could not be
+            // reconciled with the audio that produced it.
+            this.ingestSegment(session.consultationId, {
+              text: msg.text,
+              isFinal: true,
+              // The utterance ordinal IS the segment's identity on this stream, so use it as the
+              // id rather than the `seg-N` counter `ingestSegment` falls back to — that counter is
+              // this service's arrival order, which diverges from the producer's the moment a
+              // frame is dropped or replayed.
+              segmentId: msg.utteranceIndex !== undefined ? `utt-${msg.utteranceIndex}` : undefined,
+              startTime: msg.startTime,
+              endTime: msg.endTime,
+              utteranceIndex: msg.utteranceIndex,
+              // `speakerLabel` is the anonymous human-readable name the bridge derives once from
+              // `speakerId`; `speakerId` is the raw diarization cluster. Prefer the label and fall
+              // back to the id — carrying both would leave a consumer to guess which identifies.
+              speaker: msg.speakerLabel ?? msg.speakerId,
+              speakerConfidence: msg.speakerConfidence,
+              // `detectedLanguage`, not the session's configured mode: this field exists to say
+              // what was actually SPOKEN in this utterance, which is the whole point of it on a
+              // code-switched capture. Absent for engines that do not detect.
+              language: msg.detectedLanguage,
+              resultType: msg.resultType,
+              stableChars: msg.stableChars,
+              pipelineId: msg.pipelineId,
+              // `{ word, start, end, confidence }` on the wire; `text` here, matching the segment
+              // schema. A null confidence (Whisper reports none) is dropped rather than coerced
+              // to 0, which a consumer would read as "certainly wrong".
+              words: msg.wordTimestamps?.map((w) => ({
+                text: w.word,
+                start: w.start,
+                end: w.end,
+                ...(w.confidence === null ? {} : { confidence: w.confidence }),
+              })),
+              receivedAtMs: Date.now(),
+              // `seq` and `inferenceMs` are deliberately ABSENT, not forgotten: the bridge's
+              // Redis projection (`projectAndEmitResult`) does not carry `inference_ms`, and the
+              // monotonic transcript `seq` is assigned further downstream, by the WS gateway as it
+              // forwards to a socket client. Neither is knowable here, and inventing one would put
+              // a number in a field whose only purpose is to be trusted.
+            });
           }
         },
         error: (error) => {
