@@ -33,6 +33,28 @@ export function modelReadinessLabel(model: Pick<CatalogueModel, 'readiness'>): s
   return READINESS_LABEL[model.readiness] ?? model.readiness;
 }
 
+/**
+ * TASK-952 D-5 — the catalogue's `usable: false` machine reason codes
+ * (`packages/applications/src/services/ai-model/aiModel.service.ts`), mapped to short,
+ * actionable guidance for the Provider/Model selects. `no-enabled-connection` and
+ * `credential-missing` both name the SAME two-step fix (enable the connection, add a
+ * credential) — a caller who only did one step still reads the same actionable text,
+ * which is exactly the gap the reported user fell into. An UNKNOWN code is never
+ * swallowed: `reasonGuidance` falls through to the raw code so a new one is visible,
+ * not hidden behind a generic "unavailable".
+ */
+const REASON_GUIDANCE: Record<string, string> = {
+  'no-enabled-connection': 'enable it with a credential on AI Providers',
+  'credential-missing': 'enable it with a credential on AI Providers',
+  'weights-not-available': 'model weights are not available yet',
+  'connection-resolver-unavailable': 'provider connections are unavailable right now',
+  'platform-credential-not-entitled': 'not included in your plan — add your own credential',
+};
+
+export function reasonGuidance(reason: string): string {
+  return REASON_GUIDANCE[reason] ?? reason;
+}
+
 /** The catalogue for one agent task — shared by the primary-model picker and the fallback list. */
 export function useTaskModelCatalogue(task: AgentTask) {
   const query = useModelCatalogue({ taskType: AGENT_TASK_MODEL_TASK_TYPE[task] });
@@ -42,12 +64,12 @@ export function useTaskModelCatalogue(task: AgentTask) {
 }
 
 function providerLabel(provider: CatalogueProvider): string {
-  return `${provider.name}${provider.group === 'byo' ? ' (BYO)' : ''}${provider.usable ? '' : ` — ${provider.reason ?? 'unavailable'}`}`;
+  return `${provider.name}${provider.group === 'byo' ? ' (BYO)' : ''}${provider.usable ? '' : ` — ${reasonGuidance(provider.reason ?? 'unavailable')}`}`;
 }
 
 function modelLabel(model: CatalogueModel): string {
   const readiness = model.providerClass === 'cloud-byo' ? '' : ` · ${modelReadinessLabel(model)}`;
-  const unusable = model.usable ? '' : ` — ${model.unusableReason ?? 'unavailable'}`;
+  const unusable = model.usable ? '' : ` — ${reasonGuidance(model.unusableReason ?? 'unavailable')}`;
   return `${model.name}${readiness}${unusable}`;
 }
 
