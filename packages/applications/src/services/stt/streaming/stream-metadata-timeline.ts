@@ -178,12 +178,7 @@ export function setMetadataAt(spans: readonly MetadataSpan[], atSeconds: number,
  * A window that starts before the first mark simply gets no coverage for that stretch. Nothing
  * WAS in force then, and inventing a value for it would be worse than the gap.
  */
-export function clipSpansToWindow(
-  spans: readonly MetadataSpan[],
-  startTime: number,
-  endTime: number,
-  openEnd: number,
-): ClippedMetadataSpan[] {
+export function clipSpansToWindow(spans: readonly MetadataSpan[], startTime: number, endTime: number, openEnd: number): ClippedMetadataSpan[] {
   if (spans.length === 0) return [];
 
   const windowStart = Number.isFinite(startTime) ? startTime : 0;
@@ -205,6 +200,34 @@ export function clipSpansToWindow(
   }
 
   return clipped;
+}
+
+/**
+ * The ONE metadata object a segment is reported under — the v1 wire shape (`transcript.metadata`
+ * was the client's blob, flat), kept because that is what an integrator's speaker-labelling code
+ * already reads (`metadata.mic_id`).
+ *
+ * Chosen from the segment's CLIPPED spans: the value in force over the LARGEST share of its audio;
+ * a tie goes to the EARLIER span (what was in force when the segment started). A zero-width window
+ * has one instantaneous span and that is the answer. `undefined` when there are no spans — the
+ * caller omits the field, exactly as it omits `metadataSpans`.
+ *
+ * The full boundaries stay available beside it as `metadataSpans`, so a consumer that wants to
+ * split a segment that straddled a microphone switch can; this picks the label for one that does
+ * not want to.
+ */
+export function metadataInForce(clipped: readonly ClippedMetadataSpan[]): Record<string, unknown> | undefined {
+  let best: ClippedMetadataSpan | undefined;
+  let bestShare = -1;
+  for (const span of clipped) {
+    const share = span.to - span.from;
+    // Strict `>`: an equal share never displaces the span that came first.
+    if (share > bestShare) {
+      best = span;
+      bestShare = share;
+    }
+  }
+  return best?.value;
 }
 
 /**

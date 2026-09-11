@@ -208,22 +208,27 @@ export interface SttTranscriptResult {
   /** This segment's session {@link StreamSessionResponse.sessionEpochMs}, repeated for convenience. */
   sessionEpochMs?: number;
   /**
-   * TASK-951 — the metadata that was in force over THIS segment's audio, TIME-SYNCED to it.
+   * The metadata in force over THIS segment's audio, verbatim and flat (TASK-951) — the
+   * object you last passed to `setMetadata` before this stretch of audio, so labelling code
+   * reads `t.metadata.mic_id` and nothing more. A declaration is STICKY: audio sent without a
+   * new one inherits the last.
    *
-   * Set with {@link RealtimeSttSocket.setMetadata} while you stream. Each entry covers a
-   * stretch of this segment and carries the object that was in force over it; `from`/`to` are
-   * in the same session-relative seconds as `startTime`/`endTime` and are already clipped to
-   * this segment, so you never have to reason about the session's clock to place them.
+   * If you switched mid-segment, this is the value in force over the larger share of it (a tie
+   * goes to the earlier); the exact bounds are in {@link SttTranscriptResult.metadataSpans}.
    *
-   * ONE entry is the common case. TWO OR MORE mean you changed the metadata mid-utterance — a
-   * second microphone opened while someone was still speaking — and HOPE reports that rather
-   * than stamping the segment with whichever value was current when decoding finished.
-   *
-   * ABSENT (not `[]`) on a session that never called `setMetadata`. Independent of
+   * ABSENT on a session that never called `setMetadata`. Independent of
    * {@link SttTranscriptResult.context}: `context` is what the session IS, this is what was
    * happening while it recorded.
    */
-  metadata?: SttMetadataSpan[];
+  metadata?: Record<string, unknown>;
+  /**
+   * The same declarations time-synced within this segment (TASK-951): each entry covers a stretch
+   * of it, `from`/`to` in the same session-relative seconds as `startTime`/`endTime` and already
+   * clipped to the segment. ONE entry is the common case; two or more mean you switched
+   * mid-utterance, and a consumer that wants to split the segment at the switch can. Present
+   * exactly when `metadata` is.
+   */
+  metadataSpans?: SttMetadataSpan[];
   [key: string]: unknown;
 }
 
@@ -231,7 +236,7 @@ export interface SttTranscriptResult {
  * One stretch of a segment's audio and the metadata that was in force over it.
  *
  * `value` is YOUR object, verbatim — HOPE echoes it and never interprets it. The common shape
- * is `{ mic_ids: ['mic-1', 'mic-2'] }`, but any JSON object under 2 KB is accepted (and, where
+ * is `{ mic_id: 'mic-2' }`, but any JSON object under 2 KB is accepted (and, where
  * the session's ASR agent binds a context schema with a stream-identity kind, must satisfy it).
  */
 export interface SttMetadataSpan {

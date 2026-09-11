@@ -11,6 +11,7 @@ import {
 } from '../../baseServices/observability/trace-propagation';
 import { StreamSessionEcho, StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
+import { metadataInForce } from './stream-metadata-timeline';
 
 /**
  * XREAD BLOCK window in milliseconds. 500 (down from
@@ -812,6 +813,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // during. `undefined` when the session declared an accessor but nothing was ever set (and
     // when it declared none at all), which is the difference between "no spans" and `[]`.
     const metadataSpans = sessionEcho?.metadataSpans?.(startTime, endTime);
+    // The ONE object the segment is reported under — the v1 shape (`metadata.mic_id`) that an
+    // integrator's speaker-labelling code already reads: the value in force over the largest
+    // share of the segment (a tie goes to the earlier). The exact bounds ride beside it as
+    // `metadataSpans`, for the consumer that wants to split a segment that straddled a switch.
+    const metadata = metadataSpans && metadataSpans.length > 0 ? metadataInForce(metadataSpans) : undefined;
 
     subject.next({
       type: 'transcript',
@@ -838,11 +844,15 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       // emits exactly the fields it emitted before this ticket.
       ...(sessionEcho?.context ? { context: sessionEcho.context } : {}),
       ...(sessionEcho?.context && sessionEcho.sessionEpochMs != null ? { sessionEpochMs: sessionEcho.sessionEpochMs } : {}),
-      // TASK-951 R2 (clarified) — the time-synced half. Spread on a non-empty array only: a
-      // session that never sent a `metadata` frame must not start shipping an empty array to
-      // every consumer that has been parsing this wire for a year. Independent of `context`
-      // above — a client may use either, both or neither.
-      ...(metadataSpans && metadataSpans.length > 0 ? { metadata: metadataSpans } : {}),
+      // TASK-951 R2 (clarified) — the time-synced half, in two keys derived from ONE timeline
+      // read: `metadata` is the object in force over this segment (flat, verbatim — the shape
+      // the v1 pipeline echoed), `metadataSpans` its exact bounds within the segment. Both are
+      // spread only when something was ever declared: a session that never sent a `metadata`
+      // frame must not start shipping an empty object or array to every consumer that has been
+      // parsing this wire for a year. Independent of `context` above — a client may use either,
+      // both or neither.
+      ...(metadata ? { metadata } : {}),
+      ...(metadataSpans && metadataSpans.length > 0 ? { metadataSpans } : {}),
     });
     return false;
   }

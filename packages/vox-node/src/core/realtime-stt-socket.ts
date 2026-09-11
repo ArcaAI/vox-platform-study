@@ -241,16 +241,17 @@ export class RealtimeSttSocket {
   /**
    * TASK-951 — declare the metadata in force from HERE ON, in this session's audio.
    *
-   * Call it whenever what you are capturing changes — a second microphone opens, a participant
-   * leaves — and HOPE returns the result time-synced: every transcript carries
-   * {@link SttTranscriptResult.metadata}, the spans of ITS OWN audio window and the object that
-   * was in force over each, clipped to that segment. A change mid-utterance produces two spans
-   * on that utterance rather than one wrong label.
+   * Call it whenever what you are capturing changes — the live microphone switches, a participant
+   * takes over — and HOPE returns the result time-synced: every transcript carries
+   * {@link SttTranscriptResult.metadata}, the object that was in force over ITS OWN audio
+   * (sticky: audio sent without a new declaration inherits the last), and
+   * {@link SttTranscriptResult.metadataSpans}, its exact bounds within the segment.
    *
    * ```ts
-   * socket.setMetadata({ mic_ids: ['mic-1'] });          // before the first frame
+   * socket.setMetadata({ mic_id: 'mic-1' }); // before the first frame
    * // …stream…
-   * socket.setMetadata({ mic_ids: ['mic-1', 'mic-2'] }); // a second mic joins
+   * socket.setMetadata({ mic_id: 'mic-2' }); // the other microphone is live now
+   * // …transcripts carry `metadata.mic_id` = whichever was live over their audio…
    * ```
    *
    * There is no timestamp to pass, and that is deliberate: you cannot know how much of your

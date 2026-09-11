@@ -15,13 +15,13 @@ need to call HOPE from a Node service, script, or worker.
 runtime, not React, and not the audio/ML stack.** These are two separate
 packages with two separate purposes:
 
-| | `@arcaai/vox-node` (this package) | `@arcaai/vox` |
-|---|---|---|
-| Environment | Node >= 22 (also Bun/Deno/edge) | Browser only |
-| React | Not a dependency at all | Required peer dependency |
-| Audio/VAD/STT/ML | No audio PIPELINE (see below) | Core capability |
-| State | None — stateless method calls | Zustand store, session lifecycle |
-| Use case | Backend services calling HOPE | In-browser consultation capture |
+|                  | `@arcaai/vox-node` (this package) | `@arcaai/vox`                    |
+| ---------------- | --------------------------------- | -------------------------------- |
+| Environment      | Node >= 22 (also Bun/Deno/edge)   | Browser only                     |
+| React            | Not a dependency at all           | Required peer dependency         |
+| Audio/VAD/STT/ML | No audio PIPELINE (see below)     | Core capability                  |
+| State            | None — stateless method calls     | Zustand store, session lifecycle |
+| Use case         | Backend services calling HOPE     | In-browser consultation capture  |
 
 If you are building a web UI that records audio or drives a live
 consultation from the browser, you want `@arcaai/vox`, not this package. If you
@@ -34,13 +34,14 @@ Since 3.2.0 this package speaks HOPE's realtime STT wire protocol
 (`RealtimeSttSocket`, [below](#realtime-consultations)): it frames PCM16 up a
 WebSocket and decodes transcripts down. What it does not do — and never will —
 is capture, VAD, denoise, or run a model. Which ASR runs is the tenant's
-published `SPEECH_TO_TEXT` agent, resolved by the gateway; *the browser never
-runs a model*, and neither does this SDK.
+published `SPEECH_TO_TEXT` agent, resolved by the gateway; _the browser never
+runs a model_, and neither does this SDK.
 
 This package has **zero runtime dependencies** — only the standard `fetch`,
 `AbortSignal`, Web Crypto (`crypto.getRandomValues`), and `ReadableStream`
 globals (the WinterTC common minimum). One build runs unmodified on Node
->= 22, Bun, Deno, and most edge runtimes.
+
+> = 22, Bun, Deno, and most edge runtimes.
 
 ## Install
 
@@ -89,20 +90,20 @@ The SDK supports **two credential classes**, and which one you hold decides
 which half of the platform you can reach. Pick one — supplying both throws at
 construction, because the gateway rejects a request carrying two.
 
-| | **API key** | **Service account** |
-|---|---|---|
-| Option | `apiKey` | `serviceAccount` |
-| Header | `X-API-Key` | `X-Service-Account-Token` |
-| Reaches the business plane | yes | yes, for the standalone features |
-| Reaches `/admin/*` | **never** | **yes** — this is the only way |
-| Issued by | a tenant admin | a **platform** super-admin |
-| Shape | one long-lived secret | `clientId` + `clientSecret`, exchanged for a short-lived token |
+|                            | **API key**           | **Service account**                                            |
+| -------------------------- | --------------------- | -------------------------------------------------------------- |
+| Option                     | `apiKey`              | `serviceAccount`                                               |
+| Header                     | `X-API-Key`           | `X-Service-Account-Token`                                      |
+| Reaches the business plane | yes                   | yes, for the standalone features                               |
+| Reaches `/admin/*`         | **never**             | **yes** — this is the only way                                 |
+| Issued by                  | a tenant admin        | a **platform** super-admin                                     |
+| Shape                      | one long-lived secret | `clientId` + `clientSecret`, exchanged for a short-lived token |
 
 > **There is a third credential class this SDK deliberately does not carry: the user JWT.** A
-> gateway JWT is bound to one *user*, for one short session, and is refreshable and revocable; it
+> gateway JWT is bound to one _user_, for one short session, and is refreshable and revocable; it
 > is what a user-facing frontend should authenticate with, and
 > [`@arcaai/vox`](../agentic-sdk-v2/README.md) is JWT-first for exactly that reason. Both
-> credentials here are *machine* identities with no bound session, which is the right shape for a
+> credentials here are _machine_ identities with no bound session, which is the right shape for a
 > server and the wrong shape for a browser.
 >
 > The line is credential class, not privilege. Scopes bind the **credential**; abilities bind the
@@ -130,7 +131,7 @@ const hope = new HopeClient({
 
 An API key **cannot reach `/admin/*` under any scope**, including `*`. That is
 policy, not an oversight: every admin controller carries `@ForbidApiKey()`,
-which is checked *before* the scope check, and a boot audit fails the gateway's
+which is checked _before_ the scope check, and a boot audit fails the gateway's
 startup if an admin route ever declares an API-key scope again. Use a service
 account.
 
@@ -155,14 +156,14 @@ const page = await hope.admin.tenant.list({ query: { page: 0, limit: 50 } });
 
 **The exchange is invisible to you.** Construction never touches the network;
 the first call exchanges lazily, the token is cached and refreshed on a margin
-*before* expiry, concurrent calls during a refresh collapse to a single
+_before_ expiry, concurrent calls during a refresh collapse to a single
 exchange, and a token revoked mid-flight is re-exchanged once and the call
 retried. Neither the secret nor the token can reach a log line or an error
 message.
 
 > **`workingTenantId` binds at EXCHANGE time, not per request.** This is the one
 > place API-key intuition misleads. With a key you may send `X-Tenant-Id` per
-> call; a service-account token *carries* its working tenant, fixed when the
+> call; a service-account token _carries_ its working tenant, fixed when the
 > token was minted, and the SDK never sends `X-Tenant-Id` alongside it. Pass
 > `serviceAccount.workingTenantId` to choose it at exchange; omit it and a
 > platform account resolves the SYSTEM tenant. Supplying top-level `tenantId`
@@ -186,27 +187,27 @@ API-key auth path (JWT-authenticated callers are unaffected). A key holding
 honored). If your key is scoped narrower than `consultation:*`, match it to
 the methods you actually call:
 
-| SDK method | Route | Required scope (API key) |
-|---|---|---|
-| `consultations.open` | `POST /api/v1/consultations/open` | `consultation:session:write` |
-| `consultations.recording.start` / `.stop` | `POST /api/v1/consultations/:id/recording/{start,stop}` | `consultation:session:write` |
-| `consultations.addContext` | `POST /api/v1/consultations/:id/context` | `consultation:session:write` |
-| `consultations.streams.*` | `GET /api/v1/consultations/:id/{live-summary,live-assist,harness-progress,loop}/stream` | `consultation:session:write` |
-| `stt.createStreamSession` / `.refreshTicket` / `.closeStreamSession` | `…/audio/transcription-jobs/stream/session*` | `stt:transcription:write` |
-| `summarization.preSummary` / `.preSummaryStream` | `POST /api/smr/api/v1/presummary` | `consultation:report:write` |
-| `summarization.summary` / `.summaryStream` | `POST /api/smr/api/v1/summary/sync` | `consultation:report:write` |
-| `consultations.summaries.generate` | `POST /api/v1/consultations/:id/summary` | `consultation:report:write` |
-| `consultations.summaries.generatePreSummary` | `POST /api/v1/consultations/:id/summary/pre-summary` | `consultation:report:write` |
-| `consultations.summaries.generateAsync` | `POST /api/v1/consultations/:id/summary/async` | `consultation:report:write` |
-| `consultations.summaries.generatePreSummaryAsync` | `POST /api/v1/consultations/:id/summary/pre-summary/async` | `consultation:report:write` |
-| `consultations.summaries.list` | `GET /api/v1/consultations/:id/summary` | `consultation:report:read` |
-| `consultations.summaries.latest` | `GET /api/v1/consultations/:id/summary/latest` | `consultation:report:read` |
-| `consultations.summaries.latestPreSummary` | `GET /api/v1/consultations/:id/summary/pre-summary/latest` | `consultation:report:read` |
-| `jobs.get` | `GET /api/v1/consultations/jobs/:jobId` | `consultation:session:read` |
-| `jobs.cancel` | `PATCH /api/v1/consultations/jobs/:jobId/cancel` | `consultation:session:read` |
-| `jobs.stream` / `jobs.subscribe` / `jobs.waitFor` | `GET /api/v1/consultations/jobs/:jobId/stream` | `consultation:session:read` |
-| `consultations.summaries.update` | `PATCH /api/v1/consultations/:id/summary/:summaryId` | `consultation:report:write` |
-| `consultations.get` | `GET /api/v1/consultations/:id` | `consultation:session:read` |
+| SDK method                                                           | Route                                                                                   | Required scope (API key)     |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------- |
+| `consultations.open`                                                 | `POST /api/v1/consultations/open`                                                       | `consultation:session:write` |
+| `consultations.recording.start` / `.stop`                            | `POST /api/v1/consultations/:id/recording/{start,stop}`                                 | `consultation:session:write` |
+| `consultations.addContext`                                           | `POST /api/v1/consultations/:id/context`                                                | `consultation:session:write` |
+| `consultations.streams.*`                                            | `GET /api/v1/consultations/:id/{live-summary,live-assist,harness-progress,loop}/stream` | `consultation:session:write` |
+| `stt.createStreamSession` / `.refreshTicket` / `.closeStreamSession` | `…/audio/transcription-jobs/stream/session*`                                            | `stt:transcription:write`    |
+| `summarization.preSummary` / `.preSummaryStream`                     | `POST /api/smr/api/v1/presummary`                                                       | `consultation:report:write`  |
+| `summarization.summary` / `.summaryStream`                           | `POST /api/smr/api/v1/summary/sync`                                                     | `consultation:report:write`  |
+| `consultations.summaries.generate`                                   | `POST /api/v1/consultations/:id/summary`                                                | `consultation:report:write`  |
+| `consultations.summaries.generatePreSummary`                         | `POST /api/v1/consultations/:id/summary/pre-summary`                                    | `consultation:report:write`  |
+| `consultations.summaries.generateAsync`                              | `POST /api/v1/consultations/:id/summary/async`                                          | `consultation:report:write`  |
+| `consultations.summaries.generatePreSummaryAsync`                    | `POST /api/v1/consultations/:id/summary/pre-summary/async`                              | `consultation:report:write`  |
+| `consultations.summaries.list`                                       | `GET /api/v1/consultations/:id/summary`                                                 | `consultation:report:read`   |
+| `consultations.summaries.latest`                                     | `GET /api/v1/consultations/:id/summary/latest`                                          | `consultation:report:read`   |
+| `consultations.summaries.latestPreSummary`                           | `GET /api/v1/consultations/:id/summary/pre-summary/latest`                              | `consultation:report:read`   |
+| `jobs.get`                                                           | `GET /api/v1/consultations/jobs/:jobId`                                                 | `consultation:session:read`  |
+| `jobs.cancel`                                                        | `PATCH /api/v1/consultations/jobs/:jobId/cancel`                                        | `consultation:session:read`  |
+| `jobs.stream` / `jobs.subscribe` / `jobs.waitFor`                    | `GET /api/v1/consultations/jobs/:jobId/stream`                                          | `consultation:session:read`  |
+| `consultations.summaries.update`                                     | `PATCH /api/v1/consultations/:id/summary/:summaryId`                                    | `consultation:report:write`  |
+| `consultations.get`                                                  | `GET /api/v1/consultations/:id`                                                         | `consultation:session:read`  |
 
 > **The two "no scope declared" rows this table used to carry are gone.**
 > `updateSummary` and `getById` genuinely had no `@RequiredScopes(...)` when
@@ -250,13 +251,13 @@ A service account is granted an explicit set. Two rules that surprise people:
 Five admin areas are machine-closed by owner decision and have **no** generated
 methods, because a method that always 403s is worse than no method:
 
-| Area | Why |
-|---|---|
-| `admin/service-accounts` | Self-replication — a machine must not mint another machine |
-| Impersonation | A machine assuming a person's identity defeats audit attribution: `AuditLog` records exactly one actor, human *or* machine, never both |
-| `admin/consent-grants` | Consent is an act of a person |
-| `admin/monitoring` | Operator telemetry, read by a human on the console |
-| `admin/health/services` | Same, and a fan-out that would amplify an SSRF if driven in a loop |
+| Area                     | Why                                                                                                                                    |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin/service-accounts` | Self-replication — a machine must not mint another machine                                                                             |
+| Impersonation            | A machine assuming a person's identity defeats audit attribution: `AuditLog` records exactly one actor, human _or_ machine, never both |
+| `admin/consent-grants`   | Consent is an act of a person                                                                                                          |
+| `admin/monitoring`       | Operator telemetry, read by a human on the console                                                                                     |
+| `admin/health/services`  | Same, and a fan-out that would amplify an SSRF if driven in a loop                                                                     |
 
 ### Pagination
 
@@ -264,11 +265,13 @@ Every list method comes in two forms. `list()` returns one page; `listIterate()`
 walks all of them.
 
 ```ts
-for await (const tenant of hope.admin.tenant.listIterate()) { /* ... */ }
+for await (const tenant of hope.admin.tenant.listIterate()) {
+  /* ... */
+}
 ```
 
 Prefer the iterator. **Do not hand-roll a page loop off the response's `page`
-and `limit`** — the gateway echoes back the *raw* query values, so omitting them
+and `limit`** — the gateway echoes back the _raw_ query values, so omitting them
 returns `page: undefined, limit: undefined` over a page that really was limited
 to 10, and one endpoint returns `limit: 0` outright. The iterator drives
 pagination from the request side for exactly this reason.
@@ -301,12 +304,12 @@ header, is the precondition.
 HOPE exposes summarization two ways. Pick the one that matches your
 integration:
 
-| | `hope.summarization.*` (stateless) | `hope.consultations.summaries.*` (consultation-bound) |
-|---|---|---|
-| Prerequisite | None — no consultation required | A consultation must already exist |
-| Persistence | None — request in, response out | Persisted, versioned `ContextItemVersion` rows |
-| Wire contract | v1-compat, frozen `snake_case` shapes | v2 native, `camelCase` |
-| When to use | Migrating an existing v1 backend integration; one-off/batch summarization with no HOPE-side record | Building against HOPE's own consultation model — summaries need to be retrievable, listed, or edited later |
+|               | `hope.summarization.*` (stateless)                                                                 | `hope.consultations.summaries.*` (consultation-bound)                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Prerequisite  | None — no consultation required                                                                    | A consultation must already exist                                                                          |
+| Persistence   | None — request in, response out                                                                    | Persisted, versioned `ContextItemVersion` rows                                                             |
+| Wire contract | v1-compat, frozen `snake_case` shapes                                                              | v2 native, `camelCase`                                                                                     |
+| When to use   | Migrating an existing v1 backend integration; one-off/batch summarization with no HOPE-side record | Building against HOPE's own consultation model — summaries need to be retrievable, listed, or edited later |
 
 If you're migrating an existing v1 integration, the compat routes are
 byte-identical to what you already call — swapping a raw `fetch` call for
@@ -318,12 +321,12 @@ request/response reshaping to do.
 A published workflow is a product your backend can invoke. Two families, split
 by what they are allowed to write:
 
-| | `hope.workflows.*` | `hope.consultations.workflows.*` |
-|---|---|---|
-| Runs | A tenant's published workflows, standalone | The same, bound to one consultation |
-| Writes into a clinical record | No | Yes |
-| Ability | `create`/`read`/`update:WorkflowRun`, `list:WorkflowDefinition` | `execute:ConsultationWorkflow` |
-| API-key scopes | `workflow:definition:read`, `workflow:run:read`, `workflow:run:write` | `workflows:execute` |
+|                               | `hope.workflows.*`                                                    | `hope.consultations.workflows.*`    |
+| ----------------------------- | --------------------------------------------------------------------- | ----------------------------------- |
+| Runs                          | A tenant's published workflows, standalone                            | The same, bound to one consultation |
+| Writes into a clinical record | No                                                                    | Yes                                 |
+| Ability                       | `create`/`read`/`update:WorkflowRun`, `list:WorkflowDefinition`       | `execute:ConsultationWorkflow`      |
+| API-key scopes                | `workflow:definition:read`, `workflow:run:read`, `workflow:run:write` | `workflows:execute`                 |
 
 "May run a workflow" and "may run one that writes into a clinical record" are
 deliberately different powers, so they are different routes, abilities and
@@ -331,14 +334,14 @@ scopes — granting the first never implies the second.
 
 ### Which credential reaches what
 
-| Plane | API key | Service account |
-|---|---|---|
-| `hope.agents.*`, `hope.workflows.*` (incl. `.reviews`) | ✅ | ✅ since **3.1.0** |
-| `hope.consultations.*` — open, recording, streams, context, summaries | ✅ | ✅ since **3.2.0** |
-| `hope.consultations.workflows.*` — the CLINICAL workflow plane | ✅ | ✅ since **3.2.0** |
-| `hope.stt.*` — streaming sessions and the realtime socket | ✅ | ✅ since **3.2.0** |
-| `hope.tenants.contextSchema()` | ✅ | ✅ since **3.2.0** |
-| `hope.admin.*` | ❌ never, under any scope | ✅ only |
+| Plane                                                                 | API key                   | Service account    |
+| --------------------------------------------------------------------- | ------------------------- | ------------------ |
+| `hope.agents.*`, `hope.workflows.*` (incl. `.reviews`)                | ✅                        | ✅ since **3.1.0** |
+| `hope.consultations.*` — open, recording, streams, context, summaries | ✅                        | ✅ since **3.2.0** |
+| `hope.consultations.workflows.*` — the CLINICAL workflow plane        | ✅                        | ✅ since **3.2.0** |
+| `hope.stt.*` — streaming sessions and the realtime socket             | ✅                        | ✅ since **3.2.0** |
+| `hope.tenants.contextSchema()`                                        | ✅                        | ✅ since **3.2.0** |
+| `hope.admin.*`                                                        | ❌ never, under any scope | ✅ only            |
 
 Until 3.1.0 the whole workflow plane declared `svcScopes: []` — deny-by-default
 for a service account — and the SDK refused at the call site rather than let you
@@ -401,12 +404,12 @@ for await (const e of hope.consultations.workflows.runAndStream(consultationId, 
 
 ### Following a run
 
-| Method | Use it when |
-|---|---|
-| `getRun(slug, runId)` | One-shot status check. |
-| `streamRun(slug, runId, opts)` | Attach to a run you started earlier — resumable (below). |
-| `waitForRun(slug, runId, opts)` | Same, but you only care about the terminal status. |
-| `cancelRun(slug, runId)` | Signal cancellation. |
+| Method                          | Use it when                                              |
+| ------------------------------- | -------------------------------------------------------- |
+| `getRun(slug, runId)`           | One-shot status check.                                   |
+| `streamRun(slug, runId, opts)`  | Attach to a run you started earlier — resumable (below). |
+| `waitForRun(slug, runId, opts)` | Same, but you only care about the terminal status.       |
+| `cancelRun(slug, runId)`        | Signal cancellation.                                     |
 
 `streamRun` and `runAndStream` **resume**: each frame's opaque `id` is tracked
 and a dropped connection reconnects with `Last-Event-ID`, so a disconnect costs
@@ -478,8 +481,8 @@ rule as `hope.workflows`: an API key **or** a service account (see
 const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL!, apiKey: process.env.HOPE_API_KEY! });
 
 // Discovery — the same predicate the gateway resolves an `agentSlug` with.
-const writers = await hope.agents.list({ task: 'TEXT_GENERATION' });   // GET /api/v1/agents?task=…
-const writer = await hope.agents.get(writers[0].slug);                 // + inputSchema / outputSchema / protocols
+const writers = await hope.agents.list({ task: 'TEXT_GENERATION' }); // GET /api/v1/agents?task=…
+const writer = await hope.agents.get(writers[0].slug); // + inputSchema / outputSchema / protocols
 
 // LLM agent — blocking (60s gateway ceiling → GatewayTimeoutError) or streaming.
 const { output } = await hope.agents.invoke(writer.slug, { note }, { idempotencyKey: visitId });
@@ -487,7 +490,7 @@ for await (const event of hope.agents.invokeAndStream(writer.slug, { note })) co
 
 // TTS agent — the audio body is handed back unbuffered.
 const speech = await hope.agents.synthesize('clinic-tts', { text: 'Take one tablet daily.' });
-await pipeline(Readable.fromWeb(speech.stream!), createWriteStream('advice.mp3'));   // or await speech.arrayBuffer()
+await pipeline(Readable.fromWeb(speech.stream!), createWriteStream('advice.mp3')); // or await speech.arrayBuffer()
 
 // Batch ASR agent — multipart file or an already-uploaded mediaId → a TranscriptionJob.
 const job = await hope.agents.transcribe('clinic-asr', { file: recording, filename: 'visit.wav', language: 'en' });
@@ -524,8 +527,8 @@ the same idempotency key instead.
 
 Realtime transcription is deliberately **not** here: a browser captures audio and
 opens the stream session through `@arcaai/vox` (`audio.start({ agentSlug })`).
-This package has no audio PIPELINE and never will — *the browser never runs a
-model*, and neither does this SDK. `RealtimeSttSocket` is a socket client for the
+This package has no audio PIPELINE and never will — _the browser never runs a
+model_, and neither does this SDK. `RealtimeSttSocket` is a socket client for the
 gateway's `/ws/stt/stream` protocol, not an inference stack; see
 [Realtime consultations](#realtime-consultations).
 
@@ -543,10 +546,10 @@ and needs HOPE to document it.
 // 1. Open — get-or-create. A SERVICE ACCOUNT must name the clinician it acts for.
 const consultation = await hope.consultations.open({
   patientId: 'MRN-4471',
-  clinicianUserId: doctorUserId,   // required for a service account, refused for a human caller
-  departmentId: cardiologyId,      // selects the governing workflow + the department's note shape
-  parentConsultationId: priorId,   // present ⇒ revisit, absent ⇒ new visit. There is no "visit type" field
-  language: 'en',                  // the language the NOTE is written in — not the STT language
+  clinicianUserId: doctorUserId, // required for a service account, refused for a human caller
+  departmentId: cardiologyId, // selects the governing workflow + the department's note shape
+  parentConsultationId: priorId, // present ⇒ revisit, absent ⇒ new visit. There is no "visit type" field
+  language: 'en', // the language the NOTE is written in — not the STT language
 });
 
 // 2. Open the STT session BEFORE recording starts, and hand `start` its id.
@@ -556,18 +559,20 @@ await hope.consultations.recording.start(consultation.id, { sessionId: session.s
 // 3. Watch the note being written.
 const live = hope.consultations.streams.liveSummary(consultation.id, {
   onSnapshot: (event) => render(event.runningSummary, event.sections),
-  onSectionPatch: (patch) => applyIfNewer(patch),      // discard revision <= the one you hold
-  onPreSummary: (warm) => showWarmStart(warm.status),  // running → ready | degraded
+  onSectionPatch: (patch) => applyIfNewer(patch), // discard revision <= the one you hold
+  onPreSummary: (warm) => showWarmStart(warm.status), // running → ready | degraded
   onClosed: () => log('live summary finished'),
-  onError: (error) => log.error(error),                // required — a 403 must never vanish
+  onError: (error) => log.error(error), // required — a 403 must never vanish
 });
 
 // 4. Stream PCM16 LE mono up the socket.
 const socket = hope.stt.socket(session);
-socket.on('transcript', (t) => { if (t.isFinal) appendCaption(t.text); });
+socket.on('transcript', (t) => {
+  if (t.isFinal) appendCaption(t.text);
+});
 await socket.connect();
 for await (const frame of pcm16Frames) socket.sendPcm16(frame);
-socket.finalize();  // finalize the utterance — this ALSO ends the session; no separate close() needed
+socket.finalize(); // finalize the utterance — this ALSO ends the session; no separate close() needed
 
 // 5. Stop, then read the finished note.
 await hope.consultations.recording.stop(consultation.id, { persistSnapshot: true });
@@ -580,12 +585,12 @@ const note = await hope.consultations.summaries.latest(consultation.id);
 Four details decide how HOPE documents a visit, and all four are supplied once,
 on `open`:
 
-| Field | What it decides |
-|---|---|
-| `clinicianUserId` | lands on `Consultation.doctorId` — the DNA writing style, the redaction gate, the doctor's report, the prompt tier, and who the audit names as the clinician |
-| `departmentId` | the governing workflow (`DEPARTMENT → TENANT` assignment), the department's note shape, and its context schema |
-| `parentConsultationId` | the visit type: absent = new visit, present = revisit (the graph branches on it, and a revisit carries the prior visit's context) |
-| `language` | the language the generated note is written in. Independent of the STT language mode |
+| Field                  | What it decides                                                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `clinicianUserId`      | lands on `Consultation.doctorId` — the DNA writing style, the redaction gate, the doctor's report, the prompt tier, and who the audit names as the clinician |
+| `departmentId`         | the governing workflow (`DEPARTMENT → TENANT` assignment), the department's note shape, and its context schema                                               |
+| `parentConsultationId` | the visit type: absent = new visit, present = revisit (the graph branches on it, and a revisit carries the prior visit's context)                            |
+| `language`             | the language the generated note is written in. Independent of the STT language mode                                                                          |
 
 A machine is **never** recorded as the clinician. A service-account call is
 audited as the ACTOR beside the clinician it acted for — which is exactly why
@@ -616,12 +621,12 @@ resolution/provisioning contract and its error codes.
 
 ### The four live planes are not the same shape
 
-| `hope.consultations.streams.…` | Shape | Ends itself? |
-|---|---|---|
-| `liveSummary(id, handlers)` | THREE payload kinds on one channel — a whole-document snapshot, a `section.patch`, a `presummary` | yes, on `closed: true` |
-| `liveAssist(id, handlers)` | one snapshot; a publish replaces only the branch it carries. **Carries PHI** | no |
-| `harnessProgress(id, handlers)` | snapshot fold — the full stage list every time. No PHI | yes, on `closed: true` |
-| `loop(id, handlers)` | APPEND-ONLY: self-contained events, no fold, no late-join replay | no |
+| `hope.consultations.streams.…`  | Shape                                                                                             | Ends itself?           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------- |
+| `liveSummary(id, handlers)`     | THREE payload kinds on one channel — a whole-document snapshot, a `section.patch`, a `presummary` | yes, on `closed: true` |
+| `liveAssist(id, handlers)`      | one snapshot; a publish replaces only the branch it carries. **Carries PHI**                      | no                     |
+| `harnessProgress(id, handlers)` | snapshot fold — the full stage list every time. No PHI                                            | yes, on `closed: true` |
+| `loop(id, handlers)`            | APPEND-ONLY: self-contained events, no fold, no late-join replay                                  | no                     |
 
 Each returns a `{ close() }` handle. `onError` is **required** on every one of
 them: a subscription is fire-and-forget, so a 403 with nowhere to go looks
@@ -685,7 +690,7 @@ tells captions apart by source without keeping an out-of-band map:
 ```ts
 const session = await hope.stt.createStreamSession({
   agentSlug: 'realtime-transcription',
-  context: { stream: { mic_ids: ['left'] } },
+  context: { stream: { mic_id: 'left' } },
 });
 const socket = hope.stt.socket(session);
 socket.on('transcript', (t) => attribute(t.context?.stream, t.text));
@@ -693,30 +698,35 @@ socket.on('transcript', (t) => attribute(t.context?.stream, t.text));
 
 ### Metadata that changes WHILE you record (TASK-951)
 
-When the set of live microphones changes during a recording, a session-level `context` cannot
-express it. `setMetadata` declares what is in force from the current point in the audio onward,
-and every transcript comes back carrying the spans of ITS OWN window — so a change mid-utterance
-is reported as two spans on that utterance, not one wrong label:
+When the live microphone changes during a recording, a session-level `context` cannot express it.
+`setMetadata` declares what is in force from the current point in the audio onward — sticky until
+the next declaration — and every transcript comes back carrying the object that was in force over
+ITS OWN audio, so a segment recorded after the switch is labelled with the new microphone and one
+recorded before it keeps the old:
 
 ```ts
 const socket = hope.stt.socket(session);
 await socket.connect();
 
-socket.setMetadata({ mic_ids: ['mic-1'] });            // the clinician's mic
+socket.setMetadata({ mic_id: 'mic-1' }); // the clinician's microphone is live
 await pump(socket, firstChunk);
-socket.setMetadata({ mic_ids: ['mic-1', 'mic-2'] });   // the patient's mic joins
+socket.setMetadata({ mic_id: 'mic-2' }); // the patient's microphone is live now
 await pump(socket, restOfTheRecording);
 
-socket.on('transcript', (t) => console.log(t.metadata));
-// [ { from: 12.0, to: 13.4, value: { mic_ids: ['mic-1'] } },
-//   { from: 13.4, to: 15.1, value: { mic_ids: ['mic-1', 'mic-2'] } } ]
+socket.on('transcript', (t) => console.log(t.startTime, t.endTime, t.metadata, t.metadataSpans));
+// 12.0 13.2 { mic_id: 'mic-1' } [ { from: 12.0, to: 13.2, value: { mic_id: 'mic-1' } } ]
+// 13.2 15.1 { mic_id: 'mic-2' } [ { from: 13.2, to: 13.4, value: { mic_id: 'mic-1' } },
+//                                 { from: 13.4, to: 15.1, value: { mic_id: 'mic-2' } } ]
 ```
 
-`from`/`to` are in the same session-relative seconds as `startTime`/`endTime`, already clipped to
-the segment. You pass no timestamp: HOPE places each declaration on its own count of the audio you
-have sent, the same quantity the ASR derives segment times from. Re-stating the current value is
-free (the server coalesces it), an object over 2 KB throws `RangeError` at the call site, and a
-session that never calls `setMetadata` gets no `metadata` field at all.
+`metadata` is the flat object — the shape the v1 pipeline echoed, so `metadata.mic_id` reads as it
+always did. When a switch fell inside a segment it is the value in force over the larger share of
+that segment; `metadataSpans` carries the exact bounds (session-relative seconds, the same clock as
+`startTime`/`endTime`, already clipped to the segment) for a consumer that wants to split it. You
+pass no timestamp: HOPE places each declaration on its own count of the audio you have sent, the
+same quantity the ASR derives segment times from. Re-stating the current value is free (the server
+coalesces it), an object over 2 KB throws `RangeError` at the call site, and a session that never
+calls `setMetadata` gets neither field.
 
 ## Streaming
 
@@ -783,15 +793,15 @@ const { webhook, rawSecret } = await hope.admin.webhookEvent.create({
 // show it again — persist it now or rotate to get a new one.
 ```
 
-| Method | What it does |
-|---|---|
-| `create(body)` | Subscribe. Returns `{ webhook, rawSecret }` — the only sight of the secret. |
-| `fetchAll(opts)` / `fetchAllIterate(opts)` | List subscriptions (paginated; the `Iterate` form is an async iterator). |
-| `fetchById(id)` | One subscription. |
-| `update(id, body, { ifMatch })` | Change url/name/resource type. Versioned — see [Optimistic concurrency](#optimistic-concurrency). |
-| `rotateSecret(id, body, { ifMatch })` | Issue a new signing secret; returns it once, like `create`. **No overlap window** — the previous secret dies immediately, so deploy the new one before rotating. Versioned. |
-| `fetchDeliveries(id)` / `fetchDeliveriesIterate(id)` | Delivery history — status, response code, attempts. Start debugging here. |
-| `delete(id)` | Unsubscribe. |
+| Method                                               | What it does                                                                                                                                                                |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create(body)`                                       | Subscribe. Returns `{ webhook, rawSecret }` — the only sight of the secret.                                                                                                 |
+| `fetchAll(opts)` / `fetchAllIterate(opts)`           | List subscriptions (paginated; the `Iterate` form is an async iterator).                                                                                                    |
+| `fetchById(id)`                                      | One subscription.                                                                                                                                                           |
+| `update(id, body, { ifMatch })`                      | Change url/name/resource type. Versioned — see [Optimistic concurrency](#optimistic-concurrency).                                                                           |
+| `rotateSecret(id, body, { ifMatch })`                | Issue a new signing secret; returns it once, like `create`. **No overlap window** — the previous secret dies immediately, so deploy the new one before rotating. Versioned. |
+| `fetchDeliveries(id)` / `fetchDeliveriesIterate(id)` | Delivery history — status, response code, attempts. Start debugging here.                                                                                                   |
+| `delete(id)`                                         | Unsubscribe.                                                                                                                                                                |
 
 The scope is `svc:webhook:event:write`, which **predates the `svc:admin:*`
 convention and is therefore NOT granted by `svc:admin:*`** — ask for it
@@ -819,7 +829,7 @@ PHI included, to a third-party endpoint:
   "resourceId": "0192…",
   "tenantId": "5000…",
   "occurredAt": "2026-09-03T10:15:30.000Z",
-  "fetchUrl": "https://api.example.com/api/v1/admin/consultations/0192…"
+  "fetchUrl": "https://api.example.com/api/v1/admin/consultations/0192…",
 }
 ```
 
@@ -856,7 +866,7 @@ Three things that silently break verification:
 - **Using the hashed secret.** The signing key is the `rawSecret` from `create`
   or `rotateSecret`, not anything readable from `fetchById` later.
 - **Treating a missing header as unsigned.** A subscription created without a
-  secret is not signed at all; one created *with* one always is. If your
+  secret is not signed at all; one created _with_ one always is. If your
   handler falls through when the header is absent, an attacker just omits it.
 
 `verifyWebhookSignature` never throws — a malformed header, a wrong secret or a
@@ -870,7 +880,7 @@ Any resource type whose service broadcasts a sys-event on mutation — which is
 most of the CRUD surface (`Consultation`, `Department`, `User`, `ApiKey`,
 `Tenant`, `WorkflowDefinition`, `WorkflowAssignment`, …).
 
-**Workflow *runs* are not among them.** `WorkflowRun` is deliberately exempt
+**Workflow _runs_ are not among them.** `WorkflowRun` is deliberately exempt
 from sys-events, so there is no "run completed" webhook to subscribe to today —
 see [Known gateway quirks](#known-gateway-quirks-the-sdk-deliberately-does-not-hide)
 and, for the full analysis, the
@@ -883,18 +893,18 @@ Every non-2xx gateway response is thrown as a typed subclass of
 `HopeAPIError`, so you can `catch` a specific class instead of switching on
 `error.status`:
 
-| Class | HTTP status | Meaning |
-|---|---|---|
-| `AuthenticationError` | 401 | The API key (or bearer token) is missing, invalid, or expired. |
-| `PermissionError` | 403 | A privilege boundary — e.g. a super-admin-only action attempted by a tenant admin. |
-| `NotFoundError` | 404 | See the callout below before treating this as "wrong route". |
-| `QuotaExceededError` | 409 | An entitlements quota (quantity-capped resource) was exceeded. |
-| `VersionConflictError` | 412 | Optimistic-concurrency conflict; carries `currentVersion` when the server reported it. |
-| `PreconditionRequiredError` | 428 | A versioned route required `If-Match` and none was sent. |
-| `RateLimitError` | 429 | Rate limited; carries `retryAfterMs` when the server sent `Retry-After`. |
-| `APIConnectionError` | *(no HTTP status — `status: 0`)* | No response was ever received: DNS failure, connection refused, TLS error, or a non-caller abort. |
-| `APITimeoutError` | *(subclass of `APIConnectionError`)* | The request exceeded its configured timeout. |
-| `HopeAPIError` | any other status | Base class — every subclass above extends it, so `catch (err) { if (err instanceof HopeAPIError) ... }` catches all of them uniformly. |
+| Class                       | HTTP status                          | Meaning                                                                                                                                |
+| --------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `AuthenticationError`       | 401                                  | The API key (or bearer token) is missing, invalid, or expired.                                                                         |
+| `PermissionError`           | 403                                  | A privilege boundary — e.g. a super-admin-only action attempted by a tenant admin.                                                     |
+| `NotFoundError`             | 404                                  | See the callout below before treating this as "wrong route".                                                                           |
+| `QuotaExceededError`        | 409                                  | An entitlements quota (quantity-capped resource) was exceeded.                                                                         |
+| `VersionConflictError`      | 412                                  | Optimistic-concurrency conflict; carries `currentVersion` when the server reported it.                                                 |
+| `PreconditionRequiredError` | 428                                  | A versioned route required `If-Match` and none was sent.                                                                               |
+| `RateLimitError`            | 429                                  | Rate limited; carries `retryAfterMs` when the server sent `Retry-After`.                                                               |
+| `APIConnectionError`        | _(no HTTP status — `status: 0`)_     | No response was ever received: DNS failure, connection refused, TLS error, or a non-caller abort.                                      |
+| `APITimeoutError`           | _(subclass of `APIConnectionError`)_ | The request exceeded its configured timeout.                                                                                           |
+| `HopeAPIError`              | any other status                     | Base class — every subclass above extends it, so `catch (err) { if (err instanceof HopeAPIError) ... }` catches all of them uniformly. |
 
 Streaming methods can additionally throw `HopeStreamError` (not a
 `HopeAPIError` subclass — it does not correspond to an HTTP status) when a
@@ -905,7 +915,7 @@ summarization stream itself fails; see [Streaming](#streaming).
 **HOPE's tenancy posture is 404-over-403**: a cross-tenant read or write
 returns 404, never 403
 (`.claude/rules/05-nestjs-api.md` — "Cross-tenant access returns 404, never
-403"). This deliberately hides resource *existence* from a caller who is not
+403"). This deliberately hides resource _existence_ from a caller who is not
 entitled to see it — a real consultation belonging to a different tenant is,
 on the wire, indistinguishable from an id that was never valid at all.
 
@@ -949,7 +959,9 @@ edges it does not paper over:
   ```ts
   import { isTerminalJobStatus } from '@arcaai/vox-node';
 
-  if (isTerminalJobStatus(job.status)) { /* … */ }
+  if (isTerminalJobStatus(job.status)) {
+    /* … */
+  }
   ```
 
 - **`summaries.update()`'s `ifMatch` option buys you no conflict detection
@@ -965,9 +977,14 @@ edges it does not paper over:
   build any conflict-detection logic around it.**
 
   ```ts
-  await hope.consultations.summaries.update(consultationId, summaryId, { content }, {
-    ifMatch: currentEtag, // sent, but currently has no server-side effect
-  });
+  await hope.consultations.summaries.update(
+    consultationId,
+    summaryId,
+    { content },
+    {
+      ifMatch: currentEtag, // sent, but currently has no server-side effect
+    },
+  );
   ```
 
 - **A workflow run's terminal status is only recorded when somebody asks

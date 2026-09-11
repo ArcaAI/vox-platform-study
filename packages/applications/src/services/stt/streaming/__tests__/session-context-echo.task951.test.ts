@@ -157,6 +157,42 @@ describe('TASK-951 — stream session context echo on transcripts', () => {
     expect(result.context).toBeUndefined();
   });
 
+  it('reports the metadata in force as a FLAT object (`metadata.mic_id`, the v1 shape) and its bounds as `metadataSpans`', async () => {
+    mockXreadgroup.mockResolvedValueOnce(resultEntry(FINAL_SEGMENT)).mockResolvedValue(null);
+    // The gateway's accessor, called with THIS segment's window: mic-1 for 0.5–0.7, mic-2 for 0.7–1.2.
+    const metadataSpans = vi.fn((startTime: number, endTime: number) => [
+      { from: startTime, to: 0.7, value: { mic_id: 'mic-1' } },
+      { from: 0.7, to: endTime, value: { mic_id: 'mic-2' } },
+    ]);
+
+    const result = (await firstValueFrom(service.subscribeToResults('s-echo', { sessionEcho: { metadataSpans } }).pipe(take(1)))) as Record<
+      string,
+      unknown
+    >;
+
+    expect(metadataSpans).toHaveBeenCalledWith(0.5, 1.2);
+    // `metadata` is the object in force over the LARGER share of the segment — mic-2 (0.5 s of 0.7 s).
+    expect(result.metadata).toEqual({ mic_id: 'mic-2' });
+    expect(result.metadataSpans).toEqual([
+      { from: 0.5, to: 0.7, value: { mic_id: 'mic-1' } },
+      { from: 0.7, to: 1.2, value: { mic_id: 'mic-2' } },
+    ]);
+    // Independent of `context`: nothing was declared at create, so neither echo key appears.
+    expect(result).not.toHaveProperty('context');
+    expect(result).not.toHaveProperty('sessionEpochMs');
+  });
+
+  it('a session whose accessor has nothing in force emits NEITHER metadata key — never `{}` or `[]`', async () => {
+    mockXreadgroup.mockResolvedValueOnce(resultEntry(FINAL_SEGMENT)).mockResolvedValue(null);
+
+    const result = (await firstValueFrom(service.subscribeToResults('s-echo', { sessionEcho: { metadataSpans: () => [] } }).pipe(take(1)))) as Record<
+      string,
+      unknown
+    >;
+
+    expect(result).toEqual({ type: 'transcript', text: 'good morning', startTime: 0.5, endTime: 1.2, isFinal: true });
+  });
+
   it('does not touch STATUS frames — the echo belongs to transcripts', async () => {
     mockXreadgroup.mockResolvedValueOnce(resultEntry(['type', 'status', 'status', 'finalizing'])).mockResolvedValue(null);
 

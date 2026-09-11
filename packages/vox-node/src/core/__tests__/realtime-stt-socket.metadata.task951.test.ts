@@ -63,17 +63,17 @@ describe('TASK-951 — RealtimeSttSocket#setMetadata', () => {
   it('sends `{type:"metadata", metadata}` as JSON — and NOTHING else', async () => {
     const { socket, wire } = await connected();
 
-    socket.setMetadata({ micIds: ['mic-1'] });
+    socket.setMetadata({ mic_id: 'mic-1' });
 
     // `toEqual` on the whole frame, not a property probe: an extra field here would be a
     // timestamp a caller could set, which is exactly the design this contract rules out.
-    expect(JSON.parse(String(wire.sent[0]))).toEqual({ type: 'metadata', metadata: { micIds: ['mic-1'] } });
+    expect(JSON.parse(String(wire.sent[0]))).toEqual({ type: 'metadata', metadata: { mic_id: 'mic-1' } });
     socket.close();
   });
 
   it('sends the object VERBATIM — nested, re-ordered and non-ASCII values all survive', async () => {
     const { socket, wire } = await connected();
-    const value = { micIds: ['mic-2', 'mic-1'], room: 'Consultório', vendor: { nested: { deep: true } } };
+    const value = { mic_id: 'mic-2', room: 'Consultório', vendor: { nested: { deep: true } } };
 
     socket.setMetadata(value);
 
@@ -84,7 +84,7 @@ describe('TASK-951 — RealtimeSttSocket#setMetadata', () => {
   it('can be called BEFORE the first audio frame, to label a session from its first sample', async () => {
     const { socket, wire } = await connected();
 
-    socket.setMetadata({ micIds: ['mic-1'] });
+    socket.setMetadata({ mic_id: 'mic-1' });
     socket.sendPcm16(new Uint8Array([1, 2, 3, 4]));
 
     expect(JSON.parse(String(wire.sent[0])).type).toBe('metadata');
@@ -95,20 +95,20 @@ describe('TASK-951 — RealtimeSttSocket#setMetadata', () => {
   it('interleaves with audio — a change mid-stream is just another frame', async () => {
     const { socket, wire } = await connected();
 
-    socket.setMetadata({ micIds: ['mic-1'] });
+    socket.setMetadata({ mic_id: 'mic-1' });
     socket.sendPcm16(new Uint8Array([1, 2]));
-    socket.setMetadata({ micIds: ['mic-1', 'mic-2'] });
+    socket.setMetadata({ mic_id: 'mic-2' });
     socket.sendPcm16(new Uint8Array([3, 4]));
 
-    expect(JSON.parse(String(wire.sent[0])).metadata).toEqual({ micIds: ['mic-1'] });
-    expect(JSON.parse(String(wire.sent[2])).metadata).toEqual({ micIds: ['mic-1', 'mic-2'] });
+    expect(JSON.parse(String(wire.sent[0])).metadata).toEqual({ mic_id: 'mic-1' });
+    expect(JSON.parse(String(wire.sent[2])).metadata).toEqual({ mic_id: 'mic-2' });
     socket.close();
   });
 
   it('throws RangeError above the byte bound, and sends nothing', async () => {
     const { socket, wire } = await connected();
 
-    expect(() => socket.setMetadata({ micIds: ['mic-1'], note: 'x'.repeat(MAX_STT_METADATA_BYTES) })).toThrow(RangeError);
+    expect(() => socket.setMetadata({ mic_id: 'mic-1', note: 'x'.repeat(MAX_STT_METADATA_BYTES) })).toThrow(RangeError);
     expect(wire.sent).toHaveLength(0);
     socket.close();
   });
@@ -142,12 +142,12 @@ describe('TASK-951 — RealtimeSttSocket#setMetadata', () => {
     // connect — the worst kind of failure, because transcripts keep arriving.
     const socket = makeSocket();
 
-    expect(() => socket.setMetadata({ micIds: ['mic-1'] })).toThrow(/not connected/i);
+    expect(() => socket.setMetadata({ mic_id: 'mic-1' })).toThrow(/not connected/i);
   });
 });
 
 describe('TASK-951 — RealtimeSttSocket transcript metadata', () => {
-  it('surfaces per-span `metadata` on the transcript event', async () => {
+  it('surfaces the in-force `metadata` object and its `metadataSpans` on the transcript event', async () => {
     const { socket, wire } = await connected();
     const seen: SttTranscriptResult[] = [];
     socket.on('transcript', (t) => seen.push(t));
@@ -160,22 +160,24 @@ describe('TASK-951 — RealtimeSttSocket transcript metadata', () => {
         endTime: 15.1,
         isFinal: true,
         seq: 4,
-        metadata: [
-          { from: 12, to: 13.4, value: { micIds: ['mic-1'] } },
-          { from: 13.4, to: 15.1, value: { micIds: ['mic-1', 'mic-2'] } },
+        metadata: { mic_id: 'mic-2' },
+        metadataSpans: [
+          { from: 12, to: 13.4, value: { mic_id: 'mic-1' } },
+          { from: 13.4, to: 15.1, value: { mic_id: 'mic-2' } },
         ],
       }),
     );
 
     expect(seen).toHaveLength(1);
-    // Two spans: the client opened a second microphone mid-utterance, and the platform reports
-    // that rather than stamping the whole segment with one of them.
-    expect(seen[0]!.metadata).toEqual([
-      { from: 12, to: 13.4, value: { micIds: ['mic-1'] } },
-      { from: 13.4, to: 15.1, value: { micIds: ['mic-1', 'mic-2'] } },
+    // The flat object is what labelling code reads — `metadata.mic_id`, the v1 shape.
+    expect(seen[0]!.metadata).toEqual({ mic_id: 'mic-2' });
+    // The spans say the microphone switched mid-utterance, and where.
+    expect(seen[0]!.metadataSpans).toEqual([
+      { from: 12, to: 13.4, value: { mic_id: 'mic-1' } },
+      { from: 13.4, to: 15.1, value: { mic_id: 'mic-2' } },
     ]);
     // The spans are inside the segment's own window, so a consumer never needs the session clock.
-    for (const span of seen[0]!.metadata!) {
+    for (const span of seen[0]!.metadataSpans!) {
       expect(span.from).toBeGreaterThanOrEqual(seen[0]!.startTime);
       expect(span.to).toBeLessThanOrEqual(seen[0]!.endTime);
     }
@@ -190,6 +192,7 @@ describe('TASK-951 — RealtimeSttSocket transcript metadata', () => {
     wire.emitMessage(JSON.stringify({ type: 'transcript', text: 'hello', startTime: 0, endTime: 1, isFinal: true }));
 
     expect(seen[0]!.metadata).toBeUndefined();
+    expect(seen[0]!.metadataSpans).toBeUndefined();
     socket.close();
   });
 
@@ -205,12 +208,12 @@ describe('TASK-951 — RealtimeSttSocket transcript metadata', () => {
         type: 'error',
         code: 'METADATA_SCHEMA_VIOLATION',
         message: 'nope',
-        problems: ['/micIds: expected array'],
+        problems: ['/mic_id: required property is missing'],
       }),
     );
 
     expect(errors[0]!.code).toBe('METADATA_SCHEMA_VIOLATION');
-    expect(errors[0]!.problems).toEqual(['/micIds: expected array']);
+    expect(errors[0]!.problems).toEqual(['/mic_id: required property is missing']);
     expect(wire.closed).toBeFalsy();
     socket.close();
   });

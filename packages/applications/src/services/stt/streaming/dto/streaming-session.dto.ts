@@ -364,25 +364,32 @@ export interface StreamingTranscriptMessage {
    */
   sessionEpochMs?: number;
   /**
-   * TASK-951 R2 (clarified 2026-09-11) — the client's own metadata, TIME-SYNCED to THIS segment.
+   * TASK-951 R2 (clarified 2026-09-11) — the client's own metadata in force over THIS segment's
+   * audio, VERBATIM and flat: the shape the v1 pipeline echoed, so an integrator's labelling code
+   * reads `metadata.mic_id` exactly as it did. Declared with a `{ type: 'metadata' }` frame (or
+   * inline on a JSON audio frame) and STICKY until the next declaration — a frame that declares
+   * nothing inherits the last one.
    *
-   * Each entry is a stretch of THIS segment's audio and the metadata object that was in force
-   * over it, in time order, with both bounds already clipped to `[startTime, endTime]` — so a
-   * consumer never has to know the session's clock, only this segment's. The typical entry is
-   * `{ from, to, value: { micIds: [...] } }`, but `value` is whatever the client sent: HOPE
-   * echoes it verbatim and never interprets it.
+   * When the client switched metadata mid-segment, this is the value in force over the LARGER
+   * share of the segment (a tie goes to the earlier); the exact bounds are in
+   * {@link StreamingTranscriptMessage.metadataSpans}. HOPE never interprets the object.
    *
-   * One entry means one metadata object covered the whole segment. TWO OR MORE mean the client
-   * changed it mid-utterance — a second microphone opened while someone was still speaking —
-   * and the segment is reported as exactly that, rather than being stamped with whichever value
-   * happened to be current when the ASR finished decoding it.
-   *
-   * ABSENT (not `[]`) for a session that never sent a `metadata` frame, which is what keeps the
-   * wire byte-identical for every client that does not use this. Independent of
+   * ABSENT for a session that never sent a `metadata` frame, which is what keeps the wire
+   * byte-identical for every client that does not use this. Independent of
    * {@link StreamingTranscriptMessage.context}: that is what the session IS, this is what was
    * happening while it recorded.
    */
-  metadata?: ClippedMetadataSpan[];
+  metadata?: Record<string, unknown>;
+  /**
+   * TASK-951 R2 (clarified) — the same declarations, TIME-SYNCED within this segment.
+   *
+   * Each entry is a stretch of THIS segment's audio and the metadata object that was in force
+   * over it, in time order, both bounds already clipped to `[startTime, endTime]` — so a consumer
+   * never has to know the session's clock, only this segment's. One entry means one object
+   * covered the whole segment; two or more mean the client switched mid-utterance, and a consumer
+   * that wants to split the segment at the switch can. Present exactly when `metadata` is.
+   */
+  metadataSpans?: ClippedMetadataSpan[];
 }
 
 export interface StreamingStatusMessage {
