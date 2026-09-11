@@ -75,12 +75,16 @@ describe('resolveSeedMode — "all" is refused outside development/test', () => 
 
 describe('isPhaseEnabled — which phases each mode runs', () => {
   // TASK-930 — `29-arcaai-agents-and-workflows` (one customer tenant's agents, graphs and
-  // assignments) is excluded for the reason `07f` is: one customer's content is not platform
+  // assignments) is excluded for the reason `07g` is: one customer's content is not platform
   // configuration. The SYSTEM + Global library (`28-workflow-library`) stays IN every mode — see
   // the "still runs platform-config phases" case below.
+  //
+  // TASK-951 — `07f-arcaai-department-context-schemas` was RETIRED (OD-9) and its slot in this
+  // list taken by `07g-arcaai-two-schemas`, which seeds the two ArcaAI context schemas that
+  // replace it. Same reason, same tenant; only the file stem moved.
   const DANGEROUS = [
     '02-apikey',
-    '07f-arcaai-department-context-schemas',
+    '07g-arcaai-two-schemas',
     '08-dna-writing-style',
     '09-consultation',
     '10-audit-log',

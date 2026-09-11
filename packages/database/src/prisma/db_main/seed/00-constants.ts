@@ -50,6 +50,10 @@
  *                     SYSTEM, 0000 Global, 0001 ArcaAI)
  *   89000000-…-XXXX-… → their published ConsultationContextSchemaVersion
  *                     snapshots (mirror slot)
+ *   79000000-…-0001-… → the ArcaAI slot — allocated by name in
+ *                     SEED_ARCAAI_CONTEXT_SCHEMA_IDS below (TASK-951). Slots
+ *                     …010 / …011 are BURNED: they held the two DEPARTMENT
+ *                     -scoped rows that ticket retired.
  *   D0000000-xxxx → DepartmentAgentVersion rows. NOT a free-standing block:
  *                     each id is its agent's id with the `78000000` prefix
  *                     swapped for `D0000000` (`agentVersionIdFor`), so agent
@@ -826,6 +830,44 @@ export const SEED_AUDIT_LOG_IDS = {
   ARCAAI_CREATE_CONSULTATION: 'A0000000-0000-0000-0001-000000000003',
   ARCAAI_UPDATE_SETTINGS: 'A0000000-0000-0000-0001-000000000004',
   ARCAAI_ASSIGN_ROLE: 'A0000000-0000-0000-0001-000000000005',
+} as const;
+
+// =============================================================================
+// ARCAAI CONSULTATION CONTEXT SCHEMAS (TASK-951)
+//
+// The `79000000-...-0001-...` slot of the context-schema block documented at
+// the top of this file (`0002` SYSTEM, `0000` Global, `0001` ArcaAI); the
+// pinned v1 `ConsultationContextSchemaVersion` snapshots mirror at
+// `89000000-...`.
+//
+// STATIC ids rather than a derivation, because these two rows are AUTHORED for
+// ArcaAI (`07g-arcaai-two-schemas.ts`) rather than cloned: `cloneId` /
+// `noteContextSchemaIdFor` exist to make a COPY's id reproducible from its
+// source, and there is no source here. The one derivation they do share is
+// that the version id is the schema id with the `79` prefix swapped for `89`,
+// exactly as `noteContextSchemaVersionIdFor` does for the note context -- one
+// numbering scheme, not two.
+//
+// Slots `...-000000000010` (`consultation_gen_arcaai`) and
+// `...-000000000011` (`consultation_rheum_arcaai`) belonged to the two
+// DEPARTMENT-scoped rows TASK-951 RETIRED (OD-9). They are burned, never
+// reused: a re-seed of an environment that still carries them has to be able
+// to tell a retired row from a new one by id alone.
+// =============================================================================
+
+export const SEED_ARCAAI_CONTEXT_SCHEMA_IDS = {
+  /** `arcaai_realtime_transcription` -- the standalone transcription agent's schema. */
+  REALTIME_TRANSCRIPTION: '79000000-0000-0000-0001-000000000020',
+  /** `arcaai_consultation_scribe` -- ArcaAI's TENANT default; the 11 consultation workflows trigger on it. */
+  CONSULTATION_SCRIBE: '79000000-0000-0000-0001-000000000021',
+} as const;
+
+/** The pinned v1 snapshot of a schema above -- its id with the `79` prefix swapped for `89`. */
+export const arcaaiContextSchemaVersionIdFor = (schemaId: string): string => `89${schemaId.slice(2)}`;
+
+export const SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS = {
+  REALTIME_TRANSCRIPTION: arcaaiContextSchemaVersionIdFor(SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION),
+  CONSULTATION_SCRIBE: arcaaiContextSchemaVersionIdFor(SEED_ARCAAI_CONTEXT_SCHEMA_IDS.CONSULTATION_SCRIBE),
 } as const;
 
 // =============================================================================

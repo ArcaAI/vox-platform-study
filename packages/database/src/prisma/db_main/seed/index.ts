@@ -19,7 +19,7 @@ import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
 import { seedConsultationNoteContextSchema } from './07e-consultation-note-context-schema';
-import { seedArcaaiDepartmentContextSchemas } from './07f-arcaai-department-context-schemas';
+import { seedArcaaiTwoContextSchemas } from './07g-arcaai-two-schemas';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -216,13 +216,6 @@ export const seed = async () => {
     // receives it through phase 26. CREATE-ONLY.
     await seedConsultationNoteContextSchema(client);
     console.log('');
-    // Department-scoped consultation vocabularies for the two ArcaAI clinical
-    // departments. Runs AFTER 07e so the tenant-wide default already exists —
-    // these SHADOW it per department rather than replacing it. CREATE-ONLY.
-    if (isPhaseEnabled('07f-arcaai-department-context-schemas', mode)) {
-      await seedArcaaiDepartmentContextSchemas(client);
-      console.log('');
-    }
 
     // Phase 4: Depends on Phase 3
     // Demo accounts (*@example.com) with a documented default password. In
@@ -350,6 +343,17 @@ export const seed = async () => {
     // Create-only and idempotent.
     if (isPhaseEnabled('26-tenant-reference-set', mode)) {
       await seedTenantReferenceSets(client);
+      console.log('');
+    }
+
+    // TASK-951 (R1 / D-10) — ArcaAI's TWO consultation context schemas:
+    // `arcaai_realtime_transcription` (bound by the tenant's standalone SPEECH_TO_TEXT agent) and
+    // `arcaai_consultation_scribe` (the TENANT default; the 11 ArcaAI consultation workflows
+    // trigger on it). Runs AFTER phase 26 on purpose: the retirement half demotes ArcaAI's CLONE
+    // of `consultation_note_context`, which phase 26 is what creates. One customer tenant's
+    // content, so excluded from `safe` exactly as `29-arcaai-agents-and-workflows` is.
+    if (isPhaseEnabled('07g-arcaai-two-schemas', mode)) {
+      await seedArcaaiTwoContextSchemas(client);
       console.log('');
     }
 
