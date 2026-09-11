@@ -58,11 +58,14 @@ security property:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import SecretStr
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
+    from harness.core.config import RetrievalConfig
 
 
 class CredentialOutcome(StrEnum):
@@ -128,6 +131,15 @@ class ProviderCredential:
     api_version: str | None = None
     deployment_name: str | None = None
     model: str | None = None
+    #: Every OTHER key of the row's validated `extraJson`, forwarded verbatim by
+    #: the gateway minus the reserved (column-backed) ones. This is how the
+    #: NON-SECRET half of a connection travels — `vector:qdrant`'s `collection`
+    #: prefix — beside the secret half in `api_key`.
+    #:
+    #: Defaults to `{}` and is read defensively: a gateway that does not send the
+    #: block (or sends a non-dict) yields "no extras", never an error. Absent
+    #: extras must leave prior behaviour byte-identical.
+    extras: dict[str, Any] = field(default_factory=dict)
     #: 'tenant' | 'platform'. DERIVED gateway-side from the row that supplied the
     #: credential; carried here for observability only and never re-stamped.
     funding: str | None = None
@@ -186,6 +198,7 @@ class ProviderCredential:
             return cls(outcome=outcome, reason=reason if isinstance(reason, str) else "")
 
         key = payload.get("apiKey")
+        extras = payload.get("extras")
         return cls(
             outcome=outcome,
             api_key=SecretStr(key) if isinstance(key, str) and key else None,
@@ -194,8 +207,19 @@ class ProviderCredential:
             api_version=_str_or_none(payload.get("apiVersion")),
             deployment_name=_str_or_none(payload.get("deploymentName")),
             model=_str_or_none(payload.get("model")),
+            extras=dict(extras) if isinstance(extras, dict) else {},
             funding=_str_or_none(payload.get("funding")),
         )
+
+    def extra(self, key: str) -> str | None:
+        """One non-empty STRING extra, or None.
+
+        Same rule as `_str_or_none`: `""` is a value to some backends, so it must
+        not masquerade as a configured one. A non-string extra (the validated
+        `extraJson` admits numbers, booleans and arrays too) is not a name and is
+        therefore not returned by this accessor.
+        """
+        return _str_or_none(self.extras.get(key))
 
 
 def _str_or_none(value: Any) -> str | None:
@@ -228,8 +252,109 @@ def to_provider_overrides(
     if credential.outcome is not CredentialOutcome.RESOLVED:
         return None
     entry: dict[str, Any] = {"api_key": credential.secret or ""}
-    for field in ("base_url", "region", "api_version", "deployment_name", "model", "funding"):
-        value = getattr(credential, field)
+    for name in ("base_url", "region", "api_version", "deployment_name", "model", "funding"):
+        value = getattr(credential, name)
         if value:
-            entry[field] = value
+            entry[name] = value
     return {provider: entry}
+
+
+# ===========================================================================
+# D-1b / D-1c — folding a resolved connection onto `RetrievalConfig`
+# ===========================================================================
+#
+# Both folds live HERE, beside the four-outcome contract, and both are used by
+# BOTH construction sites (the Temporal `retrieve_context` activity and the
+# `knowledge/ingest` + `knowledge/{id}` endpoints). That is not tidiness: a
+# collection name derived in two places is a corpus a tenant can write to and
+# never read back, which is exactly the class of defect this ticket is about.
+#
+# A fold applies on RESOLVED only. `ABSENT` (no tier has an opinion) leaves the
+# platform floor in place; `DENIED` / `UNAVAILABLE` never reach a fold, because
+# the CALLER rejects them first (`ProviderCredential.usable`) — a fault must
+# never be quietly downgraded into "use the platform's endpoint".
+
+#: The connection row that serves the harness's dense-embeddings client.
+#:
+#: `EmbeddingsClient` speaks ONE wire protocol — the OpenAI `{model, input}`
+#: shape at `{base_url}/embeddings` — so `openai` names the PROTOCOL the client
+#: implements, not a vendor choice, exactly as `JUDGE_CONNECTION_PROVIDER` above
+#: maps four judge transports onto the single `openai-compat` row. A `base_url`
+#: override is how a self-hosted OpenAI-compatible server (LM Studio, TEI) is
+#: reached on that same row, which is how `llm:lm-studio` already works.
+#:
+#: `azure` (the other `CLOUD_BYO_PROVIDERS.embeddings` entry) is deliberately NOT
+#: consulted: its embeddings API needs `api-version` + an `api-key` header, which
+#: this client does not speak. Resolving it would deliver a credential to a
+#: request shape that cannot use it. A future Azure adapter gets its own resolve.
+EMBEDDINGS_CONNECTION_PROVIDER = "openai"
+
+#: The connection row that serves the knowledge vector store. One provider under
+#: `vector`, so there is nothing to map.
+VECTOR_CONNECTION_PROVIDER = "qdrant"
+
+#: The `extraJson` key the console writes for a tenant's collection prefix
+#: (`provider-meta.ts`: "Collection prefix (optional)", placeholder `hope`).
+VECTOR_COLLECTION_EXTRA = "collection"
+
+
+def prefixed_collection(base: str, prefix: str | None) -> str:
+    """``<prefix>_<base>``, or ``base`` when no prefix is configured.
+
+    A PREFIX, not a replacement — that is what the console field promises the
+    tenant admin ("Collection prefix"), and it keeps the platform's own
+    collection name visible in the derived one. Surrounding whitespace and
+    separator underscores are stripped so ``"hope"``, ``" hope "`` and ``"hope_"``
+    all derive the same collection; a prefix that is blank after stripping is no
+    prefix at all (``""`` must never mean ``"_knowledge_chunks"``).
+    """
+    cleaned = (prefix or "").strip().strip("_")
+    return f"{cleaned}_{base}" if cleaned else base
+
+
+def apply_vector_credential(
+    retrieval: RetrievalConfig, credential: ProviderCredential | None
+) -> RetrievalConfig:
+    """Fold a resolved ``vector:qdrant`` row onto the retrieval config.
+
+    Carries the credential, the tenant's own cluster URL when it brings one, and
+    (D-1b) the ``collection`` prefix the console has offered since the card was
+    written and nothing read. ``model_copy`` bypasses validation, which is the
+    point: it is the ONLY way a credential enters (the env path is closed).
+    """
+    if credential is None or credential.outcome is not CredentialOutcome.RESOLVED:
+        return retrieval
+    update: dict[str, Any] = {"qdrant_api_key": credential.api_key}
+    if credential.base_url:
+        update["qdrant_url"] = credential.base_url
+    collection = prefixed_collection(
+        retrieval.collection, credential.extra(VECTOR_COLLECTION_EXTRA)
+    )
+    if collection != retrieval.collection:
+        update["collection"] = collection
+    return retrieval.model_copy(update=update)
+
+
+def apply_embeddings_credential(
+    retrieval: RetrievalConfig, credential: ProviderCredential | None
+) -> RetrievalConfig:
+    """Fold a resolved ``embeddings:openai`` row onto the retrieval config.
+
+    D-1c: the whole ``embeddings`` connection — endpoint, key AND model — was a
+    write-only console surface, because ``resolveTenantCloudOverrides`` is only
+    ever called for ``llm``/``stt``/``tts``. This is the read side.
+
+    Every field is optional and folds only when the row carries it, so a tenant
+    that supplies just a key keeps the platform's endpoint and model. ``model``
+    arrives as the row's ``extraJson.model`` (the gateway projects that key by
+    name onto the wire's ``model`` field) — it is the tenant's OWN selection on
+    its OWN account, never a substitute chosen here.
+    """
+    if credential is None or credential.outcome is not CredentialOutcome.RESOLVED:
+        return retrieval
+    update: dict[str, Any] = {"embeddings_api_key": credential.api_key}
+    if credential.base_url:
+        update["embeddings_base_url"] = credential.base_url
+    if credential.model:
+        update["embeddings_model"] = credential.model
+    return retrieval.model_copy(update=update)

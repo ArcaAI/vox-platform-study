@@ -153,8 +153,13 @@ class RetrievalConfig(BaseSettings):
     #     brings its own Qdrant cluster, its `base_url` rides its OWN connection row
     #     and overrides `qdrant_url` for that tenant only — which is the tenant-first
     #     rule satisfied, not bypassed.
-    #   * `embeddings_*` and `reranker_*` are untouched: no tenant opinion exists for
-    #     either today, so by D-1's cardinality rule they are correctly env-tiered.
+    #   * `embeddings_*` NO LONGER matches that description (TASK-952 D-1c). A tenant
+    #     CAN now hold an opinion — `AiProviderConnection(service='embeddings')` was a
+    #     write-only console surface that nothing resolved — so the embeddings endpoint,
+    #     key and model resolve through the SAME per-activity gateway pull as the Qdrant
+    #     credential, and the fields below are the PLATFORM floor an absent row falls to.
+    #     `reranker_*` is untouched: no tenant opinion exists for it today, so by D-1's
+    #     cardinality rule it is still correctly env-tiered.
     #
     # The landmine A.2 cited is still live and still worth heeding: a KEYLESS row
     # injects on NEITHER tier. That is now a DEFINED outcome (`absent` ⇒ call the
@@ -188,15 +193,48 @@ class RetrievalConfig(BaseSettings):
         default=None,
         validation_alias="HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED",
     )
+    # The PLATFORM's collection. A tenant that brings its own Qdrant may prefix it
+    # from its own connection row (`extraJson.collection`, the console's
+    # "Collection prefix"); the derivation lives in ONE place
+    # (`provider_credentials.apply_vector_credential`) so ingest, retrieval and
+    # delete can never disagree about which collection a tenant's vectors are in.
     collection: str = "knowledge_chunks"
-    # LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings
-    # client posts to ``{base_url}/embeddings``.
+    # ── The embeddings endpoint: platform floor, tenant override ────
+    #
+    # Same two-tier shape as `qdrant_url` / `qdrant_api_key` above, and for the
+    # same reasons. These three fields DESCRIBE THE ENDPOINT THE PLATFORM RUNS —
+    # one self-hosted OpenAI-compatible server (LM Studio), whose address is an
+    # `env`-tier transport value by rule 09 §Configuration Tiers. A TENANT that
+    # brings its own embeddings account overrides all three from its OWN
+    # `AiProviderConnection(service='embeddings', provider='openai')` row, which
+    # is the tenant-first rule satisfied, not bypassed.
+    #
+    # `embeddings_model` and `embeddings_dim` are ONE coupled description: the dim
+    # MUST match the loaded model AND the Qdrant collection. A tenant row can move
+    # the model but has nowhere to declare a dim, so a tenant that pins a
+    # different-dimension model gets a Qdrant dimension rejection (visible,
+    # degrade-safe) rather than silently wrong vectors. Keep them adjacent.
     embeddings_base_url: str = "http://localhost:1234/v1"
     # Model id the engine exposes for the loaded dense embedding model. Operators
     # override to match the loaded build (the plan's reference model is BAAI/bge-m3).
     embeddings_model: str = "text-embedding-bge-m3"
     # Dense vector dimension — MUST match the loaded model AND the Qdrant collection.
     embeddings_dim: int = 1024
+    # ── BYO-only credential ─────────────────────────────
+    # The platform's own embeddings server authenticates nobody, so this is `None`
+    # by default and the client calls it unauthenticated. A tenant's cloud
+    # embeddings account carries a real key, and it arrives the SAME way the Qdrant
+    # key does — by `model_copy` injection from a gateway-resolved connection row,
+    # never from the environment. The env path is CLOSED STRUCTURALLY (dead
+    # `validation_alias`; `populate_by_name` is OFF for this class), so
+    # "fall back to env" is not a reachable behaviour for a credential.
+    #
+    # `None`, never `""` — an empty string is itself a bearer value, so absent
+    # must mean absent (see `_empty_api_key_is_absent`).
+    embeddings_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="HARNESS_RETRIEVAL_EMBEDDINGS_API_KEY__ENV_REMOVED",
+    )
     # HF Text-Embeddings-Inference reranker root (cross-encoder ``/rerank``).
     reranker_base_url: str = "http://localhost:8870"
     # Hybrid knobs: dense+sparse prefetch limit -> RRF fusion -> cross-encoder rerank.
@@ -206,7 +244,7 @@ class RetrievalConfig(BaseSettings):
     reranker_timeout_s: float = 30.0
     qdrant_timeout_s: float = 10.0
 
-    @field_validator("qdrant_api_key", mode="before")
+    @field_validator("qdrant_api_key", "embeddings_api_key", mode="before")
     @classmethod
     def _empty_api_key_is_absent(cls, v: object) -> object:
         """An empty env var means ABSENT, not "the empty credential".

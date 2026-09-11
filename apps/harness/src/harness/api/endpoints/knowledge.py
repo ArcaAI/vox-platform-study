@@ -30,7 +30,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.config import Settings
 from harness.core.logging import get_logger
-from harness.core.provider_credentials import CredentialOutcome, ProviderCredential
+from harness.core.provider_credentials import (
+    EMBEDDINGS_CONNECTION_PROVIDER,
+    VECTOR_CONNECTION_PROVIDER,
+    ProviderCredential,
+    apply_embeddings_credential,
+    apply_vector_credential,
+)
 from harness.guides.retrieval.chunker import chunk_text
 from harness.guides.retrieval.qdrant_store import (
     APPROVED_STATUS,
@@ -81,15 +87,41 @@ def require_internal_service_token(
         raise HTTPException(status_code=401, detail="invalid or missing service token")
 
 
-def _embeddings_client(settings: Settings) -> EmbeddingsClient:
-    rc = settings.retrieval
+def _embeddings_client(
+    settings: Settings, credential: ProviderCredential | None = None
+) -> EmbeddingsClient:
+    """Build the dense-embeddings client, applying a resolved connection if any.
+
+    D-1c — the ingest side of the same fold the retriever uses, so a
+    tenant's corpus and its queries are embedded by the SAME model on the SAME
+    endpoint. Deriving them separately would produce vectors a query can never
+    match, which is a silent failure rather than a loud one.
+    """
+    rc = apply_embeddings_credential(settings.retrieval, credential)
     return EmbeddingsClient(
-        rc.embeddings_base_url, model=rc.embeddings_model, timeout=rc.embeddings_timeout_s
+        rc.embeddings_base_url,
+        model=rc.embeddings_model,
+        timeout=rc.embeddings_timeout_s,
+        api_key=rc.embeddings_api_key.get_secret_value() if rc.embeddings_api_key else None,
     )
 
 
 def _sparse_embedder() -> SparseBm25Embedder:
     return SparseBm25Embedder()
+
+
+async def _resolve_embeddings_credential(settings: Settings, tenant_id: str) -> ProviderCredential:
+    """Resolve this tenant's embeddings credential from the gateway's BYO plane.
+
+    D-1c — the sibling of :func:`_resolve_qdrant_credential`, for the
+    OTHER connection the retrieval stack needs. Kept as its own function (rather
+    than a `service`/`provider` parameter on that one) so the hermetic suite can
+    stub each plane independently and a test that pins one cannot accidentally
+    pin the other. Never raises; see :mod:`harness.core.provider_credentials`.
+    """
+    return await _connection_client(settings).resolve_provider_credential(
+        "embeddings", EMBEDDINGS_CONNECTION_PROVIDER, tenant_id=tenant_id
+    )
 
 
 async def _resolve_qdrant_credential(settings: Settings, tenant_id: str) -> ProviderCredential:
@@ -106,13 +138,19 @@ async def _resolve_qdrant_credential(settings: Settings, tenant_id: str) -> Prov
 
     Factored out like every other client factory here so tests can stub it.
     """
-    client = ApiClient(
+    return await _connection_client(settings).resolve_provider_credential(
+        "vector", VECTOR_CONNECTION_PROVIDER, tenant_id=tenant_id
+    )
+
+
+def _connection_client(settings: Settings) -> ApiClient:
+    """The gateway client the two credential resolvers above share."""
+    return ApiClient(
         settings.api_base_url,
         internal_prefix=settings.api_internal_prefix,
         service_token=settings.peer_service_token(settings.service_token),
         timeout=settings.api_timeout_s,
     )
-    return await client.resolve_provider_credential("vector", "qdrant", tenant_id=tenant_id)
 
 
 def _qdrant_store(
@@ -123,15 +161,11 @@ def _qdrant_store(
     `credential=None` / outcome `ABSENT` keeps the UNAUTHENTICATED path — correct
     for a local dev Qdrant, and not an env fallback (there is no env path left:
     `RetrievalConfig.qdrant_api_key` is `validation_alias`-closed).
+
+    D-1b — the fold is the SHARED one, so the tenant's `collection`
+    prefix derived here is byte-identical to the one the retriever derives.
     """
-    rc = settings.retrieval
-    if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
-        rc = rc.model_copy(
-            update={
-                "qdrant_api_key": credential.api_key,
-                **({"qdrant_url": credential.base_url} if credential.base_url else {}),
-            }
-        )
+    rc = apply_vector_credential(settings.retrieval, credential)
     return KnowledgeQdrantStore(
         rc.qdrant_url,
         rc.collection,
@@ -171,8 +205,29 @@ async def ingest_knowledge(body: IngestRequest, request: Request) -> dict[str, A
 
     texts = [c.text for c in chunks]
 
+    # D-1c — the embeddings endpoint/key/model are a tenant's to own,
+    # so resolve them BEFORE embedding. A DENIED (tenant veto) / UNAVAILABLE
+    # (gateway fault) credential is a 503 with the same fail-closed posture the
+    # Qdrant resolve below already has: Lane B fails and retries the job. It never
+    # embeds on the platform's endpoint on the assumption the tenant would agree.
+    embeddings_credential = await _resolve_embeddings_credential(settings, body.tenant_id)
+    if not embeddings_credential.usable:
+        logger.warning(
+            "harness.knowledge.ingest.credential_unavailable",
+            knowledge_document_id=body.knowledge_document_id,
+            outcome=embeddings_credential.outcome.value,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "embeddings_credential_unavailable",
+                "detail": embeddings_credential.reason or embeddings_credential.outcome.value,
+            },
+        )
+    embeddings = _embeddings_client(settings, embeddings_credential)
+
     try:
-        dense_vectors = await _embeddings_client(settings).embed(texts)
+        dense_vectors = await embeddings.embed(texts)
     except EmbeddingsServiceError as exc:
         logger.warning(
             "harness.knowledge.ingest.embeddings_unavailable",
@@ -224,7 +279,9 @@ async def ingest_knowledge(body: IngestRequest, request: Request) -> dict[str, A
                 "startOffset": chunk.start_offset,
                 "endOffset": chunk.end_offset,
                 "tokenCount": chunk.token_count,
-                "embeddingModel": settings.retrieval.embeddings_model,
+                # The model that ACTUALLY embedded this chunk — the tenant's when
+                # its connection row pinned one, the platform floor otherwise.
+                "embeddingModel": embeddings.model,
                 "embeddingDim": len(dense_vectors[i]),
                 "status": APPROVED_STATUS,
             }
