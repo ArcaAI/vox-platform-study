@@ -141,13 +141,17 @@ test.describe('TASK-950 — a service account opens a consultation for a clinici
     expect(doctor, 'arcaai_doctor login').not.toBeNull();
     doctorJwt = doctor!.token;
 
-    // 1. Find the DEPARTMENT-scoped schema an open for GEN_ARCAAI resolves to.
+    // 1. Find the schema an open for GEN_ARCAAI resolves to. Before TASK-951 that was the DEPARTMENT-scoped
+    //    `consultation_gen_arcaai`; since TASK-951 retired it for ArcaAI, discovery falls to the TENANT default
+    //    (`arcaai_consultation_scribe`). Ask the platform rather than assume a slug.
     const list = await request.get(SCHEMAS, { headers: adminHeaders(adminJwt) });
     expect(list.status(), await list.text()).toBe(200);
-    const schema = ((await list.json()) as Array<{ id: string; slug: string; pinnedVersionNumber: number | null }>).find(
-      (row) => row.slug === SCHEMA_SLUG,
-    );
-    expect(schema, `seeded schema '${SCHEMA_SLUG}'`).toBeTruthy();
+    const rows = (await list.json()) as Array<{ id: string; slug: string; scope: string; isDefault: boolean; pinnedVersionNumber: number | null }>;
+    const schema =
+      rows.find((row) => row.slug === SCHEMA_SLUG) ??
+      rows.find((row) => row.slug === 'arcaai_consultation_scribe') ??
+      rows.find((row) => row.scope === 'TENANT' && row.isDefault);
+    expect(schema, `the schema GEN_ARCAAI resolves to ('${SCHEMA_SLUG}' or the tenant default)`).toBeTruthy();
     schemaId = schema!.id;
     expect(schema!.pinnedVersionNumber, 'the seeded schema is published and pinned').toBeTruthy();
     originalPinnedVersion = schema!.pinnedVersionNumber!;
