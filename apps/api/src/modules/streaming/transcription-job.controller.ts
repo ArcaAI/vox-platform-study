@@ -802,6 +802,11 @@ export class TranscriptionJobController {
     // BEFORE the STT session is created so a refused request leaves nothing behind upstream.
     this.assertStreamContextConforms(context, resolved);
 
+    // TASK-951 R2 (clarified) — and, from the SAME resolved artifact, the schema the session's
+    // live `metadata` frames will be judged against. Resolved here rather than in the gateway
+    // because this is the only point on the STT entry path that holds the agent.
+    const metadataSchema = this.resolveStreamMetadataSchema(resolved);
+
     // The fallback + credentials for this session. Agent path: the spec's own
     // `fallback` block (autoSwitch + threshold are the agent's governance) and
     // the credentials TASK-862's resolver bound to the chain. Deprecated path:
@@ -882,6 +887,11 @@ export class TranscriptionJobController {
         sampleRate,
         ...(context ? { context } : {}),
         sessionEpochMs,
+        // TASK-951 R2 (clarified) — the schema the session's `{type:'metadata'}` frames are
+        // judged against, FROZEN here beside the sampleRate. The WS gateway cannot resolve an
+        // agent or read a schema row on a control frame, and it must not: what a live session
+        // accepts is decided once, at create, and never changes under the caller.
+        ...(metadataSchema ? { metadataSchema } : {}),
       }),
     ]);
 
@@ -959,6 +969,47 @@ export class TranscriptionJobController {
         problems,
       });
     }
+  }
+
+  /**
+   * TASK-951 R2 (clarified) — the schema ONE live `{type:'metadata'}` object must satisfy, or
+   * `undefined`.
+   *
+   * The session-level `context` above is judged against the WHOLE envelope
+   * (`{ [kindKey]: payload }`), because that is what the client sends. A `metadata` frame is
+   * not an envelope — it is ONE kind's payload, the kind the tenant's schema marked
+   * `streamContext`. So the schema to judge it by is that kind's own `fields`, which is exactly
+   * what `payloadSchema.properties[kindKey]` holds
+   * (`payloadSchemaFromDefinition` keys the envelope by kind and stores each kind's `fields` as
+   * its value).
+   *
+   * Read STRUCTURALLY: `openBindings` is frozen into the compiled artifact by the publish path
+   * and rides as an intersection on the applications-side alias, so `@arcaai/types`'
+   * `AgentCompiledConfig['contextSchema']` — which is what `ResolvedAsrSession` names — does not
+   * declare it. That is the same way every other consumer of the key reads it.
+   *
+   * `undefined` at any step is NOT a refusal: an agent with no schema, a schema with no
+   * `streamContext` kind, or a kind with no declared `fields` all mean "this tenant has no
+   * opinion about how a client labels its audio", and the size bound alone governs.
+   */
+  private resolveStreamMetadataSchema(resolved?: ResolvedAsrSession): Record<string, unknown> | undefined {
+    const contextSchema = resolved?.contextSchema as
+      | { payloadSchema?: unknown; openBindings?: { streamContext?: { kindKey?: unknown } } }
+      | undefined;
+
+    const kindKey = contextSchema?.openBindings?.streamContext?.kindKey;
+    if (typeof kindKey !== 'string' || kindKey.length === 0) return undefined;
+
+    const payloadSchema = contextSchema?.payloadSchema;
+    if (payloadSchema === null || typeof payloadSchema !== 'object' || Array.isArray(payloadSchema)) return undefined;
+
+    const properties = (payloadSchema as { properties?: unknown }).properties;
+    if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) return undefined;
+
+    const kindSchema = (properties as Record<string, unknown>)[kindKey];
+    if (kindSchema === null || typeof kindSchema !== 'object' || Array.isArray(kindSchema)) return undefined;
+
+    return kindSchema as Record<string, unknown>;
   }
 
   /**

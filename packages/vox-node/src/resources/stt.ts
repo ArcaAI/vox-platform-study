@@ -117,6 +117,14 @@ export class SttResource {
    * opened exactly once, because its ticket is consumed at that handshake.
    *
    * Opens nothing: call `connect()` when you are ready to stream.
+   *
+   * TASK-951 — two ways to label what you are streaming, and they answer different questions.
+   * `createStreamSession({ context })` says what the SESSION is: fixed, echoed on every
+   * transcript as `context`. {@link RealtimeSttSocket.setMetadata} says what is happening NOW:
+   * it can change mid-recording, and comes back time-synced as each transcript's `metadata`
+   * spans, clipped to that segment. A client streaming a mixed feed from a set of microphones
+   * that opens and closes wants the second; one session per fixed microphone wants the first.
+   * Using both is fine — they are independent.
    */
   socket(session: StreamSessionResponse, options: SttSocketOptions = {}): RealtimeSttSocket {
     // Destructured rather than spread LAST: an `options` object carrying an

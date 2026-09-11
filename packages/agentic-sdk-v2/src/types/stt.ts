@@ -355,6 +355,42 @@ export interface WsTranscriptResult {
    * apart — e.g. several per-microphone sessions for one consultation.
    */
   sessionEpochMs?: number;
+  /**
+   * The metadata that was in force over THIS segment's audio, time-synced to
+   * it (TASK-951). Set with `SttWebSocketClient.setMetadata` while streaming;
+   * each entry covers a stretch of this segment, with `from`/`to` in the same
+   * session-relative seconds as `startTime`/`endTime` and already clipped to
+   * it. Two or more entries mean the metadata changed mid-utterance.
+   *
+   * Absent (not `[]`) on a session that never set any — which is what keeps
+   * the wire byte-identical for every existing consumer. Independent of
+   * {@link WsTranscriptResult.context}: that is what the session IS, this is
+   * what was happening while it recorded.
+   */
+  metadata?: WsMetadataSpan[];
+}
+
+/**
+ * One stretch of a segment's audio and the client metadata in force over it
+ * (TASK-951). `value` is the object the client sent, verbatim.
+ */
+export interface WsMetadataSpan {
+  from: number;
+  to: number;
+  value: Record<string, unknown>;
+}
+
+/**
+ * Client → server metadata declaration (TASK-951).
+ *
+ * Carries no timestamp on purpose: the gateway places it at the session's
+ * current audio offset (bytes forwarded ÷ (sampleRate × 2)), which is the only
+ * clock that survives buffering and a resume — and the same one the ASR derives
+ * segment times from.
+ */
+export interface WsMetadataMessage {
+  type: 'metadata';
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -415,6 +451,11 @@ export interface WsTranscriptWirePayload {
   context?: unknown;
   sessionEpochMs?: unknown;
   session_epoch_ms?: unknown;
+  /**
+   * Per-span client metadata (TASK-951). Gateway-owned and camelCase only — `apps/stt` never
+   * publishes it, so unlike the ASR fields around it there is no second casing to tolerate.
+   */
+  metadata?: unknown;
   /** Absorbs any not-yet-modelled server field so `Record<string, unknown>` stays assignable. */
   [key: string]: unknown;
 }

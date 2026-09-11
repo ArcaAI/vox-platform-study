@@ -70,7 +70,7 @@ export type { StreamCloseReason, StreamHandle, StreamHandlers, StreamHandlersBas
  * `hope.stt.socket(session)`. It needs a ticket refresher either way: the
  * ticket it is handed is consumed at the first handshake.
  */
-export { RealtimeSttSocket } from './core/realtime-stt-socket';
+export { MAX_STT_METADATA_BYTES, RealtimeSttSocket } from './core/realtime-stt-socket';
 export type {
   RealtimeSttCloseEvent,
   RealtimeSttEventName,
@@ -194,6 +194,7 @@ export type {
   SttClientMessage,
   SttCloseMessage,
   SttErrorMessage,
+  SttMetadataSpan,
   SttResumeFailedMessage,
   SttResumeRequest,
   SttResumedMessage,
