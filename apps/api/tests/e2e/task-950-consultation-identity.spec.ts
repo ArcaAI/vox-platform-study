@@ -168,6 +168,11 @@ test.describe('TASK-950 — a service account opens a consultation for a clinici
     const kind = definition.kinds.find((declared) => declared.key === KIND_KEY);
     expect(kind, `kind '${KIND_KEY}'`).toBeTruthy();
     kind!.fields = { ...kind!.fields, properties: { ...(kind!.fields?.properties ?? {}), [IDENTITY_FIELD]: { type: 'string', minLength: 1 } } };
+    // TASK-951: the effective schema may ALREADY carry the identity marker on another kind (the scribe's
+    // `encounter`). The grammar allows one marker per role, so move it rather than add a second.
+    for (const declared of definition.kinds) {
+      if (declared.key !== KIND_KEY) delete (declared as Record<string, unknown>).userIdentity;
+    }
     kind!.userIdentity = { field: IDENTITY_FIELD };
 
     const publish = await request.post(`${SCHEMAS}/${schemaId}/publish`, {
