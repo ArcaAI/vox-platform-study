@@ -51,6 +51,23 @@ export interface IWorkflowRunEntity extends IBaseTenantEntity {
    *  for any graph with no `output.deliver` node. 
  */
   resultRef?: JsonValue | null;
+  /**
+   * TASK-950 (decision 2, fast win) — the row's `_metadata` JSONB, re-declared here for the
+   * same reason `PromptTemplateEntity` / `AiModelEntity` / `PasswordResetTokenEntity` re-declare
+   * it: `IBaseEntity.metaData` is declared but never wired on the abstract `BaseEntity`, so
+   * without a local backing field the column round-trips OUT to Postgres and is unreadable
+   * coming back. `WorkflowRunService.recordRunStarted` writes `{ actingUserId }` into it and
+   * `WorkflowRunDtoMapper.toResponse` reads it back out.
+   *
+   * A BAG, not a schema: the write contract stores whatever the caller passed, verbatim, so
+   * every key is `unknown` on read and must be narrowed at the read site.
+   *
+   * Three-way absence, deliberately preserved end to end (`undefined` at the factory, at the
+   * constructor, and through `toObject()`): OMITTED means "this caller had nothing to record",
+   * `{}` means "measured, found nothing", `null` means the DB column is empty. The factory and
+   * the constructor therefore do NOT coerce with `?? null` — see their comments.
+   */
+  metaData?: Record<string, unknown> | null;
 }
 
 export class WorkflowRunEntity extends BaseTenantEntity {
@@ -71,6 +88,7 @@ export class WorkflowRunEntity extends BaseTenantEntity {
   private _degradedNodeCount: IWorkflowRunEntity['degradedNodeCount'];
   private _firstErrorCode?: IWorkflowRunEntity['firstErrorCode'];
   private _resultRef?: IWorkflowRunEntity['resultRef'];
+  private _metaData?: IWorkflowRunEntity['metaData'];
 
   constructor(init: IWorkflowRunEntity) {
     super(init);
@@ -91,6 +109,11 @@ export class WorkflowRunEntity extends BaseTenantEntity {
     this._degradedNodeCount = init.degradedNodeCount;
     this._firstErrorCode = init.firstErrorCode;
     this._resultRef = init.resultRef;
+    // Assigned VERBATIM (the `AiModelEntity` / `PasswordResetTokenEntity` form), never
+    // `?? null`: an omitted bag must stay omitted through `toObject()` so the INSERT carries
+    // no `_metadata` at all. A stored `null` would claim the question was asked and answered
+    // "nothing", which is not what an absent input means.
+    this._metaData = init.metaData;
   }
 
   get workflowVersionId(): IWorkflowRunEntity['workflowVersionId'] {
@@ -227,6 +250,14 @@ export class WorkflowRunEntity extends BaseTenantEntity {
 
   set resultRef(value: IWorkflowRunEntity['resultRef']) {
     this.setProperty('resultRef', value);
+  }
+
+  get metaData(): IWorkflowRunEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IWorkflowRunEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   public override validate(): void {
