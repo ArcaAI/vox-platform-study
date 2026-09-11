@@ -75,6 +75,25 @@ describe('the cloud vendor cards mirror the gateway BYO declaration', () => {
     // The Speech card must no longer claim its endpoint is the Foundry resource.
     expect(speech!.fields.find((f) => f.name === 'baseUrl')?.label ?? '').not.toMatch(/foundry/i);
   });
+
+  it('never re-offers the `model` extras pin on an STT card (TASK-952 D-1)', () => {
+    // Azure Speech / Azure Foundry never read the key at all; Sarvam / OpenAI
+    // read it as an override-wins global pin that silently overrode whatever
+    // model the agent had bound. Model identity is `AiModel`, declared
+    // against the connection and bound to an agent by FK — not a console
+    // text field. If this regresses, remove the `model` field again rather
+    // than relaxing this assertion.
+    for (const provider of PROVIDERS_BY_SERVICE.stt) {
+      expect(
+        provider.fields.some((f) => f.name === 'model'),
+        `stt:${provider.id} re-declares the retired \`model\` extras field`,
+      ).toBe(false);
+    }
+  });
+
+  it('keeps the four STT provider ids and their order unchanged', () => {
+    expect(PROVIDERS_BY_SERVICE.stt.map((p) => p.id)).toEqual(['azure-speech', 'azure-foundry', 'sarvam', 'openai']);
+  });
 });
 
 describe('the platform-managed cards mirror the gateway platform planes (TASK-932)', () => {
