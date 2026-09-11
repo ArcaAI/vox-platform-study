@@ -72,14 +72,18 @@ export const ARCAAI_RETIRED_DEPARTMENT_SCHEMA_SLUGS: readonly string[] = ['consu
 // =============================================================================
 
 /**
- * The standalone transcription contract (R2).
+ * The standalone transcription contract (R2, as clarified by the owner on 2026-09-11).
  *
- * `stream` is the kind that carries whatever the client wants handed back: ALaaS opens one STT
- * session per MICROPHONE and labels speakers itself, so `mic_id` is the only required property
- * and `additionalProperties: true` is deliberate — the echo is "exactly the same metadata things"
- * the client sent, not a platform-curated subset of them. `streamContext: true` is the marker
- * that says WHICH kind carries stream identity (lane B's grammar; informational, it changes no
- * payload contract).
+ * `stream` is the kind that carries whatever the client wants handed back. ALaaS records ONE
+ * session with one, two or more microphones live at a time and the set changes while recording,
+ * so `mic_ids` (an array, at least one) is the only required property; `additionalProperties:
+ * true` is deliberate — the echo is "exactly the same metadata things" the client sent, not a
+ * platform-curated subset of them. The kind is read in two places: `context.stream` at session
+ * create (the initial declaration, validated against the whole payload schema), and every
+ * `{ type: 'metadata' }` socket frame afterwards, validated against THIS kind's `fields` and
+ * handed back on each transcript as time-synced spans. `streamContext: true` is the marker that
+ * names this kind for the second use (lane B's grammar; frozen as
+ * `openBindings.streamContext.kindKey`).
  */
 export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> = {
   schemaVersion: '1.0',
@@ -102,16 +106,17 @@ export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> =
       cardinality: 'ONE',
       lifecycle: 'PRE',
       producedBy: ['CLIENT'],
-      description: 'Client-owned identification of this audio stream. Echoed VERBATIM on every transcript segment of the session.',
+      description:
+        'Client-owned identification of the microphones live on this audio stream. Declared as `context.stream` at create, re-declared on the socket as a `metadata` frame whenever the microphone set changes, and handed back VERBATIM on every transcript segment as time-synced spans.',
       fields: {
         type: 'object',
         properties: {
-          mic_id: { type: 'string', minLength: 1 },
+          mic_ids: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
           speaker_label: { type: 'string' },
           channel: { type: 'string' },
           source: { type: 'string' },
         },
-        required: ['mic_id'],
+        required: ['mic_ids'],
         additionalProperties: true,
       },
       streamContext: true,
@@ -134,7 +139,10 @@ export const ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION: Record<string, unknown> =
           utteranceIndex: { type: 'integer' },
           speakerId: { type: 'string' },
           speakerLabel: { type: 'string' },
-          words: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, start: { type: 'number' }, end: { type: 'number' } } } },
+          words: {
+            type: 'array',
+            items: { type: 'object', properties: { text: { type: 'string' }, start: { type: 'number' }, end: { type: 'number' } } },
+          },
           sessionEpochMs: { type: 'integer' },
           context: { type: 'object' },
         },
@@ -287,7 +295,8 @@ export const ARCAAI_CONSULTATION_SCRIBE_DEFINITION: Record<string, unknown> = {
       cardinality: 'MANY',
       lifecycle: 'ANY',
       producedBy: ['CLIENT'],
-      description: 'Clinical case notes contributed during or around the consultation (kept from consultation_note_context so a client naming kindKey case_note stays valid).',
+      description:
+        'Clinical case notes contributed during or around the consultation (kept from consultation_note_context so a client naming kindKey case_note stays valid).',
     },
     {
       key: 'attachment',
@@ -329,7 +338,7 @@ const SCHEMA_SEEDS: ArcaaiSchemaSeed[] = [
     slug: ARCAAI_REALTIME_TRANSCRIPTION_SLUG,
     name: 'Realtime Transcription',
     description:
-      'The standalone realtime-transcription contract: one audio stream plus the client-owned `stream` metadata (mic id, speaker label) that every time-synced transcript segment of the session echoes back verbatim.',
+      'The standalone realtime-transcription contract: one audio stream plus the client-owned `stream` metadata (the live microphone ids, speaker label) that every time-synced transcript segment of the session hands back verbatim, as spans over its own audio window.',
     // NOT the tenant default: this schema governs standalone STT sessions, not consultations.
     // A DEFAULT would be what discovery serves for a consultation that names no schema.
     isDefault: false,
@@ -380,6 +389,71 @@ export const ARCAAI_TWO_CONTEXT_SCHEMA_VERSIONS = SCHEMA_SEEDS.map((seed) => ({
 }));
 
 /**
+ * Seed copy of `openBindingsFromDefinition` (`@arcaai/applications`, lane B). The database package
+ * cannot import the applications layer, so the open-time ROLE markers are read here the same way
+ * — and `task-951-arcaai-two-schemas.test.ts` pins this copy against the real function for both
+ * definitions, exactly as it already does for `payloadSchemaFromDefinition`. Keys are ABSENT when
+ * unset (never `null`, never `[]`): the result is frozen into a checksummed artifact.
+ */
+export interface SeedOpenBindings {
+  userIdentity?: { kindKey: string; field: string };
+  department?: { kindKey: string; field: string; by: 'code' | 'name' };
+  visitType?: { kindKey: string; field: string };
+  externalRef?: { kindKey: string; field: string };
+  streamContext?: { kindKey: string };
+  materialize?: { kindKey: string; as: 'CASE_NOTE' }[];
+}
+
+const isSeedRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const seedMarkedField = (marker: unknown): string | null =>
+  isSeedRecord(marker) && typeof marker.field === 'string' && marker.field.length > 0 ? marker.field : null;
+
+export function openBindingsFromDefinition(definition: unknown): SeedOpenBindings {
+  const bindings: SeedOpenBindings = {};
+  if (!isSeedRecord(definition) || !Array.isArray(definition.kinds)) return bindings;
+
+  const materialize: { kindKey: string; as: 'CASE_NOTE' }[] = [];
+  for (const kind of definition.kinds) {
+    if (!isSeedRecord(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
+    const kindKey = kind.key;
+
+    const userIdentityField = seedMarkedField(kind.userIdentity);
+    if (userIdentityField !== null && bindings.userIdentity === undefined) bindings.userIdentity = { kindKey, field: userIdentityField };
+
+    const departmentField = seedMarkedField(kind.department);
+    const by = isSeedRecord(kind.department) ? kind.department.by : undefined;
+    if (departmentField !== null && (by === 'code' || by === 'name') && bindings.department === undefined) {
+      bindings.department = { kindKey, field: departmentField, by };
+    }
+
+    const visitTypeField = seedMarkedField(kind.visitType);
+    if (visitTypeField !== null && bindings.visitType === undefined) bindings.visitType = { kindKey, field: visitTypeField };
+
+    const externalRefField = seedMarkedField(kind.externalRef);
+    if (externalRefField !== null && bindings.externalRef === undefined) bindings.externalRef = { kindKey, field: externalRefField };
+
+    if (kind.streamContext === true && bindings.streamContext === undefined) bindings.streamContext = { kindKey };
+
+    if (kind.materializeAs === 'CASE_NOTE') materialize.push({ kindKey, as: 'CASE_NOTE' });
+  }
+  if (materialize.length > 0) bindings.materialize = materialize;
+  return bindings;
+}
+
+/** Key-order-independent JSON, so a blob read back from `jsonb` (which reorders keys) compares by CONTENT. */
+const stableJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, inner: unknown) =>
+    isSeedRecord(inner)
+      ? Object.fromEntries(
+          Object.keys(inner)
+            .sort()
+            .map((k) => [k, inner[k]]),
+        )
+      : inner,
+  );
+
+/**
  * What `AgentService.resolveContextSchema` freezes into `compiledConfig.contextSchema` at publish,
  * reproduced for the seeded ASR agent.
  *
@@ -388,12 +462,22 @@ export const ARCAAI_TWO_CONTEXT_SCHEMA_VERSIONS = SCHEMA_SEEDS.map((seed) => ({
  * not carry — which is exactly the state a publish exists to prevent. `userIdentity` is OMITTED
  * because `arcaai_realtime_transcription` declares no identity field; `resolveReference` omits the
  * key in that case rather than stamping `null`, so the frozen bytes match a real publish.
+ * `openBindings` is PRESENT for the same reason in reverse: the definition declares a
+ * `streamContext` kind, and a publish freezes every declared open-time role.
  */
 export const ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA: Record<string, unknown> = {
   schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
   versionNumber: 1,
   versionId: SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.REALTIME_TRANSCRIPTION,
   payloadSchema: payloadSchemaFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION),
+  // Present ONLY when non-empty, exactly as `ConsultationContextSchemaService.resolveReference`
+  // spreads it. For this schema it is never empty: the `stream` kind carries `streamContext: true`,
+  // and this key is how that marker reaches the runtime — `resolveStreamMetadataSchema` reads
+  // `openBindings.streamContext.kindKey` off the FROZEN artifact to find the schema a `metadata`
+  // frame is validated against. A blob without it leaves the gate accepting any object.
+  ...(Object.keys(openBindingsFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION)).length > 0
+    ? { openBindings: openBindingsFromDefinition(ARCAAI_REALTIME_TRANSCRIPTION_DEFINITION) }
+    : {}),
 };
 
 // =============================================================================
@@ -428,11 +512,14 @@ async function retireDepartmentSchemas(client: CorePrismaClient): Promise<number
  * Bind ArcaAI's `realtime-transcription` agent to the transcription schema, and freeze the
  * resolution into its compiled artifact.
  *
- * Only an agent whose `contextSchemaId` is still NULL is touched — phase 26 clones it that way
- * deliberately ("a context pin cannot travel by id"), and a tenant admin who has since pinned
- * something keeps their choice.
+ * An agent whose `contextSchemaId` is still NULL is bound — phase 26 clones it that way
+ * deliberately ("a context pin cannot travel by id"). A tenant admin who has since pinned
+ * something ELSE keeps their choice. An agent pinning THIS seed's schema is RE-FROZEN when the
+ * seed's blob no longer matches the artifact: the runtime never re-reads the schema row
+ * (TASK-859 invariant 4), so a definition change under this ticket that stopped at the version
+ * row would leave the gateway validating `metadata` frames against the shape it replaced.
  */
-async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'bound' | 'already-bound' | 'absent'> {
+async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'bound' | 'refrozen' | 'already-bound' | 'absent'> {
   // The SERVABLE row, resolved the way `AgentAssignmentService` resolves it (slug + task +
   // PUBLISHED + active), newest version first — not merely "a row with this slug".
   const agent = await client.agent.findFirst({
@@ -441,10 +528,20 @@ async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'bound'
     select: { id: true, contextSchemaId: true, compiledConfig: true },
   });
   if (!agent) return 'absent';
-  if (agent.contextSchemaId !== null) return 'already-bound';
 
   const compiled = (agent.compiledConfig ?? null) as unknown as Record<string, unknown> | null;
   const nextCompiled = compiled === null ? null : { ...compiled, contextSchema: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA };
+
+  if (agent.contextSchemaId !== null) {
+    const ours = agent.contextSchemaId === SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION;
+    if (!ours || compiled === null || nextCompiled === null) return 'already-bound';
+    if (stableJson(compiled.contextSchema) === stableJson(ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA)) return 'already-bound';
+    await client.agent.update({
+      where: { id: agent.id },
+      data: { compiledConfig: nextCompiled as never, compiledConfigChecksum: checksumOf(nextCompiled), updatedBy: SYSTEM_USER_ID },
+    });
+    return 'refrozen';
+  }
 
   await client.agent.update({
     where: { id: agent.id },
@@ -470,6 +567,7 @@ export const seedArcaaiTwoContextSchemas = async (client: CorePrismaClient) => {
 
   let created = 0;
   let skipped = 0;
+  let refreshed = 0;
   for (const [index, schema] of ARCAAI_TWO_CONTEXT_SCHEMAS.entries()) {
     const version = ARCAAI_TWO_CONTEXT_SCHEMA_VERSIONS[index];
     if (!version) throw new Error(`Missing ArcaAI context schema version for ${schema.id}`);
@@ -483,6 +581,23 @@ export const seedArcaaiTwoContextSchemas = async (client: CorePrismaClient) => {
     });
     if (existing) {
       skipped += 1;
+      // A row the SEED owns (matched by our id, not merely by slug) keeps its v1 definition in step
+      // with this file: the contract is what this ticket ships, and a dev database seeded before a
+      // definition change would otherwise advertise one shape while the agent enforces another.
+      // An operator-authored row with our slug is never touched.
+      if (existing.id === schema.id) {
+        const current = await client.consultationContextSchemaVersion.findFirst({
+          where: { schemaId: schema.id, versionNumber: 1 },
+          select: { id: true, checksum: true },
+        });
+        if (current && current.checksum !== version.checksum) {
+          await client.consultationContextSchemaVersion.updateMany({
+            where: { id: current.id },
+            data: { definition: version.definition as never, checksum: version.checksum, updatedBy: SYSTEM_USER_ID },
+          });
+          refreshed += 1;
+        }
+      }
       continue;
     }
 
@@ -493,9 +608,9 @@ export const seedArcaaiTwoContextSchemas = async (client: CorePrismaClient) => {
 
   const agent = await bindTranscriptionAgent(client);
 
-  console.log(`  ✓ ArcaAI context schemas: ${created} created, ${skipped} left untouched`);
+  console.log(`  ✓ ArcaAI context schemas: ${created} created, ${skipped} already present (${refreshed} v1 definition(s) refreshed)`);
   console.log(`  ✓ Retirement sweep: ${demoted} note-context clone demoted, ${retired} department schema(s) soft-retired`);
   console.log(`  ✓ ${ASR_AGENT_SLUG} agent: ${agent}`);
 
-  return { created, skipped, demoted, retired, agent };
+  return { created, skipped, refreshed, demoted, retired, agent };
 };

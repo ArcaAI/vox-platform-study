@@ -60,7 +60,7 @@ export class SttResource {
    * multiplexing of its own — to attribute captions to distinct mic sources,
    * open one UNMIXED session per microphone, each with its own
    * `request.context` naming which one it is (e.g.
-   * `{ stream: { mic_id: 'left' } }`). HOPE echoes that object verbatim on
+   * `{ stream: { mic_ids: ['left'] } }`). HOPE echoes that object verbatim on
    * the response's `context` and on every transcript segment of that
    * session, so a caller re-associates a transcript with its source without
    * keeping an out-of-band map; `sessionEpochMs` on both is the wall-clock

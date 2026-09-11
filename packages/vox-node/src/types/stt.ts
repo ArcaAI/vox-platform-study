@@ -231,7 +231,7 @@ export interface SttTranscriptResult {
  * One stretch of a segment's audio and the metadata that was in force over it.
  *
  * `value` is YOUR object, verbatim — HOPE echoes it and never interprets it. The common shape
- * is `{ micIds: ['mic-1', 'mic-2'] }`, but any JSON object under 2 KB is accepted (and, where
+ * is `{ mic_ids: ['mic-1', 'mic-2'] }`, but any JSON object under 2 KB is accepted (and, where
  * the session's ASR agent binds a context schema with a stream-identity kind, must satisfy it).
  */
 export interface SttMetadataSpan {

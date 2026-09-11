@@ -58,7 +58,7 @@ const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
 const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
 
 /** The shape the `arcaai_realtime_transcription` schema's `stream` kind declares (R1 / D-8). */
-const STREAM_CONTEXT = { stream: { mic_id: 'mic-1', speaker_label: 'Clinician' } };
+const STREAM_CONTEXT = { stream: { mic_ids: ['mic-1'], speaker_label: 'Clinician' } };
 
 const svcHeaders = (token: string) => ({ 'X-Service-Account-Token': token, 'Content-Type': 'application/json' });
 
@@ -97,7 +97,7 @@ test.describe('TASK-951 R2 — STT session context echo (service account)', () =
   test('refuses a context over 4 KB with 413 CONTEXT_TOO_LARGE', async ({ request }) => {
     // The size gate runs before the entitlement check, the agent resolution and the STT round
     // trip, so this case is meaningful even on a stack with no STT at all.
-    const oversized = { stream: { mic_id: 'mic-1', note: 'x'.repeat(4096) } };
+    const oversized = { stream: { mic_ids: ['mic-1'], note: 'x'.repeat(4096) } };
 
     const res = await createSession(request, svcToken, { context: oversized });
 
@@ -107,7 +107,7 @@ test.describe('TASK-951 R2 — STT session context echo (service account)', () =
 
   test('a context just under the bound is NOT refused on size', async ({ request }) => {
     // Pins the boundary from the other side: 413 must mean "too large", not "context at all".
-    const nearLimit = { stream: { mic_id: 'mic-1', note: 'x'.repeat(3900) } };
+    const nearLimit = { stream: { mic_ids: ['mic-1'], note: 'x'.repeat(3900) } };
 
     const res = await createSession(request, svcToken, { context: nearLimit });
 

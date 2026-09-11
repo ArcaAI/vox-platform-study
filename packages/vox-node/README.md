@@ -685,7 +685,7 @@ tells captions apart by source without keeping an out-of-band map:
 ```ts
 const session = await hope.stt.createStreamSession({
   agentSlug: 'realtime-transcription',
-  context: { stream: { mic_id: 'left' } },
+  context: { stream: { mic_ids: ['left'] } },
 });
 const socket = hope.stt.socket(session);
 socket.on('transcript', (t) => attribute(t.context?.stream, t.text));
@@ -702,14 +702,14 @@ is reported as two spans on that utterance, not one wrong label:
 const socket = hope.stt.socket(session);
 await socket.connect();
 
-socket.setMetadata({ micIds: ['mic-1'] });            // the clinician's mic
+socket.setMetadata({ mic_ids: ['mic-1'] });            // the clinician's mic
 await pump(socket, firstChunk);
-socket.setMetadata({ micIds: ['mic-1', 'mic-2'] });   // the patient's mic joins
+socket.setMetadata({ mic_ids: ['mic-1', 'mic-2'] });   // the patient's mic joins
 await pump(socket, restOfTheRecording);
 
 socket.on('transcript', (t) => console.log(t.metadata));
-// [ { from: 12.0, to: 13.4, value: { micIds: ['mic-1'] } },
-//   { from: 13.4, to: 15.1, value: { micIds: ['mic-1', 'mic-2'] } } ]
+// [ { from: 12.0, to: 13.4, value: { mic_ids: ['mic-1'] } },
+//   { from: 13.4, to: 15.1, value: { mic_ids: ['mic-1', 'mic-2'] } } ]
 ```
 
 `from`/`to` are in the same session-relative seconds as `startTime`/`endTime`, already clipped to
