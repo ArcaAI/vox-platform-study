@@ -16,6 +16,11 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JsonValue } from '@arcaai/domains';
+// TASK-959 — the wire vocabulary IS the ledger vocabulary. Importing the two
+// closed sets rather than retyping them is what stops a fourth device spelling
+// from being accepted here and rejected at emission (where the row is already
+// lost), and `usage-attributes.ts` imports nothing, so there is no cycle.
+import { BYTE_SOURCES, COMPUTE_DEVICES, type ByteSource, type ComputeDevice } from '../../../usageLedger/usage-attributes';
 
 /**
  * one ordered transcript segment (a diarized turn / VAD segment) as
@@ -239,6 +244,58 @@ export class InternalCompleteJobRequest {
   @IsString()
   @IsOptional()
   connectionId?: string;
+
+  // TASK-959 §3.2/§4.2 — compute and network, four TYPED top-level siblings.
+  // Same reason as the two above: `resultMetadata` is ciphertext after the
+  // completing persist, so a number that only lives there can never be metered.
+  // The worker OMITS each when it has no value (never `null`), so an older
+  // worker's body is unchanged and this whole block stays optional.
+  @ApiPropertyOptional({
+    description:
+      'Which device the transcription occupied. DECIDES THE UNIT: cuda/mps make `processingTimeSeconds` a GPU_SECOND row, cpu a CPU_SECOND row, ' +
+      'and the two are priced an order of magnitude apart. Reported by the worker from `LoadedModel.device`; a cloud engine reports `cpu` (what it ' +
+      'occupied HERE is this service waiting on the vendor). Absent from a worker that predates the field — which emits no compute row rather than ' +
+      'guessing a device.',
+    enum: COMPUTE_DEVICES,
+    example: 'cuda',
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn([...COMPUTE_DEVICES])
+  device?: ComputeDevice;
+
+  @ApiPropertyOptional({
+    description:
+      'Bytes sent to the third-party ASR vendor for this job (EGRESS_BYTE). Absent — never 0 — when no third-party call was made: "no such call" and ' +
+      '"a call that moved no bytes" are different facts, and 0 IS sent when it is the real measurement.',
+    example: 4096,
+  })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  requestBytes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Bytes received from the third-party ASR vendor for this job (INGRESS_BYTE). Same absent-vs-zero rule as `requestBytes`.',
+    example: 512,
+  })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  responseBytes?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'How honest the byte counts are: `wire` = counted at the HTTP transport (what the vendor saw, framing included), `app` = an application-level ' +
+      'proxy because the vendor SDK owns its own websocket (Azure Speech). Recorded on the row so a later exact figure cannot silently change the ' +
+      'meaning of the rows already written — the difference is a compression ratio, not a rounding error.',
+    enum: BYTE_SOURCES,
+    example: 'wire',
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn([...BYTE_SOURCES])
+  byteSource?: ByteSource;
 }
 
 /**
