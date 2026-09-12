@@ -435,7 +435,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       // collides with the tombstone (409 unique-constraint) with no HTTP
       // recovery path. A create-intent (`If-Match: "0"`) over a DELETED row
       // instead REVIVES it — restore + apply every field as a fresh write.
-      const deleted = await this.connectionRepository.findDeletedByTenantServiceProvider(service, provider, scopedTenantId, tx);
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, provider, scopedTenantId, tx);
       if (deleted) {
         return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx);
       }
@@ -628,7 +628,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       // A row an admin deleted is REVIVED rather than re-inserted: the unique
       // (tenantId, service, provider) index counts the tombstone, so a plain
       // create would 409 with no HTTP recovery path (F-028).
-      const deleted = await this.connectionRepository.findDeletedByTenantServiceProvider(service, provider, scopedTenantId, tx);
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, provider, scopedTenantId, tx);
       if (deleted) return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
       return this.createFromDto(dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
     }
