@@ -13,8 +13,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BYTE_SOURCES,
+  COMPUTE_DEVICES,
   GUARDRAIL_DISPOSITIONS,
+  STORAGE_CLASSES,
   USAGE_ATTRIBUTE_KEYS,
+  USAGE_LEGS,
   USAGE_TRIGGERS,
   validateUsageAttributes,
   withUsageAttributes,
@@ -37,6 +41,11 @@ describe('validateUsageAttributes — the allow-list', () => {
         contextBand: '128k+',
         trigger: 'AGENT_INVOCATION',
         guardrail: 'opted_out',
+        device: 'cuda',
+        leg: 'primary',
+        storageClass: 'claim-check',
+        activityType: 'execute_node',
+        byteSource: 'wire',
       }),
     ).toEqual([]);
   });
@@ -117,8 +126,79 @@ describe('validateUsageAttributes — the allow-list', () => {
         'serviceTier',
         'streamKind',
         'trigger',
+        // TASK-959 W0 (§10.2).
+        'activityType',
+        'byteSource',
+        'device',
+        'leg',
+        'storageClass',
       ].sort(),
     );
+  });
+});
+
+/**
+ * TASK-959 W0 — the five compute/network/storage dimensions (§10.2).
+ *
+ * Four of them are CLOSED vocabularies, and the validator enforces membership,
+ * not merely shape. That is a deliberate step past what `trigger` and
+ * `guardrail` get: `device` DECIDES THE UNIT (`cuda`/`mps` → `GPU_SECOND`,
+ * `cpu` → `CPU_SECOND`), so a fifth spelling arriving from a mis-set
+ * `metering.compute.deviceByProvider` entry would not fork a facet — it would
+ * fork the price. `activityType` stays shape-only: it is the Temporal activity
+ * name, an open set the worker owns.
+ */
+describe('compute / network / storage dimensions (TASK-959 §10.2)', () => {
+  it('freezes the three device values — they decide which unit a row is denominated in', () => {
+    expect([...COMPUTE_DEVICES].sort()).toEqual(['cpu', 'cuda', 'mps'].sort());
+    for (const device of COMPUTE_DEVICES) expect(validateUsageAttributes({ device })).toEqual([]);
+  });
+
+  it('freezes the three funding-leg values (§6.2 — a failed attempt is its own leg)', () => {
+    expect([...USAGE_LEGS].sort()).toEqual(['failed', 'fallback', 'primary'].sort());
+    for (const leg of USAGE_LEGS) expect(validateUsageAttributes({ leg })).toEqual([]);
+  });
+
+  it('freezes the three storage classes the nightly snapshot reports (§5.2)', () => {
+    expect([...STORAGE_CLASSES].sort()).toEqual(['claim-check', 'media', 'text'].sort());
+    for (const storageClass of STORAGE_CLASSES) expect(validateUsageAttributes({ storageClass })).toEqual([]);
+  });
+
+  it('freezes the two byte sources — `app` says the figure is a proxy, not the wire (§4.2)', () => {
+    expect([...BYTE_SOURCES].sort()).toEqual(['app', 'wire'].sort());
+    for (const byteSource of BYTE_SOURCES) expect(validateUsageAttributes({ byteSource })).toEqual([]);
+  });
+
+  it('REJECTS an out-of-vocabulary value for each closed key', () => {
+    // `gpu` is the plausible wrong spelling of `cuda`, and it is the dangerous
+    // one: silently accepted, it becomes a rollup facet that no unit mapping
+    // recognises, so the row is metered and never priced.
+    expect(validateUsageAttributes({ device: 'gpu' })).toHaveLength(1);
+    expect(validateUsageAttributes({ device: 'gpu' })[0]).toMatch(/device/);
+    expect(validateUsageAttributes({ device: 'CUDA' })).toHaveLength(1);
+    expect(validateUsageAttributes({ leg: 'retry' })).toHaveLength(1);
+    expect(validateUsageAttributes({ storageClass: 'audio' })).toHaveLength(1);
+    expect(validateUsageAttributes({ byteSource: 'proxy' })).toHaveLength(1);
+  });
+
+  it('names the permitted values in the violation, so an emitter is fixed in one pass', () => {
+    expect(validateUsageAttributes({ device: 'gpu' })[0]).toMatch(/cuda/);
+  });
+
+  it('leaves `activityType` shape-checked only — the Temporal activity set is open', () => {
+    expect(validateUsageAttributes({ activityType: 'execute_node' })).toEqual([]);
+    expect(validateUsageAttributes({ activityType: 'emit_run_event' })).toEqual([]);
+    // Still a DIMENSION, never a description.
+    expect(validateUsageAttributes({ activityType: 'ran the node twice' })).toHaveLength(1);
+  });
+
+  it('still rejects a non-string for a closed key before it reaches the vocabulary check', () => {
+    expect(validateUsageAttributes({ device: 3 })).toHaveLength(1);
+    expect(validateUsageAttributes({ leg: true })).toHaveLength(1);
+  });
+
+  it('permits an explicit null for a closed key (the dimension does not apply)', () => {
+    expect(validateUsageAttributes({ device: null, leg: null, storageClass: null, byteSource: null })).toEqual([]);
   });
 });
 
