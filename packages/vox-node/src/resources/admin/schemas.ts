@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 430 component schemas the generated surface transitively
+ * Only the 434 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -6708,6 +6708,26 @@ export interface UpsertWorkflowAssignmentRequest {
   workflowDefinitionSlug: string;
 }
 
+export interface UsageComputeSeconds {
+  /** Σ CPU_SECOND across the inference capabilities. EXCLUDES the durable worker (capability WORKFLOW) — that is reported separately as workflowCpuSeconds. Fixed-point, 6 dp. */
+  cpuSeconds: string;
+  /** Σ GPU_SECOND across the inference capabilities (device cuda or mps). Fixed-point, 6 dp. */
+  gpuSeconds: string;
+}
+
+export interface UsageStorageSnapshotSummary {
+  /** When the snapshot was taken (the end of the UTC day it measured), ISO-8601. */
+  asOf: string;
+  /** Offloaded harness claim-check payloads. Fixed-point GB, 6 dp. */
+  claimCheckGb: string;
+  /** Per-tenant MinIO objects (Media.size). Fixed-point GB, 6 dp. */
+  mediaGb: string;
+  /** Encrypted Postgres columns (pg_column_size of the stored bytes). Fixed-point GB, 6 dp. */
+  textGb: string;
+  /** Σ of the three classes. Fixed-point GB, 6 dp. */
+  totalGb: string;
+}
+
 export interface UsageSummaryLine {
   capability: string;
   /** Summed INTERNAL-basis rated cost, integer micros. Excludes BYOK_NOTIONAL (see byokNotionalCostMicros). */
@@ -6723,22 +6743,45 @@ export interface UsageSummaryLine {
 export interface UsageSummaryResponse {
   /** BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14). */
   byokNotionalCostMicrosByCapability: Record<string, string>;
+  /** GPU vs CPU occupancy seconds across the inference capabilities. */
+  computeSeconds: UsageComputeSeconds;
   lines: UsageSummaryLine[];
   /** Billing-period label, YYYY-MM. */
   period: string;
   periodEnd: string;
   periodStart: string;
+  /** What the tenant was HOLDING at the latest nightly snapshot within the period, split by class — a level, not the period’s GB-day sum. Null when no snapshot exists for the period, which is deliberately distinct from a zeroed object. */
+  storage: UsageStorageSnapshotSummary;
+  /** Bytes that crossed to a vendor (deployment CLOUD or BYOK). Self-hosted traffic excluded. */
+  thirdPartyBytes: UsageThirdPartyBytes;
   /** Σ costMicros across every line (INTERNAL basis only). */
   totalCostMicros: string;
+  /** Σ CPU_SECOND under capability WORKFLOW — the durable worker's own CPU for this tenant's runs. Its own figure because a run's worker CPU is neither STT nor LLM, and adding it to computeSeconds would double-count it against a compute allowance. Fixed-point, 6 dp. */
+  workflowCpuSeconds: string;
+}
+
+export interface UsageThirdPartyBytes {
+  /** Σ EGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp. */
+  egressBytes: string;
+  /** Σ INGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp. */
+  ingressBytes: string;
 }
 
 export interface UsageTimeseriesPoint {
   /** UTC bucket start, ISO-8601. */
   bucketStart: string;
+  /** GPU vs CPU occupancy seconds in this bucket, inference capabilities only. */
+  computeSeconds: UsageComputeSeconds;
   /** Summed INTERNAL-basis rated cost, integer micros. */
   costMicros: string;
   /** Summed quantity in `unit`, across every provider/model. */
   quantity: string;
+  /** Σ STORAGE_GB_DAY in this bucket across every class — the rollup grain cannot split media from claim-check (both are provider `minio`), so this is the total; the per-class split is on the summary. Null when the bucket carries no snapshot at all, which for hourly granularity is every hour but the one the job ran in. */
+  storageGb: string | null;
+  /** Bytes to a vendor in this bucket (CLOUD/BYOK only). */
+  thirdPartyBytes: UsageThirdPartyBytes;
+  /** Σ CPU_SECOND under capability WORKFLOW in this bucket — the durable worker's own CPU. Fixed-point, 6 dp. */
+  workflowCpuSeconds: string;
 }
 
 export interface UsageTimeseriesResponse {
@@ -7133,6 +7176,45 @@ export interface WorkflowNodeResponse {
   trigger: 'on-start' | 'per-turn' | 'on-end';
   /** The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to. */
   type: string;
+}
+
+export interface WorkflowRunDetailResponse {
+  /** TASK-950 — the clinician this run acts FOR, read back from the row's `_metadata.actingUserId`. Recorded only for a STANDALONE machine-triggered run whose trigger schema declares a user-identity field; it sits BESIDE the actor the audit envelope already names (the service account), never instead of it. `null` for a human caller (the caller already IS the clinician), for a consultation-bound run (identity is `Consultation.doctorId`), and for a schema that declares no identity field — three different reasons, one honest absence. */
+  actingUserId?: string | null;
+  /** Σ CPU_SECOND under capability WORKFLOW for this run — the durable worker's own CPU, fair-share apportioned across concurrently executing activities (§3.4, D-5). NULL, not 0, when the run has no such rows: a run that predates the metering interceptor and a run that burned no measurable CPU are different facts. Orchestration CPU (the sandboxed workflow bodies and their replay) and the SDK's Rust core are deliberately NOT in this number — they are reconciled monthly against the pod's own CPU. */
+  cpuSeconds: number | null;
+  /** Row creation instant (ISO-8601). */
+  createdAt: string;
+  /** Denormalized WorkflowDefinition.name at run time. */
+  definitionName: string;
+  /** Count of nodes that degraded (produced a marked nothing) — a flag, never a run status. */
+  degradedNodeCount: number;
+  durationMs?: number | null;
+  /** Run end (ISO-8601), null while RUNNING. */
+  endedAt?: string | null;
+  failedNodeCount: number;
+  firstErrorCode?: string | null;
+  id: string;
+  isSandbox: boolean;
+  nodeCount?: number | null;
+  /** The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. */
+  resultRef?: Record<string, unknown> | null;
+  /** The domain run id (empty-string sentinel convention). */
+  runId: string;
+  /** The AgentTrajectoryStep join key ("workflow-interpreter-{runId}"). */
+  sessionId: string;
+  /** Run start (ISO-8601). */
+  startedAt: string;
+  /** RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT. No DEGRADED value — see degradedNodeCount. */
+  status: string;
+  tenantId: string;
+  /** consultation open | api invoke | webhook | schedule. */
+  trigger: string;
+  /** WorkflowDefinition.slug — the stable lineage key across versions. */
+  workflowSlug: string;
+  /** WorkflowDefinition.id of the exact PUBLISHED, immutable version row pinned for this run. */
+  workflowVersionId: string;
+  workflowVersionNumber: number;
 }
 
 export interface WorkflowRunResponse {

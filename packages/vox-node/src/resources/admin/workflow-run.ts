@@ -11,7 +11,7 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type { RunGateStateResponse, RunTraceResponse, WorkflowRunResponse } from './schemas';
+import type { RunGateStateResponse, RunTraceResponse, WorkflowRunDetailResponse, WorkflowRunResponse } from './schemas';
 
 /**
  * `hope.admin.workflowRun` — the `svc:admin:workflow-run:read` administration area.
@@ -58,12 +58,14 @@ export class AdminWorkflowRunResource extends AdminResource {
   }
 
   /**
-   * A single run. Cross-tenant / nonexistent id → 404 (never 403).
+   * A single run, with the worker CPU it consumed. Cross-tenant / nonexistent id → 404 (never 403).
+   *
+   * `cpuSeconds` is the durable worker's own CPU for this run, summed from the usage ledger rather than read off the run row — so it lands minutes after the run finishes and is null for a run the metering interceptor never saw.
    *
    * `GET /api/v1/admin/workflow-runs/{runId}` — `WorkflowRunController.getRun`.
    */
-  getRun(runId: string, options: AdminRequestOptions = {}): Promise<WorkflowRunResponse> {
-    return this.request<WorkflowRunResponse>({
+  getRun(runId: string, options: AdminRequestOptions = {}): Promise<WorkflowRunDetailResponse> {
+    return this.request<WorkflowRunDetailResponse>({
       method: 'GET',
       path: `admin/workflow-runs/${encodePathSegment(String(runId))}`,
       signal: options.signal,

@@ -45,6 +45,8 @@ export class AdminUsageResource extends AdminResource {
   /**
    * Units + rated cost per capability x provider x model for a billing period. BYOK notional split out.
    *
+   * Also carries four figures the per-model breakdown cannot answer on its own (TASK-959): `computeSeconds` (GPU vs CPU occupancy across the inference capabilities), `workflowCpuSeconds` (the durable worker, kept separate so it is not billed twice), `thirdPartyBytes` (CLOUD/BYOK only — self-hosted LAN traffic is excluded) and `storage`, which is the LATEST nightly snapshot in the period split by class, not the period’s GB-day sum. `storage` is null when no snapshot exists for the period.
+   *
    * `GET /api/v1/admin/usage/summary` — `AdminUsageController.summary`.
    */
   summary(options: AdminRequestOptions & { query?: { period?: string; tenantId?: string } } = {}): Promise<UsageSummaryResponse> {
@@ -59,6 +61,8 @@ export class AdminUsageResource extends AdminResource {
 
   /**
    * Bounded-range rollup timeseries for one capability x unit (max 92 days daily / 72h hourly).
+   *
+   * Each point carries the selected series (`quantity`/`costMicros`) plus that bucket's compute, workflow CPU, third-party bytes and storage GB across EVERY capability — so one request draws a series against the platform cost that moved with it. A bucket holding only those companion figures still yields a point, with a zeroed selected series.
    *
    * `GET /api/v1/admin/usage/timeseries` — `AdminUsageController.timeseries`.
    */
