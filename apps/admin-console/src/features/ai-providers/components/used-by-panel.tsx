@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { IconBinaryTree2 } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -7,8 +8,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { GatewayError } from '@/shared/api';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useRoutingBindings } from '../api/hooks';
+import { useProviderConnections, useRoutingBindings } from '../api/hooks';
+import { connectionSlugOf, type ProviderConnection } from '../api/types';
 import type { ResolvedProviderScope } from './use-provider-scope';
+
+/**
+ * TASK-958 — connection id → the name this tier gave it.
+ *
+ * Built from the three capabilities multiplicity applies to (D-9:
+ * `llm | stt | tts`). Elsewhere a provider has exactly one connection, so its
+ * id is not ambiguous and the short id below is answer enough. These reads
+ * share the list cache the credential tabs already fill, and they run only when
+ * a binding actually carries an id.
+ */
+function useConnectionNames(tenantId: string, enabled: boolean): Map<string, string> {
+  const llm = useProviderConnections('llm', tenantId, enabled);
+  const stt = useProviderConnections('stt', tenantId, enabled);
+  const tts = useProviderConnections('tts', tenantId, enabled);
+
+  return useMemo(() => {
+    const rows: ProviderConnection[] = [llm.data, stt.data, tts.data].flatMap((list) => (Array.isArray(list) ? list : []));
+    const names = new Map<string, string>();
+    for (const row of rows) {
+      if (row.id) names.set(row.id, row.name?.trim() || connectionSlugOf(row));
+    }
+    return names;
+  }, [llm.data, stt.data, tts.data]);
+}
 
 function TableSkeleton() {
   return (
@@ -35,6 +61,10 @@ function TableSkeleton() {
  */
 export function UsedByPanel({ scope }: { scope: ResolvedProviderScope }) {
   const bindings = useRoutingBindings(scope.tenantId, !scope.isLoading);
+  // Which CONNECTION a bound configuration spends — the question a tenant with
+  // two accounts of one vendor cannot answer from the provider name (D-7).
+  const hasConnectionBindings = (bindings.data ?? []).some((row) => row.providerConnectionId !== null);
+  const connectionNames = useConnectionNames(scope.tenantId, !scope.isLoading && hasConnectionBindings);
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="used-by">
@@ -60,6 +90,7 @@ export function UsedByPanel({ scope }: { scope: ResolvedProviderScope }) {
             <TableRow>
               <TableHead>Task</TableHead>
               <TableHead>Configuration</TableHead>
+              <TableHead>Connection</TableHead>
               <TableHead>Model</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
@@ -74,8 +105,17 @@ export function UsedByPanel({ scope }: { scope: ResolvedProviderScope }) {
                     <span className="flex flex-wrap items-center gap-1.5">
                       {row.displayName ?? row.id}
                       {row.isDefault ? <Badge variant="default">default</Badge> : null}
-                      {row.providerConnectionId === null ? <Badge variant="outline">platform-served</Badge> : null}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    {row.providerConnectionId === null ? (
+                      <Badge variant="outline">platform-served</Badge>
+                    ) : (
+                      // An id that resolves to no listed connection still tells
+                      // two accounts apart, so it is shortened rather than
+                      // dropped.
+                      <span className="font-mono text-xs">{connectionNames.get(row.providerConnectionId) ?? row.providerConnectionId.slice(0, 8)}</span>
+                    )}
                   </TableCell>
                   <TableCell className="font-mono text-xs">{row.modelRef ?? row.modelId ?? '—'}</TableCell>
                   <TableCell>

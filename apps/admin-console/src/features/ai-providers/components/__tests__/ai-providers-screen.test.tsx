@@ -143,13 +143,15 @@ interface StubOptions {
   session?: typeof WORKING_TENANT_SESSION;
   permissions?: PermissionRule[];
   routingForbidden?: boolean;
+  /** Routing rows the "Used by" panel lists, when a case needs its own. */
+  bindings?: Record<string, unknown>[];
   /** Per-`tenantId` stored rows, keyed `service/provider`. */
   rows?: Record<string, Record<string, Record<string, unknown>>>;
   probe?: { ok: boolean; message: string; probe: 'auth' | 'reachability'; source: 'request' | 'tenant' | 'platform' };
   readiness?: { checkedAt: string; engines: { provider: string; status: 'up' | 'down' | 'unknown'; latencyMs: number | null; loadedCount: number; listedCount: number; detail: string | null }[] };
 }
 
-function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbidden, rows = {}, probe, readiness }: StubOptions = {}): RecordedCall[] {
+function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbidden, bindings, rows = {}, probe, readiness }: StubOptions = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -177,11 +179,33 @@ function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbi
 
       if (path === '/api/hope/admin/routing-policies') {
         if (routingForbidden) return Response.json({ statusCode: 403, message: 'managed by super admins' }, { status: 403 });
+        if (bindings) return Response.json(bindings);
         return Response.json(tenantId === SYSTEM_TENANT ? [binding()] : []);
       }
 
       if (path.startsWith('/api/hope/admin/providers/')) {
         const [service, provider, action] = path.replace('/api/hope/admin/providers/', '').split('/');
+        // TASK-958 — `GET :service` is the tenant's whole connection list; the
+        // tenant tier reads it once per tab to build each provider's card group.
+        // Stored rows are projected into the §4.1 shape, so a row here is its
+        // provider's DEFAULT connection, which is what every one of them is.
+        if (provider === undefined) {
+          const stored = rows[tenantId] ?? {};
+          return Response.json(
+            Object.entries(stored)
+              .filter(([key]) => key.startsWith(`${service}/`))
+              .map(([key, value]) => {
+                const slug = key.slice(`${service}/`.length);
+                return {
+                  slug,
+                  name: null,
+                  isDefault: true,
+                  ...row(service!, slug, tenantId, value),
+                  id: (value as { id?: string }).id ?? `conn-${tenantId}-${service}-${slug}`,
+                };
+              }),
+          );
+        }
         // TASK-954 — the read-only platform fallback (tenant tier only; 400 on SYSTEM).
         if (provider === 'platform-defaults') {
           if (tenantId === SYSTEM_TENANT) return Response.json({ statusCode: 400, message: 'top of the cascade' }, { status: 400 });
@@ -493,6 +517,31 @@ describe('AiProvidersScreen — used by', () => {
     expect(table.textContent).toContain('guardrail.validate');
     expect(table.textContent).toContain('granite-guardian-4.1-8b');
     expect(table.textContent).toContain('default');
+  });
+
+  /**
+   * TASK-958 D-7 — "what breaks if I disable this?" is now a question about a
+   * CONNECTION, not a provider: two OpenAI accounts serve the same provider
+   * name, and the routing row binds exactly one of them.
+   */
+  it('names the connection a routing row binds, and keeps "platform-served" for a row that binds none', async () => {
+    stubFetch({
+      session: TENANT_SESSION,
+      bindings: [
+        binding({ id: 'cfg-1', tenantId: 'tnt-1', taskKey: 'guardrail.validate', providerConnectionId: 'conn-2' }),
+        binding({ id: 'cfg-2', tenantId: 'tnt-1', taskKey: 'nlp.classify', providerConnectionId: null }),
+      ],
+      rows: { 'tnt-1': { 'llm/openai-research': { id: 'conn-2', hasKey: true, enabled: true, version: 2 } } },
+    });
+    renderWithProviders(<AiProvidersScreen />);
+
+    const table = await screen.findByRole('table', { name: 'Task configurations bound to a provider' });
+    expect(within(table).getByRole('columnheader', { name: 'Connection' })).toBeDefined();
+    // Resolved from the tenant's own connection list, so the cell names the ROW
+    // (its slug, since this one carries no display name) rather than repeating
+    // the vendor both rows share.
+    await waitFor(() => expect(within(table).getByText('openai-research')).toBeDefined());
+    expect(within(table).getByText('platform-served')).toBeDefined();
   });
 
   it('renders the SUPER_ADMIN-only routing plane 403 as "managed by the platform", not as an error', async () => {

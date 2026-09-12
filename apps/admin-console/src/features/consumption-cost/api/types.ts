@@ -17,6 +17,17 @@ export interface UsagePeriodParams {
 export interface UsageSummaryLine {
   capability: string;
   provider: string;
+  /**
+   * TASK-958 D-7 — WHICH of the tenant's connections funded this line.
+   *
+   * `null` = the platform's own credential served it; a string = the tenant
+   * connection id (`AiUsageEvent.connectionId`). ABSENT is a third answer and
+   * not the same as `null`: a gateway that does not carry the field yet cannot
+   * say, so the screen renders no column at all rather than a column of dashes.
+   * With two accounts of one vendor, `provider` alone can no longer answer
+   * "which key did this spend?".
+   */
+  connectionId?: string | null;
   /** Empty-string sentinel when the capability selects no model. */
   model: string;
   unit: string;
@@ -61,4 +72,18 @@ export interface TopTenantsResponse {
   periodEnd: string;
   metric: 'cost';
   tenants: TopTenantUsage[];
+}
+
+/**
+ * TASK-958 D-7 — the slice of `AiProviderConnectionResponse` this screen reads,
+ * and nothing more: an id to match a usage line on, and the two fields that
+ * NAME it. A local BFF mirror (features never import one another), deliberately
+ * narrower than the editor's own type — this screen resolves labels, it does
+ * not configure connections.
+ */
+export interface UsageConnection {
+  id?: string;
+  provider: string;
+  slug?: string;
+  name?: string | null;
 }
