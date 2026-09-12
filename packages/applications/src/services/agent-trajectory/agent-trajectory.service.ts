@@ -1,29 +1,45 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
 import {
   AgentStepType,
   AgentTrajectoryStepEntity,
   AgentTrajectoryStepFactory,
   AgentTrajectoryStepRepository,
+  AiCapability,
+  AiDeploymentKind,
+  AiUsageUnit,
   CorePrisma,
   CoreUnitOfWorkService,
   ResourceType,
 } from '@arcaai/domains';
+import Decimal from 'decimal.js';
 import { BaseService, assertEqualTenants } from '../../common';
 import { clampCursorLimit, decodeCursor, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
+import { IMetricsService } from '../baseServices/metrics/IMetricsService';
 import { IRedisCacheService } from '../baseServices/redis';
-import { IUsageLedgerService } from '../usageLedger';
+import {
+  IComputeDeviceResolver,
+  IUsageLedgerService,
+  UsageIdempotencyKey,
+  USAGE_TRIGGERS,
+  type ComputeDevice,
+  type UsageEventBatchInput,
+  type UsageOperation,
+  type UsageTrigger,
+} from '../usageLedger';
 import { AgentTrajectoryDtoMapper } from './agent-trajectory.dto.mapper';
 import {
   AgentTrajectorySessionResponse,
   AgentTrajectorySessionsListResponse,
   AgentTrajectoryStepsPageResponse,
+  ComputeSampleInput,
   CreateAgentTrajectoryStepInput,
   GenerationMetricsAggregateResponse,
 } from './dto';
-import { buildHarnessUsageEvent } from './harness-usage.mapper';
+import { buildHarnessUsageBatches } from './harness-usage.mapper';
 import {
   AggregateGenerationStatsFilters,
   IAgentTrajectoryService,
@@ -31,6 +47,35 @@ import {
   ListTrajectorySessionsOptions,
   ListTrajectoryStepsOptions,
 } from './IAgentTrajectoryService';
+
+/**
+ * The emission retry budget (TASK-957 F-5, gateway half).
+ *
+ * THREE attempts, jittered, and then the counter. Bounded because this runs
+ * inside a request the harness is waiting on: a longer budget converts a
+ * Postgres blip into a trajectory POST timeout, which the harness then retries
+ * WHOLE — including the steps that already landed. Three attempts over a few
+ * hundred milliseconds covers the failure this is actually for (a transient
+ * deadlock or a connection recycle) and gives up on the one it cannot fix (the
+ * database is down), where the harness's own spool is the right answer.
+ */
+const USAGE_EMIT_ATTEMPTS = 3;
+const USAGE_EMIT_BACKOFF_MS = 50;
+const USAGE_EMIT_JITTER_MS = 50;
+
+/**
+ * Emissions that exhausted the retry budget — the row is LOST, and this is the
+ * only place that says so out loud.
+ *
+ * A `warn` line is invisible to an alert and indistinguishable from noise at
+ * request volume; F-5's whole finding was that unbilled revenue "surfaces only
+ * as a warn line". Labelled by `operation` and `trigger` so the workflow lane
+ * and the consultation lane alert apart.
+ */
+export const USAGE_EMISSION_FAILED_METRIC = 'hope_usage_emission_failed_total';
+
+/** Provider id of the durable-function server itself (TASK-959 §3.4). */
+const HARNESS_WORKER_PROVIDER = 'harness';
 
 /** Default / cap for the offset-paginated session list. */
 const DEFAULT_SESSION_PAGE = 20;
@@ -88,9 +133,37 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // `Repository.createMany` accepts a `tx` client). Unwired fixtures fall
     // back to the pre-upgrade sequential (no-tx) calls, unchanged.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    // TASK-957 F-5 — a signal ABOUT the emission path, never a precondition FOR
+    // it: an unregisterable counter must not stop usage being recorded.
+    @Optional() @Inject(IMetricsService) metrics?: IMetricsService,
+    // TASK-959 §3.1 — which device a self-hosted LLM engine ran on. Optional
+    // for the same reason the ledger is: a fixture without it meters every
+    // self-hosted step as CPU_SECOND, the cheaper unit, never nothing.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDeviceResolver?: IComputeDeviceResolver,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert.
     super(eventEmitter, clsService, ResourceType.SummaryMeta);
+    this.emissionFailedCounter = this.registerEmissionFailedCounter(metrics);
+  }
+
+  /** See {@link USAGE_EMISSION_FAILED_METRIC}. `null` when unavailable. */
+  private readonly emissionFailedCounter: Counter<string> | null;
+
+  private registerEmissionFailedCounter(metrics?: IMetricsService): Counter<string> | null {
+    if (!metrics) return null;
+    try {
+      return metrics.createCounter({
+        name: USAGE_EMISSION_FAILED_METRIC,
+        help: 'Usage-ledger emissions that exhausted their retry budget. Non-zero means metered work was NOT billed.',
+        labelNames: ['operation', 'trigger'],
+      });
+    } catch (err) {
+      this.logger.warn({
+        message: 'Could not register the usage-emission failure counter — lost emissions will only be visible in logs',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
   }
 
   async recordSteps(steps: CreateAgentTrajectoryStepInput[]): Promise<void> {
@@ -163,6 +236,51 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // duplicate re-delivered batch stays a no-op on the live view too.
     if (count > 0) {
       await this.republishToLiveView(entities);
+    }
+  }
+
+  /**
+   * The durable worker's own CPU, one `CPU_SECOND` row per activity execution
+   * (TASK-959 §3.4).
+   *
+   * Deliberately NOT folded into `recordSteps`: a sample is not a trajectory
+   * step and has no row in `AgentTrajectoryStep` to join a transaction with.
+   * It shares the POST because the worker already had a channel to the gateway,
+   * and nothing more.
+   *
+   * BEST-EFFORT, PER SAMPLE. One malformed sample (a blank tenant, a run id the
+   * interceptor could not read) is skipped with a warning and the rest of the
+   * batch still bills — the alternative is that one activity's missing input
+   * loses a whole flush's worth of a run's CPU.
+   */
+  async recordComputeSamples(samples: ComputeSampleInput[]): Promise<void> {
+    if (!this.usageLedgerService || !samples || samples.length === 0) return;
+
+    for (const sample of samples) {
+      let batch: UsageEventBatchInput | null;
+      try {
+        batch = buildComputeSampleUsage(sample);
+      } catch (error) {
+        // The key builders throw on a blank id rather than collapsing every
+        // sample of a run onto one key. Losing this one sample is the cheap
+        // half of that trade.
+        this.logger.warn({
+          message: 'Skipped an unattributable worker compute sample',
+          sessionId: sample?.sessionId,
+          runId: sample?.runId,
+          activityId: sample?.activityId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+      if (!batch) continue;
+
+      await this.emitWithRetry(batch, 'workflow.step', pickSampleTrigger(sample), {
+        sessionId: sample.sessionId,
+        runId: sample.runId,
+        activityId: sample.activityId,
+        attempt: sample.attempt,
+      });
     }
   }
 
@@ -386,22 +504,162 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
   private async emitUsage(entities: AgentTrajectoryStepEntity[], tx?: CorePrisma.TransactionClient): Promise<void> {
     if (!this.usageLedgerService) return;
     for (const entity of entities) {
-      const event = buildHarnessUsageEvent(entity);
+      const device = await this.resolveStepDevice(entity);
+      const event = buildHarnessUsageBatches(entity, { device });
       if (!event) continue;
-      try {
-        await this.usageLedgerService.recordUsage(event, tx);
-      } catch (error) {
-        this.logger.warn({
-          message: 'Failed to emit harness usage-ledger event',
-          tenantId: entity.tenantId,
-          sessionId: entity.sessionId,
-          runId: entity.runId,
-          seq: entity.seq,
-          error: error instanceof Error ? error.message : String(error),
-        });
+
+      const operation = event.batch.common.operation;
+      const trigger = event.batch.common.attributesJson?.trigger ?? undefined;
+      const context = { tenantId: entity.tenantId, sessionId: entity.sessionId, runId: entity.runId, seq: entity.seq };
+
+      await this.emitWithRetry(event.batch, operation, trigger, context, tx);
+      // The platform CPU leg of a tenant-funded call (§6.3) — a SECOND
+      // `recordUsage`, because the two halves carry different cost bases and a
+      // batch shares one. Emitted after the tokens so a failure on the smaller,
+      // newer row can never cost the row that has always been billed.
+      if (event.platformBatch) {
+        await this.emitWithRetry(event.platformBatch, operation, trigger, context, tx);
       }
     }
   }
+
+  /**
+   * The device a SELF-HOSTED engine occupied, for the step's own provider.
+   *
+   * Resolved HERE rather than in the mapper so the mapper stays pure and
+   * unit-testable without a settings cache. Never raises: an unresolvable
+   * device is `cpu`, and losing a whole usage batch — tokens included — to
+   * protect a device label would be the expensive direction to be wrong in.
+   */
+  private async resolveStepDevice(entity: AgentTrajectoryStepEntity): Promise<ComputeDevice | null> {
+    if (!this.computeDeviceResolver) return null;
+    const provider = readStepProvider(entity);
+    if (!provider) return null;
+    try {
+      return await this.computeDeviceResolver.resolve(entity.tenantId, provider);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Emit one batch, retrying a TRANSIENT failure a bounded number of times
+   * (TASK-957 F-5, gateway half).
+   *
+   * Safe to retry because every key on this path is intent-derived — the
+   * `(sessionId, runId, seq)` tuple for a step, `(activityId, attempt)` for a
+   * sample — so a retry after a partial success converges on the same row
+   * rather than billing twice.
+   *
+   * A failure is NEVER propagated: metering is a side effect of work already
+   * done, and failing the trajectory POST would make the harness re-send a
+   * batch whose steps already landed. What changes is that an exhausted budget
+   * now increments a counter an alert can watch, instead of a warn line nobody
+   * reads.
+   */
+  private async emitWithRetry(
+    batch: UsageEventBatchInput,
+    operation: UsageOperation,
+    trigger: UsageTrigger | undefined,
+    context: Record<string, unknown>,
+    tx?: CorePrisma.TransactionClient,
+  ): Promise<void> {
+    if (!this.usageLedgerService) return;
+
+    for (let attempt = 1; attempt <= USAGE_EMIT_ATTEMPTS; attempt += 1) {
+      try {
+        await this.usageLedgerService.recordUsage(batch, tx);
+        return;
+      } catch (error) {
+        const lastAttempt = attempt === USAGE_EMIT_ATTEMPTS;
+        this.logger.warn({
+          message: lastAttempt ? 'Usage-ledger emission failed and was NOT billed' : 'Usage-ledger emission failed — retrying',
+          operation,
+          attempt,
+          ...context,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (lastAttempt) {
+          // `none` rather than an empty label: an absent trigger is a real
+          // answer (the consultation lane stamps none), and an empty string
+          // renders as a blank facet nobody can filter on.
+          this.emissionFailedCounter?.inc({ operation, trigger: trigger ?? 'none' });
+          return;
+        }
+        // Jittered so a shared outage does not resynchronise every in-flight
+        // request onto the same retry instant.
+        await delay(USAGE_EMIT_BACKOFF_MS * 2 ** (attempt - 1) + Math.random() * USAGE_EMIT_JITTER_MS);
+      }
+    }
+  }
+}
+
+/** The provider id a step's stats named, for the device lookup. */
+function readStepProvider(entity: AgentTrajectoryStepEntity): string | null {
+  if (!entity.stats || typeof entity.stats !== 'object' || Array.isArray(entity.stats)) return null;
+  const provider = (entity.stats as Record<string, unknown>).provider;
+  return typeof provider === 'string' && provider.trim().length > 0 ? provider.trim() : null;
+}
+
+/**
+ * One worker compute sample → its ledger batch, or `null` when it burned no
+ * measurable CPU.
+ *
+ * Every dimension is a CONSTANT of this path rather than something read off the
+ * sample: the durable worker runs on the platform's own hardware (`SELF_HOSTED`,
+ * `device: 'cpu'` — it is a Python event loop, not a model) and its CPU belongs
+ * to the `WORKFLOW` capability, which exists precisely so a run's orchestration
+ * cost gets its own allowance and its own invoice line without touching any
+ * inference capability.
+ *
+ * Throws on a blank identity field — see {@link UsageIdempotencyKey}.
+ */
+function buildComputeSampleUsage(sample: ComputeSampleInput): UsageEventBatchInput | null {
+  if (typeof sample?.cpuMs !== 'number' || !Number.isFinite(sample.cpuMs) || sample.cpuMs <= 0) return null;
+  if (typeof sample.tenantId !== 'string' || sample.tenantId.trim().length === 0) {
+    throw new Error('AgentTrajectoryService: a compute sample must carry a tenantId');
+  }
+
+  const trigger = pickSampleTrigger(sample);
+  const activityType = typeof sample.activityType === 'string' ? sample.activityType.trim() : '';
+
+  return {
+    common: {
+      tenantId: sample.tenantId,
+      idempotencyKey: UsageIdempotencyKey.harnessComputeSample(sample.sessionId, sample.runId, sample.activityId, sample.attempt),
+      // The gateway clock. The worker flushes within seconds of the activity
+      // finishing and the sample carries no timestamp of its own — stated here
+      // rather than hidden, because `occurredAt` selects the price row.
+      occurredAt: new Date(),
+      capability: AiCapability.WORKFLOW,
+      operation: 'workflow.step',
+      provider: HARNESS_WORKER_PROVIDER,
+      model: null,
+      deployment: AiDeploymentKind.SELF_HOSTED,
+      requestId: sample.runId,
+      sessionId: sample.sessionId,
+      attributesJson: {
+        engine: HARNESS_WORKER_PROVIDER,
+        device: 'cpu',
+        ...(activityType ? { activityType } : {}),
+        ...(trigger ? { trigger } : {}),
+      },
+    },
+    // Three decimals, like every other occupancy row: a fast activity burns
+    // well under a millisecond, and rounding those to zero would drop the
+    // majority of this worker's samples.
+    units: [{ unit: AiUsageUnit.CPU_SECOND, quantity: new Decimal(sample.cpuMs).div(1000).toFixed(3) }],
+  };
+}
+
+/** The closed OD-E vocabulary — an unknown value is dropped, never forked in. */
+function pickSampleTrigger(sample: ComputeSampleInput): UsageTrigger | undefined {
+  const raw = sample?.trigger;
+  return typeof raw === 'string' && (USAGE_TRIGGERS as readonly string[]).includes(raw) ? (raw as UsageTrigger) : undefined;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function clamp(value: number, min: number, max: number): number {
