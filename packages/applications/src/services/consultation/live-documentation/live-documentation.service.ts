@@ -19,6 +19,7 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
+  AiDeploymentKind,
   type ConsultationEntity,
   ConsultationRepository,
   DepartmentRepository,
@@ -74,8 +75,12 @@ import { unwrapSingleKindContextPayload } from '../../consultation-context-schem
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { withUsageAttributes, withUsageTrigger } from '../../usageLedger/usage-attributes';
-import { buildLlmUsageInput, parseTextUsageDetail } from '../summary/text-usage';
+import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
+import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
+import type { UsageEventBatchInput } from '../../usageLedger/dto';
+import { withUsageAttributes } from '../../usageLedger/usage-attributes';
+import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-attributes';
+import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from '../summary/text-usage';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
@@ -1425,6 +1430,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `buildPreSummaryVariables`' documented default, exactly as `PromptAssemblyService` does when
     // its own department lookup cannot answer. The note must still be produced.
     @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. This is the highest-frequency
+    // generation path there is (one call per flush, per open consultation) and it runs on the
+    // platform's own engines by default, so without the device every one of those calls was
+    // billed for its tokens and nothing else. Optional + trailing like the ledger above it.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -5804,24 +5814,29 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
-    const batch = withUsageTrigger(
-      buildLlmUsageInput({ usage, tenantId, operation: 'generate', consultationId: consultationId ?? null }),
-      'CONSULTATION',
-    );
-    if (!batch) return;
     const ledger = this.usageLedger;
     // TASK-890 §3.14 record (a) — a `core.agent` node stamps the DISPOSITION beside the trigger,
     // so "this consultation ran without its guard" is a query, not an inference from graph JSON.
     // The disposition read is async (it consults the PLATFORM kill switch, which outranks the
     // node's opinion), so it is folded inside the same fire-and-forget chain the row already
     // used. A legacy flush passes no decision and stamps no key, exactly as before.
+    // TASK-959 — the device resolution and the batch build BOTH moved inside this chain. The
+    // device decides the compute UNIT, is resolved from configuration keyed by the provider that
+    // actually served, and that read is asynchronous — while `recordLlmUsage` is fire-and-forget
+    // by contract, because the note is already on its way to the clinician. So the build joins
+    // the same swallowed chain: a resolver or ledger outage costs a row, never a note.
     const record = async (): Promise<void> => {
-      const stamped =
-        guardrail && this.textRequestEnrichment
-          ? withUsageAttributes(batch, { guardrail: await this.textRequestEnrichment.guardrailDisposition(guardrail) })
-          : batch;
-      if (!stamped) return;
-      await ledger.recordUsage(stamped);
+      const pair = buildLlmUsageBatches({
+        usage,
+        tenantId,
+        operation: 'generate',
+        consultationId: consultationId ?? null,
+        device: await this.llmDevice(tenantId, usage),
+      });
+      const disposition = guardrail && this.textRequestEnrichment ? await this.textRequestEnrichment.guardrailDisposition(guardrail) : undefined;
+      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(disposition ? { guardrail: disposition } : {}) })) {
+        await ledger.recordUsage(input);
+      }
     };
     void record().catch((error: unknown) => {
       this.logger.warn({
@@ -5831,6 +5846,33 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         error: error instanceof Error ? error.message : String(error),
       });
     });
+  }
+
+  /**
+   * Which device this generation's seconds were spent on — `null` when this lane has no business
+   * naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK call is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The provider
+   * comes off TEXT's OWN usage block — the engine that actually served, which on this lane may be
+   * a fallback candidate rather than the primary the resolver picked.
+   *
+   * Never raises: an unresolvable device costs a compute row, and losing the whole batch — tokens
+   * included — to protect a device label is the expensive direction to be wrong in.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this live generation without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /** The shared gateway→TEXT hop the two live generation paths make: enrichment, auth, tenant header, one POST. */
@@ -6860,4 +6902,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       updatedBy: updatedBy ?? undefined,
     };
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3), each carrying the same stamped dimensions —
+ * the platform CPU leg of a BYOK call is the same product activity, screened the same way, as
+ * the tokens beside it. A non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes): UsageEventBatchInput[] {
+  if (!pair) return [];
+  const halves = pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
+  return halves.map((batch) => withUsageAttributes(batch, attributes) ?? batch);
 }

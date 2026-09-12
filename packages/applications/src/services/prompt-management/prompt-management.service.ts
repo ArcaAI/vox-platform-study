@@ -26,6 +26,7 @@ import {
   AiModelRepository,
   GoldenCaseRepository,
   ModelTaskType,
+  AiDeploymentKind,
 } from '@arcaai/domains';
 import { IPromptManagementService, ListPromptTemplatesFilters, PaginatedPromptTemplates } from './IPromptManagementService';
 import {
@@ -64,14 +65,19 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { renderTemplate, PromptVariableUnresolvedError, PromptTemplateSyntaxError } from '@arcaai/workflow-contract';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
+import { IComputeDeviceResolver } from '../usageLedger/compute-device.resolver';
+import type { ComputeAugmentedBatch } from '../usageLedger/compute-units';
+import type { UsageEventBatchInput } from '../usageLedger/dto';
 import {
-  buildLlmUsageInput,
-  buildLlmUsageInputFromTokenCounts,
+  buildLlmUsageBatches,
+  buildLlmUsageBatchesFromTokenCounts,
   parseTextUsageDetail,
   resolveDeployment,
   toLedgerProvider,
+  type TextUsageDetail,
 } from '../consultation/summary/text-usage';
 import { withUsageTrigger } from '../usageLedger/usage-attributes';
+import type { ComputeDevice } from '../usageLedger/usage-attributes';
 import { PromptVariableDeclarationDto, PromptVariableType, parsePromptVariableDeclarations } from './dto/prompt-variable-declaration.dto';
 
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
@@ -248,6 +254,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // their arity; absent ⇒ `finalizePromptTemplateTest` persists unmetered (best-effort, never
     // blocks the write) and `startPromptTemplateTest`'s quota precheck is skipped.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. A bench run on the platform's
+    // own engine has a real occupancy reading on its usage block, and without a device the
+    // appender records no compute row for it rather than guessing one. Optional + trailing like
+    // the ledger above it.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1725,9 +1736,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // fully-dimensioned row; `apps/text` persists it with the task since this lane.
       const detail = parseTextUsageDetail(taskOutput.usageDetail);
       const provider = taskOutput.provider ? toLedgerProvider(taskOutput.provider) : 'none';
-      const raw =
-        (detail ? buildLlmUsageInput({ usage: detail, tenantId, operation: 'generate.stream' }) : null) ??
-        buildLlmUsageInputFromTokenCounts({
+      // TASK-959 — the `*Batches` siblings, not the single-batch forms: the BUILDER appends the
+      // compute and byte rows, and only these hand back the platform CPU leg of a BYOK run.
+      const pair =
+        (detail
+          ? buildLlmUsageBatches({ usage: detail, tenantId, operation: 'generate.stream', device: await this.llmDevice(tenantId, detail) })
+          : null) ??
+        buildLlmUsageBatchesFromTokenCounts({
           tenantId,
           operation: 'generate.stream',
           requestId: taskId,
@@ -1739,8 +1754,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
           occurredAt: new Date(),
           inputTokens: taskOutput.promptTokens,
           outputTokens: taskOutput.completionTokens,
+          // TASK-959 — deliberately NO `device`: this branch exists for a `TaskResponse` that
+          // carried bare `{prompt_tokens, completion_tokens}` and nothing else, so there is no
+          // occupancy reading and therefore no compute row for a device to ride on.
         });
-      if (!raw) {
+      const inputs = usageBatches(pair);
+      if (inputs.length === 0) {
         // Never a row saying "an unknown amount happened" — but never silent either: an
         // unexplained absence is how the draft-agent bench stayed unmetered to the release phase.
         this.logger.warn({
@@ -1749,13 +1768,41 @@ export class PromptManagementService extends BaseService implements IPromptManag
         });
         return;
       }
-      await this.usageLedgerService.recordUsage(withUsageTrigger(raw, 'PROMPT_TEST'));
+      for (const input of inputs) {
+        await this.usageLedgerService.recordUsage(withUsageTrigger(input, 'PROMPT_TEST'));
+      }
     } catch (error) {
       this.logger.warn({
         message: 'Usage metering failed for a prompt-template test-run finalize; the test result was persisted unmetered',
         taskId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Which device this bench run's seconds were spent on — `null` when this service has no
+   * business naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK run is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The
+   * provider is read off TEXT's OWN usage block — the engine that actually served the bench.
+   *
+   * Never raises: an unresolvable device costs a compute row, and this runs after a write it is
+   * contractually forbidden to fail.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this prompt-template test run without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -1914,4 +1961,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
     return this.userProfileService;
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3) — the tokens, and the platform CPU leg a
+ * BYOK run splits onto its own `INTERNAL` batch because `costBasis` lives on `common`. A
+ * non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null): UsageEventBatchInput[] {
+  if (!pair) return [];
+  return pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
 }

@@ -1,3 +1,4 @@
+import { AiDeploymentKind } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
@@ -14,13 +15,19 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import type { IEntitlementsService as IEntitlementsServicePort } from '../entitlements/IEntitlementsService';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
 import type { IUsageLedgerService as IUsageLedgerServicePort } from '../usageLedger/IUsageLedgerService';
+import { IComputeDeviceResolver } from '../usageLedger/compute-device.resolver';
+import type { IComputeDeviceResolver as IComputeDeviceResolverPort } from '../usageLedger/compute-device.resolver';
+import type { ComputeAugmentedBatch } from '../usageLedger/compute-units';
+import type { UsageEventBatchInput } from '../usageLedger/dto';
 import { withUsageTrigger } from '../usageLedger/usage-attributes';
+import type { ComputeDevice } from '../usageLedger/usage-attributes';
 import {
-  buildLlmUsageInput,
-  buildLlmUsageInputFromTokenCounts,
+  buildLlmUsageBatches,
+  buildLlmUsageBatchesFromTokenCounts,
   parseTextUsageDetail,
   resolveDeployment,
   toLedgerProvider,
+  type TextUsageDetail,
 } from '../consultation/summary/text-usage';
 
 /** TEXT's terminal task state — the only one whose `content` is the whole generation. */
@@ -101,7 +108,7 @@ export interface DraftTestSubmitInput {
  * plan. The record is `generate.stream` with `trigger: 'AGENT_TEST'`, built from TEXT's OWN usage
  * block on finalize. It shares `UsageIdempotencyKey.llmRequest(taskId)` with the gateway's SSE
  * relay, so a stream that both paths observe converges on ONE billed event rather than two.
- * Funding is DERIVED (`buildLlmUsageInput` reads `byok` off the usage block); nothing here
+ * Funding is DERIVED (`buildLlmUsageBatches` reads `byok` off the usage block); nothing here
  * stamps a funding tier, and there is no `funding: 'test'`.
  */
 @Injectable()
@@ -121,6 +128,11 @@ export class AgentDraftTestService {
     // `@Optional()` and TRAILING: without it a bound draft still refuses to bench on the
     // wrong account (the guard below fires), and an unbound one is untouched.
     @Optional() private readonly credentials?: ProviderCredentialResolver,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. A bench run on the platform's
+    // own LM Studio has a real occupancy reading on its usage block, and without a device the
+    // appender records no compute row for it rather than guessing one. Optional + trailing like
+    // the ledger above it.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolverPort,
   ) {
     // Env tier, bootstrap TRANSPORT address (rule 00 §Configuration Tiers) — the same resolution
     // `PromptManagementService` and `SummaryService` make.
@@ -263,11 +275,15 @@ export class AgentDraftTestService {
     if (!this.usageLedger) return;
 
     const detail = parseTextUsageDetail(data.usage_detail);
-    let batch = detail ? buildLlmUsageInput({ usage: detail, tenantId, operation: 'generate.stream' }) : null;
+    // TASK-959 — the `*Batches` siblings, not the single-batch forms: the BUILDER appends the
+    // compute and byte rows, and only these hand back the platform CPU leg of a BYOK run.
+    let pair = detail
+      ? buildLlmUsageBatches({ usage: detail, tenantId, operation: 'generate.stream', device: await this.llmDevice(tenantId, detail) })
+      : null;
 
-    if (!batch) {
+    if (!pair) {
       const provider = toLedgerProvider(data.provider ?? '');
-      batch = buildLlmUsageInputFromTokenCounts({
+      pair = buildLlmUsageBatchesFromTokenCounts({
         tenantId,
         operation: 'generate.stream',
         requestId: taskId,
@@ -279,10 +295,15 @@ export class AgentDraftTestService {
         occurredAt: new Date(),
         inputTokens: data.usage?.prompt_tokens ?? 0,
         outputTokens: data.usage?.completion_tokens ?? 0,
+        // TASK-959 — deliberately NO `device`: this branch exists for a read-back that carried
+        // bare `{prompt_tokens, completion_tokens}` and nothing else, so there is no occupancy
+        // reading and therefore no compute row for a device to ride on. Resolving one here
+        // would read the cascade to label a row that is never built.
       });
     }
 
-    if (!batch) {
+    const inputs = usageBatches(pair);
+    if (inputs.length === 0) {
       // Nothing to bill, or nothing billable — say so. A row claiming an unknown amount happened
       // is worse than no row, but an unexplained absence is how this stayed broken.
       this.logger.warn({
@@ -294,13 +315,41 @@ export class AgentDraftTestService {
     }
 
     try {
-      await this.usageLedger.recordUsage(withUsageTrigger(batch, 'AGENT_TEST'));
+      for (const input of inputs) {
+        await this.usageLedger.recordUsage(withUsageTrigger(input, 'AGENT_TEST'));
+      }
     } catch (error) {
       this.logger.warn({
         message: 'Usage metering failed for a draft-agent test run; the run is unmetered',
         taskId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Which device this bench run's seconds were spent on — `null` when this service has no
+   * business naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK run is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The
+   * provider is read off TEXT's OWN usage block — the engine that actually served the bench.
+   *
+   * Never raises: an unresolvable device costs a compute row, and the whole point of this
+   * method's caller is that a metering problem must never turn a finished test into an error.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this draft-agent test run without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -351,4 +400,14 @@ export class AgentDraftTestService {
       tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
     });
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3) — the tokens, and the platform CPU leg a
+ * BYOK run splits onto its own `INTERNAL` batch because `costBasis` lives on `common`. A
+ * non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null): UsageEventBatchInput[] {
+  if (!pair) return [];
+  return pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
 }

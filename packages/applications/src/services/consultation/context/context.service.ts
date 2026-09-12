@@ -822,6 +822,15 @@ export class ContextService extends BaseService implements IContextService {
       consultationId: attribution.consultationId,
       doctorId: attribution.doctorId,
       departmentId: attribution.departmentId,
+      // TASK-959 T6 — deliberately NO `device` and NO timing, and this is the ONE emitter on
+      // that lane that resolves neither. The other seven pass a device resolved from
+      // `IComputeDeviceResolver`; here there is nothing to resolve and nothing honest to time.
+      // `provider` is the literal `'none'` and `deployment` a constant `CLOUD` because the
+      // generation happened OUTSIDE HOPE's provider infrastructure — the caller ran it and
+      // handed over two counts. `AddRawSummaryRequest.processingTimeMs` exists, but it measures
+      // the CALLER's engine: recording it here would meter it as the platform's own CPU
+      // (§3.2 rule 2 — a non-SELF_HOSTED call's seconds are HOPE's CPU spent calling a vendor),
+      // billing the platform for compute it never spent. Absent is the true answer.
     });
 
     if (!this.usageLedgerService || !this.unitOfWorkService || !llmInput) {

@@ -5,6 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import {
+  AiDeploymentKind,
   JobQueue,
   ContextItemRepository,
   ConsultationRepository,
@@ -24,13 +25,21 @@ import { JobMetricsService } from '../../../baseServices/observability/job-metri
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../../../common';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from '../../summary/text-usage';
+import {
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from '../../summary/text-usage';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { TENANTLESS, assertEqualTenants, createWorkerSession, internalServiceHeaders, resolveInternalAccessToken } from '../../../../common';
-import { IUsageLedgerService } from '../../../usageLedger';
+import { IComputeDeviceResolver, IUsageLedgerService, type ComputeAugmentedBatch, type ComputeDevice } from '../../../usageLedger';
+import type { UsageEventBatchInput } from '../../../usageLedger/dto';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../../consultation/open-markers';
@@ -128,6 +137,10 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. Without it the appender records
+    // NO compute row for a self-hosted call rather than guessing one, and this job holds the
+    // model longer than any other path. Optional + trailing like the ledger above it.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -520,28 +533,36 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     textResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
     attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
   ): Promise<void> {
-    const llmInput = textResponse.usage
-      ? buildLlmUsageInput({
+    // TASK-959 — the `*Batches` siblings, not the single-batch forms: the BUILDER appends the
+    // compute and byte rows, and only these hand back the platform CPU leg of a BYOK call. The
+    // `device` they need is resolved HERE because the builders are pure modules and the cascade
+    // is asynchronous.
+    const llmPair = textResponse.usage
+      ? buildLlmUsageBatches({
           usage: textResponse.usage,
           tenantId: attribution.tenantId,
           operation: 'generate',
           consultationId: attribution.consultationId,
           doctorId: attribution.doctorId,
           departmentId: attribution.departmentId,
+          device: await this.llmDevice(attribution.tenantId, textResponse.usage),
         })
       : null;
-    const guardrailInput = textResponse.guardrailUsage
-      ? buildGuardrailUsageInput({
+    const guardrailPair = textResponse.guardrailUsage
+      ? buildGuardrailUsageBatches({
           usage: textResponse.guardrailUsage,
           tenantId: attribution.tenantId,
           consultationId: attribution.consultationId,
           doctorId: attribution.doctorId,
           departmentId: attribution.departmentId,
           fallbackRequestId: textResponse.usage?.taskId ?? null,
+          // The guard call is its OWN provider call: a tenant may screen on one engine and
+          // generate on another, so its device is resolved from ITS provider.
+          device: await this.llmDevice(attribution.tenantId, textResponse.guardrailUsage),
         })
       : null;
 
-    const inputs = [llmInput, guardrailInput].filter((input): input is NonNullable<typeof input> => input !== null);
+    const inputs = [...usageBatches(llmPair), ...usageBatches(guardrailPair)];
 
     if (!this.usageLedgerService || !this.unitOfWorkService || inputs.length === 0) {
       await this.summaryMetaRepository.create(summaryMeta);
@@ -569,6 +590,35 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
   }
 
   /**
+   * Which device this generation's seconds were spent on — `null` when this job has no business
+   * naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK call is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The
+   * provider is read off TEXT's OWN usage block — the engine that actually served.
+   *
+   * The tenant is the JOB's, not a request's: this runs on a worker with no HTTP context, which
+   * is exactly why the tenant is threaded through `attribution` rather than read from CLS.
+   *
+   * Never raises: an unresolvable device costs a compute row, and losing the whole batch —
+   * tokens included — to protect a device label is the expensive direction to be wrong in.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this comprehensive summary without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * The consultation's visit type — one of the platform's two, through the one
    * vocabulary every caller shares rather than a literal repeated at each call site.
    *
@@ -583,4 +633,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       isFollowUp: Boolean(consultation.parentConsultationId),
     });
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3) — the tokens, and the platform CPU leg a
+ * BYOK call splits onto its own `INTERNAL` batch because `costBasis` lives on `common`. A
+ * non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null): UsageEventBatchInput[] {
+  if (!pair) return [];
+  return pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
 }
