@@ -6,6 +6,7 @@ import {
   IActiveUserContext,
   IAiRoutingPolicyService,
   IBlobStorageService,
+  IComputeDeviceResolver,
   IConfigService,
   IDnaWritingStyleService,
   IEntitlementsService,
@@ -25,10 +26,15 @@ import {
   DEFAULT_VISIT_TYPE_SERVICE,
   VisitTypeService,
   withUsageAttributes,
+  type ComputeAugmentedBatch,
+  type ComputeDevice,
+  type UsageAttributes,
+  type UsageEventBatchInput,
   type VisitTypeDefinition,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
+  AiDeploymentKind,
   ContextItemRepository,
   ContextItemType,
   DepartmentRepository,
@@ -276,6 +282,15 @@ export class TextProxyController {
     @Optional()
     @Inject(IEntitlementsService)
     private readonly entitlements?: IEntitlementsService,
+    // TASK-959 §3.1 — which device a self-hosted LLM server runs on, the one thing `apps/text`
+    // cannot report about itself (it is stateless per call and no request or model row carries a
+    // device). The SHARED resolver, not a local read of the same descriptor: it already owns the
+    // tenant → SYSTEM cascade, the membership check and the warn-once, and it never raises —
+    // unresolvable degrades to `cpu` rather than to a lost usage batch. @Optional + trailing so
+    // every existing positional fixture keeps its arity.
+    @Optional()
+    @Inject(IComputeDeviceResolver)
+    private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     // BUG-018 — the two enrichment steps now live in ONE applications-layer
     // service shared with the prompt-template test bench. Constructed here from
@@ -785,16 +800,37 @@ export class TextProxyController {
     // before any frame arrives, so all three teardown paths stamp the same answer.
     const guardrail = await this.textRequestEnrichment.guardrailDisposition({ enabled: true });
 
+    // TASK-959 — PEEK, RESOLVE, THEN TAKE. The device decides the compute UNIT and is resolved
+    // from configuration keyed by the provider that ACTUALLY served, which is only known once the
+    // terminal frame is parsed — and that resolution is asynchronous, while the batch is built
+    // synchronously inside `takeAll`. So the attribution is read first, without consuming
+    // anything. `takeAll()` still answers ONCE, so the three teardown handlers (`end`, `error`,
+    // the client's `close`) produce exactly one emission however many of them fire, including
+    // across the `await` below where two may legitimately be in flight at the same time.
+    //
+    // `takeAll` also hands back what `take` dropped: the `guardrail.validate` COGS row for the
+    // guard call TEXT made on this stream's behalf, and the platform CPU leg of a BYOK stream.
     const emitUsageOnce = (): void => {
       if (!this.usageLedger || !tenantId) return;
-      const taken = collector.take({ tenantId, operation: 'generate.stream' });
-      const input = taken ? (withUsageAttributes(taken, { guardrail }) ?? taken) : null;
-      if (!input) return;
+      const ledger = this.usageLedger;
+
+      const emit = async (): Promise<void> => {
+        const attribution = collector.peekGenerationAttribution();
+        const device = attribution ? await this.llmDevice(tenantId, attribution.provider, attribution.deployment) : null;
+        const batches = collector.takeAll({ tenantId, operation: 'generate.stream', device });
+        if (!batches) return;
+
+        // `guardrail` is the disposition of the GENERATION — how this call was screened. The
+        // screening call is not itself screened, so stamping it there would be circular.
+        for (const input of [...usageBatches(batches.generation, { guardrail }), ...usageBatches(batches.guardrail, {})]) {
+          await ledger.recordUsage(input);
+        }
+      };
 
       // Fire-and-forget with a swallowed rejection: the generation already
       // happened and the client already has its bytes. A metering failure must
       // degrade to "not metered", never to a broken stream.
-      void this.usageLedger.recordUsage(input).catch((error: unknown) => {
+      void emit().catch((error: unknown) => {
         this.logger.warn({
           message: 'Usage metering failed for a proxied TEXT stream',
           taskId,
@@ -1383,6 +1419,34 @@ export class TextProxyController {
     return this.groupRegistryModelsByProvider(rows, defaultSelection);
   }
 
+  /**
+   * Which device a stream's seconds were spent on — `null` when this gateway has no business
+   * naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK stream is NOT the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed, so nothing
+   * is resolved for them and the cascade is not read at all. Only a self-hosted server has a
+   * device worth looking up, and `apps/text` cannot report it — it is stateless per call and
+   * neither `GenerateRequest` nor `AiModel` carries one (`computeType` is a precision, not a
+   * device).
+   *
+   * `null` also when the resolver is not wired (a positional fixture) or when it raises despite
+   * its contract not to: no compute row, never a guessed one, and never a lost usage batch.
+   */
+  private async llmDevice(tenantId: string, provider: string, deployment: AiDeploymentKind): Promise<ComputeDevice | null> {
+    if (deployment !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this stream without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   /** The caller tenant's visit-type catalogue (tenant → SYSTEM), or the shipped default. */
   private visitTypeCatalogue(): readonly VisitTypeDefinition[] {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).catalogue(this.clsService?.get('tenantId') ?? null);
@@ -1392,4 +1456,15 @@ export class TextProxyController {
   private resolveVisitType(raw: string): VisitTypeDefinition | null {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).match(this.clsService?.get('tenantId') ?? null, raw);
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3), each carrying the same stamped dimensions —
+ * the platform CPU leg of a BYOK stream is the same product activity, screened the same way, as
+ * the tokens beside it. A non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes): UsageEventBatchInput[] {
+  if (!pair) return [];
+  const halves = pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
+  return halves.map((batch) => withUsageAttributes(batch, attributes) ?? batch);
 }

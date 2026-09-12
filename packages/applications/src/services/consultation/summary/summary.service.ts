@@ -7,6 +7,7 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'node:crypto';
 import {
+  AiDeploymentKind,
   ContextItemRepository,
   ContextItemVersionRepository,
   ConsultationRepository,
@@ -50,9 +51,20 @@ import {
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
+import {
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { withUsageAttributes, withUsageTrigger } from '../../usageLedger/usage-attributes';
+import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
+import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
+import type { UsageEventBatchInput } from '../../usageLedger/dto';
+import { withUsageAttributes } from '../../usageLedger/usage-attributes';
+import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-attributes';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -326,6 +338,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // and DNA style is enrichment — a deployment without the repository finalizes exactly as it
     // does today, with no style.
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on, the one thing `apps/text`
+    // cannot report about itself (it is stateless per call and no request or model row carries
+    // a device). Without it the appender records NO compute row for a self-hosted call rather
+    // than guessing one, so every platform-served summary was billed for its tokens alone.
+    // `@Optional()` and TRAILING like the ledger beside it: absent ⇒ no compute row, never a
+    // failed generation.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -813,36 +832,39 @@ export class SummaryService extends BaseService implements ISummaryService {
     // the guard" is a query on the ledger instead of an inference about the code path.
     // Unresolvable (no enrichment service wired) ⇒ stamped with NOTHING, never a guess.
     const guardrail = await this.textRequestEnrichment?.guardrailDisposition({ enabled: true });
-    const llmInput = textResponse.usage
-      ? withUsageTrigger(
-          buildLlmUsageInput({
-            usage: textResponse.usage,
-            tenantId: attribution.tenantId,
-            operation,
-            consultationId: attribution.consultationId,
-            doctorId: attribution.doctorId,
-            departmentId: attribution.departmentId,
-          }),
-          'CONSULTATION',
-        )
+    // TASK-959 — the `*Batches` siblings, not the single-batch forms: the BUILDER appends the
+    // compute and byte rows, and only these hand back the platform CPU leg of a BYOK call. The
+    // `device` they need is resolved HERE because the builders are pure modules and the cascade
+    // is asynchronous.
+    const llmPair = textResponse.usage
+      ? buildLlmUsageBatches({
+          usage: textResponse.usage,
+          tenantId: attribution.tenantId,
+          operation,
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+          device: await this.llmDevice(attribution.tenantId, textResponse.usage),
+        })
       : null;
-    const guardrailInput = textResponse.guardrailUsage
-      ? withUsageTrigger(
-          buildGuardrailUsageInput({
-            usage: textResponse.guardrailUsage,
-            tenantId: attribution.tenantId,
-            consultationId: attribution.consultationId,
-            doctorId: attribution.doctorId,
-            departmentId: attribution.departmentId,
-            fallbackRequestId: textResponse.usage?.taskId ?? null,
-          }),
-          'CONSULTATION',
-        )
+    const guardrailPair = textResponse.guardrailUsage
+      ? buildGuardrailUsageBatches({
+          usage: textResponse.guardrailUsage,
+          tenantId: attribution.tenantId,
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+          fallbackRequestId: textResponse.usage?.taskId ?? null,
+          // The guard call is its OWN provider call: a tenant may screen on one engine and
+          // generate on another, so its device is resolved from ITS provider.
+          device: await this.llmDevice(attribution.tenantId, textResponse.guardrailUsage),
+        })
       : null;
 
-    const inputs = [guardrail ? (withUsageAttributes(llmInput, { guardrail }) ?? llmInput) : llmInput, guardrailInput].filter(
-      (input): input is NonNullable<typeof input> => input !== null,
-    );
+    const inputs = [
+      ...stampedBatches(llmPair, { trigger: 'CONSULTATION', ...(guardrail ? { guardrail } : {}) }),
+      ...stampedBatches(guardrailPair, { trigger: 'CONSULTATION' }),
+    ];
 
     if (!this.usageLedger || !this.unitOfWork || inputs.length === 0) {
       await this.summaryMetaRepository.create(summaryMeta);
@@ -2078,6 +2100,38 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
+   * Which device an LLM call's seconds were spent on — `null` when this service has no business
+   * naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK call is NOT the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed, so nothing
+   * is resolved for them and the cascade is not read at all. Only a self-hosted server has a
+   * device worth looking up.
+   *
+   * The provider is read off TEXT's OWN usage block — the engine that actually served — never
+   * the one this service asked for: a call that fell back to another engine would otherwise be
+   * priced against the device of a server it never touched.
+   *
+   * `null` also when the resolver is unwired (a positional fixture) or raises despite its
+   * contract not to: no compute row, never a guessed one, and never a lost usage batch. The
+   * summary is already generated and the clinician is waiting for it.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this generation without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * The consultation's visit type — one of the platform's two, through the one
    * vocabulary every caller shares rather than a literal repeated at each call site.
    *
@@ -2092,4 +2146,18 @@ export class SummaryService extends BaseService implements ISummaryService {
       isFollowUp: Boolean(consultation.parentConsultationId),
     });
   }
+}
+
+/**
+ * Both halves of an augmented pair, each carrying the same stamped dimensions (TASK-959 §6.3).
+ *
+ * The platform CPU leg of a BYOK call is the same product activity, screened the same way, as
+ * the tokens beside it — "why did this cost happen" has one answer per request, not one per cost
+ * basis. A pair with no platform leg (every non-BYOK call) flattens to the one batch it always
+ * was.
+ */
+function stampedBatches(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes): UsageEventBatchInput[] {
+  if (!pair) return [];
+  const halves = pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
+  return halves.map((batch) => withUsageAttributes(batch, attributes) ?? batch);
 }
