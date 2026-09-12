@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Review — F-1..F-6 and F-11 closed by TASK-959's lanes on `dev-2.2`; F-7..F-10 still open (TASK-959 FU-11) |
 | Type | `review` → `bugfix` (owner decisions gate two of the fixes) |
 | Branch | `dev-2.2` |
 | Requested | 2026-09-12 — "review the implementation of agents and workflows, ensure the usage counter is implemented properly for billing and invoicing" |
@@ -138,7 +138,7 @@ Ordered so that each step is independently mergeable and the BLOCKER lands first
 
 ## 4. Implementation Summary
 
-Not started — review only. No code was changed by this ticket.
+Closed under TASK-959 (see its §4 and §10.4 for evidence): **F-1** `workflow.step` split from `harness.step` in `harness-usage.mapper.ts`, pinned billable and counted toward `LLM_TOKENS` (T1); **F-2** the blocking agent invocation bills from `usage_detail` with the TEXT task id as its key (T2 + SWAP); **F-3** guardrail usage recorded on the agent plane and carried on the stream's terminal frame (P-TEXT, T1, T2); **F-4** `assertSpendLimit` on the three agent routes and at workflow-run start, 402 pinned (T2) — with the caveat that the ceiling has no write route yet (TASK-959 FU-1); **F-5** the harness trajectory POST retries with backoff and spools to Redis, the gateway emitters retry, and `hope_usage_emission_failed_total` exists (P-HARNESS, T1); **F-6** the five usage counts, timings and bytes ride the LLM step stats and the failed fallback leg is its own step (P-HARNESS, T1); **F-11** `task-959-workflow.spec.ts` proves worker-CPU samples become `WORKFLOW`/`CPU_SECOND` rows at the wire; a real workflow run is skipped until a harness worker serves the test Temporal. Still open: F-7, F-8 (partly — `doctorId` and node identity), F-9, F-10.
 
 ## 5. Owner decisions required
 
@@ -153,4 +153,5 @@ Not started — review only. No code was changed by this ticket.
 
 | Date | Change |
 |---|---|
+| 2026-09-13 | F-1..F-6, F-11 closed by TASK-959; status Review; F-7..F-10 remain (TASK-959 FU-11). |
 | 2026-09-12 | Review performed on `dev-2.2` @ `47b568beb` (+ uncommitted TASK-955/956 console work, unrelated). Findings F-1..F-11, decisions D-1..D-4. Status `Pending`. |
