@@ -23,6 +23,7 @@ function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
     computeType: (overrides.computeType as string | null) ?? null,
     format: (overrides.format as string) ?? 'GGUF',
     libraryName: (overrides.libraryName as string) ?? 'llama.cpp',
+    source: (overrides.source as string) ?? 'HUGGINGFACE',
     sourceUri: (overrides.sourceUri as string) ?? 'google/gemma-4-e2b-it-qat-q4_0-gguf',
     bucketPrefix: null,
     primaryObject: null,
@@ -217,7 +218,7 @@ describe('AiModelDownloadProcessor', () => {
 
     await processor.process(job());
 
-    expect(mockFetcher.fetch).toHaveBeenCalledWith('ibm-granite/granite-guardian-4.1-8b-GGUF', 'Q4_K_M');
+    expect(mockFetcher.fetch).toHaveBeenCalledWith('HUGGINGFACE', 'ibm-granite/granite-guardian-4.1-8b-GGUF', 'Q4_K_M');
     const uploadedKeys = mockS3Service.putFile.mock.calls.map((call: unknown[]) => call[1] as string);
     // Default slug from the behavioral fixture is 'gemma4-e2b-it-qat'; the quant
     // token is normalized from `computeType` ('Q4_K_M' -> 'q4-k-m').
