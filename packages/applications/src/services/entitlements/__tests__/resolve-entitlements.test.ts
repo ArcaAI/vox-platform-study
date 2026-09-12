@@ -397,3 +397,51 @@ describe('effectivePlan — a plan-less tenant defaults to STARTER (OD-5)', () =
     expect(r.limits).toEqual(UNGATED_ENTITLEMENTS.limits);
   });
 });
+
+/*
+ * TASK-958 D-8 — the provider-CONNECTION ceiling.
+ *
+ * `maxAiProviderConnections` landed (Lane B1) before its DB column existed, so
+ * it was resolved BESIDE the seeded matrix with a hardcoded `null` standing in
+ * for the plan default. Now that `PlanEntitlement` carries the column, it folds
+ * through the same three layers as every sibling limit, and these tests pin
+ * that: the seeded matrix is genuinely consulted, and precedence is
+ * seeded ← plan row ← tenant override.
+ */
+describe('maxAiProviderConnections (D-8)', () => {
+  it('falls back to the SEEDED matrix, not a hardcoded null, when no DB row is present', () => {
+    // Mutating the matrix is the only way to tell "reads the seeded default"
+    // apart from "returns null because every seeded default happens to be null".
+    const seeded = PLAN_ENTITLEMENT_DEFAULTS[TenantPlan.PRO];
+    const original = seeded.maxAiProviderConnections;
+    seeded.maxAiProviderConnections = 7;
+    try {
+      expect(resolveEntitlements(TenantPlan.PRO).limits.maxAiProviderConnections).toBe(7);
+    } finally {
+      seeded.maxAiProviderConnections = original;
+    }
+  });
+
+  it('resolves the plan row when one is present', () => {
+    const r = resolveEntitlements(TenantPlan.PRO, { maxAiProviderConnections: 3 });
+    expect(r.limits.maxAiProviderConnections).toBe(3);
+  });
+
+  it('lets the tenant override win over the plan row', () => {
+    const r = resolveEntitlements(TenantPlan.PRO, { maxAiProviderConnections: 3 }, { maxAiProviderConnections: 1 });
+    expect(r.limits.maxAiProviderConnections).toBe(1);
+  });
+
+  it('inherits the plan row when the override leaves the field null (null = inherit)', () => {
+    const r = resolveEntitlements(TenantPlan.PRO, { maxAiProviderConnections: 3 }, { maxAiProviderConnections: null });
+    expect(r.limits.maxAiProviderConnections).toBe(3);
+  });
+
+  it('is unbounded (null) everywhere by default — the seeded value on every plan', () => {
+    for (const plan of [TenantPlan.STARTER, TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+      expect(resolveEntitlements(plan).limits.maxAiProviderConnections, `plan ${plan}`).toBeNull();
+      expect(PLAN_ENTITLEMENT_DEFAULTS[plan].maxAiProviderConnections, `seeded ${plan}`).toBeNull();
+    }
+    expect(UNGATED_ENTITLEMENTS.limits.maxAiProviderConnections).toBeNull();
+  });
+});
