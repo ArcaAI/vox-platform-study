@@ -26,7 +26,7 @@ import {
 } from '../api';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
-import { ModelPicker, useTaskModelCatalogue } from './model-picker';
+import { ModelPicker, fallbackModelOptionLabel, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
 
 const STEPS = ['Task', 'Model', 'Instruction', 'Parameters', 'Schemas', 'Review'] as const;
@@ -330,9 +330,15 @@ export function CreateAgentWizard({
                 <SelectValue placeholder="Add a fallback" />
               </SelectTrigger>
               <SelectContent>
+                {/*
+                  TASK-958 D-10 — the CONNECTION, not just the model name. Two
+                  accounts of one vendor declaring the same wire model produce
+                  two rows called "GPT-5.4 mini"; which key each spends is the
+                  only thing that differs, and it is the point of a fallback.
+                */}
                 {fallbackCandidates.map((model) => (
                   <SelectItem key={model.id} value={model.id}>
-                    {model.name}
+                    {fallbackModelOptionLabel(model, catalogue.providers)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -41,7 +41,7 @@ import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
-import { ModelPicker, useTaskModelCatalogue } from './model-picker';
+import { ModelPicker, fallbackModelOptionLabel, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
 
 /** Surfaces the gateway's coded finding when there is one — shared with the list screen's import action. */
@@ -523,7 +523,18 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
 
                   <ModelPicker id="edit-model" task={agent.task} value={draft.modelId} onChange={(modelId) => setDraft({ ...draft, modelId, fallbackModelIds: draft.fallbackModelIds.filter((id) => id !== modelId) })} />
                   {draft.fallbackModelIds.length ? (
-                    <p className="text-muted-foreground text-xs">Fallbacks: {draft.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.name ?? id).join(' → ')}</p>
+                    <p className="text-muted-foreground text-xs">
+                      Fallbacks:{' '}
+                      {draft.fallbackModelIds
+                        .map((id) => {
+                          const model = catalogue.models.find((candidate) => candidate.id === id);
+                          // TASK-958 — the connection is what distinguishes two
+                          // same-named BYO models; without it the chain reads as
+                          // the same model listed twice.
+                          return model ? fallbackModelOptionLabel(model, catalogue.providers) : id;
+                        })
+                        .join(' → ')}
+                    </p>
                   ) : null}
 
                   {agent.task === 'TEXT_GENERATION' ? (
