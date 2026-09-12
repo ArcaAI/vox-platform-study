@@ -27,9 +27,7 @@ def _test_uuid_v7(counter: int) -> str:
 
 
 def _occurred_at(correlation_id: str) -> str:
-    return datetime(
-        2026, 1, 1, 0, 0, _hash_seconds(correlation_id), tzinfo=UTC
-    ).isoformat()
+    return datetime(2026, 1, 1, 0, 0, _hash_seconds(correlation_id), tzinfo=UTC).isoformat()
 
 
 class FakeResumableProducer:
@@ -40,9 +38,7 @@ class FakeResumableProducer:
         self._log: list[tuple[str, dict]] = []
         self._counter = 0
 
-    async def produce(
-        self, event_type: str, payload: object, correlation_id: str
-    ) -> object:
+    async def produce(self, event_type: str, payload: object, correlation_id: str) -> object:
         envelope = {
             "schemaVersion": ASYNC_ENVELOPE_SCHEMA_VERSION,
             "id": _test_uuid_v7(self._counter),
@@ -64,9 +60,7 @@ class FakeResumableProducer:
         if decoded is None:
             return []
         from_index = int(decoded["cursor"])
-        return [
-            envelope for i, (_t, envelope) in enumerate(self._log) if i > from_index
-        ]
+        return [envelope for i, (_t, envelope) in enumerate(self._log) if i > from_index]
 
     def resume_token_of(self, produced: object) -> str | None:
         for token, envelope in self._log:
@@ -82,9 +76,7 @@ class FakeNonResumableProducer:
         self.resumable = False
         self._counter = 0
 
-    async def produce(
-        self, event_type: str, payload: object, correlation_id: str
-    ) -> object:
+    async def produce(self, event_type: str, payload: object, correlation_id: str) -> object:
         self._counter += 1
         return {
             "schemaVersion": ASYNC_ENVELOPE_SCHEMA_VERSION,
@@ -102,9 +94,7 @@ class FakeNonResumableProducer:
 class BadProducer:
     resumable = False
 
-    async def produce(
-        self, event_type: str, payload: object, correlation_id: str
-    ) -> object:
+    async def produce(self, event_type: str, payload: object, correlation_id: str) -> object:
         return {"not": "an envelope"}
 
 
@@ -130,9 +120,7 @@ def test_passes_against_a_well_behaved_non_resumable_producer() -> None:
     assert problems == []
 
 
-def test_reports_problems_for_a_producer_emitting_non_conforming_envelopes_never_throws() -> (
-    None
-):
+def test_reports_problems_for_a_producer_emitting_non_conforming_envelopes_never_throws() -> None:
     problems = asyncio.run(assert_async_conformance(BadProducer()))
     assert len(problems) > 0
 

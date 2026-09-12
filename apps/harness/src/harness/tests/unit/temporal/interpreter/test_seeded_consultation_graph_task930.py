@@ -98,8 +98,12 @@ _API_CONTEXT = {
 # ---------------------------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[8]
-_GENERATED = _REPO_ROOT / "packages/database/src/prisma/db_main/seed/28-workflow-library.generated.ts"
-_ANCHOR = "export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = "
+_GENERATED = (
+    _REPO_ROOT / "packages/database/src/prisma/db_main/seed/28-workflow-library.generated.ts"
+)
+_ANCHOR = (
+    "export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = "
+)
 
 
 def _seeded_blobs() -> dict[str, Any]:
@@ -217,7 +221,9 @@ _ACTIVITIES = [
 _WORKFLOWS = [WorkflowInterpreter, ConsultationGateWorkflow, ReviewGateWorkflow, LoopWorkflow]
 
 
-async def _run(config: dict[str, Any], *, payload: dict, subject: RunSubject | None, review: str | None):
+async def _run(
+    config: dict[str, Any], *, payload: dict, subject: RunSubject | None, review: str | None
+):
     # Stored VERBATIM: the seeded compiled config already carries the `checksum` the compiler
     # stamped, and `parse_and_verify` re-derives it. Recomputing one here would test this test.
     ref = await store_blob(json.dumps(config), store=_MEMORY_STORE, bucket=_BUCKET)
@@ -280,7 +286,10 @@ class TestTheSeededGraphIsWhatItClaims:
         }
         assert data_sources == {("n_finalize", "data")}
         # The review still gates the publish — as ORDERING, which is what a review handle carries.
-        assert any(binding["toPort"] == "after" and binding["fromNodeId"] == "n_review" for binding in output["inputs"])
+        assert any(
+            binding["toPort"] == "after" and binding["fromNodeId"] == "n_review"
+            for binding in output["inputs"]
+        )
 
     def test_entities_are_not_claimed_as_a_required_output(self) -> None:
         schema = _node_config(_seeded_consultation_config(), "n_output")["config"]["outputSchema"]
@@ -324,7 +333,9 @@ class TestTheApiPlane:
 
 class TestTheConsultationPlaneIsUnCHANGED:
     @pytest.mark.asyncio
-    async def test_a_consultation_bound_run_still_leaves_the_realtime_nodes_to_the_live_lane(self) -> None:
+    async def test_a_consultation_bound_run_still_leaves_the_realtime_nodes_to_the_live_lane(
+        self,
+    ) -> None:
         _LIVE_OUTPUTS.clear()
         _LIVE_OUTPUTS["n_summary"] = {"text": "running note from the live lane"}
         try:
@@ -372,7 +383,9 @@ class TestTheConsultationPlaneFinalizes:
         assert result.status != "FAILED"
 
     @pytest.mark.asyncio
-    async def test_a_consultation_that_never_recorded_still_degrades_with_the_named_reason(self) -> None:
+    async def test_a_consultation_that_never_recorded_still_degrades_with_the_named_reason(
+        self,
+    ) -> None:
         """Nothing is invented for a session with no live output — the §6.9 line stands.
 
         TASK-946 D3 / OD-4 — and the run now REACHES its terminal state. `review=None`: this run

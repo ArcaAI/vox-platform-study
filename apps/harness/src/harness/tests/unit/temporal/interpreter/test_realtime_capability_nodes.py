@@ -543,7 +543,9 @@ class TestCorrectionInstructionIsGoverned:
         """THE mutation target. Re-introducing any in-code default turns this red."""
         monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi())
         monkeypatch.setattr(
-            rt, "extract_entities", lambda *a, **k: pytest.fail("must not detect before it is configured")
+            rt,
+            "extract_entities",
+            lambda *a, **k: pytest.fail("must not detect before it is configured"),
         )
         monkeypatch.setattr(
             rt,
@@ -814,7 +816,9 @@ class TestRegistryMembership:
             ),
         ):
             assert key not in NODE_REGISTRY, f"{key} is still dispatchable"
-            assert activity_name not in served, f"{activity_name} is served but nothing dispatches it"
+            assert (
+                activity_name not in served
+            ), f"{activity_name} is served but nothing dispatches it"
 
     def test_no_node_type_declares_the_realtime_lane_any_more(self):
         """The lane is a per-INSTANCE choice (`execution.lane`), never a property of a type."""

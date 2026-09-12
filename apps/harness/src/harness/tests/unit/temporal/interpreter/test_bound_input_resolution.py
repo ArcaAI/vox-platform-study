@@ -75,7 +75,9 @@ class TestDataSocketsResolveThroughTheirDeclaredKey:
             {"a": "core.agent"},
             {"a": {"text": "unused", "transcript": "the said words"}},
         )
-        node = _node("b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"})
+        node = _node(
+            "b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"}
+        )
         assert wf._resolve_bound_inputs(node) == {"in": "the said words"}
 
     def test_entities_arrive_under_the_toPort_the_edge_named(self):
@@ -118,7 +120,9 @@ class TestDataSocketsResolveThroughTheirDeclaredKey:
 class TestControlSocketsCarryNoPayload:
     def test_an_ordering_edge_binds_nothing(self):
         wf = _interpreter({"s": "core.trigger"}, {"s": {"anything": 1}})
-        node = _node("c", "core.action", [("s", "next", "after")], {"actionKey": "consultation.consentGate"})
+        node = _node(
+            "c", "core.action", [("s", "next", "after")], {"actionKey": "consultation.consentGate"}
+        )
         assert wf._resolve_bound_inputs(node) == {}
 
     def test_the_consent_gates_own_out_socket_is_control_and_binds_nothing(self):
@@ -137,7 +141,9 @@ class TestControlSocketsCarryNoPayload:
 class TestAbsentValuesContributeNothingRatherThanFabricating:
     def test_a_predecessor_that_produced_no_output_contributes_nothing(self):
         wf = _interpreter({"a": "core.agent"}, {})
-        node = _node("b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"})
+        node = _node(
+            "b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"}
+        )
         assert wf._resolve_bound_inputs(node) == {}
 
     def test_a_declared_key_missing_from_THIS_run_s_output_contributes_nothing(self):
@@ -145,14 +151,21 @@ class TestAbsentValuesContributeNothingRatherThanFabricating:
         # That is a runtime data condition, not a contract violation, so the node degrades on
         # `no_bound_text` exactly as it does today rather than failing the run.
         wf = _interpreter({"a": "core.agent"}, {"a": {"text": "x"}})
-        node = _node("b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"})
+        node = _node(
+            "b", "core.action", [("a", "transcript", "in")], {"actionKey": "consultation.phiHop"}
+        )
         assert wf._resolve_bound_inputs(node) == {}
 
 
 class TestAnUnresolvableBindingRaises:
     def test_a_port_the_producer_does_not_declare_raises_and_names_node_and_port(self):
         wf = _interpreter({"a": "core.agent"}, {"a": {"text": "x"}})
-        node = _node("b", "core.action", [("a", "banana", "in")], {"actionKey": "consultation.bindTerminology"})
+        node = _node(
+            "b",
+            "core.action",
+            [("a", "banana", "in")],
+            {"actionKey": "consultation.bindTerminology"},
+        )
         with pytest.raises(ApplicationError) as excinfo:
             wf._resolve_bound_inputs(node)
         message = str(excinfo.value)
@@ -162,7 +175,9 @@ class TestAnUnresolvableBindingRaises:
 
     def test_naming_an_INPUT_port_as_an_edge_source_raises(self):
         wf = _interpreter({"a": "core.agent"}, {"a": {"text": "x"}})
-        node = _node("b", "core.action", [("a", "in", "in")], {"actionKey": "consultation.bindTerminology"})
+        node = _node(
+            "b", "core.action", [("a", "in", "in")], {"actionKey": "consultation.bindTerminology"}
+        )
         with pytest.raises(ApplicationError):
             wf._resolve_bound_inputs(node)
 
@@ -174,7 +189,12 @@ class TestAnUnresolvableBindingRaises:
 
     def test_it_is_non_retryable_a_contract_violation_never_fixes_itself_on_retry(self):
         wf = _interpreter({"a": "core.agent"}, {"a": {"text": "x"}})
-        node = _node("b", "core.action", [("a", "banana", "in")], {"actionKey": "consultation.bindTerminology"})
+        node = _node(
+            "b",
+            "core.action",
+            [("a", "banana", "in")],
+            {"actionKey": "consultation.bindTerminology"},
+        )
         with pytest.raises(ApplicationError) as excinfo:
             wf._resolve_bound_inputs(node)
         assert excinfo.value.non_retryable is True

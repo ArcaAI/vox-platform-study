@@ -105,7 +105,10 @@ class TestModelScoping:
 
         result = seed_voice_profiles(
             tracker,
-            [_profile(profile_id="vp-old", label="Stale", model_id=OTHER_MODEL), _profile(profile_id="vp-new", label="Live")],
+            [
+                _profile(profile_id="vp-old", label="Stale", model_id=OTHER_MODEL),
+                _profile(profile_id="vp-new", label="Live"),
+            ],
             model_slug=MODEL,
         )
 
@@ -163,7 +166,12 @@ class TestPhiHygiene:
         tracker = SpeakerTracker(max_speakers=4)
         caplog.set_level("INFO")
 
-        seed_voice_profiles(tracker, [_profile(label="Dr Jane Aleyamma")], model_slug=MODEL, log_context="session-123")
+        seed_voice_profiles(
+            tracker,
+            [_profile(label="Dr Jane Aleyamma")],
+            model_slug=MODEL,
+            log_context="session-123",
+        )
 
         emitted = "\n".join(record.getMessage() for record in caplog.records)
         assert "Dr Jane Aleyamma" not in emitted

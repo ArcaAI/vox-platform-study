@@ -80,15 +80,15 @@ _BLOCKED_IPV4 = tuple(
 #: :func:`_embedded_ipv4`:
 #:
 #: * ``2001::/32`` (Teredo). Unwrapping does not work here. The canonical Teredo test
-#Address ``2001:0:4136:e378:8000:63bf:3fff:fdd2`` embeds server 65.54.227.120 and
-#Client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
-#Would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
-#Its far end reaches, so the prefix itself is what must be refused.
+# Address ``2001:0:4136:e378:8000:63bf:3fff:fdd2`` embeds server 65.54.227.120 and
+# Client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
+# Would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
+# Its far end reaches, so the prefix itself is what must be refused.
 #: * ``64:ff9b:1::/48`` (RFC 8215 local-use NAT64). RFC 6052 permits /32../96 embeddings
-#Underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
-#Translation prefix is never a legitimate destination for a tenant connector.
-#(The well-known ``64:ff9b::/96`` is /96-only and IS unwrapped, so a NAT64 route to a
-#Public IPv4 still works.)
+# Underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
+# Translation prefix is never a legitimate destination for a tenant connector.
+# (The well-known ``64:ff9b::/96`` is /96-only and IS unwrapped, so a NAT64 route to a
+# Public IPv4 still works.)
 _BLOCKED_IPV6 = tuple(
     ipaddress.ip_network(cidr)
     for cidr in (

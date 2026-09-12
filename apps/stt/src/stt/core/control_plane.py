@@ -81,7 +81,7 @@ def moved_alias(field_name: str) -> str:
     return f"{field_name.upper()}{MOVED_SUFFIX}"
 
 
-#``Settings`` field → settings-registry key.
+# ``Settings`` field → settings-registry key.
 #:
 #: This table IS the migration. Its keys must exist on ``Settings`` and its
 #: values must match the descriptors registered on the gateway side; both
@@ -207,7 +207,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "punctuation_max_length": "stt.punctuation.maxLength",
 }
 
-#``Settings`` field → a PLATFORM-owned registry key that is NOT under `stt.*`.
+# ``Settings`` field → a PLATFORM-owned registry key that is NOT under `stt.*`.
 #:
 #: Separate from :data:`CONTROL_PLANE_KEYS` because that table carries an invariant
 #: worth keeping: every key in it is `stt.<group>.<knob>` and has a descriptor in

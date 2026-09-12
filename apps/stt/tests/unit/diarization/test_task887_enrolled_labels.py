@@ -61,7 +61,9 @@ class TestEnrolledLabelFloor:
     async def test_below_the_threshold_the_name_is_never_attached(self) -> None:
         """The ambiguous-zone fallback would otherwise hand the name out on a weak best match."""
         tracker = _tracker_with_enrolled_label()
-        result = await _identifier(tracker, match_threshold=0.6).identify(_embedding(_vector_at_cosine(0.5)))
+        result = await _identifier(tracker, match_threshold=0.6).identify(
+            _embedding(_vector_at_cosine(0.5))
+        )
 
         assert isinstance(result, SpeakerIdentification)
         assert result.speaker_id != "Dr Who"
@@ -69,9 +71,13 @@ class TestEnrolledLabelFloor:
         assert result.is_new_speaker is True
 
     @pytest.mark.asyncio
-    async def test_at_capacity_below_the_threshold_it_says_unknown_rather_than_the_name(self) -> None:
+    async def test_at_capacity_below_the_threshold_it_says_unknown_rather_than_the_name(
+        self,
+    ) -> None:
         tracker = _tracker_with_enrolled_label(max_speakers=1)
-        result = await _identifier(tracker, match_threshold=0.6).identify(_embedding(_vector_at_cosine(0.5)))
+        result = await _identifier(tracker, match_threshold=0.6).identify(
+            _embedding(_vector_at_cosine(0.5))
+        )
 
         assert isinstance(result, SpeakerIdentification)
         assert result.speaker_id == "unknown"
@@ -81,8 +87,12 @@ class TestEnrolledLabelFloor:
         """The SAME segment that is refused at 0.6 is accepted at 0.4 — the agent decides."""
         weak = _embedding(_vector_at_cosine(0.5))
 
-        strict = await _identifier(_tracker_with_enrolled_label(), match_threshold=0.6).identify(weak)
-        lenient = await _identifier(_tracker_with_enrolled_label(), match_threshold=0.4).identify(weak)
+        strict = await _identifier(_tracker_with_enrolled_label(), match_threshold=0.6).identify(
+            weak
+        )
+        lenient = await _identifier(_tracker_with_enrolled_label(), match_threshold=0.4).identify(
+            weak
+        )
 
         assert isinstance(strict, SpeakerIdentification) and strict.speaker_id != "Dr Who"
         assert isinstance(lenient, SpeakerIdentification) and lenient.speaker_id == "Dr Who"
@@ -97,7 +107,9 @@ class TestEnrolledLabelFloor:
 
         # 0.5 sits in the ambiguous zone (low 0.4 .. high 0.7) and below matchThreshold 0.6;
         # the enrolled branch must not fire, so the fallback keeps the best match.
-        result = await _identifier(tracker, match_threshold=0.6).identify(_embedding(_vector_at_cosine(0.5)))
+        result = await _identifier(tracker, match_threshold=0.6).identify(
+            _embedding(_vector_at_cosine(0.5))
+        )
 
         assert isinstance(result, SpeakerIdentification)
         assert result.speaker_id == anonymous_id
@@ -127,7 +139,9 @@ class TestSpecMapping:
     def test_an_absent_match_threshold_keeps_the_engine_default(self) -> None:
         from stt.pipeline.spec import AsrSpecDiarization
 
-        wire = AsrSpecDiarization.model_validate({"enabled": True, "backend": "embedding", "maxSpeakers": 2})
+        wire = AsrSpecDiarization.model_validate(
+            {"enabled": True, "backend": "embedding", "maxSpeakers": 2}
+        )
         assert wire.match_threshold is None
         # …and the dataclass is the ONE source of that default.
         assert DiarizationConfig().match_threshold == 0.6
@@ -135,7 +149,9 @@ class TestSpecMapping:
     def test_the_field_is_omitted_from_the_wire_when_absent_never_serialised_as_null(self) -> None:
         from stt.pipeline.spec import AsrSpecDiarization
 
-        wire = AsrSpecDiarization.model_validate({"enabled": False, "backend": "embedding", "maxSpeakers": None})
+        wire = AsrSpecDiarization.model_validate(
+            {"enabled": False, "backend": "embedding", "maxSpeakers": None}
+        )
         assert "matchThreshold" not in wire.model_dump(by_alias=True)
 
     def test_the_committed_fixture_carries_it_all_the_way_to_the_runtime_config(self) -> None:

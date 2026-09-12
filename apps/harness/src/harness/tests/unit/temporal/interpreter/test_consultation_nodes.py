@@ -38,7 +38,9 @@ class TestConsultationRegistryShape:
         # The human wait is `core.humanReview` since Phase 4; the rule is unchanged.
         assert ACTION_CATALOGUE["consultation.consentGate"].critical is True
         assert ACTION_CATALOGUE["consultation.phiHop"].critical is False
-        assert [key for key, spec in ACTION_CATALOGUE.items() if spec.critical] == ["consultation.consentGate"]
+        assert [key for key, spec in ACTION_CATALOGUE.items() if spec.critical] == [
+            "consultation.consentGate"
+        ]
 
     def test_the_human_wait_is_a_child_workflow_node(self):
         # The gate is implemented, but NOT as an activity dispatch — `kind="child_workflow"`

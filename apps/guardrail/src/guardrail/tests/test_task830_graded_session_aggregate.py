@@ -167,9 +167,9 @@ async def test_a_partially_scored_session_is_never_claimed_to_be_graded() -> Non
 
 async def test_a_confidently_benign_window_contributes_its_residual_risk() -> None:
     """0.99 -> 0.03 is only OBSERVABLE if a clean window carries a number."""
-    verdict = await _validator(
-        ScoredAnalyzer(benign_confidence=0.97), _policy()
-    ).validate_segment(session_id="s1", segment_id="a", text="chest pain on exertion")
+    verdict = await _validator(ScoredAnalyzer(benign_confidence=0.97), _policy()).validate_segment(
+        session_id="s1", segment_id="a", text="chest pain on exertion"
+    )
     mean = verdict.session_aggregate["meanScore"]
     assert 0.0 < mean < 0.1, mean
     assert abs(mean - 0.03) < 1e-6
@@ -183,9 +183,7 @@ async def test_a_dispersed_payload_separates_from_benign_traffic_in_the_mean() -
     suspicious = _validator(ScoredAnalyzer(benign_confidence=0.62), _policy())
 
     for i in range(5):
-        calm_verdict = await calm.validate_segment(
-            session_id="s1", segment_id=f"c{i}", text=text
-        )
+        calm_verdict = await calm.validate_segment(session_id="s1", segment_id=f"c{i}", text=text)
         loud_verdict = await suspicious.validate_segment(
             session_id="s1", segment_id=f"d{i}", text=text
         )

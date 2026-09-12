@@ -116,7 +116,11 @@ class TestNodeRegistryParity:
         served = _served_activity_names()
         for key in RETIRED_STT_KEYS:
             assert key not in NODE_REGISTRY, key
-        for name in ("interpreter.stt_asr_engine", "interpreter.stt_audio_input", "interpreter.stt_vad"):
+        for name in (
+            "interpreter.stt_asr_engine",
+            "interpreter.stt_audio_input",
+            "interpreter.stt_vad",
+        ):
             assert name not in served, name
 
     def test_carries_exactly_the_eleven_core_keys(self):

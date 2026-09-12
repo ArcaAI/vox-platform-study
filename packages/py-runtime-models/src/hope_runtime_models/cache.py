@@ -126,7 +126,7 @@ class _CacheCore(Generic[T]):
     always run outside the lock.
 
     Eviction order under pressure is always **ttl → lru → vram**.
-"""
+    """
 
     def __init__(
         self,
@@ -324,7 +324,7 @@ class _CacheCore(Generic[T]):
 
         Anti-thrash guard: with a small TTL and a small `max_size`, bursty
         traffic could otherwise cycle load/evict on every request.
-"""
+        """
         return max(self._ttl_seconds, _TTL_MIN_SECONDS)
 
     def _make_room_locked(self, incoming_key: str) -> list[tuple[str, T]]:
@@ -348,8 +348,7 @@ class _CacheCore(Generic[T]):
         incoming_bytes = self._estimate_for(incoming_key)
         if self._max_bytes_estimate is not None:
             while (
-                self._entries
-                and self._resident_bytes() + incoming_bytes > self._max_bytes_estimate
+                self._entries and self._resident_bytes() + incoming_bytes > self._max_bytes_estimate
             ):
                 victim = self._pick_lru_victim_locked(exclude=incoming_key)
                 if victim is None:
@@ -795,8 +794,6 @@ class SyncModelCache(_CacheCore[T]):
                     close = getattr(result, "close", None)
                     if close is not None:
                         close()
-                    logger.warning(
-                        "%s.async_unload_hook_unsupported key=%s", self._name, key
-                    )
+                    logger.warning("%s.async_unload_hook_unsupported key=%s", self._name, key)
             except Exception:
                 logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)

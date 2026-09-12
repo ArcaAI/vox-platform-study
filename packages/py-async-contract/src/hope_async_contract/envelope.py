@@ -45,9 +45,7 @@ class ClaimCheckRef(BaseModel):
     by alias, matching the TypeScript ``ClaimCheckRef`` field-for-field.
     """
 
-    model_config = ConfigDict(
-        extra="forbid", alias_generator=to_camel, populate_by_name=True
-    )
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
 
     store: str = Field(min_length=1)
     bucket: str = Field(min_length=1)
@@ -67,9 +65,7 @@ class AsyncEnvelope(BaseModel):
     TypeScript validator uses `hasOwnProperty`.
     """
 
-    model_config = ConfigDict(
-        extra="forbid", alias_generator=to_camel, populate_by_name=True
-    )
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
 
     schema_version: Literal[1]
     id: UuidStr

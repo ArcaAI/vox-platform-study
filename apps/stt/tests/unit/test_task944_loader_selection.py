@@ -117,9 +117,7 @@ _MISROUTED_PYTORCH_ROWS = [
 _MISROUTED_IDS = [row[0] for row in _MISROUTED_PYTORCH_ROWS]
 
 
-@pytest.mark.parametrize(
-    ("slug", "library", "task"), _MISROUTED_PYTORCH_ROWS, ids=_MISROUTED_IDS
-)
+@pytest.mark.parametrize(("slug", "library", "task"), _MISROUTED_PYTORCH_ROWS, ids=_MISROUTED_IDS)
 def test_no_pytorch_catalogue_row_is_handed_to_transformers(cache, slug, library, task):
     """The blast radius, row by row — `format` alone cannot tell these apart."""
     config = _config(slug=slug, library_name=library, task=task)
@@ -205,9 +203,7 @@ def test_a_format_with_no_loader_fails_closed(cache):
     ModelCache._install_loaders(stripped)
     stripped._loaders.pop(AiModelFormat.SAFETENSOR)
     with pytest.raises(ModelLoadError):
-        stripped.loader_for(
-            _config(slug="x", library_name=None, fmt=AiModelFormat.SAFETENSOR)
-        )
+        stripped.loader_for(_config(slug="x", library_name=None, fmt=AiModelFormat.SAFETENSOR))
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,9 @@ class _RecordingClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
-    async def call_tool(self, *, base_url: str, tool: str, args: dict, auth_token: str | None = None):
+    async def call_tool(
+        self, *, base_url: str, tool: str, args: dict, auth_token: str | None = None
+    ):
         self.calls.append({"base_url": base_url, "auth_token": auth_token})
         return McpToolResult(content="ok", is_error=False)
 
@@ -284,9 +286,7 @@ class TestLateRebindBetweenCheckAndConnect:
     """
 
     @pytest.mark.asyncio
-    async def test_client_side_egress_block_is_non_retryable_and_recorded(
-        self, env, monkeypatch
-    ):
+    async def test_client_side_egress_block_is_non_retryable_and_recorded(self, env, monkeypatch):
         from harness.tools.egress_guard import EgressBlocked, EgressDecision
 
         class _RebindingClient:

@@ -69,7 +69,9 @@ class TestSpeechPadIsAnAgentValue:
         monkeypatch.setattr(
             silero_service,
             "get_settings",
-            lambda: SimpleNamespace(vad_threshold=0.5, vad_min_speech_duration_ms=100, vad_min_silence_duration_ms=500),
+            lambda: SimpleNamespace(
+                vad_threshold=0.5, vad_min_speech_duration_ms=100, vad_min_silence_duration_ms=500
+            ),
         )
 
         import numpy as np
@@ -104,9 +106,7 @@ class TestVadWeightsComeFromTheModelRow:
         }
         config = SimpleNamespace(models=SimpleNamespace(vad=SimpleNamespace(slug="silero-vad")))
 
-        assert (
-            SessionManager._spec_vad_local_path(mgr, "s1", config) == "/weights/silero.onnx"
-        )
+        assert SessionManager._spec_vad_local_path(mgr, "s1", config) == "/weights/silero.onnx"
 
     @pytest.mark.parametrize(
         "config",

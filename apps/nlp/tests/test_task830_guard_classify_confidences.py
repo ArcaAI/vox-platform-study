@@ -88,9 +88,7 @@ def test_the_classify_calls_ask_the_runtime_for_confidences():
 # ── the wire contract ────────────────────────────────────────────────────
 
 
-def test_a_single_label_task_reports_the_confidence_of_the_label_it_returned(
-    client, monkeypatch
-):
+def test_a_single_label_task_reports_the_confidence_of_the_label_it_returned(client, monkeypatch):
     body = _classify(
         client,
         monkeypatch,

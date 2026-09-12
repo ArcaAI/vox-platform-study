@@ -115,7 +115,9 @@ def test_dockerfile_pins_no_transformers_version_below_the_declared_ml_floor() -
     """A `--override transformers==X` that undercuts `[ml]`'s own floor ships an image
     the pyproject says is unsupported, and the version-gated RNNT loader then fails
     closed for a reason nothing in the tree explains."""
-    overrides = re.findall(r"transformers==([0-9]+)\.([0-9]+)(?:\.[0-9]+)?", _dockerfile_instructions())
+    overrides = re.findall(
+        r"transformers==([0-9]+)\.([0-9]+)(?:\.[0-9]+)?", _dockerfile_instructions()
+    )
 
     stt = tomllib.loads(STT_PYPROJECT.read_text(encoding="utf-8"))
     ml_requirements = stt["project"]["optional-dependencies"]["ml"]

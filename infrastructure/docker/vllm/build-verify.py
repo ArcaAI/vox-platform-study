@@ -180,9 +180,7 @@ def cmd_assert(args: argparse.Namespace) -> int:
     # ── 5. the tested runtime was not replaced ──────────────────────────────
     recorded = info.get("measured", {})
     now = _measured()
-    drift = {
-        k: (recorded.get(k), now[k]) for k in ("vllm", "torch") if recorded.get(k) != now[k]
-    }
+    drift = {k: (recorded.get(k), now[k]) for k in ("vllm", "torch") if recorded.get(k) != now[k]}
     if drift:
         _fail(
             "the base image's tested runtime was REPLACED after the plugin "

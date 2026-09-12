@@ -61,9 +61,9 @@ class TestDeadAndDuplicatedKnobsAreGone:
         assert not hasattr(extraction_service, "EXPECTED_EMBEDDING_DIM")
 
         schema = _USER_PRISMA.read_text(encoding="utf-8")
-        assert re.search(r'embedding\s+Unsupported\("vector"\)', schema), (
-            f'`embedding` must be an un-dimensioned `Unsupported("vector")` in {_USER_PRISMA}'
-        )
+        assert re.search(
+            r'embedding\s+Unsupported\("vector"\)', schema
+        ), f'`embedding` must be an un-dimensioned `Unsupported("vector")` in {_USER_PRISMA}'
         assert re.search(r'embedding\s+Unsupported\("vector\(\d+\)"\)', schema) is None
 
 

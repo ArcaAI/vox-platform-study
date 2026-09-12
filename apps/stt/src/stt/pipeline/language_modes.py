@@ -324,8 +324,7 @@ def _is_pair_prompt_capable(engine: AiModelFormat) -> bool:
     unaffected — the engine still SERVES the code-switch modes.
     """
     return (
-        WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED
-        and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+        WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
     )
 
 

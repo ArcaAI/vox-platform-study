@@ -284,15 +284,17 @@ class Screener:
                 reason=exc.reason,
             )
             return [
-                CheckOutcome(
-                    name=name,
-                    outcome=OUTCOME_UNDETERMINED,
-                    fail_mode=_DECLARED_FAIL_MODES[name],
-                    model=self._model(name),
-                    reason=exc.reason,
+                (
+                    CheckOutcome(
+                        name=name,
+                        outcome=OUTCOME_UNDETERMINED,
+                        fail_mode=_DECLARED_FAIL_MODES[name],
+                        model=self._model(name),
+                        reason=exc.reason,
+                    )
+                    if name in selected
+                    else self._not_selected(name)
                 )
-                if name in selected
-                else self._not_selected(name)
                 for name in task_names
             ]
 

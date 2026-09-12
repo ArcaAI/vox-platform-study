@@ -115,7 +115,10 @@ def _realtime_agent(node_id: str, slug: str) -> dict:
         node_id,
         "core.agent",
         "interpreter.core_agent",
-        config={"agentRef": {"slug": slug}, "execution": {"lane": "realtime", "cadence": "perTurn"}},
+        config={
+            "agentRef": {"slug": slug},
+            "execution": {"lane": "realtime", "cadence": "perTurn"},
+        },
         # The seeded graph's own wiring: `n_trigger.out -> n_summary.context`.
         inputs=[{"fromNodeId": "n_trigger", "fromPort": "out", "toPort": "context"}],
     )
@@ -139,13 +142,18 @@ def _consultation_graph() -> dict:
     return _body(
         [
             {"stageIndex": 0, "nodes": [_trigger()]},
-            {"stageIndex": 1, "nodes": [_realtime_agent("n_summary", "general-medicine-summarization")]},
+            {
+                "stageIndex": 1,
+                "nodes": [_realtime_agent("n_summary", "general-medicine-summarization")],
+            },
             {"stageIndex": 2, "nodes": [_durable_finalizer("n_finalize", "n_summary")]},
         ]
     )
 
 
-async def _run(body: dict, *, subject: RunSubject | None = None, sandbox: bool = False) -> dict[str, Any]:
+async def _run(
+    body: dict, *, subject: RunSubject | None = None, sandbox: bool = False
+) -> dict[str, Any]:
     ref = await _store(body)
     run_id = str(uuid.uuid4())
     async with await WorkflowEnvironment.start_time_skipping(
@@ -195,9 +203,7 @@ class TestLiveHandoff:
         _HANDOFF_SCRIPT.append(
             LiveOutputsResult(ended=True, outputs={"n_summary": {"text": "S: cough for 3 days"}})
         )
-        by_id = await _run(
-            _consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION)
-        )
+        by_id = await _run(_consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION))
 
         assert by_id["n_summary"].status == "SKIPPED"
         assert by_id["n_summary"].reason == "realtime_lane"
@@ -230,9 +236,7 @@ class TestLiveHandoff:
                 LiveOutputsResult(ended=True, outputs={"n_summary": {"text": "the running note"}}),
             ]
         )
-        by_id = await _run(
-            _consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION)
-        )
+        by_id = await _run(_consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION))
 
         assert len(_HANDOFF_CALLS) == 4
         assert by_id["n_finalize"].status == "SUCCEEDED"
@@ -242,9 +246,7 @@ class TestLiveHandoff:
     async def test_a_handoff_that_produced_nothing_degrades_EXACTLY_as_before(self):
         """A consultation that never recorded. No note is invented; the named degrade stands."""
         _HANDOFF_SCRIPT.append(LiveOutputsResult(ended=True, outputs={}))
-        by_id = await _run(
-            _consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION)
-        )
+        by_id = await _run(_consultation_graph(), subject=RunSubject(consultationId=_CONSULTATION))
 
         assert by_id["n_finalize"].status == "DEGRADED"
         assert by_id["n_finalize"].reason == (
