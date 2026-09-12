@@ -77,6 +77,11 @@ function fakeRes() {
 }
 
 function make(over: { device?: Record<string, string>; billing?: { assertSpendLimit: ReturnType<typeof vi.fn> } } = {}) {
+  // TASK-959 — `IComputeDeviceResolver`, the ONE reader of `metering.compute.deviceByProvider`.
+  // Its real implementation never raises and answers `cpu` for a provider the map does not name
+  // (its own tests pin the cascade failures it swallows); what is pinned here is the CONTROLLER's
+  // contract with it.
+  const deviceMap = over.device ?? { 'lm-studio': 'cuda' };
   const agentService = { listPublished: vi.fn(), getPublishedBySlug: vi.fn() };
   const resolver = { resolve: vi.fn(async () => RESOLVED) };
   const invocation = {
@@ -89,7 +94,7 @@ function make(over: { device?: Record<string, string>; billing?: { assertSpendLi
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)) };
   const entitlementsService = { assertMeterQuota: vi.fn(async () => undefined) };
   const usageLedger = { recordUsage: vi.fn(async (_batch: unknown) => ({ written: 1 })) };
-  const tenantSettings = { resolve: vi.fn(() => ({ value: over.device ?? { 'lm-studio': 'cuda' }, source: 'system' })) };
+  const computeDevice = { resolve: vi.fn(async (_tenantId: string, provider: string) => deviceMap[provider] ?? 'cpu') };
   const controller = new AgentController(
     agentService as never,
     resolver as never,
@@ -106,9 +111,9 @@ function make(over: { device?: Record<string, string>; billing?: { assertSpendLi
     { fetchById: vi.fn() } as never,
     { resolve: vi.fn() } as never,
     (over.billing ?? { assertSpendLimit: vi.fn(async () => undefined) }) as never,
-    tenantSettings as never,
+    computeDevice as never,
   );
-  return { controller, invocation, usageLedger, entitlementsService, tenantSettings };
+  return { controller, invocation, usageLedger, entitlementsService, computeDevice };
 }
 
 /** TEXT's own block on a blocking `/generate` response — the one this lane stopped discarding. */
@@ -295,15 +300,17 @@ describe('TASK-957 F-3 — the guardrail call TEXT made on this request’s beha
 
 describe('TASK-959 §3.2 — compute and byte rows on the agent’s generation', () => {
   it('prefers the engine’s own time over the client wall clock, as GPU seconds for a cuda provider', async () => {
-    const { controller, invocation, usageLedger, tenantSettings } = make({ device: { 'lm-studio': 'cuda' } });
+    const { controller, invocation, usageLedger, computeDevice } = make({ device: { 'lm-studio': 'cuda' } });
     invocation.invokeText.mockResolvedValue(blockingResult());
 
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
     await settle();
 
     const [generation] = byOperation(usageLedger, 'generate');
-    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1, attributesJson: { device: 'cuda' } });
-    expect(tenantSettings.resolve).toHaveBeenCalledWith('metering.compute.deviceByProvider', TENANT);
+    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '2.100', attributesJson: { device: 'cuda' } });
+    // Resolved for the provider TEXT said ACTUALLY served (`openai_compat` is this deployment's
+    // LM Studio), never for the one the agent was configured with.
+    expect(computeDevice.resolve).toHaveBeenCalledWith(TENANT, 'lm-studio');
   });
 
   it('falls back to `total_ms` when the engine reported no time of its own', async () => {
@@ -313,17 +320,22 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s generation',
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
     await settle();
 
-    expect(unitOf(byOperation(usageLedger, 'generate')[0], AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.5 });
+    expect(unitOf(byOperation(usageLedger, 'generate')[0], AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '2.500' });
   });
 
-  it('records CPU seconds for a provider the tenant’s device map does not name — the cheaper unit, never nothing', async () => {
+  it('records CPU seconds for a provider the tenant’s device map does not name — the resolver’s own fallback', async () => {
     const { controller, invocation, usageLedger } = make({ device: { vllm: 'cuda' } });
     invocation.invokeText.mockResolvedValue(blockingResult());
 
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
     await settle();
 
-    expect(unitOf(byOperation(usageLedger, 'generate')[0], AiUsageUnit.CPU_SECOND)).toMatchObject({ quantity: 2.1, attributesJson: { device: 'cpu' } });
+    // ONE row, not two. Until this lane the controller appended its own copy of the compute row
+    // on top of the one the builder had already appended, and every compute and byte row on this
+    // path was billed twice.
+    expect(byOperation(usageLedger, 'generate')[0]?.units.filter((line) => line.unit === AiUsageUnit.CPU_SECOND)).toEqual([
+      { unit: AiUsageUnit.CPU_SECOND, quantity: '2.100', attributesJson: { device: 'cpu' } },
+    ]);
   });
 
   it('records the vendor bytes in both directions', async () => {
@@ -334,8 +346,13 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s generation',
     await settle();
 
     const [generation] = byOperation(usageLedger, 'generate');
-    expect(unitOf(generation, AiUsageUnit.EGRESS_BYTE)).toMatchObject({ quantity: 4096, attributesJson: { byteSource: 'wire' } });
-    expect(unitOf(generation, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: 8192 });
+    // One row per direction — same reason as above: this path used to append every byte row twice.
+    expect(generation?.units.filter((line) => line.unit === AiUsageUnit.EGRESS_BYTE)).toEqual([
+      { unit: AiUsageUnit.EGRESS_BYTE, quantity: '4096', attributesJson: { byteSource: 'wire' } },
+    ]);
+    expect(generation?.units.filter((line) => line.unit === AiUsageUnit.INGRESS_BYTE)).toEqual([
+      { unit: AiUsageUnit.INGRESS_BYTE, quantity: '8192', attributesJson: { byteSource: 'wire' } },
+    ]);
   });
 
   it('splits a BYOK call’s CPU seconds into a second INTERNAL batch — the platform’s cost of calling', async () => {
@@ -350,35 +367,43 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s generation',
     expect(generation[0]?.common.costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
     expect(generation[1]?.common.costBasis).toBe(AiCostBasis.INTERNAL);
     // A vendor call is the platform's CPU, whatever the device map says about self-hosted servers.
-    expect(unitOf(generation[1], AiUsageUnit.CPU_SECOND)).toMatchObject({ quantity: 2.1, attributesJson: { device: 'cpu' } });
+    expect(generation[1]?.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '2.100', attributesJson: { device: 'cpu' } }]);
+    // The bytes stay with the tokens the tenant funded — they are the vendor call's own traffic.
+    expect(unitOf(generation[0], AiUsageUnit.EGRESS_BYTE)).toBeDefined();
   });
 
-  it('falls back to the DECLARED default map when the settings cascade raises — never a lost usage batch', async () => {
-    const { controller, invocation, usageLedger, tenantSettings } = make();
+  it('still bills the tokens — and still answers the caller — when the device resolver raises', async () => {
+    // `ComputeDeviceResolver` does not raise (it swallows its own cascade failures and answers
+    // `cpu`), but this resolution runs on the REQUEST path of the blocking route: a throw here
+    // would cost the caller its response over an accounting detail. No compute row, never a
+    // guessed one, and the tokens are billed exactly as before.
+    const { controller, invocation, usageLedger, computeDevice } = make();
     invocation.invokeText.mockResolvedValue(blockingResult());
-    tenantSettings.resolve.mockImplementation(() => {
-      throw new Error('settings cache not warmed');
-    });
+    computeDevice.resolve.mockRejectedValue(new Error('settings cache not warmed'));
 
-    await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
+    const res = fakeRes();
+    await controller.invoke('clinic-summarizer', { text: 'hi' }, res as never, undefined);
     await settle();
 
+    expect(res.statusCode).toBe(200);
     const [generation] = byOperation(usageLedger, 'generate');
-    // The tokens are billed either way — a device label must never cost a usage batch — and the
-    // descriptor's own default is the platform's truthful answer for its own engines.
     expect(unitOf(generation, AiUsageUnit.INPUT_TOKEN)).toBeDefined();
-    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1, attributesJson: { device: 'cuda' } });
+    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toBeUndefined();
+    expect(unitOf(generation, AiUsageUnit.CPU_SECOND)).toBeUndefined();
   });
 
-  it('uses the platform default map when the cascade produced no map at all', async () => {
-    const { controller, invocation, usageLedger, tenantSettings } = make();
-    invocation.invokeText.mockResolvedValue(blockingResult());
-    tenantSettings.resolve.mockReturnValue({ value: undefined, source: 'code-default' });
+  it('never asks the cascade about a cloud call — those seconds are the platform’s own CPU', async () => {
+    const { controller, invocation, usageLedger, computeDevice } = make();
+    invocation.invokeText.mockResolvedValue(blockingResult({ usageDetail: { ...USAGE_DETAIL, provider: 'openai' } }));
 
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
     await settle();
 
-    expect(unitOf(byOperation(usageLedger, 'generate')[0], AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1 });
+    expect(computeDevice.resolve).not.toHaveBeenCalled();
+    expect(unitOf(byOperation(usageLedger, 'generate')[0], AiUsageUnit.CPU_SECOND)).toMatchObject({
+      quantity: '2.100',
+      attributesJson: { device: 'cpu' },
+    });
   });
 });
 
@@ -398,9 +423,12 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s STREAM', () 
     await settle();
 
     const [generation] = byOperation(usageLedger, 'generate.stream');
-    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1, attributesJson: { device: 'cuda' } });
-    expect(unitOf(generation, AiUsageUnit.EGRESS_BYTE)).toMatchObject({ quantity: 4096 });
-    expect(unitOf(generation, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: 8192 });
+    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '2.100', attributesJson: { device: 'cuda' } });
+    expect(unitOf(generation, AiUsageUnit.EGRESS_BYTE)).toMatchObject({ quantity: '4096', attributesJson: { byteSource: 'wire' } });
+    expect(unitOf(generation, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: '8192' });
+    // ONE of each: the collector's builder appends them off the frame it already parsed, and the
+    // route no longer runs a second reader over the same frame to append them again.
+    expect(generation?.units.filter((line) => line.unit === AiUsageUnit.GPU_SECOND)).toHaveLength(1);
     // The tokens are still billed by the shared collector, untouched.
     expect(unitOf(generation, AiUsageUnit.OUTPUT_TOKEN)).toBeDefined();
   });
@@ -432,7 +460,7 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s STREAM', () 
     await settle();
 
     const [generation] = byOperation(usageLedger, 'generate.stream');
-    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1 });
+    expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '2.100' });
   });
 });
 
@@ -459,7 +487,7 @@ describe('TASK-959 §3.2 — compute on an agent NER invocation', () => {
     await settle();
 
     const [extraction] = byOperation(usageLedger, 'ner.extract');
-    expect(unitOf(extraction, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 0.42, attributesJson: { device: 'cuda' } });
+    expect(unitOf(extraction, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '0.420', attributesJson: { device: 'cuda' } });
     expect(unitOf(extraction, AiUsageUnit.TEXT_UNIT)).toMatchObject({ quantity: 2.5 });
   });
 

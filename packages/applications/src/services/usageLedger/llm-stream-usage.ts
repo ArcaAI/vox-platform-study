@@ -1,4 +1,12 @@
-import { buildGuardrailUsageBatches, buildLlmUsageBatches, parseTextUsageDetail } from '../consultation/summary/text-usage';
+import type { AiDeploymentKind } from '@arcaai/domains';
+
+import {
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+} from '../consultation/summary/text-usage';
 import type { ComputeAugmentedBatch } from './compute-units';
 import type { UsageEventBatchInput } from './dto';
 import type { ComputeDevice, UsageTrigger } from './usage-attributes';
@@ -161,6 +169,35 @@ export class LlmStreamUsageCollector {
   }
 
   /**
+   * The ledger `(provider, deployment)` the generation batch WILL carry, read
+   * WITHOUT consuming the stream's usage.
+   *
+   * It exists for one reason, and it is a pricing one: the compute row's unit is
+   * decided by the DEVICE, the device of a self-hosted LLM engine is resolved
+   * from configuration keyed by the LEDGER PROVIDER, and that resolution is
+   * asynchronous — so a caller cannot pass `device` to {@link takeAll} without
+   * first knowing which provider actually served. It must be the provider on the
+   * FRAME and not the one the gateway asked for: a call that fell back to
+   * another engine would otherwise be priced against the device of a server it
+   * never touched.
+   *
+   * Everything else about the frame stays private. This returns two bounded,
+   * enum-ish values and never the block, which sits on the same frame as
+   * generated clinical text.
+   *
+   * `null` for the same three reasons {@link takeAll} answers `null`: no
+   * terminal frame arrived, its block is a shape the normalizer refuses to guess
+   * at, or nothing has been observed yet.
+   */
+  peekGenerationAttribution(): { provider: string; deployment: AiDeploymentKind } | null {
+    if (this.terminalUsage === null) return null;
+    const usage = parseTextUsageDetail(this.terminalUsage);
+    if (!usage) return null;
+    const provider = toLedgerProvider(usage.textProvider);
+    return { provider, deployment: resolveDeployment(provider, usage.byok) };
+  }
+
+  /**
    * Build the ledger batch for this stream, ONCE.
    *
    * `null` means "record nothing" and is the right answer three ways: no
@@ -175,11 +212,13 @@ export class LlmStreamUsageCollector {
   /**
    * Both halves, ONCE — the full-fidelity form of {@link take}.
    *
-   * `take` keeps its single-batch return because its call sites are in other
-   * lanes' files (`agent.controller.ts`, `text-proxy.controller.ts`); each
-   * migrates here when its lane next opens the file. Until then a stream's
-   * guardrail COGS and the platform CPU leg of a BYOK stream stay unrecorded on
-   * that path — which is where they already were, not a regression.
+   * `take` keeps its single-batch return because its remaining call site is in
+   * another lane's file (`text-proxy.controller.ts`), which migrates here when
+   * that lane next opens it. Until then the playground proxy's streams carry
+   * their tokens, their compute and their bytes — `take` returns the SAME
+   * augmented batch — but not the stream's guardrail COGS and not the platform
+   * CPU leg of a BYOK stream, which is where they already were, not a
+   * regression.
    *
    * `null` still means "record nothing", and for the same three reasons: no
    * terminal frame arrived, its block was a shape the normalizer refuses to
