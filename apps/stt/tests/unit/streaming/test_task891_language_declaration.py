@@ -64,7 +64,12 @@ class _CapturingWhisper:
 
 def _manager() -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
-    for name in ("_session_specs", "_session_language_modes", "_session_asr_formats"):
+    for name in (
+        "_session_specs",
+        "_session_language_modes",
+        "_session_asr_formats",
+        "_session_connections",
+    ):
         setattr(mgr, name, {})
     mgr._pending_want_word_timestamps = False
     mgr._warm_and_pin_pipeline_models = AsyncMock(return_value=[])

@@ -72,6 +72,20 @@ class ProviderOverride(BaseModel):
     # Non-secret metadata, so deliberately NOT a SecretStr — the attribution
     # must survive ``model_dump()``.
     funding: ProviderFunding = "tenant"
+    # TASK-958 — WHICH connection row of this provider the credential came from. A
+    # tenant may hold several `AiProviderConnection` rows for one (service, provider),
+    # so `funding` says WHOSE money and this says WHICH KEY — two different questions a
+    # tenant with two accounts needs answered separately on its cost surfaces.
+    #
+    # This plane does NOT re-key `provider_overrides` by connection: the fallback chain
+    # is walked by the GATEWAY, one request per candidate, so a request carries at most
+    # one candidate per provider and there is nothing to disambiguate. These are
+    # attribution metadata only — every adapter ignores them.
+    #
+    # Non-secret, so deliberately NOT SecretStr: the attribution must survive
+    # `model_dump()`, exactly like `funding`.
+    connection_id: str | None = None
+    connection_slug: str | None = None
     # AWS Bedrock Guardrails. A guardrail belongs to the AWS ACCOUNT the request
     # authenticates against, so it travels with that account's credential rather
     # than as a process-wide `TEXT_BEDROCK_GUARDRAIL_ID` that would apply one

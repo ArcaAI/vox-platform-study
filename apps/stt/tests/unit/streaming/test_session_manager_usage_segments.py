@@ -249,6 +249,9 @@ class TestTeardownSummarySegments:
                 "deployment": "SELF_HOSTED",
                 "audio_seconds": 42.5,
                 "session_seconds": 90.0,
+                # TASK-958 — a recovered session stamped no connection; the row carries
+                # `None` rather than omitting the key, so the gateway reads one shape.
+                "connection_id": None,
             }
         ]
 

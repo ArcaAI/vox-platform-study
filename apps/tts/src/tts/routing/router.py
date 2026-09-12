@@ -82,9 +82,45 @@ class TtsRoutingUnconfiguredError(AllProvidersUnavailableError):
         self.voice_id = voice_id
 
 
-# Per-tenant BYO credentials the gateway decrypts + injects:
-# ``{"azure": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
+# Per-tenant BYO credentials the gateway decrypts + injects, keyed by CONNECTION KEY
+# (TASK-958) — the tenant connection's ``slug`` for a tenant row, the provider/engine name
+# for a platform row:
+# ``{"azure-clinic": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
+# For a tenant's DEFAULT connection the slug IS the provider name, so every payload written
+# before multiplicity existed is unchanged and still keys by provider.
 ProviderOverrides = dict[str, dict[str, str]]
+
+
+def override_for(
+    candidate: ResolvedTtsCandidate, overrides: ProviderOverrides | None
+) -> dict[str, str]:
+    """The credential entry that serves THIS candidate.
+
+    ``connection_key`` first, engine name second. The second read is what keeps a
+    legacy payload — and every platform-tier candidate, whose key IS the engine name —
+    resolving exactly as it did; the first is the only thing that can tell two
+    candidates apart when a tenant holds two accounts of one vendor and both name the
+    same engine. Without it the chain reads ONE entry twice and a failover spends the
+    key that just failed.
+    """
+    if not overrides:
+        return {}
+    if candidate.connection_key:
+        entry = overrides.get(candidate.connection_key)
+        if entry:
+            return entry
+    return overrides.get(candidate.engine or "") or {}
+
+
+def _connection_id(candidate: ResolvedTtsCandidate) -> str | None:
+    """The ``AiProviderConnection`` id that served a candidate, or ``None``.
+
+    ``None`` means the gateway sent no id — a payload that predates TASK-958 — and the
+    ledger records the spend with no connection, exactly as it does today. It is never
+    guessed from the provider name: two connections of one vendor share that name, which
+    is the whole reason this field exists.
+    """
+    return candidate.connection.connection_id if candidate.connection else None
 
 
 def _engine_cache_key(candidate: ResolvedTtsCandidate, override: dict[str, str]) -> str:
@@ -212,7 +248,9 @@ class TTSRouter:
             self._breakers[name] = CircuitBreaker(self._cb_threshold, self._cb_recovery_s)
         return self._breakers[name]
 
-    def candidates(self, spec: ResolvedTtsSpec, *, voice_id: str | None = None) -> list[ResolvedTtsCandidate]:
+    def candidates(
+        self, spec: ResolvedTtsSpec, *, voice_id: str | None = None
+    ) -> list[ResolvedTtsCandidate]:
         """The resolved chain, minus the engines whose circuit is open.
 
         Everything else the chain filters on — the funding-gated ``autoSwitch``, the enabled
@@ -221,9 +259,15 @@ class TTSRouter:
         must not re-derive them. The breaker is the one exclusion that is genuinely local: it is
         this process's own recent experience of an engine.
         """
-        return [c for c in candidate_chain(spec, voice_id=voice_id) if not self.breaker(c.engine or "").is_open()]
+        return [
+            c
+            for c in candidate_chain(spec, voice_id=voice_id)
+            if not self.breaker(c.engine or "").is_open()
+        ]
 
-    def _engine_for(self, candidate: ResolvedTtsCandidate, provider_overrides: ProviderOverrides | None) -> TTSEngine | None:
+    def _engine_for(
+        self, candidate: ResolvedTtsCandidate, provider_overrides: ProviderOverrides | None
+    ) -> TTSEngine | None:
         """The engine instance for one candidate, or ``None`` when this process cannot build one.
 
         Built from the SPEC — the model it names, the mirror it names, the connection it names and
@@ -239,7 +283,7 @@ class TTSRouter:
         exists to survive — so the caller walks on rather than turning a routing fact into a 500.
         """
         name = candidate.engine or ""
-        override = (provider_overrides or {}).get(name, {})
+        override = override_for(candidate, provider_overrides)
         key = _engine_cache_key(candidate, override)
         engine = self._spec_engines.get(key)
         if engine is None:
@@ -259,7 +303,16 @@ class TTSRouter:
         # sentence instead of being walked past before `ready`.
         return engine if getattr(engine, "is_configured", True) else None
 
-    def _request_for(self, candidate: ResolvedTtsCandidate, *, text: str, voice_id: str | None, fmt: AudioFormat, speed: float, request_id: str) -> SynthesisRequest:
+    def _request_for(
+        self,
+        candidate: ResolvedTtsCandidate,
+        *,
+        text: str,
+        voice_id: str | None,
+        fmt: AudioFormat,
+        speed: float,
+        request_id: str,
+    ) -> SynthesisRequest:
         """One provider-ready request, resolved entirely from THIS candidate.
 
         The voice, the locale and the sample rate all come from the candidate rather than from the
@@ -267,7 +320,9 @@ class TTSRouter:
         worse, silently substitute a different voice.
         """
         binding = candidate.binding_for(voice_id)
-        assert binding is not None  # `candidate_chain` already excluded candidates that cannot speak it
+        assert (
+            binding is not None
+        )  # `candidate_chain` already excluded candidates that cannot speak it
         return SynthesisRequest(
             text=text,
             provider_voice=binding.engine_voice,
@@ -299,7 +354,9 @@ class TTSRouter:
         failed_from: str | None = None
         for candidate in candidates:
             name = candidate.engine or ""
-            req = self._request_for(candidate, text=text, voice_id=voice_id, fmt=fmt, speed=speed, request_id=request_id)
+            req = self._request_for(
+                candidate, text=text, voice_id=voice_id, fmt=fmt, speed=speed, request_id=request_id
+            )
             locale = req.locale
             if failed_from is not None:
                 TTS_FAILOVER.labels(from_provider=failed_from, to_provider=name).inc()
@@ -334,10 +391,12 @@ class TTSRouter:
                                 )
                                 emitted = True
                             audio_bytes += len(chunk.data)
-                            # Stamp the winning provider (usage
+                            # Stamp the winning provider AND its connection (usage
                             # attribution) — a caller doesn't know which
                             # candidate won until the first byte ships.
-                            yield replace(chunk, provider=name)
+                            yield replace(
+                                chunk, provider=name, connection_id=_connection_id(candidate)
+                            )
                 breaker.record_success()
                 self._observe_rtf(name, req, audio_bytes, time.perf_counter() - started)
                 TTS_REQUESTS.labels(provider=name, locale=locale, status="ok").inc()
@@ -384,16 +443,27 @@ class TTSRouter:
         # known now — a `ready` followed by a failure on the first sentence is a worse answer than
         # an up-front error. Building is cheap and cached, so this costs nothing the first
         # sentence would not have paid anyway.
-        candidates = [c for c in self.candidates(spec, voice_id=voice_id) if self._engine_for(c, provider_overrides) is not None]
+        candidates = [
+            c
+            for c in self.candidates(spec, voice_id=voice_id)
+            if self._engine_for(c, provider_overrides) is not None
+        ]
         if not candidates:
             TTS_REQUESTS.labels(provider="none", locale="", status="unavailable").inc()
             raise TtsRoutingUnconfiguredError(requested_voice)
 
         first = candidates[0]
         engine0 = self._engine_for(first, provider_overrides)
-        if engine0 is not None and isinstance(engine0, DuplexTTSEngine) and fmt == AudioFormat.PCM and speed == 1.0:
+        if (
+            engine0 is not None
+            and isinstance(engine0, DuplexTTSEngine)
+            and fmt == AudioFormat.PCM
+            and speed == 1.0
+        ):
             return engine0.open_stream(
-                self._request_for(first, text="", voice_id=voice_id, fmt=fmt, speed=speed, request_id=request_id)
+                self._request_for(
+                    first, text="", voice_id=voice_id, fmt=fmt, speed=speed, request_id=request_id
+                )
             )
 
         synth = _ChainSynthesizer(
@@ -483,7 +553,7 @@ class _ChainSynthesizer:
             with track_model_inference(name):
                 async with aclosing(engine.synthesize(self._req(locked, sentence))) as stream:
                     async for chunk in stream:
-                        yield replace(chunk, provider=name)
+                        yield replace(chunk, provider=name, connection_id=_connection_id(locked))
             return
 
         last_exc: Exception | None = None
@@ -512,7 +582,9 @@ class _ChainSynthesizer:
                                 )
                                 emitted = True
                                 self._locked = candidate  # lock the whole stream to this candidate
-                            yield replace(chunk, provider=name)
+                            yield replace(
+                                chunk, provider=name, connection_id=_connection_id(candidate)
+                            )
                 breaker.record_success()
                 return
             except Exception as exc:

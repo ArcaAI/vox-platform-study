@@ -95,9 +95,7 @@ class _Wire(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def _omit_unset_optionals(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, object]:
+    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped: dict[str, object] = handler(self)
         if not self.OPTIONAL_FIELDS:
             return dumped
@@ -423,7 +421,28 @@ class AsrSpecAgent(_Wire):
 class AsrSpecCore(_Wire):
     """One engine chain. ``runtime_key`` replaces ``pipeline_id`` as the runtime identity."""
 
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"connection_id", "connection_slug", "connection_key"}
+    )
+
     runtime_key: str
+    #: TASK-958 — WHICH ``AiProviderConnection`` row serves this chain's engine, and the
+    #: key its credential arrives under in ``provider_overrides``.
+    #:
+    #: A tenant may now hold several connections for one ``(service, provider)``, so the
+    #: provider id no longer names a row: two chains can name the SAME cloud engine on
+    #: DIFFERENT accounts, and a provider-keyed credential map would hand both the same
+    #: entry — a failover that spends the key that just failed. ``connection_key`` (the
+    #: tenant connection's ``slug``; the provider id for a platform row) is what the
+    #: loaders read their entry under, and ``connection_id`` is what the usage ledger
+    #: attributes the spend to.
+    #:
+    #: All three are OPTIONAL (omit-when-absent): a gateway that predates them sends
+    #: none, the loaders fall back to the provider id, and the row that answered is that
+    #: provider's DEFAULT connection — byte-for-byte today's behaviour.
+    connection_id: str | None = None
+    connection_slug: str | None = None
+    connection_key: str | None = None
     agent: AsrSpecAgent
     models: AsrSpecModels
     audio_front_end: AsrSpecAudioFrontEnd
@@ -472,8 +491,19 @@ def _source_from_uri(uri: str) -> AiModelSource:
     return AiModelSource.HUGGINGFACE
 
 
-def to_ai_model_config(model: AsrSpecModel) -> AiModelConfig:
-    """The ``AiModelConfig`` the loaders take — built from the spec, not from a row."""
+def to_ai_model_config(
+    model: AsrSpecModel,
+    *,
+    connection_key: str | None = None,
+    connection_id: str | None = None,
+) -> AiModelConfig:
+    """The ``AiModelConfig`` the loaders take — built from the spec, not from a row.
+
+    ``connection_key`` / ``connection_id`` belong to the CHAIN (``AsrSpecCore``), not to
+    the model row, and are stamped onto every config the chain produces: the loader is
+    handed a model config and nothing else, so this is how it learns which of a tenant's
+    connections it must authenticate as (TASK-958).
+    """
     try:
         model_format = AiModelFormat(model.format)
     except ValueError:
@@ -516,6 +546,8 @@ def to_ai_model_config(model: AsrSpecModel) -> AiModelConfig:
         file_size_mb=None,
         checksum=model.checksum,
         tags=[],
+        connection_key=connection_key,
+        connection_id=connection_id,
     )
 
 
@@ -588,7 +620,12 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     # `punctuation` and `endpointing` are deliberately absent: both are referenced
     # by slug only and loaded by their own service, never by the STT model cache.
     executable = [m for m in (models.asr, models.vad, models.denoise, models.embedding) if m]
-    model_configs = {m.slug: to_ai_model_config(m) for m in executable}
+    model_configs = {
+        m.slug: to_ai_model_config(
+            m, connection_key=core.connection_key, connection_id=core.connection_id
+        )
+        for m in executable
+    }
 
     refs = ModelRefs(
         asr=ModelRef(slug=models.asr.slug),
