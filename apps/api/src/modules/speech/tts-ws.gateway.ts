@@ -7,8 +7,9 @@ import {
   SecretsService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ResolvedTtsSpec } from '@arcaai/applications';
+import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
@@ -109,6 +110,21 @@ interface Bridge {
   // event without threading extra params through the message callback.
   sessionId: string;
   tenantId: string | null;
+  /**
+   * TASK-959 §4.2 — bytes of upstream BINARY audio relayed to the browser so far. `stream_ws.py`'s
+   * own `"usage"` control frame carries no device, timing, or byte count of its own (unlike the
+   * REST `/audio/speech` headers) — this is the only observation this bridge can make, and it is
+   * an APPLICATION-level proxy for what the client received, never the wire.
+   */
+  relayedBytes: number;
+}
+
+/** Byte length of a relayed WS frame, across every shape `ws` may hand back a binary message in. */
+function relayedByteLength(data: WebSocket.RawData): number {
+  if (Buffer.isBuffer(data)) return data.length;
+  if (Array.isArray(data)) return data.reduce((sum, buf) => sum + buf.length, 0);
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  return 0;
 }
 
 @WebSocketGateway({ path: '/ws/tts/stream' })
@@ -367,6 +383,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       initEnriched: false,
       sessionId,
       tenantId,
+      relayedBytes: 0,
     };
     this.bridges.set(client, bridge);
 
@@ -387,6 +404,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     upstream.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
       if (!isBinary && this.maybeConsumeUsageFrame(bridge, data)) {
         return;
+      }
+      // TASK-959 §4.2 — every binary frame relayed IS the audio the client receives; accumulate
+      // it here since `stream_ws.py`'s usage frame reports no byte count of its own.
+      if (isBinary) {
+        bridge.relayedBytes += relayedByteLength(data);
       }
       this.safeSend(client, data, isBinary);
       this.applyBackpressure(bridge);
@@ -495,37 +517,52 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { deployment, costBasis } = parsed.provider
         ? classifyTtsProvider(parsed.provider, bridge.providerOverrides, connectionId)
         : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
-      this.usageLedger
-        .recordUsage({
-          common: {
-            tenantId: bridge.tenantId,
-            idempotencyKey: UsageIdempotencyKey.ttsRequest(bridge.sessionId),
-            occurredAt: new Date(),
-            capability: AiCapability.TTS,
-            operation: 'tts.synthesize',
-            provider: parsed.provider ?? 'none',
-            model: null,
-            deployment,
-            ...(costBasis ? { costBasis } : {}),
-            connectionId,
-            requestId: bridge.sessionId,
-            sessionId: bridge.sessionId,
-            attributesJson: { interrupted: parsed.interrupted },
-          },
-          units: [
-            { unit: AiUsageUnit.CHARACTER, quantity: parsed.characters },
-            ...(parsed.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: parsed.audioSeconds }] : []),
-          ],
-        })
-        .catch((err: unknown) => {
-          // Never let a metering failure disrupt the bridge — synthesis
-          // already happened; this is a side effect of work already done.
-          this.logger.warn({
-            message: 'TTS usage emission failed',
-            sessionId: bridge.sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+      const batch: UsageEventBatchInput = {
+        common: {
+          tenantId: bridge.tenantId,
+          idempotencyKey: UsageIdempotencyKey.ttsRequest(bridge.sessionId),
+          occurredAt: new Date(),
+          capability: AiCapability.TTS,
+          operation: 'tts.synthesize',
+          provider: parsed.provider ?? 'none',
+          model: null,
+          deployment,
+          ...(costBasis ? { costBasis } : {}),
+          connectionId,
+          requestId: bridge.sessionId,
+          sessionId: bridge.sessionId,
+          attributesJson: { interrupted: parsed.interrupted },
+        },
+        units: [
+          { unit: AiUsageUnit.CHARACTER, quantity: parsed.characters },
+          ...(parsed.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: parsed.audioSeconds }] : []),
+        ],
+      };
+
+      const onUsageError = (err: unknown): void => {
+        // Never let a metering failure disrupt the bridge — synthesis
+        // already happened; this is a side effect of work already done.
+        this.logger.warn({
+          message: 'TTS usage emission failed',
+          sessionId: bridge.sessionId,
+          error: err instanceof Error ? err.message : String(err),
         });
+      };
+
+      // TASK-959 §3.2/§4.2 — `stream_ws.py`'s `"usage"` frame carries no device, synthesis
+      // timing, or byte count (confirmed against the Python source: `_SessionUsage` tracks only
+      // characters/audio_bytes/provider/connection_id). This bridge therefore never has a device
+      // to report, so — the "never guess" rule — `totalMs: null` means it never emits a compute
+      // row (and so never splits a platform-CPU batch off a BYOK call either — there is no
+      // compute row to split). The relayed byte count it DID observe still stands in as an
+      // application-level proxy for what the client received.
+      const { batch: augmented } = appendComputeAndByteUnits(batch, {
+        device: null,
+        totalMs: null,
+        responseBytes: bridge.relayedBytes > 0 ? bridge.relayedBytes : null,
+        byteSource: bridge.relayedBytes > 0 ? 'app' : null,
+      });
+      this.usageLedger.recordUsage(augmented).catch(onUsageError);
     }
     return true;
   }

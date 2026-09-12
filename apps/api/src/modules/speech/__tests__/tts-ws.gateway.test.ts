@@ -476,5 +476,57 @@ describe('TtsWsGateway', () => {
       expect(client.send).toHaveBeenCalledWith(pcm, { binary: true });
       expect(client.send).toHaveBeenCalledWith(doneFrame, { binary: false });
     });
+
+    // TASK-959 T2b — `stream_ws.py`'s usage frame carries no device, synthesis timing, or byte
+    // count of its own; the gateway's own relayed-byte observation is the one thing it can add.
+    describe('compute + byte units (TASK-959)', () => {
+      it('records the relayed audio bytes as an app-level INGRESS_BYTE row, and no compute row', async () => {
+        const usageLedger = createMockUsageLedger();
+        gateway = buildGateway(usageLedger);
+        gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+        const client = makeSocket();
+        await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+        upstream.emit('open');
+
+        upstream.emit('message', Buffer.from([1, 2, 3, 4]), true);
+        upstream.emit('message', Buffer.from([5, 6]), true);
+        upstream.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' })),
+          false,
+        );
+
+        const call = usageLedger.recordUsage.mock.calls[0][0];
+        expect(call.units).toEqual(
+          expect.arrayContaining([
+            { unit: 'CHARACTER', quantity: 10 },
+            { unit: 'AUDIO_SECOND', quantity: 0.2 },
+            { unit: 'INGRESS_BYTE', quantity: 6 },
+          ]),
+        );
+        expect(call.units.find((u: { unit: string }) => u.unit === 'CPU_SECOND' || u.unit === 'GPU_SECOND')).toBeUndefined();
+        expect(call.common.attributesJson).toEqual({ interrupted: false, byteSource: 'app' });
+        expect('device' in call.common.attributesJson).toBe(false);
+      });
+
+      it('emits no byte row when no binary frame was ever relayed before teardown', async () => {
+        const usageLedger = createMockUsageLedger();
+        gateway = buildGateway(usageLedger);
+        gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+        const client = makeSocket();
+        await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+        upstream.emit('open');
+
+        upstream.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: null })),
+          false,
+        );
+
+        const call = usageLedger.recordUsage.mock.calls[0][0];
+        expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 4 }]);
+        expect(call.common.attributesJson).toEqual({ interrupted: true });
+      });
+    });
   });
 });

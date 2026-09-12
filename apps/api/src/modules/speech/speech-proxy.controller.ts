@@ -1,5 +1,6 @@
 import {
   Authorize,
+  COMPUTE_DEVICES,
   IActiveUserContext,
   IConfigService,
   IEntitlementsService,
@@ -7,8 +8,9 @@ import {
   SecretsService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ResolvedTtsSpec } from '@arcaai/applications';
+import type { ByteSource, ComputeDevice, ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -75,6 +77,29 @@ const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENO
 // is compute-costly (and streams), so the non-idempotent POST retries ONLY on
 // these — anything else may mean synthesis already started.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
+
+/**
+ * TASK-959 §3.2 — `X-Tts-Synthesis-Ms` (batch), or the gateway's own wall-clock fallback on a
+ * stream (no header ⇒ NaN ⇒ null, never zero). A non-positive/non-finite reading is
+ * "not measured", not "zero seconds".
+ */
+function positiveNumber(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * TASK-959 §3.1 — `X-Tts-Device`, from the CLOSED vocabulary only. Absent is the real, common
+ * answer for a cloud engine that names no device of ours (Azure, Sarvam) — never guessed.
+ */
+function computeDeviceHeader(value: unknown): ComputeDevice | null {
+  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
+}
+
+/** TASK-959 §4.2 — `X-Tts-Byte-Source`, from the closed vocabulary only. */
+function byteSourceHeader(value: unknown): ByteSource | null {
+  return value === 'wire' || value === 'app' ? value : null;
+}
 
 @ApiTags('speech')
 @ApiBearerAuth()
@@ -322,45 +347,81 @@ export class SpeechProxyController {
         : { deployment: undefined, costBasis: undefined };
       const requestId = generateId();
       let proxiedBytes = 0;
+      // TASK-959 §3.2 — the gateway's own clock, set at the FIRST relayed byte. It is the
+      // fallback occupancy figure for the streamed modes, where `apps/tts` never sends
+      // `X-Tts-Synthesis-Ms` (the total is unknown at header-commit time).
+      let firstByteAtMs: number | null = null;
       let emitted = false;
+
+      const onUsageError = (err: unknown): void => {
+        // Never let a metering failure surface to the caller — synthesis
+        // already happened; this is a side effect of work already done.
+        this.logger.warn({
+          message: 'TTS usage emission failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      };
 
       const emitUsage = (interrupted: boolean): void => {
         if (emitted || !tenantId || !this.usageLedger) return;
         emitted = true;
         const audioSeconds = this.resolveAudioSeconds(upstream.headers, proxiedBytes);
-        this.usageLedger
-          .recordUsage({
-            common: {
-              tenantId,
-              idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
-              occurredAt: new Date(),
-              capability: AiCapability.TTS,
-              operation: 'tts.synthesize',
-              provider: provider ?? 'none',
-              model: null,
-              deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
-              ...(costBasis ? { costBasis } : {}),
-              connectionId,
-              requestId,
-              attributesJson: { interrupted },
-            },
-            units: [
-              { unit: AiUsageUnit.CHARACTER, quantity: characters },
-              ...(audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: audioSeconds }] : []),
-            ],
-          })
-          .catch((err: unknown) => {
-            // Never let a metering failure surface to the caller — synthesis
-            // already happened; this is a side effect of work already done.
-            this.logger.warn({
-              message: 'TTS usage emission failed',
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
+        const batch: UsageEventBatchInput = {
+          common: {
+            tenantId,
+            idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+            occurredAt: new Date(),
+            capability: AiCapability.TTS,
+            operation: 'tts.synthesize',
+            provider: provider ?? 'none',
+            model: null,
+            deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+            ...(costBasis ? { costBasis } : {}),
+            connectionId,
+            requestId,
+            attributesJson: { interrupted },
+          },
+          units: [
+            { unit: AiUsageUnit.CHARACTER, quantity: characters },
+            ...(audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: audioSeconds }] : []),
+          ],
+        };
+
+        // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis. Absent
+        // `X-Tts-Device` (a cloud engine that names no device of ours) means no compute row at
+        // all — device gates `totalMs` here rather than being left to the shared helper's own
+        // default, which would otherwise still bill an unresolved device as CPU_SECOND.
+        const device = computeDeviceHeader(upstream.headers['x-tts-device']);
+        const synthesisMs = positiveNumber(upstream.headers['x-tts-synthesis-ms']);
+        const wallClockMs = firstByteAtMs !== null ? Date.now() - firstByteAtMs : null;
+        const totalMs = device !== null ? (synthesisMs ?? wallClockMs) : null;
+        const reportedBytes = positiveNumber(upstream.headers['x-tts-response-bytes']);
+        const reportedByteSource = byteSourceHeader(upstream.headers['x-tts-byte-source']);
+        // The service's own count first; the gateway's own relay count — an application-level
+        // proxy for what was actually sent, not the wire — only when it reported none.
+        const responseBytes = reportedBytes ?? (proxiedBytes > 0 ? proxiedBytes : null);
+        const byteSource = responseBytes === null ? null : (reportedByteSource ?? (reportedBytes === null ? 'app' : null));
+
+        const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
+          device,
+          totalMs,
+          // No vendor "request" bytes concept here: the input is JSON text the gateway sent,
+          // never counted as bytes spent AT a vendor the way an outbound STT/TEXT call is.
+          requestBytes: undefined,
+          responseBytes,
+          byteSource,
+        });
+        this.usageLedger.recordUsage(augmented).catch(onUsageError);
+        if (platformBatch) {
+          // TASK-959 §6.3 — the platform's own CPU on a BYOK call: same batch shape, disjoint
+          // idempotency key (`:CPU_SECOND`), separate row so it never drops off `augmented`'s key.
+          this.usageLedger.recordUsage(platformBatch).catch(onUsageError);
+        }
       };
 
       const stream = upstream.data;
       stream.on('data', (chunk: Buffer) => {
+        if (firstByteAtMs === null) firstByteAtMs = Date.now();
         proxiedBytes += chunk.length;
         res.write(chunk);
       });
