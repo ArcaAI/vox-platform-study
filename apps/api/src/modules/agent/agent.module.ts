@@ -3,7 +3,6 @@ import {
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
   BillingServiceModule,
-  EffectiveSettingsModule,
   EntitlementsServiceModule,
   MediaServiceModule,
   TranscriptionJobServiceModule,
@@ -34,9 +33,10 @@ import { AgentController } from './agent.controller';
     // (D12). Without this import the controller's `@Optional()` injection is always undefined and
     // the three metered routes here stay unbounded, which is exactly the defect F-4 names.
     BillingServiceModule,
-    // TASK-959 §3.1 — `TenantSettingsService`, for `metering.compute.deviceByProvider`. Same
-    // reason: an unwired cascade would silently take the fallback on every call.
-    EffectiveSettingsModule,
+    // TASK-959 §3.1 — `IComputeDeviceResolver` (`metering.compute.deviceByProvider`) comes from
+    // `UsageLedgerServiceModule` above, which provides its `TenantSettingsService` locally. This
+    // module therefore needs no `EffectiveSettingsModule` of its own; the controller reads that
+    // descriptor through the shared resolver rather than through a second copy of the cascade.
   ],
   controllers: [AgentController],
 })
