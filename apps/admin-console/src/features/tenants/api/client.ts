@@ -13,6 +13,7 @@ import type {
   TenantConfig,
   TenantFrontendConfig,
   TenantProvisionResult,
+  TenantStorageSnapshot,
   TenantUsage,
   UpdateTenantConfigItem,
   UpdateTenantRequest,
@@ -81,6 +82,21 @@ export function resyncTenantPipelineTemplates(id: string): Promise<PipelineResyn
 
 export function getTenantUsage(id: string): Promise<TenantUsage> {
   return getJson(`${BASE}/${encodeURIComponent(id)}/usage`);
+}
+
+/**
+ * TASK-959 — the per-class storage breakdown, beside the live `Media.size`
+ * figure above. Reads `admin/usage/summary?tenantId=` rather than a
+ * tenant-scoped path: that route is the one place the nightly snapshot's
+ * per-class split exists (`UsageSummaryResponse.storage`), and it already
+ * accepts a target tenant for a platform admin (a tenant admin viewing its
+ * OWN tenant id passes the same scope check `resolveScopedTenantId` applies
+ * to every other admin-usage read). No `period` is passed — the endpoint
+ * defaults to the current UTC month, and the snapshot is a LEVEL (the
+ * latest day), not a period sum, so which month is largely academic here.
+ */
+export function getTenantStorageBreakdown(id: string): Promise<{ storage: TenantStorageSnapshot | null }> {
+  return getJson('admin/usage/summary', { tenantId: id });
 }
 
 export function getTenantTags(id: string): Promise<{ tags: string[] }> {

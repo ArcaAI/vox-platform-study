@@ -15,7 +15,7 @@ import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import type { RunTrace, WorkflowDefinitionSlice } from '../../api/types';
+import type { RunTrace, WorkflowDefinitionSlice, WorkflowRunDetail } from '../../api/types';
 import { RunTraceScreen } from '../run-trace-screen';
 import { installFetchStub, sessionPayload, type RecordedCall } from './fetch-stub';
 
@@ -90,11 +90,16 @@ const DEFINITION: WorkflowDefinitionSlice = {
   },
 };
 
-function stubRoutes(overrides: { trace?: RunTrace } = {}) {
+/** GET /admin/workflow-runs/:runId (TASK-959 — `cpuSeconds` beside the run row). `null` by default: most runs predate the metering interceptor. */
+const RUN_DETAIL: WorkflowRunDetail = { ...TRACE.run, cpuSeconds: null };
+
+function stubRoutes(overrides: { trace?: RunTrace; runDetail?: WorkflowRunDetail } = {}) {
   return installFetchStub(({ url, method }: RecordedCall) => {
     if (url === '/api/auth/session') return sessionPayload({});
     if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { ok: true };
     if (url.startsWith(`/api/hope/admin/workflow-runs/${RUN_ID}/trace`)) return overrides.trace ?? TRACE;
+    // Exact match — must not also catch `/trace`, `/gate`, etc. above/below it.
+    if (url === `/api/hope/admin/workflow-runs/${RUN_ID}`) return overrides.runDetail ?? RUN_DETAIL;
     if (url.startsWith('/api/hope/admin/workflow-definitions/wfv-1')) return DEFINITION;
     return { success: true };
   });
@@ -113,6 +118,26 @@ describe('RunTraceScreen — list view (?view=list)', () => {
     expect(screen.getByText('Failed')).toBeDefined();
     expect(await screen.findByText('Noop')).toBeDefined();
     expect(screen.getByText('Passthrough')).toBeDefined();
+  });
+
+  it('shows the worker CPU seconds from the run detail (TASK-959)', async () => {
+    stubRoutes({ runDetail: { ...RUN_DETAIL, cpuSeconds: 2.418 } });
+    renderWithProviders(<RunTraceScreen runId={RUN_ID} />, { searchParams: '?view=list' });
+    expect(await screen.findByText('2.418 s')).toBeDefined();
+  });
+
+  it('shows an em dash with a tooltip when cpuSeconds is null (no CPU samples recorded)', async () => {
+    stubRoutes({ runDetail: { ...RUN_DETAIL, cpuSeconds: null } });
+    renderWithProviders(<RunTraceScreen runId={RUN_ID} />, { searchParams: '?view=list' });
+    const dash = await screen.findByLabelText('Worker CPU: no data');
+    expect(dash.textContent).toContain('—');
+    expect(dash.getAttribute('title')).toBe('No CPU samples recorded for this run.');
+  });
+
+  it('shows the same em dash when the gateway carries no cpuSeconds field at all', async () => {
+    stubRoutes({ runDetail: { ...TRACE.run } as unknown as WorkflowRunDetail });
+    renderWithProviders(<RunTraceScreen runId={RUN_ID} />, { searchParams: '?view=list' });
+    expect(await screen.findByLabelText('Worker CPU: no data')).toBeDefined();
   });
 
   it('renders the failure panel for a run with a failed node', async () => {

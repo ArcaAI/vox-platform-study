@@ -18,6 +18,8 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { aggregateCostByCapability, sumMicrosMap } from '../api/aggregate';
 import { useCostPerEncounter, useTopTenants, useUsageConnectionNames, useUsageSummary } from '../api/hooks';
 import type { CostPerEncounterView, TopTenantsView, UsageSummaryView } from '../api/hooks';
+import { ComputeCard, StorageCard, ThirdPartyNetworkCard } from './usage-measures-cards';
+import { UsageTimeseriesCard } from './usage-timeseries-card';
 
 const MONTH_COUNT = 12;
 const monthLabelFormat = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', timeZone: 'UTC' });
@@ -97,6 +99,12 @@ function ConsumptionCostBody() {
               <CostByCapabilityCard summary={summary} />
               <CostPerEncounterCard cpe={cpe} />
             </div>
+            <div className="grid items-start gap-4 lg:grid-cols-3">
+              <ComputeCard summary={summary} />
+              <ThirdPartyNetworkCard summary={summary} />
+              <StorageCard summary={summary} />
+            </div>
+            <UsageTimeseriesCard lines={summary.data?.lines ?? []} periodStart={summary.data?.periodStart} periodEnd={summary.data?.periodEnd} />
             <UsageDetailCard summary={summary} />
             <TopTenantsCard top={top} />
           </>

@@ -14,7 +14,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useRunLiveEvents } from '../api/live-events';
-import { useRunTrace, useWorkflowDefinitionVersion } from '../api/hooks';
+import { useRunTrace, useWorkflowDefinitionVersion, useWorkflowRun } from '../api/hooks';
 import { isNonTerminalRunStatus } from '../api/polling';
 import type { RunNodeRollup, WorkflowGraph } from '../api/types';
 import { humanizeNodeType, toCanvasGraph } from '../lib/graph-layout';
@@ -54,6 +54,12 @@ function TraceBody({ runId }: { runId: string }) {
   const traceQuery = useRunTrace(runId, streamDegraded);
   const trace = traceQuery.data;
   const isLiveRun = isNonTerminalRunStatus(trace?.run.status);
+  // TASK-959 §3.4 — `cpuSeconds` lives on the DETAIL route, not the trace's
+  // own `run` (`WorkflowRunResponse`, shared with the list page); it lands
+  // minutes after the run finishes via the usage outbox, so this is a
+  // separate, independently-loading read rather than a field threaded
+  // through the trace fetch.
+  const runDetailQuery = useWorkflowRun(runId);
   const definitionQuery = useWorkflowDefinitionVersion(trace?.run.workflowVersionId ?? null);
   const [viewParam, setViewParam] = useQueryState('view', parseAsString.withDefault('canvas'));
   const view: View = (VIEW_VALUES as readonly string[]).includes(viewParam) ? (viewParam as View) : 'canvas';
@@ -178,6 +184,28 @@ function TraceBody({ runId }: { runId: string }) {
               <span title={formatDateTime(run.startedAt)}>Started {formatRelativeTime(run.startedAt)}</span>
               {run.durationMs !== null ? <span>{formatNumber(run.durationMs)} ms</span> : null}
               {run.isSandbox ? <span className="text-warning-strong font-medium">Sandbox run</span> : null}
+              {runDetailQuery.data ? (
+                <span className="inline-flex items-center gap-1">
+                  Worker CPU{' '}
+                  {/* `!= null` on purpose: an older gateway (or a test fixture that never
+                      declared the field) omits it entirely, and that reads the same as the
+                      documented `null` — "no CPU samples recorded". A native `title` matches
+                      the "Started …" span right beside it, rather than pulling in a Radix
+                      Tooltip (which needs a `TooltipProvider` this screen does not mount). */}
+                  {runDetailQuery.data.cpuSeconds != null ? (
+                    <span>{runDetailQuery.data.cpuSeconds.toFixed(3)} s</span>
+                  ) : (
+                    <span
+                      tabIndex={0}
+                      className="cursor-help underline decoration-dotted"
+                      title="No CPU samples recorded for this run."
+                      aria-label="Worker CPU: no data"
+                    >
+                      &mdash;
+                    </span>
+                  )}
+                </span>
+              ) : null}
             </>
           }
           actions={
