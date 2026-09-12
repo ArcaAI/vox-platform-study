@@ -90,6 +90,32 @@ def _byo_credentials_absent(monkeypatch):
     monkeypatch.setattr(knowledge, "_resolve_embeddings_credential", _absent)
 
 
+@pytest.fixture(autouse=True)
+def _trajectory_delivery_test_defaults(monkeypatch):
+    """TASK-957 F-5 — instant retries and a Redis-less spool for the hermetic suite.
+
+    Two things changed under this suite's feet when the trajectory POST gained a retry and a
+    spool, and both need the same treatment the LLM governor already gets above:
+
+    * **The backoff.** Every test that makes ``report_trajectory`` raise now pays the real
+      jittered backoff between attempts, which would add seconds across the suite while
+      testing nothing about sleeping. Zeroed here; the retry COUNT is still exercised, and
+      ``test_trajectory_delivery_task959.py`` owns the schedule.
+    * **Redis.** Rule 06 states this suite is hermetic — "no DB/Redis" — and a spool that
+      built a real client would either write into a developer's dev Redis or hang against a
+      closed port. ``None`` is the TRUTHFUL hermetic answer ("this process has no Redis"), and
+      it is a supported production state, so the spool takes its bounded in-memory path.
+    """
+    from harness.temporal import trajectory_delivery
+
+    monkeypatch.setattr(trajectory_delivery, "BACKOFF_BASE_S", 0.0)
+    monkeypatch.setattr(trajectory_delivery, "BACKOFF_JITTER_S", 0.0)
+    monkeypatch.setattr(trajectory_delivery, "build_trajectory_spool_redis", lambda _url: None)
+    trajectory_delivery.reset_trajectory_spool()
+    yield
+    trajectory_delivery.reset_trajectory_spool()
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings (process-local, no external dependencies)."""

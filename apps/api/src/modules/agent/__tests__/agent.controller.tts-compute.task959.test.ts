@@ -87,7 +87,9 @@ function make(headers: Record<string, string>) {
     { fetchById: vi.fn() } as never,
     { resolve: vi.fn() } as never,
     { assertSpendLimit: vi.fn(async () => undefined) } as never,
-    { resolve: vi.fn(() => ({ value: {}, source: 'system' })) } as never,
+    // TASK-959 — the compute-device resolver. Never consulted on this route: `apps/tts` reports
+    // the device it used on the response headers, so nothing here asks configuration for one.
+    { resolve: vi.fn(async () => 'cpu') } as never,
   );
   return { controller, usageLedger, upstream };
 }
@@ -122,7 +124,7 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
     await settle();
 
     const [batch] = recorded(usageLedger);
-    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 1.5, attributesJson: { device: 'cuda' } });
+    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '1.500', attributesJson: { device: 'cuda' } });
     expect(unitOf(batch, AiUsageUnit.CHARACTER)).toMatchObject({ quantity: 11 });
   });
 
@@ -140,10 +142,15 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
     await settle();
 
     const [batch] = recorded(usageLedger);
-    expect(unitOf(batch, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: 65536, attributesJson: { byteSource: 'app' } });
+    expect(unitOf(batch, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: '65536', attributesJson: { byteSource: 'app' } });
   });
 
-  it('records NO compute row when the engine named no device of ours — a cloud vendor’s hardware is not ours', async () => {
+  it('meters a cloud synthesis on the PLATFORM’s CPU — never on a vendor’s hardware, device header or not', async () => {
+    // `azure` classifies as CLOUD, and a vendor call is the owner's M-3: what HOPE spent is the
+    // CPU of the service that made the call. So an absent `X-Tts-Device` suppresses nothing here
+    // — it cannot promote the row to a GPU second, which is the only outcome that would be a
+    // fabricated cost. (Absent device suppresses the row on a SELF_HOSTED call, where the device
+    // is the whole question: see the shared helper's rule 1.)
     const { controller, usageLedger, upstream } = make({
       'x-tts-provider': 'azure',
       'x-tts-synthesis-ms': '900',
@@ -154,11 +161,28 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
     upstream.end();
     await settle();
 
+    const batches = recorded(usageLedger);
+    // One batch: a CLOUD call is already INTERNAL, so the CPU row needs no second basis.
+    expect(batches).toHaveLength(1);
+    expect(unitOf(batches[0], AiUsageUnit.GPU_SECOND)).toBeUndefined();
+    expect(unitOf(batches[0], AiUsageUnit.CPU_SECOND)).toMatchObject({ quantity: '0.900', attributesJson: { device: 'cpu' } });
+    // The bytes are still real and still recorded.
+    expect(unitOf(batches[0], AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: '2048' });
+  });
+
+  it('records NO compute row for a SELF_HOSTED synthesis whose device the service did not name', async () => {
+    // `kokoro` is one of ours, so the device is the whole question and a guess would be a GPU
+    // second billed at a CPU call's price or the reverse.
+    const { controller, usageLedger, upstream } = make({ 'x-tts-provider': 'kokoro', 'x-tts-synthesis-ms': '900', 'x-tts-response-bytes': '2048' });
+
+    await controller.speech('clinic-voice', { text: 'hello there' }, fakeRes() as never);
+    upstream.end();
+    await settle();
+
     const [batch] = recorded(usageLedger);
     expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toBeUndefined();
     expect(unitOf(batch, AiUsageUnit.CPU_SECOND)).toBeUndefined();
-    // The bytes are still real and still recorded.
-    expect(unitOf(batch, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: 2048 });
+    expect(unitOf(batch, AiUsageUnit.CHARACTER)).toBeDefined();
   });
 
   it('times the relay itself when the service could not report a total — the streamed modes', async () => {
@@ -174,7 +198,7 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
     await settle();
 
     const [batch] = recorded(usageLedger);
-    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.5, attributesJson: { device: 'cuda' } });
+    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '2.500', attributesJson: { device: 'cuda' } });
   });
 
   it('counts the bytes it relayed when the service reported none, and says they are an app-level count', async () => {
@@ -187,7 +211,7 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
     await settle();
 
     const [batch] = recorded(usageLedger);
-    expect(unitOf(batch, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: 1536, attributesJson: { byteSource: 'app' } });
+    expect(unitOf(batch, AiUsageUnit.INGRESS_BYTE)).toMatchObject({ quantity: '1536', attributesJson: { byteSource: 'app' } });
   });
 
   it('records the compute of an INTERRUPTED synthesis too — those seconds were occupied', async () => {
@@ -204,6 +228,6 @@ describe('TASK-959 §3.2 — tts.synthesize compute and bytes', () => {
 
     const [batch] = recorded(usageLedger);
     expect(batch?.common.attributesJson).toMatchObject({ interrupted: true });
-    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 0.8 });
+    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '0.800' });
   });
 });

@@ -7,28 +7,28 @@ import {
   AgentTask,
   Authorize,
   COMPUTE_DEVICES,
-  COMPUTE_DEVICE_BY_PROVIDER_DEFAULT,
-  COMPUTE_DEVICE_BY_PROVIDER_KEY,
   IActiveUserContext,
   IAgentService,
   IBillingService,
+  IComputeDeviceResolver,
   IConfigService,
   IEntitlementsService,
   IMediaService,
   IUsageLedgerService,
   LlmStreamUsageCollector,
   SecretsService,
-  TenantSettingsService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
-  buildGuardrailUsageInput,
-  buildLlmUsageInput,
-  buildLlmUsageInputFromTokenCounts,
+  appendComputeAndByteUnits,
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  buildLlmUsageBatchesFromTokenCounts,
   buildNerUsageEvent,
   classifyLlmDeployment,
   parseTextUsageDetail,
+  resolveDeployment,
   toLedgerProvider,
   withUsageAttributes,
   withUsageTrigger,
@@ -38,9 +38,11 @@ import type {
   AgentNerInvocationResult,
   AgentTextInvocationResult,
   ByteSource,
+  ComputeAugmentedBatch,
   ComputeDevice,
   GuardrailDisposition,
   ResolvedAgent,
+  UsageAttributes,
   UsageEventBatchInput,
 } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
@@ -69,10 +71,6 @@ import { ClsService } from 'nestjs-cls';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { classifyTtsProvider } from '../speech/tts-provider-classification';
-// TASK-959 T1-merge: both are this-lane-local until T1's `usageLedger/compute-units.ts` and a
-// terminal-block accessor on `LlmStreamUsageCollector` land; see each file's header.
-import { appendComputeAndByteUnits, type ComputeAndByteSample } from './compute-units';
-import { TerminalUsageTail } from './terminal-usage-tail';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
@@ -220,12 +218,12 @@ export class AgentController {
     // trailing like every other cross-cutting dependency here: absent = not enforced, which is
     // what a minimal fixture and a gateway without the billing module get.
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
-    // TASK-959 §3.1 — `metering.compute.deviceByProvider`, the one thing `apps/text` cannot
-    // report about itself (it is stateless per call and no request or model row carries a
-    // device). Read through the tenant → SYSTEM cascade so a tenant running its own self-hosted
-    // server can say what that server runs on. `open-to-default`: unresolvable degrades to the
-    // descriptor's own map, never to a lost usage batch.
-    @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-959 §3.1 — which device a self-hosted LLM server runs on, the one thing `apps/text`
+    // cannot report about itself (it is stateless per call and no request or model row carries a
+    // device). The SHARED resolver, not a local read of the same descriptor: it already owns the
+    // tenant → SYSTEM cascade, the membership check and the warn-once, and it never raises —
+    // unresolvable degrades to `cpu` rather than to a lost usage batch.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {}
 
   @Get()
@@ -368,42 +366,37 @@ export class AgentController {
       // Forward first, observe from a side copy: the client's bytes are never
       // touched by metering (§3.13 — the ONE tee, `LlmStreamUsageCollector`).
       const collector = new LlmStreamUsageCollector();
-      // TASK-959 T1-merge: DELETE with `TerminalUsageTail` once the collector exposes the block
-      // it already parses — the compute and byte scalars are on that same terminal frame.
-      const tail = new TerminalUsageTail();
       stream.on('data', (chunk: Buffer) => {
         res.write(chunk);
         collector.observe(chunk);
-        tail.observe(chunk);
       });
       stream.on('end', () => {
         clearInterval(heartbeat);
         res.end();
-        this.emitStreamInvocationUsage(collector, tail, { tenantId, doctorId }, slug, guardrail);
+        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId }, slug, guardrail);
       });
       stream.on('error', (err: Error) => {
         clearInterval(heartbeat);
         this.logger.error({ message: 'Agent invocation stream error', agentSlug: slug, error: err.message });
         res.end();
         // The tokens seen before the socket died were still spent.
-        this.emitStreamInvocationUsage(collector, tail, { tenantId, doctorId, interrupted: true }, slug, guardrail);
+        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
       });
       res.on('close', () => {
         clearInterval(heartbeat);
         stream.destroy();
-        this.emitStreamInvocationUsage(collector, tail, { tenantId, doctorId, interrupted: true }, slug, guardrail);
+        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
       });
       return;
     }
 
     const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
-    const generation = this.buildBlockingUsage(tenantId, resolved, result);
-    this.emitInvocationUsage(generation, slug, guardrail, this.textComputeSample(generation, result.usageDetail, tenantId));
+    this.emitInvocationUsage(await this.buildBlockingUsage(tenantId, resolved, result), slug, guardrail);
     // TASK-957 F-3 — a SEPARATE row for the screening call TEXT made on this request's behalf.
     // Its own operation, its own key, its own model: it is another provider call, not a dimension
     // of the generation. No `guardrail` disposition on it — the dimension records how a
     // GENERATION was screened, and stamping it on the screening call itself would be circular.
-    this.emitInvocationUsage(this.buildBlockingGuardrailUsage(tenantId, result), slug);
+    this.emitInvocationUsage(await this.buildBlockingGuardrailUsage(tenantId, result), slug);
     const payload: AgentTextInvocationResponse = {
       agentSlug: resolved.slug,
       agentVersionId: resolved.agentVersionId,
@@ -469,8 +462,8 @@ export class AgentController {
   }
 
   /** The `ner.extract` ledger row for ONE agent invocation — the shared shape, with this route's trigger. */
-  private buildNerUsage(tenantId: string, result: AgentNerInvocationResult): UsageEventBatchInput {
-    return withUsageTrigger(
+  private buildNerUsage(tenantId: string, result: AgentNerInvocationResult): ComputeAugmentedBatch | null {
+    const batch = withUsageTrigger(
       buildNerUsageEvent({
         tenantId,
         // A fresh id per invocation: keying on anything shared silently drops the second call
@@ -486,6 +479,9 @@ export class AgentController {
       }),
       AGENT_INVOCATION_TRIGGER,
     );
+    // A NER row can only ever be SELF_HOSTED on the platform's own weights, so it has no
+    // tenant-funded half and never a platform leg to split off (`usageLedger/compute-units.ts`).
+    return batch ? { batch } : null;
   }
 
   @Post(':slug/speech')
@@ -525,6 +521,9 @@ export class AgentController {
       ...(agentRequest.response_format ? { response_format: agentRequest.response_format } : {}),
       ...(agentRequest.speed !== undefined ? { speed: agentRequest.speed } : {}),
     };
+    // TASK-958 G3 — the connection the PRIMARY candidate was bound to. Used only as the
+    // classification fallback below, for an `apps/tts` that echoes no `X-Tts-Connection-Id`.
+    let boundConnectionId: string | null = null;
     if (this.ttsResolver) {
       // FAILS CLOSED: `apps/tts` refuses a request with no resolved spec, so an unresolvable
       // agent must surface as the 404/409 it is rather than as an opaque downstream 503.
@@ -533,6 +532,7 @@ export class AgentController {
       forwardBody.response_format = forwardBody.response_format ?? spec.primary.parameters.format ?? undefined;
       forwardBody.speed = forwardBody.speed ?? spec.primary.parameters.speed ?? undefined;
       if (providerOverrides && Object.keys(providerOverrides).length > 0) forwardBody.provider_overrides = providerOverrides;
+      boundConnectionId = spec.primary.connection?.connectionId ?? null;
     }
 
     if (this.entitlementsService) {
@@ -580,8 +580,21 @@ export class AgentController {
     // agent may bind a NON-default connection, so the provider name no longer says it.
     const connectionId = (upstream.headers['x-tts-connection-id'] as string | undefined) || null;
     const overridesForClassification = forwardBody.provider_overrides as Parameters<typeof classifyTtsProvider>[1] | undefined;
+    // TASK-958 G3 (W1d) — the FOURTH `classifyTtsProvider` call site, and the one that was
+    // still calling it with two arguments while reading the header two lines above. The map is
+    // keyed by CONNECTION KEY, so without the served id the classifier falls back to
+    // `servingEntry`'s heuristics — the exact provider key, else exactly ONE `provider:`
+    // prefixed entry. A tenant with TWO accounts of one vendor in the chain is ambiguous by
+    // construction there, so its own BYOK synthesis was labelled platform `CLOUD` and charged
+    // to COGS.
+    //
+    // The spec's primary connection is the fallback for an `apps/tts` that echoes no header.
+    // It is deliberately NOT stamped on the ledger row below: the echo names the candidate
+    // that actually served, the spec names the one we asked for, and selecting an entry out of
+    // a map this request itself sent is a weaker claim than naming the row that was spent.
+    const classifyConnectionId = connectionId ?? boundConnectionId;
     const { deployment, costBasis } = provider
-      ? classifyTtsProvider(provider, overridesForClassification)
+      ? classifyTtsProvider(provider, overridesForClassification, classifyConnectionId)
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
     const characters = [...agentRequest.input].length;
@@ -622,16 +635,16 @@ export class AgentController {
       // none, which is exactly the streamed modes (`X-Tts-Synthesis-Ms` is batch-only, because a
       // stream's total is unknown at header time).
       const occupancyMs = synthesisMs ?? Date.now() - startedAtMs;
-      // TASK-959 T1-merge: `appendComputeAndByteUnits` moves to `usageLedger/compute-units.ts`.
-      const inputs = appendComputeAndByteUnits(batch, {
+      // TASK-959 §3.2/§4.2 — the ONE shared appender, on the batch this closure just built.
+      const { batch: primary, platformBatch } = appendComputeAndByteUnits(batch, {
         device,
-        seconds: occupancyMs / 1000,
+        totalMs: occupancyMs,
         responseBytes,
         // The service says how it counted when it counted; our own relay count is an
         // application-level proxy for the audio produced, and says so.
         byteSource: responseBytes === null ? null : (reportedByteSource ?? (reportedBytes === null ? 'app' : null)),
       });
-      for (const input of inputs) {
+      for (const input of platformBatch ? [primary, platformBatch] : [primary]) {
         this.usageLedger
           .recordUsage(input)
           .catch((err: unknown) =>
@@ -747,16 +760,32 @@ export class AgentController {
    * at all (an older service, or a response that carried nothing). Fabricating an `endpointKind`
    * to reach the richer builder would stamp an API shape that never happened.
    */
-  private buildBlockingUsage(tenantId: string, resolved: ResolvedAgent, result: AgentTextInvocationResult): UsageEventBatchInput | null {
+  private async buildBlockingUsage(
+    tenantId: string,
+    resolved: ResolvedAgent,
+    result: AgentTextInvocationResult,
+  ): Promise<ComputeAugmentedBatch | null> {
     const detail = parseTextUsageDetail(result.usageDetail);
     if (detail) {
       // FUNDING IS DERIVED, NEVER STAMPED (rule 09): the builder reads `byok` off TEXT's own
       // block — the service that actually authenticated — rather than from the agent's resolved
       // funding tier, so a fallback that changed which credential served the call cannot be
       // mis-attributed here.
-      return withUsageTrigger(
-        buildLlmUsageInput({ usage: detail, tenantId, operation: 'generate', doctorId: result.actingUserId ?? null }),
-        AGENT_INVOCATION_TRIGGER,
+      //
+      // TASK-959 — the `*Batches` sibling, not `buildLlmUsageInput`: THE BUILDER APPENDS the
+      // compute and byte rows (one append per batch, `usageLedger/compute-units.ts`), and only
+      // this form hands back the platform CPU leg of a BYOK call. The `device` it needs is
+      // resolved HERE because the builder is a pure module and the cascade is asynchronous.
+      const provider = toLedgerProvider(detail.textProvider);
+      return this.stamp(
+        buildLlmUsageBatches({
+          usage: detail,
+          tenantId,
+          operation: 'generate',
+          doctorId: result.actingUserId ?? null,
+          device: await this.llmDevice(tenantId, provider, resolveDeployment(provider, detail.byok)),
+        }),
+        { trigger: AGENT_INVOCATION_TRIGGER },
       );
     }
     return this.buildBlockingUsageFromCounts(tenantId, resolved, result);
@@ -770,11 +799,11 @@ export class AgentController {
    * vendor answered; only an unfunded call lets the provider decide
    * self-hosted vs cloud.
    */
-  private buildBlockingUsageFromCounts(tenantId: string, resolved: ResolvedAgent, result: AgentTextInvocationResult): UsageEventBatchInput | null {
+  private buildBlockingUsageFromCounts(tenantId: string, resolved: ResolvedAgent, result: AgentTextInvocationResult): ComputeAugmentedBatch | null {
     if (!result.usage) return null;
     const byok = resolved.fundingTier === 'tenant';
     const provider = toLedgerProvider(result.provider ?? resolved.compiledConfig.model.provider ?? '');
-    const batch = buildLlmUsageInputFromTokenCounts({
+    const pair = buildLlmUsageBatchesFromTokenCounts({
       tenantId,
       operation: 'generate',
       // No TEXT task id on the blocking path, so a fresh intent id per request:
@@ -791,37 +820,51 @@ export class AgentController {
       // column, same meaning as on the stream path above and on a consultation-driven call;
       // `null` for a human or API-key caller, exactly as today.
       doctorId: result.actingUserId ?? null,
+      // `costBasis` is never derived from `deployment` (usage-event.input.ts): a BYOK emitter
+      // states it, or the row defaults to INTERNAL and over-reports platform spend — the safe
+      // direction, but wrong for a tenant-funded call. Passed INTO the builder rather than
+      // stamped onto its result, because the basis is what decides whether a compute row splits
+      // onto a second batch (§6.3) — a basis applied afterwards would be applied too late.
+      ...(byok ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
     });
-    if (!batch) return null;
-    // `costBasis` is never derived from `deployment` (usage-event.input.ts): a
-    // BYOK emitter states it, or the row defaults to INTERNAL and over-reports
-    // platform spend — the safe direction, but wrong for a tenant-funded call.
-    const funded = byok ? { ...batch, common: { ...batch.common, costBasis: AiCostBasis.BYOK_NOTIONAL } } : batch;
-    return withUsageTrigger(funded, AGENT_INVOCATION_TRIGGER);
+    return this.stamp(pair, { trigger: AGENT_INVOCATION_TRIGGER });
   }
 
   /**
-   * One teardown of a streaming invocation: take the tokens the shared collector metered, and
-   * append this call's compute and bytes off the SAME terminal frame.
+   * One teardown of a streaming invocation: everything the shared collector metered off the
+   * terminal frame — tokens, compute, bytes, and the guard call TEXT made for this stream.
    *
-   * `take()` answers once, so the three teardown handlers (`end`, `error`, the client's `close`)
-   * still produce exactly one emission however many of them fire.
+   * PEEK, RESOLVE, THEN TAKE. The device decides the compute UNIT and is resolved from
+   * configuration keyed by the provider that ACTUALLY served, which is only known once the
+   * terminal frame is parsed — and the resolution is asynchronous, while the batch is built
+   * synchronously inside `takeAll`. So the provider is read first, without consuming anything.
+   *
+   * `takeAll()` answers once, so the three teardown handlers (`end`, `error`, the client's
+   * `close`) still produce exactly one emission however many of them fire — including across the
+   * `await` below, where two of them may legitimately be in flight at the same time.
    */
-  private emitStreamInvocationUsage(
+  private async emitStreamInvocationUsage(
     collector: LlmStreamUsageCollector,
-    tail: TerminalUsageTail,
     params: { tenantId: string; doctorId: string | null; interrupted?: boolean },
     agentSlug: string,
     guardrail: GuardrailDisposition,
-  ): void {
-    const batch = collector.take({
+  ): Promise<void> {
+    const attribution = collector.peekGenerationAttribution();
+    const device = attribution ? await this.llmDevice(params.tenantId, attribution.provider, attribution.deployment) : null;
+    const batches = collector.takeAll({
       tenantId: params.tenantId,
       operation: 'generate.stream',
       trigger: AGENT_INVOCATION_TRIGGER,
       doctorId: params.doctorId,
+      device,
       ...(params.interrupted ? { interrupted: true } : {}),
     });
-    this.emitInvocationUsage(batch, agentSlug, guardrail, this.textComputeSample(batch, tail.usageBlock(), params.tenantId));
+    if (!batches) return;
+    this.emitInvocationUsage(batches.generation, agentSlug, guardrail);
+    // TASK-957 F-3 on the STREAM, for the same reason as the blocking path: the screening call is
+    // another provider call with its own operation and key, and it carries NO `guardrail`
+    // disposition — stamping how a generation was screened onto the screening itself is circular.
+    this.emitInvocationUsage(batches.guardrail, agentSlug);
   }
 
   /**
@@ -836,17 +879,21 @@ export class AgentController {
    * `fallbackRequestId` is the GENERATION's task id: guardrail usually reports its own, and when
    * it does not, tying the row to the request it screened beats a random key.
    */
-  private buildBlockingGuardrailUsage(tenantId: string, result: AgentTextInvocationResult): UsageEventBatchInput | null {
+  private async buildBlockingGuardrailUsage(tenantId: string, result: AgentTextInvocationResult): Promise<ComputeAugmentedBatch | null> {
     const detail = parseTextUsageDetail(result.guardrailUsage);
     if (!detail) return null;
-    return withUsageTrigger(
-      buildGuardrailUsageInput({
+    // The guard call is its OWN provider call: its device is resolved from ITS provider, not the
+    // generation's, because a tenant may screen on one engine and generate on another.
+    const provider = toLedgerProvider(detail.textProvider);
+    return this.stamp(
+      buildGuardrailUsageBatches({
         usage: detail,
         tenantId,
         doctorId: result.actingUserId ?? null,
         fallbackRequestId: parseTextUsageDetail(result.usageDetail)?.taskId ?? null,
+        device: await this.llmDevice(tenantId, provider, resolveDeployment(provider, detail.byok)),
       }),
-      AGENT_INVOCATION_TRIGGER,
+      { trigger: AGENT_INVOCATION_TRIGGER },
     );
   }
 
@@ -859,21 +906,14 @@ export class AgentController {
    * same call. The append can split one batch into two (a BYOK call's CPU seconds are the
    * platform's money while its tokens are the tenant's), which is why this emits a LIST.
    */
-  private emitInvocationUsage(
-    batch: UsageEventBatchInput | null,
-    agentSlug: string,
-    guardrail?: GuardrailDisposition,
-    sample?: ComputeAndByteSample,
-  ): void {
-    if (!batch || !this.usageLedger) return;
+  private emitInvocationUsage(pair: ComputeAugmentedBatch | null, agentSlug: string, guardrail?: GuardrailDisposition): void {
+    if (!pair || !this.usageLedger) return;
     // `guardrail` is stamped on GENERATION rows only. The speech path passes none, and that is
     // the honest answer rather than an omission: a TTS call never reaches the guardrail gate, so
     // the dimension does not apply — which the allow-list models as an absent key, never as a
     // fabricated `screened`.
-    const stamped = guardrail ? (withUsageAttributes(batch, { guardrail }) ?? batch) : batch;
-    // TASK-959 T1-merge: `appendComputeAndByteUnits` moves to `usageLedger/compute-units.ts`.
-    const emitted = sample ? appendComputeAndByteUnits(stamped, sample) : [stamped];
-    for (const input of emitted) {
+    const stamped = guardrail ? (this.stamp(pair, { guardrail }) ?? pair) : pair;
+    for (const input of stamped.platformBatch ? [stamped.batch, stamped.platformBatch] : [stamped.batch]) {
       void this.usageLedger.recordUsage(input).catch((err: unknown) =>
         this.logger.warn({
           message: 'Agent invocation usage emission failed',
@@ -885,74 +925,48 @@ export class AgentController {
   }
 
   /**
-   * TASK-959 §3.2 — the compute and byte reading that belongs to an LLM batch.
+   * Stamp allow-listed dimensions on BOTH halves of an augmented pair.
    *
-   * ENGINE TIME FIRST. `engine_ms` is what llama.cpp and Ollama report about their own decode
-   * loops; `total_ms` is the client's wall clock around the call, which also contains the
-   * network. Preferring the engine's own number where it exists keeps the occupancy second closer
-   * to what the tenant actually held the model for.
-   *
-   * `undefined` (rather than a sample with nulls) when TEXT reported none of the four numbers, so
-   * the append is skipped entirely rather than walked with nothing to add.
+   * The platform CPU leg of a BYOK call is the same product activity, screened the same way, as
+   * the tokens beside it — a dimension that answers "why did this cost happen" has one answer per
+   * request, not one per cost basis.
    */
-  private textComputeSample(
-    batch: UsageEventBatchInput | null,
-    usageBlock: Record<string, unknown> | null | undefined,
-    tenantId: string,
-  ): ComputeAndByteSample | undefined {
-    if (!batch || !usageBlock) return undefined;
-    const milliseconds = positiveNumber(usageBlock.engine_ms) ?? positiveNumber(usageBlock.total_ms);
-    const requestBytes = positiveNumber(usageBlock.request_bytes);
-    const responseBytes = positiveNumber(usageBlock.response_bytes);
-    if (milliseconds === null && requestBytes === null && responseBytes === null) return undefined;
-    return {
-      device: milliseconds === null ? null : this.resolveLlmDevice(batch.common.deployment, batch.common.provider, tenantId),
-      seconds: milliseconds === null ? null : milliseconds / 1000,
-      requestBytes,
-      responseBytes,
-      // Counted by the httpx transport `apps/text` puts every vendor SDK on, so these are the
-      // bytes the wire carried, not an application-level proxy for them.
-      byteSource: requestBytes !== null || responseBytes !== null ? ('wire' satisfies ByteSource) : null,
-    };
+  private stamp(pair: ComputeAugmentedBatch | null, attributes: UsageAttributes): ComputeAugmentedBatch | null {
+    if (!pair) return null;
+    const batch = withUsageAttributes(pair.batch, attributes);
+    if (!batch) return null;
+    const platformBatch = pair.platformBatch ? (withUsageAttributes(pair.platformBatch, attributes) ?? undefined) : undefined;
+    return platformBatch ? { batch, platformBatch } : { batch };
   }
 
   /**
-   * Which device an LLM call's seconds were spent on.
+   * Which device an LLM call's seconds were spent on — `null` when this gateway has no business
+   * naming one.
    *
-   * A CLOUD or BYOK call is NOT the vendor's hardware: the seconds recorded there are the
-   * platform's own CPU spent CALLING the vendor (the owner's M-3), so they are always `cpu` and
-   * the device map is not consulted. Only a self-hosted server has a device worth looking up, and
-   * `apps/text` cannot report it — it is stateless per call and neither `GenerateRequest` nor
-   * `AiModel` carries one (`computeType` is a precision, not a device).
-   */
-  private resolveLlmDevice(deployment: AiDeploymentKind, provider: string, tenantId: string): ComputeDevice {
-    if (deployment !== AiDeploymentKind.SELF_HOSTED) return 'cpu';
-    const device = this.resolveDeviceByProvider(tenantId)[provider];
-    // Absent from the map ⇒ `cpu`: the CHEAPER unit, never nothing (descriptor `open-to-default`).
-    return device && (COMPUTE_DEVICES as readonly string[]).includes(device) ? device : 'cpu';
-  }
-
-  /**
-   * The `metering.compute.deviceByProvider` map as this tenant sees it (tenant → SYSTEM →
-   * descriptor default).
+   * A CLOUD or BYOK call is NOT the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor (the owner's M-3), which the appender meters as `cpu` whatever is
+   * passed, so nothing is resolved for them and the cascade is not read at all. Only a
+   * self-hosted server has a device worth looking up, and `apps/text` cannot report it — it is
+   * stateless per call and neither `GenerateRequest` nor `AiModel` carries one (`computeType` is
+   * a precision, not a device).
    *
-   * A cascade that RAISES degrades to the descriptor's own default map rather than propagating:
-   * this runs on the emission path, and losing a whole usage batch — tokens included — to a
-   * device label would trade real revenue for an accounting detail. The default map is also the
-   * truthful answer for the platform's own engines, so the degradation is not a guess.
+   * `null` also when the resolver is not wired (a minimal fixture) or when it raises despite its
+   * contract not to (an unresolvable cascade answers `cpu`): no compute row, never a guessed one,
+   * and never a lost usage batch or a broken response. This runs on the REQUEST path of the
+   * blocking route, so a throw here would cost the caller its answer over an accounting detail.
    */
-  private resolveDeviceByProvider(tenantId: string): Record<string, ComputeDevice> {
+  private async llmDevice(tenantId: string, provider: string, deployment: AiDeploymentKind): Promise<ComputeDevice | null> {
+    if (deployment !== AiDeploymentKind.SELF_HOSTED) return null;
     try {
-      const resolved = this.tenantSettings?.resolve<Record<string, ComputeDevice> | undefined>(COMPUTE_DEVICE_BY_PROVIDER_KEY, tenantId);
-      const value = resolved?.value;
-      if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-    } catch (err) {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (err: unknown) {
       this.logger.warn({
-        message: 'Compute device map unresolved; metering with the declared default',
+        message: 'Compute device unresolved; metering this call without a compute row',
+        provider,
         error: err instanceof Error ? err.message : String(err),
       });
+      return null;
     }
-    return COMPUTE_DEVICE_BY_PROVIDER_DEFAULT;
   }
 
   private requireTenant(): string {

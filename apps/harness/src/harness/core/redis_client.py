@@ -61,6 +61,27 @@ def build_invalidation_redis(url: str) -> Any | None:
         return None
 
 
+def build_trajectory_spool_redis(url: str) -> Any | None:
+    """An async Redis client for the trajectory/metering SPOOL, or None.
+
+    The THIRD named job, added the same way the second was: as its own builder rather than by
+    widening an existing one, so this module's founding instruction ("do not grow it into a
+    cache or a queue") still holds as written for the jobs it was written about. This one IS a
+    queue — a small, bounded, expiring one — and saying so out loud in its own builder is the
+    honest way to add it (TASK-957 F-5: the trajectory POST is the ONLY billing path for a
+    workflow step, and it had no retry and no spool at all).
+
+    Its own connection, for the same reason ``build_run_event_redis`` takes one: the
+    invalidation client spends its life parked in ``subscribe``, and a connection in subscriber
+    mode cannot serve ``RPUSH``.
+
+    ``None`` means "no durable spool": undeliverable batches fall back to a bounded in-process
+    deque, which still absorbs a gateway rolling under a running worker and loses only what a
+    worker restart would have lost anyway.
+    """
+    return build_invalidation_redis(url)
+
+
 def build_run_event_redis(url: str) -> Any | None:
     """An async Redis client for the run-event stream producer, or None.
 
