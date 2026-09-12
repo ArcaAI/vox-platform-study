@@ -1,12 +1,16 @@
-import { ConflictException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AgentTask } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
-import { AgentResolverService } from '../../agent/agent-resolver.service';
+import { AgentResolverService, ConnectionIdentityLookup, failedBindingKey, providerOverrideKey } from '../../agent/agent-resolver.service';
 import { ProviderCredentialResolver } from '../../ai-provider-connection/provider-credential-resolver';
 import { CLOUD_BYO_PROVIDERS, isCloudByoProvider } from '../../ai-provider-connection/constants';
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
-import type { ProviderFunding } from '../../ai-provider-connection/IProviderConnectionService';
+import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
+import type {
+  IProviderConnectionService as IProviderConnectionServicePort,
+  ProviderFunding,
+} from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../../tenant-stt-config/platform-limits';
 import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
 
@@ -87,6 +91,12 @@ export class AsrAgentResolverService {
     // Optional so positional test construction and a stack without TASK-862's
     // resolver still work: the agent resolver's own `providerOverride` then serves.
     @Optional() private readonly credentials?: ProviderCredentialResolver,
+    // TASK-958 — the MASKED connection rows (`id`, `slug`, `isDefault`), which is what the
+    // wire key is derived from and what the batch pull enumerates. `@Optional()` and
+    // TRAILING so every positional fixture keeps its arity; without it the key falls back
+    // to the naming convention and the batch pull carries default rows only — i.e. exactly
+    // the pre-958 behaviour, never a wrong credential.
+    @Optional() @Inject(IProviderConnectionService) private readonly connections?: IProviderConnectionServicePort,
   ) {}
 
   async resolve(input: ResolveAsrSpecInput): Promise<ResolvedAsrSession> {
@@ -96,6 +106,11 @@ export class AsrAgentResolverService {
       task: AgentTask.SPEECH_TO_TEXT,
       agentSlug: input.agentSlug ?? null,
       departmentId: input.departmentId ?? null,
+      // TASK-958 F11 — a chain plane. A primary whose named connection cannot serve
+      // is stamped on the core and left without a credential (F7), so `apps/stt` fails
+      // that chain closed and switches to the fallback; a 409 here would take the
+      // fallback out with it.
+      primaryBinding: 'mark',
     });
 
     const fallbackAgent = await this.resolveFallbackAgent(agent, tenantId);
@@ -169,10 +184,21 @@ export class AsrAgentResolverService {
       throw new ServiceUnavailableException('Provider credential resolution is not configured on this gateway');
     }
     const overrides: SttProviderOverrides = {};
+    const identities = new ConnectionIdentityLookup(this.connections, 'stt', tenantId);
     for (const provider of CLOUD_BYO_PROVIDERS.stt) {
       try {
         const binding = await this.credentials.resolve('stt', provider, tenantId);
         if (binding) overrides[provider] = binding.override;
+        // TASK-958 F8 — and every NAMED SIBLING of that provider. Resolving by provider
+        // NAME can only ever answer with the tenant's DEFAULT row, so a map built from
+        // the provider list alone cannot serve a job whose spec names a sibling: the
+        // loader would miss its declared key and (before the readers were made strict)
+        // transcribe on the default account. The worker names no provider when it pulls,
+        // so the map has to cover every connection a spec it is paired with can name.
+        for (const row of await identities.siblings(provider)) {
+          const named = await this.credentials.resolve('stt', provider, tenantId, { connectionId: row.id });
+          if (named) overrides[providerOverrideKey(provider, row)] = named.override;
+        }
       } catch (error) {
         if (!(error instanceof ProviderVetoedException) && !(error instanceof QuotaExceededException)) throw error;
         this.logger.warn({
@@ -190,7 +216,7 @@ export class AsrAgentResolverService {
     const slug = rec(rec(agent.compiledConfig.parameters).fallback).agentSlug;
     if (typeof slug !== 'string' || slug.length === 0 || slug === agent.slug) return null;
     try {
-      return await this.agents.resolve({ tenantId, task: AgentTask.SPEECH_TO_TEXT, agentSlug: slug, departmentId: null });
+      return await this.agents.resolve({ tenantId, task: AgentTask.SPEECH_TO_TEXT, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
     } catch (error) {
       this.logger.warn({
         message: 'ASR fallback agent did not resolve; continuing without it',
@@ -232,6 +258,7 @@ export class AsrAgentResolverService {
     const chain = asrChainModels(agent, fallbackAgent);
     const overrides: SttProviderOverrides = {};
     const bindings: { primary?: AsrConnectionBinding | null; fallback?: AsrConnectionBinding | null } = {};
+    const identities = new ConnectionIdentityLookup(this.connections, 'stt', tenantId);
 
     for (const position of ['primary', 'fallback'] as const) {
       const model = chain[position];
@@ -241,26 +268,42 @@ export class AsrAgentResolverService {
       // TASK-958 D-3 — the model row names the account; a SYSTEM catalogue row names
       // none and keeps the provider-NAME cascade (the tenant's DEFAULT connection).
       const connectionId = model.sourceConnectionId ?? null;
+      const bound = connectionId ? await identities.byId(connectionId) : null;
       const binding = this.credentials
         ? await (connectionId
             ? this.credentials.resolve('stt', provider, tenantId, { connectionId })
             : this.credentials.resolve('stt', provider, tenantId))
         : null;
       const entry = binding?.override ?? (this.credentials ? null : (this.overrideFromAgents(provider, agent, fallbackAgent) ?? null));
-      // A NAMED connection that answered nothing is disabled or keyless: that chain
-      // runs without a credential (and `apps/stt` fails the load) rather than being
-      // lent the default account's key.
-      if (!entry) continue;
+      if (!entry) {
+        // TASK-958 F7 — a NAMED connection that answered nothing is disabled, keyless or
+        // gone. The chain still DECLARES it, and the map gets no entry for it: `apps/stt`
+        // then reads the declared key, misses and fails that chain closed. Leaving the
+        // core silent is what made this dangerous — with no key the loader falls back to
+        // the provider id, which the OTHER chain (or the batch pull) may well have filled
+        // with the tenant's DEFAULT account, lending a credential to a binding that never
+        // named it. The key is always namespaced, so it can never collide with one.
+        if (connectionId) {
+          bindings[position] = {
+            connectionId,
+            ...(bound?.slug ? { connectionSlug: bound.slug } : {}),
+            connectionKey: failedBindingKey(provider, bound?.slug, connectionId),
+          };
+        }
+        continue;
+      }
 
-      // D-4 — the key the loaders read their entry under. The connection's `slug` for
-      // a tenant row, the provider id for a platform row, which is what keeps every
-      // pre-958 payload byte-identical.
+      // D-4/F6 — the key the loaders read their entry under: the provider id for the
+      // tenant's DEFAULT row and for a platform row (which keeps every pre-958 payload
+      // byte-identical), `provider:slug` for a named sibling. An UNBOUND resolve was
+      // answered by the default or the platform, so it always keeps the provider id.
       const slug = typeof entry.connection_slug === 'string' ? entry.connection_slug : provider;
-      overrides[slug] = entry;
+      const key = connectionId ? providerOverrideKey(provider, { slug, isDefault: bound?.isDefault }) : provider;
+      overrides[key] = entry;
       const rowId = binding?.connectionId ?? (typeof entry.connection_id === 'string' ? entry.connection_id : null);
       // The core carries the fields only when the row actually identified itself; a
       // one-hop override from an agent resolved without TASK-862's plane may not.
-      if (rowId) bindings[position] = { connectionId: rowId, connectionSlug: slug, connectionKey: slug };
+      if (rowId) bindings[position] = { connectionId: rowId, connectionSlug: slug, connectionKey: key };
     }
 
     if (Object.keys(overrides).length === 0) return { ...(bindings.primary || bindings.fallback ? { connections: bindings } : {}) };

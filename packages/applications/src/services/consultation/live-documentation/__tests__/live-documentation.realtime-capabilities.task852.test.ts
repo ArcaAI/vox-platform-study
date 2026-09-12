@@ -262,8 +262,8 @@ describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the p
       n_summary_revisit: 'generateDocument',
     });
     // …and it got there by RESOLVING each referenced agent for THIS tenant, not by reading the slug.
-    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'realtime-transcription' });
-    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'medical-ner' });
+    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'realtime-transcription', primaryBinding: 'mark' });
+    expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: ARCAAI, agentSlug: 'medical-ner', primaryBinding: 'mark' });
     // `n_finalize` is `execution.lane: 'durable'` and must never appear here — a node running on
     // BOTH engines would mean two writers on one clinical document.
     expect(caps.nodes.some((n) => n.nodeId === 'n_finalize')).toBe(false);

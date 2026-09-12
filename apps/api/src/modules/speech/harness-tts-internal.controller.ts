@@ -294,7 +294,9 @@ export class HarnessTtsInternalController {
   }): void {
     if (!this.usageLedger) return;
     const { deployment, costBasis } = args.provider
-      ? classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1])
+      ? // TASK-958 F9 — `connectionId` (the `X-Tts-Connection-Id` echo) selects the entry
+        // out of a map that may hold two accounts of this vendor.
+        classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1], args.connectionId)
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
     this.usageLedger
