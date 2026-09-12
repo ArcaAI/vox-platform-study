@@ -66,6 +66,12 @@ test.describe('AI provider connections', () => {
     for (const row of rows) {
       expect(row.hasKey, `${row.provider} key material must match the self-host placeholder posture`).toBe(SELF_HOST_KEYED.has(row.provider));
       expect(row.enabled, `${row.provider} enabled-state must match built-in-local posture`).toBe(BUILTIN_LOCAL.has(row.provider));
+      // TASK-958 — the platform tier stays ONE row per provider: the slug IS the
+      // provider id and the row is that provider's default. This is also what
+      // keeps every path in this spec (`/llm/azure`, …) addressing the same row
+      // it always did.
+      expect(row.slug, `${row.provider} platform row must be named after its provider`).toBe(row.provider);
+      expect(row.isDefault, `${row.provider} platform row must be the default`).toBe(true);
     }
     const enabled = rows
       .filter((r: { enabled: boolean }) => r.enabled)

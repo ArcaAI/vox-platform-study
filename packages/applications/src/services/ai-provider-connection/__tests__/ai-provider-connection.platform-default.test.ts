@@ -20,6 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -52,14 +53,16 @@ function makeRow(overrides: {
  * never accidentally hand the resolver a row it did not ask for — the whole
  * point of assertion 9 below.
  */
-function makeService(opts: {
-  rowsByTenant?: Record<string, unknown[]>;
-  withVault?: boolean;
-  entitled?: boolean;
-  decrypt?: (cipher: unknown) => Promise<Buffer>;
-} = {}) {
+function makeService(
+  opts: {
+    rowsByTenant?: Record<string, unknown[]>;
+    withVault?: boolean;
+    entitled?: boolean;
+    decrypt?: (cipher: unknown) => Promise<Buffer>;
+  } = {},
+) {
   const rowsByTenant = opts.rowsByTenant ?? {};
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => {
       const rows = (rowsByTenant[tenantId] ?? []) as any[];
       return rows.find((r) => r.service === service && r.provider === provider) ?? null;
@@ -70,7 +73,7 @@ function makeService(opts: {
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT_A : undefined)),
@@ -84,7 +87,7 @@ function makeService(opts: {
           decrypt: vi.fn(opts.decrypt ?? (async () => Buffer.from('plaintext-key', 'utf8'))),
           supportsTransit: vi.fn(() => true),
         };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
   const warn = vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
   return { svc, repo, warn, entitlements };
@@ -152,9 +155,7 @@ describe('resolveTenantCloudOverrides — SYSTEM-tenant cascade (R1)', () => {
   it('6. a KEYLESS self-host SYSTEM row is never injected — a base_url alone is not a credential', async () => {
     const { svc } = makeService({
       rowsByTenant: {
-        [SYSTEM_TENANT_ID]: [
-          makeRow({ tenantId: SYSTEM_TENANT_ID, provider: 'ollama', baseUrl: 'http://localhost:11434', encryptedApiKey: null }),
-        ],
+        [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID, provider: 'ollama', baseUrl: 'http://localhost:11434', encryptedApiKey: null })],
       },
     });
     const { overrides } = await svc.resolveTenantCloudOverrides('llm', TENANT_A);

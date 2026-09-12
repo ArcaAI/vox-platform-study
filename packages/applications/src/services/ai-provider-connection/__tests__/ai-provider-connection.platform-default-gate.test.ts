@@ -19,6 +19,7 @@ import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ProviderCredentialVetoedException, QuotaExceededException } from '@arcaai/exceptions';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { assertProviderAvailable } from '../assert-provider-available';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -35,7 +36,7 @@ function makeRow(overrides: { tenantId?: string; service?: string; provider?: st
 
 function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?: boolean; entitlements?: unknown } = {}) {
   const rowsByTenant = opts.rowsByTenant ?? {};
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => {
       const rows = (rowsByTenant[tenantId] ?? []) as any[];
       return rows.find((r) => r.service === service && r.provider === provider) ?? null;
@@ -43,13 +44,16 @@ function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?
     findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) =>
       ((rowsByTenant[tenantId] ?? []) as any[]).filter((r) => r.service === service),
     ),
-  };
+  });
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT_A : undefined)) };
   const secrets = {
     decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
     supportsTransit: vi.fn(() => true),
   };
-  const entitlements = opts.entitlements === undefined ? { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) } : opts.entitlements;
+  const entitlements =
+    opts.entitlements === undefined
+      ? { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() }
+      : opts.entitlements;
   const svc = new AiProviderConnectionService(
     repo as any,
     { baseClient: {} } as any,

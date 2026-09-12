@@ -5444,8 +5444,8 @@
       "controller": "ProviderConnectionController",
       "handler": "remove",
       "method": "DELETE",
-      "path": "/api/v1/admin/providers/{service}/{provider}",
-      "routePath": "/admin/providers/:service/:provider",
+      "path": "/api/v1/admin/providers/{service}/{slug}",
+      "routePath": "/admin/providers/:service/:slug",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],
@@ -5467,8 +5467,8 @@
       "controller": "ProviderConnectionController",
       "handler": "getOne",
       "method": "GET",
-      "path": "/api/v1/admin/providers/{service}/{provider}",
-      "routePath": "/admin/providers/:service/:provider",
+      "path": "/api/v1/admin/providers/{service}/{slug}",
+      "routePath": "/admin/providers/:service/:slug",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],
@@ -5490,8 +5490,8 @@
       "controller": "ProviderConnectionController",
       "handler": "upsert",
       "method": "PUT",
-      "path": "/api/v1/admin/providers/{service}/{provider}",
-      "routePath": "/admin/providers/:service/:provider",
+      "path": "/api/v1/admin/providers/{service}/{slug}",
+      "routePath": "/admin/providers/:service/:slug",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],
@@ -5513,8 +5513,8 @@
       "controller": "ProviderConnectionController",
       "handler": "declareModels",
       "method": "PUT",
-      "path": "/api/v1/admin/providers/{service}/{provider}/models",
-      "routePath": "/admin/providers/:service/:provider/models",
+      "path": "/api/v1/admin/providers/{service}/{slug}/models",
+      "routePath": "/admin/providers/:service/:slug/models",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],
@@ -5536,8 +5536,8 @@
       "controller": "ProviderConnectionController",
       "handler": "reset",
       "method": "POST",
-      "path": "/api/v1/admin/providers/{service}/{provider}/reset",
-      "routePath": "/admin/providers/:service/:provider/reset",
+      "path": "/api/v1/admin/providers/{service}/{slug}/reset",
+      "routePath": "/admin/providers/:service/:slug/reset",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],
@@ -5559,8 +5559,8 @@
       "controller": "ProviderConnectionController",
       "handler": "testConnection",
       "method": "POST",
-      "path": "/api/v1/admin/providers/{service}/{provider}/test",
-      "routePath": "/admin/providers/:service/:provider/test",
+      "path": "/api/v1/admin/providers/{service}/{slug}/test",
+      "routePath": "/admin/providers/:service/:slug/test",
       "svcScopes": [
         "svc:admin:ai-provider:manage"
       ],

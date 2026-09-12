@@ -21,11 +21,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { CLOUD_BYO_PROVIDERS } from '../constants';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT = 'tenant-abc';
 
 function makeService(opts: { tenantRows?: any[]; systemRows?: any[]; entitled?: boolean; secretsBroken?: boolean } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findDeletedByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findByTenantIdAndService: vi.fn(async (_svc: string, tenantId: string) =>
@@ -34,7 +35,7 @@ function makeService(opts: { tenantRows?: any[]; systemRows?: any[]; entitled?: 
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT : undefined)) };
   const db = { baseClient: {} };
@@ -47,7 +48,7 @@ function makeService(opts: { tenantRows?: any[]; systemRows?: any[]; entitled?: 
       : vi.fn(async () => Buffer.from('the-token', 'utf8')),
     supportsTransit: vi.fn(() => true),
   };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
   return { svc, repo };
 }
@@ -100,7 +101,7 @@ describe('resolveCredential — outcomes', () => {
     expect(res.outcome).toBe('absent');
   });
 
-  it("reports DENIED when the tenant DISABLED the row — a veto blocks BOTH tiers, it never falls through", async () => {
+  it('reports DENIED when the tenant DISABLED the row — a veto blocks BOTH tiers, it never falls through', async () => {
     const { svc } = makeService({ tenantRows: [row({ tenantId: TENANT, enabled: false })], systemRows: [row()] });
     const res = await svc.resolveCredential('vector', 'qdrant', TENANT);
     expect(res.outcome).toBe('denied');

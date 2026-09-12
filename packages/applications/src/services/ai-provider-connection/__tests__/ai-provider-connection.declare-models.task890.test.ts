@@ -26,6 +26,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { AiDeploymentKind, AiModelAvailability, AiProviderConnectionFactory, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -43,13 +44,13 @@ function connectionRow(overrides: { tenantId?: string; provider?: string; servic
 }
 
 function makeService(opts: { connection?: unknown; systemSlugs?: string[]; existing?: any[]; withdrawn?: any } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(opts.connection === undefined ? connectionRow() : opts.connection),
     findByTenantIdAndService: vi.fn().mockResolvedValue([]),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const models = {
     findBySlug: vi.fn(async (tenantId: string, slug: string) =>
       tenantId === SYSTEM_TENANT_ID && (opts.systemSlugs ?? []).includes(slug) ? ({ id: `sys-${slug}`, slug, tenantId } as any) : null,
@@ -147,7 +148,11 @@ describe('declareModels — materialising tenant-owned rows', () => {
   });
 
   it('403s a provider the tenant may not hold a row for (a platform engine)', async () => {
-    const { svc, models } = makeService();
+    // TASK-958 — the path segment is now the connection SLUG, which names no
+    // vendor on its own, so the class gate reads the ROW's provider. The fixture
+    // is therefore a tenant row FOR the refused provider: exactly the row that
+    // predates the write guard, and the reason this read-side check exists.
+    const { svc, models } = makeService({ connection: connectionRow({ provider: 'lm-studio' }) });
     const error = await svc.declareModels('llm', 'lm-studio', AZURE_TWO as any).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ForbiddenException);
     expect(models.create).not.toHaveBeenCalled();

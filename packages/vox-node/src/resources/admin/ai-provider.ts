@@ -55,12 +55,12 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * Deleting returns this (service, provider) to "no opinion", so the platform-provided credential may serve it again (subject to the platform-default entitlement). To BLOCK the provider instead — including the platform-provided key — keep the row and set `enabled: false`, which is a veto.
    *
-   * `DELETE /api/v1/admin/providers/{service}/{provider}` — `ProviderConnectionController.remove`.
+   * `DELETE /api/v1/admin/providers/{service}/{slug}` — `ProviderConnectionController.remove`.
    */
-  remove(service: string, provider: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
+  remove(service: string, slug: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
     return this.request<unknown>({
       method: 'DELETE',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}`,
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
@@ -70,16 +70,16 @@ export class AdminAiProviderResource extends AdminResource {
   /**
    * Read one provider connection (key never returned; placeholder when absent).
    *
-   * `GET /api/v1/admin/providers/{service}/{provider}` — `ProviderConnectionController.getOne`.
+   * `GET /api/v1/admin/providers/{service}/{slug}` — `ProviderConnectionController.getOne`.
    */
   getOne(
     service: string,
-    provider: string,
+    slug: string,
     options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
   ): Promise<AiProviderConnectionResponse> {
     return this.request<AiProviderConnectionResponse>({
       method: 'GET',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}`,
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
@@ -89,21 +89,21 @@ export class AdminAiProviderResource extends AdminResource {
   /**
    * Create or update one provider connection.
    *
-   * Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When present the header overrides the body-field `expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create. A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. **`enabled` is three-state.** Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion".
+   * Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When present the header overrides the body-field `expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create. A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. **`enabled` is three-state.** Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing.
    *
-   * `PUT /api/v1/admin/providers/{service}/{provider}` — `ProviderConnectionController.upsert`.
+   * `PUT /api/v1/admin/providers/{service}/{slug}` — `ProviderConnectionController.upsert`.
    *
    * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
   upsert(
     service: string,
-    provider: string,
+    slug: string,
     body: UpsertAiProviderConnectionRequest,
     options: AdminRequestOptions & { query?: { tenantId?: string } } & { ifMatch: IfMatchPrecondition },
   ): Promise<AiProviderConnectionResponse> {
     return this.requestWithPrecondition<AiProviderConnectionResponse>({
       method: 'PUT',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}`,
       query: options.query,
       body,
       ifMatch: options.ifMatch,
@@ -115,19 +115,19 @@ export class AdminAiProviderResource extends AdminResource {
   /**
    * Declare the models this tenant's connection serves.
    *
-   * Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.
+   * Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable, and named after the CONNECTION (`<slug>-<wire model id>`), so two accounts of one vendor may declare the same model and get two separately bindable rows; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.
    *
-   * `PUT /api/v1/admin/providers/{service}/{provider}/models` — `ProviderConnectionController.declareModels`.
+   * `PUT /api/v1/admin/providers/{service}/{slug}/models` — `ProviderConnectionController.declareModels`.
    */
   declareModels(
     service: string,
-    provider: string,
+    slug: string,
     body: DeclareConnectionModelsRequest,
     options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
   ): Promise<AiProviderConnectionResponse> {
     return this.request<AiProviderConnectionResponse>({
       method: 'PUT',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/models`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}/models`,
       query: options.query,
       body,
       signal: options.signal,
@@ -140,16 +140,12 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * Restores the endpoint, `enabled` state, extras and key material of a PLATFORM-MANAGED row — the built-in inference engines (LM Studio, Ollama, vLLM, llama.cpp) and the model registry (Hugging Face, the S3/MinIO weight store) — from `BUILT_IN_CONNECTION_DEFAULTS`. **This is not `DELETE`.** Deleting a SYSTEM engine row does not return it to the default: `apps/text` resolves a self-hosted engine’s base URL only from the injected provider overrides, with no environment fallback, so a missing row is a 503 on every generation. Connection CEILINGS (`maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS`) are PRESERVED — they are an operator’s tuning of their own hardware, not part of the row’s identity. No `If-Match`: the operation means “whatever it says now, put it back”, so a stale token would refuse the caller who most needs it.
    *
-   * `POST /api/v1/admin/providers/{service}/{provider}/reset` — `ProviderConnectionController.reset`.
+   * `POST /api/v1/admin/providers/{service}/{slug}/reset` — `ProviderConnectionController.reset`.
    */
-  reset(
-    service: string,
-    provider: string,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<AiProviderConnectionResponse> {
+  reset(service: string, slug: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<AiProviderConnectionResponse> {
     return this.request<AiProviderConnectionResponse>({
       method: 'POST',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/reset`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}/reset`,
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
@@ -161,17 +157,17 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * Probes the credential/endpoint BEFORE (or independent of) saving it. Every body field is optional: an omitted field falls back to the STORED row (the tenant row, else the SYSTEM platform default), so a saved write-only key can be re-tested without re-entering it. A real auth-only call where the vendor exposes one (`probe: "auth"`), a reachability smoke test otherwise (`probe: "reachability"`). No Vault write, no OCC, the key is never logged. Tenant-supplied URLs must be https and public.
    *
-   * `POST /api/v1/admin/providers/{service}/{provider}/test` — `ProviderConnectionController.testConnection`.
+   * `POST /api/v1/admin/providers/{service}/{slug}/test` — `ProviderConnectionController.testConnection`.
    */
   testConnection(
     service: string,
-    provider: string,
+    slug: string,
     body: TestProviderConnectionRequest,
     options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
   ): Promise<TestProviderConnectionResponse> {
     return this.request<TestProviderConnectionResponse>({
       method: 'POST',
-      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/test`,
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(slug))}/test`,
       query: options.query,
       body,
       signal: options.signal,
@@ -182,7 +178,7 @@ export class AdminAiProviderResource extends AdminResource {
   /**
    * The platform defaults this tenant inherits for one service — read-only, masked.
    *
-   * The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: `overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` (no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:provider`. Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it is the top of the cascade.
+   * The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: `overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` (no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:slug`. Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it is the top of the cascade.
    *
    * `GET /api/v1/admin/providers/{service}/platform-defaults` — `ProviderConnectionController.listPlatformDefaults`.
    */

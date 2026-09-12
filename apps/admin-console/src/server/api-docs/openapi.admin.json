@@ -1364,7 +1364,7 @@
             "type": "string"
           },
           "enabled": {
-            "description": "Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\".",
+            "description": "Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing.",
             "type": "boolean"
           },
           "extraJson": {
@@ -1374,6 +1374,14 @@
           },
           "hasKey": {
             "description": "Whether key material is stored. The key itself is never returned by any endpoint.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Row id — what a declared model carries as `sourceConnectionId` and what the usage ledger attributes a generation to. EMPTY STRING on the `version: 0` placeholder, which is the shape of a connection that does not exist yet.",
+            "type": "string"
+          },
+          "isDefault": {
+            "description": "Whether this is the tenant's DEFAULT connection for `provider` — the one the provider-name cascade resolves, and therefore the one the three-state `enabled` rule is read on. Exactly one per (tenant, service, provider).",
             "type": "boolean"
           },
           "keyVersion": {
@@ -1392,6 +1400,12 @@
               "$ref": "#/components/schemas/ConnectionModelResponse"
             },
             "type": "array"
+          },
+          "name": {
+            "description": "Tenant-chosen display label. `null` = fall back to the slug.",
+            "example": "Research account",
+            "nullable": true,
+            "type": "string"
           },
           "provider": {
             "description": "Capability-scoped serving provider identifier.",
@@ -1422,6 +1436,11 @@
             "example": "llm",
             "type": "string"
           },
+          "slug": {
+            "description": "Connection identity within (tenant, service) — the `:slug` path segment, immutable after create. Equal to `provider` on the default connection of each provider (and on every platform row), so the pre-TASK-958 addressing is unchanged; a named sibling carries its own, e.g. `openai-research`.",
+            "example": "openai-research",
+            "type": "string"
+          },
           "tenantId": {
             "description": "Owning tenant. The reserved SYSTEM tenant row is the platform default.",
             "type": "string"
@@ -1446,9 +1465,13 @@
           }
         },
         "required": [
+          "id",
           "tenantId",
           "service",
+          "slug",
           "provider",
+          "name",
+          "isDefault",
           "baseUrl",
           "region",
           "apiVersion",
@@ -14270,7 +14293,7 @@
             "type": "string"
           },
           "enabled": {
-            "description": "Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\".",
+            "description": "Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing.",
             "type": "boolean"
           },
           "extraJson": {
@@ -14280,6 +14303,14 @@
           },
           "hasKey": {
             "description": "Whether key material is stored. The key itself is never returned by any endpoint.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Row id — what a declared model carries as `sourceConnectionId` and what the usage ledger attributes a generation to. EMPTY STRING on the `version: 0` placeholder, which is the shape of a connection that does not exist yet.",
+            "type": "string"
+          },
+          "isDefault": {
+            "description": "Whether this is the tenant's DEFAULT connection for `provider` — the one the provider-name cascade resolves, and therefore the one the three-state `enabled` rule is read on. Exactly one per (tenant, service, provider).",
             "type": "boolean"
           },
           "keyVersion": {
@@ -14298,6 +14329,12 @@
               "$ref": "#/components/schemas/ConnectionModelResponse"
             },
             "type": "array"
+          },
+          "name": {
+            "description": "Tenant-chosen display label. `null` = fall back to the slug.",
+            "example": "Research account",
+            "nullable": true,
+            "type": "string"
           },
           "provider": {
             "description": "Capability-scoped serving provider identifier.",
@@ -14340,6 +14377,11 @@
             "example": "llm",
             "type": "string"
           },
+          "slug": {
+            "description": "Connection identity within (tenant, service) — the `:slug` path segment, immutable after create. Equal to `provider` on the default connection of each provider (and on every platform row), so the pre-TASK-958 addressing is unchanged; a named sibling carries its own, e.g. `openai-research`.",
+            "example": "openai-research",
+            "type": "string"
+          },
           "tenantId": {
             "description": "Owning tenant. The reserved SYSTEM tenant row is the platform default.",
             "type": "string"
@@ -14364,9 +14406,13 @@
           }
         },
         "required": [
+          "id",
           "tenantId",
           "service",
+          "slug",
           "provider",
+          "name",
+          "isDefault",
           "baseUrl",
           "region",
           "apiVersion",
@@ -23286,7 +23332,7 @@
           },
           "enabled": {
             "default": false,
-            "description": "Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\".",
+            "description": "Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing.",
             "type": "boolean"
           },
           "expectedVersion": {
@@ -23302,11 +23348,27 @@
             },
             "type": "object"
           },
+          "isDefault": {
+            "description": "TASK-958 — make this the tenant's DEFAULT connection for its provider: the row the provider-name cascade resolves, and the one the three-state `enabled` rule is read on. `true` re-points the default atomically (the previous default becomes a sibling in the same transaction; both versions bump). The FIRST connection of a provider is its default whatever this says. `false` on the current default is refused (`400 CONNECTION_DEFAULT_REQUIRED`) — elect another row instead.",
+            "example": true,
+            "type": "boolean"
+          },
           "maxConcurrent": {
             "description": "Ceiling — simultaneous in-flight requests on this connection (TASK-862, moved from the retired runtime profiles). Null/omitted = no opinion; a positive integer is a hard cap.",
             "example": 8,
             "nullable": true,
             "type": "number"
+          },
+          "name": {
+            "description": "Display label for this connection, shown wherever it is picked. `null` clears it (fall back to the slug).",
+            "example": "Research account",
+            "nullable": true,
+            "type": "string"
+          },
+          "provider": {
+            "description": "TASK-958 — which vendor this connection talks to. REQUIRED when the `:slug` path segment is not itself a provider id (a named sibling such as `openai-research`); OPTIONAL and inferred from the slug otherwise, which is why every pre-TASK-958 call is unchanged. IMMUTABLE: sending a different value for an existing slug is `409 CONNECTION_PROVIDER_IMMUTABLE` — a connection cannot change vendor under the models bound to it.",
+            "example": "openai",
+            "type": "string"
           },
           "region": {
             "description": "Region identifier (bedrock).",
@@ -42438,7 +42500,7 @@
     },
     "/api/v1/admin/providers/{service}/platform-defaults": {
       "get": {
-        "description": "The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: `overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` (no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:provider`. Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it is the top of the cascade.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: `overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` (no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:slug`. Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it is the top of the cascade.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_listPlatformDefaults",
         "parameters": [
           {
@@ -42515,7 +42577,7 @@
         ]
       }
     },
-    "/api/v1/admin/providers/{service}/{provider}": {
+    "/api/v1/admin/providers/{service}/{slug}": {
       "delete": {
         "description": "Deleting returns this (service, provider) to \"no opinion\", so the platform-provided credential may serve it again (subject to the platform-default entitlement). To BLOCK the provider instead — including the platform-provided key — keep the row and set `enabled: false`, which is a veto.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_remove",
@@ -42539,11 +42601,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "description": "Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named sibling carries its own (`openai-research`).",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "azure",
               "type": "string"
             }
           },
@@ -42562,6 +42625,12 @@
           },
           "403": {
             "description": "Non-listed provider on a tenant row, or a SYSTEM row without super admin."
+          },
+          "404": {
+            "description": "No such connection — including one owned by another tenant."
+          },
+          "409": {
+            "description": "`CONNECTION_IS_DEFAULT` — this is its provider’s default connection and other connections of that provider still exist. Make one of them the default first (`PUT :service/:slug` with `isDefault: true`); the default is never promoted automatically, because that would silently change which vendor account existing agents spend."
           }
         },
         "security": [
@@ -42614,11 +42683,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "description": "Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named sibling carries its own (`openai-research`).",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "azure",
               "type": "string"
             }
           },
@@ -42674,7 +42744,7 @@
         ]
       },
       "put": {
-        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When present the header overrides the body-field `expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create. A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. **`enabled` is three-state.** Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\".\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When present the header overrides the body-field `expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create. A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. **`enabled` is three-state.** Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_upsert",
         "parameters": [
           {
@@ -42696,11 +42766,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "description": "Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named sibling carries its own (`openai-research`).",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "azure",
               "type": "string"
             }
           },
@@ -42744,8 +42815,14 @@
             },
             "description": ""
           },
+          "400": {
+            "description": "Unknown service segment, an incomplete body for the provider’s requirements, or one of the TASK-958 naming rules: `CONNECTION_SLUG_INVALID` (the slug fails `^[a-z0-9][a-z0-9-]{1,62}$`) · `CONNECTION_PROVIDER_REQUIRED` (a new slug that is not a provider id, with no `provider` in the body) · `CONNECTION_MULTIPLICITY_UNSUPPORTED` (a second connection on a capability that resolves its provider by name only) · `PLATFORM_CONNECTION_PER_PROVIDER` (the platform tier is one row per provider, named after it) · `CONNECTION_DEFAULT_REQUIRED` (`isDefault: false` on the row that is, or would be, the default — elect another row instead)."
+          },
           "403": {
             "description": "Non-listed provider on a tenant row, or a SYSTEM row without super admin."
+          },
+          "409": {
+            "description": "`CONNECTION_PROVIDER_IMMUTABLE` — the slug exists and serves a different vendor. A connection cannot change vendor under the models declared on it; create a new one. Also `QUOTA_EXCEEDED` when the plan’s `maxAiProviderConnections` ceiling is reached (CREATE only)."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
@@ -42782,9 +42859,9 @@
         ]
       }
     },
-    "/api/v1/admin/providers/{service}/{provider}/models": {
+    "/api/v1/admin/providers/{service}/{slug}/models": {
       "put": {
-        "description": "Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant’s catalogue, bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable, and named after the CONNECTION (`<slug>-<wire model id>`), so two accounts of one vendor may declare the same model and get two separately bindable rows; a generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_declareModels",
         "parameters": [
           {
@@ -42806,11 +42883,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "description": "Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named sibling carries its own (`openai-research`).",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "azure",
               "type": "string"
             }
           },
@@ -42854,7 +42932,7 @@
             "description": "No connection row yet — save the credential before declaring its models."
           },
           "409": {
-            "description": "A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`)."
+            "description": "A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`), or another connection of this tenant already minted it (`BYO_SLUG_TAKEN`, naming `otherConnectionSlug`). Both carry a `byo-` prefixed `suggestedSlug` to re-send."
           }
         },
         "security": [
@@ -42885,7 +42963,7 @@
         ]
       }
     },
-    "/api/v1/admin/providers/{service}/{provider}/reset": {
+    "/api/v1/admin/providers/{service}/{slug}/reset": {
       "post": {
         "description": "Restores the endpoint, `enabled` state, extras and key material of a PLATFORM-MANAGED row — the built-in inference engines (LM Studio, Ollama, vLLM, llama.cpp) and the model registry (Hugging Face, the S3/MinIO weight store) — from `BUILT_IN_CONNECTION_DEFAULTS`. **This is not `DELETE`.** Deleting a SYSTEM engine row does not return it to the default: `apps/text` resolves a self-hosted engine’s base URL only from the injected provider overrides, with no environment fallback, so a missing row is a 503 on every generation. Connection CEILINGS (`maxConcurrent`, `rpmLimit`, `tpmLimit`, `timeoutS`) are PRESERVED — they are an operator’s tuning of their own hardware, not part of the row’s identity. No `If-Match`: the operation means “whatever it says now, put it back”, so a stale token would refuse the caller who most needs it.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_reset",
@@ -42909,11 +42987,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `lm-studio`.",
+            "description": "Platform connection name. The platform tier holds one row per provider and its name IS the provider id, e.g. `lm-studio`.",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "lm-studio",
               "type": "string"
             }
           },
@@ -42976,7 +43055,7 @@
         ]
       }
     },
-    "/api/v1/admin/providers/{service}/{provider}/test": {
+    "/api/v1/admin/providers/{service}/{slug}/test": {
       "post": {
         "description": "Probes the credential/endpoint BEFORE (or independent of) saving it. Every body field is optional: an omitted field falls back to the STORED row (the tenant row, else the SYSTEM platform default), so a saved write-only key can be re-tested without re-entering it. A real auth-only call where the vendor exposes one (`probe: \"auth\"`), a reachability smoke test otherwise (`probe: \"reachability\"`). No Vault write, no OCC, the key is never logged. Tenant-supplied URLs must be https and public.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-provider:manage`).\n\n**Abilities** — `manage:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ProviderConnectionController_testConnection",
@@ -43000,11 +43079,12 @@
             }
           },
           {
-            "description": "Capability-scoped provider identifier, e.g. `azure`.",
+            "description": "Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named sibling carries its own (`openai-research`).",
             "in": "path",
-            "name": "provider",
+            "name": "slug",
             "required": true,
             "schema": {
+              "example": "azure",
               "type": "string"
             }
           },

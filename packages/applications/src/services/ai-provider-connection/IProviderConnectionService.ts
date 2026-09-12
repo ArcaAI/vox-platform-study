@@ -87,6 +87,25 @@ export interface ProviderOverrideEntry {
   location?: string;
 
   /**
+   * TASK-958 — WHICH connection row supplied this credential.
+   *
+   * A tenant may hold several connections for one provider (two OpenAI
+   * accounts, two Azure resources), so `provider` alone no longer identifies
+   * the account that was spent. Both fields are written by the ONE construction
+   * site (`AiProviderConnectionService.toOverrideEntry`), so every fold and
+   * every one-credential resolve carries them without a call site remembering.
+   *
+   * `connection_slug` is the tenant's own name for it (`openai`,
+   * `openai-research`) and equals `provider` on every default and every
+   * platform row — which is why the wire is unchanged for everything that
+   * existed before this ticket. The adapters IGNORE both; they exist for
+   * attribution (`AiUsageEvent.connectionId`) and for a human reading a
+   * request trace.
+   */
+  connection_id?: string;
+  connection_slug?: string;
+
+  /**
    * C.2 — every OTHER key of the row's `extraJson`, forwarded
    * VERBATIM after shape validation (`provider-extras.ts`).
    *
@@ -209,12 +228,28 @@ export const IProviderConnectionService = Symbol('IProviderConnectionService');
 /** @deprecated Use `IProviderConnectionService` (same symbol value). */
 export const IAiProviderConnectionService = IProviderConnectionService;
 
+/**
+ * TASK-958 — how a caller that knows the exact connection asks for it.
+ *
+ * `connectionId` is the `AiModel.sourceConnectionId` of the row being served
+ * (D-3: "the model row names the connection"). When present the cascade is NOT
+ * walked: the named row either serves or the call fails closed — it never
+ * widens to the tenant's default or to the platform. An id belonging to another
+ * tenant is a 404 (the house existence posture), not a 403.
+ */
+export interface ResolveConnectionOptions {
+  connectionId?: string;
+}
+
 export interface IProviderConnectionService {
-  /** Every ENABLED connection row for a (service, tenant), masked. */
+  /**
+   * Every ENABLED connection row for a (service, tenant), masked — grouped by
+   * provider, the DEFAULT of each group first, then oldest-first.
+   */
   list(service: ProviderService, tenantId?: string): Promise<AiProviderConnectionResponse[]>;
 
-  /** One (service, tenant, provider) row, masked; a `version: 0` placeholder when absent. */
-  getRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
+  /** One (service, tenant, SLUG) row, masked; a `version: 0` placeholder when absent. */
+  getRow(service: ProviderService, slug: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
 
   /**
    * TASK-954 — the platform fallback a TENANT inherits for one service, READ-ONLY.
@@ -230,13 +265,26 @@ export interface IProviderConnectionService {
   listPlatformDefaults(service: ProviderService, tenantId?: string): Promise<PlatformDefaultConnectionsResponse>;
 
   /**
-   * Create-or-CAS-update one (service, tenant, provider) row. `expectedVersion`
+   * Create-or-CAS-update one (service, tenant, SLUG) row. `expectedVersion`
    * is the optimistic-concurrency token (C2). When omitted it falls back to
    * `dto.expectedVersion`, so the gateway may pass it either way.
+   *
+   * TASK-958 — the slug is the IDENTITY and is immutable after create (OQ-7).
+   * `dto.provider` names the vendor; it may be omitted when the slug is itself a
+   * provider id (every pre-958 call, which is why they are unchanged) and must
+   * match the stored value on an update. The FIRST row for a provider is that
+   * provider's DEFAULT; `dto.isDefault: true` on a sibling re-points the default
+   * in one transaction.
+   *
+   * @throws BadRequestException `CONNECTION_SLUG_INVALID` · `CONNECTION_PROVIDER_REQUIRED` ·
+   *   `CONNECTION_MULTIPLICITY_UNSUPPORTED` · `PLATFORM_CONNECTION_PER_PROVIDER` ·
+   *   `CONNECTION_DEFAULT_REQUIRED`
+   * @throws ConflictException `CONNECTION_PROVIDER_IMMUTABLE`
+   * @throws QuotaExceededException `maxAiProviderConnections`, on CREATE only
    */
   upsertRow(
     service: ProviderService,
-    provider: string,
+    slug: string,
     dto: UpsertAiProviderConnectionRequest,
     tenantId?: string,
     expectedVersion?: number,
@@ -252,7 +300,7 @@ export interface IProviderConnectionService {
    * now, put it back", so a stale token would refuse exactly the caller who most
    * needs it.
    */
-  resetRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
+  resetRow(service: ProviderService, slug: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
 
   /**
    * TASK-890 §3.7a (OD-A) — declare the models this tenant's connection serves.
@@ -262,17 +310,30 @@ export interface IProviderConnectionService {
    * left the list is soft-deleted. Refuses the SYSTEM tier (403 — platform
    * models are declared in `/admin/ai-models`), a provider the tenant may not
    * hold a row for (403), and a generated slug that would shadow a platform row
-   * (409 `BYO_SLUG_SHADOWS_PLATFORM`, nothing written).
+   * (409 `BYO_SLUG_SHADOWS_PLATFORM`, nothing written), and a slug another
+   * connection of the SAME tenant already minted (409 `BYO_SLUG_TAKEN`).
+   *
+   * TASK-958 — the generated model slug is `<connection slug>-<wire id>`, so two
+   * connections of one provider may declare the same vendor model and get two
+   * distinct, separately bindable rows. A DEFAULT connection keeps
+   * `slug === provider`, which is why no existing model slug moved.
    */
   declareModels(
     service: ProviderService,
-    provider: string,
+    slug: string,
     dto: DeclareConnectionModelsRequest,
     tenantId?: string,
   ): Promise<AiProviderConnectionResponse>;
 
-  /** Soft-delete one (service, tenant, provider) row. */
-  deleteRow(service: ProviderService, provider: string, tenantId?: string, expectedVersion?: number): Promise<void>;
+  /**
+   * Soft-delete one (service, tenant, SLUG) row.
+   *
+   * @throws ConflictException `CONNECTION_IS_DEFAULT` — the row is its
+   *   provider's default and siblings still live (OQ-6: refuse rather than
+   *   silently promote one, which would change which key every SYSTEM-model
+   *   agent spends).
+   */
+  deleteRow(service: ProviderService, slug: string, tenantId?: string, expectedVersion?: number): Promise<void>;
 
   /**
    * The resolution cascade for one (service, provider): ENABLED tenant row →
@@ -286,11 +347,32 @@ export interface IProviderConnectionService {
    * the platform default. The gate applies to CLOUD BYO providers only: a
    * SYSTEM row for a self-host engine is platform INFRASTRUCTURE, not platform
    * SPEND, and must stay reachable for every tenant.
+   *
+   * TASK-958 — "the tenant row" means the tenant's DEFAULT connection for that
+   * provider; a named sibling is never reached by provider name. Pass
+   * `options.connectionId` to resolve ONE named connection instead: the cascade
+   * is not walked, a disabled or keyless row fails closed, and an id this tenant
+   * cannot see is a 404.
    */
-  resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null>;
+  resolveConnection(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+    options?: ResolveConnectionOptions,
+  ): Promise<ResolvedProviderConnection | null>;
 
-  /** Raw entity accessor for gateway resolution paths that need the row itself. */
-  findRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
+  /**
+   * Raw entity accessor for gateway resolution paths that need the row itself,
+   * addressed by its SLUG (TASK-958).
+   */
+  findRow(service: ProviderService, slug: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
+
+  /**
+   * The tenant's DEFAULT connection for one (service, provider) — the row the
+   * provider-NAME cascade resolves to, and what every pre-TASK-958 `findRow`
+   * caller actually meant.
+   */
+  findDefaultRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
 
   /**
    * Decrypt the ENABLED **cloud BYO** connections that serve one service for one
@@ -304,7 +386,9 @@ export interface IProviderConnectionService {
    * "tenant if non-empty" short-circuit. Every entry carries `funding`, derived
    * from the row that supplied it.
    *
-   * THREE STATES per (service, provider), evaluated on the caller's own row:
+   * THREE STATES per (service, provider), evaluated on the caller's DEFAULT row
+   * for that provider (TASK-958 D-6 — a tenant may hold named siblings, and the
+   * fold reads exactly one of them, deterministically):
    *   - **absent** ⇒ the platform default applies, subject to the entitlement
    *     gate (`featurePlatformDefaultCredential`);
    *   - **present, enabled, keyed** ⇒ the tenant's own credential wins and the
@@ -313,6 +397,10 @@ export interface IProviderConnectionService {
    *   - **present, disabled** ⇒ a **VETO**: no credential from either tier, no
    *     fall-through to another provider, and `platformDefault.vetoed` records
    *     it so the call site can raise a 409.
+   *
+   * A NON-DEFAULT sibling is NEVER folded under the provider name — it is
+   * reachable only by id (`ResolveConnectionOptions.connectionId`), so
+   * disabling one disables the models bound to it and vetoes nothing.
    *
 
    * FAILS OPEN PER CREDENTIAL, on decrypt error only: a credential whose

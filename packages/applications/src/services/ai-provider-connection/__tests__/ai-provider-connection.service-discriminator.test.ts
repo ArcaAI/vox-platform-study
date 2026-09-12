@@ -18,6 +18,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { CLOUD_BYO_PROVIDERS, isCloudByoProvider, type ProviderService } from '../constants';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT = 'tenant-abc';
 
@@ -39,14 +40,14 @@ function makeRow(
 }
 
 function makeService(opts: { roles?: string[]; rows?: unknown[] } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findDeletedByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findByTenantIdAndService: vi.fn().mockResolvedValue(opts.rows ?? []),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? TENANT : undefined)),

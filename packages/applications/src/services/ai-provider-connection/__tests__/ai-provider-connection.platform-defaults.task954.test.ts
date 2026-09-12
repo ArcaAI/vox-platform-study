@@ -25,6 +25,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -42,7 +43,7 @@ function makeRow(overrides: { tenantId?: string; service?: string; provider?: st
 
 function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?: boolean; user?: unknown; clsTenant?: string | undefined } = {}) {
   const rowsByTenant = opts.rowsByTenant ?? {};
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => {
       const rows = (rowsByTenant[tenantId] ?? []) as any[];
       return rows.find((r) => r.service === service && r.provider === provider) ?? null;
@@ -50,12 +51,12 @@ function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?
     findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) =>
       ((rowsByTenant[tenantId] ?? []) as any[]).filter((r) => r.service === service),
     ),
-  };
+  });
   const user = opts.user === undefined ? { id: 'u1', roles: ['TENANT_ADMIN'], tenantId: TENANT_A } : opts.user;
   const clsTenant = 'clsTenant' in opts ? opts.clsTenant : TENANT_A;
   const cls = { get: vi.fn((k: string) => (k === 'user' ? user : k === 'tenantId' ? clsTenant : undefined)) };
   const secrets = { decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')), supportsTransit: vi.fn(() => true) };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(
     repo as any,
     { baseClient: {} } as any,
@@ -132,7 +133,11 @@ describe('listPlatformDefaults — one entry per cloud BYO provider, masked', ()
 });
 
 describe('listPlatformDefaults — resolution follows the cascade', () => {
-  const system = [makeRow({ provider: 'azure' }), makeRow({ provider: 'openai', enabled: false }), makeRow({ provider: 'anthropic', encryptedApiKey: null })];
+  const system = [
+    makeRow({ provider: 'azure' }),
+    makeRow({ provider: 'openai', enabled: false }),
+    makeRow({ provider: 'anthropic', encryptedApiKey: null }),
+  ];
 
   it('reports `inherited` for an enabled, keyed platform row the tenant has no opinion on', async () => {
     const { svc } = makeService({ rowsByTenant: { [SYSTEM_TENANT_ID]: system } });
