@@ -154,9 +154,9 @@ from text.routing.streaming import (  # noqa: E402, F401
 )
 from text.routing.usage import (  # noqa: E402, F401
     _coerce_stats,
+    _credential_attribution,
     _extract_stream_usage,
     _extract_usage,
-    _used_byok_credential,
 )
 
 
@@ -569,6 +569,10 @@ async def generate(
             if shutdown_manager:
                 shutdown_manager.complete_task(task.task_id)
         else:
+            # Which credential served, derived ONCE: `byok` (whose money) and
+            # `connection_id` (which of the tenant's keys) describe one entry, so they
+            # are read together — see `_credential_attribution`.
+            byok, connection_id = _credential_attribution(request_body)
             hub.start(
                 generation_id,
                 lambda producer: run_generation_producer(
@@ -583,7 +587,8 @@ async def generate(
                     generation_audit=generation_audit,
                     tenant_id=x_tenant_id,
                     request_id=ctx.get("request_id", "unknown"),
-                    byok=_used_byok_credential(request_body),
+                    byok=byok,
+                    connection_id=connection_id,
                     policy=resolve_generation_policy(app_state, x_tenant_id),
                     # The post-receive gate (TASK-871) runs inside the producer,
                     # on the assembled completion, before the terminal frame.
@@ -775,6 +780,7 @@ async def generate(
         # so `GET /tasks/{id}` answers identically whichever way the generation ran. Built ONCE
         # here and reused on the response below, so the persisted block and the returned block
         # can never disagree about what this generation cost.
+        byok, connection_id = _credential_attribution(request_body)
         usage_detail = build_usage_detail(
             task_id=task.task_id,
             request_id=ctx.get("request_id"),
@@ -784,7 +790,8 @@ async def generate(
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw=raw_usage_from_stats(stats),
-            byok=_used_byok_credential(request_body),
+            byok=byok,
+            connection_id=connection_id,
         )
         await task_manager.update_task(
             task.task_id,

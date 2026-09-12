@@ -998,6 +998,14 @@ class AiModelConfig:
     #: by a gateway that predates the wire field — where selection falls back to
     #: ``format`` exactly as it did before.
     library_name: str | None = None
+    #: TASK-958 — the ``provider_overrides`` key this model's credential arrives under
+    #: (a tenant connection's ``slug``, or the provider id for a platform row) and the
+    #: ``AiProviderConnection`` id the usage ledger attributes its spend to. Both
+    #: ``None`` on every path that cannot declare one — an inline model definition, or a
+    #: spec built by a gateway that predates the fields — where the loader falls back to
+    #: its declared ``override_key`` exactly as it did before.
+    connection_key: str | None = None
+    connection_id: str | None = None
 
     @property
     def is_downloaded(self) -> bool:

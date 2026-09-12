@@ -159,6 +159,9 @@ def candidate(
     language: str | None = "en",
     agent_slug: str = "platform-tts",
     version_id: str | None = None,
+    connection_id: str | None = None,
+    connection_slug: str | None = None,
+    connection_key: str | None = None,
 ) -> ResolvedTtsCandidate:
     """One resolved candidate, with everything the router reads."""
     from tts.spec import ResolvedTtsCandidate
@@ -206,11 +209,16 @@ def candidate(
                 "region": region,
                 "timeoutS": timeout_s,
                 "funding": funding,
+                # TASK-958 — omitted from the wire when unset, so a candidate built
+                # without them is byte-identical to a pre-multiplicity payload.
+                **({"connectionId": connection_id} if connection_id else {}),
+                **({"connectionSlug": connection_slug} if connection_slug else {}),
             }
             if connection
             else None
         ),
         fundingTier=funding,
+        **({"connectionKey": connection_key} if connection_key else {}),
     )
 
 

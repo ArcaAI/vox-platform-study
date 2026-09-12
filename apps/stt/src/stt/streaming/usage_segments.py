@@ -12,15 +12,24 @@ engine, to the platform's COGS if it ends on the fallback.
 This module owns only the ACCOUNTING. It never decides funding: the caller
 injects a ``resolve`` callable (in practice
 ``stt.transcription.batch_service.resolve_usage_attribution`` bound to the
-session's ``provider_overrides``), which derives ``(engine, deployment)`` from
-the credential row that actually served — funding is derived, never stamped.
+session's ``provider_overrides``), which derives
+``(engine, deployment, connection_id)`` from the credential row that actually
+served — funding is derived, never stamped.
 
 Two properties the rest of the system depends on:
 
-* **Aggregation is by ``(engine, deployment)``, not by span.** A session that
-  toggles primary → fallback → primary bills TWO rows, not three; the
+* **Aggregation is by ``(engine, deployment, connection_id)``, not by span.** A
+  session that toggles primary → fallback → primary bills TWO rows, not three; the
   interleaving stays observable through the ``provider_switched`` result frames
-  and ``stt_provider_switch_total``.
+  and ``stt_provider_switch_total``. TASK-958 added the connection to that key
+  because a tenant with two accounts of one vendor has two engines with ONE name,
+  and billing them as one row is the thing this module exists to prevent.
+  Known bound on that key (TASK-958): a span is identified by its ASR FORMAT, so a
+  session that switched between two CONNECTIONS of one engine — same format, different
+  account — is one span and is attributed to the connection the session manager last
+  stamped. Making it exact means giving a span its own connection identity, which is a
+  change to ``switch_to`` and the engine-switch controller, not to this aggregation.
+
 * **Segments are anchored to the session totals.** Every span but the last takes
   its measured delta (clamped into what is left); the last takes the remainder.
   So ``sum(segments.audio_seconds) == total_audio_seconds`` and
@@ -45,6 +54,10 @@ class UsageSegment:
     deployment: str
     audio_seconds: float
     session_seconds: float
+    #: TASK-958 — the ``AiProviderConnection`` that served this stretch. ``None`` when
+    #: the sender stamped none; never guessed from ``engine``, which a tenant's two
+    #: accounts of one vendor share.
+    connection_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +65,7 @@ class UsageSegment:
             "deployment": self.deployment,
             "audio_seconds": self.audio_seconds,
             "session_seconds": self.session_seconds,
+            "connection_id": self.connection_id,
         }
 
 
@@ -125,7 +139,7 @@ class EngineUsageAccumulator:
         audio_seconds: float,
         total_audio_seconds: float,
         total_session_seconds: float,
-        resolve: Callable[[Any], tuple[str, str] | None],
+        resolve: Callable[[Any], tuple[str, str, str | None] | None],
     ) -> list[UsageSegment]:
         """The session's engine time, aggregated by ``(engine, deployment)``.
 
@@ -152,7 +166,7 @@ class EngineUsageAccumulator:
 
         # Insertion-ordered, so the FIRST engine to serve is the first segment —
         # which is what keeps the unchanged session idempotency key on it.
-        totals: dict[tuple[str, str], list[float]] = {}
+        totals: dict[tuple[str, str, str | None], list[float]] = {}
         for span, span_audio, span_wall in zip(self._spans, audio, wall, strict=True):
             attribution = resolve(span.asr_format)
             if attribution is None:
@@ -167,7 +181,11 @@ class EngineUsageAccumulator:
                 deployment=deployment,
                 audio_seconds=segment_audio,
                 session_seconds=segment_wall,
+                connection_id=connection_id,
             )
-            for (engine, deployment), (segment_audio, segment_wall) in totals.items()
+            for (engine, deployment, connection_id), (
+                segment_audio,
+                segment_wall,
+            ) in totals.items()
             if segment_audio > 0.0 or segment_wall > 0.0
         ]

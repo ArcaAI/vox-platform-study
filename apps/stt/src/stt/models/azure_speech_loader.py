@@ -19,6 +19,7 @@ from azure.cognitiveservices.speech import (
 from ..core.exceptions import CloudASRAuthError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .cloud_asr import resolve_override_key
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +105,14 @@ class AzureSpeechLoader(BaseModelLoader):
         Raises:
             CloudASRAuthError: If credentials are missing or invalid.
         """
-        override = None
-        if provider_overrides:
-            entry = provider_overrides.get("azure-speech")
-            if isinstance(entry, dict) and entry:
-                override = entry
+        # TASK-958 — the tenant's connection first, the provider id second (see
+        # `resolve_override_key`): two Azure Speech resources on one tenant are two
+        # connections whose entries differ only by the key they carry.
+        override = resolve_override_key(
+            provider_overrides,
+            self.override_key,
+            connection_key=model_config.connection_key,
+        )
 
         override_key = override.get("api_key") if override else None
         override_region = (override.get("region") or override.get("endpoint")) if override else None

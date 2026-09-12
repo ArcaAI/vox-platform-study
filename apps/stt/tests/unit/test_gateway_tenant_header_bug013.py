@@ -249,6 +249,7 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
         processing_time_seconds = 1.0
         engine: str | None = None
         deployment: str | None = None
+        connection_id: str | None = None
         metadata: dict[str, Any] = {}
 
         def to_dict(self) -> dict[str, Any]:

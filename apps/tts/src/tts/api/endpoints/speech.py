@@ -27,9 +27,14 @@ from tts.core.usage import (
 )
 from tts.providers.base import CONTENT_TYPES, AudioChunk, AudioFormat
 from tts.routing.router import AllProvidersUnavailableError
-from tts.spec import ResolvedTtsSpec, candidate_chain
+from tts.spec import ResolvedTtsCandidate, ResolvedTtsSpec, candidate_chain
 
 router = APIRouter(tags=["speech"])
+
+
+def _connection_of(candidate: ResolvedTtsCandidate) -> str | None:
+    return candidate.connection.connection_id if candidate.connection else None
+
 
 _STREAM_HEADERS = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
 
@@ -127,9 +132,17 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         ) from exc
 
     provider = first.provider if first is not None else None
+    # TASK-958 — WHICH connection of that provider served. Read off the chunk the router
+    # stamped, never re-derived by matching the provider NAME against the chain: a tenant
+    # with two accounts of one vendor has two candidates answering to that name, and the
+    # first match would attribute the spend to whichever one happens to come first.
+    connection_id = first.connection_id if first is not None else None
     # The candidate that actually served. Its sample rate and locale are what the audio IS, so
     # they are what the headers, the derived duration and the Prometheus labels must describe.
-    winner = next((c for c in chain if c.engine == provider), None)
+    winner = next(
+        (c for c in chain if c.engine == provider and _connection_of(c) == connection_id),
+        None,
+    ) or next((c for c in chain if c.engine == provider), None)
     if winner is not None:
         binding = winner.binding_for(body.voice)
         locale = (binding.locale if binding else None) or winner.parameters.language or locale
@@ -158,6 +171,10 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         "X-Tts-Sample-Rate": str(sample_rate),
         "X-Tts-Audio-Format": fmt.value,
         "X-Tts-Provider": provider or UNKNOWN_PROVIDER,
+        # Absent rather than empty when the spec carried no connection id: the gateway
+        # writes `AiUsageEvent.connectionId` from this, and an empty string is a value
+        # while a missing header is "not stated".
+        **({"X-Tts-Connection-Id": connection_id} if connection_id else {}),
     }
 
     if body.stream_format == "sse":
@@ -189,6 +206,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
                             "characters": character_count,
                             "audioSeconds": audio_seconds,
                             "interrupted": interrupted,
+                            "connectionId": connection_id,
                         }
                     ),
                 }

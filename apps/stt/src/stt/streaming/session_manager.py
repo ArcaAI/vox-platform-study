@@ -296,6 +296,11 @@ class SessionManager:
         # via `resolve_usage_attribution` — the same function batch completion
         # uses, so the two paths can never drift.
         self._session_asr_formats: dict[str, AiModelFormat] = {}
+        # TASK-958 — the connection the ACTIVE ASR model authenticates as, stamped
+        # beside the format at the same choke point. `engine` names a vendor and a
+        # tenant may hold several accounts of one, so the format alone can no longer
+        # say which credential a session spent; `(connection_key, connection_id)` can.
+        self._session_connections: dict[str, tuple[str | None, str | None]] = {}
         # TASK-874 — per-session ENGINE-TIME accounting. `_session_asr_formats`
         # above is a single slot holding whichever engine loaded LAST, so on its
         # own it bills a switched session entirely to the engine that finished.
@@ -1716,6 +1721,7 @@ class SessionManager:
         # runs (see `_finalize_session_locked`), so dropping the tracking dict
         # here is safe cleanup, not a lost read.
         self._session_asr_formats.pop(session_id, None)
+        self._session_connections.pop(session_id, None)
         self._session_usage_segments.pop(session_id, None)
         # Drop the per-session finalize lock (a queued waiter
         # already holds its own reference and will no-op on the CLOSED guard).
@@ -2148,6 +2154,12 @@ class SessionManager:
         # the sole loader for both), so the LATEST call always reflects the
         # currently active engine for usage-ledger attribution at teardown.
         self._session_asr_formats[session_id] = asr_model.format
+        # TASK-958 — same choke point, same staleness guarantee: whichever model just
+        # loaded is the one being billed, so its connection is the one to attribute to.
+        self._session_connections[session_id] = (
+            getattr(db_model_config, "connection_key", None),
+            getattr(db_model_config, "connection_id", None),
+        )
 
         # On pipeline use, load ALL referenced models (vad/denoise/
         # embedding) into the cache and pin them for the active session.
@@ -4020,14 +4032,22 @@ class SessionManager:
         vs. the resume-grace window expiring). This summary is IDENTICAL
         either way; the caller decides ``attributesJson.interrupted``.
 
-        ``engine``/``deployment`` are ``None`` when no ASR model was ever
-        resolved for this session (e.g. it failed before load) — never
+        ``engine``/``deployment``/``connection_id`` are ``None`` when no ASR model was
+        ever resolved for this session (e.g. it failed before load) — never
         guessed, exactly like the batch path's ``resolve_usage_attribution``
         (which this reuses, so the two can never drift on the AZURE_SPEECH
         spelling trap or any other provider mapping).
 
+        TASK-958 — ``connection_id`` names WHICH of the tenant's connections for that
+        engine served. It is resolved from the connection the ACTIVE ASR model
+        authenticates as, so a session that switched engines reports the last one; the
+        per-span breakdown below carries the same value per row. A session that switched
+        between two connections of ONE engine is therefore attributed to the last, since
+        a span is identified by its ASR FORMAT and those two share it — see the note in
+        ``usage_segments``.
+
         ``segments`` is the TASK-874 per-engine breakdown: one entry per
-        ``(engine, deployment)`` pair that actually served, each with its own
+        ``(engine, deployment, connection_id)`` triple that actually served, each with its own
         audio and wall-clock seconds, so a session that failed over to the
         platform fallback bills BOTH engines for the time each ran instead of
         billing all of it to whichever finished. It is ADDITIVE — the scalars
@@ -4039,10 +4059,23 @@ class SessionManager:
 
         overrides = self._provider_overrides.get(session.session_id)
         asr_format = self._session_asr_formats.get(session.session_id)
+        connection_key, connection_id_hint = self._session_connections.get(
+            session.session_id, (None, None)
+        )
+
+        def _attribute(fmt: Any) -> tuple[str, str, str | None]:
+            return resolve_usage_attribution(
+                fmt,
+                overrides,
+                connection_key=connection_key,
+                connection_id=connection_id_hint,
+            )
+
         engine: str | None = None
         deployment: str | None = None
+        connection_id: str | None = None
         if asr_format is not None:
-            engine, deployment = resolve_usage_attribution(asr_format, overrides)
+            engine, deployment, connection_id = _attribute(asr_format)
 
         audio_seconds = session.total_duration_seconds
         session_seconds = self._compute_session_seconds(session)
@@ -4054,7 +4087,7 @@ class SessionManager:
                     audio_seconds=audio_seconds,
                     total_audio_seconds=audio_seconds,
                     total_session_seconds=session_seconds,
-                    resolve=lambda fmt: resolve_usage_attribution(fmt, overrides),
+                    resolve=_attribute,
                 )
             ]
         elif engine is not None and deployment is not None:
@@ -4067,6 +4100,7 @@ class SessionManager:
                     "deployment": deployment,
                     "audio_seconds": audio_seconds,
                     "session_seconds": session_seconds,
+                    "connection_id": connection_id,
                 }
             ]
         else:
@@ -4108,6 +4142,10 @@ class SessionManager:
             "session_seconds": session_seconds,
             "engine": engine,
             "deployment": deployment,
+            # TASK-958 — WHICH connection of that engine was spent. `None` when the
+            # gateway stamped none; never guessed from `engine`, which a tenant's two
+            # accounts of one vendor share.
+            "connection_id": connection_id,
             "segments": segments,
             "language_mode": self._session_language_modes.get(session.session_id),
             "channel_count": self._session_channel_counts.get(session.session_id, 1),

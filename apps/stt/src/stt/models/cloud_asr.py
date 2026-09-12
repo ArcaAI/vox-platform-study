@@ -55,20 +55,36 @@ class CloudRestConfig:
 def resolve_override_key(
     provider_overrides: dict[str, Any] | None,
     provider_key: str,
+    *,
+    connection_key: str | None = None,
 ) -> dict[str, Any] | None:
-    """Return the per-tenant override entry for ``provider_key`` if present.
+    """Return the override entry that serves this call, or ``None``.
 
     ``provider_overrides`` follows the gateway wire shape
-    ``{provider: {api_key, base_url?, endpoint?, region?, model?}}``. Returns
-    ``None`` when no (non-empty) override is configured for the provider, so the
-    caller falls back to env credentials.
+    ``{connection key: {api_key, base_url?, endpoint?, region?, model?, connection_id?}}``.
+
+    TASK-958 — the map key is the CONNECTION KEY, which is a tenant connection's
+    ``slug`` for a tenant row and the provider id for a platform row. ``connection_key``
+    is read FIRST and ``provider_key`` second, and that ordering is the whole point: a
+    tenant may hold two accounts of one vendor, and a provider-keyed read would hand
+    both chains the same entry — so a fallback to the second connection would be served
+    on the first connection's key.
+
+    The second read is not a fallback for correctness but for COMPATIBILITY: a tenant's
+    DEFAULT connection has ``slug == provider``, so the two reads coincide for it, and a
+    gateway that stamps no ``connection_key`` at all keeps resolving exactly as before.
+
+    Returns ``None`` when neither key holds a non-empty entry, so the caller fails
+    closed on its own terms.
     """
     if not provider_overrides:
         return None
-    entry = provider_overrides.get(provider_key)
-    if not entry or not isinstance(entry, dict):
-        return None
-    return entry
+    keys = [connection_key, provider_key] if connection_key else [provider_key]
+    for key in keys:
+        entry = provider_overrides.get(key)
+        if entry and isinstance(entry, dict):
+            return entry
+    return None
 
 
 def wav_bytes_from_samples(samples: np.ndarray, sample_rate: int) -> bytes:

@@ -85,6 +85,12 @@ class AudioChunk:
     # this is how a caller (the usage-metering endpoints)
     # learns it without re-deriving router-internal failover state.
     provider: str | None = None
+    # TASK-958 — WHICH connection of that provider produced it. Stamped by the ROUTER
+    # beside `provider`, for the same reason and at the same moment: since a tenant may
+    # hold several connections for one vendor, two candidates in a chain can share an
+    # engine NAME and differ only by the account they authenticate to, so `provider`
+    # alone can no longer tell the usage ledger which key was spent.
+    connection_id: str | None = None
 
 
 class ProviderNotFoundError(KeyError):

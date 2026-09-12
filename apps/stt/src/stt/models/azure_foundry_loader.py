@@ -35,6 +35,7 @@ import logging
 from ..core.exceptions import CloudASRAuthError, ConfigurationError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
+from .cloud_asr import resolve_override_key
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,15 @@ class AzureFoundryLoader(BaseModelLoader):
         # tier serves the engine, which is exactly what the deleted
         # `stt.azureFoundry.enabled` flag expressed — now per tenant rather than per
         # platform, and defaulting to the same OFF via the seeded disabled SYSTEM row.
-        override = None
-        if provider_overrides:
-            entry = provider_overrides.get(self.override_key)
-            if isinstance(entry, dict) and entry:
-                override = entry
+        #
+        # TASK-958 — read under the model's own `connection_key` first, the provider id
+        # second (see `resolve_override_key`), so a tenant with two Foundry resources
+        # reaches the one its agent bound.
+        override = resolve_override_key(
+            provider_overrides,
+            self.override_key,
+            connection_key=model_config.connection_key,
+        )
 
         # Azure Foundry is BYOK-only, exactly like Azure Speech: the API KEY comes
         # solely from the per-tenant / SYSTEM provider-connection override (there is

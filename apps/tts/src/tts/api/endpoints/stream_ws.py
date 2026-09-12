@@ -54,16 +54,26 @@ class _SessionUsage:
         self.characters = 0
         self.audio_bytes = 0
         self.provider: str | None = None
+        # TASK-958 — the connection the winning candidate authenticated with, read off
+        # the chunk the router stamped. Two candidates of one vendor share a provider
+        # NAME, so this is the only thing that says which account was spent.
+        self.connection_id: str | None = None
 
 
 def _provider_overrides(value: Any) -> dict[str, dict[str, str]] | None:
-    """Coerce init-frame provider_overrides to {provider: {k: str}}, else None."""
+    """Coerce init-frame provider_overrides to {connection key: {k: str}}, else None.
+
+    TASK-958 — the map key is the CONNECTION KEY (a tenant connection's slug, or the
+    provider name for a platform row / a legacy sender), not necessarily a provider name.
+    Nothing else changes: an entry still has to carry an ``api_key`` to be worth passing
+    to an engine.
+    """
     if not isinstance(value, dict) or not value:
         return None
     out: dict[str, dict[str, str]] = {}
-    for provider, creds in value.items():
+    for connection_key, creds in value.items():
         if isinstance(creds, dict) and creds.get("api_key"):
-            out[str(provider)] = {str(k): str(v) for k, v in creds.items()}
+            out[str(connection_key)] = {str(k): str(v) for k, v in creds.items()}
     return out or None
 
 
@@ -184,6 +194,7 @@ async def audio_stream(ws: WebSocket) -> None:
         async for chunk in stream:
             if chunk.provider:
                 usage.provider = chunk.provider
+                usage.connection_id = chunk.connection_id
             usage.audio_bytes += len(chunk.data)
             await ws.send_bytes(chunk.data)
         interrupted = False
@@ -207,9 +218,7 @@ async def audio_stream(ws: WebSocket) -> None:
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await reader
         await stream.aclose()  # free upstream (Azure conn / GPU task)
-        audio_seconds = compute_audio_seconds(
-            AudioFormat.PCM, usage.audio_bytes, sample_rate
-        )
+        audio_seconds = compute_audio_seconds(AudioFormat.PCM, usage.audio_bytes, sample_rate)
         record_usage_metrics(
             provider=usage.provider,
             locale=locale,
@@ -227,6 +236,7 @@ async def audio_stream(ws: WebSocket) -> None:
                     "audioSeconds": audio_seconds,
                     "interrupted": interrupted,
                     "provider": usage.provider,
+                    "connectionId": usage.connection_id,
                 }
             )
         with contextlib.suppress(Exception):
