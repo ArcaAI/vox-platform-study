@@ -30,6 +30,18 @@ export class SttStreamingUsageSegmentRequest {
   @IsNumber()
   @Min(0)
   session_seconds!: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'TASK-958 D-7 — the `AiProviderConnection` this stretch authenticated as. `engine` names the VENDOR and a tenant may hold several accounts of ' +
+      'one, so `apps/stt` aggregates segments by `(engine, deployment, connection_id)` and this is what separates their spend on the ledger. ' +
+      'Null for a platform engine, and absent from an STT that predates the field. Whitelisted because the global pipe runs `forbidNonWhitelisted`: ' +
+      'without it every push-back carrying the field would 400.',
+  })
+  @IsString()
+  @IsOptional()
+  connection_id?: string | null;
 }
 
 /**
@@ -89,6 +101,16 @@ export class SttStreamingUsagePushbackRequest {
   @IsString()
   @IsOptional()
   deployment?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'TASK-958 D-7 — the connection the LAST-loaded engine authenticated as, beside the engine/deployment scalars it belongs with. The per-segment ' +
+      'field is the exact answer; this stands in when a sender reports no segments. Whitelisted for the same reason as `segments`.',
+  })
+  @IsString()
+  @IsOptional()
+  connection_id?: string | null;
 
   @ApiPropertyOptional({
     type: () => [SttStreamingUsageSegmentRequest],

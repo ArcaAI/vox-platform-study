@@ -166,6 +166,15 @@ export interface StreamingUsageSegment {
   deployment: string;
   audio_seconds: number;
   session_seconds: number;
+  /**
+   * TASK-958 D-7 — the `AiProviderConnection` this stretch authenticated as.
+   *
+   * A tenant may hold two accounts of one vendor, so `engine` no longer identifies
+   * the credential that was spent, and `apps/stt` aggregates segments by
+   * `(engine, deployment, connection_id)` for that reason. Absent/`null` from a
+   * platform engine and from a worker that predates the field.
+   */
+  connection_id?: string | null;
 }
 
 /**
@@ -190,6 +199,12 @@ export interface StreamingSessionTeardownSummary {
   engine: string | null;
   /** `SELF_HOSTED` | `CLOUD` | `BYOK`; `null` alongside a `null` engine. */
   deployment: string | null;
+  /**
+   * TASK-958 D-7 — the connection the LAST-loaded engine authenticated as, beside
+   * the `engine`/`deployment` scalars it belongs with. The per-segment field above
+   * is the exact answer; this one stands in for a sender that reports no segments.
+   */
+  connection_id?: string | null;
   /**
    * TASK-874 — the per-engine breakdown, one ledger row each. ADDITIVE to the
    * scalars above (which stay the LAST-loaded engine), so an STT that predates
