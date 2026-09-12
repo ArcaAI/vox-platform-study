@@ -46,3 +46,31 @@ export function sumMicrosMap(map: Record<string, string> | null | undefined): st
   for (const value of Object.values(map)) total += safeBig(value);
   return total.toString();
 }
+
+/** TASK-959 — a sensible default (capability, unit) pair for the usage-over-time chart. */
+export interface DefaultSeries {
+  capability: string;
+  unit: string;
+}
+
+/**
+ * Picks a default series for the usage-over-time chart: the highest-cost
+ * capability (reusing `aggregateCostByCapability`'s ordering), and within it
+ * the line with the largest quantity — the unit most likely to show
+ * something. `null` when there is nothing to chart (no lines at all).
+ *
+ * Deliberately reads the summary lines rather than a hardcoded capability
+ * list: the set of capabilities/units is a backend enum this screen never
+ * mirrors (rule 09 — no hardcoded taxonomy), so "pick the one with data" is
+ * the only default that cannot drift out of sync with it.
+ */
+export function pickDefaultSeries(lines: readonly UsageSummaryLine[]): DefaultSeries | null {
+  if (lines.length === 0) return null;
+  const [top] = aggregateCostByCapability(lines);
+  let best: UsageSummaryLine | null = null;
+  for (const line of lines) {
+    if (line.capability !== top.capability) continue;
+    if (!best || Number(line.quantity) > Number(best.quantity)) best = line;
+  }
+  return best ? { capability: best.capability, unit: best.unit } : null;
+}

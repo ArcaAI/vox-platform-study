@@ -7,6 +7,8 @@ import type {
   UsagePeriodParams,
   UsagePlatformDefaults,
   UsageSummaryResponse,
+  UsageTimeseriesParams,
+  UsageTimeseriesResponse,
 } from './types';
 
 /**
@@ -27,6 +29,17 @@ export function getCostPerEncounter(params?: UsagePeriodParams): Promise<CostPer
 
 export function getTopTenants(params?: UsagePeriodParams): Promise<TopTenantsResponse> {
   return getJson(`${USAGE}/top-tenants`, params);
+}
+
+/**
+ * TASK-959 — bounded-range rollup timeseries for one capability x unit (the
+ * gateway caps this at 92 days daily / 72h hourly). Tenant-scoped the same
+ * way as `summary`/`cost-per-encounter`: no `tenantId` is threaded through
+ * for this screen, so the proxy's own `X-Tenant-Id` (the working tenant)
+ * decides scope.
+ */
+export function getUsageTimeseries(params: UsageTimeseriesParams): Promise<UsageTimeseriesResponse> {
+  return getJson(`${USAGE}/timeseries`, params);
 }
 
 /**
