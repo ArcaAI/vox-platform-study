@@ -291,6 +291,17 @@ Every lane runs in its own worktree `../hope-v2-t959-<lane>` on branch `task-959
 - Shadow DB `hope_shadow` on the dev Postgres carries the full ledger through `20260912134123_task_958_…`; handed to W0. TASK-958's migrations are already applied to the dev DB. W0's migration sorts after and is applied by this session at merge.
 - Wave A (running): W0, P-TEXT, P-STT, P-TTS, P-NLP, P-HARNESS in `../hope-v2-t959-*`. Merge order: W0 → Python lanes → (after B2) T1, T2, T3, T4 → T5, E2E.
 
+
+### 10.4 Lane status and merge sequencing (living)
+
+| Lane | Branch @ | Orchestrator re-verification | Deviations accepted | Merge with |
+|---|---|---|---|---|
+| P-TTS | `task-959/tts` @ `0e2f47124` | 4 files in `apps/tts`; `pnpm tts:test` 439 passed; lint clean (re-run 2026-09-12) | `X-Tts-Ttfa-Ms` added for streams; `X-Tts-Synthesis-Ms` / `X-Tts-Response-Bytes` / `X-Tts-Byte-Source` batch-only (a stream's total is unknown at header time — the gateway times the stream); `X-Tts-Device` on all modes; Sarvam → `wire` | any window — extra headers are ignored by an older gateway |
+| P-STT | `task-959/stt` @ `482608658` (+ loader device fix pending) | 19 files in `apps/stt`, `streaming/api/schemas.py` untouched; lint + typecheck clean; the lane's 58 new/amended tests pass, 1 expected-fail pinned to the schema file (re-run 2026-09-12); full suite machine-diffed by the lane: zero new failures against baseline `5c44b2577` | cloud legs bill `cpu`; self-hosted spans report `null` bytes, never `0`; partial decodes on cloud REST engines count bytes; a crash-recovered session loses pre-crash bytes (§6.2 blind spot); `whisper_cpp`/`parakeet_cpp` stamped `device: "auto"` → billed CPU — loader fix requested from the lane | **T3 only.** `InternalCompleteJobRequest` and `SttStreamingUsageSegmentRequest` run under `forbidNonWhitelisted`; four + five undeclared keys reject the callbacks. The `schemas.py` five-field hunk (`git show b55573ab5 -- apps/stt/src/stt/streaming/api/schemas.py`) is folded in by the orchestrator after TASK-958 Lane C's two-field change to the same file |
+| P-HARNESS | running | — | — | **T2 only** — `computeSamples` on `ReportTrajectoryRequest` is rejected until T2 declares it, which would drop every trajectory step and its usage |
+| P-TEXT, P-NLP | running | — | — | any window — the gateway parsers read named keys and ignore the rest |
+| W0 | running | — | — | first; dev-DB migration applied by the orchestrator with `prisma db execute` (TASK-958 precedent), then `db:push` is a no-op |
+
 ### 10.2 Wire contract (frozen for the lanes; a lane that must deviate says so in its report, it does not improvise)
 
 **apps/text → gateway / harness.** `UsageDetail` (`models/usage.py`) gains `total_ms: int` (wall clock, = `GenerationStats.total_ms`), `engine_ms: int | None` (native engine time when the engine reports one: llama.cpp `prompt_ms + predicted_ms`, Ollama `(total_duration − load_duration)/1e6`; else `None`), `request_bytes: int | None`, `response_bytes: int | None` (from the pool transport; `None` when the adapter is off the pool). The streaming terminal frame's `data.usage` is the same object, and the frame gains `data.guardrail_usage` (same shape as the blocking response's). Omitted-when-`None`, never `null`, so an older gateway sees an unchanged shape.
