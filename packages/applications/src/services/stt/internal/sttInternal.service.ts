@@ -28,10 +28,9 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
-import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
-import { computeAndByteUnits } from './compute-network-units';
 import { ISttInternalService } from './ISttInternalService';
 import { computeSegmentOffsets, type TranscriptSegmentInputShape } from '../../consultation/lib/transcript-segments';
 import {
@@ -557,19 +556,6 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   ): Promise<void> {
     try {
       const costBasis = dto.deployment === 'BYOK' ? AiCostBasis.BYOK_NOTIONAL : undefined;
-      // TASK-959 §3.2/§4.2 — the occupancy seconds and the third-party bytes the
-      // worker measured. `device` decides which compute unit they are and arrives
-      // ON THE WIRE; an absent device emits no compute row rather than guessing.
-      const extra = computeAndByteUnits(
-        {
-          processingSeconds: dto.processingTimeSeconds,
-          device: dto.device,
-          requestBytes: dto.requestBytes,
-          responseBytes: dto.responseBytes,
-          byteSource: dto.byteSource,
-        },
-        costBasis,
-      );
 
       const common = {
         tenantId: job.tenantId ?? '',
@@ -595,21 +581,30 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         },
       };
 
-      await this.usageLedgerService!.recordUsage(
+      // TASK-959 §3.2/§4.2 — the occupancy seconds and the third-party bytes the
+      // worker measured, appended by the ONE shared helper (`usageLedger/compute-units.ts`)
+      // because this method is what BUILDS the batch. `device` decides which compute unit they
+      // are and arrives ON THE WIRE; an absent device emits no compute row rather than guessing.
+      const { batch, platformBatch } = appendComputeAndByteUnits(
+        { common, units: [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: dto.durationSeconds! }] },
         {
-          common,
-          units: [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: dto.durationSeconds! }, ...extra.onCallBasis],
+          seconds: dto.processingTimeSeconds,
+          device: dto.device,
+          requestBytes: dto.requestBytes,
+          responseBytes: dto.responseBytes,
+          byteSource: dto.byteSource,
         },
-        tx,
       );
+
+      await this.usageLedgerService!.recordUsage(batch, tx);
 
       // The one sanctioned mixed-basis case: a BYOK job's vendor spend is the
       // tenant's, but the CPU this service burned CALLING the vendor is the
       // platform's. `costBasis` lives on `common`, so the second basis is a
       // second batch — same base key, same transaction, distinct rows because
       // `expandUsageBatch` appends `:<UNIT>`.
-      if (extra.onInternalBasis.length > 0) {
-        await this.usageLedgerService!.recordUsage({ common: { ...common, costBasis: AiCostBasis.INTERNAL }, units: extra.onInternalBasis }, tx);
+      if (platformBatch) {
+        await this.usageLedgerService!.recordUsage(platformBatch, tx);
       }
     } catch (error) {
       this.logger.error({

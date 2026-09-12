@@ -24,6 +24,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import { useDeleteProviderConnection } from '../../api/hooks';
 import { ProviderCredentialsTab } from '../provider-credentials-tab';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
@@ -94,6 +95,13 @@ function stubFetch(
 
       if (slug === 'platform-defaults') return Response.json({ service, tenantId: TENANT, entitled: true, connections: [] });
       if (slug === undefined) return Response.json(Object.values(rows));
+      if (method === 'DELETE') {
+        // The row really leaves the LIST — which is what unmounts a sibling's
+        // card when the mutation invalidates it, and therefore the whole point
+        // of the silent-removal case below.
+        delete rows[slug!];
+        return new Response(null, { status: 204 });
+      }
       if (method === 'PUT') {
         if (fail) return Response.json(fail.putBody, { status: fail.putStatus });
         const created = row({ ...(rows[slug] ?? {}), ...body, id: `conn-${slug}`, slug, version: 1 });
@@ -255,6 +263,169 @@ describe('ProviderCredentialsTab — the add-connection dialog (34)', () => {
     // Guidance, not just the raw refusal: say what to do about it.
     expect(within(dialog).getByRole('alert').textContent).toMatch(/Choose a name/i);
     expect(calls.some((call) => call.method === 'PUT')).toBe(true);
+  });
+});
+
+/**
+ * TASK-958 G4 — the three defects Lane F recorded against the running console,
+ * each pinned here at the level the e2e spec cannot reach cheaply.
+ */
+describe('ProviderCredentialsTab — removing a connection is never silent (D-1)', () => {
+  const SIBLING_TITLE = 'OpenAI · Research account';
+
+  function twoConnections() {
+    return {
+      openai: { id: 'conn-1', provider: 'openai', slug: 'openai', isDefault: true, hasKey: true, enabled: true, version: 3 },
+      'openai-research': {
+        id: 'conn-2',
+        provider: 'openai',
+        slug: 'openai-research',
+        name: 'Research account',
+        isDefault: false,
+        hasKey: true,
+        enabled: true,
+        version: 2,
+      },
+    } as Record<string, Record<string, unknown>>;
+  }
+
+  async function removeCard(heading: string, rows: Record<string, Record<string, unknown>>) {
+    stubFetch(rows);
+    renderWithProviders(<ProviderCredentialsTab service="llm" tenantId={TENANT} tier="tenant" />);
+    const group = await screen.findByRole('group', { name: 'OpenAI connections' });
+    await waitFor(() => expect(within(group).getByRole('heading', { level: 3, name: heading })).toBeDefined());
+    const cardElement = within(group).getByRole('heading', { level: 3, name: heading }).closest('[aria-labelledby]') as HTMLElement;
+
+    fireEvent.click(within(cardElement).getByRole('button', { name: /^Remove the/ }));
+    await act(async () => {
+      fireEvent.click(within(cardElement).getByRole('button', { name: 'Confirm remove' }));
+    });
+    return group;
+  }
+
+  /**
+   * THE defect, at the level that actually reproduces it.
+   *
+   * A sibling's card is unmounted by the refetch its own delete triggers, and a
+   * `mutate(…, { onSuccess })` callback belongs to the OBSERVER — TanStack Query
+   * v5 checks `hasListeners()` before running it, so an unmounted card is told
+   * nothing and tells the user nothing. jsdom does NOT reproduce that race (the
+   * screen case below passes either way: the stubbed fetch resolves in a
+   * microtask, so React has not committed the unmount by the time the mutation
+   * notifies), which is why the contract is pinned here instead: unmount the
+   * caller mid-flight and the success handler must still run.
+   */
+  it('runs its success handler even when the caller unmounted mid-flight — the per-call callback does not', async () => {
+    stubFetch(twoConnections());
+    const onRemoved = vi.fn();
+    const perCallSuccess = vi.fn();
+    let remove: (() => void) | null = null;
+
+    function DeleteProbe() {
+      const mutation = useDeleteProviderConnection({ onRemoved });
+      remove = () => mutation.mutate({ service: 'llm', slug: 'openai-research', tenantId: TENANT }, { onSuccess: perCallSuccess });
+      return null;
+    }
+
+    const { unmount } = renderWithProviders(<DeleteProbe />);
+    await act(async () => {
+      remove!();
+      // Exactly what the group does to a sibling's card when the row leaves the list.
+      unmount();
+    });
+
+    expect(onRemoved).toHaveBeenCalledTimes(1);
+    expect(perCallSuccess).not.toHaveBeenCalled();
+  });
+
+  /** And the screen says it, in the sibling's own words. */
+  it('tells the admin a SIBLING was removed, and withdraws its card', async () => {
+    const group = await removeCard(SIBLING_TITLE, twoConnections());
+
+    await waitFor(() => expect(within(group).getAllByRole('heading', { level: 3 })).toHaveLength(1));
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith(`${SIBLING_TITLE} connection removed`);
+  });
+
+  /** And the card that does NOT unmount still says it once — not twice. */
+  it('reports the DEFAULT connection’s removal exactly once', async () => {
+    await removeCard('OpenAI', { openai: { id: 'conn-1', provider: 'openai', slug: 'openai', isDefault: true, hasKey: true, enabled: true, version: 3 } });
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    expect(toast.success).toHaveBeenCalledWith('OpenAI connection removed — the platform default serves this provider again');
+  });
+});
+
+describe('ProviderCredentialsTab — two editors, two sets of control names (D-2)', () => {
+  /**
+   * The console-side mirror of `expectDistinctControlNames`: with two accounts of
+   * one vendor, every page-level control name in the OpenAI group must be unique,
+   * or a screen-reader user hears "Add model" twice with no way to tell which
+   * account it adds to.
+   */
+  it('gives every control in a two-card group a name of its own', async () => {
+    stubFetch({
+      openai: { id: 'conn-1', provider: 'openai', slug: 'openai', isDefault: true, hasKey: true, enabled: true, version: 3 },
+      'openai-research': {
+        id: 'conn-2',
+        provider: 'openai',
+        slug: 'openai-research',
+        name: 'Research account',
+        isDefault: false,
+        hasKey: true,
+        enabled: true,
+        version: 2,
+      },
+    });
+    renderWithProviders(<ProviderCredentialsTab service="llm" tenantId={TENANT} tier="tenant" />);
+    const group = await screen.findByRole('group', { name: 'OpenAI connections' });
+    await waitFor(() => expect(within(group).getAllByRole('heading', { level: 3 })).toHaveLength(2));
+
+    const counts = new Map<string, number>();
+    for (const button of within(group).getAllByRole('button')) {
+      const name = (button.getAttribute('aria-label') || button.textContent || '').replace(/\s+/g, ' ').trim();
+      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    expect([...counts].filter(([, count]) => count > 1)).toEqual([]);
+    expect([...counts.keys()]).toEqual(expect.arrayContaining(['Add model to OpenAI', `Add model to OpenAI · Research account`]));
+  });
+});
+
+describe('ProviderCredentialsTab — the add dialog gives focus back (D-3)', () => {
+  async function openDialogFrom(): Promise<{ addButton: HTMLElement }> {
+    stubFetch({ openai: { id: 'conn-1', provider: 'openai', slug: 'openai', isDefault: true, hasKey: true, enabled: true, version: 3 } });
+    renderWithProviders(<ProviderCredentialsTab service="llm" tenantId={TENANT} tier="tenant" />);
+    const group = await screen.findByRole('group', { name: 'OpenAI connections' });
+    const addButton = within(group).getByRole('button', { name: 'Add another OpenAI connection' });
+    await act(async () => {
+      fireEvent.click(addButton);
+    });
+    await screen.findByRole('dialog');
+    // Radix moved focus INTO the dialog, so the restore below is a real move.
+    expect(document.activeElement).not.toBe(addButton);
+    return { addButton };
+  }
+
+  it('returns focus to the trigger after Escape', async () => {
+    const { addButton } = await openDialogFrom();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(addButton);
+  });
+
+  it('returns focus to the trigger after Cancel', async () => {
+    const { addButton } = await openDialogFrom();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(addButton);
   });
 });
 

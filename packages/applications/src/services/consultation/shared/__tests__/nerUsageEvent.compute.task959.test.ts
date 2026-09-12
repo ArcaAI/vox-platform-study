@@ -22,7 +22,7 @@ describe('buildNerUsageEvent — compute (TASK-959)', () => {
   it('records GPU seconds for a cuda checkpoint, beside the text units it always recorded', () => {
     const event = buildNerUsageEvent({ ...base, inferenceMs: 420, device: 'cuda' });
 
-    expect(unit(event, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 0.42, attributesJson: { device: 'cuda' } });
+    expect(unit(event, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: '0.420', attributesJson: { device: 'cuda' } });
     expect(unit(event, AiUsageUnit.TEXT_UNIT)).toMatchObject({ quantity: 2.5 });
     expect(unit(event, AiUsageUnit.REQUEST)).toMatchObject({ quantity: 1 });
   });
@@ -30,7 +30,7 @@ describe('buildNerUsageEvent — compute (TASK-959)', () => {
   it('records CPU seconds for a cpu checkpoint — the device decides the unit', () => {
     const event = buildNerUsageEvent({ ...base, inferenceMs: 1500, device: 'cpu' });
 
-    expect(unit(event, AiUsageUnit.CPU_SECOND)).toMatchObject({ quantity: 1.5, attributesJson: { device: 'cpu' } });
+    expect(unit(event, AiUsageUnit.CPU_SECOND)).toMatchObject({ quantity: '1.500', attributesJson: { device: 'cpu' } });
     expect(unit(event, AiUsageUnit.GPU_SECOND)).toBeUndefined();
   });
 

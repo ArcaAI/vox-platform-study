@@ -70,12 +70,31 @@ export function usePutProviderConnection() {
   });
 }
 
-export function useDeleteProviderConnection() {
+/**
+ * TASK-958 — "it worked" is the MUTATION's to say, not the call site's.
+ *
+ * The callbacks passed to `mutate(…, { onSuccess })` belong to the OBSERVER, and
+ * TanStack Query v5 skips them once that observer has no listeners left. The
+ * invalidation below drops the removed row from the list the group renders from,
+ * which unmounts the card that issued the delete — so on a SIBLING the card's
+ * own success toast never fired: the row simply vanished and the admin was told
+ * nothing (rule 11 §5, "never silently succeed"). The DEFAULT card is always
+ * rendered by its group, so it never unmounted and its toast always fired, which
+ * is exactly why only siblings were silent.
+ *
+ * `onRemoved` is invoked from the MUTATION's `onSuccess`, which `Mutation.execute()`
+ * runs (and awaits) before the invalidation that can unmount anything — so it
+ * fires once per successful delete, from whichever card issued it.
+ */
+export function useDeleteProviderConnection(options?: { onRemoved?: () => void }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ service, slug, tenantId }: { service: ProviderService; slug: string; tenantId?: string }) =>
       deleteProviderConnection(service, slug, tenantId),
-    onSuccess: (_data, variables) => queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) }),
+    onSuccess: (_data, variables) => {
+      options?.onRemoved?.();
+      return queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) });
+    },
   });
 }
 
