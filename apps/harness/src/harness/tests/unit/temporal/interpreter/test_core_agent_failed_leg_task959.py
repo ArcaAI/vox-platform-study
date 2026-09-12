@@ -20,6 +20,7 @@ replace a different node's step.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -38,6 +39,7 @@ from harness.temporal.interpreter.nodes import core
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _SYSTEM = "00000000-0000-0000-0000-000000000000"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
+_STARTED = datetime(2026, 9, 12, tzinfo=UTC)
 
 
 def _candidate(provider: str, model: str, funding_tier: str | None) -> dict[str, Any]:
@@ -313,8 +315,10 @@ class TestTheOffsetSchemeCannotCollide:
 
         activities_mod.record_failed_attempts(
             _Batch(),
-            [{"provider": "p", "model": "m"} for _ in range(MAX_FAILED_ATTEMPT_STEPS + 3)],
-            started=None,
+            [
+                activities_mod.FailedAttempt(_STARTED, {"provider": "p", "model": "m"})
+                for _ in range(MAX_FAILED_ATTEMPT_STEPS + 3)
+            ],
         )
 
         assert len(recorded) == MAX_FAILED_ATTEMPT_STEPS
@@ -325,8 +329,8 @@ class TestTheOffsetSchemeCannotCollide:
             def record(self, **_kw: Any) -> None:  # pragma: no cover
                 raise AssertionError("nothing to record")
 
-        activities_mod.record_failed_attempts(_Batch(), None, started=None)
-        activities_mod.record_failed_attempts(_Batch(), [], started=None)
+        activities_mod.record_failed_attempts(_Batch(), None)
+        activities_mod.record_failed_attempts(_Batch(), [])
 
 
 class TestUsageDetailCounters:

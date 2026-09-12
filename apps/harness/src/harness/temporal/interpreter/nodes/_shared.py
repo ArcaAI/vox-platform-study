@@ -21,6 +21,7 @@ from harness.temporal.activities import (
     STATUS_OK,
     STEP_LLM_CALL,
     STEP_NODE,
+    FailedAttempt,
     _now,
     record_failed_attempts,
 )
@@ -32,6 +33,7 @@ from harness.temporal.interpreter.models import NodeActivityInput
 __all__ = [
     "FAILED_ATTEMPT_OFFSET_BASE",
     "MAX_FAILED_ATTEMPT_STEPS",
+    "FailedAttempt",
     "MISSING",
     "STATUS_DEGRADED",
     "STATUS_ERROR",
@@ -56,7 +58,7 @@ async def record_and_flush(
     started: Any,
     error_code: str | None = None,
     stats: dict[str, Any] | None = None,
-    failed_attempts: Sequence[dict[str, Any]] | None = None,
+    failed_attempts: Sequence[FailedAttempt] | None = None,
 ) -> None:
     """One NODE trajectory step per node activity (mirrors `interpreter/activities.py`'s own
     seed-node helper — deliberately not imported from there to keep this package's five node
@@ -77,7 +79,7 @@ async def record_and_flush(
         error_code=error_code,
         stats=stats,
     )
-    record_failed_attempts(batch, failed_attempts, started)
+    record_failed_attempts(batch, failed_attempts)
     await batch.flush()
 
 
@@ -87,7 +89,7 @@ async def record_generation_and_flush(
     started: Any,
     stats: dict[str, Any],
     node_stats: dict[str, Any] | None = None,
-    failed_attempts: Sequence[dict[str, Any]] | None = None,
+    failed_attempts: Sequence[FailedAttempt] | None = None,
 ) -> None:
     """The node step PLUS the LLM_CALL step a generation is BILLED from (F14).
 
@@ -124,7 +126,7 @@ async def record_generation_and_flush(
     )
     # §6.2 Gap A — the candidates that were TRIED and lost, on the same batch as the one that
     # served, so a chain's full cost is one atomic report.
-    record_failed_attempts(batch, failed_attempts, started)
+    record_failed_attempts(batch, failed_attempts)
     await batch.flush()
 
 
