@@ -291,6 +291,17 @@ export class AgentInvocationService {
     // reasoning off still reasoned here — on the very surface a tenant admin uses to check the
     // control they just set.
     await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
+    // TASK-958 D-3/D-4 — the RESOLVED agent's own credential is authoritative for this
+    // call. The agent's primary model may be declared on a NON-default connection, and
+    // `applyTenantProviderOverrides` folds by PROVIDER NAME (the tenant's default row),
+    // so without this an agent bound to the second OpenAI account would be forwarded
+    // on the first one's key and metered against it. The enrichment returns early when
+    // `provider_overrides` is already present, which is exactly the contract it states.
+    const resolvedOverride = resolved.providerOverride;
+    if (resolvedOverride) {
+      const { provider: overrideProvider, ...entry } = resolvedOverride;
+      (body as { provider_overrides?: Record<string, unknown> }).provider_overrides = { [overrideProvider]: entry };
+    }
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     // TASK-890 §3.14 (OD-R) — the guardrail decision for THIS call. A standalone invocation has
     // no workflow and no node, so the AGENT tier is the whole precedence: `ResolvedAgent.guardrail`

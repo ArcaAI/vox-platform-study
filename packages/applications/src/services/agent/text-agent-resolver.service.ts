@@ -277,9 +277,24 @@ export class TextAgentResolverService {
       return kind === 'primary' ? rowFunding : null;
     }
 
+    // TASK-958 D-3 — "the model row names the connection". A row DECLARED on a
+    // connection resolves THAT connection by id; a SYSTEM catalogue row names none
+    // and keeps the provider-name cascade (which B1 narrowed to the tenant's DEFAULT
+    // row), so every pre-958 binding resolves byte-for-byte as before.
+    const connectionId = model.sourceConnectionId ?? null;
     try {
-      const binding = await this.credentials.resolve('llm', provider, tenantId);
+      // Called with THREE arguments when there is nothing to say, so an unbound
+      // resolve stays indistinguishable from the pre-958 one.
+      const binding = connectionId
+        ? await this.credentials.resolve('llm', provider, tenantId, { connectionId })
+        : await this.credentials.resolve('llm', provider, tenantId);
       if (binding) return { fundingTier: binding.fundingTier, providerOverride: { provider, ...binding.override } };
+      // A NAMED connection that answered `null` is disabled or keyless: that
+      // candidate is unusable, and it must never widen to the tenant's default —
+      // "fall back to a different vendor account" is not what a binding means. A
+      // PRIMARY therefore fails closed here (409 `TEXT_AGENT_UNRUNNABLE`) instead of
+      // being forwarded on somebody else's key.
+      if (connectionId) return null;
       return kind === 'primary' ? rowFunding : null;
     } catch (error) {
       if (kind === 'primary' || !(error instanceof ProviderVetoedException || error instanceof QuotaExceededException)) throw error;

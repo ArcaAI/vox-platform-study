@@ -100,6 +100,10 @@ const mockModelRepository = { findAll: vi.fn(), findById: vi.fn(), findBySlug: v
 const mockConnections = {
   list: vi.fn(),
   findRow: vi.fn(),
+  // TASK-958 — a provider now names a GROUP of connections, so the catalogue's
+  // "the tier's row for this provider" read is `findDefaultRow`; `findRow` became
+  // by-SLUG. Both are stubbed so a regression in either direction is visible.
+  findDefaultRow: vi.fn(),
   resolveConnection: vi.fn(),
 };
 
@@ -140,11 +144,14 @@ describe('TASK-890 AiModelService.getCatalogue', () => {
       [ENGINE_ROW, CLOUD_ROW, SELF_HOST_ROW, TIER_ROW, UNASSIGNED_ROW, BYO_ROW].filter((r) => !filters.taskType || r.taskType === filters.taskType),
     );
     mockTenantRepository.findById.mockResolvedValue({ id: TENANT_ID, plan: TenantPlan.ENTERPRISE });
-    // One ENABLED, keyed tenant `llm:azure` connection.
+    // One ENABLED, keyed tenant `llm:azure` connection — the tenant's DEFAULT, whose
+    // `slug === provider`, which is why its picker id stays `byo:llm:azure`.
     mockConnections.list.mockImplementation(async (service: string) =>
-      service === 'llm' ? [{ tenantId: TENANT_ID, service: 'llm', provider: 'azure', enabled: true, hasKey: true }] : [],
+      service === 'llm'
+        ? [{ id: 'conn-1', tenantId: TENANT_ID, service: 'llm', provider: 'azure', slug: 'azure', name: null, isDefault: true, enabled: true, hasKey: true }]
+        : [],
     );
-    mockConnections.findRow.mockImplementation(async (service: string, provider: string, tenantId: string) => {
+    mockConnections.findDefaultRow.mockImplementation(async (service: string, provider: string, tenantId: string) => {
       if (tenantId === TENANT_ID && service === 'llm' && provider === 'azure') {
         return { id: 'conn-1', tenantId: TENANT_ID, service, provider, enabled: true, encryptedApiKey: new Uint8Array([1]) };
       }

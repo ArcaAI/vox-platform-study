@@ -22,7 +22,11 @@ export type { ModelReadiness } from '../../ai-readiness/inference-readiness.type
  * "Hope provider" that stands for everything the platform serves (OD-A, OD-L).
  */
 export class CatalogueProviderResponse {
-  @ApiProperty({ description: '`byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry).' })
+  @ApiProperty({
+    description:
+      '`byo:<service>:<connectionSlug>` for ONE tenant connection (TASK-958 D-5 — a tenant may hold several per vendor), or the literal `hope` ' +
+      '(exactly one entry). A DEFAULT connection carries `slug === provider`, so every id that existed before that ticket is unchanged.',
+  })
   id: string;
 
   @ApiProperty({ description: 'Which half of the picker this entry belongs to.', enum: ['byo', 'hope'] })
@@ -40,6 +44,28 @@ export class CatalogueProviderResponse {
 
   @ApiProperty({ description: 'The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`.', nullable: true })
   connectionId: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "The connection's tenant-chosen slug (TASK-958 D-5) — `=== provider` on the DEFAULT row, which is why every pre-958 entry keeps its id. " +
+      'NULL for the `hope` group and for a model whose connection is gone.',
+    nullable: true,
+    example: 'openai-research',
+  })
+  connectionSlug?: string | null;
+
+  @ApiPropertyOptional({
+    description: "The tenant's display label for the connection, when it set one. NULL otherwise — the slug stands in.",
+    nullable: true,
+    example: 'Research account',
+  })
+  connectionName?: string | null;
+
+  @ApiPropertyOptional({
+    description: "Whether this is the provider's DEFAULT connection — the one a SYSTEM catalogue model spends. NULL for the `hope` group.",
+    nullable: true,
+  })
+  isDefault?: boolean | null;
 
   @ApiProperty({ description: 'Whether ANY model under this entry can serve the caller today.' })
   usable: boolean;

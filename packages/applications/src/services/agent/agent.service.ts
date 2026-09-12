@@ -2064,6 +2064,35 @@ export class AgentService extends BaseService implements IAgentService {
    * the AGENT's task: a fallback chain may legitimately hold a row whose task type maps to no
    * connection plane, and the agent's own service is the honest answer there.
    */
+  /**
+   * The `AiProviderConnection` a BYO model row would actually spend (TASK-958 D-3).
+   *
+   * The row it was DECLARED on when it names one, read through the port's by-id
+   * cascade (`resolveConnection` with `options.connectionId`), which is the one place
+   * that boundary is enforced: an id outside the two tiers this tenant may read is a
+   * 404, and a disabled row answers `null`. Failing THAT is a real refusal, so it is
+   * not swallowed into "the default will do".
+   *
+   * A row that names none (a pre-declaration BYO row) falls back to the tenant's
+   * DEFAULT connection for the provider — what this check read before a provider named
+   * a GROUP of connections.
+   */
+  private async connectionBehind(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+    model: AiModelEntity,
+  ): Promise<{ enabled: boolean; encryptedApiKey: Uint8Array | null } | null> {
+    const port = this.providerConnections;
+    if (!port) return null;
+    if (model.sourceConnectionId) {
+      const resolved = await port.resolveConnection(service, provider, tenantId, { connectionId: model.sourceConnectionId }).catch(() => null);
+      return resolved ? { enabled: true, encryptedApiKey: resolved.encryptedApiKey } : null;
+    }
+    const row = port.findDefaultRow ? await port.findDefaultRow(service, provider, tenantId).catch(() => null) : null;
+    return row ? { enabled: row.enabled, encryptedApiKey: row.encryptedApiKey } : null;
+  }
+
   private async availabilityFindings(
     model: AiModelEntity,
     task: AgentTask,
@@ -2146,7 +2175,11 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     if (providerClass === 'cloud-byo') {
-      const row = this.providerConnections.findRow ? await this.providerConnections.findRow(service, provider, tenantId).catch(() => null) : null;
+      // TASK-958 D-3 — a BYO row was DECLARED on a connection, and that connection is
+      // the one this publish would spend. Checking the provider's DEFAULT row instead
+      // would pass a model whose own (disabled) connection can never serve it, and
+      // refuse one declared on a sibling while the default is merely absent.
+      const row = await this.connectionBehind(service, provider, tenantId, model);
       if (!row || !row.enabled) {
         return `it is a bring-your-own \`${provider}\` model and this tenant has no ENABLED ${service}/${provider} connection.`;
       }

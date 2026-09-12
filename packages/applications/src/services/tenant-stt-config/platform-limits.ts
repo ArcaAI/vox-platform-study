@@ -27,7 +27,27 @@ export const BYO_STT_PROVIDERS = ['azure-speech', 'sarvam', 'openai'] as const;
  */
 export type SttProviderOverrides = Record<
   string,
-  { api_key: string; funding: 'tenant' | 'platform'; region?: string; base_url?: string; endpoint?: string; model?: string }
+  {
+    api_key: string;
+    funding: 'tenant' | 'platform';
+    region?: string;
+    base_url?: string;
+    endpoint?: string;
+    model?: string;
+    /**
+     * TASK-958 — WHICH `AiProviderConnection` supplied this credential, and the
+     * tenant's own name for it.
+     *
+     * The map is no longer keyed by provider: a tenant may hold several accounts of
+     * one vendor, so its KEY is the connection slug (the provider id for a default or
+     * platform row, which is what leaves every pre-958 payload unchanged) and
+     * `connection_id` is what `apps/stt` returns on `resolve_usage_attribution` so
+     * `AiUsageEvent.connectionId` can tell two accounts apart. Optional for the same
+     * reason every field above it is: a sender that predates them omits both.
+     */
+    connection_id?: string;
+    connection_slug?: string;
+  }
 >;
 
 /** Code defaults for the fallback spec (last fallback in the cascade). */

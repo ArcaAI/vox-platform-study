@@ -490,6 +490,9 @@ export class AgentController {
     res.flushHeaders();
 
     const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
+    // TASK-958 D-7 — which of the tenant's accounts of that vendor was spent. An
+    // agent may bind a NON-default connection, so the provider name no longer says it.
+    const connectionId = (upstream.headers['x-tts-connection-id'] as string | undefined) || null;
     const overridesForClassification = forwardBody.provider_overrides as Parameters<typeof classifyTtsProvider>[1] | undefined;
     const { deployment, costBasis } = provider
       ? classifyTtsProvider(provider, overridesForClassification)
@@ -512,6 +515,7 @@ export class AgentController {
             model: resolved.compiledConfig.model.slug,
             deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
             ...(costBasis ? { costBasis } : {}),
+            connectionId,
             requestId,
             // Allow-listed dimensions only (usage-attributes.ts); the agent identity is
             // on the response headers. `trigger` names the ACTIVITY (TASK-890 OD-E).
