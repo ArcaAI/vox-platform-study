@@ -117,6 +117,13 @@ interface Bridge {
    * an APPLICATION-level proxy for what the client received, never the wire.
    */
   relayedBytes: number;
+  /**
+   * TASK-959 §3.2 — wall-clock start, set at the FIRST relayed binary frame. `stream_ws.py`
+   * reports no device/timing of its own, but the compute RULE lives in `appendComputeAndByteUnits`
+   * — this gateway still owes it a `totalMs` so a non-SELF_HOSTED (cloud/BYOK) session bills the
+   * platform's own calling CPU exactly like the REST readers do.
+   */
+  firstAudioAtMs: number | null;
 }
 
 /** Byte length of a relayed WS frame, across every shape `ws` may hand back a binary message in. */
@@ -384,6 +391,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sessionId,
       tenantId,
       relayedBytes: 0,
+      firstAudioAtMs: null,
     };
     this.bridges.set(client, bridge);
 
@@ -405,9 +413,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (!isBinary && this.maybeConsumeUsageFrame(bridge, data)) {
         return;
       }
-      // TASK-959 §4.2 — every binary frame relayed IS the audio the client receives; accumulate
-      // it here since `stream_ws.py`'s usage frame reports no byte count of its own.
+      // TASK-959 §3.2/§4.2 — every binary frame relayed IS the audio the client receives;
+      // accumulate bytes and set the wall-clock start here, since `stream_ws.py`'s usage frame
+      // reports neither a byte count nor a timing of its own.
       if (isBinary) {
+        if (bridge.firstAudioAtMs === null) bridge.firstAudioAtMs = Date.now();
         bridge.relayedBytes += relayedByteLength(data);
       }
       this.safeSend(client, data, isBinary);
@@ -550,19 +560,25 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       };
 
       // TASK-959 §3.2/§4.2 — `stream_ws.py`'s `"usage"` frame carries no device, synthesis
-      // timing, or byte count (confirmed against the Python source: `_SessionUsage` tracks only
-      // characters/audio_bytes/provider/connection_id). This bridge therefore never has a device
-      // to report, so — the "never guess" rule — `totalMs: null` means it never emits a compute
-      // row (and so never splits a platform-CPU batch off a BYOK call either — there is no
-      // compute row to split). The relayed byte count it DID observe still stands in as an
-      // application-level proxy for what the client received.
-      const { batch: augmented } = appendComputeAndByteUnits(batch, {
+      // timing, or byte count of its own (confirmed against the Python source: `_SessionUsage`
+      // tracks only characters/audio_bytes/provider/connection_id), so this bridge never has a
+      // device to report and `device: null` always. `totalMs` (this bridge's own wall-clock,
+      // first relayed audio frame → teardown) is still passed ALWAYS — the compute RULE is
+      // `appendComputeAndByteUnits`'s: a non-SELF_HOSTED (cloud/BYOK) session still bills the
+      // platform's calling CPU on that wall-clock; only a SELF_HOSTED session (no device
+      // resolved) gets no compute row. The relayed byte count stands in as an application-level
+      // proxy for what the client received.
+      const wallClockMs = bridge.firstAudioAtMs !== null ? Date.now() - bridge.firstAudioAtMs : null;
+      const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
         device: null,
-        totalMs: null,
+        totalMs: wallClockMs,
         responseBytes: bridge.relayedBytes > 0 ? bridge.relayedBytes : null,
         byteSource: bridge.relayedBytes > 0 ? 'app' : null,
       });
       this.usageLedger.recordUsage(augmented).catch(onUsageError);
+      if (platformBatch) {
+        this.usageLedger.recordUsage(platformBatch).catch(onUsageError);
+      }
     }
     return true;
   }

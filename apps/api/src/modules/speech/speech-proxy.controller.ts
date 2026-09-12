@@ -1,6 +1,5 @@
 import {
   Authorize,
-  COMPUTE_DEVICES,
   IActiveUserContext,
   IConfigService,
   IEntitlementsService,
@@ -10,7 +9,7 @@ import {
   UsageIdempotencyKey,
   appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ByteSource, ComputeDevice, ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
+import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -77,29 +76,6 @@ const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENO
 // is compute-costly (and streams), so the non-idempotent POST retries ONLY on
 // these — anything else may mean synthesis already started.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
-
-/**
- * TASK-959 §3.2 — `X-Tts-Synthesis-Ms` (batch), or the gateway's own wall-clock fallback on a
- * stream (no header ⇒ NaN ⇒ null, never zero). A non-positive/non-finite reading is
- * "not measured", not "zero seconds".
- */
-function positiveNumber(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-/**
- * TASK-959 §3.1 — `X-Tts-Device`, from the CLOSED vocabulary only. Absent is the real, common
- * answer for a cloud engine that names no device of ours (Azure, Sarvam) — never guessed.
- */
-function computeDeviceHeader(value: unknown): ComputeDevice | null {
-  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
-}
-
-/** TASK-959 §4.2 — `X-Tts-Byte-Source`, from the closed vocabulary only. */
-function byteSourceHeader(value: unknown): ByteSource | null {
-  return value === 'wire' || value === 'app' ? value : null;
-}
 
 @ApiTags('speech')
 @ApiBearerAuth()
@@ -387,24 +363,27 @@ export class SpeechProxyController {
           ],
         };
 
-        // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis. Absent
-        // `X-Tts-Device` (a cloud engine that names no device of ours) means no compute row at
-        // all — device gates `totalMs` here rather than being left to the shared helper's own
-        // default, which would otherwise still bill an unresolved device as CPU_SECOND.
-        const device = computeDeviceHeader(upstream.headers['x-tts-device']);
-        const synthesisMs = positiveNumber(upstream.headers['x-tts-synthesis-ms']);
+        // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis, plus the gateway's
+        // own fallbacks. The compute RULE belongs to `appendComputeAndByteUnits`, not this call
+        // site: `engineMs` (the service's own `X-Tts-Synthesis-Ms`) and `totalMs` (this gateway's
+        // wall-clock, ALWAYS computed) are both passed, and the helper picks — preferring the
+        // engine's own reading, and, for anything other than a SELF_HOSTED call, billing the
+        // platform's calling CPU regardless of `device`. Only a SELF_HOSTED call with no
+        // resolved device gets no compute row.
+        const device = upstream.headers['x-tts-device'] as string | undefined;
+        const synthesisMs = Number(upstream.headers['x-tts-synthesis-ms']);
         const wallClockMs = firstByteAtMs !== null ? Date.now() - firstByteAtMs : null;
-        const totalMs = device !== null ? (synthesisMs ?? wallClockMs) : null;
-        const reportedBytes = positiveNumber(upstream.headers['x-tts-response-bytes']);
-        const reportedByteSource = byteSourceHeader(upstream.headers['x-tts-byte-source']);
+        const reportedBytes = Number(upstream.headers['x-tts-response-bytes']);
+        const hasReportedBytes = Number.isFinite(reportedBytes) && reportedBytes > 0;
         // The service's own count first; the gateway's own relay count — an application-level
         // proxy for what was actually sent, not the wire — only when it reported none.
-        const responseBytes = reportedBytes ?? (proxiedBytes > 0 ? proxiedBytes : null);
-        const byteSource = responseBytes === null ? null : (reportedByteSource ?? (reportedBytes === null ? 'app' : null));
+        const responseBytes = hasReportedBytes ? reportedBytes : proxiedBytes;
+        const byteSource = hasReportedBytes ? (upstream.headers['x-tts-byte-source'] as string | undefined) : proxiedBytes > 0 ? 'app' : undefined;
 
         const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
           device,
-          totalMs,
+          engineMs: synthesisMs,
+          totalMs: wallClockMs,
           // No vendor "request" bytes concept here: the input is JSON text the gateway sent,
           // never counted as bytes spent AT a vendor the way an outbound STT/TEXT call is.
           requestBytes: undefined,
