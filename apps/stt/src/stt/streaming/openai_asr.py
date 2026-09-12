@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 import numpy as np
 
+from stt.core.metering import BYTE_SOURCE_WIRE
 from stt.models.cloud_asr import (
     CloudRestConfig,
     raise_for_cloud_status,
@@ -33,7 +34,9 @@ async def openai_recognize_utterance(
 ) -> dict[str, Any]:
     """Transcribe ``samples`` via OpenAI speech-to-text REST.
 
-    Returns ``{"text": str, "word_timestamps": list[dict]}``.
+    Returns ``{"text": str, "word_timestamps": list[dict]}`` plus the TASK-959
+    network counters (``request_bytes`` / ``response_bytes`` / ``byte_source``)
+    — see :func:`stt.streaming.sarvam_asr.sarvam_recognize_utterance`.
 
     Raises:
         CloudASRAuthError: 401/403.
@@ -68,4 +71,11 @@ async def openai_recognize_utterance(
     # when present (``None`` for the default json format) so a detected language
     # reaches the transcript metadata rather than an echo of the requested mode.
     detected_language = payload.get("language") or None
-    return {"text": text, "word_timestamps": [], "language": detected_language}
+    return {
+        "text": text,
+        "word_timestamps": [],
+        "language": detected_language,
+        "request_bytes": len(wav),
+        "response_bytes": len(response.content),
+        "byte_source": BYTE_SOURCE_WIRE,
+    }

@@ -444,6 +444,13 @@ async def _transcribe_file_async(
             engine=result.engine,
             deployment=result.deployment,
             connection_id=result.connection_id,
+            # TASK-959 — the device turns processing_time_seconds into a
+            # GPU_SECOND or CPU_SECOND row; the byte counters are the only
+            # per-tenant network figures that can exist (§3.2, §4.2).
+            device=result.device,
+            request_bytes=result.request_bytes,
+            response_bytes=result.response_bytes,
+            byte_source=result.byte_source,
         )
 
         # Publish status: COMPLETED
