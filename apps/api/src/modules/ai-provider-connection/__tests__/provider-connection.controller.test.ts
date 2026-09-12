@@ -15,7 +15,15 @@ const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {
-  const service = { list: vi.fn(), getRow: vi.fn(), upsertRow: vi.fn(), deleteRow: vi.fn(), declareModels: vi.fn(), resetRow: vi.fn() };
+  const service = {
+    list: vi.fn(),
+    getRow: vi.fn(),
+    upsertRow: vi.fn(),
+    deleteRow: vi.fn(),
+    declareModels: vi.fn(),
+    resetRow: vi.fn(),
+    listPlatformDefaults: vi.fn(),
+  };
   const probe = { test: vi.fn() };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
   const controller = new ProviderConnectionController(service as never, probe as never, cls as never);
@@ -141,5 +149,47 @@ describe('ProviderConnectionController — reset to the built-in default', () =>
     const { controller, service } = makeController({ user: SUPER });
     await expect(controller.reset('not-a-service', 'lm-studio', undefined)).rejects.toBeInstanceOf(BadRequestException);
     expect(service.resetRow).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-954 — `GET :service/platform-defaults`.
+ *
+ * The verdicts live in the service (on the one cascade); what the CONTROLLER
+ * owns is the `:service` guard and the tenant scoping — which is the one way a
+ * tenant admin could read what ANOTHER tenant inherits.
+ */
+describe('ProviderConnectionController — the platform defaults a tenant inherits', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('pins a tenant admin to their CLS tenant', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.listPlatformDefaults.mockResolvedValue({ service: 'llm', tenantId: 't1', entitled: true, connections: [] });
+
+    const res = await controller.listPlatformDefaults('llm', undefined);
+
+    expect(res.tenantId).toBe('t1');
+    expect(service.listPlatformDefaults).toHaveBeenCalledWith('llm', 't1');
+  });
+
+  it('rejects a tenant admin asking what another tenant inherits', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.listPlatformDefaults('llm', 't2')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.listPlatformDefaults).not.toHaveBeenCalled();
+  });
+
+  it('lets a super admin read what a working tenant inherits via ?tenantId=', async () => {
+    const { controller, service } = makeController({ user: SUPER });
+    service.listPlatformDefaults.mockResolvedValue({ service: 'stt', tenantId: 't2', entitled: false, connections: [] });
+
+    await controller.listPlatformDefaults('stt', 't2');
+
+    expect(service.listPlatformDefaults).toHaveBeenCalledWith('stt', 't2');
+  });
+
+  it('400s an unknown service segment before reaching the service', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.listPlatformDefaults('not-a-service', undefined)).rejects.toBeInstanceOf(BadRequestException);
+    expect(service.listPlatformDefaults).not.toHaveBeenCalled();
   });
 });

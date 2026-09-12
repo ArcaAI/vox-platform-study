@@ -28,10 +28,12 @@ import {
   type ConnectionCeiling,
   type ConnectionState,
   type PlatformConnectionState,
+  type PlatformDefaultConnection,
   type ProviderService,
   type ReadinessEngine,
 } from '../api/types';
 import { ConnectionModelsEditor } from './connection-models-editor';
+import { platformDefaultHint } from './platform-defaults-panel';
 import { classOf, type ProviderField, type ProviderMeta } from './provider-meta';
 import type { ProviderTier } from './use-provider-scope';
 
@@ -118,6 +120,7 @@ export function ProviderCredentialCard({
   readiness,
   resettable = false,
   enabled: queriesEnabled = true,
+  platformDefault,
 }: {
   service: ProviderService;
   meta: ProviderMeta;
@@ -129,6 +132,12 @@ export function ProviderCredentialCard({
   /** Whether this `(service, provider)` ships a built-in default to reset to. */
   resettable?: boolean;
   enabled?: boolean;
+  /**
+   * TASK-954 — the platform row this tenant would inherit, with the cascade's
+   * verdict, so a card that says "Use platform default" can also say whether
+   * that default exists. Tenant tier only; undefined until the tab has read it.
+   */
+  platformDefault?: PlatformDefaultConnection | undefined;
 }) {
   const uid = useId();
   const query = useProviderConnection(service, meta.id, tenantId, queriesEnabled);
@@ -162,6 +171,8 @@ export function ProviderCredentialCard({
   // platform's own default serving it (TASK-932 D-7). Said in words, because
   // "no key" on this card previously read as a fault.
   const runningOnPlatformDefaults = platformTier && providerClass !== 'cloud-byo' && current.version > 0 && current.enabled && !hasKey;
+  // What "Use platform default" actually means for THIS tenant today (TASK-954).
+  const inheritedHint = !platformTier && state === 'platform-default' ? platformDefaultHint(platformDefault) : null;
   const currentColumns = current as unknown as Record<string, unknown>;
 
   /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
@@ -332,6 +343,7 @@ export function ProviderCredentialCard({
         ) : null}
       </div>
       {meta.hint ? <p className="text-muted-foreground text-xs">{meta.hint}</p> : null}
+      {inheritedHint ? <p className="text-muted-foreground text-xs">{inheritedHint}</p> : null}
       {runningOnPlatformDefaults ? (
         <p className="text-muted-foreground text-xs">
           {meta.id === 's3'

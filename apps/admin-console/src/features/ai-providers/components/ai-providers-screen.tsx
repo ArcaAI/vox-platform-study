@@ -36,7 +36,9 @@ function ScopeSummary({ scope }: { scope: ResolvedProviderScope }) {
       <span className="text-muted-foreground text-xs">
         {scope.tier === 'platform'
           ? 'Select a working tenant in the top bar to configure that tenant’s own connections instead.'
-          : 'Clear the working tenant in the top bar to configure the platform defaults instead.'}
+          : scope.elevated
+            ? 'Clear the working tenant in the top bar to configure the platform defaults instead.'
+            : 'Your own vendor connections. The platform defaults you inherit are shown read-only under each capability.'}
       </span>
     </div>
   );
@@ -51,7 +53,10 @@ function ScopeSummary({ scope }: { scope: ResolvedProviderScope }) {
  * the platform's own vendor accounts, and the weight store. Select a tenant in
  * the top bar and the same screen becomes that tenant's own bring-your-own
  * surface, with the "Acting on ‹Tenant›" banner on every mutation. A tenant
- * admin only ever sees the second form.
+ * admin only ever sees the second form — scoped to its OWN tenant, with the
+ * platform fallback it inherits shown READ-ONLY under every capability
+ * (TASK-954; owner rule: a tenant admin sees and configures its own providers
+ * and sees the platform default, read-only).
  *
  * The two views are deliberately NOT the same list. Built-in engines and the
  * model-registry plane are platform infrastructure: the gateway 403s a tenant
@@ -69,7 +74,13 @@ export function AiProvidersScreen() {
       header={
         <PageHeader
           title="AI providers"
-          meta={<span>endpoints, vendor keys and ceilings — built-in services, platform defaults, and each tenant’s own</span>}
+          meta={
+            <span>
+              {scope.isLoading || scope.tier === 'platform'
+                ? 'endpoints, vendor keys and ceilings — built-in services, platform defaults, and each tenant’s own'
+                : 'your tenant’s own vendor connections, and the platform defaults you inherit (read-only)'}
+            </span>
+          }
           actions={
             <Button asChild variant="outline" size="sm">
               <Link href="/ai-models">
@@ -121,8 +132,8 @@ export function AiProvidersScreen() {
                 Connections &amp; credentials
               </h2>
               <p className="text-muted-foreground text-xs">
-                Where each vendor lives and how we authenticate to it. A tenant with no connection inherits the platform default; a tenant with its
-                own key wins outright; a disabled connection is a veto in both tiers.
+                Where each vendor lives and how we authenticate to it. A tenant with no connection inherits the platform default (shown read-only
+                under each capability); a tenant with its own key wins outright; a disabled connection is a veto in both tiers.
               </p>
             </div>
             <ProviderCredentialsTabs tenantId={tenantId} tier="tenant" enabled={!scope.isLoading} />

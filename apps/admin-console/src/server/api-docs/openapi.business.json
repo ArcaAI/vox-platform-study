@@ -14252,6 +14252,177 @@
         ],
         "type": "object"
       },
+      "PlatformDefaultConnectionResponse": {
+        "properties": {
+          "apiVersion": {
+            "description": "API version (azure).",
+            "nullable": true,
+            "type": "string"
+          },
+          "baseUrl": {
+            "description": "Base URL of the serving endpoint.",
+            "nullable": true,
+            "type": "string"
+          },
+          "deploymentName": {
+            "description": "Deployment name (azure).",
+            "nullable": true,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to \"no opinion\".",
+            "type": "boolean"
+          },
+          "extraJson": {
+            "description": "Provider-specific extras.",
+            "nullable": true,
+            "type": "object"
+          },
+          "hasKey": {
+            "description": "Whether key material is stored. The key itself is never returned by any endpoint.",
+            "type": "boolean"
+          },
+          "keyVersion": {
+            "description": "Vault-Transit key version backing the stored ciphertext.",
+            "nullable": true,
+            "type": "number"
+          },
+          "maxConcurrent": {
+            "description": "Ceiling — simultaneous in-flight requests. Null = no opinion.",
+            "nullable": true,
+            "type": "number"
+          },
+          "models": {
+            "description": "Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`.",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionModelResponse"
+            },
+            "type": "array"
+          },
+          "provider": {
+            "description": "Capability-scoped serving provider identifier.",
+            "example": "azure",
+            "type": "string"
+          },
+          "region": {
+            "description": "Region identifier (bedrock).",
+            "nullable": true,
+            "type": "string"
+          },
+          "resolution": {
+            "description": "What the cascade does with this platform row for the scoped tenant: overridden (tenant key wins) · vetoed (tenant row disabled) · not-entitled (no platform-default grant) · not-configured (absent or keyless) · off (platform row disabled) · inherited (this row serves the tenant).",
+            "enum": [
+              "inherited",
+              "overridden",
+              "vetoed",
+              "not-entitled",
+              "not-configured",
+              "off"
+            ],
+            "type": "string"
+          },
+          "rpmLimit": {
+            "description": "Ceiling — requests per minute. Null = no opinion.",
+            "nullable": true,
+            "type": "number"
+          },
+          "service": {
+            "description": "Capability the connection serves.",
+            "enum": [
+              "llm",
+              "stt",
+              "tts",
+              "embeddings",
+              "rerank",
+              "vector",
+              "model-registry"
+            ],
+            "example": "llm",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Owning tenant. The reserved SYSTEM tenant row is the platform default.",
+            "type": "string"
+          },
+          "timeoutS": {
+            "description": "Ceiling — per-request timeout in seconds. Null = no opinion.",
+            "nullable": true,
+            "type": "number"
+          },
+          "tpmLimit": {
+            "description": "Ceiling — tokens (LLM) / characters (TTS) per minute. Null = no opinion.",
+            "nullable": true,
+            "type": "number"
+          },
+          "updatedAt": {
+            "description": "Last update timestamp (ISO 8601).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Row version for optimistic concurrency. 0 when no row exists yet.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "service",
+          "provider",
+          "baseUrl",
+          "region",
+          "apiVersion",
+          "deploymentName",
+          "hasKey",
+          "keyVersion",
+          "enabled",
+          "extraJson",
+          "maxConcurrent",
+          "rpmLimit",
+          "tpmLimit",
+          "timeoutS",
+          "version",
+          "resolution"
+        ],
+        "type": "object"
+      },
+      "PlatformDefaultConnectionsResponse": {
+        "properties": {
+          "connections": {
+            "description": "One entry per CLOUD BYO provider of the service, in the platform’s declared order — a provider the platform never configured is a `version: 0` placeholder, never an omission. Platform-managed engines and the model registry are platform infrastructure and never listed here.",
+            "items": {
+              "$ref": "#/components/schemas/PlatformDefaultConnectionResponse"
+            },
+            "type": "array"
+          },
+          "entitled": {
+            "description": "Whether this tenant may draw on the platform’s VENDOR accounts at all (the `platformDefaultCredential` entitlement). When false every non-overridden, non-vetoed provider resolves `not-entitled`.",
+            "type": "boolean"
+          },
+          "service": {
+            "description": "Capability the connections serve.",
+            "enum": [
+              "llm",
+              "stt",
+              "tts",
+              "embeddings",
+              "rerank",
+              "vector",
+              "model-registry"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The tenant the verdicts are computed for (the caller’s own tenant unless a platform admin scoped another).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "tenantId",
+          "entitled",
+          "connections"
+        ],
+        "type": "object"
+      },
       "PlatformMetricsResponse": {
         "properties": {
           "errorRatePct": {

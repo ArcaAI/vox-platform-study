@@ -16,6 +16,7 @@ import type { WithEtag } from '@/shared/api';
 import type {
   DeclareConnectionModelsRequest,
   InferenceReadinessSnapshot,
+  PlatformDefaults,
   ProviderConnection,
   ProviderService,
   RoutingBinding,
@@ -38,6 +39,16 @@ const tenantParams = (tenantId?: string) => (tenantId ? { tenantId } : undefined
 /** Masked row + its ETag (a `version: 0` placeholder when none exists yet). */
 export function getProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<WithEtag<ProviderConnection>> {
   return getWithEtag(`${BASE}/${service}/${provider}`, tenantParams(tenantId));
+}
+
+/**
+ * TASK-954 — the platform defaults the scoped TENANT inherits for one service,
+ * read-only and masked. A tenant admin is pinned to its own tenant (a foreign
+ * `tenantId` is 403); the platform tier itself is refused (400), so the
+ * platform view never calls this.
+ */
+export function getPlatformDefaults(service: ProviderService, tenantId?: string): Promise<PlatformDefaults> {
+  return getJson(`${BASE}/${service}/platform-defaults`, tenantParams(tenantId));
 }
 
 /** OCC PUT: If-Match + body expectedVersion from the read ETag (0 on create). */

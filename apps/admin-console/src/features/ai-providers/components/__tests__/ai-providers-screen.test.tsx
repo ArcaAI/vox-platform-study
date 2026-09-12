@@ -20,7 +20,7 @@
  *   * 0 axe violations in both themes.
  */
 
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
@@ -58,13 +58,40 @@ const PLATFORM_SESSION = {
   effectiveTenantId: null,
 };
 
+/**
+ * A tenant admin, as `toSafeSession` actually projects one (TASK-954): NO
+ * working tenant and no working-tenant NAME — the effective scope is its own
+ * tenant. The earlier fixture inherited `workingTenantId: 'tnt-1'` from the
+ * elevated session above, a shape a tenant-bound session never has, which is
+ * how the screen's fall-through to SYSTEM (and the 403 on every card) went
+ * unnoticed.
+ */
 const TENANT_SESSION = {
   ...WORKING_TENANT_SESSION,
-  user: { id: 'u-1', username: 'tenant_admin', email: 'admin@arca.ai', roles: ['TENANT_ADMIN'] },
+  user: { id: 'u-1', username: 'tenant_admin', email: 'admin@arca.ai', roles: ['TENANT_ADMIN'], tenantId: 'tnt-1' },
   isElevated: false,
+  workingTenantId: null,
+  workingTenantName: null,
   effectiveIsElevated: false,
   effectiveUser: { id: 'u-1', username: 'tenant_admin', email: 'admin@arca.ai', roles: ['TENANT_ADMIN'], tenantId: 'tnt-1', departmentId: null },
+  effectiveTenantId: 'tnt-1' as string | null,
 };
+
+/** The platform fallback for `llm` as the gateway projects it for tenant `tnt-1`. */
+function platformDefaults(service: string, tenantId: string, over: Partial<{ entitled: boolean }> = {}) {
+  return {
+    service,
+    tenantId,
+    entitled: over.entitled ?? true,
+    connections: [
+      { ...row(service, 'azure', SYSTEM_TENANT, { hasKey: true, enabled: true, baseUrl: 'https://platform.openai.azure.com', version: 3 }), resolution: 'inherited' },
+      { ...row(service, 'bedrock', SYSTEM_TENANT), resolution: 'not-configured' },
+      { ...row(service, 'openai', SYSTEM_TENANT, { hasKey: true, enabled: false, version: 2 }), resolution: 'off' },
+      { ...row(service, 'anthropic', SYSTEM_TENANT), resolution: 'not-configured' },
+      { ...row(service, 'vertex', SYSTEM_TENANT), resolution: 'not-configured' },
+    ],
+  };
+}
 
 function row(service: string, provider: string, tenantId: string, over: Record<string, unknown> = {}) {
   return {
@@ -139,6 +166,11 @@ function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbi
       const path = url.pathname;
       const tenantId = url.searchParams.get('tenantId') ?? 'cls';
 
+      // The tenant catalog names the scope for a tenant admin (own row only).
+      if (path === '/api/hope/admin/tenants') {
+        return Response.json({ data: [{ id: 'tnt-1', name: 'Sunrise Medical Group', key: 'sunrise' }], count: 1, limit: 500, page: 0 });
+      }
+
       if (path === '/api/hope/admin/ai-services/readiness') {
         return Response.json(readiness ?? { checkedAt: '2026-09-09T00:00:00.000Z', engines: [] });
       }
@@ -150,6 +182,11 @@ function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbi
 
       if (path.startsWith('/api/hope/admin/providers/')) {
         const [service, provider, action] = path.replace('/api/hope/admin/providers/', '').split('/');
+        // TASK-954 — the read-only platform fallback (tenant tier only; 400 on SYSTEM).
+        if (provider === 'platform-defaults') {
+          if (tenantId === SYSTEM_TENANT) return Response.json({ statusCode: 400, message: 'top of the cascade' }, { status: 400 });
+          return Response.json(platformDefaults(service!, tenantId));
+        }
         if (action === 'test' && method === 'POST') {
           return Response.json(probe ?? { ok: true, message: 'Connected — key accepted', probe: 'auth', source: 'request' });
         }
@@ -217,14 +254,60 @@ describe('AiProvidersScreen — the working tenant decides the scope (R-12)', ()
     expect((await screen.findByRole('status')).textContent).toMatch(/Acting on «Sunrise Medical Group»/);
   });
 
-  it('pins a tenant admin to their own tenant', async () => {
+  it('pins a tenant admin to their own tenant — with no working tenant — and names it from the tenant catalog', async () => {
     const calls = stubFetch({ session: TENANT_SESSION });
     renderWithProviders(<AiProvidersScreen />);
     await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
 
-    for (const call of calls.filter((c) => c.url.includes('/api/hope/admin/providers/'))) {
+    const providerReads = calls.filter((c) => c.url.includes('/api/hope/admin/providers/'));
+    expect(providerReads.length).toBeGreaterThan(0);
+    for (const call of providerReads) {
       expect(new URL(call.url, 'http://test.local').searchParams.get('tenantId')).toBe('tnt-1');
     }
+    expect(await screen.findByText('Scope: Sunrise Medical Group')).toBeDefined();
+    // Tenant wording, no "clear the working tenant" instruction a tenant admin cannot follow.
+    expect(screen.getByText(/Your own vendor connections/)).toBeDefined();
+    expect(screen.queryByText(/Clear the working tenant/)).toBeNull();
+  });
+
+  // TASK-954 — the owner's rule for the tenant tier: see and configure your
+  // own providers, and see the platform fallback READ-ONLY.
+  it('shows a tenant admin the platform defaults read-only, per capability, and never the platform sections', async () => {
+    const calls = stubFetch({ session: TENANT_SESSION });
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+
+    const panel = await screen.findByRole('region', { name: 'Platform defaults' });
+    expect(within(panel).getByText('read-only')).toBeDefined();
+    const table = within(panel).getByRole('table', { name: 'Platform defaults for llm' });
+    // One row per cloud provider, with the cascade's verdict for THIS tenant.
+    expect(within(table).getByText('Azure OpenAI')).toBeDefined();
+    expect(within(table).getByText('Serving you')).toBeDefined();
+    expect(within(table).getByText('Off')).toBeDefined();
+    expect(within(table).getAllByText('Not configured').length).toBe(3);
+    expect(within(table).getByText('https://platform.openai.azure.com')).toBeDefined();
+    // Nothing on the panel is a control — no input, no button.
+    expect(within(panel).queryByRole('button')).toBeNull();
+    expect(within(panel).queryByRole('textbox')).toBeNull();
+
+    // The read is the tenant's own, never the SYSTEM tier.
+    const defaultsRead = calls.find((c) => c.url.includes('/admin/providers/llm/platform-defaults'));
+    expect(defaultsRead).toBeDefined();
+    expect(new URL(defaultsRead!.url, 'http://test.local').searchParams.get('tenantId')).toBe('tnt-1');
+
+    // The card that inherits says so; the platform-only sections never render.
+    expect(screen.getByText('The platform default serves this provider for you today.')).toBeDefined();
+    expect(screen.queryByText('Built-in inference services')).toBeNull();
+    expect(screen.queryByText('Model registry (built-in)')).toBeNull();
+  });
+
+  it('never reads the platform defaults on the platform tier', async () => {
+    const calls = stubFetch();
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'LM Studio' });
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+    expect(calls.some((c) => c.url.includes('/platform-defaults'))).toBe(false);
+    expect(screen.queryByRole('region', { name: 'Platform defaults' })).toBeNull();
   });
 });
 
@@ -417,7 +500,8 @@ describe('AiProvidersScreen — used by', () => {
     renderWithProviders(<AiProvidersScreen />);
 
     expect(await screen.findByText('Managed by the platform')).toBeDefined();
-    expect(screen.queryByRole('table')).toBeNull();
+    // No bindings table — the read-only platform-defaults table (TASK-954) is a different table.
+    expect(screen.queryByRole('table', { name: 'Task configurations bound to a provider' })).toBeNull();
   });
 });
 

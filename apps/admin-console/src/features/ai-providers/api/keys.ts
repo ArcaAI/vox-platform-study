@@ -14,6 +14,13 @@ export const providerConnectionKeys = {
   tenant: (tenantId: string | undefined) => [...providerConnectionKeys.root, tenantId ?? 'cls'] as const,
   service: (service: ProviderService, tenantId?: string) => [...providerConnectionKeys.tenant(tenantId), service] as const,
   row: (service: ProviderService, provider: string, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'row', provider] as const,
+  /**
+   * TASK-954 — nested under the SERVICE key on purpose: a tenant's own save or
+   * remove changes the verdict (`overridden` / `vetoed` / back to `inherited`),
+   * and the mutations invalidate the service key, so the read-only panel
+   * refreshes with the card.
+   */
+  platformDefaults: (service: ProviderService, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'platform-defaults'] as const,
   bindings: (tenantId: string) => [...providerConnectionKeys.tenant(tenantId), 'bindings'] as const,
   /**
    * The readiness snapshot is PLATFORM-WIDE — one observation of the engines

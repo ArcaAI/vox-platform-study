@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from '@/shared/auth';
-import { SYSTEM_TENANT_ID } from '@/shared/catalog';
+import { SYSTEM_TENANT_ID, useTenantNames } from '@/shared/catalog';
 
 /** Which configuration tier the screen is acting on. */
 export type ProviderTier = 'platform' | 'tenant';
@@ -13,6 +13,13 @@ export interface ResolvedProviderScope {
   tenantId: string;
   /** Human label for the current scope — the banner and the footer read it. */
   label: string;
+  /**
+   * Whether the SESSION is elevated — distinct from `tier`: an elevated admin
+   * on the tenant tier is acting on a working tenant it can clear, a tenant
+   * admin on the same tier has no other tier to go to (TASK-954). The wording
+   * around the scope reads this; the reads and writes never do.
+   */
+  elevated: boolean;
   /**
    * True until the session has actually ARRIVED — not merely until the query
    * stops reporting `isLoading`.
@@ -48,7 +55,13 @@ export interface ResolvedProviderScope {
  *                                   inference services and the weight store.
  *   elevated + a working tenant   → that tenant's own rows, with the
  *                                   "Acting on ‹Tenant›" mutation banner.
- *   not elevated                  → the caller's own tenant, always.
+ *   not elevated                  → the caller's OWN tenant, always. (TASK-954:
+ *                                   `effectiveTenantId` now IS the own tenant
+ *                                   for a tenant-bound session; the fallback to
+ *                                   `effectiveUser.tenantId` is belt-and-braces
+ *                                   for a session projection sealed before it.
+ *                                   Before this, a tenant admin fell through to
+ *                                   SYSTEM here and every card 403'd.)
  *
  * Two tiers, never three: "Global" (`50000000-…`) is a CUSTOMER tenant — the
  * platform-admin playground — reached the way any other customer tenant is, by
@@ -57,27 +70,33 @@ export interface ResolvedProviderScope {
  */
 export function useProviderScope(): ResolvedProviderScope {
   const session = useSession();
+  // The tenant catalog answers "what is this tenant called" for a tenant admin,
+  // whose session carries no working-tenant NAME. It never throws: a caller
+  // without the list read gets an empty map and the id renders instead.
+  const tenantNames = useTenantNames();
   const isLoading = session.data === undefined && !session.isError;
   const elevated = session.data?.effectiveIsElevated ?? false;
-  const workingTenantId = session.data?.effectiveTenantId ?? null;
+  const scopedTenantId = session.data?.effectiveTenantId ?? session.data?.effectiveUser.tenantId ?? null;
   const workingTenantName = session.data?.workingTenantName ?? null;
 
   // A tenant-bound caller has no platform tier to administer; an elevated one
   // with no tenant selected has nothing BUT the platform tier. Neither is a
   // choice the screen makes.
-  const tier: ProviderTier = elevated && !workingTenantId ? 'platform' : 'tenant';
+  const tier: ProviderTier = elevated && !scopedTenantId ? 'platform' : 'tenant';
 
   if (tier === 'platform') {
-    return { tier, tenantId: SYSTEM_TENANT_ID, label: 'Platform (SYSTEM)', isLoading };
+    return { tier, tenantId: SYSTEM_TENANT_ID, label: 'Platform (SYSTEM)', elevated, isLoading };
   }
 
+  // `?? SYSTEM` is unreachable in practice — a non-elevated session always
+  // carries a tenant — and is written this way rather than as a throw so a
+  // half-hydrated session renders the loading state instead of crashing.
+  const tenantId = scopedTenantId ?? SYSTEM_TENANT_ID;
   return {
     tier,
-    // `?? SYSTEM` is unreachable in practice — a non-elevated session always
-    // carries a tenant — and is written this way rather than as a throw so a
-    // half-hydrated session renders the loading state instead of crashing.
-    tenantId: workingTenantId ?? SYSTEM_TENANT_ID,
-    label: workingTenantName ?? workingTenantId ?? 'Working tenant',
+    tenantId,
+    label: workingTenantName ?? tenantNames.get(tenantId) ?? tenantId,
+    elevated,
     isLoading,
   };
 }

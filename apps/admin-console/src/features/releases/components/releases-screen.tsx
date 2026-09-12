@@ -100,7 +100,7 @@ function StatsStrip({ current, isLoading }: { current: CurrentService[]; isLoadi
 }
 
 /**
- * Platform Releases (`/(console)/(global)/releases`, tier 10-19). What version
+ * Platform Releases (`/(console)/(shared)/releases`, tier 20-29 since TASK-954). What version
  * of each service is running, which build produced it, and the technical
  * changelog behind it. Read-only observability — no rollback or
  * promotion actions here.

@@ -96,6 +96,24 @@ function callsTo(fetchMock: ReturnType<typeof installFetch>, fragment: string): 
 }
 
 describe('MonitoringScreen', () => {
+  // TASK-954 — the screen is shared with tenant admins, who hold every read on
+  // it except Redis health (`manage:all`). The route passes `platformOps={false}`
+  // for them: no Redis tile, no Redis card, and no request that can only 403.
+  it('omits the Redis surfaces and never reads admin/queues/health/redis on a tenant-scoped screen', async () => {
+    const fetchMock = installFetch();
+    renderWithProviders(<MonitoringScreen platformOps={false} />);
+
+    const stats = await screen.findByRole('region', { name: /key metrics/i });
+    expect(await within(stats).findByText('5/6')).toBeDefined();
+    expect(within(stats).getByText('Active sessions')).toBeDefined();
+    expect(within(stats).queryByText('Redis latency')).toBeNull();
+    expect(screen.queryByRole('region', { name: /redis health/i })).toBeNull();
+    // The sessions card is served to a tenant admin and still renders.
+    expect(await screen.findByRole('list', { name: /active sessions by service/i })).toBeDefined();
+    await waitFor(() => expect(callsTo(fetchMock, 'admin/monitoring/sessions')).toBeGreaterThan(0));
+    expect(callsTo(fetchMock, 'admin/queues/health/redis')).toBe(0);
+  });
+
   it('renders the four monitoring stat tiles from health, uptime, sessions and redis', async () => {
     installFetch();
     renderWithProviders(<MonitoringScreen />);

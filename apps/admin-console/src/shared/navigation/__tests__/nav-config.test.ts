@@ -19,14 +19,24 @@ import {
 const SUPER_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
 // Approximation of the seeded TENANT_ADMIN policy set (tenant-full-access,
-// rbac-tenant-manage, prompt-template-manage, audit-log-read). Adds
-// manage:TenantAllowedOrigin (own-tenant condition) to tenant-full-access.
+// rbac-tenant-manage, prompt-template-manage, audit-log-read).
+//
+// TASK-954 — deliberately carries the grants that happen to SATISFY a tier
+// 10-19 ability gate (`update:Tenant` → /tenants, `manage:Storage` →
+// /tenants/storage, `read:AuditLog` → /audit-logs, `read:TenantTelemetry` →
+// the Overview screens while they were 10-19). The narrower fixture this
+// replaced hid the defect: it pinned "Tenants" and "Audit logs" as EXPECTED
+// tenant-admin inventory, and a tenant admin's real rail listed platform
+// screens that every one 404'd.
 const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'AuditLog' },
   { action: 'manage', subject: 'Department' },
   { action: 'manage', subject: 'User' },
   { action: 'manage', subject: 'PromptTemplate' },
   { action: 'manage', subject: 'TenantAllowedOrigin' },
+  { action: 'manage', subject: 'GlobalSetting' },
+  { action: 'manage', subject: 'Storage' },
+  { action: 'read', subject: 'TenantTelemetry' },
   { action: 'read,update', subject: 'Tenant' },
   { action: 'read', subject: 'Role' },
 ];
@@ -42,11 +52,12 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // the total and the tier-30-49 count both hold at their pre-ticket values
   // minus one, plus the new tier-10-19 entry: 58 total, 25/9/19/5 by tier
   // (was 24/9/20/5; `/ai-configuration` was tier 30-49, `/features` is
-  // tier 10-19).
+  // tier 10-19). TASK-954 re-tiered the three Overview screens (Dashboard,
+  // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5.
   it('covers the full 58-route rail map across the four tiers', () => {
     expect(NAV_ENTRIES).toHaveLength(58);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(25);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(12);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu are accounted for, not lost.
@@ -250,11 +261,19 @@ describe('visibleNavEntries', () => {
 
   it('hides super-admin-only entries from tenant admins but keeps shared screens and the playground', () => {
     const visible = visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN).map((entry) => entry.route);
-    expect(visible).not.toContain('/dashboard');
-    expect(visible).not.toContain('/monitoring');
+    // TASK-954 — the Overview screens are shared: a tenant admin reaches its own
+    // dashboard, and the monitoring/releases reads the gateway already served it.
+    expect(visible).toContain('/dashboard');
+    expect(visible).toContain('/monitoring');
+    expect(visible).toContain('/releases');
     // Still super-admin only (manage:all) — now visible to super admins,
     // never to tenant admins.
     expect(visible).not.toContain('/ai-models');
+    // TASK-954 — tier 10-19 is hidden from a non-elevated role even when the
+    // ability gate is satisfied: the `(global)` route group would 404 the click.
+    for (const route of ['/tenants', '/tenants/storage', '/audit-logs', '/entitlements', '/billing']) {
+      expect(visible, `${route} is a platform screen and must not reach a tenant admin`).not.toContain(route);
+    }
     expect(visible).toContain('/users');
     expect(visible).toContain('/tenant-profile');
     // /account left the rail for the user menu.
@@ -264,6 +283,16 @@ describe('visibleNavEntries', () => {
     expect(visible).toContain('/playground/llm');
     // A tenant admin now reaches the retiered allowed-origins screen.
     expect(visible).toContain('/allowed-origins');
+  });
+
+  it('never shows a tier-10-19 entry to a non-elevated role, whatever its abilities (TASK-954)', () => {
+    // Even `manage:all` on a non-elevated role cannot open a `(global)` screen —
+    // the route group judges the ROLE, so the rail must too.
+    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN);
+    expect(visible.some((entry) => entry.tier === '10-19')).toBe(false);
+    expect(visible.map((entry) => entry.route)).toContain('/dashboard');
+    // The same rules on the elevated role reach every tier.
+    expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN).some((entry) => entry.tier === '10-19')).toBe(true);
   });
 
   it('shows an authenticated user with zero grants nothing in the rail', () => {
@@ -359,11 +388,22 @@ type PinnedEntry = readonly [
 
 const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   // Overview
-  ['/dashboard', 'overview', '10-19', 1, [['manage', 'PlatformMetrics']]],
+  // TASK-954 — Overview is tier 20-29: the dashboard route renders the platform
+  // dashboard for an elevated session and the tenant dashboard otherwise.
+  [
+    '/dashboard',
+    'overview',
+    '20-29',
+    1,
+    [
+      ['manage', 'PlatformMetrics'],
+      ['read', 'TenantTelemetry'],
+    ],
+  ],
   [
     '/monitoring',
     'overview',
-    '10-19',
+    '20-29',
     2,
     [
       ['manage', 'all'],
@@ -373,7 +413,7 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
   [
     '/releases',
     'overview',
-    '10-19',
+    '20-29',
     3,
     [
       ['manage', 'all'],
@@ -720,8 +760,9 @@ describe('visibleNavDomains (AC-3)', () => {
       visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN).some((entry) => entry.domain === domain.id),
     );
     expect(visible).toEqual(expected);
-    // A tenant admin holds none of the manage:all platform surfaces.
-    expect(visible.map((domain) => domain.id)).not.toContain('overview');
+    // TASK-954 — Overview is a shared domain now (tenant dashboard, monitoring,
+    // releases); the platform-only domains stay platform-only through their entries.
+    expect(visible.map((domain) => domain.id)).toContain('overview');
   });
 
   it('hides a domain whose only routes the caller cannot see', () => {
@@ -799,11 +840,13 @@ describe('domainLandingRoute (Open Question — a rail click always navigates)',
   });
 
   it('skips entries the caller cannot see rather than linking to a 403', () => {
-    // /features and /rate-limits (both manage:all) are declared first in
-    // Platform Ops; a caller holding only read:AuditLog must land on the
-    // audit log instead.
-    const auditOnly: PermissionRule[] = [{ action: 'read', subject: 'AuditLog' }];
-    expect(domainLandingRoute('platform-ops', visibleNavEntries(auditOnly, ['DOCTOR']))).toBe('/audit-logs');
+    // Every tier-10-19 Platform Ops entry is declared first; a non-elevated
+    // caller holding only read:GlobalSetting must land on the settings registry
+    // (the first tier-20-29 entry) instead. (TASK-954: a non-elevated role can
+    // never see a 10-19 entry, so read:AuditLog alone lands nowhere now.)
+    const settingsOnly: PermissionRule[] = [{ action: 'read', subject: 'GlobalSetting' }];
+    expect(domainLandingRoute('platform-ops', visibleNavEntries(settingsOnly, ['DOCTOR']))).toBe('/settings-registry');
+    expect(domainLandingRoute('platform-ops', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBeUndefined();
   });
 
   it('returns undefined for a domain with nothing visible', () => {
@@ -839,7 +882,7 @@ function renderedInventory(rules: readonly PermissionRule[] | null, roles: reado
 describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () => {
   it('renders the exact §3.1 inventory for a super admin with every gate open', () => {
     expect(renderedInventory(SUPER_ADMIN_RULES, ['SUPER_ADMIN'], ALL_GATES_OPEN)).toEqual({
-      overview: { '10-19': ['Dashboard', 'Monitoring', 'Releases'] },
+      overview: { '20-29': ['Dashboard', 'Monitoring', 'Releases'] },
       tenancy: {
         '10-19': ['Tenants', 'Entitlements & plans', 'Tenant storage', 'Billing & invoices'],
         '20-29': ['Tenant profile'],
@@ -890,16 +933,19 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
     expect(inventory['workflow-harness']).toBeUndefined();
   });
 
-  it('renders the tenant-admin-visible subset — every platform-tier and gated entry disappears', () => {
-    // Reflects the CASL fixture above verbatim (canAny over TENANT_ADMIN_RULES):
-    // manage:Department, manage:User, manage:PromptTemplate,
-    // manage:TenantAllowedOrigin, read+update:Tenant, read:AuditLog, read:Role.
-    // /tenants and /rbac/roles are read-satisfied by that last pair even
-    // though the tenant admin holds no `manage` on either — client-side
-    // ability ignores row conditions (server enforces them; see ability.ts).
+  it('renders the tenant-admin-visible subset — no tier-10-19 entry at all, whatever the ability says (TASK-954)', () => {
+    // Reflects the CASL fixture above (canAny over TENANT_ADMIN_RULES). The
+    // fixture DOES satisfy the ability gates of /tenants (update:Tenant),
+    // /tenants/storage (manage:Storage) and /audit-logs (read:AuditLog) — and
+    // none of them renders, because tier 10-19 is judged on the ROLE. `/rbac/roles`
+    // is read-satisfied by read:Role even though the tenant admin holds no
+    // `manage` on it — client-side ability ignores row conditions (server
+    // enforces them; see ability.ts).
     expect(renderedInventory(TENANT_ADMIN_RULES, ['TENANT_ADMIN'], ALL_GATES_OPEN)).toEqual({
-      tenancy: { '10-19': ['Tenants'], '20-29': ['Tenant profile'], '30-49': ['Departments'] },
-      'platform-ops': { '10-19': ['Audit logs'] },
+      overview: { '20-29': ['Dashboard', 'Monitoring', 'Releases'] },
+      tenancy: { '20-29': ['Tenant profile'], '30-49': ['Departments'] },
+      'platform-ops': { '20-29': ['Settings registry', 'Settings rows & secrets'], '30-49': ['Storage browser'] },
+      'ai-platform': { '20-29': ['AI providers'] },
       'knowledge-agents': { '30-49': ['Prompt templates'] },
       'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
       playground: {

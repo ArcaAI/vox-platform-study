@@ -5579,6 +5579,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "ProviderConnectionController",
+      "handler": "listPlatformDefaults",
+      "method": "GET",
+      "path": "/api/v1/admin/providers/{service}/platform-defaults",
+      "routePath": "/admin/providers/:service/platform-defaults",
+      "svcScopes": [
+        "svc:admin:ai-provider:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "PrismaStudioStatusController",
       "handler": "getStatus",
       "method": "GET",

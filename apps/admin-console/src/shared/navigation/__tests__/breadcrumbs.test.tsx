@@ -18,7 +18,8 @@ describe('Breadcrumbs', () => {
     usePathnameMock.mockReturnValue('/dashboard');
     renderWithProviders(<Breadcrumbs />);
     const nav = screen.getByRole('navigation', { name: /breadcrumb/i });
-    expect(nav.textContent).toContain('Platform');
+    // TASK-954 — /dashboard is a tier-20-29 (shared) screen: "Administration".
+    expect(nav.textContent).toContain('Administration');
     expect(screen.getByText('Dashboard')).toBeTruthy();
   });
 

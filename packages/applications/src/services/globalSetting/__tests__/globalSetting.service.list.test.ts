@@ -157,20 +157,33 @@ describe('GlobalSetting list faceting', () => {
   });
 
   describe('fetchAllByTenantId — secretsOnly composes with the tenant scope', () => {
-    it('keeps the bare tenant where when the flag is omitted (behaviour unchanged)', async () => {
+    // TASK-954 — a NON-super-admin lists only the rows it may act on: a
+    // `locked` row is a platform default only a super admin may change, and a
+    // tenant admin's list is not the place to display it. The fixture's caller
+    // (`cls.get` → null) is exactly that non-elevated caller.
+    it('pins a non-super-admin to unlocked rows when the flag is omitted', async () => {
+      await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 't-1' });
+
+      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 't-1', locked: false } }));
+      expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 't-1', locked: false } }));
+    });
+
+    it('keeps the bare tenant where — locked rows included — for a super admin acting on a working tenant', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'root', roles: ['SUPER_ADMIN'] } : null));
+
       await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 't-1' });
 
       expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 't-1' } }));
     });
 
-    it('ANDs the tenant scope with the secret fragment when secretsOnly=true', async () => {
+    it('ANDs the tenant scope (unlocked rows) with the secret fragment when secretsOnly=true', async () => {
       await service.fetchAllByTenantId({ limit: 10, page: 1, tenantId: 't-1', secretsOnly: true });
 
       expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { AND: [{ tenantId: 't-1' }, buildSecretSettingFilter()] } }),
+        expect.objectContaining({ where: { AND: [{ tenantId: 't-1', locked: false }, buildSecretSettingFilter()] } }),
       );
       expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { AND: [{ tenantId: 't-1' }, buildSecretSettingFilter()] } }),
+        expect.objectContaining({ where: { AND: [{ tenantId: 't-1', locked: false }, buildSecretSettingFilter()] } }),
       );
     });
 

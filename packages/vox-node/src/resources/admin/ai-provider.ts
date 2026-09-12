@@ -14,6 +14,7 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   AiProviderConnectionResponse,
   DeclareConnectionModelsRequest,
+  PlatformDefaultConnectionsResponse,
   TestProviderConnectionRequest,
   TestProviderConnectionResponse,
   UpsertAiProviderConnectionRequest,
@@ -27,7 +28,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ProviderConnectionController
- * (7 routes). Several controllers sharing one scope share one
+ * (8 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -173,6 +174,26 @@ export class AdminAiProviderResource extends AdminResource {
       path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/test`,
       query: options.query,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * The platform defaults this tenant inherits for one service — read-only, masked.
+   *
+   * The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: `overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` (no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:provider`. Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it is the top of the cascade.
+   *
+   * `GET /api/v1/admin/providers/{service}/platform-defaults` — `ProviderConnectionController.listPlatformDefaults`.
+   */
+  listPlatformDefaults(
+    service: string,
+    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
+  ): Promise<PlatformDefaultConnectionsResponse> {
+    return this.request<PlatformDefaultConnectionsResponse>({
+      method: 'GET',
+      path: `admin/providers/${encodePathSegment(String(service))}/platform-defaults`,
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

@@ -51,6 +51,19 @@ const SESSION = {
   workingTenantName: null as string | null,
   impersonatingUserId: null,
   impersonatingUsername: null,
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null as string | null, departmentId: null },
+  effectiveIsElevated: true,
+  effectiveTenantId: null as string | null,
+};
+
+/** A tenant admin: pinned to its own tenant by the gateway, no cross-tenant affordances (TASK-954). */
+const TENANT_SESSION = {
+  ...SESSION,
+  user: { id: 'u-2', username: 'tenant_admin', email: 'ta@arca.ai', roles: ['TENANT_ADMIN'] },
+  isElevated: false,
+  effectiveUser: { id: 'u-2', username: 'tenant_admin', email: 'ta@arca.ai', roles: ['TENANT_ADMIN'], tenantId: 't-1', departmentId: null },
+  effectiveIsElevated: false,
+  effectiveTenantId: 't-1',
 };
 
 const MANAGE_ALL = [{ action: 'manage', subject: 'all' }];
@@ -202,6 +215,33 @@ describe('SettingsScreen', () => {
 
     await screen.findByText('smtp.host');
     expect(await screen.findByText('Acme Hospital')).toBeDefined();
+  });
+
+  // TASK-954 — a tenant admin's list is its own tenant's rows (the gateway pins
+  // it and drops the locked platform defaults); the cross-tenant column and
+  // filter are elevated-only.
+  it('renders neither the Tenant column nor the Tenant filter for a tenant admin', async () => {
+    stubFetch({
+      session: TENANT_SESSION,
+      permissions: [{ action: 'manage', subject: 'GlobalSetting' }],
+      rows: [setting({ tenantId: 't-1' })],
+      custom: (call) => {
+        if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/tenants')) {
+          return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 1, page: 1 });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<SettingsScreen />);
+
+    await screen.findByText('smtp.host');
+    expect(screen.queryByRole('columnheader', { name: /tenant/i })).toBeNull();
+    expect(screen.queryByText('Acme Hospital')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('Tenant')).toBeNull();
+    expect(within(dialog).getByText('Namespace')).toBeDefined();
   });
 
   it('maps the tenant filter onto the CSV grammar (tenantId[equals]:…)', async () => {

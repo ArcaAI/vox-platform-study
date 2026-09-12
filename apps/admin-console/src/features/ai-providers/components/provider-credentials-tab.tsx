@@ -2,7 +2,9 @@
 
 import { IconServerCog } from '@tabler/icons-react';
 import { EmptyState } from '@/shared/state/empty-state';
+import { usePlatformDefaults } from '../api/hooks';
 import type { ProviderService } from '../api/types';
+import { PlatformDefaultsPanel } from './platform-defaults-panel';
 import { ProviderCredentialCard } from './provider-credential-card';
 import { cloudProvidersFor } from './provider-meta';
 import type { ProviderTier } from './use-provider-scope';
@@ -42,6 +44,11 @@ export function ProviderCredentialsTab({
   enabled?: boolean;
 }) {
   const providers = cloudProvidersFor(service);
+  // TASK-954 — the platform fallback this tenant inherits, read ONCE per tab
+  // and shared between the read-only panel and every card's hint. Never on the
+  // platform tier: the SYSTEM tenant is the top of the cascade (the route 400s).
+  const tenantTier = tier === 'tenant';
+  const platformDefaults = usePlatformDefaults(service, tenantId, enabled && tenantTier && providers.length > 0);
 
   if (providers.length === 0) {
     return (
@@ -59,9 +66,18 @@ export function ProviderCredentialsTab({
         {SERVICE_COPY[service]} <span className="font-mono text-xs">PUT /admin/providers/{service}/:provider</span> — write-only, masked on read, OCC
         If-Match.
       </p>
+      {tenantTier ? <PlatformDefaultsPanel service={service} query={platformDefaults} /> : null}
       <div className="grid gap-4 lg:grid-cols-2">
         {providers.map((meta) => (
-          <ProviderCredentialCard key={meta.id} service={service} meta={meta} tenantId={tenantId} tier={tier} enabled={enabled} />
+          <ProviderCredentialCard
+            key={meta.id}
+            service={service}
+            meta={meta}
+            tenantId={tenantId}
+            tier={tier}
+            enabled={enabled}
+            platformDefault={tenantTier ? platformDefaults.data?.connections.find((connection) => connection.provider === meta.id) : undefined}
+          />
         ))}
       </div>
     </div>

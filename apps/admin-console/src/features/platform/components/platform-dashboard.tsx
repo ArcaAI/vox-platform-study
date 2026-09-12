@@ -59,7 +59,8 @@ function StatStrip({ metrics }: { metrics: ReturnType<typeof usePlatformMetrics>
   );
 }
 
-function ServicesStrip() {
+/** The downstream services strip — shared with the Tenant Dashboard (TASK-954); the read is served to tenant admins too. */
+export function ServicesStrip() {
   const health = useServicesHealth();
 
   if (health.isPending) {
@@ -146,7 +147,12 @@ function auditActor(row: AuditLog): string {
   return row.responsibleUser?.email ?? row.responsibleUser?.displayName ?? row.responsibleUserId ?? '\u2014';
 }
 
-function RecentActivityCard() {
+/**
+ * The last ten audit events the caller may see (tenant-scoped on the gateway).
+ * `auditLogsHref` is the "see all" link; the Tenant Dashboard omits it because
+ * `/audit-logs` is a tier-10-19 screen a tenant admin cannot open (TASK-954).
+ */
+export function RecentActivityCard({ auditLogsHref }: { auditLogsHref?: string } = {}) {
   const audit = useAuditLogs({ limit: 10 });
   const rows = audit.data?.data ?? [];
 
@@ -193,12 +199,14 @@ function RecentActivityCard() {
     <Card className="gap-4">
       <CardHeader>
         <SectionTitle>Recent admin activity</SectionTitle>
-        <CardAction>
-          <Link href="/audit-logs" className="text-foreground inline-flex items-center gap-1 text-sm hover:underline">
-            Audit Logs
-            <IconArrowRight aria-hidden className="size-3.5" />
-          </Link>
-        </CardAction>
+        {auditLogsHref ? (
+          <CardAction>
+            <Link href={auditLogsHref} className="text-foreground inline-flex items-center gap-1 text-sm hover:underline">
+              Audit Logs
+              <IconArrowRight aria-hidden className="size-3.5" />
+            </Link>
+          </CardAction>
+        ) : null}
       </CardHeader>
       <CardContent>{body}</CardContent>
     </Card>
@@ -246,7 +254,7 @@ export function PlatformDashboard() {
         </section>
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <RequestsByServiceCard metrics={metrics} health={health} />
-          <RecentActivityCard />
+          <RecentActivityCard auditLogsHref="/audit-logs" />
         </div>
       </div>
     </ScreenTemplate>

@@ -1,6 +1,11 @@
 import { AiProviderConnectionEntity } from '@arcaai/domains';
 import { ProviderService } from './constants';
-import { AiProviderConnectionResponse, DeclareConnectionModelsRequest, UpsertAiProviderConnectionRequest } from './dto';
+import {
+  AiProviderConnectionResponse,
+  DeclareConnectionModelsRequest,
+  PlatformDefaultConnectionsResponse,
+  UpsertAiProviderConnectionRequest,
+} from './dto';
 import { ProviderExtraValue } from './provider-extras';
 
 export type { ProviderService } from './constants';
@@ -210,6 +215,19 @@ export interface IProviderConnectionService {
 
   /** One (service, tenant, provider) row, masked; a `version: 0` placeholder when absent. */
   getRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse>;
+
+  /**
+   * TASK-954 — the platform fallback a TENANT inherits for one service, READ-ONLY.
+   *
+   * The SYSTEM tier's cloud BYO rows (masked, one entry per cloud provider of
+   * the service — a placeholder where the platform has no row), each annotated
+   * with the cascade's verdict for the scoped tenant (`resolution`) and the
+   * tenant's entitlement to platform vendor accounts. Built on the ONE cascade
+   * (`cascadeRows`), so the veto set and the entitlement gate are the same ones
+   * a real request meets. The SYSTEM tier itself is refused (400): the platform
+   * row is the top of the cascade and inherits nothing.
+   */
+  listPlatformDefaults(service: ProviderService, tenantId?: string): Promise<PlatformDefaultConnectionsResponse>;
 
   /**
    * Create-or-CAS-update one (service, tenant, provider) row. `expectedVersion`

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteProviderConnection,
   getInferenceReadiness,
+  getPlatformDefaults,
   getProviderConnection,
   listRoutingBindings,
   putConnectionModels,
@@ -18,6 +19,15 @@ export function useProviderConnection(service: ProviderService, provider: string
   return useQuery({
     queryKey: providerConnectionKeys.row(service, provider, tenantId),
     queryFn: () => getProviderConnection(service, provider, tenantId),
+    enabled,
+  });
+}
+
+/** TASK-954 — the platform fallback the scoped tenant inherits for one service (read-only). */
+export function usePlatformDefaults(service: ProviderService, tenantId?: string, enabled = true) {
+  return useQuery({
+    queryKey: providerConnectionKeys.platformDefaults(service, tenantId),
+    queryFn: () => getPlatformDefaults(service, tenantId),
     enabled,
   });
 }

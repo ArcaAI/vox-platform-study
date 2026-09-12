@@ -290,7 +290,12 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // else. Without the explicit pin the shared-read widening serves the SYSTEM
     // platform rows alongside the tenant's own (see `ownTenantReadPin`).
     const pin = this.ownTenantReadPin;
-    const tenantClause = pin ? { tenantId: pin } : undefined;
+    // TASK-954 — a pinned (non-elevated) caller lists only the rows it may act
+    // on: a `locked` row is a platform default only a super admin may change
+    // (`update` refuses it with 403), so displaying it to a tenant admin is a
+    // control that can only fail. Excluded HERE, server-side, so counts and
+    // pages agree with what the console renders.
+    const tenantClause = pin ? { tenantId: pin, locked: false } : undefined;
     // 'GlobalSetting' opts the list into model-aware filter
     // coercion: `dataType` (enum ValueType) member-validates with a 400 on an
     // unknown member instead of a Prisma server-side error.
@@ -339,7 +344,11 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     // With the secretsOnly facet the tenant scope moves INSIDE the
     // AND group (formatFindAllProps drops sibling keys next to `where.AND`);
     // without it the bare `{ tenantId }` shape is kept byte-for-byte.
-    const where = GlobalSettingService.resolveListWhere(secretsOnly, { tenantId }) ?? { tenantId };
+    // TASK-954 — same rule as `fetchAll`: a non-super-admin never lists the
+    // `locked` platform defaults it cannot change. A super admin acting on a
+    // working tenant keeps the whole row set, locked rows included.
+    const scope = isSuperAdmin(this.requestUser) ? { tenantId } : { tenantId, locked: false };
+    const where = GlobalSettingService.resolveListWhere(secretsOnly, scope) ?? scope;
     const globalSettings = await this.globalSettingRepository.findAll({
       ...withFormattedPaginatedProps(props, 'GlobalSetting'),
       where,

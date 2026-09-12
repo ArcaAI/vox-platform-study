@@ -8,6 +8,7 @@ import { type ColumnDef, type GroupByConfig, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import type { ListParams } from '@/shared/api';
+import { useSession } from '@/shared/auth';
 import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
@@ -77,9 +78,16 @@ const CREATE_SENTINEL = 'new';
  * and an audit-log-backed History tab. Scope is decided by the working-tenant
  * switcher; an UNSCOPED super-admin gets the cross-tenant listing with
  * a Tenant column + filter.
+ *
+ * TASK-954 — a NON-elevated session is pinned to its own tenant by the gateway
+ * (and never lists the `locked` platform defaults it cannot change), so the
+ * cross-tenant Tenant column and filter are elevated-only: for a tenant admin
+ * they could only ever show its own name, or filter on a tenant it may not read.
  */
 export function SettingsScreen() {
   const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
+  const session = useSession();
+  const elevated = session.data?.effectiveIsElevated ?? false;
 
   // Remap the Secrets-only chip: strip the derived `isSecret` rule
   // from the serialized bracket filters and carry it as the bespoke
@@ -178,19 +186,24 @@ export function SettingsScreen() {
       size: 140,
       cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '—'}</span>,
     },
-    {
-      accessorKey: 'tenantId',
-      header: 'Tenant',
-      enableSorting: false,
-      meta: { label: 'Tenant', variant: 'multiSelect', options: tenantOptions },
-      size: 180,
-      cell: ({ row }) =>
-        row.original.tenantId ? (
-          <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
-        ) : (
-          <span className="text-muted-foreground">{'—'}</span>
-        ),
-    },
+    // The cross-tenant column — elevated sessions only (TASK-954).
+    ...(elevated
+      ? [
+          {
+            accessorKey: 'tenantId',
+            header: 'Tenant',
+            enableSorting: false,
+            meta: { label: 'Tenant', variant: 'multiSelect', options: tenantOptions },
+            size: 180,
+            cell: ({ row }) =>
+              row.original.tenantId ? (
+                <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
+              ) : (
+                <span className="text-muted-foreground">{'—'}</span>
+              ),
+          } satisfies ColumnDef<GlobalSetting>,
+        ]
+      : []),
     {
       // The column id IS the gateway field (`dataType[in]:…`).
       accessorKey: 'dataType',

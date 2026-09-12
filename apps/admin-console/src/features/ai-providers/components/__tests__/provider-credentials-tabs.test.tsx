@@ -33,6 +33,8 @@ function stubFetch() {
       }
       if (url.startsWith('/api/hope/admin/providers/')) {
         const [service, provider] = new URL(url, 'http://test.local').pathname.replace('/api/hope/admin/providers/', '').split('/');
+        // TASK-954 — the tenant tab reads the platform fallback once per capability.
+        if (provider === 'platform-defaults') return Response.json({ service, tenantId: 't-1', entitled: true, connections: [] });
         return Response.json({
           tenantId: 't-1',
           service,
