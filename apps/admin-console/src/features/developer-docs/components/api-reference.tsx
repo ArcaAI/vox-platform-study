@@ -26,6 +26,29 @@ import type { SpecPlane } from '../types';
  * the real gateway, with real tenant data behind it and no undo on a DELETE.
  * The reference is read-only until a sandbox tenant exists; the "copy as curl"
  * snippets remain, which is what a developer actually pastes anyway.
+ *
+ * ## Why the wrapper is the scroll container (TASK-955)
+ *
+ * Scalar is written for a page whose DOCUMENT scrolls: its layout is
+ * `min-height: 100dvh` and its endpoint sidebar is `position: sticky` with a
+ * height derived from `--full-height` (= `100dvh`). The console never scrolls
+ * the document — the shell inset is `h-svh overflow-hidden` and the screen is a
+ * `fill` panel (rule 11 §Screen Template: the child owns the remaining height
+ * and its own scroll). Left unconstrained, Scalar spilled into the shell's
+ * content region and dragged the page header, the plane tabs and the status
+ * footer along with it, while the sidebar was sized to the viewport and clipped.
+ *
+ * So the wrapper is `overflow-y-auto` (the panel's one scroll container) and a
+ * size query container, and Scalar's two viewport assumptions are re-pointed at
+ * it: `min-height: 100%` of the wrapper, and `--full-height: 100cqh` — the
+ * wrapper's own height — which is what the sticky sidebar's height resolves
+ * from. `100%` would not do for the latter: the sidebar's percentage height
+ * resolves against its grid area (the whole document column), not the panel.
+ *
+ * The overrides carry `!important` on purpose. Scalar's declarations are
+ * un-layered; Tailwind v4 utilities live in `@layer utilities`, and an
+ * un-layered declaration beats a layered one whatever its specificity. Scalar's
+ * own print stylesheet uses the same lever (`--full-height: 100% !important`).
  */
 export function ApiReference({ plane }: { plane: SpecPlane }) {
   const { resolvedTheme } = useTheme();
@@ -49,7 +72,10 @@ export function ApiReference({ plane }: { plane: SpecPlane }) {
   }
 
   return (
-    <div className="h-full" data-slot="api-reference">
+    <div
+      className="@container-size h-full min-h-0 overflow-y-auto [&_.scalar-app.references-layout]:min-h-full! [&_.scalar-app.references-layout]:[--full-height:100cqh]!"
+      data-slot="api-reference"
+    >
       <ApiReferenceReact
         configuration={{
           url: `/api/docs/spec/${plane}`,
