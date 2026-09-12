@@ -17,7 +17,7 @@ import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '
 import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
-import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
+import { COMPUTE_DEVICES, type ComputeDevice, type GuardrailDisposition } from '../usageLedger/usage-attributes';
 import {
   CONTEXT_NAMESPACE_ROOT,
   soleContextKindSchema,
@@ -33,6 +33,31 @@ export interface AgentTextInvocationResult {
   provider: string | null;
   model: string | null;
   usage: { promptTokens: number | null; completionTokens: number | null } | null;
+  /**
+   * TASK-957 F-2 — TEXT's own `usage_detail` block, VERBATIM.
+   *
+   * The flat `usage` above is the DEPRECATED two-count summary, and billing from it discards
+   * everything an invoice is reconstructed from: the task id the idempotency key must derive
+   * from (so a ledger row can be joined to TEXT's persisted task log), the cache-read/write and
+   * reasoning split, the `endpoint_kind` the rater branches on, the BYOK flag, the connection id
+   * — and, since TASK-959, `total_ms` / `engine_ms` and the vendor byte counts.
+   *
+   * Handed back UNPARSED on purpose: `parseTextUsageDetail` is the ONE reader of this shape and
+   * it lives with the emitters. A second interpretation here would be a second thing to keep in
+   * step with TEXT, and the stream path already goes through that one reader.
+   *
+   * `null` = TEXT sent no block (an older service, or a response that carried nothing) — the
+   * caller then falls back to the counts-only builder rather than fabricating an endpoint kind.
+   */
+  usageDetail?: Record<string, unknown> | null;
+  /**
+   * TASK-957 F-3 — the guardrail call TEXT made ON THIS REQUEST'S BEHALF, same shape, verbatim.
+   *
+   * COGS, never a tenant line (D16): the platform mandates the screening, so it belongs in
+   * per-encounter margin. Dropped entirely on this plane until now, which undercounted every
+   * agent-plane guardrail call.
+   */
+  guardrailUsage?: Record<string, unknown> | null;
   /**
    * TASK-947 (OD-11) — which prompt fragments this call actually ran, for a composite agent;
    * `null` for the two single-body instruction forms, which have no composition to report.
@@ -81,6 +106,19 @@ export interface AgentNerInvocationResult {
   model: string | null;
   /** Characters SENT, the unit `ner.extract` meters on. Counted here so the caller cannot disagree with the wire. */
   charCount: number;
+  /**
+   * TASK-959 §3.2 — wall-clock milliseconds `apps/nlp` spent in the model for THIS call
+   * (`inference_ms`, on every inference response since the P-NLP lane). `null` when the service
+   * reported none: a compute row nobody measured is worse than no compute row.
+   */
+  inferenceMs: number | null;
+  /**
+   * TASK-959 §3.1 — the device the checkpoint was resolved onto (`cuda` / `mps` / `cpu`), which
+   * DECIDES the unit (`GPU_SECOND` vs `CPU_SECOND`) rather than describing it. `null` for an
+   * absent value AND for a spelling outside the closed vocabulary — a near-miss like `gpu` must
+   * not be coerced into the expensive unit.
+   */
+  device: ComputeDevice | null;
 }
 
 /** The TTS forward body the gateway's speech proxy already speaks (`SpeechSynthesizeRequest`). */
@@ -96,6 +134,35 @@ export interface AgentSpeechRequest {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * TASK-957 F-2/F-3 — a usage block TEXT sent, or `null`.
+ *
+ * Unlike {@link asRecord} this does NOT degrade a missing block to `{}`: an empty object would
+ * reach `parseTextUsageDetail` as a block with no `endpoint_kind`, which it rejects anyway — but
+ * the caller's "did TEXT report usage at all" test must stay a question about presence, not a
+ * question about emptiness.
+ */
+function usageBlock(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+/** TASK-959 — a positive integer millisecond reading, or `null`. Zero is "nothing to record". */
+function positiveMs(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+/**
+ * TASK-959 §3.1 — a device from the CLOSED vocabulary, or `null`.
+ *
+ * The value decides a UNIT (`cuda`/`mps` → `GPU_SECOND`, `cpu` → `CPU_SECOND`), and the two are
+ * priced an order of magnitude apart, so a near-miss spelling is refused here rather than at
+ * emit time — by then the unit has already been chosen.
+ */
+function computeDevice(value: unknown): ComputeDevice | null {
+  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
 }
 
 /**
@@ -337,12 +404,18 @@ export class AgentInvocationService {
       provider?: string;
       model?: string;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage_detail?: unknown;
+      guardrail_usage?: unknown;
     };
     return {
       text: data.content ?? data.summary ?? '',
       provider: data.provider ?? compiled.model.provider ?? null,
       model: data.model ?? wireModel,
       usage: data.usage ? { promptTokens: data.usage.prompt_tokens ?? null, completionTokens: data.usage.completion_tokens ?? null } : null,
+      // TASK-957 F-2 / F-3 — carried, not interpreted. See the field docs on
+      // `AgentTextInvocationResult`.
+      usageDetail: usageBlock(data.usage_detail),
+      guardrailUsage: usageBlock(data.guardrail_usage),
       promptFragments,
       ...actingUser,
     };
@@ -421,10 +494,15 @@ export class AgentInvocationService {
     });
 
     const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, { headers });
+    const data = asRecord(response.data);
     return {
       entities: mapNerEntities(response.data),
       model: modelName,
       charCount: [...text].length,
+      // TASK-959 §3.2 — what apps/nlp measured, or nothing. Both readers refuse to guess: an
+      // unmeasured call records characters and no compute, which is the correctable direction.
+      inferenceMs: positiveMs(data.inference_ms),
+      device: computeDevice(data.device),
     };
   }
 
