@@ -52,8 +52,11 @@ function detail(overrides: Partial<TextUsageDetail> = {}): TextUsageDetail {
   };
 }
 
-const quantityOf = (batch: { units: { unit: AiUsageUnit; quantity: number | string }[] } | null | undefined, unit: AiUsageUnit) =>
-  batch?.units.find((line) => line.unit === unit)?.quantity;
+type UnitLine = { unit: AiUsageUnit; quantity: number | string; attributesJson?: Record<string, unknown> | null };
+
+const unitOf = (batch: { units: UnitLine[] } | null | undefined, unit: AiUsageUnit) => batch?.units.find((line) => line.unit === unit);
+
+const quantityOf = (batch: { units: UnitLine[] } | null | undefined, unit: AiUsageUnit) => unitOf(batch, unit)?.quantity;
 
 describe('parseTextUsageDetail — the four TASK-959 fields', () => {
   it('reads total_ms, engine_ms and both byte counts off the wire block', () => {
@@ -93,18 +96,33 @@ describe('parseTextUsageDetail — the four TASK-959 fields', () => {
 });
 
 describe('buildLlmUsageInput — a self-hosted call occupies a device', () => {
-  it('records GPU_SECOND when the resolver said cuda', () => {
+  it('records GPU_SECOND when the resolver said cuda, with the device on the compute row itself', () => {
     const batch = buildLlmUsageInput({ usage: detail(), tenantId: TENANT, operation: 'generate', device: 'cuda' });
 
     expect(quantityOf(batch, AiUsageUnit.GPU_SECOND)).toBe('2.500');
-    expect(batch?.common.attributesJson?.device).toBe('cuda');
+    expect(unitOf(batch, AiUsageUnit.GPU_SECOND)?.attributesJson).toEqual({ device: 'cuda' });
+    // The dimension belongs to the row it describes: the token rows beside it are untouched, and
+    // so is the batch's own bag.
+    expect(batch?.common.attributesJson?.device).toBeUndefined();
+    expect(unitOf(batch, AiUsageUnit.INPUT_TOKEN)?.attributesJson).toBeUndefined();
   });
 
-  it('records CPU_SECOND when the device is cpu, or when nobody resolved one', () => {
+  it('records CPU_SECOND when the device is cpu', () => {
     expect(quantityOf(buildLlmUsageInput({ usage: detail(), tenantId: TENANT, operation: 'generate', device: 'cpu' }), AiUsageUnit.CPU_SECOND)).toBe(
       '2.500',
     );
-    expect(quantityOf(buildLlmUsageInput({ usage: detail(), tenantId: TENANT, operation: 'generate' }), AiUsageUnit.CPU_SECOND)).toBe('2.500');
+  });
+
+  it('records NO compute row for a self-hosted call when nobody resolved a device', () => {
+    // `cuda` and `cpu` are priced an order of magnitude apart, so the fallback for "unresolved"
+    // is no row, not the cheaper one. The caller's `IComputeDeviceResolver` is what answers `cpu`
+    // for a provider the map does not name; a caller that passed nothing asked no one, and its
+    // tokens and bytes are still billed.
+    const batch = buildLlmUsageInput({ usage: detail(), tenantId: TENANT, operation: 'generate' });
+
+    expect(quantityOf(batch, AiUsageUnit.CPU_SECOND)).toBeUndefined();
+    expect(quantityOf(batch, AiUsageUnit.GPU_SECOND)).toBeUndefined();
+    expect(quantityOf(batch, AiUsageUnit.INPUT_TOKEN)).toBe(100);
   });
 
   it('prefers the engine clock over the client wall clock', () => {
@@ -126,9 +144,12 @@ describe('buildLlmUsageInput — a self-hosted call occupies a device', () => {
       operation: 'generate',
     });
 
-    expect(quantityOf(batch, AiUsageUnit.EGRESS_BYTE)).toBe(4096);
-    expect(quantityOf(batch, AiUsageUnit.INGRESS_BYTE)).toBe(8192);
-    expect(batch?.common.attributesJson?.byteSource).toBe('wire');
+    expect(quantityOf(batch, AiUsageUnit.EGRESS_BYTE)).toBe('4096');
+    expect(quantityOf(batch, AiUsageUnit.INGRESS_BYTE)).toBe('8192');
+    // Per byte row, not on `common`: the token rows this batch already carried say nothing about
+    // how a byte count was taken.
+    expect(unitOf(batch, AiUsageUnit.EGRESS_BYTE)?.attributesJson).toEqual({ byteSource: 'wire' });
+    expect(batch?.common.attributesJson?.byteSource).toBeUndefined();
   });
 });
 
