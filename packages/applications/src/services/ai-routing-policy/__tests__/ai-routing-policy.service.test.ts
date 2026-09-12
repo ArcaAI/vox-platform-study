@@ -119,12 +119,13 @@ function makeService(
     // the tenant-id SET it is handed, which is what makes the cascade tests
     // meaningful: a resolver that quietly added a third tier would still be
     // handed only the two ids the service built.
-    findCandidates: vi.fn().mockImplementation(async (tenantIds: string[], taskKey: string) =>
-      rows.filter(
-        (r: any) =>
-          tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE && r.enabled !== false,
+    findCandidates: vi
+      .fn()
+      .mockImplementation(async (tenantIds: string[], taskKey: string) =>
+        rows.filter(
+          (r: any) => tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE && r.enabled !== false,
+        ),
       ),
-    ),
     clearDefaultFor: vi.fn().mockResolvedValue(1),
     create: vi.fn().mockImplementation(async (entity: any) => entity),
     updateWithVersion: vi.fn().mockImplementation(async (_id: string, entity: any) => entity),
@@ -157,6 +158,9 @@ function makeService(
   const connections = {
     resolveConnection: vi.fn().mockResolvedValue(opts.connectionSource === null ? null : { source: opts.connectionSource ?? 'tenant' }),
     findRow: vi.fn().mockResolvedValue({ id: 'conn:azure' }),
+    // TASK-958 D-11 — `promote` re-points at the TARGET tenant's DEFAULT
+    // connection for the provider, not at whatever row the slug happens to name.
+    findDefaultRow: vi.fn().mockResolvedValue({ id: 'conn:azure' }),
   };
   const emitter = { emit: vi.fn() };
   const clsTenantId = opts.clsTenantId === undefined ? TENANT : opts.clsTenantId;
@@ -182,7 +186,10 @@ function makeService(
 describe('getEffective — the cascade is request tenant → SYSTEM, and nothing else', () => {
   it("resolves the tenant's OWN configuration when it has one", async () => {
     const { svc } = makeService({
-      rows: [makeConfig({ tenantId: TENANT, connectionRef: 'tenant-vllm', isDefault: true }), makeConfig({ tenantId: SYSTEM_TENANT_ID, isDefault: true })],
+      rows: [
+        makeConfig({ tenantId: TENANT, connectionRef: 'tenant-vllm', isDefault: true }),
+        makeConfig({ tenantId: SYSTEM_TENANT_ID, isDefault: true }),
+      ],
     });
     const result = await svc.getEffective(TENANT, 'harness.judge');
     expect(result.source).toBe('tenant');
@@ -201,7 +208,10 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
     // the tenant owns — otherwise a tenant's deliberate narrowing silently
     // falls through to the platform default.
     const { svc } = makeService({
-      rows: [makeConfig({ tenantId: TENANT, isDefault: true }), makeConfig({ tenantId: SYSTEM_TENANT_ID, connectionRef: 'platform-vllm', isDefault: true })],
+      rows: [
+        makeConfig({ tenantId: TENANT, isDefault: true }),
+        makeConfig({ tenantId: SYSTEM_TENANT_ID, connectionRef: 'platform-vllm', isDefault: true }),
+      ],
       connectionSource: null,
     });
     const result = await svc.getEffective(TENANT, 'harness.judge');
@@ -564,7 +574,7 @@ describe('promote — a configuration crosses tenants, a credential never does '
 
     // The TARGET tenant's own connection is looked up for the same
     // (service, provider) — the source row's id is never carried across.
-    expect(connections.findRow).toHaveBeenCalledWith('llm', 'azure', TENANT);
+    expect(connections.findDefaultRow).toHaveBeenCalledWith('llm', 'azure', TENANT);
     const created = repo.create.mock.calls[0][0];
     expect(created.tenantId).toBe(TENANT);
     expect(created.modelId).toBe('model:gpt-4o');
@@ -577,7 +587,7 @@ describe('promote — a configuration crosses tenants, a credential never does '
     const source = makeConfig({ tenantId: OTHER_TENANT, connectionRef: 'azure' });
     const { svc, repo, connections, db } = makeService({ rows: [source] });
     db.baseClient.aiRoutingPolicy.findMany.mockResolvedValue([source]);
-    connections.findRow.mockResolvedValueOnce(null);
+    connections.findDefaultRow.mockResolvedValueOnce(null);
     await svc.promote(source.id, OTHER_TENANT, TENANT);
     // Fail-closed: the operator must supply a credential, and the row never
     // silently inherits the source tenant's key or billing.
@@ -590,6 +600,23 @@ describe('promote — a configuration crosses tenants, a credential never does '
     db.baseClient.aiRoutingPolicy.findMany.mockResolvedValue([source]);
     await svc.promote(source.id, OTHER_TENANT, TENANT);
     expect(emitter.emit.mock.calls[0][1].data).toMatchObject({ reason: 'promoted', credentialCopied: false });
+  });
+
+  it('re-points at the target tenant’s DEFAULT connection, never a named sibling (TASK-958 D-11)', async () => {
+    const source = makeConfig({ tenantId: OTHER_TENANT, connectionRef: 'azure', model: 'gpt-4o' });
+    const { svc, repo, connections, db } = makeService({ rows: [source] });
+    db.baseClient.aiRoutingPolicy.findMany.mockResolvedValue([source]);
+    connections.findDefaultRow.mockResolvedValue({ id: 'conn:azure-default' });
+
+    await svc.promote(source.id, OTHER_TENANT, TENANT);
+
+    // A provider now names a GROUP of the target's connections and only one of
+    // them is the row its provider-name cascade resolves. Landing on a sibling
+    // would hand the target a configuration pointing at an account it never
+    // elected, so the by-slug lookup must NOT be the one used here.
+    expect(connections.findDefaultRow).toHaveBeenCalledWith('llm', 'azure', TENANT);
+    expect(connections.findRow).not.toHaveBeenCalled();
+    expect(repo.create.mock.calls[0][0].providerConnectionId).toBe('conn:azure-default');
   });
 
   it('refuses to promote a configuration onto its own tenant', async () => {

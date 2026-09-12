@@ -42,6 +42,15 @@ function row(tenantId: string, provider: string, key: string) {
     tenantId,
     service: 'llm',
     provider,
+    // TASK-958 — a connection is identified by its SLUG and one row per provider
+    // is that provider's DEFAULT, which is the only row the provider-name
+    // cascade reads. Every pre-958 row was backfilled `slug = defaultForProvider
+    // = provider`, so this fake mirrors what a real row now carries — including
+    // the derived `isDefault` the entity exposes as a getter (these are plain
+    // objects on purpose; see the header).
+    slug: provider,
+    defaultForProvider: provider,
+    isDefault: true,
     enabled: true,
     encryptedApiKey: Buffer.from(key, 'utf8'),
     keyVersion: 1,

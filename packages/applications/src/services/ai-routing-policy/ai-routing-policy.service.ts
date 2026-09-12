@@ -721,11 +721,17 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     // so a target with no opinion legitimately inherits the SYSTEM platform
     // connection — which is the platform default working as designed, not a
     // cross-tenant leak.
+    //
+    // TASK-958 D-11 — the target's DEFAULT connection for that provider. A
+    // provider now names a GROUP of the target's connections and only one of
+    // them is the row its provider-name cascade resolves; promoting onto a named
+    // sibling would hand a tenant a configuration pointing at an account the
+    // source tenant never chose and the target never elected.
     const refs = await this.resolveRefs(source);
     let providerConnectionId: string | null = null;
     if (refs.connectionProvider && refs.connectionService) {
       const targetRow = await this.providerConnectionService
-        .findRow(refs.connectionService as ProviderService, refs.connectionProvider, targetTenantId)
+        .findDefaultRow(refs.connectionService as ProviderService, refs.connectionProvider, targetTenantId)
         .catch(() => null);
       providerConnectionId = targetRow?.id ?? null;
     }
