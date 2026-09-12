@@ -310,6 +310,10 @@ export class SpeechProxyController {
       const tenantId = this.cls?.get('tenantId');
       const characters = this.resolveCharacterCount(upstream.headers, forwardBody.input);
       const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
+      // TASK-958 D-7 — WHICH connection of that provider served. Absent (never empty)
+      // when the spec named none; `apps/tts` reads it off the chunk the router
+      // stamped, so it names the candidate that actually served.
+      const connectionId = (upstream.headers['x-tts-connection-id'] as string | undefined) || null;
       const { deployment, costBasis } = provider
         ? classifyTtsProvider(provider, forwardBody.provider_overrides)
         : { deployment: undefined, costBasis: undefined };
@@ -333,6 +337,7 @@ export class SpeechProxyController {
               model: null,
               deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
               ...(costBasis ? { costBasis } : {}),
+              connectionId,
               requestId,
               attributesJson: { interrupted },
             },

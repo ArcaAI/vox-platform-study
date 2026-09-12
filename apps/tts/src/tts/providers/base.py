@@ -91,6 +91,16 @@ class AudioChunk:
     # engine NAME and differ only by the account they authenticate to, so `provider`
     # alone can no longer tell the usage ledger which key was spent.
     connection_id: str | None = None
+    # TASK-959 — the serving engine's CONFIGURED device (`cuda`/`mps`/`cpu`), stamped by
+    # the ROUTER from the provider's own settings sub-config (e.g. `KokoroConfig.device`).
+    # `None` for a cloud engine (Azure, Sarvam) that names no device of ours — never a guess.
+    device: str | None = None
+    # TASK-959 — time-to-first-audio in milliseconds, stamped by the ROUTER only on the FIRST
+    # chunk of the winning candidate (`None` on every later chunk). It is the one synthesis
+    # timing fact known before the last byte ships, so it is what a caller draining the stream
+    # incrementally (raw/SSE) can report; a caller that buffers the whole utterance (batch) has
+    # the router's own total instead (see `TTSRouter.synthesize`'s `timing` parameter).
+    ttfa_ms: float | None = None
 
 
 class ProviderNotFoundError(KeyError):

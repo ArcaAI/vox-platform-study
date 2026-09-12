@@ -8,7 +8,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipe
 from nlp.core.config import MedicalSuggesterConfig
 from nlp.core.metrics import MODEL_SYMPTOMS_DISEASE, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest
-from nlp.schemas.common import Entity
+from nlp.schemas.common import DeviceLabel, Entity
 from nlp.schemas.diagnosis import (
     DiagnosisSuggestion,
     DiagnosisSuggestionRequest,
@@ -32,6 +32,9 @@ class MedicalSuggester:
         self.token_classifier = token_classifier
         self.is_initialized = False
         self.text_classifier_pipeline: Any = None
+        # Resolved placement of the disease classifier (TASK-959 metering); set
+        # for real in `initialize()`.
+        self._device: DeviceLabel = "cpu"
 
     async def initialize(self) -> None:
         try:
@@ -40,13 +43,17 @@ class MedicalSuggester:
             tokenizer = AutoTokenizer.from_pretrained(self.config.tokenizer_name)
             model = AutoModelForSequenceClassification.from_pretrained(self.config.model_name)
 
+            # D6: config.use_gpu (default True) now gates GPU use; default
+            # preserves today's auto-detect-when-available behavior. This
+            # pipeline never checks MPS (unchanged), so the resolved placement
+            # (TASK-959) is honestly cuda-or-cpu, never mps.
+            use_accelerator = self.config.use_gpu and torch.cuda.is_available()
+            self._device = "cuda" if use_accelerator else "cpu"
             self.text_classifier_pipeline = pipeline(
                 "text-classification",
                 model=model,
                 tokenizer=tokenizer,
-                # D6: config.use_gpu (default True) now gates GPU use;
-                # default preserves today's auto-detect-when-available behavior.
-                device=0 if (self.config.use_gpu and torch.cuda.is_available()) else -1,
+                device=0 if use_accelerator else -1,
             )
 
             # Initialize token classifier for entity extraction
@@ -131,16 +138,20 @@ class MedicalSuggester:
             symptom_text = self._create_symptom_text(relevant_entities)
 
             # Step 3: Use HuggingFace model to predict diseases
-            disease_predictions = await self._predict_diseases(symptom_text)
+            disease_predictions, disease_inference_ms = await self._predict_diseases(symptom_text)
 
             # Step 4: Create medical suggestions from predictions
             suggestions = self._create_medical_suggestions(disease_predictions, min_confidence)
 
-            # Create structured response
+            # Create structured response. inference_ms is SUMMED across both
+            # models this route runs (TASK-959): the NER pass (already reported
+            # on its own response) and the disease classifier above.
             response = DiagnosisSuggestionResponse(
                 suggestions=suggestions,
                 model_version=self.config.model_version,
                 symptoms_analyzed=[entity.text for entity in relevant_entities],
+                inference_ms=token_classification_result.inference_ms + disease_inference_ms,
+                device=self._device,
             )
 
             logger.info(f"Generated {len(suggestions)} medical suggestions")
@@ -220,15 +231,20 @@ class MedicalSuggester:
         symptom_text = ", ".join(set(symptom_parts)).replace("▁", "")
         return symptom_text.strip()
 
-    async def _predict_diseases(self, symptom_text: str) -> dict[str, float]:
-        """Use HuggingFace model to predict diseases from symptoms"""
+    async def _predict_diseases(self, symptom_text: str) -> tuple[dict[str, float], int]:
+        """Use HuggingFace model to predict diseases from symptoms.
+
+        Returns the predictions alongside the wall-clock inference time in
+        milliseconds (TASK-959); 0 when no model call was made (empty symptom
+        text, or the call failed).
+        """
         if not symptom_text:
-            return {}
+            return {}, 0
 
         try:
-            # Per-model running gauge + inference latency
-            # (symps-disease-bert).
-            with track_model_inference(MODEL_SYMPTOMS_DISEASE):
+            # Per-model running gauge + inference latency (symps-disease-bert);
+            # `timing` carries the elapsed ms out for the response.
+            with track_model_inference(MODEL_SYMPTOMS_DISEASE) as timing:
                 pipeline_results = self.text_classifier_pipeline(symptom_text)
 
             pipeline_results.sort(key=lambda x: x["score"], reverse=True)
@@ -238,11 +254,11 @@ class MedicalSuggester:
                 readable_label = self._to_readable_label(score_item["label"])
                 probabilities[readable_label] = float(score_item["score"])
 
-            return probabilities
+            return probabilities, round(timing.elapsed_ms)
 
         except Exception as e:
             logger.error(f"Error in disease prediction: {str(e)}")
-            return {}
+            return {}, 0
 
     def _to_readable_label(self, model_label: str) -> str:
         """Convert model label to readable disease name"""

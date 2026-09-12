@@ -67,8 +67,10 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -82,6 +84,7 @@ import httpx
 import httpx2
 import structlog
 
+from text.core.metrics import PROVIDER_BYTES
 from text.core.runtime_defaults import (
     HTTPX_MAX_CONNECTIONS,
     HTTPX_MAX_KEEPALIVE,
@@ -309,6 +312,170 @@ def apply_pool_policy(snapshot: EffectiveConfigSnapshot) -> set[str]:
     return changed
 
 
+# ── Counting what went over the wire (TASK-959 M-4) ──────────────────────────
+#
+# The owner's measurement model wants network consumption per third-party call,
+# and this module already owns the one seam every pooled adapter passes through:
+# `_Transport.handle_async_request` sees the request, and `_DrainOnCloseMixin`
+# sees every response byte the consumer iterates. So the counter goes HERE
+# rather than in each adapter — a new adapter on the pool is metered because it
+# is on the pool, not because someone remembered to instrument it.
+#
+# What is counted is BODY bytes: `len(request.content)` up, and the sum of the
+# parts iterated (plus the close-time drain) down. Headers, TLS framing and
+# HTTP/2 control frames are not counted and not estimated — an invented number
+# is worse than a documented floor. These are observed on the wire rather than
+# reconstructed at the application layer, which is the distinction the ledger's
+# `byteSource` attribute records (`wire` here, `app` where a service can only
+# report what it handed to an SDK).
+#
+# ## Why a contextvar and not a field on the response
+#
+# The adapter that needs the number never sees the httpx response: it hands the
+# request to a vendor SDK and gets a parsed object back. So the record is bound
+# by the CALLER — one per generation, at the call site that will read it — and
+# the transport finds it through a `ContextVar`. The value is a MUTABLE object,
+# which is what makes this safe under asyncio: every task gets its own copy of
+# the context, but a copy of a reference still points at the one record, so a
+# transport running inside the caller's task credits the caller's record without
+# any locking.
+#
+# Exactly one thread mutates a given record: the loop thread for every httpx
+# adapter, or one Bedrock worker thread for a botocore call (`with_byte_counts`
+# re-binds the record inside that thread, because `run_in_executor` does not
+# propagate a context). Two threads never share one record, so the `+=` needs no
+# lock — and a record with no binding is simply not counted rather than being
+# attributed to whatever ran last.
+
+
+@dataclass
+class ProviderByteCounts:
+    """Body bytes exchanged with one upstream, for ONE logical call.
+
+    Accumulates across retries and across the several HTTP requests a single
+    generation may make: what the platform paid for the call is the total it put
+    on the wire, not the last attempt's share of it.
+    """
+
+    provider: str
+    #: Which tier's credential paid — `tenant` (BYOK) or `platform`. Carried here
+    #: so the metric can be split the same way the ledger row is, without the
+    #: transport (which knows nothing about funding) having to learn it.
+    funding: str = "platform"
+    request_bytes: int = 0
+    response_bytes: int = 0
+    #: Requests observed. A zero here is how a caller tells "the adapter is off
+    #: the pool" (report `None` on the wire) from "the call sent nothing".
+    requests: int = 0
+
+    def add_request(self, count: int) -> None:
+        if count > 0:
+            self.request_bytes += count
+        self.requests += 1
+
+    def add_response(self, count: int) -> None:
+        if count > 0:
+            self.response_bytes += count
+
+    @property
+    def observed(self) -> bool:
+        """Whether any request passed through an instrumented transport."""
+        return self.requests > 0
+
+
+_BYTE_COUNTS: ContextVar[ProviderByteCounts | None] = ContextVar(
+    "text_provider_byte_counts", default=None
+)
+
+
+def current_byte_counts() -> ProviderByteCounts | None:
+    """The record the current call is counting into, if any."""
+    return _BYTE_COUNTS.get()
+
+
+@contextmanager
+def count_provider_bytes(
+    provider: str, *, funding: str = "platform"
+) -> Iterator[ProviderByteCounts]:
+    """Count one logical provider call's body bytes; yields the record.
+
+    Restores the PREVIOUS binding with a plain `set` rather than a token
+    `reset`: an adapter's `generate_stream` is an async generator, so the
+    enter and the exit can run in different `Context` copies, and
+    `ContextVar.reset` across two contexts raises. Nesting is not a real
+    shape here (one provider call per task at a time), so save-and-restore is
+    both sufficient and unable to fail.
+
+    The Prometheus counters are stamped ONCE, on exit, with the totals — a
+    per-chunk observation would cost a label lookup per token for a number
+    nobody reads per token. Stamping is best-effort: metering the metering
+    must never fail a generation.
+    """
+    counts = ProviderByteCounts(provider=provider, funding=funding)
+    previous = _BYTE_COUNTS.get()
+    _BYTE_COUNTS.set(counts)
+    try:
+        yield counts
+    finally:
+        _BYTE_COUNTS.set(previous)
+        try:
+            if counts.request_bytes:
+                PROVIDER_BYTES.labels(
+                    provider=provider, direction="egress", funding=counts.funding
+                ).inc(counts.request_bytes)
+            if counts.response_bytes:
+                PROVIDER_BYTES.labels(
+                    provider=provider, direction="ingress", funding=counts.funding
+                ).inc(counts.response_bytes)
+        except Exception as exc:  # noqa: BLE001 — telemetry never fails a call
+            logger.warning("text.pool.byte_metric_failed", provider=provider, error=str(exc))
+
+
+def with_byte_counts(fn: Callable[[], _T]) -> Callable[[], _T]:
+    """`fn`, re-bound to the caller's byte record, for a WORKER THREAD.
+
+    `loop.run_in_executor` does not carry a context into its thread (unlike
+    `asyncio.to_thread`), so a botocore hook firing on a Bedrock worker thread
+    would find no record and silently count nothing. This closes that gap at the
+    one boundary that crosses threads, and `reset` IS safe here: the set and the
+    reset both happen in the worker thread's own context, in order.
+    """
+    counts = _BYTE_COUNTS.get()
+
+    def _run() -> _T:
+        token = _BYTE_COUNTS.set(counts)
+        try:
+            return fn()
+        finally:
+            _BYTE_COUNTS.reset(token)
+
+    return _run
+
+
+def _request_body_bytes(request: Any) -> int:
+    """Body bytes of an outgoing request, without consuming a streaming body.
+
+    `Request.content` raises on a request whose body is still a stream (httpx
+    only materializes it for byte payloads, which is every payload these
+    adapters send), so `Content-Length` is the fallback and 0 the floor. Never
+    raises: a body we cannot size is a number we do not have, not a failed call.
+    """
+    try:
+        content = request.content
+    except Exception:  # noqa: BLE001 — an unread streaming body, nothing more
+        content = None
+    if isinstance(content, (bytes, bytearray)):
+        return len(content)
+    try:
+        declared = request.headers.get("content-length")
+    except Exception:  # noqa: BLE001 — a transport double without headers
+        return 0
+    try:
+        return max(0, int(declared)) if declared is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 # ── Draining close: what actually returns a streamed socket to the pool ──────
 #
 # One client per upstream (4.2) buys nothing if every STREAM still ends in a
@@ -350,18 +517,31 @@ class _DrainOnCloseMixin:
     Mixed into each HTTP family's own `AsyncByteStream` — httpx asserts the
     transport hands back one of ITS base class, and the two families are not
     interchangeable (module docstring).
+
+    Also the INGRESS counter (TASK-959): every response byte a consumer sees
+    passes through `__aiter__`, and the bytes the close-time drain swallows were
+    delivered too, so both are counted. The record is the one captured when the
+    REQUEST was made, not the one bound when a chunk happens to arrive — a
+    streamed response outlives nothing here, but capturing it removes the
+    question.
     """
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, counts: ProviderByteCounts | None = None) -> None:
         self._inner = inner
         self._iterator: Any = None
         self._at_eof = False
+        self._counts = counts
+
+    def _count(self, size: int) -> None:
+        if self._counts is not None:
+            self._counts.add_response(size)
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
         # Keep the iterator: a consumer that `break`s leaves it SUSPENDED rather
         # than closed, which is exactly what makes the close-time drain possible.
         self._iterator = self._inner.__aiter__()
         async for part in self._iterator:
+            self._count(len(part))
             yield part
         self._at_eof = True
 
@@ -380,6 +560,7 @@ class _DrainOnCloseMixin:
             async with asyncio.timeout(DRAIN_ON_CLOSE_TIMEOUT_S):
                 async for part in self._iterator:
                     read += len(part)
+                    self._count(len(part))
                     if read >= DRAIN_ON_CLOSE_MAX_BYTES:
                         return
         except Exception:
@@ -389,15 +570,23 @@ class _DrainOnCloseMixin:
 
 
 def _draining_transport(base_cls: Any, family_module: Any) -> Any:
-    """An `AsyncHTTPTransport` for one family whose responses drain on close."""
+    """An `AsyncHTTPTransport` for one family whose responses drain on close.
+
+    The same wrapper carries the TASK-959 byte counters: the request body is
+    sized here (before the socket, so a failed send still counts what was
+    offered) and the response stream is handed the record it must credit.
+    """
 
     class _Stream(_DrainOnCloseMixin, family_module.AsyncByteStream):
         pass
 
     class _Transport(base_cls):
         async def handle_async_request(self, request: Any) -> Any:
+            counts = current_byte_counts()
+            if counts is not None:
+                counts.add_request(_request_body_bytes(request))
             response = await super().handle_async_request(request)
-            response.stream = _Stream(response.stream)
+            response.stream = _Stream(response.stream, counts)
             return response
 
     return _Transport
@@ -512,7 +701,13 @@ async def run_in_bedrock_executor(fn: Callable[[], _T]) -> _T:
     Bedrock's blocking work runs, which is also what stops the boundary drifting
     back to the default executor one edit at a time.
     """
-    return await asyncio.get_running_loop().run_in_executor(bedrock_stream_executor(), fn)
+    return await asyncio.get_running_loop().run_in_executor(
+        # `with_byte_counts` is what keeps the botocore byte hooks (TASK-959)
+        # attributable: the record lives in a contextvar and `run_in_executor`
+        # does not carry a context into its thread.
+        bedrock_stream_executor(),
+        with_byte_counts(fn),
+    )
 
 
 def _resize_bedrock_executor(workers: int) -> None:

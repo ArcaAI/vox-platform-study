@@ -13,10 +13,11 @@ import {
   MaxLength,
   MinLength,
   Min,
+  Validate,
   ValidateNested,
 } from 'class-validator';
 import { AiDeploymentKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
-import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY } from '../constants';
+import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY, BucketRelativePrefixConstraint } from '../constants';
 import { AsrProfileRequest } from './asr-profile.request';
 
 /**
@@ -186,12 +187,14 @@ export class UpdateModelRequest {
 
   @ApiPropertyOptional({
     description:
-      'Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". ' +
-      '`localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both.',
+      'Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket ' +
+      'is already mounted at `/mnt/models-bucket`). Normally written by the publish job; accepted here for "register from ' +
+      'bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both.',
   })
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @Validate(BucketRelativePrefixConstraint)
   bucketPrefix?: string;
 
   @ApiPropertyOptional({ description: 'The single file a single-file loader opens inside `bucketPrefix`. Send an empty string to clear.' })

@@ -138,6 +138,7 @@ export function serializeUsageEvent(input: UsageEventInput): SerializedUsageEven
     // seconds multiplied by a price is exactly where float drift becomes money.
     quantity: new Decimal(input.quantity).toString(),
     costBasis: input.costBasis ?? AiCostBasis.INTERNAL,
+    connectionId: input.connectionId ?? null,
     consultationId: input.consultationId ?? null,
     doctorId: input.doctorId ?? null,
     departmentId: input.departmentId ?? null,

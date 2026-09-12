@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createHash } from 'node:crypto';
-import { AiDeploymentKind, AiModelAvailability, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { AiDeploymentKind, AiModelAvailability, AiModelSource, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ModelInventoryService } from '../model-inventory.service';
 import { HOPE_MODELS_BUCKET } from '../../constants';
 
@@ -29,6 +29,7 @@ function row(over: Record<string, unknown> = {}) {
     id: 'row-1',
     tenantId: SYSTEM_TENANT_ID,
     slug: 'medical-ner',
+    source: AiModelSource.HUGGINGFACE,
     libraryName: 'transformers',
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
     bucketPrefix: null,
@@ -165,5 +166,210 @@ describe('ModelInventoryService.runInventory', () => {
 
     await expect(service.runInventory()).rejects.toThrow('minio down');
     expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-960 OD-1 — a LOCAL row is verified by OBJECT LISTING, never by a
+ * `manifest.json`.
+ *
+ * A LOCAL model is one an admin uploaded into `hope-models` through the MinIO
+ * browser; the bucket is mounted into every serving pod, so the weights are
+ * already where the loader looks. Nothing downloaded them, so nothing wrote a
+ * manifest — and demanding one stamped every correct upload `MISSING` forever.
+ *
+ * The corollary is that a LOCAL row can never be `PARTIAL`: `PARTIAL` means
+ * "the manifest and the bucket disagree", and a row with no manifest of its own
+ * has no digest that could drift.
+ */
+describe('ModelInventoryService.runInventory — a LOCAL row is verified by listing', () => {
+  const s3 = { listFiles: vi.fn(), getFile: vi.fn() };
+  const repo = { findAll: vi.fn(), update: vi.fn(async (_id: string, e: unknown) => e) };
+  const db = { baseClient: BASE_CLIENT };
+  let service: ModelInventoryService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new ModelInventoryService(repo as never, s3 as never, db as never);
+  });
+
+  it('is AVAILABLE when its primaryObject is present under the prefix, and never opens the manifest', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'arcaai-whisper-en-2609/ggml-arcaai-whisper-en-2609-f16.bin', size: 1620000000 }]);
+    const local = row({
+      id: 'l',
+      slug: 'arcaai-whisper-2609',
+      source: AiModelSource.LOCAL,
+      libraryName: 'whisper-cpp',
+      bucketPrefix: 'arcaai-whisper-en-2609/',
+      primaryObject: 'ggml-arcaai-whisper-en-2609-f16.bin',
+    });
+    repo.findAll.mockResolvedValue([local]);
+
+    const report = await service.runInventory();
+
+    expect(local.markAvailability).toHaveBeenCalledWith(AiModelAvailability.AVAILABLE, expect.objectContaining({ verifiedBy: 'listing', bucketPrefix: 'arcaai-whisper-en-2609/' }), expect.any(Date));
+    expect(s3.getFile).not.toHaveBeenCalled();
+    expect(report.counts.available).toBe(1);
+  });
+
+  it('is MISSING, naming the object, when its primaryObject is absent from the listing', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'staged/other.bin' }]);
+    const local = row({
+      id: 'l',
+      slug: 'staged',
+      source: AiModelSource.LOCAL,
+      bucketPrefix: 'staged/',
+      primaryObject: 'weights.bin',
+    });
+    repo.findAll.mockResolvedValue([local]);
+
+    const report = await service.runInventory();
+
+    expect(local.markAvailability).toHaveBeenCalledWith(AiModelAvailability.MISSING, expect.objectContaining({ reason: expect.stringContaining('weights.bin'), missingObjects: ['weights.bin'] }), expect.any(Date));
+    expect(report.counts.missing).toBe(1);
+  });
+
+  it('is AVAILABLE with no primaryObject when the prefix holds at least one object', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'dir-model/v1/config.json' }, { key: 'dir-model/v1/model.safetensors' }]);
+    const local = row({ id: 'l', slug: 'dir-model', source: AiModelSource.LOCAL, bucketPrefix: 'dir-model/v1/', primaryObject: null });
+    repo.findAll.mockResolvedValue([local]);
+
+    await service.runInventory();
+
+    expect(local.markAvailability).toHaveBeenCalledWith(AiModelAvailability.AVAILABLE, expect.objectContaining({ verifiedBy: 'listing', objectsChecked: 2 }), expect.any(Date));
+  });
+
+  it('is MISSING when the prefix holds no objects at all', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'somewhere-else/model.gguf' }]);
+    const local = row({ id: 'l', slug: 'empty', source: AiModelSource.LOCAL, bucketPrefix: 'empty/', primaryObject: null });
+    repo.findAll.mockResolvedValue([local]);
+
+    const report = await service.runInventory();
+
+    expect(local.markAvailability).toHaveBeenCalledWith(AiModelAvailability.MISSING, expect.objectContaining({ reason: expect.stringContaining('empty/') }), expect.any(Date));
+    expect(report.counts.missing).toBe(1);
+    expect(report.counts.partial).toBe(0);
+  });
+
+  it('is never PARTIAL for a digest mismatch — a manifest it does not own cannot drift it', async () => {
+    // The prefix happens to carry a manifest AND the row carries a stale digest:
+    // the manifest lane would stamp PARTIAL. Listing verification does not read it.
+    s3.listFiles.mockResolvedValue([{ key: 'mixed/manifest.json' }, { key: 'mixed/model.gguf' }]);
+    s3.getFile.mockResolvedValue(Buffer.from(manifest(['model.gguf', 'absent.gguf'])));
+    const local = row({ id: 'l', slug: 'mixed', source: AiModelSource.LOCAL, bucketPrefix: 'mixed/', manifestDigest: 'stale-digest', primaryObject: 'model.gguf' });
+    repo.findAll.mockResolvedValue([local]);
+
+    const report = await service.runInventory();
+
+    expect(local.markAvailability).toHaveBeenCalledWith(AiModelAvailability.AVAILABLE, expect.anything(), expect.any(Date));
+    expect(s3.getFile).not.toHaveBeenCalled();
+    expect(report.counts.partial).toBe(0);
+  });
+
+  it('keeps the cloud and weight-less short-circuits ahead of the LOCAL branch', async () => {
+    s3.listFiles.mockResolvedValue([]);
+    const cloudLocal = row({ id: 'c', slug: 'c', source: AiModelSource.LOCAL, deploymentKind: AiDeploymentKind.CLOUD, bucketPrefix: 'c/' });
+    const weightlessLocal = row({ id: 'w', slug: 'w', source: AiModelSource.LOCAL, libraryName: 'pyrnnoise', bucketPrefix: 'w/' });
+    repo.findAll.mockResolvedValue([cloudLocal, weightlessLocal]);
+
+    const report = await service.runInventory();
+
+    expect(cloudLocal.markAvailability).toHaveBeenCalledWith(AiModelAvailability.NOT_APPLICABLE, expect.anything(), expect.any(Date));
+    expect(weightlessLocal.markAvailability).toHaveBeenCalledWith(AiModelAvailability.NOT_APPLICABLE, expect.anything(), expect.any(Date));
+    expect(report.counts.notApplicable).toBe(2);
+  });
+});
+
+/**
+ * TASK-960 — "In bucket, not registered" must see an ADMIN UPLOAD.
+ *
+ * Before this, discovery listed only prefixes that already carried a
+ * `manifest.json` AND matched `<slug>/<version>/` — precisely the prefixes the
+ * publisher itself wrote, which are exactly the ones that need no adopting. A
+ * staged upload (one segment deep, no manifest) was invisible.
+ */
+describe('ModelInventoryService.runInventory — staged (manifest-less) prefixes are discoverable', () => {
+  const s3 = { listFiles: vi.fn(), getFile: vi.fn() };
+  const repo = { findAll: vi.fn(async () => []), update: vi.fn(async (_id: string, e: unknown) => e) };
+  const db = { baseClient: BASE_CLIENT };
+  let service: ModelInventoryService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo.findAll.mockResolvedValue([]);
+    service = new ModelInventoryService(repo as never, s3 as never, db as never);
+  });
+
+  it('reports a one-segment manifest-less prefix holding a weight file as `staged`', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'arcaai-whisper-en-2609/ggml-arcaai-whisper-en-2609-f16.bin', size: 1620000000 }]);
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered).toEqual([
+      expect.objectContaining({
+        bucketPrefix: 'arcaai-whisper-en-2609/',
+        layout: 'staged',
+        slug: 'arcaai-whisper-en-2609',
+        version: null,
+        objectCount: 1,
+        totalBytes: 1620000000,
+      }),
+    ]);
+    expect(s3.getFile).not.toHaveBeenCalled();
+  });
+
+  it('groups a two-segment staged prefix by its directory and names its version', async () => {
+    s3.listFiles.mockResolvedValue([
+      { key: 'staged-model/f16/model.safetensors', size: 10 },
+      { key: 'staged-model/f16/config.json', size: 2 },
+    ]);
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered).toEqual([
+      expect.objectContaining({ bucketPrefix: 'staged-model/f16/', layout: 'staged', slug: 'staged-model', version: 'f16', objectCount: 2, totalBytes: 12 }),
+    ]);
+  });
+
+  it('never reports the hf/ cache tree, which is full of manifest-less weights', async () => {
+    s3.listFiles.mockResolvedValue([
+      { key: 'hf/hub/models--blaze999--Medical-NER/snapshots/deadbeef/model.safetensors' },
+      { key: 'hf/hub/models--blaze999--Medical-NER/refs/main' },
+    ]);
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered).toEqual([]);
+  });
+
+  it('leaves out a prefix a catalogue row already references, and any directory under it', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'adopted/model.gguf' }, { key: 'adopted/extra/shard.gguf' }]);
+    repo.findAll.mockResolvedValue([row({ id: 'a', slug: 'adopted', source: AiModelSource.LOCAL, bucketPrefix: 'adopted/', primaryObject: 'model.gguf' })]);
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered).toEqual([]);
+  });
+
+  it('leaves out a subdirectory of a published, manifest-bearing prefix', async () => {
+    s3.listFiles.mockResolvedValue([
+      { key: 'published/v1/manifest.json' },
+      { key: 'published/v1/model.gguf' },
+      { key: 'published/v1/shards/part-1.gguf' },
+    ]);
+    s3.getFile.mockResolvedValue(Buffer.from(manifest(['model.gguf'], { slug: 'published', version: 'v1' })));
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered.map((u) => u.bucketPrefix)).toEqual(['published/v1/']);
+    expect(report.unregistered[0]?.layout).toBe('flat');
+  });
+
+  it('ignores a manifest-less prefix that holds no weight file at all', async () => {
+    s3.listFiles.mockResolvedValue([{ key: 'notes/README.md' }, { key: 'notes/config.json' }]);
+
+    const report = await service.runInventory();
+
+    expect(report.unregistered).toEqual([]);
   });
 });

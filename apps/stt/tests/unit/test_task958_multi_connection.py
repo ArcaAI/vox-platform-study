@@ -243,3 +243,95 @@ class TestTheSpecMirrorAcceptsTheNewFields:
         asr_slug = bundle.spec.models.asr.slug
         assert bundle.model_configs[asr_slug].connection_key is None
         assert bundle.model_configs[asr_slug].connection_id is None
+
+
+class TestTheTeardownResponseSchemaCarriesTheConnection:
+    """The DELETE teardown path is a pydantic BOTTLENECK, not a passthrough.
+
+    ``routes.delete_streaming_session`` returns
+    ``StreamingSessionTeardownResponse(**summary)``, and that model is
+    ``extra='ignore'`` — so a key the schema does not DECLARE is silently dropped
+    between the session manager and the gateway. The reaper push-back ships the raw
+    dict and would deliver ``connection_id`` either way, which is exactly what makes
+    the gap invisible: the same session teardown carries the field on one path and
+    loses it on the other, and only the lossy one is the normal path.
+
+    The dicts below are the shape ``SessionManager._build_teardown_summary`` returns.
+    """
+
+    @staticmethod
+    def _summary() -> dict[str, Any]:
+        return {
+            "session_id": "s-1",
+            "tenant_id": "t-1",
+            "consultation_id": None,
+            "user_id": None,
+            "pipeline_id": "p-1",
+            "closed_at": "2026-09-12T10:01:30",
+            "audio_seconds": 42.5,
+            "session_seconds": 90.0,
+            "engine": "openai",
+            "deployment": "BYOK",
+            "connection_id": "conn-2",
+            "segments": [
+                {
+                    "engine": "openai",
+                    "deployment": "BYOK",
+                    "audio_seconds": 20.0,
+                    "session_seconds": 60.0,
+                    "connection_id": "conn-1",
+                },
+                {
+                    "engine": "openai",
+                    "deployment": "BYOK",
+                    "audio_seconds": 22.5,
+                    "session_seconds": 30.0,
+                    "connection_id": "conn-2",
+                },
+            ],
+            "language_mode": "ml-en",
+            "channel_count": 1,
+        }
+
+    def test_the_top_level_connection_survives_the_response_model(self) -> None:
+        from stt.streaming.api.schemas import StreamingSessionTeardownResponse
+
+        dumped = StreamingSessionTeardownResponse(**self._summary()).model_dump()
+        assert dumped["connection_id"] == "conn-2"
+
+    def test_every_segment_keeps_its_own_connection(self) -> None:
+        """Two segments, one engine, two accounts — the whole point of D-7.
+
+        Dropping the per-segment id would collapse them into one indistinguishable
+        pair of ``openai``/``BYOK`` rows on the ledger.
+        """
+        from stt.streaming.api.schemas import StreamingSessionTeardownResponse
+
+        dumped = StreamingSessionTeardownResponse(**self._summary()).model_dump()
+        assert [s["connection_id"] for s in dumped["segments"]] == ["conn-1", "conn-2"]
+
+    def test_a_summary_that_names_no_connection_answers_null_on_both_levels(self) -> None:
+        """Nullable like ``engine``/``deployment`` beside it — never absent, never guessed."""
+        from stt.streaming.api.schemas import StreamingSessionTeardownResponse
+
+        summary = self._summary()
+        summary["connection_id"] = None
+        for segment in summary["segments"]:
+            segment["connection_id"] = None
+
+        dumped = StreamingSessionTeardownResponse(**summary).model_dump()
+        assert dumped["connection_id"] is None
+        assert [s["connection_id"] for s in dumped["segments"]] == [None, None]
+
+    def test_a_sender_that_omits_it_entirely_still_validates(self) -> None:
+        """An older session manager sends no such key; the response must not 422."""
+        from stt.streaming.api.schemas import StreamingSessionTeardownResponse
+
+        summary = self._summary()
+        del summary["connection_id"]
+        for segment in summary["segments"]:
+            del segment["connection_id"]
+
+        dumped = StreamingSessionTeardownResponse(**summary).model_dump()
+        assert dumped["connection_id"] is None
+        assert [s["connection_id"] for s in dumped["segments"]] == [None, None]

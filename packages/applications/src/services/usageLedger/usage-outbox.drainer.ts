@@ -199,6 +199,11 @@ export class UsageOutboxDrainer {
       deployment: event.deployment,
       unit: event.unit,
       quantity: event.quantity,
+      // TASK-958 D-7 — `?? null` rather than passed through, because a payload
+      // written by a deploy that predates the field carries no key at all and the
+      // column is NOT NULL-able-by-accident: absent must mean "no connection named",
+      // never `undefined` reaching the factory.
+      connectionId: event.connectionId ?? null,
       consultationId: event.consultationId,
       doctorId: event.doctorId,
       departmentId: event.departmentId,

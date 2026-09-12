@@ -298,7 +298,13 @@ class TestOverlay:
         apply_control_plane(
             settings,
             self._snapshot(
-                {"tts.limits.maxInputChars": {"value": "soon", "dataType": "number", "source": "db"}}
+                {
+                    "tts.limits.maxInputChars": {
+                        "value": "soon",
+                        "dataType": "number",
+                        "source": "db",
+                    }
+                }
             ),
         )
         assert settings.max_input_chars == before

@@ -95,7 +95,9 @@ class KokoroConfig(BaseSettings):
     # Empty = dev fallback to `KPipeline`'s own Hub download. TASK-879 wired the
     # intended supplier: the resolved spec's `model.localPath`, filled per
     # request by `from_spec`.
-    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_KOKORO_MODEL_PATH"))
+    model_path: str = Field(
+        default="", validation_alias=moved_to_row_alias("TTS_KOKORO_MODEL_PATH")
+    )
 
 
 class IndicParlerConfig(BaseSettings):
@@ -106,9 +108,7 @@ class IndicParlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
 
-    hf_model: str = Field(
-        default="", validation_alias=moved_to_row_alias("TTS_PARLER_HF_MODEL")
-    )
+    hf_model: str = Field(default="", validation_alias=moved_to_row_alias("TTS_PARLER_HF_MODEL"))
     device: str = Field(default="cpu", validation_alias=moved_alias("TTS_PARLER_DEVICE"))
     # No `speaker_ml` / `speaker_en`. `Anjali` was the catalog's `indic_parler`
     # binding for `ml-female-1` written a second time — and this provider was the
@@ -122,7 +122,9 @@ class IndicParlerConfig(BaseSettings):
     # desc_encoder_path is set the description tokenizer (google/flan-t5-large,
     # baked into config as a Hub id) loads from it instead of fetching. Empty =
     # dev fallback to the gated hub pull. Pair with HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE.
-    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_PARLER_MODEL_PATH"))
+    model_path: str = Field(
+        default="", validation_alias=moved_to_row_alias("TTS_PARLER_MODEL_PATH")
+    )
     desc_encoder_path: str = Field(
         default="", validation_alias=moved_to_row_alias("TTS_PARLER_DESC_ENCODER_PATH")
     )
@@ -142,11 +144,11 @@ class IndicF5Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
 
-    hf_model: str = Field(
-        default="", validation_alias=moved_to_row_alias("TTS_INDICF5_HF_MODEL")
-    )
+    hf_model: str = Field(default="", validation_alias=moved_to_row_alias("TTS_INDICF5_HF_MODEL"))
     # local mirror dir; the registry row's `sourceUri` otherwise
-    model_path: str = Field(default="", validation_alias=moved_to_row_alias("TTS_INDICF5_MODEL_PATH"))
+    model_path: str = Field(
+        default="", validation_alias=moved_to_row_alias("TTS_INDICF5_MODEL_PATH")
+    )
     device: str = Field(default="cpu", validation_alias=moved_alias("TTS_INDICF5_DEVICE"))
     # Voice-clone reference wav + its transcript. They belong to the VOICE, not
     # to the service: IndicF5 conditions every utterance on this recording, so
@@ -188,9 +190,7 @@ class SarvamConfig(BaseSettings):
     # row. It arrives per request on the resolved spec's `connection` block; the
     # empty default means "the spec did not say", and the adapter refuses rather
     # than reaching a vendor nobody named.
-    base_url: str = Field(
-        default="", validation_alias=moved_to_row_alias("TTS_SARVAM_BASE_URL")
-    )
+    base_url: str = Field(default="", validation_alias=moved_to_row_alias("TTS_SARVAM_BASE_URL"))
     # A model id that REACHES THE WIRE (`providers/sarvam.py` sends it as the
     # request's `model`), so it is a SELECTION — and a selection is the AGENT's,
     # expressed as the `sourceUri` of the registry row it binds. Empty default,

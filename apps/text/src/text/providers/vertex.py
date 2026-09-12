@@ -28,6 +28,7 @@ from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
 )
+from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
@@ -36,6 +37,7 @@ from text.models.stream import StreamChunk
 from text.models.usage import vertex_usage_dict
 from text.providers.base import CredentialPosture, require_model
 from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import TransportFamily, pooled_http_client
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -161,6 +163,25 @@ class VertexProvider:
                 project=project,
                 location=location,
                 credentials=credentials,
+                # TASK-959 §4.1 — Vertex joins the POOL. Without this the SDK
+                # builds its own client, so a Vertex call got none of `pool.py`'s
+                # per-upstream limits, none of its connection reuse, and — since
+                # the byte counters live in that transport — no network metering
+                # at all. Injecting the client also settles WHICH stack the SDK
+                # uses: `google-genai` prefers aiohttp when it is installed, and
+                # `_use_aiohttp()` is false precisely when a custom async httpx
+                # client is supplied, so this both measures and pins the path.
+                #
+                # `HTTPX` (not `HTTPX2`): `AsyncHttpxClient` subclasses
+                # `httpx.AsyncClient`, and the two families are structurally
+                # identical and silently incompatible (`pool.py` docstring).
+                http_options=types.HttpOptions(
+                    httpx_async_client=pooled_http_client(
+                        _PROVIDER_NAME,
+                        timeout_s=PROVIDER_TIMEOUT_FLOOR_S,
+                        family=TransportFamily.HTTPX,
+                    )
+                ),
             ),
         )
 
