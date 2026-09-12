@@ -35,11 +35,14 @@ export interface LimitField {
     | 'maxPromptTemplates'
     | 'maxAsrPipelines'
     | 'maxApiKeys'
+    | 'maxWorkflowDefinitions'
+    | 'maxAiProviderConnections'
     | 'storageQuotaBytes'
     | 'maxConcurrentSessions'
     | 'monthlyConsultations'
     | 'monthlyTranscriptionMinutes'
-    | 'monthlySummaries';
+    | 'monthlySummaries'
+    | 'monthlyWorkflowInvocations';
   label: string;
 }
 
@@ -50,9 +53,12 @@ export const LIMIT_FIELDS: LimitField[] = [
   // @deprecated TASK-861 — removed in R4 with audio pipelines (the agent ceiling replaces it).
   { key: 'maxAsrPipelines', label: 'Max ASR pipelines (deprecated)' },
   { key: 'maxApiKeys', label: 'Max API keys' },
+  { key: 'maxWorkflowDefinitions', label: 'Max workflow definitions' },
+  { key: 'maxAiProviderConnections', label: 'Max AI provider connections' },
   { key: 'maxConcurrentSessions', label: 'Max concurrent sessions' },
   { key: 'monthlyConsultations', label: 'Monthly consultations' },
   { key: 'monthlyTranscriptionMinutes', label: 'Monthly transcription minutes' },
   { key: 'monthlySummaries', label: 'Monthly summaries' },
+  { key: 'monthlyWorkflowInvocations', label: 'Monthly workflow invocations' },
   { key: 'storageQuotaBytes', label: 'Storage quota (bytes)' },
 ];
