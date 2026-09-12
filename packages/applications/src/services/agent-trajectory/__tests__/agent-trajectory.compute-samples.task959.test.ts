@@ -12,6 +12,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
 import {
   AgentSessionKind,
   AgentStepStatus,
@@ -204,5 +205,55 @@ describe('emission resilience (TASK-957 F-5, gateway half)', () => {
   it('works with no metrics service wired — observability is never a precondition', async () => {
     usageLedger.recordUsage.mockRejectedValue(new Error('outbox unavailable'));
     await expect(makeService().recordComputeSamples([sample()])).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Two cases where retrying is not merely useless but HARMFUL.
+ *
+ * Found on review of the retry above, not from a failing test — which is why
+ * they are pinned: neither shows up as a wrong number, only as a slow or
+ * lock-holding request.
+ */
+describe('when NOT to retry', () => {
+  const step = (): CreateAgentTrajectoryStepInput => ({
+    tenantId: TENANT,
+    sessionKind: AgentSessionKind.HARNESS_DOC,
+    sessionId: 'wf-1',
+    runId: 'run-1',
+    seq: 0,
+    stepType: AgentStepType.LLM_CALL,
+    name: 'generate',
+    status: AgentStepStatus.OK,
+    startedAt: new Date('2026-09-12T10:00:00.000Z'),
+    endedAt: new Date('2026-09-12T10:00:02.000Z'),
+    stats: { provider: 'lm-studio', model: 'phi-4', prompt_tokens: 10, predicted_tokens: 2 },
+  });
+
+  it('attempts ONCE inside an open transaction — a failed statement poisons it, so a retry cannot land', async () => {
+    // And it is worse than useless: the sleeps hold the transaction's locks
+    // open while it waits to fail again.
+    const unitOfWork = { runInTransaction: vi.fn((work: (tx: unknown) => Promise<unknown>) => work({ tx: true })) };
+    const service = new AgentTrajectoryService(
+      repository as never,
+      eventEmitter as never,
+      cls as never,
+      undefined,
+      usageLedger as never,
+      unitOfWork as never,
+    );
+    usageLedger.recordUsage.mockRejectedValue(new Error('deadlock detected'));
+
+    await service.recordSteps([step()]);
+
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a VALIDATION failure — it is deterministic, and 500 steps × 3 attempts is a timeout', async () => {
+    usageLedger.recordUsage.mockRejectedValue(new ArgumentInvalidException('operation "workflow.steps" is not one of the frozen usage operations'));
+
+    await makeService().recordComputeSamples([sample()]);
+
+    expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
   });
 });
