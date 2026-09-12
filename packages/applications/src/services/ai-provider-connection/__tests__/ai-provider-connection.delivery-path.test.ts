@@ -39,6 +39,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -58,9 +59,10 @@ function systemRow(opts: { service: string; provider: string; baseUrl: string; k
 }
 
 function makeService(rows: unknown[]) {
-  const repo = {
-    findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) =>
-      (rows as any[]).find((r) => r.service === service && r.provider === provider && r.tenantId === tenantId) ?? null,
+  const repo = withTask958Lookups({
+    findByTenantServiceProvider: vi.fn(
+      async (service: string, provider: string, tenantId: string) =>
+        (rows as any[]).find((r) => r.service === service && r.provider === provider && r.tenantId === tenantId) ?? null,
     ),
     findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) =>
       (rows as any[]).filter((r) => r.service === service && r.tenantId === tenantId),
@@ -68,7 +70,7 @@ function makeService(rows: unknown[]) {
     create: vi.fn(),
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
-  };
+  });
   const secrets = {
     encrypt: vi.fn(async () => 'vault:v3:cipher'),
     decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
@@ -80,7 +82,7 @@ function makeService(rows: unknown[]) {
     { emit: vi.fn() } as any,
     { get: vi.fn(() => undefined) } as any,
     secrets as any,
-    { isFeatureEnabled: vi.fn(async () => true) } as any,
+    { isFeatureEnabled: vi.fn(async () => true), assertQuantityQuota: vi.fn() } as any,
   );
   vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
   return svc;

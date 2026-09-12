@@ -13,9 +13,13 @@ export class AiProviderConnectionDtoMapper {
   static toResponse(entity: AiProviderConnectionEntity, models?: AiModelEntity[]): AiProviderConnectionResponse {
     return {
       ...(models ? { models: models.map((model) => AiProviderConnectionDtoMapper.toModel(model)) } : {}),
+      id: entity.id,
       tenantId: entity.tenantId,
       service: entity.service,
+      slug: entity.slug,
       provider: entity.provider,
+      name: entity.name ?? null,
+      isDefault: entity.isDefault,
       baseUrl: entity.baseUrl ?? null,
       region: entity.region ?? null,
       apiVersion: entity.apiVersion ?? null,
@@ -73,12 +77,23 @@ export class AiProviderConnectionDtoMapper {
    * The "no row yet" shape. The client GETs this, then upserts with
    * `If-Match: "0"` / `expectedVersion: 0` to create — mirroring the
    * `TenantTtsConfigDtoMapper.placeholder` contract.
+   *
+   * TASK-958: `id` is the EMPTY STRING — there is no row, and inventing a uuid
+   * would hand a client an id that resolves to nothing. `version: 0` is the
+   * field that says "placeholder"; `id: ''` follows it. `isDefault` reports what
+   * CREATING this row would produce: a slug that is its own provider id is the
+   * default (there can be no other, or the caller would have read it), a named
+   * slug is a sibling.
    */
-  static placeholder(service: string, tenantId: string, provider: string): AiProviderConnectionResponse {
+  static placeholder(service: string, tenantId: string, slug: string, provider = slug): AiProviderConnectionResponse {
     return {
+      id: '',
       tenantId,
       service,
+      slug,
       provider,
+      name: null,
+      isDefault: slug === provider,
       baseUrl: null,
       region: null,
       apiVersion: null,

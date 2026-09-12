@@ -19,6 +19,13 @@ interface ProbeTarget {
   region: string | null;
   apiVersion: string | null;
   deploymentName: string | null;
+  /**
+   * TASK-958 — the VENDOR this probe talks to, read off the stored row (the
+   * path segment is the connection slug, which for a named sibling is not a
+   * provider id). Falls back to the segment when no row was found, which is the
+   * only way an unsaved connection can be probed at all.
+   */
+  provider: string;
   source: TestProviderConnectionResponse['source'];
 }
 
@@ -82,27 +89,22 @@ export class ProviderConnectionProbe {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
-  async test(
-    service: ProviderService,
-    provider: string,
-    tenantId: string,
-    dto: TestProviderConnectionRequest,
-  ): Promise<TestProviderConnectionResponse> {
-    this.connections.assertResolvable(service, provider, tenantId);
+  async test(service: ProviderService, slug: string, tenantId: string, dto: TestProviderConnectionRequest): Promise<TestProviderConnectionResponse> {
+    this.connections.assertResolvable(service, slug, tenantId);
 
-    const target = await this.resolveTarget(service, provider, tenantId, dto);
+    // TASK-958 — the path segment is the connection SLUG, and which probe to run
+    // is a property of the VENDOR. The stored row answers that; a slug with no
+    // row can only be its own provider id (that is what makes it addressable at
+    // all), so falling back to it preserves every pre-958 call.
+    const target = await this.resolveTarget(service, slug, tenantId, dto);
+    const provider = target.provider;
     const outcome = await this.run(service, provider, tenantId, target);
     return { ...outcome, source: target.source };
   }
 
   // ───────────────────────────── target resolution ─────────────────────────────
 
-  private async resolveTarget(
-    service: ProviderService,
-    provider: string,
-    tenantId: string,
-    dto: TestProviderConnectionRequest,
-  ): Promise<ProbeTarget> {
+  private async resolveTarget(service: ProviderService, slug: string, tenantId: string, dto: TestProviderConnectionRequest): Promise<ProbeTarget> {
     const needsStored =
       dto.apiKey === undefined ||
       dto.baseUrl === undefined ||
@@ -113,10 +115,14 @@ export class ProviderConnectionProbe {
     let row: AiProviderConnectionEntity | null = null;
     let tier: TestProviderConnectionResponse['source'] = 'request';
     if (needsStored) {
-      row = await this.connections.findRow(service, provider, tenantId);
+      // The caller's own row is looked up by SLUG (it may be a named sibling);
+      // the platform fallback by the PROVIDER that row names, because the
+      // platform tier holds one row per provider and knows nothing of a tenant's
+      // names for its connections.
+      row = await this.connections.findRow(service, slug, tenantId);
       tier = row ? 'tenant' : 'request';
       if (!row && tenantId !== SYSTEM_TENANT_ID) {
-        row = await this.connections.findRow(service, provider, SYSTEM_TENANT_ID);
+        row = await this.connections.findDefaultRow(service, slug, SYSTEM_TENANT_ID);
         tier = row ? 'platform' : 'request';
       }
       if (tenantId === SYSTEM_TENANT_ID && row) tier = 'platform';
@@ -148,6 +154,7 @@ export class ProviderConnectionProbe {
       region: clean(dto.region) ?? clean(row?.region),
       apiVersion: clean(dto.apiVersion) ?? clean(row?.apiVersion),
       deploymentName: clean(dto.deploymentName) ?? clean(row?.deploymentName),
+      provider: row?.provider ?? slug,
       source,
     };
   }

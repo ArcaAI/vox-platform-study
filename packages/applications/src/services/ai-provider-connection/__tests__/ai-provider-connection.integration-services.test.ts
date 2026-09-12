@@ -27,6 +27,7 @@ import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { CLOUD_BYO_PROVIDERS, PROVIDER_SERVICES, isCloudByoProvider } from '../constants';
 import { sanitizeProviderExtras, validateProviderExtras } from '../provider-extras';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 const TENANT_B = 'tenant-bbb';
@@ -54,7 +55,7 @@ function makeRow(o: {
 
 function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?: boolean } = {}) {
   const rowsByTenant = opts.rowsByTenant ?? {};
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => {
       const rows = (rowsByTenant[tenantId] ?? []) as any[];
       return rows.find((r) => r.service === service && r.provider === provider) ?? null;
@@ -66,14 +67,14 @@ function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT_A : undefined)) };
   const secrets = {
     encrypt: vi.fn(async () => 'vault:v3:cipher'),
     decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
     supportsTransit: vi.fn(() => true),
   };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(
     repo as any,
     { baseClient: {} } as any,
@@ -254,7 +255,9 @@ describe('C.2 — extraJson survives to the override entry', () => {
   it('keeps the model/project/location behaviour the allow-list used to provide', async () => {
     const { svc } = makeService({
       rowsByTenant: {
-        [TENANT_A]: [makeRow({ service: 'llm', provider: 'vertex', extraJson: { model: 'gemini-2.5-pro', project: 'p-1', location: 'us-central1' } })],
+        [TENANT_A]: [
+          makeRow({ service: 'llm', provider: 'vertex', extraJson: { model: 'gemini-2.5-pro', project: 'p-1', location: 'us-central1' } }),
+        ],
       },
     });
     const entry = (await svc.resolveTenantCloudOverrides('llm', TENANT_A)).overrides.vertex!;

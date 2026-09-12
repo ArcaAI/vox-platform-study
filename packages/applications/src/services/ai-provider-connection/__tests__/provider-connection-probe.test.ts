@@ -18,7 +18,11 @@ const TENANT = 'tenant-abc';
 function connections(rows: Record<string, any> = {}) {
   return {
     assertResolvable: vi.fn(),
-    findRow: vi.fn(async (_svc: string, _provider: string, tenantId: string) => rows[tenantId] ?? null),
+    // TASK-958 — the probe reads the caller's own row by SLUG and the platform
+    // fallback by PROVIDER. These fixtures hold one default row per tier, whose
+    // slug IS its provider, so both answer from the same table.
+    findRow: vi.fn(async (_svc: string, _slug: string, tenantId: string) => rows[tenantId] ?? null),
+    findDefaultRow: vi.fn(async (_svc: string, _provider: string, tenantId: string) => rows[tenantId] ?? null),
   };
 }
 
@@ -55,7 +59,10 @@ describe('ProviderConnectionProbe — auth probes', () => {
   });
 
   it('OpenAI: 401 is an auth rejection, never a throw', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 401 })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
     const res = await probe.test('llm', 'openai', TENANT, { apiKey: 'bad', baseUrl: 'https://api.openai.com/v1' });
     expect(res.ok).toBe(false);
@@ -76,7 +83,10 @@ describe('ProviderConnectionProbe — auth probes', () => {
   });
 
   it('Azure OpenAI: lists deployments with the api-key header and refuses an unlisted deploymentName', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'gpt-4o-mini' }] }) })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: 'gpt-4o-mini' }] }) })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
     const res = await probe.test('llm', 'azure', TENANT, {
       apiKey: 'k',
@@ -103,7 +113,10 @@ describe('ProviderConnectionProbe — reachability probes', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('Sarvam: HEAD smoke test that says so — it never claims the key was verified', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200 })),
+    );
     const probe = new ProviderConnectionProbe(connections() as any, secrets as any);
     const res = await probe.test('stt', 'sarvam', TENANT, { apiKey: 'sv', baseUrl: 'https://api.sarvam.ai' });
     expect(res.ok).toBe(true);
@@ -154,7 +167,10 @@ describe('ProviderConnectionProbe — stored-row fallback', () => {
   it("decrypts the tenant's STORED key when the body omits apiKey, and reports source=tenant", async () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
-    const probe = new ProviderConnectionProbe(connections({ [TENANT]: storedRow(TENANT, { baseUrl: 'https://api.openai.com/v1' }) }) as any, secrets as any);
+    const probe = new ProviderConnectionProbe(
+      connections({ [TENANT]: storedRow(TENANT, { baseUrl: 'https://api.openai.com/v1' }) }) as any,
+      secrets as any,
+    );
 
     const res = await probe.test('llm', 'openai', TENANT, {});
 
@@ -166,8 +182,14 @@ describe('ProviderConnectionProbe — stored-row fallback', () => {
   });
 
   it('widens to the SYSTEM row only when the tenant has none, and reports source=platform', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })));
-    const probe = new ProviderConnectionProbe(connections({ [SYSTEM_TENANT_ID]: storedRow(SYSTEM_TENANT_ID, { baseUrl: 'https://api.openai.com/v1' }) }) as any, secrets as any);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200 })),
+    );
+    const probe = new ProviderConnectionProbe(
+      connections({ [SYSTEM_TENANT_ID]: storedRow(SYSTEM_TENANT_ID, { baseUrl: 'https://api.openai.com/v1' }) }) as any,
+      secrets as any,
+    );
     const res = await probe.test('llm', 'openai', TENANT, {});
     expect(res.source).toBe('platform');
   });

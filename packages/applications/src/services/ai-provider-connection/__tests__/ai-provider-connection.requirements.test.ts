@@ -15,18 +15,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const SUPER = { roles: ['SUPER_ADMIN'] };
 
 function makeService(opts: { existing?: any } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(opts.existing ?? null),
     findDeletedByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findByTenantIdAndService: vi.fn().mockResolvedValue([]),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: SUPER.roles } : k === 'tenantId' ? SYSTEM_TENANT_ID : undefined)),
@@ -37,7 +38,7 @@ function makeService(opts: { existing?: any } = {}) {
     decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
     supportsTransit: vi.fn(() => true),
   };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
   return { svc, repo };
 }
@@ -75,9 +76,9 @@ describe('upsertRow — create branch', () => {
 
   it('refuses with ArgumentInvalidException — a 400, not a 500', async () => {
     const { svc } = makeService();
-    await expect(
-      svc.upsertRow('llm', 'azure', { enabled: true, expectedVersion: 0 } as any, SYSTEM_TENANT_ID),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(svc.upsertRow('llm', 'azure', { enabled: true, expectedVersion: 0 } as any, SYSTEM_TENANT_ID)).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 
   it('ACCEPTS a keyless lm-studio connection — a self-hosted engine has no vendor account', async () => {

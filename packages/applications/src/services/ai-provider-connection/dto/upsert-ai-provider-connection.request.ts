@@ -64,6 +64,43 @@ export class UpsertAiProviderConnectionRequest {
   service?: ProviderService;
 
   @ApiPropertyOptional({
+    description:
+      'TASK-958 — which vendor this connection talks to. REQUIRED when the `:slug` path segment is not itself a ' +
+      'provider id (a named sibling such as `openai-research`); OPTIONAL and inferred from the slug otherwise, ' +
+      'which is why every pre-TASK-958 call is unchanged. IMMUTABLE: sending a different value for an existing ' +
+      'slug is `409 CONNECTION_PROVIDER_IMMUTABLE` — a connection cannot change vendor under the models bound to it.',
+    example: 'openai',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  provider?: string;
+
+  @ApiPropertyOptional({
+    description: 'Display label for this connection, shown wherever it is picked. `null` clears it (fall back to the slug).',
+    nullable: true,
+    example: 'Research account',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "TASK-958 — make this the tenant's DEFAULT connection for its provider: the row the provider-name cascade " +
+      'resolves, and the one the three-state `enabled` rule is read on. `true` re-points the default atomically ' +
+      '(the previous default becomes a sibling in the same transaction; both versions bump). The FIRST connection ' +
+      'of a provider is its default whatever this says. `false` on the current default is refused ' +
+      '(`400 CONNECTION_DEFAULT_REQUIRED`) — elect another row instead.',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Base URL of the serving endpoint (ollama / lm-studio / vllm / llama-cpp / azure).',
     example: 'http://localhost:11434',
   })

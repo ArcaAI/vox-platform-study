@@ -24,6 +24,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiProviderConnectionFactory } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 const TENANT_B = 'tenant-bbb';
@@ -57,13 +58,13 @@ function makeRow(
 }
 
 function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: () => Promise<Buffer> } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findByTenantIdAndService: vi.fn().mockResolvedValue(opts.rows ?? []),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT_A : undefined)),
@@ -120,7 +121,9 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
 
     const { overrides } = await svc.resolveTenantCloudOverrides(TENANT_A);
     // Every entry now carries who paid for it, derived from the row
-    // that supplied it. This IS the wire shape; asserted exactly, not loosely.
+    // that supplied it — and, since TASK-958, WHICH connection of that provider
+    // supplied it, because a tenant may hold several. This IS the wire shape;
+    // asserted exactly, not loosely.
     expect(overrides).toEqual({
       azure: {
         api_key: 'plaintext-key',
@@ -128,6 +131,8 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
         base_url: 'https://acme.openai.azure.com',
         api_version: '2024-10-21',
         deployment_name: 'gpt-4o-mini',
+        connection_id: expect.any(String),
+        connection_slug: 'azure',
       },
     });
   });
@@ -138,7 +143,9 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
     });
 
     const { overrides } = await svc.resolveTenantCloudOverrides(TENANT_A);
-    expect(overrides).toEqual({ bedrock: { api_key: 'plaintext-key', funding: 'tenant', region: 'us-east-1' } });
+    expect(overrides).toEqual({
+      bedrock: { api_key: 'plaintext-key', funding: 'tenant', region: 'us-east-1', connection_id: expect.any(String), connection_slug: 'bedrock' },
+    });
   });
 
   it('skips a DISABLED row so resolution falls through to SYSTEM/env', async () => {
@@ -193,7 +200,9 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
 
       // The healthy credential still resolves — a broken BYO key degrades to
       // the platform default, it does not take generation down.
-      expect(out).toEqual({ bedrock: { api_key: 'good-key', funding: 'tenant', region: 'eu-west-1' } });
+      expect(out).toEqual({
+        bedrock: { api_key: 'good-key', funding: 'tenant', region: 'eu-west-1', connection_id: expect.any(String), connection_slug: 'bedrock' },
+      });
 
       expect(warn).toHaveBeenCalledTimes(1);
       const arg = warn.mock.calls[0][0] as Record<string, unknown>;

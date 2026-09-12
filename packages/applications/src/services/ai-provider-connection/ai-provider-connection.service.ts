@@ -37,6 +37,7 @@ import {
   ProviderFunding,
   ProviderOverrideEntry,
   ProviderOverrides,
+  ResolveConnectionOptions,
   ResolvedProviderConnection,
   ResolvedProviderCredential,
   ResolvedProviderOverrides,
@@ -53,7 +54,15 @@ import {
   suggestedByoModelSlug,
   taskTypesOfService,
 } from './byo-model-declaration';
-import { CLOUD_BYO_PROVIDERS, PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
+import {
+  CLOUD_BYO_PROVIDERS,
+  CONNECTION_ERROR_CODES,
+  MAX_AI_PROVIDER_CONNECTIONS_KEY,
+  PROVIDER_SERVICES,
+  ProviderService,
+  isCloudByoProvider,
+  isKnownProviderId,
+} from './constants';
 import { builtInDefaultFor } from './built-in-defaults';
 import { PLATFORM_STORAGE_CREDENTIAL_SOURCE, resolvePlatformStorageCredential } from './platform-storage-credential';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
@@ -103,6 +112,16 @@ interface WriteOptions {
    * row this just restored.
    */
   enforceRequirements?: boolean;
+
+  /**
+   * TASK-958 — is the written row its provider's DEFAULT (`defaultForProvider =
+   * provider`) or a named sibling (`null`)?
+   *
+   * ABSENT means DEFAULT, deliberately: that is the factory's own default, it is
+   * what every platform row is, and it is what `resetRow` restores. Only
+   * `upsertRow` — the one path that can create a sibling — passes it explicitly.
+   */
+  markDefault?: boolean;
 }
 
 /** The one sanctioned `enforceRequirements: false` — see `WriteOptions`. */
@@ -156,12 +175,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     return rows.filter((r) => this.isVisibleToTier(service, r.provider, scopedTenantId)).map((r) => AiProviderConnectionDtoMapper.toResponse(r));
   }
 
-  async getRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
+  async getRow(service: ProviderService, slug: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
-    this.assertVisibleToTier(service, provider, scopedTenantId);
     const tx = this.crossTenantLane(scopedTenantId);
-    const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
-    if (!row) return { ...AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, provider), models: [] };
+    const row = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
+    // TASK-958 — the tier boundary is drawn on the row's PROVIDER, which for an
+    // existing row is the row's own and for a miss can only be read off the slug
+    // (a placeholder is only ever offered for the provider-named default).
+    this.assertVisibleToTier(service, row?.provider ?? slug, scopedTenantId);
+    if (!row) return { ...AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, slug), models: [] };
     // TASK-890 §3.7a — the single-row read carries the models declared on it, so
     // the console edits credential and model list from ONE payload.
     return AiProviderConnectionDtoMapper.toResponse(row, await this.declaredModels(row, scopedTenantId, tx));
@@ -202,7 +224,9 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
     const connections: PlatformDefaultConnectionResponse[] = CLOUD_BYO_PROVIDERS[service].map((provider) => {
       const systemRow = systemRows.find((row) => row.provider === provider);
-      const tenantRow = tenantRows.find((row) => row.provider === provider);
+      // TASK-958 — the tenant may hold several rows for this provider; the one
+      // that decides whether the platform default is reached is the DEFAULT.
+      const tenantRow = tenantRows.find((row) => row.provider === provider && row.isDefault);
       const projected = systemRow
         ? AiProviderConnectionDtoMapper.toResponse(systemRow)
         : AiProviderConnectionDtoMapper.placeholder(service, SYSTEM_TENANT_ID, provider);
@@ -271,7 +295,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    */
   async declareModels(
     service: ProviderService,
-    provider: string,
+    slug: string,
     dto: DeclareConnectionModelsRequest,
     tenantId?: string,
   ): Promise<AiProviderConnectionResponse> {
@@ -279,9 +303,6 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (scopedTenantId === SYSTEM_TENANT_ID) {
       throw new ForbiddenException('Platform models are declared in /admin/ai-models; a SYSTEM connection declares none.');
     }
-    // The SAME class gate as every other write on this row: a provider the
-    // tenant may not hold a connection for cannot be given models either.
-    this.assertWriteAllowed(service, provider, scopedTenantId);
     if (!isByoDeclarableService(service)) {
       throw new BadRequestException(
         `The '${service}' capability serves no per-tenant model rows. Declarable services: ${BYO_DECLARABLE_SERVICES.join(', ')}.`,
@@ -292,14 +313,20 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     }
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const connection = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    const connection = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
     if (!connection) {
-      throw new NotFoundException(
-        `No connection row for provider '${provider}' (service '${service}'). Save the connection before declaring its models.`,
-      );
+      throw new NotFoundException(`No connection row named '${slug}' (service '${service}'). Save the connection before declaring its models.`);
     }
+    const provider = connection.provider;
+    // The SAME class gate as every other write on this row: a provider the
+    // tenant may not hold a connection for cannot be given models either. It
+    // runs on the ROW's provider, after the row is resolved — the slug alone no
+    // longer names a vendor.
+    this.assertWriteAllowed(service, provider, scopedTenantId);
 
-    const entries = this.validateDeclaration(service, provider, dto);
+    // TASK-958 — the generated model slug is named after the CONNECTION, not the
+    // provider, so two accounts of one vendor may declare the same wire id.
+    const entries = this.validateDeclaration(service, connection.slug, dto);
 
     // (3) The shadow check runs over EVERY entry before any write.
     for (const entry of entries) {
@@ -312,6 +339,28 @@ export class AiProviderConnectionService extends BaseService implements IProvide
             `tenant everywhere it is resolved by name. Re-send this entry with slug '${entry.suggestedSlug}' to keep both.`,
           slug: entry.slug,
           systemModelId: shadowed.id,
+          suggestedSlug: entry.suggestedSlug,
+        });
+      }
+
+      // TASK-958 — and it may not take a name ANOTHER connection of this tenant
+      // already minted. `AiModel` uniqueness is `(tenantId, slug)`, so without
+      // this the second connection's declaration answers a raw `P2002` with no
+      // name and no remedy. Named here, up front, for the same reason as the
+      // shadow check: nothing is written until every entry validates.
+      const taken = await this.aiModelRepository.findBySlug(scopedTenantId, entry.slug, tx ?? this.databaseService.baseClient);
+      if (taken && taken.sourceConnectionId && taken.sourceConnectionId !== connection.id) {
+        const siblings = await this.connectionRepository.findByTenantIdAndService(service, scopedTenantId, tx);
+        const owner = siblings.find((row) => row.id === taken.sourceConnectionId);
+        throw new ConflictException({
+          code: CONNECTION_ERROR_CODES.BYO_SLUG_TAKEN,
+          message:
+            `This tenant already has a model named '${entry.slug}' declared on connection ` +
+            `'${owner?.slug ?? taken.sourceConnectionId}'. Withdraw it there, or re-send this entry with slug ` +
+            `'${entry.suggestedSlug}'.`,
+          slug: entry.slug,
+          otherConnectionSlug: owner?.slug ?? null,
+          otherConnectionId: taken.sourceConnectionId,
           suggestedSlug: entry.suggestedSlug,
         });
       }
@@ -406,13 +455,16 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
   async upsertRow(
     service: ProviderService,
-    provider: string,
+    slug: string,
     dto: UpsertAiProviderConnectionRequest,
     tenantId?: string,
     expectedVersion?: number,
   ): Promise<AiProviderConnectionResponse> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
-    this.assertWriteAllowed(service, provider, scopedTenantId);
+    // TASK-958 — the slug is a URL segment, the prefix of every model slug this
+    // connection mints and the `connection_slug` on the wire. Shape first: a
+    // malformed one has no valid interpretation to argue about.
+    this.assertSlugShape(slug);
 
     // C2 supplies `expectedVersion` as an explicit param; the pre-unification
     // convention carried it inside the DTO. Prefer the explicit param, fall back
@@ -420,27 +472,54 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     const ev = expectedVersion ?? dto.expectedVersion;
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    const existing = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
+
+    // WHICH VENDOR. On an update the row already answered it and the answer is
+    // immutable; on a create the body says so, or the slug does when it is
+    // itself a provider id — which is every call that predates this ticket.
+    const provider = this.resolveProviderForWrite(service, slug, dto, existing, scopedTenantId);
+    this.assertWriteAllowed(service, provider, scopedTenantId);
+    // The platform tier has no notion of a named or non-default connection at
+    // all, so it is answered BEFORE the default is reasoned about — otherwise a
+    // platform `isDefault: false` would get the tenant-tier advice ("elect
+    // another row") for a tier that has no other row to elect.
+    this.assertPlatformTierShape(slug, provider, dto, scopedTenantId);
+
+    // Is this row its provider's DEFAULT once the write lands? Every
+    // multiplicity rule below is a statement about that answer.
+    const currentDefault = await this.connectionRepository.findDefaultByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    const willBeDefault = this.resolveDefaultIntent(dto, existing, currentDefault);
+    this.assertMultiplicityAllowed(service, slug, provider, scopedTenantId, willBeDefault);
 
     if (!existing) {
       if (ev !== undefined && ev !== 0) {
-        throw new OptimisticConcurrencyException('AiProviderConnection', `${scopedTenantId}:${service}:${provider}`, {
+        throw new OptimisticConcurrencyException('AiProviderConnection', `${scopedTenantId}:${service}:${slug}`, {
           expectedVersion: ev,
           currentVersion: 0,
         });
       }
 
-      // F-028 — restore-with-overwrite. The unique (tenantId, service, provider)
+      // D-8 — the plan ceiling, on CREATE only and never on the platform tier
+      // (the platform does not bound itself). Entitlements BOUND, they never
+      // supply: `null` — every seeded plan today — is unbounded and the check
+      // returns without reading anything else.
+      await this.assertConnectionQuota(scopedTenantId, tx);
+
+      // F-028 — restore-with-overwrite. The unique (tenantId, service, slug)
       // index counts soft-DELETED rows, so a plain INSERT after a delete
       // collides with the tombstone (409 unique-constraint) with no HTTP
       // recovery path. A create-intent (`If-Match: "0"`) over a DELETED row
       // instead REVIVES it — restore + apply every field as a fresh write.
-      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, provider, scopedTenantId, tx);
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, slug, scopedTenantId, tx);
       if (deleted) {
-        return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx);
+        return this.withDefaultFlip(willBeDefault, currentDefault, deleted.id, tx, (lane) =>
+          this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, lane, { markDefault: willBeDefault }),
+        );
       }
 
-      return this.createFromDto(dto, service, provider, scopedTenantId, tx);
+      return this.withDefaultFlip(willBeDefault, currentDefault, null, tx, (lane) =>
+        this.createFromDto(dto, service, slug, provider, scopedTenantId, lane, { markDefault: willBeDefault }),
+      );
     }
 
     if (ev === undefined) {
@@ -495,6 +574,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (dto.rpmLimit !== undefined) changes.rpmLimit = dto.rpmLimit;
     if (dto.tpmLimit !== undefined) changes.tpmLimit = dto.tpmLimit;
     if (dto.timeoutS !== undefined) changes.timeoutS = dto.timeoutS;
+    // TASK-958 — `name` is the one free-text field: renaming is what it is FOR
+    // (the slug is immutable precisely so renaming stays free).
+    if (dto.name !== undefined) changes.name = dto.name;
+    // Electing this row as the default is a change to THIS row too; the previous
+    // default is cleared beside it, in one transaction (below).
+    if (willBeDefault && !existing.isDefault) changes.defaultForProvider = provider;
     if (secret) {
       changes.encryptedApiKey = secret.ciphertext;
       changes.keyVersion = secret.keyVersion;
@@ -514,12 +599,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     }
 
     const previousVersion = existing.version;
-    const updated = await this.connectionRepository.updateWithVersion(existing.id, existing, ev, tx);
+    const updated = await this.withDefaultFlip(willBeDefault, currentDefault, existing.id, tx, (lane) =>
+      this.connectionRepository.updateWithVersion(existing.id, existing, ev, lane),
+    );
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       data: {
         service,
         provider,
+        slug: updated.slug,
         tenantId: scopedTenantId,
         previousVersion,
         newVersion: updated.version,
@@ -530,18 +618,38 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     return AiProviderConnectionDtoMapper.toResponse(updated);
   }
 
-  async deleteRow(service: ProviderService, provider: string, tenantId?: string, _expectedVersion?: number): Promise<void> {
+  async deleteRow(service: ProviderService, slug: string, tenantId?: string, _expectedVersion?: number): Promise<void> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
-    this.assertWriteAllowed(service, provider, scopedTenantId);
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    const existing = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
     if (!existing) {
       // An absent row is a 404, matching the frozen contract and the
       // `TenantTtsConfigService.removeCredential` precedent. A cross-tenant row
       // reads as absent through the scope extension, so the same 404 hides
       // existence — the house posture, not a 400 "bad argument".
-      throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
+      throw new NotFoundException(`No connection row named '${slug}' (service '${service}').`);
+    }
+    const provider = existing.provider;
+    this.assertWriteAllowed(service, provider, scopedTenantId);
+
+    // OQ-6 — a DEFAULT with living siblings is REFUSED, never auto-promoted.
+    // Promotion would silently change which vendor account every agent bound to
+    // a SYSTEM catalogue model spends, on an operation nobody performed.
+    if (existing.isDefault) {
+      const group = await this.connectionRepository.findAllByTenantServiceProvider(service, provider, scopedTenantId, tx);
+      const siblings = group.filter((row) => row.id !== existing.id);
+      if (siblings.length > 0) {
+        throw new ConflictException({
+          code: CONNECTION_ERROR_CODES.IS_DEFAULT,
+          message:
+            `'${slug}' is the default connection for '${provider}' (service '${service}') and ${siblings.length} other ` +
+            `connection(s) still use that provider. Make one of them the default first, then delete this one.`,
+          slug,
+          provider,
+          siblingSlugs: siblings.map((row) => row.slug),
+        });
+      }
     }
 
     // `_expectedVersion` is accepted for C2 arity; soft-delete stays version-less
@@ -557,7 +665,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     await this.connectionRepository.softDelete(existing.id, this.requestUserId ?? undefined);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: existing.id,
-      data: { service, provider, tenantId: scopedTenantId, action: 'connection-deleted' },
+      data: { service, provider, slug, tenantId: scopedTenantId, action: 'connection-deleted' },
     });
   }
 
@@ -591,12 +699,17 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * of their own hardware, not part of the row's identity, and silently wiping
    * them would make "reset the endpoint" a lossy operation.
    */
-  async resetRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
+  async resetRow(service: ProviderService, slug: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
     if (!isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Built-in provider connections are reset by platform super administrators only.');
     }
 
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    // TASK-958 — only the platform tier ships a built-in default, and there
+    // `slug === provider` by construction (`PLATFORM_CONNECTION_PER_PROVIDER`),
+    // so the segment is read as both. The tier check below is what makes that
+    // true; a tenant slug never reaches the lookup with a different meaning.
+    const provider = slug;
     const fallback = builtInDefaultFor(service, provider);
     if (!fallback) {
       throw new NotFoundException(
@@ -622,15 +735,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     };
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    const existing = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
 
     if (!existing) {
       // A row an admin deleted is REVIVED rather than re-inserted: the unique
-      // (tenantId, service, provider) index counts the tombstone, so a plain
+      // (tenantId, service, slug) index counts the tombstone, so a plain
       // create would 409 with no HTTP recovery path (F-028).
-      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, provider, scopedTenantId, tx);
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceSlug(service, slug, scopedTenantId, tx);
       if (deleted) return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
-      return this.createFromDto(dto, service, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
+      return this.createFromDto(dto, service, slug, provider, scopedTenantId, tx, RESTORE_BUILT_IN);
     }
 
     // The key is written unconditionally when the default declares one (so a
@@ -671,26 +784,80 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     return AiProviderConnectionDtoMapper.toResponse(updated);
   }
 
-  async resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null> {
+  async resolveConnection(
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+    options?: ResolveConnectionOptions,
+  ): Promise<ResolvedProviderConnection | null> {
     const { tenantRows, systemRows, vetoed } = await this.cascadeRows(service, tenantId, provider);
 
     // The veto fails CLOSED: never the platform default, never another
     // provider. (A vetoed row is disabled, so the tenant branch below could
     // not match anyway — this is explicit because the SYSTEM branch could.)
+    //
+    // TASK-958 — it is checked BEFORE the by-id branch on purpose: a tenant that
+    // disabled its DEFAULT connection for a provider has blocked that provider,
+    // and an enabled sibling does not reopen it (D-6). The veto is the coarsest
+    // statement a tenant can make and it wins over every finer one.
     if (vetoed.has(provider)) return null;
+
+    if (options?.connectionId) {
+      const row = this.pickById([...tenantRows, ...systemRows], options.connectionId, service, provider, tenantId);
+      if (!row.enabled) return null;
+      return this.toResolved(row, row.tenantId === SYSTEM_TENANT_ID ? 'system' : 'tenant');
+    }
 
     // A DISABLED row is treated as absent at both tiers — that is what makes
     // the shipped all-disabled seed behaviour-neutral (silent-change guard).
-    const tenantRow = tenantRows.find((r) => r.enabled);
+    // TASK-958 — "the tenant row" is the tenant's DEFAULT connection for this
+    // provider; a named sibling is reachable only by id, never by provider name.
+    const tenantRow = tenantRows.find((r) => r.isDefault && r.enabled);
     if (tenantRow) return this.toResolved(tenantRow, 'tenant');
     const systemRow = systemRows.find((r) => r.enabled);
     if (systemRow) return this.toResolved(systemRow, 'system');
     return null;
   }
 
-  async findRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
+  /**
+   * ONE row out of the two tiers the cascade already read, by id (TASK-958 D-3).
+   *
+   * An id that is not in that set is a **404**, never a 403: the set is exactly
+   * "the rows this tenant may see for this (service, provider)", so a miss means
+   * either no such connection or another tenant's — and the house posture does
+   * not distinguish them. Reading the row through the cascade rather than by a
+   * direct id lookup is what makes the tenant boundary structural: there is no
+   * query here that COULD return a foreign row.
+   */
+  private pickById(
+    rows: AiProviderConnectionEntity[],
+    connectionId: string,
+    service: ProviderService,
+    provider: string,
+    tenantId: string,
+  ): AiProviderConnectionEntity {
+    const row = rows.find((r) => r.id === connectionId);
+    if (!row) {
+      this.logger.warn(`Connection '${connectionId}' is not a ${service}/${provider} connection visible to tenant ${tenantId}; failing closed`);
+      throw new NotFoundException(`No connection row '${connectionId}' for provider '${provider}' (service '${service}').`);
+    }
+    return row;
+  }
+
+  async findRow(service: ProviderService, slug: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
     const tx = this.crossTenantLane(tenantId);
-    return this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx);
+    return this.connectionRepository.findByTenantServiceSlug(service, slug, tenantId, tx);
+  }
+
+  /**
+   * The tenant's DEFAULT connection for one (service, provider) — what every
+   * pre-TASK-958 `findRow(service, provider, tenantId)` caller meant, and what a
+   * consumer that resolves by provider NAME must ask for now that a provider
+   * names a GROUP of connections rather than one.
+   */
+  async findDefaultRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
+    const tx = this.crossTenantLane(tenantId);
+    return this.connectionRepository.findDefaultByTenantServiceProvider(service, provider, tenantId, tx);
   }
 
   /**
@@ -739,6 +906,13 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         // the guard cannot become a credential override.
         if (tier === 'tenant' && !isCloud) continue;
 
+        // TASK-958 D-6 — the fold is keyed by PROVIDER NAME and a tenant may
+        // now hold several rows under one, so exactly one of them may occupy
+        // that key: the DEFAULT. Without this the loop's last row would win,
+        // which is non-determinism dressed as a rule. A named sibling reaches
+        // the wire only through a binding that names it by id.
+        if (tier === 'tenant' && !row.isDefault) continue;
+
         // SYSTEM tier: this IS the platform default. -C — the tier
         // is no longer filtered by `isCloudByoProvider`. That filter conflated
         // two different rules and broke the second one: "a TENANT may not own
@@ -777,6 +951,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   private async createFromDto(
     dto: UpsertAiProviderConnectionRequest,
     service: ProviderService,
+    slug: string,
     provider: string,
     scopedTenantId: string,
     tx?: CoreDatabaseService['baseClient'],
@@ -805,6 +980,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       tenantId: scopedTenantId,
       service,
       provider,
+      slug,
+      name: dto.name ?? null,
+      // TASK-958 — the FIRST connection of a provider is its default; an
+      // explicit `isDefault: true` on a later one flips it (the previous default
+      // is cleared in the same transaction, see `withDefaultFlip`).
+      defaultForProvider: (options.markDefault ?? true) ? provider : null,
       baseUrl: dto.baseUrl ?? null,
       region: dto.region ?? null,
       apiVersion: dto.apiVersion ?? null,
@@ -823,7 +1004,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { service, provider, tenantId: scopedTenantId, enabled: saved.enabled, action: 'connection-created' },
+      data: {
+        service,
+        provider,
+        slug: saved.slug,
+        isDefault: saved.isDefault,
+        tenantId: scopedTenantId,
+        enabled: saved.enabled,
+        action: 'connection-created',
+      },
     });
     return AiProviderConnectionDtoMapper.toResponse(saved);
   }
@@ -857,6 +1046,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
     deleted.enable(this.requestUserId ?? undefined);
     await this.updateEntity(deleted, {
+      // TASK-958 — a revive is a fresh write, so the tombstone's OWN default
+      // marker is not carried over: whether the revived row is the default is
+      // decided by the same rule a create obeys (and by then the caller has
+      // already flipped the previous default, if it is electing this one).
+      name: dto.name ?? null,
+      defaultForProvider: (options.markDefault ?? true) ? provider : null,
       baseUrl: dto.baseUrl ?? null,
       region: dto.region ?? null,
       apiVersion: dto.apiVersion ?? null,
@@ -875,7 +1070,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: restored.id,
       createdAt: restored.createdAt,
-      data: { service, provider, tenantId: scopedTenantId, enabled: restored.enabled, action: 'connection-restored' },
+      data: {
+        service,
+        provider,
+        slug: restored.slug,
+        isDefault: restored.isDefault,
+        tenantId: scopedTenantId,
+        enabled: restored.enabled,
+        action: 'connection-restored',
+      },
     });
     return AiProviderConnectionDtoMapper.toResponse(restored);
   }
@@ -938,7 +1141,14 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // NOTE: a row the tenant SOFT-DELETED is invisible to the repository and so
     // reads as absent — deleting is how a tenant returns to "no opinion",
     // disabling is how it refuses.
-    const vetoed = new Set(tenantRows.filter((r) => !r.enabled && isCloudByoProvider(service, r.provider)).map((r) => r.provider));
+    //
+    // TASK-958 D-6 — read on the DEFAULT row only. A tenant's named siblings are
+    // bindings, not policy: disabling one disables the models bound to THAT
+    // connection (their candidate fails closed and the chain walks on) and says
+    // nothing about the provider. The veto is the default row's to cast, and
+    // conversely an enabled sibling does not reopen a provider the default
+    // vetoed.
+    const vetoed = new Set(tenantRows.filter((r) => r.isDefault && !r.enabled && isCloudByoProvider(service, r.provider)).map((r) => r.provider));
 
     // The caller IS the platform tier; there is nothing above it to cascade to
     // (and no gate — the SYSTEM tenant does not need permission to spend the
@@ -1020,8 +1230,11 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (provider === undefined) {
       return this.connectionRepository.findByTenantIdAndService(service, tenantId, tx);
     }
-    const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx);
-    return row ? [row] : [];
+    // TASK-958 — EVERY row of the group, default first. The by-provider shape
+    // used to read one row because one was all there could be; now the group is
+    // what the cascade has to reason about (which one is the default, and can a
+    // binding name a sibling by id), so it reads the group.
+    return this.connectionRepository.findAllByTenantServiceProvider(service, provider, tenantId, tx);
   }
 
   /**
@@ -1095,7 +1308,17 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       }
       delete extras.foundryModel;
 
-      const entry: ProviderOverrideEntry = { ...extras, api_key: apiKey, funding: this.fundingOf(row) };
+      // TASK-958 — the connection identity travels with the credential, written
+      // AFTER the extras spread so a row can never restate it. Two accounts of
+      // one vendor are otherwise indistinguishable downstream: the ledger, a
+      // request trace and an operator all see only `provider`.
+      const entry: ProviderOverrideEntry = {
+        ...extras,
+        api_key: apiKey,
+        funding: this.fundingOf(row),
+        connection_id: row.id,
+        connection_slug: row.slug,
+      };
       if (row.baseUrl) entry.base_url = row.baseUrl;
       if (row.region) entry.region = row.region;
       if (row.apiVersion) entry.api_version = row.apiVersion;
@@ -1148,7 +1371,20 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       // rule: `extras` may carry the NON-SECRET half of a two-part credential
       // (`accessKeyId`) and can never carry the secret half or a stamped
       // `funding` label.
-      const { api_key: apiKey, funding, base_url: baseUrl, region, api_version: apiVersion, deployment_name: deploymentName, ...extras } = entry;
+      const {
+        api_key: apiKey,
+        funding,
+        base_url: baseUrl,
+        region,
+        api_version: apiVersion,
+        deployment_name: deploymentName,
+        // TASK-958 — identity, not a provider extra. Stripped here so an
+        // `/internal/*` consumer that forwards `extras` verbatim to an adapter
+        // never hands it two keys the vendor has never heard of.
+        connection_id: _connectionId,
+        connection_slug: _connectionSlug,
+        ...extras
+      } = entry;
       return {
         outcome: 'resolved',
         apiKey,
@@ -1210,11 +1446,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * configured" would downgrade an entitled fetch to an anonymous one — the
    * exact confusion the four-outcome contract exists to prevent.
    */
-  private async platformStorageFallback(
-    service: ProviderService,
-    provider: string,
-    tenantId: string,
-  ): Promise<ResolvedProviderCredential | null> {
+  private async platformStorageFallback(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderCredential | null> {
     if (tenantId !== SYSTEM_TENANT_ID) return null;
     if (service !== 'model-registry' || provider !== 's3') return null;
 
@@ -1332,7 +1564,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    */
   private validateDeclaration(
     service: ByoDeclarableService | ProviderService,
-    provider: string,
+    connectionSlug: string,
     dto: DeclareConnectionModelsRequest,
   ): Array<{ slug: string; suggestedSlug: string; declaration: ByoModelDeclaration }> {
     const entries = dto.models ?? [];
@@ -1354,8 +1586,8 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       // The slug is server-generated; an explicit one is accepted ONLY as the
       // `byo-` suggestion a shadow conflict offered, so a tenant cannot invent a
       // name that shadows a platform row through the front door either.
-      const generated = byoModelSlug(provider, wireModelId);
-      const suggestedSlug = suggestedByoModelSlug(provider, wireModelId);
+      const generated = byoModelSlug(connectionSlug, wireModelId);
+      const suggestedSlug = suggestedByoModelSlug(connectionSlug, wireModelId);
       const slug = entry.slug?.trim() ? entry.slug.trim() : generated;
       if (slug !== generated && slug !== suggestedSlug) {
         throw new BadRequestException(
@@ -1463,6 +1695,221 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   private assertVisibleToTier(service: ProviderService, provider: string, targetTenantId: string): void {
     if (this.isVisibleToTier(service, provider, targetTenantId)) return;
     throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
+  }
+
+  // ────────────────── TASK-958: identity, multiplicity, the default ──────────────────
+
+  /**
+   * The slug is a URL path segment, the prefix of every model slug this
+   * connection mints and the `connection_key` on the Python wire. The entity
+   * validates the same pattern; this refusal exists so the caller gets a NAMED
+   * 400 with the rule in it rather than a `BusinessException` from persistence.
+   */
+  private assertSlugShape(slug: string): void {
+    if (!AiProviderConnectionEntity.SLUG_PATTERN.test(slug ?? '')) {
+      throw new BadRequestException({
+        code: CONNECTION_ERROR_CODES.SLUG_INVALID,
+        message:
+          `'${slug}' is not a valid connection name. Use 2-63 characters: lowercase letters, digits and hyphens, ` +
+          'starting with a letter or digit (for example `openai-research`).',
+        slug,
+      });
+    }
+  }
+
+  /**
+   * WHICH VENDOR this write is about.
+   *
+   * Three cases, in the order they are decided:
+   *   1. the row EXISTS — its provider is the answer and it is IMMUTABLE. A
+   *      connection that changed vendor under the models declared on it would
+   *      re-point every binding without touching one of them (409);
+   *   2. the body NAMES one — a named sibling (`openai-research`) must, because
+   *      nothing else in the request says which vendor it is;
+   *   3. the slug IS a provider id — every call that predates TASK-958, which is
+   *      exactly why they are unchanged. On the SYSTEM tier this is always the
+   *      case by rule (one row per provider, `slug === provider`).
+   *
+   * Anything else is a 400 that says what to send: a slug that is not a provider
+   * id and no `provider` is not a typo the server should guess at.
+   */
+  private resolveProviderForWrite(
+    service: ProviderService,
+    slug: string,
+    dto: UpsertAiProviderConnectionRequest,
+    existing: AiProviderConnectionEntity | null,
+    scopedTenantId: string,
+  ): string {
+    if (existing) {
+      if (dto.provider !== undefined && dto.provider !== existing.provider) {
+        throw new ConflictException({
+          code: CONNECTION_ERROR_CODES.PROVIDER_IMMUTABLE,
+          message:
+            `Connection '${slug}' serves '${existing.provider}' and a connection cannot change vendor — the models ` +
+            `declared on it name it. Create a new connection for '${dto.provider}' instead.`,
+          slug,
+          provider: existing.provider,
+          requestedProvider: dto.provider,
+        });
+      }
+      return existing.provider;
+    }
+
+    if (dto.provider !== undefined) return dto.provider;
+    if (scopedTenantId === SYSTEM_TENANT_ID || isKnownProviderId(slug)) return slug;
+
+    throw new BadRequestException({
+      code: CONNECTION_ERROR_CODES.PROVIDER_REQUIRED,
+      message:
+        `'${slug}' is a connection name, not a provider, so the request must say which vendor it talks to: send ` +
+        `\`provider\` (for example \`{"provider": "openai"}\`) alongside it.`,
+      slug,
+      service,
+    });
+  }
+
+  /**
+   * Will the written row be its provider's DEFAULT?
+   *
+   * The rule is short and every refusal below depends on it: a provider group
+   * always has exactly one default, the first row to exist takes the job, and an
+   * explicit `isDefault: true` moves it. `isDefault: false` can only ever mean
+   * "make some OTHER row the default", which is not a statement this row can
+   * make — so it is refused rather than silently leaving the group headless.
+   */
+  private resolveDefaultIntent(
+    dto: UpsertAiProviderConnectionRequest,
+    existing: AiProviderConnectionEntity | null,
+    currentDefault: AiProviderConnectionEntity | null,
+  ): boolean {
+    const isCurrentDefault = existing != null && currentDefault != null && existing.id === currentDefault.id;
+    if (dto.isDefault === false) {
+      if (isCurrentDefault || currentDefault == null) {
+        throw new BadRequestException({
+          code: CONNECTION_ERROR_CODES.DEFAULT_REQUIRED,
+          message:
+            'Every provider needs exactly one default connection, and this is (or would be) it. Send `isDefault: true` ' +
+            'on the connection that should take over instead — that flip clears this one in the same transaction.',
+        });
+      }
+      return false;
+    }
+    if (dto.isDefault === true) return true;
+    // No opinion: an existing row keeps its job, a new row takes it only when
+    // the provider has no default yet.
+    return existing ? existing.isDefault : currentDefault == null;
+  }
+
+  /**
+   * D-9, platform half — the SYSTEM tier is ONE row per provider, named after
+   * it, and always that provider's default. It is the fallback every tenant
+   * inherits BY PROVIDER NAME, so a second row there, or a demoted one, is a
+   * value no cascade could ever reach.
+   */
+  private assertPlatformTierShape(slug: string, provider: string, dto: UpsertAiProviderConnectionRequest, scopedTenantId: string): void {
+    if (scopedTenantId !== SYSTEM_TENANT_ID) return;
+    if (slug === provider && dto.isDefault !== false) return;
+    throw new BadRequestException({
+      code: CONNECTION_ERROR_CODES.PLATFORM_ONE_PER_PROVIDER,
+      message:
+        'The platform tier holds exactly one connection per provider, and it is that provider’s default: its name ' +
+        `must be the provider id ('${provider}') and it cannot be demoted. Named connections are a tenant-tier ` +
+        'facility — the platform row is the fallback every tenant inherits BY PROVIDER NAME, so a second one there ' +
+        'is a value no cascade could reach.',
+      slug,
+      provider,
+    });
+  }
+
+  /**
+   * D-9, tenant half — WHERE a named sibling is allowed at all.
+   *
+   * The integration planes (`embeddings`/`rerank`/`vector`/`model-registry`)
+   * execute no per-tenant model rows, so nothing could ever bind a sibling by
+   * id — the same reasoning that keeps them out of `BYO_DECLARABLE_SERVICES`. A
+   * row nothing can address is worse than a named refusal. Their DEFAULT row is
+   * untouched.
+   */
+  private assertMultiplicityAllowed(service: ProviderService, slug: string, provider: string, scopedTenantId: string, willBeDefault: boolean): void {
+    if (scopedTenantId === SYSTEM_TENANT_ID) return;
+
+    if (!willBeDefault && !isByoDeclarableService(service)) {
+      throw new BadRequestException({
+        code: CONNECTION_ERROR_CODES.MULTIPLICITY_UNSUPPORTED,
+        message:
+          `The '${service}' capability resolves its provider by name and serves no per-tenant model rows, so a second ` +
+          `'${provider}' connection could never be selected. Services that support named connections: ` +
+          `${BYO_DECLARABLE_SERVICES.join(', ')}.`,
+        slug,
+        service,
+        provider,
+      });
+    }
+  }
+
+  /**
+   * D-8 — the plan ceiling on how many connections one tenant may hold, across
+   * every service. CREATE only (existing rows are grandfathered, the house
+   * "block-new" rule), and never on the platform tier: the platform does not
+   * bound itself.
+   *
+   * `null` on every seeded plan today, so this is unbounded until an operator
+   * sets a cap — entitlements BOUND, they never supply.
+   */
+  private async assertConnectionQuota(scopedTenantId: string, tx?: CoreDatabaseService['baseClient']): Promise<void> {
+    if (scopedTenantId === SYSTEM_TENANT_ID || !this.entitlementsService) return;
+    const current = await this.countTenantConnections(scopedTenantId, tx);
+    await this.entitlementsService.assertQuantityQuota(scopedTenantId, MAX_AI_PROVIDER_CONNECTIONS_KEY, current);
+  }
+
+  /** Live connections this tenant holds, across every service (the quota's subject). */
+  private async countTenantConnections(scopedTenantId: string, tx?: CoreDatabaseService['baseClient']): Promise<number> {
+    const perService = await Promise.all(PROVIDER_SERVICES.map((service) => this.readTier(service, scopedTenantId)));
+    void tx;
+    return perService.reduce((total, rows) => total + rows.length, 0);
+  }
+
+  /**
+   * Run `work` with the previous default cleared FIRST, in ONE transaction.
+   *
+   * The order is forced by the database, not by taste: `(tenantId, service,
+   * defaultForProvider)` is unique, so setting the new default before clearing
+   * the old one is a constraint violation. Doing both in one transaction is what
+   * keeps "exactly one default per provider" true even if the second write
+   * fails — a provider group with two defaults, or none, is unresolvable.
+   *
+   * When nothing needs clearing the work runs on the caller's own lane, so the
+   * ordinary edit costs no transaction.
+   */
+  private async withDefaultFlip<T>(
+    willBeDefault: boolean,
+    currentDefault: AiProviderConnectionEntity | null,
+    targetId: string | null,
+    tx: CoreDatabaseService['baseClient'] | undefined,
+    work: (lane?: CoreDatabaseService['baseClient']) => Promise<T>,
+  ): Promise<T> {
+    const mustClear = willBeDefault && currentDefault != null && currentDefault.id !== targetId;
+    if (!mustClear) return work(tx);
+
+    const previous = currentDefault!;
+    return this.databaseService.baseClient.$transaction(async (client) => {
+      const lane = client as unknown as CoreDatabaseService['baseClient'];
+      const previousVersion = previous.version;
+      await this.updateEntity(previous, { defaultForProvider: null });
+      await this.connectionRepository.updateWithVersion(previous.id, previous, previousVersion, lane);
+      const result = await work(lane);
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: previous.id,
+        data: {
+          tenantId: previous.tenantId,
+          service: previous.service,
+          provider: previous.provider,
+          slug: previous.slug,
+          action: 'connection-default-cleared',
+        },
+      });
+      return result;
+    });
   }
 
   private assertWriteAllowed(service: ProviderService, provider: string, targetTenantId: string): void {

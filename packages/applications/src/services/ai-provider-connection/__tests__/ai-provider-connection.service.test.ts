@@ -21,6 +21,7 @@ import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common'
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT = 'tenant-abc';
 
@@ -60,14 +61,14 @@ function makeRow(
 }
 
 function makeService(opts: { roles?: string[]; clsTenantId?: string | null; withVault?: boolean; entitled?: boolean } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findDeletedByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findByTenantIdAndService: vi.fn().mockResolvedValue([]),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const clsTenantId = opts.clsTenantId === undefined ? TENANT : opts.clsTenantId;
   const cls = {
@@ -86,7 +87,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null; with
   // so these pre-existing cascade cases keep testing the cascade rather than
   // the gate (which `ai-provider-connection.platform-default-gate.test.ts`
   // owns); pass `entitled: false` to exercise a denial.
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
   return { svc, repo, emitter, cls, secrets, entitlements };
 }
