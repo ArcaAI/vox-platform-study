@@ -42,7 +42,12 @@ export interface LimitField {
     | 'monthlyConsultations'
     | 'monthlyTranscriptionMinutes'
     | 'monthlySummaries'
-    | 'monthlyWorkflowInvocations';
+    | 'monthlyWorkflowInvocations'
+    | 'monthlySttSessionSeconds'
+    | 'monthlyLlmTokens'
+    | 'monthlyTtsCharacters'
+    | 'monthlyNlpTextUnits'
+    | 'monthlyEmbeddingTokens';
   label: string;
 }
 
@@ -60,5 +65,10 @@ export const LIMIT_FIELDS: LimitField[] = [
   { key: 'monthlyTranscriptionMinutes', label: 'Monthly transcription minutes' },
   { key: 'monthlySummaries', label: 'Monthly summaries' },
   { key: 'monthlyWorkflowInvocations', label: 'Monthly workflow invocations' },
+  { key: 'monthlySttSessionSeconds', label: 'Monthly STT session seconds' },
+  { key: 'monthlyLlmTokens', label: 'Monthly LLM tokens' },
+  { key: 'monthlyTtsCharacters', label: 'Monthly TTS characters' },
+  { key: 'monthlyNlpTextUnits', label: 'Monthly NLP text units' },
+  { key: 'monthlyEmbeddingTokens', label: 'Monthly embedding tokens' },
   { key: 'storageQuotaBytes', label: 'Storage quota (bytes)' },
 ];
