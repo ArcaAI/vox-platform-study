@@ -10,6 +10,9 @@ import * as Models from './';
 export class AiProviderConnection extends BaseTenantDataModel {
   public service: string;
   public provider: string;
+  public slug: string;
+  public name: string | null;
+  public defaultForProvider: string | null;
   public baseUrl: string | null;
   public region: string | null;
   public apiVersion: string | null;
@@ -34,6 +37,9 @@ export class AiProviderConnection extends BaseTenantDataModel {
     super(data);
     this.service = data.service;
     this.provider = data.provider;
+    this.slug = data.slug;
+    this.name = data.name;
+    this.defaultForProvider = data.defaultForProvider;
     this.baseUrl = data.baseUrl;
     this.region = data.region;
     this.apiVersion = data.apiVersion;
