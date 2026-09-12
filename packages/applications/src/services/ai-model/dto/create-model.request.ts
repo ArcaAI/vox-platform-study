@@ -13,10 +13,17 @@ import {
   MaxLength,
   MinLength,
   Min,
+  Validate,
   ValidateNested,
 } from 'class-validator';
 import { AiDeploymentKind, AiTaskKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
-import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY, DISCOVERABLE_AI_MODEL_PROVIDERS } from '../constants';
+import {
+  AI_MODEL_LIBRARIES,
+  AI_MODEL_PROVIDERS,
+  AI_MODEL_SERVED_BY,
+  BucketRelativePrefixConstraint,
+  DISCOVERABLE_AI_MODEL_PROVIDERS,
+} from '../constants';
 import { AsrProfileRequest } from './asr-profile.request';
 
 // The vocabularies live in `../constants` since TASK-860; re-exported here so
@@ -193,13 +200,15 @@ export class CreateModelRequest {
 
   @ApiPropertyOptional({
     description:
-      'Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). ' +
-      'Normally written by the publish job. `localPath` is derived from it and never accepted directly.',
+      'Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the ' +
+      'bucket is already mounted at `/mnt/models-bucket`) when registering weights ALREADY in the bucket ("In bucket, ' +
+      'not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly.',
     example: 'medical-ner/0123456789ab/',
   })
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @Validate(BucketRelativePrefixConstraint)
   bucketPrefix?: string;
 
   @ApiPropertyOptional({ description: 'The single file a single-file loader opens inside `bucketPrefix`.', example: 'ggml-model-q8_0.bin' })

@@ -5,7 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { uuidv7 } from 'uuidv7';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { AiModelRepository, JobQueue, ResourceType, SysEventType } from '@arcaai/domains';
+import { AiModelRepository, AiModelSource, JobQueue, ResourceType, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { derivePublishStatus, mergeDownloadMeta, readDownloadMeta } from './model-download-meta.util';
@@ -57,6 +57,15 @@ export class AiModelDownloadService extends BaseService {
     const existing = await this.aiModelRepository.findById(id);
     if (!existing) {
       throw new NotFoundException(`Model ${id} not found`);
+    }
+    // TASK-960 D1 — a LOCAL row's weights are expected already staged under
+    // the `hope-models` bucket mount; there is nothing to download. Refused
+    // BEFORE the in-flight check and before any write, so no job is ever
+    // enqueued and no bookkeeping is touched for a row this can never apply to.
+    if (existing.source === AiModelSource.LOCAL) {
+      throw new ConflictException(
+        `Model ${id} has source LOCAL — its weights are expected already staged under the hope-models bucket mount, so there is nothing to download. Set 'bucketPrefix' (and 'primaryObject' for a single-file loader) to register the already-staged files instead.`,
+      );
     }
     // TASK-890 §3.11 — the in-flight test is the run bookkeeping, not the dropped
     // `downloadStatus` column. Same guard, same 409, one fewer column.
