@@ -1,5 +1,6 @@
 import {
   AiModelService,
+  COMPUTE_DEVICES,
   buildNerUsageEvent,
   derivedLocalPath,
   IActiveUserContext,
@@ -7,6 +8,7 @@ import {
   ITenantNlpTaskInstructionsService,
   IUsageLedgerService,
 } from '@arcaai/applications';
+import type { ComputeDevice } from '@arcaai/applications';
 import { generateId, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -23,6 +25,25 @@ import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
 // in this codebase that already draws this exact line (an admin acting under
 // their own account is not a clinician; DOCTOR/SPECIALIST/CONSULTANT are).
 const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
+
+/**
+ * TASK-959 §3.2 — `inference_ms` off the proxied upstream body, or `null`.
+ *
+ * The body is relayed verbatim and is typed `Record<string, unknown>`, so both readers are shape
+ * checks on an untyped value rather than trust in a schema this controller does not own.
+ */
+function nerInferenceMs(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+/**
+ * TASK-959 §3.1 — the device, from the CLOSED vocabulary only. A near-miss spelling records no
+ * compute row; it must never be coerced into the more expensive unit.
+ */
+function nerDevice(value: unknown): ComputeDevice | null {
+  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
+}
 
 /**
  * AiInferenceController — the USER-PLANE `/text-analyses/*` proxy over the
@@ -155,7 +176,9 @@ export class AiInferenceController {
       ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
     });
 
-    await this.emitNerUsage(body.text, modelName || null);
+    // TASK-959 §3.2 — the same compute reading the agent NER route records. `result` is the
+    // upstream body proxied verbatim, so the two fields are read off it rather than re-derived.
+    await this.emitNerUsage(body.text, modelName || null, result);
 
     return result;
   }
@@ -168,7 +191,7 @@ export class AiInferenceController {
    * caller holds a clinician role. Fail-open: no tenantId, no ledger wired, or
    * a ledger rejection all degrade to "not metered" — never a failed request.
    */
-  private async emitNerUsage(text: string, model: string | null): Promise<void> {
+  private async emitNerUsage(text: string, model: string | null, upstream?: Record<string, unknown>): Promise<void> {
     const tenantId = this.cls?.get('tenantId');
     if (!this.usageLedgerService || !tenantId) return;
     try {
@@ -179,6 +202,10 @@ export class AiInferenceController {
           charCount: [...text].length,
           model,
           doctorId: this.resolveDoctorId(),
+          // TASK-959 §3.2 — apps/nlp reports its own device and inference time. Neither is
+          // guessed: an absent or unrecognised value records characters and no compute.
+          inferenceMs: nerInferenceMs(upstream?.inference_ms),
+          device: nerDevice(upstream?.device),
         }),
       );
     } catch (error) {

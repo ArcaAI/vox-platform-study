@@ -435,3 +435,51 @@ describe('TASK-959 §3.2 — compute and byte rows on the agent’s STREAM', () 
     expect(unitOf(generation, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 2.1 });
   });
 });
+
+/**
+ * The NER branch of the same route. It shares `buildNerUsageEvent` with the two clinical call
+ * sites and the playground proxy, so the reading is carried rather than re-derived — but the
+ * route is what proves the wire values reach it at all.
+ */
+describe('TASK-959 §3.2 — compute on an agent NER invocation', () => {
+  const nerAgent = { ...RESOLVED, task: 'NAMED_ENTITY_RECOGNITION', slug: 'medical-ner' };
+
+  it('records the seconds apps/nlp measured, in the unit its device decides', async () => {
+    const { controller, invocation, usageLedger } = make();
+    (invocation as unknown as { invokeNer: ReturnType<typeof vi.fn> }).invokeNer = vi.fn(async () => ({
+      entities: [],
+      model: 'medical-ner',
+      charCount: 250,
+      inferenceMs: 420,
+      device: 'cuda',
+    }));
+    (controller as unknown as { resolver: { resolve: ReturnType<typeof vi.fn> } }).resolver.resolve.mockResolvedValue(nerAgent);
+
+    await controller.invoke('medical-ner', { text: 'chest pain' }, fakeRes() as never, undefined);
+    await settle();
+
+    const [extraction] = byOperation(usageLedger, 'ner.extract');
+    expect(unitOf(extraction, AiUsageUnit.GPU_SECOND)).toMatchObject({ quantity: 0.42, attributesJson: { device: 'cuda' } });
+    expect(unitOf(extraction, AiUsageUnit.TEXT_UNIT)).toMatchObject({ quantity: 2.5 });
+  });
+
+  it('records characters and no compute when apps/nlp measured nothing', async () => {
+    const { controller, invocation, usageLedger } = make();
+    (invocation as unknown as { invokeNer: ReturnType<typeof vi.fn> }).invokeNer = vi.fn(async () => ({
+      entities: [],
+      model: 'medical-ner',
+      charCount: 250,
+      inferenceMs: null,
+      device: null,
+    }));
+    (controller as unknown as { resolver: { resolve: ReturnType<typeof vi.fn> } }).resolver.resolve.mockResolvedValue(nerAgent);
+
+    await controller.invoke('medical-ner', { text: 'chest pain' }, fakeRes() as never, undefined);
+    await settle();
+
+    const [extraction] = byOperation(usageLedger, 'ner.extract');
+    expect(unitOf(extraction, AiUsageUnit.GPU_SECOND)).toBeUndefined();
+    expect(unitOf(extraction, AiUsageUnit.CPU_SECOND)).toBeUndefined();
+    expect(unitOf(extraction, AiUsageUnit.TEXT_UNIT)).toBeDefined();
+  });
+});

@@ -462,6 +462,11 @@ export class AgentController {
         requestId: generateId(),
         charCount: result.charCount,
         model: result.model,
+        // TASK-959 §3.2 — what apps/nlp measured for THIS call. Both halves or neither: the
+        // builder records no compute row when either is missing, which is why they are carried
+        // rather than defaulted here.
+        inferenceMs: result.inferenceMs,
+        device: result.device,
       }),
       AGENT_INVOCATION_TRIGGER,
     );
