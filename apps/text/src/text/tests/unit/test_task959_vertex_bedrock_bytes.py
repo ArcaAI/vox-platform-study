@@ -24,19 +24,31 @@ from __future__ import annotations
 
 from typing import Any
 
-import google.auth.credentials
 import pytest
 from pydantic import SecretStr
 
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.providers.pool import count_provider_bytes
 
+# `google.auth` is imported lazily, inside the fixture that needs it: at module
+# scope it is the one heavy import in this lane's four test files, and the extra
+# collection weight was enough to push the wall-clock coalescing assertion in
+# `test_task818_resumable_streaming.py` past its timer-flush ceiling under the
+# full suite (12 XADDs for 200 deltas against a ceiling of 8). Deferring it keeps
+# collection light and that invariant's ceiling honest.
+
 _SERVICE_ACCOUNT_JSON = '{"type":"service_account","project_id":"p"}'
 
 
-class _FakeCredentials(google.auth.credentials.Credentials):
-    def refresh(self, request: Any) -> None:  # pragma: no cover - never called
-        self.token = "fake"
+def _fake_credentials() -> Any:
+    """A `google.auth` credential that never refreshes — built lazily (see the module note)."""
+    import google.auth.credentials
+
+    class _FakeCredentials(google.auth.credentials.Credentials):
+        def refresh(self, request: Any) -> None:  # pragma: no cover - never called
+            self.token = "fake"
+
+    return _FakeCredentials()
 
 
 def _vertex_request() -> GenerateRequest:
@@ -63,7 +75,7 @@ class TestVertexJoinsThePool:
         monkeypatch.setattr(
             vertex_module,
             "_credentials_from_service_account",
-            lambda _raw: _FakeCredentials(),
+            lambda _raw: _fake_credentials(),
         )
         from text.providers.clients import CLIENT_CACHE
 
