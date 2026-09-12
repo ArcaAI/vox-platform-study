@@ -41,10 +41,11 @@ from text.models.requests import GenerateRequest
 from text.models.stats import build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.task import TaskStatus
-from text.models.usage import build_usage_detail, raw_usage_from_stats
+from text.models.usage import build_usage_detail, engine_ms_from_stats, raw_usage_from_stats
 from text.providers.base import LLMProvider
+from text.providers.pool import ProviderByteCounts, count_provider_bytes
 from text.routing.hub import BatchFlusher, GenerationEvent, GenerationPolicy, Producer
-from text.routing.usage import _extract_stream_usage
+from text.routing.usage import _extract_stream_usage, funding_label
 from text.services.circuit_breaker import CircuitBreaker, CircuitState
 from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
@@ -106,9 +107,18 @@ async def run_generation_producer(
     connection_id: str | None = None,
     policy: GenerationPolicy | None = None,
     guardrail_client: ExternalGuardrailClient | None = None,
+    guardrail_usage: dict[str, Any] | None = None,
     app_state: Any = None,
 ) -> None:
     """Drive one generation to its terminal frame. Never raises to the hub.
+
+    ``guardrail_usage`` (TASK-959) is the INPUT gate's own spend, already
+    measured by the route before this producer started, carried through onto the
+    terminal frame. A streamed generation runs the same moderation call a
+    blocking one does and burns the same guardrail tokens; the blocking response
+    has always had a slot for them and the stream had none, so that spend simply
+    never reached the billing plane. Passing it through is the whole fix — this
+    producer never calls guardrail for usage, it only forwards what it was given.
 
     ``guardrail_client`` / ``app_state`` feed the post-receive gate
     (`services/output_gate.py`): the ASSEMBLED completion is screened after the
@@ -199,8 +209,21 @@ async def run_generation_producer(
     # delivered too.
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
+    # TASK-959 — what the provider socket consumed, and what the engine said it
+    # spent. Both are assigned inside the streaming block below and read from
+    # here by `_usage_detail`, which the abort arm also calls after that block
+    # has exited.
+    byte_counts: ProviderByteCounts | None = None
+    engine_ms: int | None = None
 
-    def _usage_detail(*, interrupted: bool) -> dict[str, Any]:
+    def _usage_detail(*, interrupted: bool, total_ms: int | None = None) -> dict[str, Any]:
+        """The block the gateway meters from, as of NOW.
+
+        ``total_ms`` defaults to the elapsed time at the moment of the call,
+        which is what the abort and rejection arms want; the clean terminal frame
+        passes the same ``latency_ms`` its stats and its audit event carry, so all
+        three agree.
+        """
         return build_usage_detail(
             task_id=generation_id,
             request_id=request_id,
@@ -213,7 +236,30 @@ async def run_generation_producer(
             interrupted=interrupted,
             byok=byok,
             connection_id=connection_id,
+            total_ms=(total_ms if total_ms is not None else int((time.monotonic() - start) * 1000)),
+            engine_ms=engine_ms,
+            request_bytes=(
+                byte_counts.request_bytes
+                if byte_counts is not None and byte_counts.observed
+                else None
+            ),
+            response_bytes=(
+                byte_counts.response_bytes
+                if byte_counts is not None and byte_counts.observed
+                else None
+            ),
         ).model_dump(mode="json")
+
+    def _terminal_data(data: dict[str, Any]) -> dict[str, Any]:
+        """`data` plus the safety plane's own spend, when there was any.
+
+        Omitted when absent rather than sent as an empty object: a zero row is
+        indistinguishable from a free call, and a generation whose tenant opted
+        out of moderation legitimately has no guardrail spend at all.
+        """
+        if guardrail_usage is not None:
+            data["guardrail_usage"] = guardrail_usage
+        return data
 
     def _log_audit(*, status: str, latency_ms: int, finish_reason: str, error: str | None) -> None:
         """Log the generation's REAL totals, once, when the stream has ended."""
@@ -268,43 +314,58 @@ async def run_generation_producer(
         return producer.should_abandon(effective_policy, now)
 
     try:
-        async for chunk in provider.generate_stream(request_body):
-            if not first_chunk_recorded:
-                ttft = time.monotonic() - start
-                TTFT_SECONDS.labels(provider=resolved_provider, model=resolved_model).observe(ttft)
-                ttft_ms = int(ttft * 1000)
-                first_chunk_recorded = True
-            if chunk.type == "usage" and isinstance(chunk.data, dict):
-                # TAKE-LAST, never sum. Anthropic restates its usage cumulatively
-                # on every ``message_delta``, so summing multiplies the bill by
-                # the number of deltas; every other provider reports usage
-                # exactly once, for which take-last is identical to summing.
-                prompt, completion, total = _extract_stream_usage(chunk.data)
-                total_input_tokens = prompt
-                total_output_tokens = completion
-                reported_total_tokens = total
-                raw_usage = raw_usage_from_stats(chunk.data) or raw_usage
-            if chunk.type == "done":
-                if isinstance(chunk.data, dict):
-                    stream_finish_reason = chunk.data.get("finish_reason") or stream_finish_reason
-                # Hold it back; it is re-emitted below carrying the usage block.
-                pending_done = chunk
-                continue
-            if chunk.content:
-                if chunk.type == "chunk":
-                    content_parts.append(chunk.content)
-                elif chunk.type == "reasoning":
-                    reasoning_parts.append(chunk.content)
-            emit(chunk)
+        # TASK-959 M-4 — count bytes for exactly as long as the provider socket
+        # is open. The record is assigned to the enclosing scope so the terminal
+        # frame (and the abort arm below, which runs after this block has exited)
+        # still reads what the stream actually consumed: the binding ends here,
+        # the record does not.
+        with count_provider_bytes(resolved_provider, funding=funding_label(byok)) as counted_bytes:
+            byte_counts = counted_bytes
+            async for chunk in provider.generate_stream(request_body):
+                if not first_chunk_recorded:
+                    ttft = time.monotonic() - start
+                    TTFT_SECONDS.labels(provider=resolved_provider, model=resolved_model).observe(
+                        ttft
+                    )
+                    ttft_ms = int(ttft * 1000)
+                    first_chunk_recorded = True
+                if chunk.type == "usage" and isinstance(chunk.data, dict):
+                    # TAKE-LAST, never sum. Anthropic restates its usage cumulatively
+                    # on every ``message_delta``, so summing multiplies the bill by
+                    # the number of deltas; every other provider reports usage
+                    # exactly once, for which take-last is identical to summing.
+                    prompt, completion, total = _extract_stream_usage(chunk.data)
+                    total_input_tokens = prompt
+                    total_output_tokens = completion
+                    reported_total_tokens = total
+                    raw_usage = raw_usage_from_stats(chunk.data) or raw_usage
+                    # The engine's OWN time, where the engine reports one. It
+                    # rides on the same chunk's `engine_native`, which is the
+                    # only place a native timing survives into the stream.
+                    engine_ms = engine_ms_from_stats(chunk.data) or engine_ms
+                if chunk.type == "done":
+                    if isinstance(chunk.data, dict):
+                        stream_finish_reason = (
+                            chunk.data.get("finish_reason") or stream_finish_reason
+                        )
+                    # Hold it back; it is re-emitted below carrying the usage block.
+                    pending_done = chunk
+                    continue
+                if chunk.content:
+                    if chunk.type == "chunk":
+                        content_parts.append(chunk.content)
+                    elif chunk.type == "reasoning":
+                        reasoning_parts.append(chunk.content)
+                emit(chunk)
 
-            stopped_reason = await _should_stop()
-            if stopped_reason:
-                logger.info(
-                    "streaming_generation.stopped_early",
-                    generation_id=generation_id,
-                    reason=stopped_reason,
-                )
-                break
+                stopped_reason = await _should_stop()
+                if stopped_reason:
+                    logger.info(
+                        "streaming_generation.stopped_early",
+                        generation_id=generation_id,
+                        reason=stopped_reason,
+                    )
+                    break
 
         latency_ms = int((time.monotonic() - start) * 1000)
         # stamp normalized stop-reason + decode-throughput fleet
@@ -363,8 +424,12 @@ async def run_generation_producer(
             await emit_terminal(
                 StreamChunk(
                     type="error",
-                    data=rejected.terminal_data(
-                        usage=_usage_detail(interrupted=bool(stopped_reason))
+                    data=_terminal_data(
+                        rejected.terminal_data(
+                            usage=_usage_detail(
+                                interrupted=bool(stopped_reason), total_ms=latency_ms
+                            )
+                        )
                     ),
                 )
             )
@@ -395,9 +460,9 @@ async def run_generation_producer(
         done_data.setdefault("finish_reason", stopped_reason or stream_finish_reason or "stop")
         if stopped_reason:
             done_data["stopped_reason"] = stopped_reason
-        terminal_usage_detail = _usage_detail(interrupted=bool(stopped_reason))
+        terminal_usage_detail = _usage_detail(interrupted=bool(stopped_reason), total_ms=latency_ms)
         done_data["usage"] = terminal_usage_detail
-        await emit_terminal(StreamChunk(type="done", data=done_data))
+        await emit_terminal(StreamChunk(type="done", data=_terminal_data(done_data)))
 
         terminal_status = TaskStatus.CANCELLED if stopped_reason else TaskStatus.COMPLETED
         # TASK-890 — persist WHAT was generated and WHAT it cost, not only that it finished.
@@ -478,11 +543,11 @@ async def run_generation_producer(
             "error": (
                 str(exc) if is_invalid_request else "Generation failed due to an internal error."
             ),
-            "usage": _usage_detail(interrupted=True),
+            "usage": _usage_detail(interrupted=True, total_ms=latency_ms),
         }
         if code is not None:
             error_data["code"] = code
-        await emit_terminal(StreamChunk(type="error", data=error_data))
+        await emit_terminal(StreamChunk(type="error", data=_terminal_data(error_data)))
         _log_audit(
             status="failed",
             latency_ms=latency_ms,
