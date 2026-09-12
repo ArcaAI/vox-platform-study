@@ -22,7 +22,15 @@ import { AiCapability, TenantPlan } from '@arcaai/domains';
  * for; the SELL card still prices the two units independently.
  */
 
-/** The five allowance columns both entitlement rows carry (D11). */
+/**
+ * The five allowance columns both entitlement rows carry (D11).
+ *
+ * Five, not seven: TASK-959's `STORAGE` and `WORKFLOW` capabilities have NO
+ * allowance column yet (D-1 — cost visibility first, SELL after), so they
+ * resolve to `null` = unlimited and no overage line can fall out of them. Wave
+ * 4 adds `monthlyStorageByteDays` / `monthlyWorkflowCpuSeconds` here together
+ * with their SELL rows and their `BILLABLE_UNITS` entries.
+ */
 export interface BillingAllowanceColumns {
   monthlySttSessionSeconds?: bigint | null;
   monthlyLlmTokens?: bigint | null;
@@ -45,7 +53,16 @@ export interface ResolvedBillingAllowances {
   spendLimitMicros: bigint | null;
 }
 
-const ALLOWANCE_COLUMN_OF: Record<AiCapability, keyof BillingAllowanceColumns> = {
+/**
+ * Which entitlement column caps each capability.
+ *
+ * PARTIAL, deliberately: a capability with no entry has no ceiling, which is
+ * the honest encoding of "metered, not yet sold". Making it total by inventing
+ * a column for `STORAGE`/`WORKFLOW` would put an enforcing quota behind a unit
+ * that has no SELL rate — a tenant blocked from storing data it was never
+ * quoted a price for.
+ */
+const ALLOWANCE_COLUMN_OF: Partial<Record<AiCapability, keyof BillingAllowanceColumns>> = {
   [AiCapability.STT]: 'monthlySttSessionSeconds',
   [AiCapability.LLM]: 'monthlyLlmTokens',
   [AiCapability.TTS]: 'monthlyTtsCharacters',
@@ -75,6 +92,9 @@ export function resolveBillingAllowances(
   const allowances = { ...unlimited };
   for (const capability of Object.values(AiCapability)) {
     const column = ALLOWANCE_COLUMN_OF[capability];
+    // No column ⇒ no ceiling. Leaving the `unlimited` null in place is what
+    // keeps an un-sold capability out of every overage computation.
+    if (!column) continue;
     const resolved = pick(override?.[column], planRow?.[column]);
     allowances[capability] = resolved === null ? null : new Decimal(resolved.toString());
   }
