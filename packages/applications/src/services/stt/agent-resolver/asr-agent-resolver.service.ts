@@ -8,7 +8,7 @@ import { CLOUD_BYO_PROVIDERS, isCloudByoProvider } from '../../ai-provider-conne
 import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
 import type { ProviderFunding } from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../../tenant-stt-config/platform-limits';
-import { AsrSpecBuildError, buildResolvedAsrSpec } from './build-resolved-asr-spec';
+import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
 
 export interface ResolveAsrSpecInput {
   tenantId: string;
@@ -100,11 +100,18 @@ export class AsrAgentResolverService {
 
     const fallbackAgent = await this.resolveFallbackAgent(agent, tenantId);
 
+    // TASK-958 — credentials are resolved BEFORE the spec is built, because the spec
+    // now CARRIES the identity of the connection each chain authenticates as. The two
+    // chains' ASR rows come from `asrChainModels`, the same selection `fallbackOf`
+    // applies, so the credential and the core it lands on can never disagree.
+    const { providerOverrides, fundingTier, connections } = await this.resolveCredentials(agent, fallbackAgent, tenantId);
+
     let spec: ResolvedAsrSpec;
     try {
       spec = buildResolvedAsrSpec({
         agent,
         fallbackAgent,
+        connections,
         // TASK-934 — a decode profile the row declared but this gateway cannot act on
         // (unknown key, wrong type, out of range) is DROPPED, because tuning is
         // `open-to-default` and a session must not fail on it. This is what stops it
@@ -123,7 +130,6 @@ export class AsrAgentResolverService {
       throw error;
     }
 
-    const { providerOverrides, fundingTier } = await this.resolveCredentials(spec, agent, fallbackAgent, tenantId);
     // TASK-951 — the PRIMARY agent's bound schema. The fallback agent's is deliberately ignored:
     // a session's accepted `context` is decided once, at create, and must not change under the
     // caller when the engine fails over mid-session.
@@ -198,8 +204,13 @@ export class AsrAgentResolverService {
   }
 
   /**
-   * One credential per distinct cloud provider in the chain — the primary's AND
-   * the fallback's, each with the funding DERIVED from the row that served it.
+   * One credential per CHAIN POSITION — the primary's AND the fallback's, each with
+   * the funding DERIVED from the row that served it.
+   *
+   * TASK-958 turned "per distinct cloud PROVIDER" into "per chain position": a tenant
+   * may hold two accounts of one vendor, so two chains naming `openai` are two
+   * credentials, not one shared entry, and the map is keyed by CONNECTION KEY rather
+   * than by provider id (which they share).
    *
    * TASK-874 — both entries matter, because fallback to the platform default is
    * a metered HA capability: `apps/stt` bills engine-time by looking each served
@@ -210,29 +221,56 @@ export class AsrAgentResolverService {
    * no provider of its own, so the fallback was simply first in the list.
    */
   private async resolveCredentials(
-    spec: ResolvedAsrSpec,
     agent: ResolvedAgent,
     fallbackAgent: ResolvedAgent | null,
     tenantId: string,
-  ): Promise<{ providerOverrides?: SttProviderOverrides; fundingTier?: ProviderFunding }> {
-    const primaryProvider = spec.models.asr.provider;
-    const providers: string[] = [];
-    for (const provider of [primaryProvider, spec.fallback.spec?.models.asr.provider ?? null]) {
-      if (provider && isCloudByoProvider('stt', provider) && !providers.includes(provider)) providers.push(provider);
-    }
-    if (providers.length === 0) return {};
-
+  ): Promise<{
+    providerOverrides?: SttProviderOverrides;
+    fundingTier?: ProviderFunding;
+    connections?: { primary?: AsrConnectionBinding | null; fallback?: AsrConnectionBinding | null };
+  }> {
+    const chain = asrChainModels(agent, fallbackAgent);
     const overrides: SttProviderOverrides = {};
-    for (const provider of providers) {
-      const entry = this.credentials
-        ? await this.credentials.resolve('stt', provider, tenantId).then((binding) => binding?.override ?? null)
-        : (this.overrideFromAgents(provider, agent, fallbackAgent) ?? null);
+    const bindings: { primary?: AsrConnectionBinding | null; fallback?: AsrConnectionBinding | null } = {};
+
+    for (const position of ['primary', 'fallback'] as const) {
+      const model = chain[position];
+      const provider = model?.provider ?? null;
+      if (!model || !provider || !isCloudByoProvider('stt', provider)) continue;
+
+      // TASK-958 D-3 — the model row names the account; a SYSTEM catalogue row names
+      // none and keeps the provider-NAME cascade (the tenant's DEFAULT connection).
+      const connectionId = model.sourceConnectionId ?? null;
+      const binding = this.credentials
+        ? await (connectionId
+            ? this.credentials.resolve('stt', provider, tenantId, { connectionId })
+            : this.credentials.resolve('stt', provider, tenantId))
+        : null;
+      const entry = binding?.override ?? (this.credentials ? null : (this.overrideFromAgents(provider, agent, fallbackAgent) ?? null));
+      // A NAMED connection that answered nothing is disabled or keyless: that chain
+      // runs without a credential (and `apps/stt` fails the load) rather than being
+      // lent the default account's key.
       if (!entry) continue;
-      overrides[provider] = entry;
+
+      // D-4 — the key the loaders read their entry under. The connection's `slug` for
+      // a tenant row, the provider id for a platform row, which is what keeps every
+      // pre-958 payload byte-identical.
+      const slug = typeof entry.connection_slug === 'string' ? entry.connection_slug : provider;
+      overrides[slug] = entry;
+      const rowId = binding?.connectionId ?? (typeof entry.connection_id === 'string' ? entry.connection_id : null);
+      // The core carries the fields only when the row actually identified itself; a
+      // one-hop override from an agent resolved without TASK-862's plane may not.
+      if (rowId) bindings[position] = { connectionId: rowId, connectionSlug: slug, connectionKey: slug };
     }
-    if (Object.keys(overrides).length === 0) return {};
-    const fundingTier = primaryProvider ? overrides[primaryProvider]?.funding : undefined;
-    return { providerOverrides: overrides, ...(fundingTier ? { fundingTier } : {}) };
+
+    if (Object.keys(overrides).length === 0) return { ...(bindings.primary || bindings.fallback ? { connections: bindings } : {}) };
+    const primaryKey = bindings.primary?.connectionKey ?? chain.primary?.provider ?? null;
+    const fundingTier = primaryKey ? overrides[primaryKey]?.funding : undefined;
+    return {
+      providerOverrides: overrides,
+      ...(fundingTier ? { fundingTier } : {}),
+      ...(bindings.primary || bindings.fallback ? { connections: bindings } : {}),
+    };
   }
 
   /** Fallback when TASK-862's resolver is not wired: the override the agent resolver already derived. */

@@ -85,6 +85,30 @@ describe('ResolvedTtsSpec parity — producer half', () => {
     }
   });
 
+  it('names the CONNECTION a candidate spends, and omits all three fields when it names none (TASK-958)', () => {
+    // D-4 — two candidates of one vendor share a provider NAME, so `connectionKey` is
+    // the only thing that can select their credential apart. `connectionKey === engine`
+    // for a default/platform row, which leaves every pre-958 payload byte-identical.
+    const twoAccounts = fixture.twoConnectionsOfOneVendor as FixtureCase;
+    expect(twoAccounts.expected.primary.connectionKey).toBe('azure');
+    expect(twoAccounts.expected.primary.connection?.connectionId).toBe('c0000001-0000-4000-8000-00000000000a');
+    expect(twoAccounts.expected.fallback.chain).toHaveLength(1);
+    expect(twoAccounts.expected.fallback.chain[0].connectionKey).toBe('azure-research');
+    expect(twoAccounts.expected.fallback.chain[0].connection?.connectionSlug).toBe('azure-research');
+
+    // Omit-when-absent: `tts.spec` is `extra='forbid'` and lists these in OPTIONAL_FIELDS.
+    for (const name of ['platformDefault', 'tenantAgentWithCloudFallback', 'modelChainFallback']) {
+      const { expected } = fixture[name] as FixtureCase;
+      for (const candidate of [expected.primary, ...expected.fallback.chain]) {
+        expect(candidate, `${name}.${candidate.runtimeKey}`).not.toHaveProperty('connectionKey');
+        if (candidate.connection) {
+          expect(candidate.connection).not.toHaveProperty('connectionId');
+          expect(candidate.connection).not.toHaveProperty('connectionSlug');
+        }
+      }
+    }
+  });
+
   it('carries no credential material anywhere', () => {
     // One INPUT deliberately carries a resolved `providerOverride`; no `expected` spec may echo it.
     for (const [, { expected }] of cases) expect(JSON.stringify(expected)).not.toMatch(/api_key|apiKey|secret/i);

@@ -29,6 +29,12 @@ interface TtsUsageFrame {
   audioSeconds: number | null;
   interrupted: boolean;
   provider: string | null;
+  /**
+   * TASK-958 D-7 — the `AiProviderConnection` the winning candidate authenticated as.
+   * OPTIONAL: an `apps/tts` that predates the field sends none, and the ledger row is
+   * then unattributed rather than attributed to a guess.
+   */
+  connectionId?: string | null;
 }
 
 function isTtsUsageFrame(value: unknown): value is TtsUsageFrame {
@@ -496,6 +502,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
             model: null,
             deployment,
             ...(costBasis ? { costBasis } : {}),
+            connectionId: parsed.connectionId ?? null,
             requestId: bridge.sessionId,
             sessionId: bridge.sessionId,
             attributesJson: { interrupted: parsed.interrupted },

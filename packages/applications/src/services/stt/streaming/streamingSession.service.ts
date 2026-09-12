@@ -455,6 +455,9 @@ export class StreamingSessionService implements IStreamingSessionService {
                 deployment: summary.deployment,
                 audio_seconds: summary.audio_seconds,
                 session_seconds: summary.session_seconds,
+                // TASK-958 — the scalar fallback carries the scalar connection, so a
+                // sender that reports no segments still attributes its one row.
+                connection_id: summary.connection_id ?? null,
               },
             ]
           : [];
@@ -503,6 +506,10 @@ export class StreamingSessionService implements IStreamingSessionService {
             model: null,
             deployment: AiDeploymentKind[segment.deployment as keyof typeof AiDeploymentKind],
             ...(segment.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
+            // TASK-958 D-7 — PER SEGMENT, not per session: a session that failed over
+            // from one of the tenant's accounts to another bills two rows, and each
+            // must name the account it actually spent.
+            connectionId: segment.connection_id ?? null,
             attributesJson: {
               engine: segment.engine,
               pipelineId: summary.pipeline_id,

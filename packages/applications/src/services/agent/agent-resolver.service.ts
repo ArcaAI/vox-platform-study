@@ -17,6 +17,7 @@ import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { IProviderConnectionService as IProviderConnectionServicePort } from '../ai-provider-connection/IProviderConnectionService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
+import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
 import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 
@@ -96,6 +97,11 @@ export class AgentResolverService {
     // and trailing so the positional unit fixtures keep their arity; production
     // DI always supplies it.
     @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
+    // TASK-958 D-3 — the by-id credential lookup. `@Optional()` and TRAILING for the
+    // same reason as `clsService`: positional unit fixtures keep their arity, and
+    // without it a connection-bound model falls back to the provider-name fold —
+    // which is what this resolver did before the binding rule existed.
+    @Optional() private readonly credentials?: ProviderCredentialResolver,
   ) {}
 
   async resolve(input: ResolveAgentInput): Promise<ResolvedAgent> {
@@ -146,7 +152,7 @@ export class AgentResolverService {
     }
 
     const models = await this.materialiseModels(entity, compiledConfig, tenantId);
-    const override = await this.providerOverrideFor(compiledConfig, tenantId);
+    const override = await this.providerOverrideFor(compiledConfig, models, tenantId);
 
     return {
       agentId: entity.id,
@@ -208,16 +214,35 @@ export class AgentResolverService {
   }
 
   /**
-   * TODO(TASK-862): ProviderCredentialResolver.resolve(service, provider, tenantId) →
-   * { override, fundingTier, connectionId }. Today: the existing per-service override map.
+   * The ONE-HOP credential for the agent's PRIMARY model.
+   *
+   * TASK-958 D-3 — the PRIMARY MODEL ROW decides which account is spent, not the
+   * provider name. When the row was declared on a connection (`sourceConnectionId`)
+   * that connection serves or nothing does: a disabled or keyless one yields `null`
+   * (the candidate is unusable and the caller's chain walks on) and a foreign id is
+   * the house 404 — it is NEVER widened to the tenant's default, which would spend a
+   * different vendor account than the one the binding named.
+   *
+   * A SYSTEM catalogue row names no connection, so it keeps the provider-NAME fold:
+   * `resolveTenantCloudOverrides` returns only DEFAULT rows (B1), which is
+   * byte-for-byte the pre-958 cascade.
    */
   private async providerOverrideFor(
     compiled: AgentCompiledConfig,
+    models: ResolvedAgentModel[],
     tenantId: string,
   ): Promise<{ entry: ResolvedAgent['providerOverride']; fundingTier: ResolvedAgent['fundingTier'] } | null> {
     const provider = compiled.model.provider;
     const service = AGENT_TASK_SERVICE[compiled.task];
     if (!provider || !this.providerConnections || !isCloudByoProvider(service, provider)) return null;
+
+    const connectionId = models.find((m) => m.role === 'primary')?.sourceConnectionId ?? null;
+    if (connectionId && this.credentials) {
+      const binding = await this.credentials.resolve(service, provider, tenantId, { connectionId });
+      if (!binding) return null;
+      return { entry: { provider, ...binding.override }, fundingTier: binding.fundingTier };
+    }
+
     const resolved = await this.providerConnections.resolveTenantCloudOverrides(service, tenantId);
     const entry = resolved.overrides[provider];
     if (!entry) return null;
@@ -256,6 +281,11 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
     tenantId: model.tenantId,
+    // TASK-958 D-3 — "the model row names the connection". OMITTED rather than
+    // nulled, like `libraryName` and `metaData`: this shape crosses to the harness
+    // over `GET /internal/agents/resolve`, and an unset optional must be missing
+    // rather than `null` so the two halves stay independently deployable.
+    ...(model.sourceConnectionId ? { sourceConnectionId: model.sourceConnectionId } : {}),
     // TASK-880 H-4 — the runtime-relevant slice of `AiModel._metadata`: ASR decode geometry (which
     // replaced `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`) and the
     // speaker-embedding width the ASR spec builder validates. `buildResolvedAsrSpec` reads only the

@@ -44,6 +44,15 @@ export interface TextUsageDetail {
   endpointKind: LlmEndpointKind;
   interrupted: boolean;
   byok: boolean;
+  /**
+   * TASK-958 D-7 — WHICH `AiProviderConnection` supplied the key TEXT actually used.
+   *
+   * `byok` says WHOSE money; this says WHICH of the tenant's accounts. A tenant may
+   * hold several connections for one vendor, so `textProvider` no longer identifies
+   * the credential that was spent. `null` = a platform credential, or a TEXT that
+   * predates the field — never guessed from the provider name.
+   */
+  connectionId: string | null;
   serviceTier: string | null;
   occurredAt: Date;
   promptTokens: number;
@@ -129,6 +138,9 @@ export function parseTextUsageDetail(raw: unknown): TextUsageDetail | null {
     endpointKind: endpointKind as LlmEndpointKind,
     interrupted: block.interrupted === true,
     byok: block.byok === true,
+    // A non-string, or an EMPTY string, is not an account id: it stays `null` rather
+    // than being stamped on a ledger row as a connection nobody can look up.
+    connectionId: typeof block.connection_id === 'string' && block.connection_id.length > 0 ? block.connection_id : null,
     serviceTier: typeof block.service_tier === 'string' && block.service_tier.length > 0 ? block.service_tier : null,
     // A malformed timestamp degrades to "now" rather than poisoning the row:
     // an `Invalid Date` fails validation and the whole event would be lost.
@@ -179,6 +191,9 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
       // Explicit, never derived from `deployment`: a silently-inferred cost
       // basis makes a forgotten BYOK flag invisible.
       costBasis: usage.byok ? AiCostBasis.BYOK_NOTIONAL : AiCostBasis.INTERNAL,
+      // TASK-958 D-7 — WHICH key, beside whose money. Carried from TEXT's own usage
+      // block; `null` when it named none.
+      connectionId: usage.connectionId,
       consultationId: params.consultationId ?? null,
       doctorId: params.doctorId ?? null,
       departmentId: params.departmentId ?? null,
@@ -226,6 +241,7 @@ export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): Usa
       model: usage.model || null,
       deployment: resolveDeployment(provider, usage.byok),
       costBasis: usage.byok ? AiCostBasis.BYOK_NOTIONAL : AiCostBasis.INTERNAL,
+      connectionId: usage.connectionId,
       consultationId: params.consultationId ?? null,
       doctorId: params.doctorId ?? null,
       departmentId: params.departmentId ?? null,
