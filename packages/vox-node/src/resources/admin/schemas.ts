@@ -822,10 +822,16 @@ export interface CatalogueModelResponse {
 export interface CatalogueProviderResponse {
   /** The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`. */
   connectionId: string | null;
+  /** The tenant's display label for the connection, when it set one. NULL otherwise — the slug stands in. */
+  connectionName?: string | null;
+  /** The connection's tenant-chosen slug (TASK-958 D-5) — `=== provider` on the DEFAULT row, which is why every pre-958 entry keeps its id. NULL for the `hope` group and for a model whose connection is gone. */
+  connectionSlug?: string | null;
   /** Which half of the picker this entry belongs to. */
   group: 'byo' | 'hope';
-  /** `byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry). */
+  /** `byo:<service>:<connectionSlug>` for ONE tenant connection (TASK-958 D-5 — a tenant may hold several per vendor), or the literal `hope` (exactly one entry). A DEFAULT connection carries `slug === provider`, so every id that existed before that ticket is unchanged. */
   id: string;
+  /** Whether this is the provider's DEFAULT connection — the one a SYSTEM catalogue model spends. NULL for the `hope` group. */
+  isDefault?: boolean | null;
   /** Models listed under this entry after every filter. */
   modelCount: number;
   /** Display name. */
