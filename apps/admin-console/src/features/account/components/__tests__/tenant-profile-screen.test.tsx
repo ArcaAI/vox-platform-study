@@ -1,17 +1,22 @@
 /**
  * TDD screen tests for frame 25 (tenant half — Tenant profile),
- * redesign: three tabs (Organization identity from GET /tenants/me, Plan & usage
- * from GET /tenants/me/entitlements, Settings with a category sub-nav over the editable
- * tenants/me/config rows). Settings saves send per-row If-Match over PATCH
- * /tenants/me/config (OCC alert on 412), and the frame's NoTenant variant covers
+ * redesign: two tabs (Organization identity from GET /tenants/me, Plan & usage
+ * from GET /tenants/me/entitlements) and the frame's NoTenant variant for
  * tenant-less super admins.
+ *
+ * TASK-956 — the former Settings tab was a THIRD editor over the same
+ * `GlobalSetting` rows that `/settings` (rows & secrets) and `/settings-registry`
+ * (governed keys) already own. One authoritative editor per backend resource
+ * (rule 13), so the tab is gone: the Organization tab carries a read-only pointer
+ * with plain-href deep links to the two owners, gated on the caller's
+ * `GlobalSetting` abilities, and the screen never reads `tenants/me/config`.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EntitlementCapabilities } from '@/features/entitlements/api/types';
-import type { Tenant, TenantConfig } from '@/features/tenants/api/types';
-import type { SafeSession } from '@/shared/auth/hooks';
+import type { Tenant } from '@/features/tenants/api/types';
+import type { PermissionRule, SafeSession } from '@/shared/auth';
 import { renderWithProviders } from '@/test/render';
 import { TenantProfileScreen } from '../tenant-profile-screen';
 
@@ -41,6 +46,10 @@ const NON_ADMIN_SESSION: SafeSession = {
   effectiveTenantId: 'ten-1',
 };
 
+const MANAGE_ALL: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
+const READ_SETTINGS_ONLY: PermissionRule[] = [{ action: 'read', subject: 'GlobalSetting' }];
+const NO_SETTINGS_ABILITY: PermissionRule[] = [{ action: 'read', subject: 'Consultation' }];
+
 const BASE = {
   projectId: null,
   createdAt: '2026-01-05T08:00:00.000Z',
@@ -62,51 +71,6 @@ const TENANT: Tenant = {
   plan: 'ENTERPRISE',
   tags: ['pilot', 'apac'],
 };
-
-const EDITABLE_CONFIG: TenantConfig = {
-  id: 'cfg-1',
-  ...BASE,
-  name: 'Session timeout',
-  description: 'Idle minutes before members are signed out.',
-  key: 'session-timeout-minutes',
-  defaultValue: '30',
-  value: '45',
-  dataType: 'Integer',
-  namespace: 'security',
-  tenantId: 'ten-1',
-  tenantCode: 'sunrise-medical',
-  version: 3,
-};
-
-const LOCKED_CONFIG: TenantConfig = {
-  ...EDITABLE_CONFIG,
-  id: 'cfg-2',
-  name: 'Data region',
-  description: 'Platform-owned residency default.',
-  key: 'data-region',
-  defaultValue: 'ap-southeast-1',
-  value: 'ap-southeast-1',
-  dataType: 'String',
-  namespace: 'platform',
-  locked: true,
-  version: 7,
-};
-
-/** The synthetic read-only row GET /tenants/me/config appends (id '', version 0). */
-const SYNTHETIC_CONFIG: TenantConfig = {
-  ...EDITABLE_CONFIG,
-  id: '',
-  name: 'Enable Local Raw Capture',
-  description: 'Server-computed effective flag.',
-  key: 'enable-local-raw-capture',
-  defaultValue: 'false',
-  value: 'true',
-  dataType: 'Boolean',
-  namespace: 'feature-flags',
-  version: 0,
-};
-
-const CONFIG_PAGE = { data: [EDITABLE_CONFIG, LOCKED_CONFIG, SYNTHETIC_CONFIG], count: 3, limit: 200, page: 1 };
 
 const ENTITLEMENTS: EntitlementCapabilities = {
   tenantId: 'ten-1',
@@ -164,35 +128,21 @@ function stubFetch(handler: Handler): RecordedCall[] {
   return calls;
 }
 
-/** Force `useViewportTier` to a given tier by stubbing matchMedia (both queries miss → mobile). */
-function stubViewport(tier: 'desktop' | 'mobile') {
-  vi.stubGlobal(
-    'matchMedia',
-    vi.fn((query: string) => ({
-      matches: tier === 'desktop', // desktop min-width queries match on desktop, miss on mobile
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })),
-  );
-}
-
-/** URL-branching happy-path handler; the deeper /tenants/me/* leaves must match before the bare /tenants/me. */
-function happyHandler(overrides: { tenant?: () => Response; configPatch?: () => Response; session?: SafeSession } = {}): Handler {
+/**
+ * URL-branching happy-path handler; the deeper /tenants/me/* leaves must match
+ * before the bare /tenants/me. There is deliberately NO `/tenants/me/config`
+ * branch: the screen no longer reads it, and a stray read fails the test.
+ */
+function happyHandler(overrides: { tenant?: () => Response; session?: SafeSession; permissions?: PermissionRule[] } = {}): Handler {
   return (url, method) => {
     if (url.includes('/api/auth/session')) return Response.json(overrides.session ?? ELEVATED_SESSION);
-    if (url.includes('/tenants/me/config')) {
-      if (method === 'PATCH') return (overrides.configPatch ?? (() => Response.json(CONFIG_PAGE)))();
-      return Response.json(CONFIG_PAGE);
+    if (url.includes('/users/me/permission-checks')) {
+      return Response.json({ userId: 'admin-1', tenantId: 'ten-1', permissions: overrides.permissions ?? MANAGE_ALL });
     }
     if (url.includes('/tenants/me/entitlements')) return Response.json(ENTITLEMENTS);
     if (url.includes('/tenants/me')) return (overrides.tenant ?? (() => Response.json(TENANT)))();
     throw new Error(`Unexpected fetch in test: ${method} ${url}`);
   };
-}
-
-function configGetCalls(calls: RecordedCall[]): number {
-  return calls.filter((call) => call.method === 'GET' && call.url.includes('/tenants/me/config')).length;
 }
 
 afterEach(() => {
@@ -215,14 +165,15 @@ describe('TenantProfileScreen', () => {
     expect(within(identity).getByText('pilot')).toBeDefined();
   });
 
-  it('renders all three profile tabs', async () => {
+  it('renders the two profile tabs and no Settings tab', async () => {
     stubFetch(happyHandler());
     renderWithProviders(<TenantProfileScreen />);
     await screen.findByRole('region', { name: 'Organization' });
 
     expect(screen.getByRole('tab', { name: 'Organization', selected: true })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Plan & usage' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Settings' })).toBeDefined();
+    expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
   });
 
   it('shows entitlement usage on the Plan & usage tab', async () => {
@@ -240,24 +191,53 @@ describe('TenantProfileScreen', () => {
     expect(within(plan).getByText('310 / 1,000')).toBeDefined();
   });
 
-  it('deep-links to the Settings tab via ?tab= and renders the category rail', async () => {
-    stubFetch(happyHandler());
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+  describe('settings pointer (TASK-956 — one authoritative editor per resource)', () => {
+    it('points at both settings editors from the Organization tab and never reads tenants/me/config', async () => {
+      const calls = stubFetch(happyHandler());
+      renderWithProviders(<TenantProfileScreen />);
 
-    expect(await screen.findByRole('navigation', { name: 'Settings categories' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Settings', selected: true })).toBeDefined();
-  });
+      const pointer = await screen.findByRole('region', { name: 'Settings' });
+      const rows = within(pointer).getByRole('link', { name: /Settings rows & secrets/ });
+      const registry = within(pointer).getByRole('link', { name: /Settings registry/ });
+      expect(rows.getAttribute('href')).toBe('/settings');
+      expect(registry.getAttribute('href')).toBe('/settings-registry');
 
-  it('navigates settings categories and renders the type-aware control for each row', async () => {
-    stubFetch(happyHandler());
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+      // No value, no control, no save bar — the pointer is not an editor.
+      expect(within(pointer).queryByRole('textbox')).toBeNull();
+      expect(within(pointer).queryByRole('switch')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(calls.some((call) => call.url.includes('/tenants/me/config'))).toBe(false);
+    });
 
-    await screen.findByRole('navigation', { name: 'Settings categories' });
-    // Security category holds the editable integer row → numeric input.
-    fireEvent.click(screen.getByRole('button', { name: /Security/ }));
-    const input = await screen.findByLabelText('Value for session-timeout-minutes');
-    expect((input as HTMLInputElement).value).toBe('45');
-    expect((input as HTMLInputElement).inputMode).toBe('decimal');
+    it('offers only the registry link to a caller who may read but not manage settings', async () => {
+      stubFetch(happyHandler({ permissions: READ_SETTINGS_ONLY }));
+      renderWithProviders(<TenantProfileScreen />);
+
+      const pointer = await screen.findByRole('region', { name: 'Settings' });
+      expect(await within(pointer).findByRole('link', { name: /Settings registry/ })).toBeDefined();
+      expect(within(pointer).queryByRole('link', { name: /Settings rows & secrets/ })).toBeNull();
+    });
+
+    it('hides the pointer entirely from a caller without GlobalSetting abilities', async () => {
+      const calls = stubFetch(happyHandler({ permissions: NO_SETTINGS_ABILITY }));
+      renderWithProviders(<TenantProfileScreen />);
+
+      await screen.findByRole('region', { name: 'Organization' });
+      // The pointer decides after the permission read has answered.
+      await waitFor(() => expect(calls.some((call) => call.url.includes('/users/me/permission-checks'))).toBe(true));
+      expect(screen.queryByRole('region', { name: 'Settings' })).toBeNull();
+      expect(screen.queryByRole('link', { name: /Settings registry/ })).toBeNull();
+    });
+
+    it('sends the retired ?tab=settings deep link to the Organization tab', async () => {
+      stubFetch(happyHandler());
+      renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+      await screen.findByRole('region', { name: 'Organization' });
+      expect(screen.getByRole('tab', { name: 'Organization', selected: true })).toBeDefined();
+      expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+      expect(screen.queryByRole('navigation', { name: 'Settings categories' })).toBeNull();
+    });
   });
 
   it('shows the friendly no-tenant empty state instead of an error for tenant-less super admins', async () => {
@@ -266,74 +246,7 @@ describe('TenantProfileScreen', () => {
 
     expect(await screen.findByText('No working tenant selected')).toBeDefined();
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
-  });
-
-  it('per-category save sends a per-row If-Match PATCH for each dirty row', async () => {
-    const calls = stubFetch(happyHandler());
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
-
-    await screen.findByRole('navigation', { name: 'Settings categories' });
-    fireEvent.click(screen.getByRole('button', { name: /Security/ }));
-
-    const input = await screen.findByLabelText('Value for session-timeout-minutes');
-    fireEvent.change(input, { target: { value: '60' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1));
-    const patch = calls.find((call) => call.method === 'PATCH');
-    expect(patch?.url).toBe('/api/hope/tenants/me/config');
-    expect(patch?.headers.get('if-match')).toBe('"3"');
-    expect(patch?.body).toEqual([{ id: 'cfg-1', value: '60', expectedVersion: 3 }]);
-  });
-
-  it('surfaces the OCC alert on 412 and Reload latest refetches, keeping the draft', async () => {
-    const calls = stubFetch(
-      happyHandler({
-        configPatch: () => Response.json({ statusCode: 412, message: 'Version drift', error: 'Precondition Failed' }, { status: 412 }),
-      }),
-    );
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
-
-    await screen.findByRole('navigation', { name: 'Settings categories' });
-    fireEvent.click(screen.getByRole('button', { name: /Security/ }));
-    const input = await screen.findByLabelText('Value for session-timeout-minutes');
-    fireEvent.change(input, { target: { value: '60' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
-
-    expect(await screen.findByText(/412 Precondition Failed/)).toBeDefined();
-    // Draft is retained (no silent loss).
-    expect((screen.getByLabelText('Value for session-timeout-minutes') as HTMLInputElement).value).toBe('60');
-
-    const before = configGetCalls(calls);
-    fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }));
-    await waitFor(() => expect(configGetCalls(calls)).toBe(before + 1));
-    await waitFor(() => expect(screen.queryByText(/412 Precondition Failed/)).toBeNull());
-  });
-
-  it('locked and synthetic read-only rows cannot be edited', async () => {
-    stubFetch(happyHandler());
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
-
-    await screen.findByRole('navigation', { name: 'Settings categories' });
-    // Locked row lives under Data & residency.
-    fireEvent.click(screen.getByRole('button', { name: /Data & residency/ }));
-    const locked = await screen.findByLabelText('Value for data-region');
-    expect((locked as HTMLInputElement).disabled).toBe(true);
-
-    // Synthetic boolean row lives under Clinical defaults (rendered as a Switch).
-    fireEvent.click(screen.getByRole('button', { name: /Clinical defaults/ }));
-    const synthetic = await screen.findByLabelText('Value for enable-local-raw-capture');
-    expect((synthetic as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('renders the settings category rail as a horizontal chip scroll on mobile', async () => {
-    stubViewport('mobile');
-    stubFetch(happyHandler());
-    renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
-
-    const rail = await screen.findByRole('navigation', { name: 'Settings categories' });
-    expect(rail.className).toContain('overflow-x-auto');
+    expect(screen.queryByRole('tab', { name: 'Plan & usage' })).toBeNull();
   });
 
   it('mirrors the loaded layout with skeletons while the profile is in flight', () => {
@@ -365,12 +278,12 @@ describe('TenantProfileScreen', () => {
 
   /**
    * While impersonating (or for a real end-user), the
-   * screen must show only basic org identity + a read-only Settings tab;
-   * "Plan & usage" (limits/meters/entitlements) must not render or fetch.
+   * screen must show only basic org identity; "Plan & usage"
+   * (limits/meters/entitlements) must not render or fetch.
    */
   describe('non-elevated / impersonated session', () => {
     it('hides the Plan & usage tab and never fetches entitlements', async () => {
-      const calls = stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+      const calls = stubFetch(happyHandler({ session: NON_ADMIN_SESSION, permissions: NO_SETTINGS_ABILITY }));
       renderWithProviders(<TenantProfileScreen />);
 
       await screen.findByRole('region', { name: 'Organization' });
@@ -379,7 +292,7 @@ describe('TenantProfileScreen', () => {
     });
 
     it('shows only the organization name and status, hiding key/plan/description/tags/timestamps', async () => {
-      stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+      stubFetch(happyHandler({ session: NON_ADMIN_SESSION, permissions: NO_SETTINGS_ABILITY }));
       renderWithProviders(<TenantProfileScreen />);
 
       const identity = await screen.findByRole('region', { name: 'Organization' });
@@ -391,17 +304,14 @@ describe('TenantProfileScreen', () => {
       expect(within(identity).queryByText('pilot')).toBeNull();
     });
 
-    it('keeps the Settings tab, read-only (no Save bar even after an edit)', async () => {
-      stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+    it('has no Settings tab and, without GlobalSetting abilities, no settings pointer either', async () => {
+      stubFetch(happyHandler({ session: NON_ADMIN_SESSION, permissions: NO_SETTINGS_ABILITY }));
       renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
 
-      await screen.findByRole('navigation', { name: 'Settings categories' });
-      expect(screen.getByRole('tab', { name: 'Settings', selected: true })).toBeDefined();
-      fireEvent.click(screen.getByRole('button', { name: /Security/ }));
-      const input = await screen.findByLabelText('Value for session-timeout-minutes');
-      expect((input as HTMLInputElement).disabled).toBe(true);
-      fireEvent.change(input, { target: { value: '60' } });
-      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      await screen.findByRole('region', { name: 'Organization' });
+      expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+      expect(screen.getAllByRole('tab')).toHaveLength(1);
+      expect(screen.queryByRole('region', { name: 'Settings' })).toBeNull();
     });
 
     it('keeps the full admin view for an elevated session (regression)', async () => {

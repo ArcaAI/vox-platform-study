@@ -1,8 +1,7 @@
 /** Self-service client (capabilities-matrix rows 16–17 + tenant/me). */
 
-import { getJson, getWithEtag, patchJson, request } from '@/shared/api';
-import type { ListParams, Paginated, WithEtag } from '@/shared/api';
-import type { Tenant, TenantConfig, UpdateTenantConfigItem } from '@/features/tenants/api/types';
+import { getJson, patchJson } from '@/shared/api';
+import type { Tenant } from '@/features/tenants/api/types';
 import type { EntitlementCapabilities } from '@/features/entitlements/api/types';
 import type { UpdateUserSettingRequest, UserDepartment, UserSetting } from '@/features/users/api/types';
 import type { UpdateUserPreferencesRequest, UserPreferences } from './types';
@@ -11,18 +10,9 @@ export function getMyTenant(): Promise<Tenant> {
   return getJson('tenants/me');
 }
 
-/**
- * Own-tenant config list (includes the synthetic read-only
- * `enable-local-raw-capture` row). ETag captured for the bulk PATCH.
- */
-export function listMyTenantConfigs(params?: ListParams): Promise<WithEtag<Paginated<TenantConfig>>> {
-  return getWithEtag('tenants/me/config', params);
-}
-
-/** Bulk PATCH with If-Match (the header folds onto every row server-side). */
-export async function updateMyTenantConfigs(updates: UpdateTenantConfigItem[], etag: string): Promise<Paginated<TenantConfig>> {
-  return (await request<Paginated<TenantConfig>>('tenants/me/config', { method: 'PATCH', body: updates, etag })).data;
-}
+// `tenants/me/config` is no longer read or written by the console (TASK-956):
+// the tenant's settings rows are edited on /settings and /settings-registry.
+// The gateway route stays — the browser SDK reads it for `audio.captureRawAudio`.
 
 export function getMyEntitlements(): Promise<EntitlementCapabilities> {
   return getJson('tenants/me/entitlements');
