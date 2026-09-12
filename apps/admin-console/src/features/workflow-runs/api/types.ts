@@ -40,6 +40,28 @@ export interface WorkflowRun {
   createdAt: string;
 }
 
+/**
+ * GET /admin/workflow-runs/:runId (`WorkflowRunDetailResponse`) — the run row
+ * plus the one figure that is not a property of the row: `cpuSeconds`.
+ *
+ * A SEPARATE type from `WorkflowRun`, mirroring the backend's own split: the
+ * list route projects `WorkflowRunResponse` (one query per page, so a
+ * per-run ledger sum would be one query per row), while this figure is a
+ * `SUM(...) WHERE requestId = runId` over `AiUsageEvent`, produced by the
+ * harness worker's metering interceptor and delivered minutes after the run
+ * finishes through the usage outbox (TASK-959 §3.4, D-5).
+ */
+export interface WorkflowRunDetail extends WorkflowRun {
+  /**
+   * Σ CPU_SECOND under capability WORKFLOW for this run — the durable
+   * worker's own CPU, fair-share apportioned across concurrently executing
+   * activities. `null`, never `0`, when the run has no such rows: a run that
+   * predates the metering interceptor and a run that burned no measurable
+   * CPU are different facts.
+   */
+  cpuSeconds: number | null;
+}
+
 /** Keyset page envelope — matches `@/shared/api`'s `CursorPaginated<T>` exactly. */
 export interface WorkflowRunsPage {
   data: WorkflowRun[];
