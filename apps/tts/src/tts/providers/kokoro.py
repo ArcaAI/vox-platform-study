@@ -45,7 +45,7 @@ class KokoroPaths:
     voices_dir: str | None
 
 
-def resolve_kokoro_paths(config: KokoroConfig) -> KokoroPaths | None:
+def resolve_kokoro_paths(config: KokoroConfig, *, slug: str | None = None) -> KokoroPaths | None:
     """``model_path`` → the explicit `KModel(config, model)` inputs, or None.
 
     None (empty ``model_path``) means the dev fallback: `KPipeline` pulls
@@ -53,6 +53,10 @@ def resolve_kokoro_paths(config: KokoroConfig) -> KokoroPaths | None:
     `config.json` + a `.pth` checkpoint is a misconfiguration and FAILS here —
     silently falling back to a Hub download would hide a registry row whose
     weights were never published (`availability: MISSING`).
+
+    ``slug`` names the registry row the path came from, so an operator running
+    several kokoro rows learns WHICH one is unpublished. Optional because the
+    hermetic suites construct a config directly; `from_spec` always supplies it.
     """
     if not config.model_path:
         return None
@@ -60,10 +64,20 @@ def resolve_kokoro_paths(config: KokoroConfig) -> KokoroPaths | None:
     config_json = os.path.join(root, "config.json")
     checkpoints = sorted(glob.glob(os.path.join(root, "*.pth")))
     if not os.path.isfile(config_json) or not checkpoints:
+        # TASK-961: name the ROW, never `TTS_KOKORO_MODEL_PATH`. That alias is
+        # dead (`moved_to_row_alias`), so an operator cannot set it and cannot
+        # fix anything by trying — the only supplier of this value is the
+        # resolved spec's `model.localPath`, derived from the row's
+        # `bucketPrefix`. Sending them to a retired env var is the same
+        # misdirection as advising a HuggingFace token for a repo that is not
+        # on the Hub (TASK-960 D1).
+        which = f" for registry row {slug!r}" if slug else ""
         raise FileNotFoundError(
-            f"TTS_KOKORO_MODEL_PATH={config.model_path!r} does not contain config.json and a "
-            ".pth checkpoint — the Kokoro registry row has not been published to the models "
-            "bucket (run the registry inventory), or the path is wrong."
+            f"Kokoro weights{which} are not present at {config.model_path!r}: no config.json and "
+            "no .pth checkpoint. This path is derived from the model row's `bucketPrefix` — the "
+            "row has not been published to the models bucket (publish it, or run the registry "
+            "inventory to re-measure `availability`), or `bucketPrefix` is wrong. It is NOT "
+            "settable from the environment."
         )
     voices_dir = os.path.join(root, "voices")
     return KokoroPaths(
@@ -155,6 +169,7 @@ class KokoroProvider:
         return cls(
             settings.kokoro.model_copy(update={"model_path": candidate.model.local_path or ""}),
             ttl_seconds=settings.model_cache_ttl_seconds,
+            slug=candidate.model.slug,
         )
 
     def __init__(
@@ -166,8 +181,12 @@ class KokoroProvider:
         ttl_seconds: int | None = None,
         time_func: Callable[[], float] = time.monotonic,
         warmup_voice: str | None = None,
+        slug: str | None = None,
     ) -> None:
         self._config = config
+        # TASK-961: the registry row this engine was built for, carried ONLY so
+        # an unpublished-weights failure can name it. `from_spec` supplies it.
+        self._slug = slug
         # The voice used ONLY by the boot-time `warmup()` call. It comes from the
         # voice catalog at construction (`main.create_app`), which is the single
         # source of provider voice names since lane C — the `voice`
@@ -178,7 +197,7 @@ class KokoroProvider:
         self._warmup_voice = warmup_voice
         # TASK-860: explicit published-weight paths (None = Hub fallback).
         # Resolved at construction so a misconfigured mount fails at boot.
-        self._paths = resolve_kokoro_paths(config)
+        self._paths = resolve_kokoro_paths(config, slug=slug)
         # The pipeline handle lives behind the shared
         # model cache, so it loads on first use and is RELEASED when idle. An
         # explicitly injected `pipeline` bypasses the cache entirely (hermetic
