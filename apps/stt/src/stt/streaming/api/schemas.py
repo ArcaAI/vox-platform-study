@@ -190,6 +190,43 @@ class StreamingUsageSegment(BaseModel):
             "vendor, so `engine` alone cannot separate their spend."
         ),
     )
+    # TASK-959 §3.2/§4.2 — the compute and network halves of the same question.
+    # DECLARED here deliberately: `response_model` FILTERS this model, so a field
+    # the schema omits never reaches the gateway on the DELETE-teardown path
+    # however faithfully the summary carries it.
+    processing_seconds: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "ASR-only seconds on this engine; becomes a GPU_SECOND or CPU_SECOND "
+            "ledger row according to `device`. Sums, across segments, to the "
+            "session's own total."
+        ),
+    )
+    device: str = Field(
+        default="cpu",
+        description=(
+            "cuda | mps | cpu — the device this segment OCCUPIED. A cloud segment "
+            "reports cpu (this service waiting on the vendor) whatever the host's "
+            "accelerator is."
+        ),
+    )
+    request_bytes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Bytes sent to a third party on this engine; null when it made no such call",
+    )
+    response_bytes: int | None = Field(
+        default=None, ge=0, description="Bytes received from a third party on this engine"
+    )
+    byte_source: str | None = Field(
+        default=None,
+        description=(
+            "wire (a real HTTP request/response) or app (an application-level "
+            "proxy, for an SDK whose socket traffic is opaque); null alongside "
+            "null byte counts"
+        ),
+    )
 
 
 class StreamingSessionTeardownResponse(BaseModel):

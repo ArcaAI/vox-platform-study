@@ -75,6 +75,18 @@ class WhisperCppLoader(BaseModelLoader):
 
         use_gpu = (model_config.device or "auto") != "cpu"
         num_threads = settings.whisper_cpp_num_threads
+        # TASK-959 — the device stamped on `LoadedModel` is a BILLING input: the
+        # batch completion callback carries it and the gateway maps it to a unit
+        # (cuda/mps -> GPU_SECOND, cpu -> CPU_SECOND). This used to stamp the
+        # literal "auto" whenever the GPU was on, which normalises to `cpu`, so a
+        # whisper.cpp job running on a GPU billed CPU seconds. `_get_device`
+        # resolves "auto" through `stt.core.platform.get_device_string`, which
+        # answers exactly cuda | mps | cpu and degrades to cpu when torch is
+        # absent — the case that matters here, since ggml needs no torch.
+        # A CPU-pinned row turns ggml's GPU off, so it is never upgraded to
+        # whatever the host happens to have: that would over-bill the tenant for
+        # hardware the run never touched.
+        device = self._get_device(model_config.device or "auto") if use_gpu else "cpu"
 
         try:
             handle = await asyncio.to_thread(
@@ -109,7 +121,7 @@ class WhisperCppLoader(BaseModelLoader):
             model=handle,
             format=AiModelFormat.WHISPER_CPP,
             memory_mb=self.estimate_memory(model_config),
-            device="cpu" if not use_gpu else "auto",
+            device=device,
             loaded_at=datetime.now(UTC),
             extra={
                 "provider": "whisper_cpp",

@@ -252,6 +252,15 @@ class TestTeardownSummarySegments:
                 # TASK-958 — a recovered session stamped no connection; the row carries
                 # `None` rather than omitting the key, so the gateway reads one shape.
                 "connection_id": None,
+                # TASK-959 — this branch is now built through `UsageSegment` itself, so
+                # it carries the accumulator's full shape: no compute was recorded (no
+                # worker), and a self-hosted engine made no third-party call, which is
+                # a null byte count rather than a measured-looking zero.
+                "processing_seconds": 0.0,
+                "device": "cpu",
+                "request_bytes": None,
+                "response_bytes": None,
+                "byte_source": None,
             }
         ]
 

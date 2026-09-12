@@ -250,6 +250,12 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
         engine: str | None = None
         deployment: str | None = None
         connection_id: str | None = None
+        # TASK-959 — the worker forwards these on the completion callback, so the
+        # stub must carry them or it stops standing in for `TranscriptionResult`.
+        device: str | None = "cpu"
+        request_bytes: int | None = None
+        response_bytes: int | None = None
+        byte_source: str | None = None
         metadata: dict[str, Any] = {}
 
         def to_dict(self) -> dict[str, Any]:
