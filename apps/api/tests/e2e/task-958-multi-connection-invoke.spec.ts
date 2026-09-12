@@ -31,6 +31,18 @@
  * `connection_id`, a disabled #2 is skipped, a foreign id is 404) and
  * `usageLedger/__tests__/connection-attribution.task958.test.ts` (the id reaches
  * `AiUsageEvent.connectionId` from each usage path).
+ *
+ * TWO THINGS ABOUT THE SEEDED DATABASE this suite writes into, both learned the
+ * hard way:
+ *
+ *   - a NAMED SIBLING is created with `If-Match: "0"` and NO prior read. A slug
+ *     that is not a provider id has no `version: 0` placeholder to read — `GET`
+ *     404s until the row exists — so the read-then-write helper failed on its
+ *     own first assertion before any of this was exercised.
+ *   - everything it writes is undone in `afterAll`: the sibling is deleted (with
+ *     the models declared on it), and the DEFAULT connection's model list — which
+ *     `declareModels` REPLACES rather than appends — is captured in `beforeAll`
+ *     and re-declared. The whole e2e run shares one database.
  */
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { loginUser } from '../../../../tests/helpers';
@@ -60,7 +72,15 @@ interface ConnectionRow {
   enabled: boolean;
   hasKey: boolean;
   version: number;
-  models?: Array<{ slug: string; wireModelId: string }>;
+  models?: Array<{ slug: string; wireModelId: string; name: string; taskType: string }>;
+}
+
+/** One entry of `PUT :service/:slug/models` — `slug` is sent only to KEEP a generated name. */
+interface DeclaredModel {
+  wireModelId: string;
+  name: string;
+  taskType: string;
+  slug?: string;
 }
 
 interface CatalogueBody {
@@ -85,10 +105,14 @@ async function token(request: APIRequestContext): Promise<string> {
 }
 
 /**
- * Upsert one connection. Idempotent: the read supplies the OCC token (`version: 0`
- * when no row exists), so the spec can be re-run against a seeded database.
+ * Upsert the PROVIDER-NAMED connection — the tenant's default for that vendor.
+ *
+ * The pre-read is sound for THIS slug and only this one: a provider id always
+ * answers 200, with a `version: 0` placeholder when no row is stored, which is
+ * where the OCC token comes from. That is what makes the helper idempotent
+ * against a seeded database.
  */
-async function upsert(request: APIRequestContext, bearer: string, slug: string, body: Record<string, unknown>): Promise<ConnectionRow> {
+async function upsertDefault(request: APIRequestContext, bearer: string, slug: string, body: Record<string, unknown>): Promise<ConnectionRow> {
   const current = await request.get(`${PROVIDERS}/llm/${slug}`, { headers: auth(bearer) });
   expect(current.status(), await current.text()).toBe(200);
   const row = (await current.json()) as ConnectionRow;
@@ -100,17 +124,95 @@ async function upsert(request: APIRequestContext, bearer: string, slug: string, 
   return (await saved.json()) as ConnectionRow;
 }
 
+/**
+ * Create a NAMED SIBLING — and do NOT read it first.
+ *
+ * A slug that is not a provider id has no placeholder to read: `GET` on a
+ * sibling that does not exist yet is a **404**, which is the final semantics of
+ * the route (only the message wording is still moving). `If-Match: "0"` IS the
+ * documented create precondition, exactly as `task-958-provider-connections.spec.ts`
+ * uses it — a pre-read here failed the suite on its own first assertion.
+ *
+ * The 409/412 branch is for re-runs: a previous run that died before its cleanup
+ * leaves the row behind, and THEN the read is valid because the row exists.
+ */
+async function createSibling(request: APIRequestContext, bearer: string, slug: string, body: Record<string, unknown>): Promise<ConnectionRow> {
+  const created = await request.put(`${PROVIDERS}/llm/${slug}`, {
+    headers: { ...auth(bearer), 'If-Match': '"0"' },
+    data: { expectedVersion: 0, apiKey: 'task958-e2e-not-a-real-key', ...body },
+  });
+  if (created.status() === 200) return (await created.json()) as ConnectionRow;
+
+  // Left over from an interrupted run: adopt it at its current version.
+  expect([409, 412], await created.text()).toContain(created.status());
+  const existing = await request.get(`${PROVIDERS}/llm/${slug}`, { headers: auth(bearer) });
+  expect(existing.status(), await existing.text()).toBe(200);
+  const row = (await existing.json()) as ConnectionRow;
+  const saved = await request.put(`${PROVIDERS}/llm/${slug}`, {
+    headers: { ...auth(bearer), 'If-Match': `"${row.version}"` },
+    data: { expectedVersion: row.version, ...body },
+  });
+  expect(saved.status(), await saved.text()).toBe(200);
+  return (await saved.json()) as ConnectionRow;
+}
+
 // SERIAL: both cases declare on the same two connections, and a declaration REPLACES
 // a connection's model list — under `fullyParallel: true` they would clobber each
 // other and the failure would read as "the declared model is missing".
 test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-958 — several connections of one vendor, and the models bound to each', () => {
+  /**
+   * CLEANUP, and why it is `afterAll` rather than `afterEach`: the three cases
+   * are one story told in order — create, declare, read back — so the sibling
+   * has to survive between them. What must not survive the SUITE is anything it
+   * wrote, because the whole e2e run shares one seeded database and a stray
+   * `openai-t958-research` connection (or a replaced model list on the DEFAULT
+   * one) changes what the catalogue and provider-list specs see.
+   *
+   * `declareModels` REPLACES a connection's list, so the default's original list
+   * is captured up front and re-declared here. Cleanup asserts nothing: a
+   * failure to tidy must not turn a passing suite red, and it is reported by the
+   * assertions of whatever it would have disturbed.
+   */
+  let defaultModelsBefore: DeclaredModel[] | null = null;
+
+  test.beforeAll(async ({ request }) => {
+    const bearer = await token(request);
+    const read = await request.get(`${PROVIDERS}/llm/${DEFAULT_SLUG}`, { headers: auth(bearer) });
+    if (read.status() !== 200) return;
+    const row = (await read.json()) as ConnectionRow;
+    defaultModelsBefore = (row.models ?? []).map((model) => ({
+      wireModelId: model.wireModelId,
+      name: model.name,
+      taskType: model.taskType,
+      // Re-declaring with the ORIGINAL slug is what makes the restore a restore:
+      // the generator would otherwise mint a fresh name for the same wire id.
+      slug: model.slug,
+    }));
+  });
+
+  test.afterAll(async ({ request }) => {
+    const bearer = await token(request);
+
+    // The sibling, and with it every model declared on it.
+    const read = await request.get(`${PROVIDERS}/llm/${SIBLING_SLUG}`, { headers: auth(bearer) });
+    if (read.status() === 200) {
+      const row = (await read.json()) as ConnectionRow;
+      if (row.version > 0) await request.delete(`${PROVIDERS}/llm/${SIBLING_SLUG}`, { headers: auth(bearer) });
+    }
+
+    // The default connection's model list, which this suite replaced in place.
+    if (defaultModelsBefore) {
+      await request.put(`${PROVIDERS}/llm/${DEFAULT_SLUG}/models`, { headers: auth(bearer), data: { models: defaultModelsBefore } });
+    }
+  });
+
   test('a tenant holds a DEFAULT openai connection and a named sibling; both are listed, one is default', async ({ request }) => {
     const bearer = await token(request);
 
-    await upsert(request, bearer, DEFAULT_SLUG, { enabled: true, baseUrl: 'https://api.openai.com/v1' });
-    const sibling = await upsert(request, bearer, SIBLING_SLUG, {
+    await upsertDefault(request, bearer, DEFAULT_SLUG, { enabled: true, baseUrl: 'https://api.openai.com/v1' });
+    const sibling = await createSibling(request, bearer, SIBLING_SLUG, {
       // REQUIRED on a slug that is not itself a provider id (`CONNECTION_PROVIDER_REQUIRED`).
       provider: 'openai',
       name: SIBLING_NAME,
