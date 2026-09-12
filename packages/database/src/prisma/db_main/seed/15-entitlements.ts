@@ -157,6 +157,12 @@ interface PlanEntitlementSeed {
   // `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
   // `plan-matrix-parity.test.ts`.
   maxWorkflowDefinitions: number | null;
+  // TASK-958 D-8 — how many `AiProviderConnection` rows a tenant on this plan
+  // may hold (per tenant, all services; `null` = unbounded, which is every
+  // seeded plan today). Enforced by `assertQuantityQuota` on CREATE only. Kept
+  // in sync with `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
+  // `plan-matrix-parity.test.ts`.
+  maxAiProviderConnections: number | null;
   storageQuotaBytes: bigint | null;
   maxConcurrentSessions: number | null;
   monthlyConsultations: number | null;
@@ -218,6 +224,7 @@ const PRO_VALUES = {
   maxAsrPipelines: 5,
   maxApiKeys: 10,
   maxWorkflowDefinitions: 5,
+  maxAiProviderConnections: null,
   storageQuotaBytes: BigInt(100 * GIB),
   maxConcurrentSessions: 25,
   // RATIFIED 2026-08-08: PRO = $100/mo bundling 250 consultations.
@@ -280,6 +287,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
+    maxAiProviderConnections: null,
     storageQuotaBytes: BigInt(5 * GIB),
     maxConcurrentSessions: 5,
     // RATIFIED 2026-08-08: STARTER = $50/mo bundling 50 consultations.
@@ -310,6 +318,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxAsrPipelines: 20,
     maxApiKeys: 50,
     maxWorkflowDefinitions: 20,
+    maxAiProviderConnections: null,
     storageQuotaBytes: BigInt(1_000 * GIB),
     maxConcurrentSessions: 100,
     // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage is

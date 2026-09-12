@@ -476,6 +476,36 @@ describe('EntitlementsService', () => {
       expect(res.monthlyTtsCharacters).toBe(500_000);
     });
 
+    /*
+     * TASK-958 D-8 — the connection ceiling must survive the WHOLE round trip.
+     *
+     * Deliberately stronger than its sibling `maxWorkflowDefinitions`, which
+     * the request DTO accepts and the service writes but neither response
+     * mapper reads back — so a super admin sets it, reloads, and sees nothing.
+     * Pinning the read-back here keeps this cap from acquiring the same gap.
+     */
+    it('writes AND echoes the AI-provider-connection ceiling', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', { maxAiProviderConnections: 2, expectedVersion: 1 });
+
+      expect(row.maxAiProviderConnections).toBe(2);
+      expect(res.maxAiProviderConnections).toBe(2);
+    });
+
+    it('clears the connection ceiling back to unbounded on an explicit null', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1, maxAiProviderConnections: 2 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', { maxAiProviderConnections: null, expectedVersion: 1 });
+
+      expect(row.maxAiProviderConnections).toBeNull();
+      expect(res.maxAiProviderConnections).toBeNull();
+    });
+
     it('A null allowance ceiling clears it to unlimited', async () => {
       const row = fakePlanEntity({ plan: 'PRO', version: 1, monthlyLlmTokens: BigInt(2_000_000) });
       planEntitlementRepository.findByPlan.mockResolvedValue(row);
@@ -549,7 +579,7 @@ describe('EntitlementsService', () => {
     });
 
     it('clears an override by nulling every field (reversible, never deleted)', async () => {
-      const row = fakeTenantEntity({ maxUsers: 99, rateLimitPerMinute: 300, monthlyLlmTokens: BigInt(1_000_000), version: 5 });
+      const row = fakeTenantEntity({ maxUsers: 99, rateLimitPerMinute: 300, monthlyLlmTokens: BigInt(1_000_000), maxAiProviderConnections: 2, version: 5 });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
       tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
@@ -564,7 +594,30 @@ describe('EntitlementsService', () => {
       expect(row.monthlyTtsCharacters).toBeNull();
       expect(row.monthlyNlpTextUnits).toBeNull();
       expect(row.monthlyEmbeddingTokens).toBeNull();
+      // TASK-958 — the connection ceiling is cleared with the rest.
+      expect(row.maxAiProviderConnections).toBeNull();
       expect(tenantEntitlementRepository.updateWithVersion).toHaveBeenCalledWith('te-1', row, 5);
+    });
+
+    it('writes AND echoes the per-tenant connection-ceiling override', async () => {
+      const row = fakeTenantEntity({ version: 2 });
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
+      tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', { maxAiProviderConnections: 1, expectedVersion: 2 });
+
+      expect(row.maxAiProviderConnections).toBe(1);
+      expect(res.maxAiProviderConnections).toBe(1);
+    });
+
+    it('carries the connection-ceiling override onto the FIRST override row', async () => {
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantRepository.findById.mockResolvedValue({ id: 'tenant-1' });
+      tenantEntitlementRepository.create.mockImplementation(async (entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', { maxAiProviderConnections: 3 });
+
+      expect(res.maxAiProviderConnections).toBe(3);
     });
 
     it('is a no-op when clearing a tenant with no override', async () => {

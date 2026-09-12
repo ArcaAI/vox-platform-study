@@ -158,6 +158,15 @@ export interface PlanEntitlementValues {
   maxApiKeys: number | null;
   /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure plane). */
   maxWorkflowDefinitions: number | null;
+  /**
+   * TASK-958 D-8 — how many `AiProviderConnection` rows one tenant may hold
+   * (per tenant, all services). A tenant that brings two OpenAI accounts holds
+   * two rows, so the count is a real commercial dimension. `null` = unbounded,
+   * which is the seeded value on every plan: the cap exists so a plan CAN be
+   * priced on it, not because one is priced on it today. Enforced by
+   * `assertQuantityQuota` on CREATE only.
+   */
+  maxAiProviderConnections: number | null;
   storageQuotaBytes: number | null;
   /** Concurrency cap — simultaneous active STT sessions (null = unlimited). */
   maxConcurrentSessions: number | null;
@@ -247,6 +256,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   maxAsrPipelines: 5,
   maxApiKeys: 10,
   maxWorkflowDefinitions: 5,
+  maxAiProviderConnections: null,
   storageQuotaBytes: 100 * GIB,
   // PRO/TRIAL ≈ 25 concurrent doctors (anchored to the seat cap).
   maxConcurrentSessions: 25,
@@ -291,6 +301,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
+    maxAiProviderConnections: null,
     storageQuotaBytes: 5 * GIB,
     // STARTER ≈ 5 concurrent doctors.
     maxConcurrentSessions: 5,
@@ -319,6 +330,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxAsrPipelines: 20,
     maxApiKeys: 50,
     maxWorkflowDefinitions: 20,
+    maxAiProviderConnections: null,
     storageQuotaBytes: 1_000 * GIB,
     // ENTERPRISE ≈ 100 concurrent doctors.
     maxConcurrentSessions: 100,

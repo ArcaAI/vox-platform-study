@@ -13,6 +13,7 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
   maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
+  maxAiProviderConnections?: ITenantEntitlementEntity['maxAiProviderConnections'];
   storageQuotaBytes?: ITenantEntitlementEntity['storageQuotaBytes'];
   maxConcurrentSessions?: ITenantEntitlementEntity['maxConcurrentSessions'];
   monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
@@ -58,6 +59,7 @@ export class TenantEntitlementFactory {
       maxAsrPipelines: props.maxAsrPipelines ?? null,
       maxApiKeys: props.maxApiKeys ?? null,
       maxWorkflowDefinitions: props.maxWorkflowDefinitions ?? null,
+      maxAiProviderConnections: props.maxAiProviderConnections ?? null,
       storageQuotaBytes: props.storageQuotaBytes ?? null,
       maxConcurrentSessions: props.maxConcurrentSessions ?? null,
       monthlyConsultations: props.monthlyConsultations ?? null,

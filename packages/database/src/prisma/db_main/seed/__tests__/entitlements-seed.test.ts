@@ -229,3 +229,51 @@ describe('seedEntitlements — featurePlatformDefaultCredential', () => {
     });
   });
 });
+
+/*
+ * TASK-958 D-8 — the provider-CONNECTION ceiling, seed side.
+ *
+ * `maxAiProviderConnections` caps how many `AiProviderConnection` rows one
+ * tenant may hold (per tenant, all services). It is `null` — UNBOUNDED — on
+ * every seeded plan, deliberately: D-8 asks for a cap that CAN be priced, not
+ * for one that is priced today, and a non-null seed would change the behaviour
+ * of every existing tenant the moment the column landed.
+ *
+ * The column must be present on every row, not merely absent-and-therefore-null:
+ * a plan row that omits it inherits the Prisma column default silently, which is
+ * the same value today and a different one the day a default is added.
+ *
+ * Applications-side counterparts: `plan-matrix-parity.test.ts` (the two copies
+ * agree) and `resolve-entitlements.test.ts` (the three-layer precedence).
+ */
+describe('seedEntitlements — maxAiProviderConnections (D-8)', () => {
+  it('seeds every plan row with an EXPLICIT unbounded (null) connection ceiling', () => {
+    expect(PLAN_ENTITLEMENTS).toHaveLength(4);
+    PLAN_ENTITLEMENTS.forEach((row) => {
+      expect(row, `plan ${row.plan} must state the ceiling explicitly`).toHaveProperty('maxAiProviderConnections');
+      expect(row.maxAiProviderConnections, `plan ${row.plan} must be unbounded`).toBeNull();
+    });
+  });
+
+  it('writes the ceiling into the create branch, and never into the update branch (a re-seed must not reset an operator-set cap)', async () => {
+    const seedEntitlements = (await import('../15-entitlements')).seedEntitlements;
+    const planUpserts: Array<{ update: Record<string, unknown>; create: Record<string, unknown> }> = [];
+    const client = {
+      planEntitlement: {
+        upsert: vi.fn(async (args: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
+          planUpserts.push(args);
+          return {};
+        }),
+      },
+      globalSetting: { upsert: vi.fn(async () => ({})) },
+    };
+
+    await seedEntitlements(client as never);
+
+    expect(planUpserts).toHaveLength(4);
+    planUpserts.forEach((upsert) => {
+      expect(upsert.create).toHaveProperty('maxAiProviderConnections', null);
+      expect(upsert.update).toEqual({});
+    });
+  });
+});

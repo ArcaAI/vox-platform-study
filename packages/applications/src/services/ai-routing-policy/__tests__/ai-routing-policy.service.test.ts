@@ -676,7 +676,7 @@ describe('export / import — no secret is recoverable from the artifact ', () =
 
   it('import lands rows NOT elected and tells the operator which secrets to supply', async () => {
     const { svc, repo, connections } = makeService({ rows: [] });
-    connections.findRow.mockResolvedValue(null);
+    connections.findDefaultRow.mockResolvedValue(null);
 
     const result = await svc.importConfigurations(TENANT, {
       formatVersion: 1,
@@ -713,6 +713,48 @@ describe('export / import — no secret is recoverable from the artifact ', () =
     // authorise a traffic switch.
     expect(created.isDefault).toBe(false);
     expect(created.status).toBe(AiRoutingPolicyStatus.DRAFT);
+  });
+
+  /*
+   * TASK-958 — `findRow`'s second argument became the connection SLUG when a
+   * tenant gained the right to hold several rows per provider. Import carries a
+   * PROVIDER name (`entry.connection.provider`), which is a slug only for the
+   * tenant's first, default connection — so the pre-TASK-958 call silently
+   * resolved nothing (and dropped the binding) for any tenant whose azure
+   * connection is named anything else. `findDefaultRow` is the method that
+   * still means "the row the provider-name cascade resolves to".
+   */
+  it('resolves the imported connection through the target tenant DEFAULT row, never by slug', async () => {
+    const { svc, connections } = makeService({ rows: [] });
+    connections.findDefaultRow.mockResolvedValue({ id: 'conn:azure-default' });
+
+    await svc.importConfigurations(TENANT, {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      sourceTenantId: OTHER_TENANT,
+      secretsIncluded: false,
+      notice: 'x',
+      configurations: [
+        {
+          taskKey: 'harness.judge',
+          taskKind: null,
+          displayName: 'Azure GPT-4o',
+          connection: { service: 'llm', provider: 'azure' },
+          modelSlug: 'gpt-4o',
+          modelRef: null,
+          isDefault: false,
+          enabled: true,
+          residency: null,
+          baaCovered: null,
+          priority: 0,
+          credentialRef: null,
+          hasCredential: false,
+        },
+      ],
+    });
+
+    expect(connections.findDefaultRow).toHaveBeenCalledWith('llm', 'azure', TENANT);
+    expect(connections.findRow).not.toHaveBeenCalled();
   });
 
   it('SKIPS an entry whose model slug resolves to nothing rather than guessing', async () => {

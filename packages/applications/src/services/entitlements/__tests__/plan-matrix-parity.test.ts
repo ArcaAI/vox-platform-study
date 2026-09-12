@@ -47,6 +47,7 @@ const MATRIX_FIELDS = [
   'maxAsrPipelines',
   'maxApiKeys',
   'maxWorkflowDefinitions',
+  'maxAiProviderConnections',
   'storageQuotaBytes',
   'maxConcurrentSessions',
   'monthlyConsultations',
