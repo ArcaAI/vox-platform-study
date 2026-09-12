@@ -5,11 +5,24 @@ import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { formatBytes, formatNumber, formatPercent } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
-import { useTenantUsage } from '../api/hooks';
+import { useTenantStorageBreakdown, useTenantUsage } from '../api/hooks';
+
+/** TASK-959 — fixed-point decimal-string GB -> "1.23 GB"; extra precision under 1 GB so a small figure doesn't round to "0.00 GB". */
+function formatDecimalGb(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  if (Number.isNaN(n)) return '—';
+  const decimals = Math.abs(n) < 1 ? 4 : 2;
+  return `${n.toFixed(decimals)} GB`;
+}
 
 /** Frame 12.1 usage tab: stat tiles + storage quota bar. */
 export function TenantUsageTab({ id }: { id: string }) {
   const { data, isLoading, error, refetch } = useTenantUsage(id);
+  // TASK-959 — a SEPARATE, silently-degrading read: the per-class split is a
+  // nicety beside the primary `Media.size` figure above, never a reason to
+  // block this tab on a caller without `manage:UsageAnalytics`.
+  const storageBreakdown = useTenantStorageBreakdown(id);
 
   if (isLoading) {
     return (
@@ -55,6 +68,13 @@ export function TenantUsageTab({ id }: { id: string }) {
           </span>
         </div>
         {usedPercent !== null ? <Progress aria-label="Storage used" value={Math.min(usedPercent, 100)} /> : null}
+        {storageBreakdown.data?.storage ? (
+          <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-xs">
+            <span>Media {formatDecimalGb(storageBreakdown.data.storage.mediaGb)}</span>
+            <span>Text {formatDecimalGb(storageBreakdown.data.storage.textGb)}</span>
+            <span>Claim-check {formatDecimalGb(storageBreakdown.data.storage.claimCheckGb)}</span>
+          </div>
+        ) : null}
       </Card>
     </div>
   );

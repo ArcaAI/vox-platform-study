@@ -51,6 +51,11 @@ const USAGE: TenantUsage = {
   totalConsultations: 20411,
 };
 
+/** TASK-959 — `GET admin/usage/summary?tenantId=t-1`, narrowed to the `storage` field the usage tab's breakdown row reads. */
+const STORAGE_BREAKDOWN = {
+  storage: { mediaGb: '1.500000', textGb: '0.250000', claimCheckGb: '0.010000', totalGb: '1.760000', asOf: '2026-08-30T23:59:59.999Z' },
+};
+
 const CONFIG: TenantConfig = {
   id: 'cfg-1',
   projectId: null,
@@ -124,6 +129,7 @@ function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Respon
     if (custom) return custom;
     if (method === 'GET' && url === '/api/hope/admin/tenants/t-1') return Response.json(DETAIL, { headers: { etag: '"7"' } });
     if (method === 'GET' && url === '/api/hope/admin/tenants/t-1/usage') return Response.json(USAGE);
+    if (method === 'GET' && url.startsWith('/api/hope/admin/usage/summary')) return Response.json(STORAGE_BREAKDOWN);
     if (method === 'GET' && url === '/api/hope/admin/tenants/t-1/tags') return Response.json({ tags: ['pilot', 'emea'] });
     if (method === 'GET' && url.startsWith('/api/hope/admin/tenants/configs/t-1')) {
       return Response.json({ data: [CONFIG], count: 1, limit: 100, page: 0 });
@@ -208,6 +214,32 @@ describe('TenantDetailScreen', () => {
     expect(screen.getByText('20,411')).toBeDefined();
     expect(screen.getByText('612 GB')).toBeDefined();
     expect(screen.getByText(/of 1 TB/i)).toBeDefined();
+  });
+
+  it('shows the per-class storage breakdown beside the live storage-used figure (TASK-959)', async () => {
+    stubDetailFetch();
+    renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=usage' });
+
+    // The existing live Media.size figure is unchanged.
+    expect(await screen.findByText('612 GB')).toBeDefined();
+    // The new per-class breakdown, read from the usage summary's storage block.
+    expect(await screen.findByText('Media 1.50 GB')).toBeDefined();
+    expect(screen.getByText('Text 0.2500 GB')).toBeDefined();
+    expect(screen.getByText('Claim-check 0.0100 GB')).toBeDefined();
+  });
+
+  it('renders no breakdown row when the storage summary carries no snapshot', async () => {
+    const calls = stubDetailFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'GET' && url.startsWith('/api/hope/admin/usage/summary')) {
+        return Response.json({ storage: null });
+      }
+      return undefined;
+    });
+    renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=usage' });
+
+    expect(await screen.findByText('612 GB')).toBeDefined();
+    expect(screen.queryByText(/^Media /)).toBeNull();
+    await waitFor(() => expect(calls.some((call) => call.url.startsWith('/api/hope/admin/usage/summary'))).toBe(true));
   });
 
   it('removes a tag through its chip and PUTs the remaining set', async () => {
