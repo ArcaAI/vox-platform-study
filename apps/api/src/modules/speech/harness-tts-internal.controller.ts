@@ -1,5 +1,4 @@
 import {
-  COMPUTE_DEVICES,
   IActiveUserContext,
   IConfigService,
   IEntitlementsService,
@@ -9,7 +8,7 @@ import {
   UsageIdempotencyKey,
   appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ByteSource, ComputeDevice, UsageEventBatchInput } from '@arcaai/applications';
+import type { UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { BadRequestException, Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, UseGuards } from '@nestjs/common';
@@ -31,28 +30,6 @@ const WAV_HEADER_BYTES = 44;
 
 /** `apps/tts` accepts these; the node's own config schema declares the same set plus `ogg`. */
 const SUPPORTED_FORMATS = ['pcm', 'wav', 'mp3'] as const;
-
-/**
- * TASK-959 §3.2 — `X-Tts-Synthesis-Ms`, or the gateway's own wall-clock fallback around the
- * upstream call. A non-positive/non-finite reading is "not measured", not "zero seconds".
- */
-function positiveNumber(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-/**
- * TASK-959 §3.1 — `X-Tts-Device`, from the CLOSED vocabulary only. Absent is the real, common
- * answer for a cloud engine that names no device of ours (Azure, Sarvam) — never guessed.
- */
-function computeDeviceHeader(value: unknown): ComputeDevice | null {
-  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
-}
-
-/** TASK-959 §4.2 — `X-Tts-Byte-Source`, from the closed vocabulary only. */
-function byteSourceHeader(value: unknown): ByteSource | null {
-  return value === 'wire' || value === 'app' ? value : null;
-}
 
 class HarnessSynthesizeSpeechRequest {
   @ApiProperty({ description: 'Tenant the harness is acting on behalf of. Never optional — synthesis must be attributable.' })
@@ -361,23 +338,26 @@ export class HarnessTtsInternalController {
       ],
     };
 
-    // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis. Absent `X-Tts-Device`
-    // (a cloud engine that names no device of ours) means no compute row at all — device gates
-    // `totalMs` here rather than being left to the shared helper's own default, which would
-    // otherwise still bill an unresolved device as CPU_SECOND.
-    const device = computeDeviceHeader(args.headers['x-tts-device']);
-    const synthesisMs = positiveNumber(args.headers['x-tts-synthesis-ms']);
-    const totalMs = device !== null ? (synthesisMs ?? args.wallClockMs) : null;
-    const reportedBytes = positiveNumber(args.headers['x-tts-response-bytes']);
-    const reportedByteSource = byteSourceHeader(args.headers['x-tts-byte-source']);
+    // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis, plus the gateway's own
+    // fallbacks. The compute RULE belongs to `appendComputeAndByteUnits`, not this call site:
+    // `engineMs` (the service's own `X-Tts-Synthesis-Ms`) and `totalMs` (this gateway's
+    // wall-clock, ALWAYS passed) both go in, and the helper picks — preferring the engine's own
+    // reading, and, for anything other than a SELF_HOSTED call, billing the platform's calling
+    // CPU regardless of `device`. Only a SELF_HOSTED call with no resolved device gets no
+    // compute row.
+    const device = args.headers['x-tts-device'] as string | undefined;
+    const synthesisMs = Number(args.headers['x-tts-synthesis-ms']);
+    const reportedBytes = Number(args.headers['x-tts-response-bytes']);
+    const hasReportedBytes = Number.isFinite(reportedBytes) && reportedBytes > 0;
     // The service's own count first; the buffered artifact length — an application-level proxy,
     // not the wire — only when it reported none.
-    const responseBytes = reportedBytes ?? (args.proxiedBytes > 0 ? args.proxiedBytes : null);
-    const byteSource = responseBytes === null ? null : (reportedByteSource ?? (reportedBytes === null ? 'app' : null));
+    const responseBytes = hasReportedBytes ? reportedBytes : args.proxiedBytes;
+    const byteSource = hasReportedBytes ? (args.headers['x-tts-byte-source'] as string | undefined) : args.proxiedBytes > 0 ? 'app' : undefined;
 
     const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
       device,
-      totalMs,
+      engineMs: synthesisMs,
+      totalMs: args.wallClockMs,
       // No vendor "request" bytes concept here: the node's text is a JSON field, never counted
       // as bytes spent AT a vendor the way an outbound STT/TEXT call is.
       requestBytes: undefined,
