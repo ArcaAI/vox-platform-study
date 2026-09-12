@@ -283,6 +283,14 @@ Every lane runs in its own worktree `../hope-v2-t959-<lane>` on branch `task-959
 | **T5** console (wave C) | sonnet / medium | `apps/admin-console/src/features/{consumption-cost,tenants,workflow-runs}/**` | the new figures on the consumption screen, tenant usage tab, run detail | console build + test |
 | **E2E** (wave C, primary checkout after merges) | sonnet / medium | `apps/api/tests/e2e/task-959-*.spec.ts` | §7 wave gates | filtered playwright run |
 
+
+### 10.1b Cross-session protocol with TASK-958 (agreed 2026-09-12 with session hope-v2-82)
+
+- TASK-958 lane B2 (`../hope-v2-t958-b2`, `task-958/b2-binding-catalogue`) owns, until it merges: `services/agent/**`, `services/stt/agent-resolver/**`, `services/stt/internal/**`, `services/stt/streaming/streamingSession.service.ts`, `services/ai-model/**`, `consultation/summary/text-usage.ts` (+ sibling usage-event builders), the live-documentation fold, `packages/types/src/{asr-spec,tts-spec}.ts`, `tests/contracts/**`, `apps/api/src/modules/speech/**`, `apps/api/src/modules/agent/agent.controller.ts`, `apps/api/src/modules/internal/dto/stt-streaming-usage.request.ts` (+ handler). It also closes the STT `connectionId` DTO gap. **Wave B of this ticket starts only after B2 merges and TASK-958 regenerates the five API artifacts**; T1/T3 then carry `connectionId` through untouched.
+- Merge protocol, both sessions: announce before any `git merge` into `dev-2.2` in the primary checkout, never concurrently; heads-up before `pnpm db:push` / `test:db:reset` / `pnpm install` there. Whoever merges second re-runs the five artifact commands rather than hand-resolving `openapi.json`. Session hope-v2-51 holds an uncommitted lint edit in the primary checkout and is pinged before any merge.
+- Shadow DB `hope_shadow` on the dev Postgres carries the full ledger through `20260912134123_task_958_…`; handed to W0. TASK-958's migrations are already applied to the dev DB. W0's migration sorts after and is applied by this session at merge.
+- Wave A (running): W0, P-TEXT, P-STT, P-TTS, P-NLP, P-HARNESS in `../hope-v2-t959-*`. Merge order: W0 → Python lanes → (after B2) T1, T2, T3, T4 → T5, E2E.
+
 ### 10.2 Wire contract (frozen for the lanes; a lane that must deviate says so in its report, it does not improvise)
 
 **apps/text → gateway / harness.** `UsageDetail` (`models/usage.py`) gains `total_ms: int` (wall clock, = `GenerationStats.total_ms`), `engine_ms: int | None` (native engine time when the engine reports one: llama.cpp `prompt_ms + predicted_ms`, Ollama `(total_duration − load_duration)/1e6`; else `None`), `request_bytes: int | None`, `response_bytes: int | None` (from the pool transport; `None` when the adapter is off the pool). The streaming terminal frame's `data.usage` is the same object, and the frame gains `data.guardrail_usage` (same shape as the blocking response's). Omitted-when-`None`, never `null`, so an older gateway sees an unchanged shape.
