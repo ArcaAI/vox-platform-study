@@ -21,6 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from nlp.schemas.common import DeviceLabel
 from nlp.services.entailment_scorer import EntailmentCalibration
 
 
@@ -81,6 +82,17 @@ class GuardEntity(BaseModel):
 class GuardPiiResponse(BaseModel):
     entities: list[GuardEntity]
     model_version: str
+    inference_ms: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Wall-clock model inference time in milliseconds (TASK-959). This "
+            "route runs behind a MicroBatcher, so this is the request's SHARE of "
+            "the batched forward pass (pass wall time / requests in the batch), "
+            "never the whole pass's time."
+        ),
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 
 # ── Safety / moderation classification (GLiNER2 classify_text) ───────────
@@ -126,6 +138,17 @@ class GuardClassifyResponse(BaseModel):
         description="task → {label: confidence} for the labels in `results`. Absent ⇒ unscored.",
     )
     model_version: str
+    inference_ms: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Wall-clock model inference time in milliseconds (TASK-959). This "
+            "route runs behind a MicroBatcher, so this is the request's SHARE of "
+            "the batched forward pass (pass wall time / requests in the batch), "
+            "never the whole pass's time."
+        ),
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 
 # ── NLI entailment (MiniCheck) ───────────────────────────────────────────
@@ -155,3 +178,12 @@ class GuardEntailmentResponse(BaseModel):
     #: (guardrail) owns the threshold that turns a score into a verdict.
     scores: list[float]
     model_version: str
+    inference_ms: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Wall-clock model inference time in milliseconds (TASK-959). 0 when "
+            "`pairs` was empty (no inference ran)."
+        ),
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")

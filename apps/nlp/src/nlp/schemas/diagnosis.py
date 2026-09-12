@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from nlp.schemas.common import SupportedLanguage
+from nlp.schemas.common import DeviceLabel, SupportedLanguage
 
 # REST
 
@@ -54,3 +54,19 @@ class DiagnosisSuggestionResponse(BaseModel):
     )
     symptoms_analyzed: list[str] = Field(..., description="Symptoms that were analyzed")
     model_version: str = Field(..., description="AI model version used")
+    inference_ms: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Wall-clock model inference time in milliseconds (TASK-959), SUMMED "
+            "across the two models this route runs (the symptom-extraction NER "
+            "and the disease classifier)."
+        ),
+    )
+    device: DeviceLabel = Field(
+        ...,
+        description=(
+            "Resolved inference device placement (TASK-959) of the disease "
+            "classifier, the model this route names directly."
+        ),
+    )
