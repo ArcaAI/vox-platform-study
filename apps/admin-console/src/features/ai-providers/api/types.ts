@@ -111,6 +111,38 @@ export function isValidConnectionSlug(value: string): boolean {
 }
 
 /**
+ * TASK-958 — the slugs a tenant may NOT name a connection (gateway 400
+ * `CONNECTION_SLUG_RESERVED`), mirrored client-side.
+ *
+ * Two families, for two different reasons:
+ *
+ *  - **any known provider id, of ANY service.** That slug belongs to the
+ *    provider's own DEFAULT connection (`slug === provider` is what makes every
+ *    pre-958 row addressable), so a sibling claiming it would collide with the
+ *    row the provider-name cascade resolves. Across services, because a slug is
+ *    unique per `(tenant, service)` and an `llm` id is a perfectly plausible
+ *    typo on the `stt` tab.
+ *  - **`platform-defaults`**, which is a ROUTE segment on the same family
+ *    (`GET :service/platform-defaults`) — a row named after it would be
+ *    unaddressable by the very route that lists it.
+ *
+ * Mirrored rather than merely awaited because the slug is IMMUTABLE after
+ * create: this is the last place a name is still free to change. It is
+ * deliberately the CONSERVATIVE list (the gateway's own provider table may know
+ * more names than a tenant may bring), so it can never refuse something the
+ * gateway would accept — a refusal that only the gateway knows about still
+ * arrives as `CONNECTION_SLUG_RESERVED` and is rendered as guidance.
+ */
+export const RESERVED_CONNECTION_SLUGS: ReadonlySet<string> = new Set<string>([
+  ...Object.values(CLOUD_BYO_PROVIDERS).flat(),
+  'platform-defaults',
+]);
+
+export function isReservedConnectionSlug(value: string): boolean {
+  return RESERVED_CONNECTION_SLUGS.has(value);
+}
+
+/**
  * GET admin/providers/:service/:slug — the MASKED row. There is deliberately no
  * key field and no reveal route: presence of key material is reported as
  * `hasKey` + `keyVersion` only.
@@ -233,6 +265,15 @@ export interface UpsertProviderConnectionRequest {
  * row (tenant → SYSTEM), so a saved write-only key can be re-tested.
  */
 export interface TestProviderConnectionRequest {
+  /**
+   * TASK-958 — WHICH vendor to probe, when the row does not exist yet.
+   *
+   * The route reads the vendor off the stored row; on an UNSAVED connection
+   * there is no row, and `:slug` is not a vendor name for a named sibling. Sent
+   * only in that case — a stored row already knows what it is, and its provider
+   * is immutable.
+   */
+  provider?: string;
   apiKey?: string;
   baseUrl?: string;
   region?: string;
