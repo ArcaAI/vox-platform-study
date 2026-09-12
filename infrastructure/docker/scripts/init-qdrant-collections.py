@@ -104,7 +104,6 @@ def create_knowledge_chunks_collection(client: QdrantClient):
         raise
 
 
-
 def main():
     print("=" * 60)
     print("Qdrant Collection Initialization for STT Orchestra")
@@ -123,7 +122,7 @@ def main():
                 port=QDRANT_PORT,
                 api_key=QDRANT_API_KEY,
                 https=QDRANT_HTTPS,
-                timeout=5
+                timeout=5,
             )
             # Test connection
             client.get_collections()
@@ -163,6 +162,6 @@ def main():
     print(f"  - Qdrant Host: {QDRANT_HOST}:{QDRANT_PORT}")
     print()
 
+
 if __name__ == "__main__":
     main()
-

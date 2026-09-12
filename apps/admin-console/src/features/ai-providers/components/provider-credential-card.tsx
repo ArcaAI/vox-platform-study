@@ -197,6 +197,12 @@ export function ProviderCredentialCard({
   // the default first") is an action on this very group, and a toast that
   // vanishes leaves the confirm row saying nothing about why nothing happened.
   const [removeRefusal, setRemoveRefusal] = useState<string | null>(null);
+  // TASK-958 — and so is a refused DEFAULT change (400 `CONNECTION_DEFAULT_REQUIRED`).
+  // A provider always has exactly one default: you MOVE it, you do not clear it,
+  // and the row that takes it is a sibling in this same group. Same reasoning as
+  // the remove refusal above — a toast would vanish before the admin reaches the
+  // card that unblocks it.
+  const [defaultRefusal, setDefaultRefusal] = useState<string | null>(null);
 
   if (query.isPending) return <CardSkeleton />;
   if (query.error || !query.data) {
@@ -290,6 +296,7 @@ export function ProviderCredentialCard({
 
   function handleSave() {
     if (!canSave) return;
+    setDefaultRefusal(null);
     putMutation.mutate(
       { service, slug: connectionSlug, body: buildBody(), etag, tenantId },
       {
@@ -302,6 +309,10 @@ export function ProviderCredentialCard({
         },
         // A 412/428 renders the OCC alert below; only other failures toast.
         onError: (error) => {
+          if (gatewayErrorCode(error) === 'CONNECTION_DEFAULT_REQUIRED') {
+            setDefaultRefusal(error.message);
+            return;
+          }
           if (!(error as { isVersionConflict?: boolean; isMissingPrecondition?: boolean }).isVersionConflict) {
             toast.error(error.message);
           }
@@ -314,6 +325,12 @@ export function ProviderCredentialCard({
     // Ephemeral: the typed key (if any) plus the drafted endpoint fields; an
     // omitted key means "probe the stored one".
     const body: Record<string, string> = {};
+    // TASK-958 D-2 — on a row that does not exist yet there is NO stored vendor
+    // to probe against, and `:slug` is not one either: a named sibling's slug is
+    // the tenant's own string. Name the vendor this card is FOR. A stored row
+    // already knows what it is (and its provider is immutable), so it is sent
+    // only here.
+    if (current.version === 0) body.provider = meta.id;
     if (apiKey.trim().length > 0) body.apiKey = apiKey.trim();
     for (const field of meta.fields) {
       if (field.store === 'extra') continue;
@@ -394,11 +411,22 @@ export function ProviderCredentialCard({
    * in one transaction (D-2), so there is never a moment with two defaults.
    */
   function handleMakeDefault() {
+    setDefaultRefusal(null);
     putMutation.mutate(
       { service, slug: connectionSlug, body: { isDefault: true }, etag, tenantId },
       {
-        onSuccess: () => toast.success(`${title} is now the default ${meta.label} connection`),
+        onSuccess: () => {
+          setDefaultRefusal(null);
+          toast.success(`${title} is now the default ${meta.label} connection`);
+        },
         onError: (error) => {
+          // A provider always HAS a default, so this refusal is never "your
+          // request was wrong" — it is "elect the replacement first", an action
+          // on a sibling card a few pixels away. Say it there, not in a toast.
+          if (gatewayErrorCode(error) === 'CONNECTION_DEFAULT_REQUIRED') {
+            setDefaultRefusal(error.message);
+            return;
+          }
           if (!(error as { isVersionConflict?: boolean }).isVersionConflict) toast.error(error.message);
         },
       },
@@ -589,6 +617,18 @@ export function ProviderCredentialCard({
       {removeRefusal ? (
         <p className="text-destructive text-xs" role="alert">
           {removeRefusal} Make another connection the default first, then remove this one.
+        </p>
+      ) : null}
+
+      {/*
+        The same treatment for a refused DEFAULT change (400
+        `CONNECTION_DEFAULT_REQUIRED`): a provider always has exactly one
+        default, so the fix is to ELECT the replacement — a click on a sibling
+        card in this group — never to clear this one.
+      */}
+      {defaultRefusal ? (
+        <p className="text-destructive text-xs" role="alert">
+          {defaultRefusal} Elect another connection as the default instead; the one it replaces becomes a sibling in the same move.
         </p>
       ) : null}
 

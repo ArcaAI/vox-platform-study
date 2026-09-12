@@ -113,7 +113,10 @@ def test_tighten_never_loosens_even_if_the_row_says_so() -> None:
 
 
 def test_tighten_returns_the_platform_value_when_the_row_has_none() -> None:
-    assert GuardrailAvailability.from_blob({"pii_leak": {"enabled": True}}).tighten("pii_leak", 0.5) == 0.5
+    assert (
+        GuardrailAvailability.from_blob({"pii_leak": {"enabled": True}}).tighten("pii_leak", 0.5)
+        == 0.5
+    )
 
 
 # ── the screener honours the selection, and always gates ──────────────────────
@@ -322,7 +325,9 @@ async def test_unresolvable_availability_screens_EVERYTHING_rather_than_503() ->
         async def resolve_availability(self, tenant_id: str) -> Any:
             raise RuntimeError("db down")
 
-    resolved = await _resolve_availability(SimpleNamespace(tenant_config_resolver=_Broken()), "tenant-a")
+    resolved = await _resolve_availability(
+        SimpleNamespace(tenant_config_resolver=_Broken()), "tenant-a"
+    )
     # Unlike an unresolved model SELECTION (503, nothing to run), an unresolved
     # AVAILABILITY has a strictest answer in code. More screening is the safe
     # direction; less is not.

@@ -289,6 +289,19 @@ class StreamingInferenceWorker:
         # real-time factor. Only successful `_run_inference` calls add to it
         # (a raised exception never reaches that call's own timing code).
         self.cumulative_processing_seconds: float = 0.0
+        # TASK-959 §4.2 — bytes the CLOUD ASR adapters reported moving, in the
+        # same public shape: monotonic counters the session manager snapshots at
+        # every engine-switch boundary and at teardown, so a fallback leg's
+        # network cost lands on the engine that incurred it. A self-hosted engine
+        # never writes them, which is why they stay 0 with `last_byte_source`
+        # None — the accumulator reads that absence as "made no third-party call"
+        # and emits null byte counts rather than a measured-looking zero.
+        self.cumulative_request_bytes: int = 0
+        self.cumulative_response_bytes: int = 0
+        #: `wire` | `app` — whichever the LIVE engine last reported. Only the
+        #: engine currently serving writes it, so the value observed while a span
+        #: was open is that span's.
+        self.last_byte_source: str | None = None
 
     @staticmethod
     def _build_lexicon_corrector(
@@ -889,6 +902,11 @@ class StreamingInferenceWorker:
 
         # Extract text and word timestamps from pipeline result
         if isinstance(result, dict):
+            # TASK-959 §4.2 — a cloud adapter reports what it moved over the wire
+            # (or, for the Azure SDK, its application-level proxy). Accumulated
+            # here rather than returned on `_InferenceResult` because the consumer
+            # is the teardown summary, not the caption path.
+            self._accumulate_network_bytes(result)
             return _InferenceResult(
                 text=result.get("text") or "",
                 english_text=result.get("english_text"),
@@ -899,6 +917,30 @@ class StreamingInferenceWorker:
             return _InferenceResult(text=result)
 
         return _InferenceResult(text=str(result))
+
+    def _accumulate_network_bytes(self, result: dict[str, Any]) -> None:
+        """Fold one utterance's reported byte counts into the session counters.
+
+        A result with no ``byte_source`` moved nothing over a third-party link
+        (every self-hosted engine). The cumulative totals are left alone — they
+        are never rewound — but the LABEL is CLEARED, because it names what the
+        LIVE engine reports: a session that switches cloud -> self-hosted would
+        otherwise hand the self-hosted span a stale ``wire`` at the next boundary
+        snapshot, which reads as "a third-party call that moved nothing" instead
+        of "no such call". A malformed count is ignored rather than allowed to
+        poison a billing counter.
+        """
+        byte_source = result.get("byte_source")
+        if not isinstance(byte_source, str):
+            self.last_byte_source = None
+            return
+        request_bytes = result.get("request_bytes")
+        response_bytes = result.get("response_bytes")
+        if isinstance(request_bytes, int) and not isinstance(request_bytes, bool):
+            self.cumulative_request_bytes += max(0, request_bytes)
+        if isinstance(response_bytes, int) and not isinstance(response_bytes, bool):
+            self.cumulative_response_bytes += max(0, response_bytes)
+        self.last_byte_source = byte_source
 
     @staticmethod
     def _offset_word_timestamps(

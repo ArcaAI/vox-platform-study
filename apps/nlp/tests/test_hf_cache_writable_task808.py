@@ -50,9 +50,9 @@ def test_production_stage_sets_hf_home() -> None:
 def test_hf_cache_directory_is_created_and_owned_by_hope() -> None:
     stage = _production_stage()
     hf_home = re.search(r"HF_HOME=(\S+)", stage).group(1)
-    assert f"mkdir -p {hf_home}" in stage, (
-        f"HF_HOME points at {hf_home} but the Dockerfile never creates it."
-    )
+    assert (
+        f"mkdir -p {hf_home}" in stage
+    ), f"HF_HOME points at {hf_home} but the Dockerfile never creates it."
     assert re.search(r"chown -R hope:hope\s+/app/\.cache", stage), (
         "the HF cache directory is created but never chowned to hope:hope, so the "
         "non-root runtime user still cannot write into it."

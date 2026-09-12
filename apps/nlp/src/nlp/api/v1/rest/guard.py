@@ -36,6 +36,7 @@ from nlp.dependencies import (
     pinned_entailment_scorer,
     pinned_gliner2_guard,
 )
+from nlp.schemas.common import DeviceLabel
 from nlp.schemas.guard import (
     GuardClassifyRequest,
     GuardClassifyResponse,
@@ -143,26 +144,31 @@ async def _submit_pii(
     threshold: float,
     batch_size: int,
     lane: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
     """Enqueue one text onto the (slot, pii) batcher and await ITS spans.
 
     The batch closure captures the labels/threshold that DEFINE the group, so a
     request can only ever be evaluated under the policy it was grouped by.
+
+    Returns the spans alongside this request's SHARE of the batched forward
+    pass's wall-clock time (TASK-959 metering): the pass's total time divided
+    by how many texts rode it, so a request that happened to share a large
+    batch is not billed the whole pass.
     """
 
-    async def run_batch(_group: str, texts: list[str]) -> list[list[dict[str, Any]]]:
+    async def run_batch(_group: str, texts: list[str]) -> list[tuple[list[dict[str, Any]], int]]:
+        started = time.perf_counter()
         spans: list[list[dict[str, Any]]] = await service.batch_extract_entities(
             texts, labels, threshold, batch_size
         )
-        return spans
+        per_item_ms = round((time.perf_counter() - started) * 1000 / len(texts))
+        return [(item_spans, per_item_ms) for item_spans in spans]
 
     batcher = await get_batcher(slot_key, "pii", run_batch, lane)
     started = time.perf_counter()
     try:
-        entities: list[dict[str, Any]] = await batcher.submit(
-            pii_group_key(labels, threshold), text
-        )
-        return entities
+        entities, inference_ms = await batcher.submit(pii_group_key(labels, threshold), text)
+        return entities, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
         _publish_depths()
@@ -176,20 +182,26 @@ async def _submit_classify(
     threshold: float,
     batch_size: int,
     lane: str,
-) -> dict[str, Any]:
-    """Enqueue one text onto the (slot, classify) batcher and await ITS verdicts."""
+) -> tuple[dict[str, Any], int]:
+    """Enqueue one text onto the (slot, classify) batcher and await ITS verdicts.
 
-    async def run_batch(_group: str, texts: list[str]) -> list[dict[str, Any]]:
+    Returns the verdicts alongside this request's SHARE of the batched forward
+    pass's wall-clock time — see `_submit_pii`.
+    """
+
+    async def run_batch(_group: str, texts: list[str]) -> list[tuple[dict[str, Any], int]]:
+        started = time.perf_counter()
         verdicts: list[dict[str, Any]] = await service.batch_classify_text(
             texts, tasks, threshold, batch_size
         )
-        return verdicts
+        per_item_ms = round((time.perf_counter() - started) * 1000 / len(texts))
+        return [(verdict, per_item_ms) for verdict in verdicts]
 
     batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
-        results: dict[str, Any] = await batcher.submit(classify_group_key(tasks, threshold), text)
-        return results
+        results, inference_ms = await batcher.submit(classify_group_key(tasks, threshold), text)
+        return results, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
         _publish_depths()
@@ -282,15 +294,21 @@ async def guard_pii(
     # lane rather than from the single global bound used.
     lane = normalize_lane(request.latency_class)
     batch_size = batch_size_for(lane)
+    device: DeviceLabel = "cpu"
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
+            # Read once, before inference: a device is a property of the whole
+            # loaded service, not of the batch a request happened to share.
+            # Fakes/stubs in tests carry no `.device` — fall back to the cheaper
+            # unit rather than nothing (TASK-959).
+            device = getattr(service, "device", "cpu")
             # The semaphore still bounds how many requests may be RESIDENT in the
             # inference stage; the batcher bounds how many forward passes those
             # requests turn into. Both are needed: without the semaphore a burst
             # would pin unbounded memory in flight, and without the batcher each
             # resident request would cost its own pass.
             async with inference_bound:
-                raw = await _submit_pii(
+                raw, inference_ms = await _submit_pii(
                     service,
                     _slot_key(model_name, request.model_path),
                     request.text,
@@ -316,6 +334,8 @@ async def guard_pii(
     return GuardPiiResponse(
         entities=[GuardEntity(**entity) for entity in raw or []],
         model_version=model_name,
+        inference_ms=inference_ms,
+        device=device,
     )
 
 
@@ -350,10 +370,13 @@ async def guard_classify(
 
     lane = normalize_lane(request.latency_class)
     batch_size = batch_size_for(lane)
+    device: DeviceLabel = "cpu"
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
+            # See `guard_pii` — read once, before inference (TASK-959).
+            device = getattr(service, "device", "cpu")
             async with inference_bound:
-                raw = await _submit_classify(
+                raw, inference_ms = await _submit_classify(
                     service,
                     _slot_key(model_name, request.model_path),
                     request.text,
@@ -386,7 +409,13 @@ async def guard_classify(
         results[name] = verdict
         if confidences:
             scores[name] = confidences
-    return GuardClassifyResponse(results=results, scores=scores, model_version=model_name)
+    return GuardClassifyResponse(
+        results=results,
+        scores=scores,
+        model_version=model_name,
+        inference_ms=inference_ms,
+        device=device,
+    )
 
 
 @router.post("/entailment", response_model=GuardEntailmentResponse)
@@ -403,13 +432,24 @@ async def guard_entailment(
         http_request.headers.get(TENANT_HEADER),
     )
     if not request.pairs:
-        return GuardEntailmentResponse(scores=[], model_version=model_name)
+        # No inference ran — 0ms on the cheaper unit (TASK-959), never left
+        # absent. No model was touched, so there is nothing to report a real
+        # device for.
+        return GuardEntailmentResponse(
+            scores=[], model_version=model_name, inference_ms=0, device="cpu"
+        )
 
     pairs = [(pair.document, pair.claim) for pair in request.pairs]
+    device: DeviceLabel = "cpu"
     try:
         async with _acquire_scorer(model_name, request.model_path, request.calibration) as scorer:
+            # See `guard_pii` — read once, before inference. Fakes/stubs in
+            # tests carry no `.device` — fall back to the cheaper unit.
+            device = getattr(scorer, "device", "cpu")
             async with inference_bound:
+                started = time.perf_counter()
                 scores = await _maybe_await(scorer.score_pairs(pairs))
+                inference_ms = round((time.perf_counter() - started) * 1000)
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -421,7 +461,10 @@ async def guard_entailment(
         raise HTTPException(status_code=503, detail="entailment scoring failed") from exc
 
     return GuardEntailmentResponse(
-        scores=[float(score) for score in scores], model_version=model_name
+        scores=[float(score) for score in scores],
+        model_version=model_name,
+        inference_ms=inference_ms,
+        device=device,
     )
 
 

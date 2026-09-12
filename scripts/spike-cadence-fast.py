@@ -129,8 +129,12 @@ def main() -> int:
 
         # trust_remote_code also here: the repo config has a custom model_type, so
         # AutoTokenizer otherwise raises an interactive [y/N] prompt (CI hazard).
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=REVISION, trust_remote_code=True)
-        print(f"tokenizer     : {type(tokenizer).__name__} loaded in {time.perf_counter() - t0:.1f}s")
+        tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_ID, revision=REVISION, trust_remote_code=True
+        )
+        print(
+            f"tokenizer     : {type(tokenizer).__name__} loaded in {time.perf_counter() - t0:.1f}s"
+        )
     except Exception:
         print("[FAIL] tokenizer load failed:")
         traceback.print_exc()
@@ -168,13 +172,19 @@ def main() -> int:
     n_params = sum(p.numel() for p in model.parameters())
     head = model.lm_head[1].weight
     print(f"model load    : {load_secs:.1f}s (includes download on first run)")
-    print(f"model class   : {type(model).__name__} | params: {n_params / 1e6:.0f}M | dtype: {head.dtype}")
+    print(
+        f"model class   : {type(model).__name__} | params: {n_params / 1e6:.0f}M | dtype: {head.dtype}"
+    )
     print(f"attn impl     : {model.config._attn_implementation}")
     print(f"head          : lm_head[1] {tuple(head.shape)} | labels: {len(model.config.id2label)}")
-    print(f"loading_info  : missing={loading_info['missing_keys']} unexpected={loading_info['unexpected_keys']} "
-          f"mismatched={loading_info['mismatched_keys']}")
-    print(f"config flags  : use_non_causal_attention={getattr(model.config, 'use_non_causal_attention', None)} "
-          f"use_bidirectional_attention={getattr(model.config, 'use_bidirectional_attention', None)}")
+    print(
+        f"loading_info  : missing={loading_info['missing_keys']} unexpected={loading_info['unexpected_keys']} "
+        f"mismatched={loading_info['mismatched_keys']}"
+    )
+    print(
+        f"config flags  : use_non_causal_attention={getattr(model.config, 'use_non_causal_attention', None)} "
+        f"use_bidirectional_attention={getattr(model.config, 'use_bidirectional_attention', None)}"
+    )
     print(f"rss after load: {rss_mb():.0f} MB")
 
     id2label = {int(k): v for k, v in model.config.id2label.items()}
@@ -188,7 +198,10 @@ def main() -> int:
     # the remote code's dead override. Masks are rebuilt per forward from config,
     # so an in-place flip is sufficient.
     model.config.use_bidirectional_attention = True
-    ok = run_samples("use_bidirectional_attention=True (5.x-native fix)", model, tokenizer, id2label) and ok
+    ok = (
+        run_samples("use_bidirectional_attention=True (5.x-native fix)", model, tokenizer, id2label)
+        and ok
+    )
 
     # Warm repeat of sample (a) for a steady-state latency number.
     result, secs = punctuate(SAMPLES[0][1], model, tokenizer, id2label)

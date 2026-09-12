@@ -599,7 +599,17 @@ def test_ai_routing_policy_read_maps_prisma_columns() -> None:
     assert table.schema == "core"
     assert table.name == "AiRoutingPolicy"  # type: ignore[attr-defined]
     colnames = {c.name for c in table.columns}
-    assert {"id", "tenantId", "taskKey", "modelId", "isDefault", "enabled", "status", "resourceStatus", "configJson"} <= colnames
+    assert {
+        "id",
+        "tenantId",
+        "taskKey",
+        "modelId",
+        "isDefault",
+        "enabled",
+        "status",
+        "resourceStatus",
+        "configJson",
+    } <= colnames
 
 
 def test_ai_model_read_maps_prisma_columns() -> None:

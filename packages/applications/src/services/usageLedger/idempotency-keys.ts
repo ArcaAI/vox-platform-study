@@ -45,6 +45,7 @@ const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
  * | NLP                 | `nlp:<requestId>`            | `nlp:<requestId>:TEXT_UNIT`               |
  * | Embeddings          | `embed:<requestId>`          | `embed:<requestId>:INPUT_TOKEN`           |
  * | Harness step        | `harness:step:<stepId>`      | `harness:step:<stepId>:OUTPUT_TOKEN`      |
+ * | Worker CPU          | `harness:cpu:<s>:<r>:<a>:<n>`| `harness:cpu:<s>:<r>:<a>:<n>:CPU_SECOND`  |
  *
  * NOTE on the NLP recipe: batches NLP to CONSULTATION granularity, so the
  * `<requestId>` a emitter passes is the per-consultation batch id, not a
@@ -74,6 +75,19 @@ export const UsageIdempotencyKey = {
 
   /** One agentic-loop step (`harness.step`). */
   harnessStep: (stepId: string): string => `harness:step:${requireId(stepId, 'stepId')}`,
+
+  /**
+   * One Temporal activity execution's worker CPU (`workflow.step`, capability
+   * `WORKFLOW` — TASK-959 §3.4).
+   *
+   * `attempt` is part of the key on purpose. A Temporal REDELIVERY of one
+   * execution repeats the same attempt and must converge on one row; a real
+   * RETRY is `attempt + 1` and is a SECOND execution that really burned CPU,
+   * so it must bill separately. Dropping it would silently under-bill every
+   * retried activity; keying on the row id instead would bill every redelivery.
+   */
+  harnessComputeSample: (sessionId: string, runId: string, activityId: string, attempt: number): string =>
+    `harness:cpu:${requireId(sessionId, 'sessionId')}:${requireId(runId, 'runId')}:${requireId(activityId, 'activityId')}:${requireAttempt(attempt)}`,
 
   /**
    * Append the unit to a base key to get the per-row key.
@@ -110,6 +124,21 @@ export function validateIdempotencyKey(value: unknown): string[] {
  * the emitter's own tests — beats discovering it as a suspiciously small
  * invoice.
  */
+/**
+ * A non-negative integer attempt number.
+ *
+ * Temporal numbers attempts from 1. A missing or malformed one would collapse
+ * every retry of an activity onto one key — the first execution billed, every
+ * later one discarded as a replay — so it fails loudly here, in the emitter's
+ * own tests, rather than as a suspiciously small invoice.
+ */
+function requireAttempt(value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error('UsageIdempotencyKey: attempt is required and must be a non-negative integer');
+  }
+  return value;
+}
+
 function requireId(value: string, name: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`UsageIdempotencyKey: ${name} is required and must be non-blank`);

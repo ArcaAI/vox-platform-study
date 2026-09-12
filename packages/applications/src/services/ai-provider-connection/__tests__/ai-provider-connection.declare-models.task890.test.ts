@@ -71,7 +71,11 @@ function makeService(opts: { connection?: unknown; systemSlugs?: string[]; exist
     // models must not require platform admin (REQ-5).
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: ['TENANT_ADMIN'] } : k === 'tenantId' ? TENANT_A : undefined)),
   };
-  const db = { baseClient: { $lane: 'unscoped-base-client' } };
+  // TASK-958/G1 — deleting a DEFAULT connection clears its `defaultForProvider`
+  // marker and soft-deletes it in ONE transaction (the tombstone would otherwise
+  // keep holding the provider's unique default slot), so the double must offer
+  // `$transaction`. It runs the callback on a distinguishable lane.
+  const db = { baseClient: { $lane: 'unscoped-base-client', $transaction: vi.fn(async (cb: any) => cb({ $lane: 'tx' })) } };
   const secrets = { encrypt: vi.fn(), decrypt: vi.fn(), supportsTransit: vi.fn(() => true) };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, undefined, models as any);
   return { svc, repo, models, emitter };

@@ -506,16 +506,34 @@ enum IdpStatus {
 // decisions (D2, D10–D17) each value encodes.
 // =============================================================================
 
-// The five metered AI capabilities. This is the BILLING taxonomy, not the
-// service topology: guardrail and harness LLM calls are metered under `LLM`
+// The metered billing buckets. This is the BILLING taxonomy, not the service
+// topology: guardrail and harness LLM calls are metered under `LLM`
 // (with a distinguishing `operation`) because they are the same COGS unit — D16
 // keeps them out of the tenant's invoice, not out of the ledger.
+//
+// TASK-959 added the last two, and neither is an inference capability. That is
+// the point: the invoice engine iterates THIS enum, so a measure that has no
+// member here has no allowance, no invoice line and no place on the
+// consumption screen. A parallel storage plane would be a second invoice
+// engine.
 enum AiCapability {
   STT
   LLM
   NLP
   TTS
   EMBEDDING
+  // Storage held, not inference performed — the nightly `storage.snapshot`
+  // rows (one per tenant, per storage class, per UTC day). A capability rather
+  // than a unit hung off an existing one because a tenant's storage bill must
+  // be separable from its STT bill at every level the engine aggregates.
+  STORAGE
+  // The DURABLE-FUNCTION SERVER's own compute — the CPU `hope-harness-worker`
+  // burns orchestrating a workflow run (node activities, sensors, claim-check
+  // I/O, run-event emission), as opposed to the inference legs that run calls.
+  // Its own capability because a run's worker CPU is neither STT nor LLM, and
+  // giving it one is what lets the engine grant it an allowance and an invoice
+  // line without touching the inference capabilities.
+  WORKFLOW
 
   @@schema("core")
 }
@@ -548,6 +566,53 @@ enum AiUsageUnit {
   // Recorded alongside tokens for self-hosted inference: GPU-time is the
   // cost-truth unit, tokens remain the sell unit (D4).
   GPU_SECOND
+  // ── TASK-959 — compute, network and storage ────────────────────────────
+  //
+  // `GPU_SECOND` and `CPU_SECOND` are OCCUPANCY seconds: the wall-clock time a
+  // request held the model on that device. They are NOT scheduler CPU cycles
+  // or DCGM SM-active time, and they cannot be: LM Studio runs 8 decode slots
+  // per replica, vLLM batches continuously, STT's scheduler batches utterances
+  // across sessions, and the cluster time-slices two cards into six units — so
+  // summing per-request wall-clock over-counts physical device time by a
+  // concurrency factor no service records. Occupancy is what every service
+  // already measures, it is what the tenant actually occupied, and the price
+  // book absorbs the concurrency instead: a provider's COST row is the
+  // device-hour rate divided by its parallel slots. Physical truth for COGS is
+  // a MONTHLY reconciliation against the DCGM exporter, never a per-request
+  // join (D-2).
+  //
+  // The unit is chosen by `attributesJson.device`: `cuda`/`mps` → GPU_SECOND,
+  // `cpu` → CPU_SECOND.
+  CPU_SECOND
+  // Third-party network consumption, split into TWO units rather than one unit
+  // plus a direction attribute, so direction stays a dimension of the ROW: the
+  // rollup is keyed on `unit`, so a `direction` attribute would be invisible to
+  // every aggregate and an egress figure could never be read off the rollup at
+  // all. COST is 0 today (no vendor or tunnel bills per byte); the rows exist
+  // for visibility and capacity planning until a SELL decision (D-3).
+  EGRESS_BYTE
+  INGRESS_BYTE
+  // Storage is a STOCK, and every other unit here is a flow. The GIGABYTE-DAY is
+  // what makes the two commensurable: one row per (tenant, class) per UTC day,
+  // quantity = bytes held at the snapshot ÷ 1e9, so the existing daily rollup
+  // and the existing invoice summation handle storage with no special case.
+  // GB-month for an invoice line is then Σ GB-days ÷ days in the period —
+  // arithmetic in the engine, not a second grain in the ledger (D-4).
+  //
+  // GIGABYTES, NOT BYTES, and the reason is the price column. `unitPriceMicros`
+  // is an INTEGER number of micros per one unit, so the smallest rate it can
+  // express is 1µ. A byte-day at amortised disk (~$0.08/GB-month) costs
+  // ~0.0000027µ — six orders of magnitude under that floor — so a byte-day unit
+  // could only ever be priced at 0 (storage free forever) or at 1µ (a GB-month
+  // at ~$30,000). The gigabyte-day lands the same rate at ~2,667µ, comfortably
+  // inside integer micros, and it is also the unit the SELL side wants: a
+  // GB-month is a plain sum of GB-days.
+  //
+  // Resolution is bounded by the QUANTITY column, not the unit: `quantity` is
+  // `Decimal(24, 6)`, so six decimal places of a gigabyte = 1e-6 GB = 1 KB.
+  // Anything a tenant stores rounds to the nearest kilobyte-day, which is finer
+  // than any storage backend reports and far finer than a billing period needs.
+  STORAGE_GB_DAY
 
   @@schema("core")
 }

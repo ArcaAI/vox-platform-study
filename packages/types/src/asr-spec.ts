@@ -323,6 +323,34 @@ export interface AsrSpecAgent {
  */
 export interface AsrSpecCore {
   runtimeKey: string;
+  /**
+   * TASK-958 D-4 — WHICH `AiProviderConnection` serves this chain's engine, and the
+   * key its credential arrives under in `provider_overrides`.
+   *
+   * A tenant may hold several connections for one `(service, provider)`, so two
+   * chains can name the SAME cloud engine on DIFFERENT accounts and a
+   * provider-keyed credential map would hand both the same entry — a failover that
+   * spends the key that just failed. `connectionKey` is what the `apps/stt` loaders
+   * read their entry under — the provider id for the tenant's DEFAULT connection and
+   * for a platform row (which is what keeps every pre-958 payload byte-identical),
+   * `provider:slug` for a named sibling — and `connectionId` is what the usage ledger
+   * attributes the spend to (D-7).
+   *
+   * The `provider:` prefix keeps tenant-chosen names out of the provider-id namespace,
+   * and the key is OPAQUE to `apps/stt`: a loader looks the string up, it never parses
+   * it. A chain whose connection could not serve (disabled, keyless, gone) still carries
+   * its key — one nothing filled — so the loader MISSES and fails that chain closed
+   * rather than authenticating as whichever account happens to hold the provider key.
+   *
+   * All three are OMIT-WHEN-ABSENT rather than nullable. The `apps/stt` mirror
+   * (`stt.pipeline.spec.AsrSpecCore`) is `extra='forbid'` and lists them in its
+   * `OPTIONAL_FIELDS`, so an unset optional must not be serialised as `null` — that
+   * is what lets the two halves ship in either order and the committed contract
+   * fixture round-trip unchanged.
+   */
+  connectionId?: string;
+  connectionSlug?: string;
+  connectionKey?: string;
   agent: AsrSpecAgent;
   models: AsrSpecModels;
   audioFrontEnd: AsrSpecAudioFrontEnd;

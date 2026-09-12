@@ -107,6 +107,11 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     await refresh_model_cache_retention(request.app.state)
 
     fmt = body.response_format
+    # TASK-959 — an out-parameter the router fills with the winning candidate's actual
+    # synthesis wall-clock (`gen_s`) once the WHOLE utterance has been produced. Only the
+    # batch branch below ever reads it: batch is the only mode that consumes the full
+    # generator before its headers are built.
+    timing: dict[str, float] = {}
     stream = tts_router.synthesize(
         spec=body.resolved_spec,
         voice_id=body.voice,
@@ -114,6 +119,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         fmt=fmt,
         speed=body.speed,
         provider_overrides=body.provider_overrides,
+        timing=timing,
     )
 
     # Prime the generator so provider-availability errors become an HTTP status
@@ -137,6 +143,11 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     # with two accounts of one vendor has two candidates answering to that name, and the
     # first match would attribute the spend to whichever one happens to come first.
     connection_id = first.connection_id if first is not None else None
+    # TASK-959 — the serving engine's configured device, and time-to-first-audio. Both are
+    # read off `first` for the same reason `provider`/`connection_id` are: neither is known
+    # until the router has picked a winner, and `first` is the moment that happens.
+    device = first.device if first is not None else None
+    ttfa_ms = first.ttfa_ms if first is not None else None
     # The candidate that actually served. Its sample rate and locale are what the audio IS, so
     # they are what the headers, the derived duration and the Prometheus labels must describe.
     winner = next(
@@ -175,6 +186,9 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         # writes `AiUsageEvent.connectionId` from this, and an empty string is a value
         # while a missing header is "not stated".
         **({"X-Tts-Connection-Id": connection_id} if connection_id else {}),
+        # TASK-959 — absent for a cloud engine that names no device of ours (Azure, Sarvam),
+        # never a guessed value.
+        **({"X-Tts-Device": device} if device else {}),
     }
 
     if body.stream_format == "sse":
@@ -211,7 +225,16 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
                     ),
                 }
 
-        return EventSourceResponse(events(), headers={**base_headers, "X-Accel-Buffering": "no"})
+        return EventSourceResponse(
+            events(),
+            headers={
+                **base_headers,
+                "X-Accel-Buffering": "no",
+                # TASK-959 — the total synthesis time is not knowable at header-commit time on
+                # any streaming mode; time-to-first-audio is the one timing fact that already is.
+                **({"X-Tts-Ttfa-Ms": str(round(ttfa_ms))} if ttfa_ms is not None else {}),
+            },
+        )
 
     if body.stream_format == "audio":
 
@@ -237,9 +260,17 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
                 )
 
         # X-Tts-Audio-Seconds is deliberately ABSENT: headers commit before the
-        # stream (and therefore the duration) exists.
+        # stream (and therefore the duration) exists. Same reasoning for
+        # X-Tts-Synthesis-Ms/X-Tts-Response-Bytes/X-Tts-Byte-Source (TASK-959);
+        # X-Tts-Ttfa-Ms is the one timing fact this mode already has up front.
         return StreamingResponse(
-            raw(), media_type=content_type, headers={**base_headers, **_STREAM_HEADERS}
+            raw(),
+            media_type=content_type,
+            headers={
+                **base_headers,
+                **_STREAM_HEADERS,
+                **({"X-Tts-Ttfa-Ms": str(round(ttfa_ms))} if ttfa_ms is not None else {}),
+            },
         )
 
     # Batch: collect the full utterance, then respond — duration IS knowable
@@ -259,6 +290,14 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             audio_seconds=audio_seconds,
             status="aborted" if interrupted else "ok",
         )
+    # TASK-959 — only knowable now, once the whole utterance has been produced.
+    # `synthesis_ms` is the router's own `gen_s` for the winning candidate (excludes any
+    # earlier failed-over candidate's time, since occupancy is what the WINNING engine held).
+    # `byte_source` names how the byte count was obtained: "wire" for every adapter that hands
+    # us the bytes it produced directly; "app" for the one adapter (Azure) whose SDK decodes
+    # audio for us and we sum its chunks — see `providers/azure_speech.py`.
+    synthesis_ms = timing.get("synthesis_ms")
+    byte_source = ("app" if provider == "azure" else "wire") if provider else None
     return Response(
         content=bytes(buf),
         media_type=content_type,
@@ -266,5 +305,10 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             **base_headers,
             "Cache-Control": "no-store",
             **({"X-Tts-Audio-Seconds": str(audio_seconds)} if audio_seconds is not None else {}),
+            **(
+                {"X-Tts-Synthesis-Ms": str(round(synthesis_ms))} if synthesis_ms is not None else {}
+            ),
+            "X-Tts-Response-Bytes": str(audio_bytes_total),
+            **({"X-Tts-Byte-Source": byte_source} if byte_source else {}),
         },
     )

@@ -184,3 +184,103 @@ describe('LlmStreamUsageCollector — CRLF framing (the wire `apps/text` actuall
     expect(collector.take({ tenantId: TENANT, operation: 'generate.stream' })).not.toBeNull();
   });
 });
+
+/**
+ * TASK-957 F-3 / TASK-959 — the guardrail block on the terminal frame.
+ *
+ * The blocking `/generate` response has always carried `guardrail_usage`, and
+ * only the consultation-summary paths recorded it; the STREAM carried none at
+ * all, so no stream consumer could. `apps/text` now puts it on all three
+ * terminal frames, and this collector is the one tee that sees them — which
+ * makes it the only place a stream's guardrail COGS can be picked up.
+ */
+describe('LlmStreamUsageCollector — guardrail usage on the terminal frame', () => {
+  const TENANT = '50000000-0000-0000-0000-000000000000';
+
+  const frame = (data: unknown): string => `event: done\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
+
+  const terminal = (overrides: Record<string, unknown> = {}) => ({
+    data: {
+      usage: {
+        endpoint_kind: 'openai.chat',
+        task_id: 'task-1',
+        provider: 'openai',
+        model: 'gpt-5',
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_ms: 2500,
+      },
+      ...overrides,
+    },
+  });
+
+  const guardrailBlock = {
+    endpoint_kind: 'openai.chat',
+    task_id: 'guard-1',
+    provider: 'openai',
+    model: 'gpt-5-mini',
+    prompt_tokens: 40,
+    completion_tokens: 4,
+    total_ms: 300,
+  };
+
+  it('returns the guardrail batch beside the generation batch', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal({ guardrail_usage: guardrailBlock })));
+
+    const taken = collector.takeAll({ tenantId: TENANT, operation: 'generate.stream' });
+
+    expect(taken?.generation?.batch.common.operation).toBe('generate.stream');
+    expect(taken?.guardrail?.batch.common.operation).toBe('guardrail.validate');
+    expect(taken?.guardrail?.batch.common.requestId).toBe('guard-1');
+  });
+
+  it('returns a null guardrail half when the frame carried none — the common case', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal()));
+
+    const taken = collector.takeAll({ tenantId: TENANT, operation: 'generate.stream' });
+
+    expect(taken?.generation).not.toBeNull();
+    expect(taken?.guardrail).toBeNull();
+  });
+
+  it('answers ONCE — a teardown firing from end, error and close bills one stream once', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal({ guardrail_usage: guardrailBlock })));
+
+    expect(collector.takeAll({ tenantId: TENANT, operation: 'generate.stream' })).not.toBeNull();
+    expect(collector.takeAll({ tenantId: TENANT, operation: 'generate.stream' })).toBeNull();
+    expect(collector.take({ tenantId: TENANT, operation: 'generate.stream' })).toBeNull();
+  });
+
+  it('carries the caller’s trigger onto BOTH halves — a guardrail row is caused by the same activity', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal({ guardrail_usage: guardrailBlock })));
+
+    const taken = collector.takeAll({ tenantId: TENANT, operation: 'generate.stream', trigger: 'AGENT_INVOCATION' });
+
+    expect(taken?.generation?.batch.common.attributesJson?.trigger).toBe('AGENT_INVOCATION');
+    expect(taken?.guardrail?.batch.common.attributesJson?.trigger).toBe('AGENT_INVOCATION');
+  });
+
+  it('does not force the interrupted override onto the guardrail row — the guard call completed', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal({ guardrail_usage: guardrailBlock })));
+
+    const taken = collector.takeAll({ tenantId: TENANT, operation: 'generate.stream', interrupted: true });
+
+    expect(taken?.generation?.batch.common.attributesJson?.interrupted).toBe(true);
+    expect(taken?.guardrail?.batch.common.attributesJson?.interrupted).toBe(false);
+  });
+
+  it('keeps `take()` answering exactly what it always did', () => {
+    const collector = new LlmStreamUsageCollector();
+    collector.observe(frame(terminal({ guardrail_usage: guardrailBlock })));
+
+    const batch = collector.take({ tenantId: TENANT, operation: 'generate.stream' });
+
+    expect(batch?.common.operation).toBe('generate.stream');
+    expect(batch?.units.length).toBeGreaterThan(0);
+  });
+});

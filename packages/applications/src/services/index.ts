@@ -107,6 +107,11 @@ export * from './usageLedger';
 export * from './priceBook';
 // RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';
+// TASK-959 §5.2 — the nightly per-(tenant, storage class) GB-day snapshot.
+// Its own module rather than a method on metering: it is the ONLY writer of a
+// measure that cannot be recomputed for a past day, and it emits through the
+// usage-ledger port instead of the meter snapshot table.
+export * from './storage-snapshot';
 // Read-only usage-analytics surface over the ledger rollups.
 export * from './usageAnalytics';
 // Platform runtime metrics (E1/E2/E3) + multi-instance socket registry.

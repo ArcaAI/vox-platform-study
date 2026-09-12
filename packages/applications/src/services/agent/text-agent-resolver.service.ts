@@ -156,6 +156,10 @@ export class TextAgentResolverService {
         task: AgentTask.TEXT_GENERATION,
         agentSlug: input.agentSlug ?? null,
         departmentId: input.departmentId ?? null,
+        // TASK-958 F11 — this plane walks its OWN chain, so a primary whose named
+        // connection cannot serve is a candidate to skip (`fundingFor` returns `null`
+        // for it below), not a 409 out of the agent resolver.
+        primaryBinding: 'mark',
         // Absent, not empty, when there is nothing to say — see `ResolveAgentInput.selectorTags`.
         ...(input.selectorTags?.length ? { selectorTags: input.selectorTags } : {}),
       });
@@ -229,7 +233,7 @@ export class TextAgentResolverService {
 
   private async tryResolveAgent(tenantId: string, slug: string, role: string, primarySlug: string): Promise<ResolvedAgent | null> {
     try {
-      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug, departmentId: null });
+      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
     } catch (error) {
       this.logger.warn({
         message: `Text ${role} did not resolve; continuing without it`,
@@ -277,9 +281,24 @@ export class TextAgentResolverService {
       return kind === 'primary' ? rowFunding : null;
     }
 
+    // TASK-958 D-3 — "the model row names the connection". A row DECLARED on a
+    // connection resolves THAT connection by id; a SYSTEM catalogue row names none
+    // and keeps the provider-name cascade (which B1 narrowed to the tenant's DEFAULT
+    // row), so every pre-958 binding resolves byte-for-byte as before.
+    const connectionId = model.sourceConnectionId ?? null;
     try {
-      const binding = await this.credentials.resolve('llm', provider, tenantId);
+      // Called with THREE arguments when there is nothing to say, so an unbound
+      // resolve stays indistinguishable from the pre-958 one.
+      const binding = connectionId
+        ? await this.credentials.resolve('llm', provider, tenantId, { connectionId })
+        : await this.credentials.resolve('llm', provider, tenantId);
       if (binding) return { fundingTier: binding.fundingTier, providerOverride: { provider, ...binding.override } };
+      // A NAMED connection that answered `null` is disabled or keyless: that
+      // candidate is unusable, and it must never widen to the tenant's default —
+      // "fall back to a different vendor account" is not what a binding means. A
+      // PRIMARY therefore fails closed here (409 `TEXT_AGENT_UNRUNNABLE`) instead of
+      // being forwarded on somebody else's key.
+      if (connectionId) return null;
       return kind === 'primary' ? rowFunding : null;
     } catch (error) {
       if (kind === 'primary' || !(error instanceof ProviderVetoedException || error instanceof QuotaExceededException)) throw error;

@@ -122,7 +122,13 @@ describe('TextAgentResolverService.resolve — the primary', () => {
   it('no slug → the assignment cascade through the ONE agent resolver, task pinned to TEXT_GENERATION', async () => {
     bySlug({ 'platform-summarization': platformClone() }, agent());
     const spec = await make().resolve({ tenantId: TENANT, departmentId: 'dept-1' });
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.TEXT_GENERATION, agentSlug: null, departmentId: 'dept-1' });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.TEXT_GENERATION,
+      agentSlug: null,
+      departmentId: 'dept-1',
+      primaryBinding: 'mark',
+    });
     expect(spec.schemaVersion).toBe(1);
     expect(spec.primary).toMatchObject({
       kind: 'primary',

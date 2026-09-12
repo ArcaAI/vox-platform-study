@@ -1,4 +1,13 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ClsService } from 'nestjs-cls';
 import {
   AgentEntity,
@@ -16,7 +25,8 @@ import { IAgentAssignmentService } from '../agent-assignment/IAgentAssignmentSer
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../agent-assignment/IAgentAssignmentService';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import type { IProviderConnectionService as IProviderConnectionServicePort } from '../ai-provider-connection/IProviderConnectionService';
-import { isCloudByoProvider } from '../ai-provider-connection/constants';
+import { isCloudByoProvider, type ProviderService } from '../ai-provider-connection/constants';
+import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
 import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 
@@ -33,6 +43,134 @@ export interface ResolveAgentInput {
    * the cascade call entirely when empty, so every existing caller resolves byte-identically.
    */
   selectorTags?: readonly string[];
+  /**
+   * TASK-958 — what to do when the PRIMARY model NAMES a connection that cannot serve
+   * (disabled, keyless, or an id this tenant cannot read).
+   *
+   * `fail-closed` (the DEFAULT) throws {@link AGENT_CONNECTION_UNAVAILABLE}. It is the
+   * default because the dangerous answer is the quiet one: this method used to return an
+   * agent with NO `providerOverride`, and every caller that folds by provider NAME
+   * (`AgentInvocationService`, the bench) then injected the tenant's DEFAULT account —
+   * spending a vendor account the binding did not name, and metering it there.
+   *
+   * `mark` is for the CHAIN planes (text / TTS / ASR / the realtime read-outs), which
+   * resolve a credential PER CANDIDATE of their own chain: there the primary's failure
+   * means "skip this candidate and walk on" (D-3), so a throw here would take out a
+   * fallback that was configured precisely for this case.
+   */
+  primaryBinding?: PrimaryBindingPolicy;
+}
+
+/** @see ResolveAgentInput.primaryBinding */
+export type PrimaryBindingPolicy = 'fail-closed' | 'mark';
+
+/**
+ * TASK-958 — the agent's PRIMARY model names a connection that cannot serve.
+ *
+ * A 409 (not a 404): the agent exists and the caller may see it; what is unavailable is
+ * the vendor account it is bound to. The body names `agentSlug`, `modelSlug` and
+ * `connectionId` so an admin can go straight to the row that is disabled or keyless.
+ */
+export const AGENT_CONNECTION_UNAVAILABLE = 'AGENT_CONNECTION_UNAVAILABLE';
+
+/** The identity facts of one `AiProviderConnection` row that the WIRE needs. */
+export interface ConnectionIdentity {
+  id: string;
+  slug: string;
+  provider: string;
+  isDefault: boolean;
+  enabled: boolean;
+  hasKey: boolean;
+}
+
+/**
+ * TASK-958 (F6) — the key ONE connection's credential travels under in `provider_overrides`.
+ *
+ * `provider` for the tenant's DEFAULT row and for every SYSTEM row (which is always its
+ * provider's default), so every payload that existed before multiplicity is byte-identical;
+ * `provider:slug` for a named sibling.
+ *
+ * The namespace matters as much as the uniqueness. Keying a sibling by its BARE slug put
+ * tenant-chosen names into the same space as provider ids, so a tenant that called its
+ * second Sarvam account `azure` would overwrite — or be read as — the `azure` entry. A
+ * provider id never contains `:`, so the two spaces cannot meet.
+ *
+ * `isDefault` is READ from the row, never inferred: a tenant may promote a sibling and
+ * demote the original, leaving a NON-default row whose slug still equals the provider id.
+ * Inferring from the name there would hand two different rows the same key. When the row
+ * could not be read at all (no connection plane wired) the naming convention is the
+ * fallback — degraded, but never an alias of another row's key.
+ */
+export function providerOverrideKey(provider: string, connection?: { slug?: string | null; isDefault?: boolean } | null): string {
+  const slug = connection?.slug ?? null;
+  if (!slug) return provider;
+  const isDefault = connection?.isDefault ?? slug === provider;
+  return isDefault ? provider : `${provider}:${slug}`;
+}
+
+/**
+ * TASK-958 (F7) — the key a binding that FAILED CLOSED is stamped with.
+ *
+ * Always namespaced, never the bare provider id, and that is the whole point: the map
+ * holds NO entry for a connection that could not serve, so the consumer must MISS. Under
+ * the bare provider key it would hit the DEFAULT row's entry instead (an enabled-but-keyless
+ * sibling still lets the provider-name cascade resolve the platform row), and the chain
+ * would authenticate as an account the tenant never bound it to.
+ *
+ * The row id is the last-resort discriminator for a row whose slug could not be read.
+ */
+export function failedBindingKey(provider: string, slug: string | null | undefined, connectionId: string): string {
+  return `${provider}:${slug && slug.length > 0 ? slug : connectionId}`;
+}
+
+/**
+ * TASK-958 — ONE masked read of a tenant's connection rows per resolve, shared by every
+ * candidate of a chain.
+ *
+ * The wire key depends on a fact only the ROW carries (`isDefault`), and a chain can name
+ * several connections, so the alternative is one lookup per candidate. Lazy: a tenant whose
+ * models name no connection never issues it. Fail-soft: a lookup failure degrades to the
+ * naming convention in {@link providerOverrideKey} rather than failing a synthesis or a
+ * transcription — this read decides a KEY, never whether a credential may be used.
+ */
+export class ConnectionIdentityLookup {
+  private rows?: Promise<ConnectionIdentity[]>;
+
+  constructor(
+    private readonly connections: { list?: (service: ProviderService, tenantId?: string) => Promise<unknown[]> } | undefined,
+    private readonly service: ProviderService,
+    private readonly tenantId: string,
+  ) {}
+
+  async byId(connectionId: string): Promise<ConnectionIdentity | null> {
+    return (await this.load()).find((row) => row.id === connectionId) ?? null;
+  }
+
+  /** Every NON-default row of one provider that could actually serve (enabled + keyed). */
+  async siblings(provider: string): Promise<ConnectionIdentity[]> {
+    return (await this.load()).filter((row) => row.provider === provider && !row.isDefault && row.enabled && row.hasKey);
+  }
+
+  private load(): Promise<ConnectionIdentity[]> {
+    if (!this.rows) {
+      const list = this.connections?.list;
+      this.rows = !list
+        ? Promise.resolve([])
+        : Promise.resolve(list.call(this.connections, this.service, this.tenantId))
+            .then((rows) =>
+              (rows as ConnectionIdentity[]).map((row) => ({
+                id: String(row.id),
+                slug: String(row.slug),
+                provider: String(row.provider),
+                isDefault: row.isDefault === true,
+                enabled: row.enabled !== false,
+                hasKey: row.hasKey === true,
+              })),
+            )
+            .catch(() => []);
+    }
+    return this.rows;
+  }
 }
 
 /** Where the ASR spec references auxiliary registry models (TASK-861 §3.2). */
@@ -85,6 +223,8 @@ function guardrailOf(compiled: AgentCompiledConfig): { enabled: boolean } {
  */
 @Injectable()
 export class AgentResolverService {
+  private readonly logger = new Logger(AgentResolverService.name);
+
   constructor(
     private readonly agentRepository: AgentRepository,
     private readonly fallbackRepository: AgentModelFallbackRepository,
@@ -96,6 +236,11 @@ export class AgentResolverService {
     // and trailing so the positional unit fixtures keep their arity; production
     // DI always supplies it.
     @Optional() private readonly clsService?: ClsService<IActiveUserContext>,
+    // TASK-958 D-3 — the by-id credential lookup. `@Optional()` and TRAILING for the
+    // same reason as `clsService`: positional unit fixtures keep their arity, and
+    // without it a connection-bound model falls back to the provider-name fold —
+    // which is what this resolver did before the binding rule existed.
+    @Optional() private readonly credentials?: ProviderCredentialResolver,
   ) {}
 
   async resolve(input: ResolveAgentInput): Promise<ResolvedAgent> {
@@ -146,7 +291,7 @@ export class AgentResolverService {
     }
 
     const models = await this.materialiseModels(entity, compiledConfig, tenantId);
-    const override = await this.providerOverrideFor(compiledConfig, tenantId);
+    const override = await this.providerOverrideFor(entity.slug, compiledConfig, models, tenantId, input.primaryBinding ?? 'fail-closed');
 
     return {
       agentId: entity.id,
@@ -208,16 +353,78 @@ export class AgentResolverService {
   }
 
   /**
-   * TODO(TASK-862): ProviderCredentialResolver.resolve(service, provider, tenantId) →
-   * { override, fundingTier, connectionId }. Today: the existing per-service override map.
+   * The ONE-HOP credential for the agent's PRIMARY model.
+   *
+   * TASK-958 D-3 — the PRIMARY MODEL ROW decides which account is spent, not the
+   * provider name. When the row was declared on a connection (`sourceConnectionId`)
+   * that connection serves or nothing does: it is NEVER widened to the tenant's
+   * default, which would spend a different vendor account than the one the binding
+   * named.
+   *
+   * What "nothing does" MEANS is the caller's policy (F11). Returning a bare `null`
+   * — this method's original answer — is indistinguishable from "this agent has no
+   * cloud credential at all", and the two call sites that fold by provider NAME then
+   * injected the DEFAULT connection's key. So a named-but-unusable connection is a
+   * 409 under the default policy, and only a plane that walks its own fallback chain
+   * asks for `mark`. An id outside the two tiers this tenant may read is treated the
+   * same way: the resolver raises a 404 for it, which here means the binding is
+   * broken, not that the AGENT is missing.
+   *
+   * A SYSTEM catalogue row names no connection, so it keeps the provider-NAME fold:
+   * `resolveTenantCloudOverrides` returns only DEFAULT rows (B1), which is
+   * byte-for-byte the pre-958 cascade.
    */
   private async providerOverrideFor(
+    agentSlug: string,
     compiled: AgentCompiledConfig,
+    models: ResolvedAgentModel[],
     tenantId: string,
+    policy: PrimaryBindingPolicy,
   ): Promise<{ entry: ResolvedAgent['providerOverride']; fundingTier: ResolvedAgent['fundingTier'] } | null> {
     const provider = compiled.model.provider;
     const service = AGENT_TASK_SERVICE[compiled.task];
     if (!provider || !this.providerConnections || !isCloudByoProvider(service, provider)) return null;
+
+    const primary = models.find((m) => m.role === 'primary');
+    const connectionId = primary?.sourceConnectionId ?? null;
+    if (connectionId && this.credentials) {
+      const binding = await this.credentials.resolve(service, provider, tenantId, { connectionId }).catch((error: unknown) => {
+        if (!(error instanceof NotFoundException)) throw error;
+        // Unknown, deleted or another tenant's. Logged with the ids because that is the
+        // only way an admin can tell a mistyped binding from a revoked connection.
+        this.logger.warn({
+          message: 'Agent primary model names a connection this tenant cannot read; failing the binding closed',
+          tenantId,
+          agentSlug,
+          modelSlug: primary?.slug ?? compiled.model.slug,
+          connectionId,
+          provider,
+        });
+        return null;
+      });
+      if (binding) return { entry: { provider, ...binding.override }, fundingTier: binding.fundingTier };
+      if (policy === 'fail-closed') {
+        throw new ConflictException({
+          code: AGENT_CONNECTION_UNAVAILABLE,
+          message:
+            `Agent '${agentSlug}' binds model '${primary?.slug ?? compiled.model.slug}' to a ${provider} connection that cannot serve ` +
+            '(disabled, missing its key, or no longer visible to this tenant). Enable or re-key that connection, or re-declare the model.',
+          agentSlug,
+          modelSlug: primary?.slug ?? compiled.model.slug,
+          connectionId,
+        });
+      }
+      this.logger.warn({
+        message: 'Agent primary model names a connection that cannot serve; the chain continues without it',
+        tenantId,
+        agentSlug,
+        modelSlug: primary?.slug ?? compiled.model.slug,
+        connectionId,
+        provider,
+      });
+      return null;
+    }
+
     const resolved = await this.providerConnections.resolveTenantCloudOverrides(service, tenantId);
     const entry = resolved.overrides[provider];
     if (!entry) return null;
@@ -256,6 +463,11 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
     tenantId: model.tenantId,
+    // TASK-958 D-3 — "the model row names the connection". OMITTED rather than
+    // nulled, like `libraryName` and `metaData`: this shape crosses to the harness
+    // over `GET /internal/agents/resolve`, and an unset optional must be missing
+    // rather than `null` so the two halves stay independently deployable.
+    ...(model.sourceConnectionId ? { sourceConnectionId: model.sourceConnectionId } : {}),
     // TASK-880 H-4 — the runtime-relevant slice of `AiModel._metadata`: ASR decode geometry (which
     // replaced `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`) and the
     // speaker-embedding width the ASR spec builder validates. `buildResolvedAsrSpec` reads only the

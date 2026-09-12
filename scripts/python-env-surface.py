@@ -326,9 +326,9 @@ def collect(spec: ServiceSpec) -> list[EnvField]:
                         secret=_type_name(info.annotation) == "secret",
                         data_type=_type_name(info.annotation),
                         default=_default_of(info),
-                        description=(
-                            info.description or comments.get(field_name, "")
-                        ).strip().replace("\n", " "),
+                        description=(info.description or comments.get(field_name, ""))
+                        .strip()
+                        .replace("\n", " "),
                     )
                 )
     return out
@@ -781,9 +781,7 @@ class _Reads:
     #: attribute name -> `file:line` sites (R1).
     attributes: dict[str, set[str]] = dataclass_field(default_factory=dict)
     #: literal -> (enclosing class chain, `file:line`) occurrences (R2).
-    literals: dict[str, list[tuple[tuple[str, ...], str]]] = dataclass_field(
-        default_factory=dict
-    )
+    literals: dict[str, list[tuple[tuple[str, ...], str]]] = dataclass_field(default_factory=dict)
 
     def add_module(self, tree: Any, rel: str) -> None:
         import ast
@@ -823,9 +821,7 @@ class _Reads:
     def reads(self, field: DeclaredField) -> bool:
         if field.name in self.attributes:
             return True
-        return any(
-            field.cls not in stack for stack, _ in self.literals.get(field.name, ())
-        )
+        return any(field.cls not in stack for stack, _ in self.literals.get(field.name, ()))
 
 
 def scan_service_settings(service: str) -> tuple[list[DeclaredField], _Reads]:
@@ -868,7 +864,7 @@ class DeadFieldReport:
 #: That green is indistinguishable from a real green, and the ~95 dead fields
 #: this check exists to prevent would accumulate underneath it. Six lines of
 #: fixture make it impossible.
-_CANARY_SOURCE = '''
+_CANARY_SOURCE = """
 class Cfg(BaseSettings):
     live_by_attribute: int = 1
     live_by_literal: int = 2
@@ -893,7 +889,7 @@ class Snapshot:
 
 def invoke_the_method(snapshot):
     return snapshot.dead_with_namesakes()
-'''
+"""
 
 #: field -> is it expected to read as LIVE?
 _CANARY_EXPECTED = {

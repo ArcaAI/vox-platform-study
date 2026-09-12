@@ -218,7 +218,9 @@ class LoopEndingRequest(BaseModel):
     #: (`StopRecordingRequest.acceptedProposals`), forwarded verbatim onto the
     # `ConsultationEndingSignal` so `feedback.capture` has something to
     #: promote over the raw transcript.
-    accepted_proposals: list[dict[str, Any]] = Field(default_factory=list, alias="acceptedProposals")
+    accepted_proposals: list[dict[str, Any]] = Field(
+        default_factory=list, alias="acceptedProposals"
+    )
 
 
 class LoopCancelRequest(BaseModel):

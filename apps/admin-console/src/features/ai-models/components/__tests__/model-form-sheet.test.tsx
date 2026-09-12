@@ -223,6 +223,110 @@ describe('ModelFormSheet — registry identity + bucket identity (TASK-860)', ()
 // =============================================================================
 // The Publish action lives in the edit drawer only (no create-time equivalent)
 // =============================================================================
+// =============================================================================
+// LOCAL source: sourceUri is DERIVED from bucketPrefix, never typed by hand
+// (TASK-960 D3c), and a bucket-qualified bucketPrefix is rejected client-side
+// (TASK-960 D2, mirroring the gateway's DTO validator).
+// =============================================================================
+
+describe('ModelFormSheet — LOCAL source (TASK-960)', () => {
+  it('offers S3 as a source option (D3)', async () => {
+    stubFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    fireEvent.pointerDown(within(dialog).getByLabelText(/^source\*$/i), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    expect(await screen.findByRole('option', { name: 'S3 bucket' })).toBeDefined();
+  });
+
+  it('derives the Source URI from the bucket prefix once the source is Local, and disables manual editing', async () => {
+    stubFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Local');
+    const sourceUri = within(dialog).getByLabelText(/^source uri/i) as HTMLInputElement;
+    expect(sourceUri.disabled).toBe(true);
+    expect(sourceUri.value).toBe('');
+
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'arcaai-whisper-en-2609/' } });
+    expect((within(dialog).getByLabelText(/^source uri/i) as HTMLInputElement).value).toBe('s3://hope-models/arcaai-whisper-en-2609');
+    expect(within(dialog).getByText(/nothing is downloaded/i)).toBeDefined();
+  });
+
+  it('sends the derived sourceUri (never the disabled field value) on submit for a Local row', async () => {
+    const calls: { method: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+        calls.push({ method, body });
+        if (method === 'POST') return Response.json(MODEL, { headers: { etag: '"1"' } });
+        return Response.json(MODEL, { headers: { etag: '"4"' } });
+      }),
+    );
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'ArcaAI Whisper EN' } });
+    fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'arcaai-whisper-en-2609' } });
+    fireEvent.change(within(dialog).getByLabelText(/task \(hugging face/i), { target: { value: 'AUTOMATIC_SPEECH_RECOGNITION' } });
+    await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Local');
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'arcaai-whisper-en-2609/' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    const created = calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
+    expect(created).toMatchObject({ source: 'LOCAL', sourceUri: 's3://hope-models/arcaai-whisper-en-2609', bucketPrefix: 'arcaai-whisper-en-2609/' });
+  });
+
+  it('reverts to an editable (and empty, on this fresh row) Source URI when the source is switched away from Local', async () => {
+    stubFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Local');
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'arcaai-whisper-en-2609/' } });
+    expect((within(dialog).getByLabelText(/^source uri/i) as HTMLInputElement).value).toBe('s3://hope-models/arcaai-whisper-en-2609');
+
+    await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Hugging Face');
+    const sourceUri = within(dialog).getByLabelText(/^source uri/i) as HTMLInputElement;
+    // The derived value was never written into the field's own state, so
+    // switching away reveals the (still blank) manually-typed value rather
+    // than silently carrying the bucket-derived URI over to a different source.
+    expect(sourceUri.disabled).toBe(false);
+    expect(sourceUri.value).toBe('');
+  });
+
+  it('rejects a bucket-qualified bucketPrefix client-side and disables submit, for any source', async () => {
+    stubFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    const registerButton = within(dialog).getByRole('button', { name: 'Register model' }) as HTMLButtonElement;
+    expect(registerButton.disabled).toBe(false);
+
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'hope-models/arcaai-whisper-en-2609/' } });
+    expect(within(dialog).getByText(/enter a path relative to the bucket/i)).toBeDefined();
+    expect(registerButton.disabled).toBe(true);
+
+    fireEvent.change(within(dialog).getByLabelText(/^bucket prefix/i), { target: { value: 'arcaai-whisper-en-2609/' } });
+    expect(within(dialog).queryByText(/enter a path relative to the bucket/i)).toBeNull();
+    expect(registerButton.disabled).toBe(false);
+  });
+
+  it('makes Bucket prefix required once the source is Local', async () => {
+    stubFetch();
+    renderWithProviders(<ModelFormSheet open onOpenChange={() => {}} modelId={null} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Register model' });
+
+    expect((within(dialog).getByLabelText(/^bucket prefix/i) as HTMLInputElement).required).toBe(false);
+    await selectOption(within(dialog).getByLabelText(/^source\*$/i), 'Local');
+    expect((within(dialog).getByLabelText(/^bucket prefix/i) as HTMLInputElement).required).toBe(true);
+  });
+});
+
 describe('ModelFormSheet — Publish action placement', () => {
   it('does NOT render the Publish action in register mode — the model does not exist yet', async () => {
     stubFetch();

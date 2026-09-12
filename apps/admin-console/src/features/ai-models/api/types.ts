@@ -2,7 +2,7 @@ import type { ResourceStatus } from '@/shared/api';
 
 export type ModelCategory = 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
 export type ModelType = 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
-export type AiModelSource = 'HUGGINGFACE' | 'GITHUB' | 'MLFLOW' | 'LOCAL';
+export type AiModelSource = 'HUGGINGFACE' | 'GITHUB' | 'MLFLOW' | 'LOCAL' | 'S3';
 export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANSLATE2' | 'FASTER_WHISPER' | 'MLX' | 'GGUF' | 'WHISPER_CPP';
 /** @deprecated TASK-860 — removed in R3; read `availability` instead. */
 /**
@@ -240,10 +240,11 @@ export interface ModelInventoryRow {
   detail: Record<string, unknown>;
 }
 
-/** A manifest-bearing prefix in the bucket that no catalogue row references. */
+/** A weight-bearing prefix in the bucket that no catalogue row references — manifest-bearing or a manifest-less admin upload (`layout: 'staged'`). */
 export interface UnregisteredBucketPrefix {
   bucketPrefix: string;
-  layout: 'flat' | 'hf-cache';
+  /** `staged` = an admin upload carrying weights but no `manifest.json` (TASK-960 Lane C). */
+  layout: 'flat' | 'hf-cache' | 'staged';
   slug: string | null;
   version: string | null;
   objectCount: number;

@@ -171,7 +171,7 @@ class StreamingUsageSegment(BaseModel):
     or manually in either direction), and fallback to the platform default is a
     METERED platform HA capability, so billing follows ENGINE-TIME: the tenant's
     BYO minutes meter `BYOK` and the platform fallback's meter `CLOUD`. Segments
-    are aggregated per `(engine, deployment)` — a session that toggles
+    are aggregated per `(engine, deployment, connection_id)` — a session that toggles
     primary -> fallback -> primary yields TWO, not three — and sum exactly to the
     summary's own `audio_seconds` / `session_seconds`.
     """
@@ -182,6 +182,51 @@ class StreamingUsageSegment(BaseModel):
     )
     audio_seconds: float = Field(..., ge=0, description="Decoded audio seconds on this engine")
     session_seconds: float = Field(..., ge=0, description="Wall-clock seconds on this engine")
+    connection_id: str | None = Field(
+        default=None,
+        description=(
+            "AiProviderConnection id that served this segment; null when the "
+            "sender named none. A tenant may hold several connections for one "
+            "vendor, so `engine` alone cannot separate their spend."
+        ),
+    )
+    # TASK-959 §3.2/§4.2 — the compute and network halves of the same question.
+    # DECLARED here deliberately: `response_model` FILTERS this model, so a field
+    # the schema omits never reaches the gateway on the DELETE-teardown path
+    # however faithfully the summary carries it.
+    processing_seconds: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "ASR-only seconds on this engine; becomes a GPU_SECOND or CPU_SECOND "
+            "ledger row according to `device`. Sums, across segments, to the "
+            "session's own total."
+        ),
+    )
+    device: str = Field(
+        default="cpu",
+        description=(
+            "cuda | mps | cpu — the device this segment OCCUPIED. A cloud segment "
+            "reports cpu (this service waiting on the vendor) whatever the host's "
+            "accelerator is."
+        ),
+    )
+    request_bytes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Bytes sent to a third party on this engine; null when it made no such call",
+    )
+    response_bytes: int | None = Field(
+        default=None, ge=0, description="Bytes received from a third party on this engine"
+    )
+    byte_source: str | None = Field(
+        default=None,
+        description=(
+            "wire (a real HTTP request/response) or app (an application-level "
+            "proxy, for an SDK whose socket traffic is opaque); null alongside "
+            "null byte counts"
+        ),
+    )
 
 
 class StreamingSessionTeardownResponse(BaseModel):
@@ -216,6 +261,15 @@ class StreamingSessionTeardownResponse(BaseModel):
     )
     deployment: str | None = Field(
         default=None, description="SELF_HOSTED | CLOUD | BYOK; null alongside a null engine"
+    )
+    connection_id: str | None = Field(
+        default=None,
+        description=(
+            "AiProviderConnection id of the last engine to serve; null when none "
+            "was named. Declared here because this model is the DELETE route's "
+            "response_model and is `extra='ignore'` — a summary key the schema "
+            "does not declare is dropped before it reaches the gateway."
+        ),
     )
     segments: list[StreamingUsageSegment] = Field(
         default_factory=list,

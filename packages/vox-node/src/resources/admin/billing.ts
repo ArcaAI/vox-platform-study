@@ -176,7 +176,7 @@ export class AdminBillingResource extends AdminResource {
   rateCardAdminList(
     options: AdminRequestOptions & {
       query?: {
-        capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING';
+        capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW';
         planTier?: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER';
         rowKind?: 'USAGE_UNIT' | 'PLAN_FEE';
         tenantId?: string;
@@ -191,7 +191,11 @@ export class AdminBillingResource extends AdminResource {
           | 'CHARACTER'
           | 'TEXT_UNIT'
           | 'REQUEST'
-          | 'GPU_SECOND';
+          | 'GPU_SECOND'
+          | 'CPU_SECOND'
+          | 'EGRESS_BYTE'
+          | 'INGRESS_BYTE'
+          | 'STORAGE_GB_DAY';
       };
     } = {},
   ): Promise<SellRateResponse[]> {

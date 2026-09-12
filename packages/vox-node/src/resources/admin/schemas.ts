@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 430 component schemas the generated surface transitively
+ * Only the 434 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -562,7 +562,7 @@ export interface BillingAdjustmentResponse {
 export interface BillingInvoiceLineResponse {
   /** Line amount, integer micros, HALF-UP at line level. Σ lines == invoice total. */
   amountMicros: string;
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | null;
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW' | null;
   description?: string | null;
   id: string;
   /** The POOLED capability allowance the usage was measured against (D11). */
@@ -584,6 +584,10 @@ export interface BillingInvoiceLineResponse {
     | 'TEXT_UNIT'
     | 'REQUEST'
     | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY'
     | null;
   /** PLAN_FEE: full-period fee · OVERAGE: the SELL rate applied. Integer micros. */
   unitPriceMicros?: string | null;
@@ -822,10 +826,16 @@ export interface CatalogueModelResponse {
 export interface CatalogueProviderResponse {
   /** The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`. */
   connectionId: string | null;
+  /** The tenant's display label for the connection, when it set one. NULL otherwise — the slug stands in. */
+  connectionName?: string | null;
+  /** The connection's tenant-chosen slug (TASK-958 D-5) — `=== provider` on the DEFAULT row, which is why every pre-958 entry keeps its id. NULL for the `hope` group and for a model whose connection is gone. */
+  connectionSlug?: string | null;
   /** Which half of the picker this entry belongs to. */
   group: 'byo' | 'hope';
-  /** `byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry). */
+  /** `byo:<service>:<connectionSlug>` for ONE tenant connection (TASK-958 D-5 — a tenant may hold several per vendor), or the literal `hope` (exactly one entry). A DEFAULT connection carries `slug === provider`, so every id that existed before that ticket is unchanged. */
   id: string;
+  /** Whether this is the provider's DEFAULT connection — the one a SYSTEM catalogue model spends. NULL for the `hope` group. */
+  isDefault?: boolean | null;
   /** Models listed under this entry after every filter. */
   modelCount: number;
   /** Display name. */
@@ -1424,7 +1434,7 @@ export interface CreateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`) when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
   bucketPrefix?: string;
   /** Model category */
   category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
@@ -1690,7 +1700,7 @@ export interface CreateSellRateRequest {
   /** Human-traceable book label stamped onto everything this row prices. */
   bookVersion: string;
   /** Required for USAGE_UNIT rows; forbidden on PLAN_FEE rows. */
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING';
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW';
   /** Optional long-context price band (e.g. "0-128k"). */
   contextBand?: string;
   /** ISO 4217 currency. Defaults to USD; v1 invoices are single-currency. */
@@ -1719,7 +1729,11 @@ export interface CreateSellRateRequest {
     | 'CHARACTER'
     | 'TEXT_UNIT'
     | 'REQUEST'
-    | 'GPU_SECOND';
+    | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY';
   /** Integer micros (1e-6 of currency) per unit — or per period for PLAN_FEE. Non-negative decimal-integer string. */
   unitPriceMicros: string;
 }
@@ -4923,7 +4937,7 @@ export interface SecurityPolicyResponse {
 
 export interface SellRateResponse {
   bookVersion: string;
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | null;
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW' | null;
   contextBand?: string | null;
   createdAt: string;
   currency: string;
@@ -4950,6 +4964,10 @@ export interface SellRateResponse {
     | 'TEXT_UNIT'
     | 'REQUEST'
     | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY'
     | null;
   /** Integer micros per unit (or per period for PLAN_FEE), as a decimal-integer string. */
   unitPriceMicros: string;
@@ -5595,6 +5613,8 @@ export interface TestProviderConnectionRequest {
   baseUrl?: string;
   /** Deployment name (Azure OpenAI) — verified against the listed deployments when given. */
   deploymentName?: string;
+  /** Vendor this connection talks to (e.g. `openai`). Required when the slug is not itself a provider id and no row is saved yet; on a saved connection it must match the stored provider. */
+  provider?: string;
   /** Region (classic Azure Speech, Bedrock). Omit to use the stored row. */
   region?: string;
 }
@@ -5730,7 +5750,7 @@ export interface TriggerModelDownloadResponse {
 
 export interface UnregisteredBucketPrefix {
   bucketPrefix: string;
-  layout: 'flat' | 'hf-cache';
+  layout: 'flat' | 'hf-cache' | 'staged';
   objectCount: number;
   slug?: string | null;
   totalBytes?: number | null;
@@ -5985,7 +6005,7 @@ export interface UpdateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. Send an empty string to clear. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`). Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
   bucketPrefix?: string;
   /** Model category */
   category?: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
@@ -6688,6 +6708,26 @@ export interface UpsertWorkflowAssignmentRequest {
   workflowDefinitionSlug: string;
 }
 
+export interface UsageComputeSeconds {
+  /** Σ CPU_SECOND across the inference capabilities. EXCLUDES the durable worker (capability WORKFLOW) — that is reported separately as workflowCpuSeconds. Fixed-point, 6 dp. */
+  cpuSeconds: string;
+  /** Σ GPU_SECOND across the inference capabilities (device cuda or mps). Fixed-point, 6 dp. */
+  gpuSeconds: string;
+}
+
+export interface UsageStorageSnapshotSummary {
+  /** When the snapshot was taken (the end of the UTC day it measured), ISO-8601. */
+  asOf: string;
+  /** Offloaded harness claim-check payloads. Fixed-point GB, 6 dp. */
+  claimCheckGb: string;
+  /** Per-tenant MinIO objects (Media.size). Fixed-point GB, 6 dp. */
+  mediaGb: string;
+  /** Encrypted Postgres columns (pg_column_size of the stored bytes). Fixed-point GB, 6 dp. */
+  textGb: string;
+  /** Σ of the three classes. Fixed-point GB, 6 dp. */
+  totalGb: string;
+}
+
 export interface UsageSummaryLine {
   capability: string;
   /** Summed INTERNAL-basis rated cost, integer micros. Excludes BYOK_NOTIONAL (see byokNotionalCostMicros). */
@@ -6703,22 +6743,45 @@ export interface UsageSummaryLine {
 export interface UsageSummaryResponse {
   /** BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14). */
   byokNotionalCostMicrosByCapability: Record<string, string>;
+  /** GPU vs CPU occupancy seconds across the inference capabilities. */
+  computeSeconds: UsageComputeSeconds;
   lines: UsageSummaryLine[];
   /** Billing-period label, YYYY-MM. */
   period: string;
   periodEnd: string;
   periodStart: string;
+  /** What the tenant was HOLDING at the latest nightly snapshot within the period, split by class — a level, not the period’s GB-day sum. Null when no snapshot exists for the period, which is deliberately distinct from a zeroed object. */
+  storage: UsageStorageSnapshotSummary;
+  /** Bytes that crossed to a vendor (deployment CLOUD or BYOK). Self-hosted traffic excluded. */
+  thirdPartyBytes: UsageThirdPartyBytes;
   /** Σ costMicros across every line (INTERNAL basis only). */
   totalCostMicros: string;
+  /** Σ CPU_SECOND under capability WORKFLOW — the durable worker's own CPU for this tenant's runs. Its own figure because a run's worker CPU is neither STT nor LLM, and adding it to computeSeconds would double-count it against a compute allowance. Fixed-point, 6 dp. */
+  workflowCpuSeconds: string;
+}
+
+export interface UsageThirdPartyBytes {
+  /** Σ EGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp. */
+  egressBytes: string;
+  /** Σ INGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp. */
+  ingressBytes: string;
 }
 
 export interface UsageTimeseriesPoint {
   /** UTC bucket start, ISO-8601. */
   bucketStart: string;
+  /** GPU vs CPU occupancy seconds in this bucket, inference capabilities only. */
+  computeSeconds: UsageComputeSeconds;
   /** Summed INTERNAL-basis rated cost, integer micros. */
   costMicros: string;
   /** Summed quantity in `unit`, across every provider/model. */
   quantity: string;
+  /** Σ STORAGE_GB_DAY in this bucket across every class — the rollup grain cannot split media from claim-check (both are provider `minio`), so this is the total; the per-class split is on the summary. Null when the bucket carries no snapshot at all, which for hourly granularity is every hour but the one the job ran in. */
+  storageGb: string | null;
+  /** Bytes to a vendor in this bucket (CLOUD/BYOK only). */
+  thirdPartyBytes: UsageThirdPartyBytes;
+  /** Σ CPU_SECOND under capability WORKFLOW in this bucket — the durable worker's own CPU. Fixed-point, 6 dp. */
+  workflowCpuSeconds: string;
 }
 
 export interface UsageTimeseriesResponse {
@@ -7113,6 +7176,45 @@ export interface WorkflowNodeResponse {
   trigger: 'on-start' | 'per-turn' | 'on-end';
   /** The node type string authored on a graph node, or — for `kind: "action"` — the `actionKey` a `core.action` delegates to. */
   type: string;
+}
+
+export interface WorkflowRunDetailResponse {
+  /** TASK-950 — the clinician this run acts FOR, read back from the row's `_metadata.actingUserId`. Recorded only for a STANDALONE machine-triggered run whose trigger schema declares a user-identity field; it sits BESIDE the actor the audit envelope already names (the service account), never instead of it. `null` for a human caller (the caller already IS the clinician), for a consultation-bound run (identity is `Consultation.doctorId`), and for a schema that declares no identity field — three different reasons, one honest absence. */
+  actingUserId?: string | null;
+  /** Σ CPU_SECOND under capability WORKFLOW for this run — the durable worker's own CPU, fair-share apportioned across concurrently executing activities (§3.4, D-5). NULL, not 0, when the run has no such rows: a run that predates the metering interceptor and a run that burned no measurable CPU are different facts. Orchestration CPU (the sandboxed workflow bodies and their replay) and the SDK's Rust core are deliberately NOT in this number — they are reconciled monthly against the pod's own CPU. */
+  cpuSeconds: number | null;
+  /** Row creation instant (ISO-8601). */
+  createdAt: string;
+  /** Denormalized WorkflowDefinition.name at run time. */
+  definitionName: string;
+  /** Count of nodes that degraded (produced a marked nothing) — a flag, never a run status. */
+  degradedNodeCount: number;
+  durationMs?: number | null;
+  /** Run end (ISO-8601), null while RUNNING. */
+  endedAt?: string | null;
+  failedNodeCount: number;
+  firstErrorCode?: string | null;
+  id: string;
+  isSandbox: boolean;
+  nodeCount?: number | null;
+  /** The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. */
+  resultRef?: Record<string, unknown> | null;
+  /** The domain run id (empty-string sentinel convention). */
+  runId: string;
+  /** The AgentTrajectoryStep join key ("workflow-interpreter-{runId}"). */
+  sessionId: string;
+  /** Run start (ISO-8601). */
+  startedAt: string;
+  /** RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT. No DEGRADED value — see degradedNodeCount. */
+  status: string;
+  tenantId: string;
+  /** consultation open | api invoke | webhook | schedule. */
+  trigger: string;
+  /** WorkflowDefinition.slug — the stable lineage key across versions. */
+  workflowSlug: string;
+  /** WorkflowDefinition.id of the exact PUBLISHED, immutable version row pinned for this run. */
+  workflowVersionId: string;
+  workflowVersionNumber: number;
 }
 
 export interface WorkflowRunResponse {

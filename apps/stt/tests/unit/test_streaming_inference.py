@@ -261,7 +261,9 @@ class TestProcessUtterance:
             speaker_identifier=mock_identifier,
             # TASK-887 — injected at session assembly from the agent's `models.embedding`;
             # there is no `get_embedding_service()` singleton to patch any more.
-            embedding_service=MagicMock(extract_from_samples=AsyncMock(return_value=mock_embedding)),
+            embedding_service=MagicMock(
+                extract_from_samples=AsyncMock(return_value=mock_embedding)
+            ),
         )
         utt = _make_utterance(duration_s=1.2, is_final=True)
 

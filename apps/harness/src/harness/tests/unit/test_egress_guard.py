@@ -86,7 +86,9 @@ def test_resolver_failure_denies() -> None:
     def boom(_hostname: str) -> list[str]:
         raise OSError("SERVFAIL")
 
-    decision = evaluate_egress("https://mcp.partner.example.com/mcp", ["mcp.partner.example.com"], boom)
+    decision = evaluate_egress(
+        "https://mcp.partner.example.com/mcp", ["mcp.partner.example.com"], boom
+    )
     assert decision.allowed is False
     assert decision.reason == "unresolvable"
 
@@ -155,7 +157,9 @@ def test_allowed_addresses(address: str) -> None:
     assert is_blocked_address(address) is False
 
 
-@pytest.mark.parametrize("junk", ["", "not-an-ip", "999.999.999.999", "10.0.0", "localhost", "0177.0.0.1"])
+@pytest.mark.parametrize(
+    "junk", ["", "not-an-ip", "999.999.999.999", "10.0.0", "localhost", "0177.0.0.1"]
+)
 def test_unparseable_address_is_blocked(junk: str) -> None:
     """'I could not tell' must mean 'no' on a security path."""
     assert is_blocked_address(junk) is True

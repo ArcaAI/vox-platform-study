@@ -243,4 +243,6 @@ ACTION_CATALOGUE: dict[str, NodeSpec] = {
     ),
 }
 
-assert tuple(ACTION_CATALOGUE) == ACTION_KEYS  # noqa: S101 — the table and its key order are one fact
+assert (
+    tuple(ACTION_CATALOGUE) == ACTION_KEYS
+)  # noqa: S101 — the table and its key order are one fact

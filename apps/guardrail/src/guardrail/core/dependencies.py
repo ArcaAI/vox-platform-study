@@ -369,7 +369,9 @@ async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: st
         ) from exc
 
     if not cfg.model:
-        raise SelectionUnavailableError(f"AiRoutingPolicy for {task_key!r} is missing. Run db:seed.")
+        raise SelectionUnavailableError(
+            f"AiRoutingPolicy for {task_key!r} is missing. Run db:seed."
+        )
     return cfg
 
 

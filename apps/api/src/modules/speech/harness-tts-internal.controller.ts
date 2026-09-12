@@ -196,6 +196,8 @@ export class HarnessTtsInternalController {
         characters,
         audioSeconds: this.audioSeconds(headers, audio.length),
         overrides: forwardBody.provider_overrides,
+        // TASK-958 D-7 — WHICH account of that vendor `apps/tts` spent.
+        connectionId: (headers['x-tts-connection-id'] as string | undefined) || null,
       });
 
       return {
@@ -282,10 +284,19 @@ export class HarnessTtsInternalController {
    * (`classifyTtsProvider`), never stamped by this call site — a call site that stamps it
    * mis-bills silently.
    */
-  private emitUsage(args: { tenantId: string; provider?: string; characters: number; audioSeconds: number | null; overrides?: unknown }): void {
+  private emitUsage(args: {
+    tenantId: string;
+    provider?: string;
+    characters: number;
+    audioSeconds: number | null;
+    overrides?: unknown;
+    connectionId?: string | null;
+  }): void {
     if (!this.usageLedger) return;
     const { deployment, costBasis } = args.provider
-      ? classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1])
+      ? // TASK-958 F9 — `connectionId` (the `X-Tts-Connection-Id` echo) selects the entry
+        // out of a map that may hold two accounts of this vendor.
+        classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1], args.connectionId)
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
     this.usageLedger
@@ -300,6 +311,7 @@ export class HarnessTtsInternalController {
           model: null,
           deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
           ...(costBasis ? { costBasis } : {}),
+          connectionId: args.connectionId ?? null,
           requestId,
           // No `attributesJson`. `UsageAttributes` is a deliberately CLOSED allow-list that
           // keeps PHI and free text out of the ledger, and none of its declared keys means

@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AiModelSource } from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
+import { HOPE_MODELS_MOUNT } from '../constants';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
 import { isRelevantModelSourceFile, sha256Hex } from './model-version.util';
 
@@ -14,9 +16,18 @@ const HF_REPO_RE = /^(?:hf:)?([\w.-]+\/[\w.-]+)$/;
 const S3_URI_RE = /^s3:\/\/([^/]+)\/(.*)$/;
 
 /**
- * Fetch a model's source files given `AiModel.sourceUri`.
+ * Fetch a model's source files given `AiModel.source` + `AiModel.sourceUri`.
  *
- * Two schemes only, per the download contract: a
+ * `source` is checked FIRST (TASK-960 D1): a `LOCAL` row's weights are
+ * expected already staged under the `hope-models` bucket mount — there is
+ * nothing to fetch, and this must be refused before any scheme dispatch
+ * runs. Dispatching on the shape of `sourceUri` alone used to send a LOCAL
+ * row's bucket-relative prefix (e.g. `hope-models/arcaai-whisper-en-2609`) to
+ * the HuggingFace Hub whenever it happened to look like `org/repo`, which
+ * produced a misleading HTTP 401 (the repo does not exist on the Hub, so no
+ * token could ever fix it).
+ *
+ * For every other source, two schemes only, per the download contract: a
  * HuggingFace repo id (`hf:<org>/<repo>` or a bare `org/repo`), or an
  * existing `s3://bucket/prefix` (e.g. re-publishing something already staged
  * outside `hope-models`). Anything else — `file://`, `azure-blob://`, a bare
@@ -38,7 +49,13 @@ export class ModelSourceFetcherService {
     @Inject(IS3Service) private readonly s3Service: IS3Service,
   ) {}
 
-  async fetch(sourceUri: string, quantFilter: string | null): Promise<FetchedModelFile[]> {
+  async fetch(source: AiModelSource, sourceUri: string, quantFilter: string | null): Promise<FetchedModelFile[]> {
+    if (source === AiModelSource.LOCAL) {
+      throw new Error(
+        `AiModel source is LOCAL: its weights are expected to already be staged under the '${HOPE_MODELS_MOUNT}' bucket mount, so there is nothing to fetch. Set 'bucketPrefix' (and 'primaryObject' for a single-file loader) to register the already-staged files instead of triggering a download.`,
+      );
+    }
+
     const s3Match = sourceUri.match(S3_URI_RE);
     if (s3Match) {
       const [, bucket, prefix] = s3Match;

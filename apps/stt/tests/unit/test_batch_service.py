@@ -1383,12 +1383,21 @@ DIARIZATION_EMBEDDING_SOURCE_URI = "pyannote/wespeaker-voxceleb-resnet34-LM"
 def _embedding_pipeline_config():
     """A minimal `pipeline_config` whose spec binds the speaker-embedding row by SLUG."""
     return SimpleNamespace(
-        spec=SimpleNamespace(models=SimpleNamespace(embedding=SimpleNamespace(slug=DIARIZATION_EMBEDDING_SLUG, is_inline=False, inline=None), segmentation=None))
+        spec=SimpleNamespace(
+            models=SimpleNamespace(
+                embedding=SimpleNamespace(
+                    slug=DIARIZATION_EMBEDDING_SLUG, is_inline=False, inline=None
+                ),
+                segmentation=None,
+            )
+        )
     )
 
 
 def _embedding_model_configs():
-    return {DIARIZATION_EMBEDDING_SLUG: SimpleNamespace(source_uri=DIARIZATION_EMBEDDING_SOURCE_URI)}
+    return {
+        DIARIZATION_EMBEDDING_SLUG: SimpleNamespace(source_uri=DIARIZATION_EMBEDDING_SOURCE_URI)
+    }
 
 
 class TestRunDiarization:
@@ -1685,8 +1694,17 @@ class TestRunDiarization:
         raw.segments = [{"start": 0.0, "end": 2.0, "text": "Hello"}]
 
         mock_emb_service = AsyncMock()
-        mock_emb_service.extract_from_samples = AsyncMock(return_value=MagicMock(embedding=np.zeros(256).tolist()))
-        profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1, 0.2]}]
+        mock_emb_service.extract_from_samples = AsyncMock(
+            return_value=MagicMock(embedding=np.zeros(256).tolist())
+        )
+        profiles = [
+            {
+                "profile_id": "vp-1",
+                "label": "Dr Jane",
+                "model_id": DIARIZATION_EMBEDDING_SLUG,
+                "embedding": [0.1, 0.2],
+            }
+        ]
 
         config = DiarizationConfig(enabled=True, min_segment_duration_s=0.5, max_speakers=5)
 
@@ -1707,7 +1725,9 @@ class TestRunDiarization:
 
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
-                return_value=SpeakerIdentification(speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False)
+                return_value=SpeakerIdentification(
+                    speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False
+                )
             )
             MockIdentifier.return_value = mock_identifier
 
@@ -1758,18 +1778,29 @@ class TestRunDiarization:
         doctor and their embedding straight out of Postgres — the four tests that pinned those
         DB lookups now live in `tests/unit/diarization/test_preseed.py`."""
         tracker = MagicMock()
-        profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1]}]
+        profiles = [
+            {
+                "profile_id": "vp-1",
+                "label": "Dr Jane",
+                "model_id": DIARIZATION_EMBEDDING_SLUG,
+                "embedding": [0.1],
+            }
+        ]
 
         with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
             service._seed_voice_profiles(tracker, profiles, DIARIZATION_EMBEDDING_SLUG, "job-1")
 
-        mock_seed.assert_called_once_with(tracker, profiles, model_slug=DIARIZATION_EMBEDDING_SLUG, log_context="job-1")
+        mock_seed.assert_called_once_with(
+            tracker, profiles, model_slug=DIARIZATION_EMBEDDING_SLUG, log_context="job-1"
+        )
 
     def test_the_batch_service_reads_no_voice_profile_row(self, service):
         """Rule 06: `apps/stt` performs no Postgres read on the agent path."""
         import stt.transcription.batch_service as batch_service
 
-        assert "voice_profile_model" not in pathlib.Path(batch_service.__file__).read_text(encoding="utf-8")
+        assert "voice_profile_model" not in pathlib.Path(batch_service.__file__).read_text(
+            encoding="utf-8"
+        )
         assert not hasattr(service, "_preseed_speaker")
 
 
@@ -1786,7 +1817,10 @@ class TestBatchServiceDiarization:
             version="1.1",
             # TASK-887 — an agent that diarizes by embedding MUST bind the model; the platform
             # singleton that used to serve when none was bound is gone.
-            models=ModelRefs(asr=ModelRef(slug="whisper-test"), embedding=ModelRef(slug=DIARIZATION_EMBEDDING_SLUG)),
+            models=ModelRefs(
+                asr=ModelRef(slug="whisper-test"),
+                embedding=ModelRef(slug=DIARIZATION_EMBEDDING_SLUG),
+            ),
             preprocessing=PreprocessingConfig(),
             inference=InferenceConfig(),
             postprocessing=PostprocessingConfig(),
@@ -1935,7 +1969,14 @@ class TestBatchServiceDiarization:
                 duration_seconds=2.0,
             )
 
-            profiles = [{"profile_id": "vp-1", "label": "Dr Jane", "model_id": DIARIZATION_EMBEDDING_SLUG, "embedding": [0.1]}]
+            profiles = [
+                {
+                    "profile_id": "vp-1",
+                    "label": "Dr Jane",
+                    "model_id": DIARIZATION_EMBEDDING_SLUG,
+                    "embedding": [0.1],
+                }
+            ]
             await service.transcribe(
                 job_id="j-diar-inline-1",
                 audio_bytes=audio_bytes,

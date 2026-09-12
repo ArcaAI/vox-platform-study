@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from hope_runtime_models import PrometheusMetricsSink
 from opentelemetry import metrics
@@ -173,19 +174,39 @@ MODEL_INFERENCE_LATENCY = Histogram(
 )
 
 
+@dataclass
+class InferenceTiming:
+    """Mutable box for the elapsed wall-clock time of one `track_model_inference`
+    block (TASK-959 — apps/nlp responses report `inference_ms` for metering).
+
+    Populated in the block's `finally`, so it holds a real value whether the
+    block succeeded or raised. Read `.elapsed_ms` AFTER the `with` statement
+    exits, never from inside it (it is still 0.0 while the block is running).
+    """
+
+    elapsed_ms: float = 0.0
+
+
 @contextmanager
-def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[None]:
+def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[InferenceTiming]:
     """Track one model inference: bump the running gauge for its duration and
     observe its latency. The gauge is always decremented, even on error.
+
+    Yields an `InferenceTiming` box carrying the elapsed milliseconds once the
+    block exits — existing callers that don't capture it (`with
+    track_model_inference(...):`) are unaffected; a caller that needs the
+    elapsed time for metering does `with track_model_inference(...) as timing:`
+    and reads `timing.elapsed_ms` afterwards.
     """
     MODEL_RUNNING_INSTANCES.labels(service=service, model=model).inc()
+    timing = InferenceTiming()
     start = time.perf_counter()
     try:
-        yield
+        yield timing
     finally:
-        MODEL_INFERENCE_LATENCY.labels(service=service, model=model).observe(
-            time.perf_counter() - start
-        )
+        elapsed_s = time.perf_counter() - start
+        timing.elapsed_ms = elapsed_s * 1000
+        MODEL_INFERENCE_LATENCY.labels(service=service, model=model).observe(elapsed_s)
         MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()
 
 

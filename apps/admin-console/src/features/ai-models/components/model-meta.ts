@@ -16,9 +16,10 @@ export const SOURCE_LABELS: Record<AiModelSource, string> = {
   GITHUB: 'GitHub',
   MLFLOW: 'MLflow',
   LOCAL: 'Local',
+  S3: 'S3 bucket',
 };
 
-export const SOURCE_OPTIONS: AiModelSource[] = ['HUGGINGFACE', 'GITHUB', 'MLFLOW', 'LOCAL'];
+export const SOURCE_OPTIONS: AiModelSource[] = ['HUGGINGFACE', 'GITHUB', 'MLFLOW', 'LOCAL', 'S3'];
 
 export const CATEGORY_OPTIONS: ModelCategory[] = ['MULTI_MODAL', 'VISION', 'NLP', 'AUDIO', 'TABULAR', 'UNKNOWN'];
 
@@ -141,4 +142,32 @@ export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | n
   const prefix = bucketPrefix.replace(/^\/+/, '').replace(/\/+$/, '');
   const base = `${HOPE_MODELS_MOUNT}/${prefix}/`;
   return primaryObject ? `${base}${primaryObject.replace(/^\/+/, '')}` : base;
+}
+
+/** The bucket `HOPE_MODELS_MOUNT` is mounted from — used to derive a LOCAL row's `sourceUri` from its `bucketPrefix` (TASK-960). */
+export const HOPE_MODELS_BUCKET = 'hope-models';
+
+/**
+ * `s3://hope-models/<bucketPrefix>` for a LOCAL row — DERIVED, never typed by
+ * hand, so `sourceUri` and `bucketPrefix` can never disagree (TASK-960 D3c).
+ * The Python resolver falls back to `sourceUri` scheme dispatch when
+ * `local_path` is absent, so keeping this honest keeps that fallback honest
+ * too. Empty until a bucket prefix is entered.
+ */
+export function deriveLocalSourceUri(bucketPrefix: string): string {
+  const prefix = bucketPrefix.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+  return prefix ? `s3://${HOPE_MODELS_BUCKET}/${prefix}` : '';
+}
+
+/**
+ * `true` when a bucket prefix redundantly repeats the bucket itself
+ * (`hope-models/…` or `s3://hope-models/…`). `HOPE_MODELS_MOUNT` already IS
+ * that bucket, so the segment would double into a path that does not exist.
+ * Mirrors the gateway's server-side DTO validation (TASK-960 Lane B) so an
+ * admin is corrected here rather than by a 400.
+ */
+export function isBucketPrefixRedundant(bucketPrefix: string): boolean {
+  const trimmed = bucketPrefix.trim().replace(/^\/+/, '');
+  const lower = trimmed.toLowerCase();
+  return lower === HOPE_MODELS_BUCKET || lower.startsWith(`${HOPE_MODELS_BUCKET}/`) || lower === `s3://${HOPE_MODELS_BUCKET}` || lower.startsWith(`s3://${HOPE_MODELS_BUCKET}/`);
 }

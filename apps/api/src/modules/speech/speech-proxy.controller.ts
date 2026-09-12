@@ -310,8 +310,15 @@ export class SpeechProxyController {
       const tenantId = this.cls?.get('tenantId');
       const characters = this.resolveCharacterCount(upstream.headers, forwardBody.input);
       const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
+      // TASK-958 D-7 — WHICH connection of that provider served. Absent (never empty)
+      // when the spec named none; `apps/tts` reads it off the chunk the router
+      // stamped, so it names the candidate that actually served.
+      const connectionId = (upstream.headers['x-tts-connection-id'] as string | undefined) || null;
       const { deployment, costBasis } = provider
-        ? classifyTtsProvider(provider, forwardBody.provider_overrides)
+        ? // TASK-958 F9 — the served connection SELECTS the entry. The map is keyed by
+          // connection key, so a sibling-bound candidate has no `provider` entry to find
+          // and its BYOK spend would be rated as platform COGS.
+          classifyTtsProvider(provider, forwardBody.provider_overrides, connectionId)
         : { deployment: undefined, costBasis: undefined };
       const requestId = generateId();
       let proxiedBytes = 0;
@@ -333,6 +340,7 @@ export class SpeechProxyController {
               model: null,
               deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
               ...(costBasis ? { costBasis } : {}),
+              connectionId,
               requestId,
               attributesJson: { interrupted },
             },

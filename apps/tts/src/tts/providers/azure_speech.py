@@ -79,10 +79,14 @@ class AzureSpeechProvider:
         api_key = override.get("api_key")
         if not api_key:
             return None
-        region = override.get("region") or (candidate.connection.region if candidate.connection else None)
+        region = override.get("region") or (
+            candidate.connection.region if candidate.connection else None
+        )
         if not region:
             return None
-        return cls(settings.azure.model_copy(update={"api_key": SecretStr(api_key), "region": region}))
+        return cls(
+            settings.azure.model_copy(update={"api_key": SecretStr(api_key), "region": region})
+        )
 
     def __init__(
         self,

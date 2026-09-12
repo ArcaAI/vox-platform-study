@@ -134,11 +134,29 @@ describe('ConsumptionCostScreen', () => {
  * yet serve it (Lane B2 is not merged) must not grow a column of dashes, and an
  * absent field is not the same answer as a platform-funded null.
  */
+const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
+
 const SUMMARY_WITH_CONNECTIONS = {
   ...SUMMARY,
   lines: [
     { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '1000', costMicros: '2000000', connectionId: 'conn-2' },
     { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '500', costMicros: '500000', connectionId: 'conn-unknown-id-7f3a' },
+    { capability: 'STT', provider: 'whisper_cpp', model: '', unit: 'AUDIO_SECOND', quantity: '300', costMicros: '1000000', connectionId: null },
+  ],
+};
+
+/**
+ * A PLATFORM-funded line. The ledger stamps the SYSTEM row's `connectionId` on
+ * it — only a self-hosted engine yields `null` — so a platform-funded generation
+ * arrives as an id like any other, and resolving it against the TENANT's lists
+ * alone leaves it unnamed.
+ */
+const SUMMARY_WITH_PLATFORM_LINE = {
+  ...SUMMARY,
+  lines: [
+    { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '1000', costMicros: '2000000', connectionId: 'conn-2' },
+    { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '400', costMicros: '400000', connectionId: 'conn-sys-openai-9d21' },
+    { capability: 'TTS', provider: 'azure', model: 'neural', unit: 'CHARACTER', quantity: '900', costMicros: '90000', connectionId: 'conn-sys-azure-4b07' },
     { capability: 'STT', provider: 'whisper_cpp', model: '', unit: 'AUDIO_SECOND', quantity: '300', costMicros: '1000000', connectionId: null },
   ],
 };
@@ -152,6 +170,32 @@ const CONNECTIONS: Record<string, unknown[]> = {
   tts: [],
 };
 
+/**
+ * `GET admin/providers/:service/platform-defaults` — the SYSTEM tier's rows for
+ * this service, annotated with the cascade's verdict. A placeholder (`version: 0`,
+ * no `id`) is what the platform has no row for, and it names nothing.
+ */
+const PLATFORM_DEFAULTS: Record<string, unknown> = {
+  llm: {
+    service: 'llm',
+    tenantId: 'tnt-1',
+    entitled: true,
+    connections: [
+      { id: 'conn-sys-openai-9d21', tenantId: SYSTEM_TENANT, service: 'llm', provider: 'openai', slug: 'openai', name: null, version: 3, resolution: 'inherited' },
+      { tenantId: SYSTEM_TENANT, service: 'llm', provider: 'anthropic', slug: 'anthropic', name: null, version: 0, resolution: 'not-configured' },
+    ],
+  },
+  tts: {
+    service: 'tts',
+    tenantId: 'tnt-1',
+    entitled: true,
+    connections: [
+      { id: 'conn-sys-azure-4b07', tenantId: SYSTEM_TENANT, service: 'tts', provider: 'azure', slug: 'azure', name: null, version: 2, resolution: 'inherited' },
+    ],
+  },
+  stt: { service: 'stt', tenantId: 'tnt-1', entitled: true, connections: [] },
+};
+
 function stubFetchWithConnections(summary: unknown = SUMMARY_WITH_CONNECTIONS) {
   const paths: string[] = [];
   vi.stubGlobal(
@@ -163,6 +207,10 @@ function stubFetchWithConnections(summary: unknown = SUMMARY_WITH_CONNECTIONS) {
       if (path === '/api/hope/admin/usage/summary') return Response.json(summary);
       if (path === '/api/hope/admin/usage/cost-per-encounter') return Response.json(COST_PER_ENCOUNTER);
       if (path === '/api/hope/admin/usage/top-tenants') return Response.json(TOP_TENANTS);
+      if (path.endsWith('/platform-defaults')) {
+        const service = path.replace('/api/hope/admin/providers/', '').replace('/platform-defaults', '');
+        return Response.json(PLATFORM_DEFAULTS[service] ?? { connections: [] });
+      }
       if (path.startsWith('/api/hope/admin/providers/')) {
         return Response.json(CONNECTIONS[path.replace('/api/hope/admin/providers/', '')] ?? []);
       }
@@ -201,5 +249,48 @@ describe('ConsumptionCostScreen — which connection spent this (958 D-7)', () =
     await screen.findByRole('table', { name: /Usage detail/ });
 
     expect(paths.some((path) => path.startsWith('/api/hope/admin/providers/'))).toBe(false);
+  });
+});
+
+/**
+ * TASK-958 (wire review #6) — a PLATFORM credential is not an unnamed tenant one.
+ *
+ * A platform-funded generation carries the SYSTEM row's `connectionId`; only a
+ * self-hosted engine yields `null`. Resolving that id against the tenant's own
+ * lists finds nothing, so the column fell back to 8 characters of a UUID — which
+ * reads as "a connection of yours we could not name" for a row the tenant does
+ * not own and cannot name. The platform-defaults list is the other half of the
+ * cascade the column is describing, so it is read alongside.
+ */
+describe('ConsumptionCostScreen — a platform-funded line says so (958 wire review #6)', () => {
+  it('names the SYSTEM row as the platform, not as an unresolved id', async () => {
+    stubFetchWithConnections(SUMMARY_WITH_PLATFORM_LINE);
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    const table = await screen.findByRole('table', { name: /Usage detail/ });
+    await waitFor(() => expect(within(table).getByText('Platform · openai')).toBeDefined());
+    // The second capability proves the read is per-service, not an llm-only patch.
+    expect(within(table).getByText('Platform · azure')).toBeDefined();
+    // The tenant's own row keeps the name the tenant gave it.
+    expect(within(table).getByText('Research account')).toBeDefined();
+    // And neither platform id leaks as a truncated UUID.
+    expect(within(table).queryByText('conn-sys')).toBeNull();
+  });
+
+  it('still shortens an id that belongs to NEITHER tier', async () => {
+    stubFetchWithConnections();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    const table = await screen.findByRole('table', { name: /Usage detail/ });
+    await waitFor(() => expect(within(table).getByText('Research account')).toBeDefined());
+    expect(within(table).getByText('conn-unk')).toBeDefined();
+  });
+
+  it('reads the platform defaults only when a line carries a connection', async () => {
+    const paths = stubFetchWithConnections(SUMMARY);
+    renderWithProviders(<ConsumptionCostScreen />);
+    await screen.findByRole('table', { name: /Usage detail/ });
+
+    expect(paths.some((path) => path.endsWith('/platform-defaults'))).toBe(false);
   });
 });

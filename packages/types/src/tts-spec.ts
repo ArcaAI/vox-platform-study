@@ -123,6 +123,20 @@ export interface TtsSpecConnection {
   region: string | null;
   timeoutS: number | null;
   funding: AgentFundingTier;
+  /**
+   * TASK-958 — WHICH connection row of this provider answered. A tenant may hold
+   * several rows for one `(service, provider)`, so `provider` alone no longer names
+   * one: `connectionId` is what `apps/tts` attributes the spend to (it reads it off
+   * `candidate.connection` and echoes it as `X-Tts-Connection-Id`), and
+   * `connectionSlug` is the tenant-chosen name it is recognised by.
+   *
+   * OMIT-WHEN-ABSENT, matching `tts.spec.TtsSpecConnection.OPTIONAL_FIELDS`: the
+   * Python mirror is `extra='forbid'`, and a gateway that predates the field sends
+   * neither — the row it resolved is then that provider's DEFAULT connection, which
+   * is exactly the pre-958 behaviour.
+   */
+  connectionId?: string;
+  connectionSlug?: string;
 }
 
 /** Which agent version produced a candidate, and how it was chosen. */
@@ -154,6 +168,24 @@ export interface ResolvedTtsCandidate {
   voice: TtsVoiceBinding | null;
   connection: TtsSpecConnection | null;
   fundingTier: AgentFundingTier;
+  /**
+   * TASK-958 D-4 — the key this candidate's credential arrives under in
+   * `provider_overrides`: the provider/engine name for the tenant's DEFAULT connection
+   * and for a platform row, `engine:slug` for a named sibling.
+   *
+   * It exists because two candidates in ONE chain may name the same engine on
+   * different accounts, which a provider-keyed map cannot express: both would read
+   * one entry and the failover would spend the key that just failed. Absent ⇒ a
+   * sender that predates the field, and `apps/tts` falls back to the engine name,
+   * which is what it has always done.
+   *
+   * The `engine:` prefix is what keeps the two NAMESPACES apart. A sibling keyed by its
+   * bare slug would sit in the same space as provider ids, so a tenant that called its
+   * second Sarvam account `azure` would collide with the `azure` entry. Provider ids
+   * never contain `:`. The key is OPAQUE to `apps/tts`: it looks the string up, it does
+   * not parse it.
+   */
+  connectionKey?: string;
 }
 
 export interface ResolvedTtsFallback {

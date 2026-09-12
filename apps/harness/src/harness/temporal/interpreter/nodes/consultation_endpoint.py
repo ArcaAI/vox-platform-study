@@ -88,7 +88,7 @@ from harness.temporal.models import (
 #: a conservative one, and the loop is the authority on expiry, not a graph author.
 _KNOWN_REASONS = {ENDPOINT_REASON_ENDED, ENDPOINT_REASON_TIMED_OUT, "CANCELLED"}
 
-#Only a proposal a clinician actually accepted may be promoted.
+# Only a proposal a clinician actually accepted may be promoted.
 _ACCEPTED_STATUS = "ACCEPTED"
 
 

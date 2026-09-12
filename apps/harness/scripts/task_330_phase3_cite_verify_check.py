@@ -148,7 +148,9 @@ async def main() -> None:
     print("\n=== 5. CITATIONS MAP (real strict [[kb:]] parser) ===")
     print(f"  total_claims={len(citations_map['claims'])} cited_claims={len(cited_claims)}")
     for c in cited_claims[:8]:
-        print(f"    claim {c['id']} sec={c['section']} kb={c['knowledgeChunkIds']} text={c['text'][:70]!r}")
+        print(
+            f"    claim {c['id']} sec={c['section']} kb={c['knowledgeChunkIds']} text={c['text'][:70]!r}"
+        )
 
     # 6) citation_verify (REAL sensor + REAL LM Studio judge, threshold 0.8).
     print("\n=== 6. CITATION_VERIFY (real sensor + real judge) ===")
@@ -171,9 +173,13 @@ async def main() -> None:
     print("\n===== SUMMARY =====")
     print(f"  retrieved cited chunk         : {'PASS' if chunk_ids else 'FAIL'} ({chunk_ids})")
     print(f"  model emitted [[kb:]] marker  : {'PASS' if cited_inline else 'FAIL'}")
-    print(f"  citationsMap knowledgeChunkIds: {'PASS' if cited_claims else 'FAIL'} ({len(cited_claims)} cited claims)")
+    print(
+        f"  citationsMap knowledgeChunkIds: {'PASS' if cited_claims else 'FAIL'} ({len(cited_claims)} cited claims)"
+    )
     verdict = sresult.passed and not sresult.degraded
-    print(f"  citation_verify PASS          : {'PASS' if verdict else ('DEGRADED' if sresult.degraded else 'FAIL')}")
+    print(
+        f"  citation_verify PASS          : {'PASS' if verdict else ('DEGRADED' if sresult.degraded else 'FAIL')}"
+    )
 
 
 if __name__ == "__main__":

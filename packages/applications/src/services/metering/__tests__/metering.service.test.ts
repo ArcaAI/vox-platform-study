@@ -14,9 +14,10 @@
  *   - LLM_TOKENS EXCLUDES the guardrail/harness operations from its sum via the
  *     rollup `operation` dimension — they are metered for COGS but
  *     never billed (D16).
- *   - `reconcileTenant` upserts TEN meter rows for that window (the four
- *     business meters + the six unit meters) with the aggregated
- *     values + `reconciledAt`, and returns the usage.
+ *   - `reconcileTenant` upserts THIRTEEN meter rows for that window (the four
+ *     business meters + the six unit meters + TASK-959's compute, worker-CPU
+ *     and storage-byte snapshots) with the aggregated values + `reconciledAt`,
+ *     and returns the usage.
  *   - `reconcileAllActiveTenants` iterates every tenant and is resilient to a
  *     per-tenant failure (keeps going, counts only successes).
  */
@@ -43,7 +44,13 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
     workflowRun: { count: vi.fn().mockResolvedValue(4) },
     // Rollup-backed unit meters. Every metric maps to one
     // `aiUsageRollupDaily.aggregate` call except `guardrailCalls`.
-    aiUsageRollupDaily: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantitySum: decimalLike(0) } }) },
+    // `findFirst` answers the storage LEVEL read (TASK-959) — null means the
+    // snapshot job has not run in this window, which is the shape every
+    // pre-TASK-959 assertion here implicitly assumes.
+    aiUsageRollupDaily: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { quantitySum: decimalLike(0) } }),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     aiUsageEvent: { findMany: vi.fn().mockResolvedValue([]) },
     tenant: { findMany: vi.fn().mockResolvedValue([{ id: 't1' }, { id: 't2' }]) },
     tenantUsageMeter: { upsert: vi.fn().mockResolvedValue({}) },
@@ -60,7 +67,19 @@ function makeService(baseClient: ReturnType<typeof makeBaseClient>) {
   return new MeteringService(appSettings, schedulerRegistry, databaseService);
 }
 
-const ZERO_UNIT_METERS = { sttSessionSeconds: 0, llmTokens: 0, ttsCharacters: 0, nlpTextUnits: 0, guardrailCalls: 0, embeddingTokens: 0 };
+const ZERO_UNIT_METERS = {
+  sttSessionSeconds: 0,
+  llmTokens: 0,
+  ttsCharacters: 0,
+  nlpTextUnits: 0,
+  guardrailCalls: 0,
+  embeddingTokens: 0,
+  // TASK-959 — compute, worker CPU, storage level and third-party bytes.
+  computeSeconds: 0,
+  workflowCpuSeconds: 0,
+  storageGb: 0,
+  thirdPartyBytes: 0,
+};
 
 describe('MeteringService.getCurrentUsage', () => {
   let baseClient: ReturnType<typeof makeBaseClient>;
@@ -223,9 +242,16 @@ describe('MeteringService.getCurrentUsage', () => {
     it('never reads the rollup/ledger tables from the OLD three business meters', async () => {
       // Regression guard: the existing 3 meters keep their live-aggregate path
       // untouched — they must never route through the new ledger tables.
+      //
+      // Read over the SCALAR capability filters only. TASK-959's compute meter
+      // spans five capabilities as `{ in: [...] }` and its byte meter filters
+      // on deployment with no capability at all, so neither is a
+      // single-capability metric and neither belongs in this list.
       await service.getCurrentUsage('tenant-1', FIXED_NOW);
-      const capabilitiesQueried = baseClient.aiUsageRollupDaily.aggregate.mock.calls.map((c) => c[0].where.capability);
-      expect(capabilitiesQueried.sort()).toEqual(['EMBEDDING', 'LLM', 'NLP', 'STT', 'TTS']);
+      const capabilitiesQueried = baseClient.aiUsageRollupDaily.aggregate.mock.calls
+        .map((c) => c[0].where.capability)
+        .filter((capability: unknown) => typeof capability === 'string');
+      expect(capabilitiesQueried.sort()).toEqual(['EMBEDDING', 'LLM', 'NLP', 'STT', 'TTS', 'WORKFLOW']);
     });
 
     it('respects the UTC calendar-month boundary (a leap-Feb tenant does not leak into March)', async () => {
@@ -243,14 +269,14 @@ describe('MeteringService.getCurrentUsage', () => {
 });
 
 describe('MeteringService.reconcileTenant', () => {
-  it('upserts TEN meter rows for the window (4 business + 6 unit meters) and returns the usage', async () => {
+  it('upserts THIRTEEN meter rows for the window (4 business + 6 unit + 3 TASK-959) and returns the usage', async () => {
     const baseClient = makeBaseClient();
     const service = makeService(baseClient);
 
     const usage = await service.reconcileTenant('tenant-1', FIXED_NOW);
 
     expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, workflowInvocations: 4, ...ZERO_UNIT_METERS });
-    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(10);
+    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(13);
 
     const metrics = baseClient.tenantUsageMeter.upsert.mock.calls.map(
       (call: [{ where: { TenantUsageMeter_tenant_metric_period_unique: { metric: UsageMeterMetric } } }]) =>
@@ -310,8 +336,8 @@ describe('MeteringService.reconcileAllActiveTenants', () => {
     const result = await service.reconcileAllActiveTenants(FIXED_NOW);
 
     expect(result).toEqual({ tenants: 2 });
-    // 2 tenants × 9 meters.
-    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(20);
+    // 2 tenants × 13 meters (4 business + 6 unit + TASK-959's three).
+    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(26);
   });
 
   it('keeps going when one tenant fails and counts only the successes', async () => {

@@ -67,9 +67,7 @@ class TestStdoutIsTheOnlySink:
 
     def test_no_file_handler_is_ever_built(self) -> None:
         setup_logging("nlp-test")
-        assert not any(
-            isinstance(h, logging.FileHandler) for h in logging.getLogger().handlers
-        )
+        assert not any(isinstance(h, logging.FileHandler) for h in logging.getLogger().handlers)
 
     def test_the_level_still_comes_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """`NLP_LOG_LEVEL` (then bare `LOG_LEVEL`) stays an env read: it is what an

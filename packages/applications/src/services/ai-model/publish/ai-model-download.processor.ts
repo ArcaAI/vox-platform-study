@@ -105,7 +105,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
         await job.updateProgress(10);
 
         const quantHint = model.computeType ?? null;
-        const files = await this.modelSourceFetcher.fetch(model.sourceUri, quantHint);
+        const files = await this.modelSourceFetcher.fetch(model.source, model.sourceUri, quantHint);
         if (files.length === 0) {
           throw new Error(`No files fetched for AiModel ${aiModelId} from '${model.sourceUri}'`);
         }

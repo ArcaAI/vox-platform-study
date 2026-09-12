@@ -219,7 +219,9 @@ def test_a_matching_cumulative_verdict_allows_the_read() -> None:
 def test_a_verdict_is_not_inherited_across_a_capability_set_change() -> None:
     """Read-only today, chart-writing tomorrow: recompute, never inherit."""
     decision = _gate().evaluate(
-        _request(capability_set_id="chart-write", declared_capabilities=("text.read", "chart.write")),
+        _request(
+            capability_set_id="chart-write", declared_capabilities=("text.read", "chart.write")
+        ),
         held_verdict=_verdict(CUMULATIVE, complete=True, capability_set="readonly-text"),
         segment_verdicts=[],
     )

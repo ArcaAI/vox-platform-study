@@ -1123,5 +1123,406 @@
         ]
       }
     }
+  },
+  "twoConnectionsOfOneVendor": {
+    "$comment": "TASK-958 D-3/D-4 — a tenant holding TWO Azure Speech accounts. Both candidates name the SAME engine with the SAME endpoint facts, so before this ticket the chain de-duped them into a retry against the account that just failed; `connection.connectionId` is now part of the dispatch key, and `connectionKey` is what `apps/tts` reads each credential under. Every other example carries none of the three fields, which is what pins them as omit-when-absent.",
+    "input": {
+      "primary": {
+        "agent": {
+          "agentId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+          "agentVersionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+          "slug": "clinic-cloud-voice",
+          "versionNumber": 1,
+          "task": "TEXT_TO_SPEECH",
+          "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+          "source": "explicit",
+          "compiledConfig": {
+            "task": "TEXT_TO_SPEECH",
+            "service": "tts",
+            "model": {
+              "id": "80000000-0000-0000-0007-000000000012",
+              "slug": "azure-neural-voices",
+              "provider": "azure",
+              "taskType": "TEXT_TO_SPEECH"
+            },
+            "fallbacks": [],
+            "instruction": null,
+            "resolvedPrompt": null,
+            "parameters": {
+              "voice": "ml-IN-SobhanaNeural",
+              "language": "ml",
+              "speed": 0.95,
+              "format": "pcm",
+              "sampleRate": 24000
+            },
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "text"
+                  ]
+                }
+              ]
+            },
+            "outputSchema": {
+              "type": "object",
+              "required": [
+                "audio"
+              ],
+              "properties": {
+                "audio": {
+                  "type": "object"
+                }
+              }
+            },
+            "tools": [],
+            "protocols": [
+              "http",
+              "http-sse"
+            ]
+          },
+          "models": [
+            {
+              "role": "primary",
+              "slug": "azure-neural-voices",
+              "sourceUri": "azure://neural-voices",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "format": "AZURE_SPEECH",
+              "computeType": "cloud",
+              "provider": "azure",
+              "tenantId": "00000000-0000-0000-0000-000000000000"
+            }
+          ],
+          "providerOverride": {
+            "provider": "azure",
+            "api_key": "REDACTED-IN-THE-INPUT-ONLY",
+            "funding": "tenant",
+            "region": "westeurope"
+          },
+          "fundingTier": "tenant"
+        },
+        "model": {
+          "role": "primary",
+          "slug": "azure-neural-voices",
+          "sourceUri": "azure://neural-voices",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "format": "AZURE_SPEECH",
+          "computeType": "cloud",
+          "provider": "azure",
+          "tenantId": "00000000-0000-0000-0000-000000000000"
+        },
+        "kind": "primary",
+        "metaData": {
+          "voices": [
+            {
+              "id": "en-IN-NeerjaNeural",
+              "locale": "en-IN"
+            },
+            {
+              "id": "ml-IN-SobhanaNeural",
+              "locale": "ml-IN"
+            }
+          ]
+        },
+        "connection": {
+          "provider": "azure",
+          "baseUrl": null,
+          "region": "westeurope",
+          "timeoutS": 30,
+          "funding": "tenant",
+          "connectionId": "c0000001-0000-4000-8000-00000000000a",
+          "connectionSlug": "azure"
+        },
+        "fundingTier": "tenant",
+        "connectionKey": "azure"
+      },
+      "chain": [
+        {
+          "agent": {
+            "agentId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+            "agentVersionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+            "slug": "clinic-cloud-voice",
+            "versionNumber": 1,
+            "task": "TEXT_TO_SPEECH",
+            "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+            "source": "explicit",
+            "compiledConfig": {
+              "task": "TEXT_TO_SPEECH",
+              "service": "tts",
+              "model": {
+                "id": "80000000-0000-0000-0007-000000000012",
+                "slug": "azure-neural-voices",
+                "provider": "azure",
+                "taskType": "TEXT_TO_SPEECH"
+              },
+              "fallbacks": [],
+              "instruction": null,
+              "resolvedPrompt": null,
+              "parameters": {
+                "voice": "ml-IN-SobhanaNeural",
+                "language": "ml",
+                "speed": 0.95,
+                "format": "pcm",
+                "sampleRate": 24000
+              },
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "text"
+                    ]
+                  }
+                ]
+              },
+              "outputSchema": {
+                "type": "object",
+                "required": [
+                  "audio"
+                ],
+                "properties": {
+                  "audio": {
+                    "type": "object"
+                  }
+                }
+              },
+              "tools": [],
+              "protocols": [
+                "http",
+                "http-sse"
+              ]
+            },
+            "models": [
+              {
+                "role": "primary",
+                "slug": "azure-neural-voices",
+                "sourceUri": "azure://neural-voices",
+                "sourceRevision": "main",
+                "localPath": null,
+                "checksum": null,
+                "format": "AZURE_SPEECH",
+                "computeType": "cloud",
+                "provider": "azure",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            ],
+            "providerOverride": {
+              "provider": "azure",
+              "api_key": "REDACTED-IN-THE-INPUT-ONLY",
+              "funding": "tenant",
+              "region": "westeurope"
+            },
+            "fundingTier": "tenant"
+          },
+          "model": {
+            "role": "fallback",
+            "slug": "azure-neural-voices-research",
+            "sourceUri": "azure://neural-voices",
+            "sourceRevision": "main",
+            "localPath": null,
+            "checksum": null,
+            "format": "AZURE_SPEECH",
+            "computeType": "cloud",
+            "provider": "azure",
+            "tenantId": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": "fallback-model",
+          "metaData": {
+            "voices": [
+              {
+                "id": "en-IN-NeerjaNeural",
+                "locale": "en-IN"
+              },
+              {
+                "id": "ml-IN-SobhanaNeural",
+                "locale": "ml-IN"
+              }
+            ]
+          },
+          "connection": {
+            "provider": "azure",
+            "baseUrl": null,
+            "region": "westeurope",
+            "timeoutS": 30,
+            "funding": "tenant",
+            "connectionId": "c0000002-0000-4000-8000-00000000000b",
+            "connectionSlug": "azure-research"
+          },
+          "fundingTier": "tenant",
+          "connectionKey": "azure:azure-research"
+        }
+      ],
+      "autoSwitch": true
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "agent": {
+        "slug": "clinic-cloud-voice",
+        "versionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+        "versionNumber": 1,
+        "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+        "source": "explicit"
+      },
+      "primary": {
+        "kind": "primary",
+        "runtimeKey": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+        "agent": {
+          "slug": "clinic-cloud-voice",
+          "versionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+          "versionNumber": 1,
+          "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+          "source": "explicit"
+        },
+        "model": {
+          "role": "primary",
+          "slug": "azure-neural-voices",
+          "taskType": "TEXT_TO_SPEECH",
+          "format": "AZURE_SPEECH",
+          "sourceUri": "azure://neural-voices",
+          "sourceRevision": "main",
+          "localPath": null,
+          "checksum": null,
+          "computeType": "cloud",
+          "provider": "azure",
+          "tenantId": "00000000-0000-0000-0000-000000000000",
+          "artifacts": {},
+          "voices": [
+            {
+              "id": "en-IN-NeerjaNeural",
+              "locale": "en-IN",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            {
+              "id": "ml-IN-SobhanaNeural",
+              "locale": "ml-IN",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            }
+          ]
+        },
+        "parameters": {
+          "voice": "ml-IN-SobhanaNeural",
+          "language": "ml",
+          "speed": 0.95,
+          "format": "pcm",
+          "sampleRate": 24000,
+          "ssml": false
+        },
+        "voice": {
+          "id": "ml-IN-SobhanaNeural",
+          "locale": "ml-IN",
+          "providerVoice": null,
+          "refAudioPath": null,
+          "refText": null
+        },
+        "connection": {
+          "provider": "azure",
+          "baseUrl": null,
+          "region": "westeurope",
+          "timeoutS": 30,
+          "funding": "tenant",
+          "connectionId": "c0000001-0000-4000-8000-00000000000a",
+          "connectionSlug": "azure"
+        },
+        "fundingTier": "tenant",
+        "connectionKey": "azure"
+      },
+      "fallback": {
+        "autoSwitch": true,
+        "chain": [
+          {
+            "kind": "fallback-model",
+            "runtimeKey": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21:fallback:azure-neural-voices-research",
+            "agent": {
+              "slug": "clinic-cloud-voice",
+              "versionId": "2c8e5f31-7d42-4d3b-8c2f-4a7e9b6d3f21",
+              "versionNumber": 1,
+              "tenantId": "7f3c1a2e-9b45-4c8d-a1e6-2f5b0d7c4a91",
+              "source": "explicit"
+            },
+            "model": {
+              "role": "fallback",
+              "slug": "azure-neural-voices-research",
+              "taskType": "TEXT_TO_SPEECH",
+              "format": "AZURE_SPEECH",
+              "sourceUri": "azure://neural-voices",
+              "sourceRevision": "main",
+              "localPath": null,
+              "checksum": null,
+              "computeType": "cloud",
+              "provider": "azure",
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "artifacts": {},
+              "voices": [
+                {
+                  "id": "en-IN-NeerjaNeural",
+                  "locale": "en-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                },
+                {
+                  "id": "ml-IN-SobhanaNeural",
+                  "locale": "ml-IN",
+                  "providerVoice": null,
+                  "refAudioPath": null,
+                  "refText": null
+                }
+              ]
+            },
+            "parameters": {
+              "voice": "ml-IN-SobhanaNeural",
+              "language": "ml",
+              "speed": 0.95,
+              "format": "pcm",
+              "sampleRate": 24000,
+              "ssml": false
+            },
+            "voice": {
+              "id": "ml-IN-SobhanaNeural",
+              "locale": "ml-IN",
+              "providerVoice": null,
+              "refAudioPath": null,
+              "refText": null
+            },
+            "connection": {
+              "provider": "azure",
+              "baseUrl": null,
+              "region": "westeurope",
+              "timeoutS": 30,
+              "funding": "tenant",
+              "connectionId": "c0000002-0000-4000-8000-00000000000b",
+              "connectionSlug": "azure-research"
+            },
+            "fundingTier": "tenant",
+            "connectionKey": "azure:azure-research"
+          }
+        ]
+      }
+    }
   }
 }

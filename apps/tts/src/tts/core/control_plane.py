@@ -108,7 +108,7 @@ def moved_to_row_alias(env_var: str) -> str:
     return f"{env_var}{MOVED_TO_ROW_SUFFIX}"
 
 
-#Dotted ``Settings`` attribute path → settings-registry key.
+# Dotted ``Settings`` attribute path → settings-registry key.
 #:
 #: The path is dotted because tts nests its provider config; ``azure.region``
 #: means ``settings.azure.region``. Asserted against the real model by
