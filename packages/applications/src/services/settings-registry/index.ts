@@ -36,6 +36,12 @@ export { HARNESS_CLAIM_CHECK_ENABLED } from './descriptors/service-runtime.descr
 // resolves them by KEY through `EffectiveSettingsService`, and the seed writes the SYSTEM
 // role row by the same constant, so both sides name one exported symbol.
 export * from './descriptors/user-identity.descriptors';
+// TASK-959 — `metering.compute.deviceByProvider`. The gateway's compute emitters resolve it by
+// KEY through the tenant cascade and fall back to `COMPUTE_DEVICE_BY_PROVIDER_DEFAULT` when the
+// cascade is unreachable, so both sides must name ONE exported symbol — the same reason the
+// `identity.autoProvision.*` keys above are on this barrel. W0 registered the descriptor in
+// `registry.ts` but nothing consumed it yet; this lane is the first consumer.
+export * from './descriptors/metering-compute.descriptors';
 export * from './settings-registry-write.service';
 // TASK-932 R-6/D-6 -- the derived lock (bootstrap / credential / data-plane are
 // un-editable for everyone) and the tenant-visibility predicate behind R-1/D-5.
