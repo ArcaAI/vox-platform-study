@@ -49,7 +49,9 @@ import {
   SOURCE_LABELS,
   SOURCE_OPTIONS,
   deriveLocalPath,
+  deriveLocalSourceUri,
   humanizeEnum,
+  isBucketPrefixRedundant,
 } from './model-meta';
 import { ModelRegistryConnectionStatus } from './model-registry-connection-status';
 
@@ -193,7 +195,9 @@ function toRequest(values: ModelFormValues): CreateModelRequest {
     taskType: values.taskType.trim(),
     modelType: values.modelType,
     source: values.source,
-    sourceUri: values.sourceUri.trim(),
+    // A LOCAL row's sourceUri is DERIVED from bucketPrefix, never typed by
+    // hand — the two can never disagree (TASK-960 D3c).
+    sourceUri: values.source === 'LOCAL' ? deriveLocalSourceUri(values.bucketPrefix) : values.sourceUri.trim(),
     format: values.format,
     ...(values.description.trim() ? { description: values.description.trim() } : {}),
     // "(none)" omits the field — the gateway DTO rejects null/empty (@IsIn).
@@ -462,6 +466,9 @@ export function ModelFormSheet({
       isOutOfRange(values.asrLogprobThreshold, AI_MODEL_ASR_PROFILE_DECODING_RANGES.logprobThreshold) ||
       isOutOfRange(values.asrNoRepeatNgramSize, AI_MODEL_ASR_PROFILE_DECODING_RANGES.noRepeatNgramSize) ||
       isOutOfRange(values.asrPrevTextContextWords, AI_MODEL_ASR_PROFILE_DECODING_RANGES.prevTextContextWords));
+  const isLocalSource = values.source === 'LOCAL';
+  const derivedSourceUri = deriveLocalSourceUri(values.bucketPrefix);
+  const hasBucketPrefixError = isBucketPrefixRedundant(values.bucketPrefix);
 
   function set<K extends keyof ModelFormValues>(key: K, value: ModelFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -554,7 +561,7 @@ export function ModelFormSheet({
                 <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
                   Cancel
                 </Button>
-                <Button type="submit" form={formId} disabled={isPending || hasAsrValidationError}>
+                <Button type="submit" form={formId} disabled={isPending || hasAsrValidationError || hasBucketPrefixError}>
                   {isPending ? <Spinner /> : null}
                   {isEdit ? 'Save changes' : 'Register model'}
                 </Button>
@@ -684,16 +691,22 @@ export function ModelFormSheet({
                   placeholder="gemma4"
                 />
               </Field>
-              <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">
+              <Field id={`${uid}-source-uri`} label="Source URI" required={!isLocalSource} className="sm:col-span-2">
                 <Input
                   id={`${uid}-source-uri`}
-                  value={values.sourceUri}
+                  value={isLocalSource ? derivedSourceUri : values.sourceUri}
                   onChange={(event) => set('sourceUri', event.target.value)}
-                  required
+                  required={!isLocalSource}
+                  disabled={isLocalSource}
                   className="font-mono"
                   placeholder="openai/whisper-large-v4"
-                  aria-describedby={`${uid}-weight-source-help`}
+                  aria-describedby={`${uid}-source-uri-hint`}
                 />
+                <p id={`${uid}-source-uri-hint`} className="text-muted-foreground text-xs">
+                  {isLocalSource
+                    ? 'Derived from the bucket prefix below, so the two can never disagree. Nothing is downloaded — the weights are read directly from the hope-models bucket mount.'
+                    : 'Hugging Face repo id, GitHub URL, or MLflow URI — or, for the S3 source, an s3:// prefix in another bucket that gets copied into hope-models on publish.'}
+                </p>
               </Field>
               <Field id={`${uid}-license`} label="Licence">
                 <Input id={`${uid}-license`} value={values.license} onChange={(event) => set('license', event.target.value)} className="font-mono" placeholder="apache-2.0" />
@@ -714,15 +727,23 @@ export function ModelFormSheet({
                 <Checkbox id={`${uid}-gated`} checked={values.gated} onCheckedChange={(checked) => set('gated', checked === true)} />
                 <Label htmlFor={`${uid}-gated`}>Gated Hub repo (needs the platform token)</Label>
               </div>
-              <Field id={`${uid}-bucket-prefix`} label="Bucket prefix" className="sm:col-span-2">
+              <Field id={`${uid}-bucket-prefix`} label="Bucket prefix" required={isLocalSource} className="sm:col-span-2">
                 <Input
                   id={`${uid}-bucket-prefix`}
                   value={values.bucketPrefix}
                   onChange={(event) => set('bucketPrefix', event.target.value)}
+                  required={isLocalSource}
                   className="font-mono"
                   placeholder="<slug>/<version>/ or hf/hub/models--org--repo/snapshots/<sha>/"
-                  aria-describedby={`${uid}-bucket-help`}
+                  aria-invalid={hasBucketPrefixError || undefined}
+                  aria-describedby={hasBucketPrefixError ? `${uid}-bucket-help ${uid}-bucket-prefix-error` : `${uid}-bucket-help`}
                 />
+                {hasBucketPrefixError ? (
+                  <p id={`${uid}-bucket-prefix-error`} className="text-destructive text-sm">
+                    Enter a path relative to the bucket — drop the leading &quot;hope-models/&quot; or &quot;s3://hope-models/&quot;; the mount
+                    already starts inside that bucket.
+                  </p>
+                ) : null}
               </Field>
               <Field id={`${uid}-primary-object`} label="Primary object (single-file loaders)">
                 <Input
@@ -742,7 +763,9 @@ export function ModelFormSheet({
                   <span className="text-foreground font-medium">Where the weights live.</span> Every serving pod mounts{' '}
                   <code className="font-mono">s3://hope-models</code> read-only at <code className="font-mono">/mnt/models-bucket</code>. The
                   bucket prefix is normally written by <span className="text-foreground font-medium">Publish to bucket</span> (below, once the row
-                  exists) — type it only when registering weights the inventory found already in the bucket.
+                  exists) — type it yourself only for a Local row, or when registering weights the inventory found already in the bucket. Enter it
+                  relative to the bucket root — never prefixed with <code className="font-mono">hope-models/</code> or{' '}
+                  <code className="font-mono">s3://hope-models/</code>, since the mount above already starts inside that bucket.
                 </p>
                 <p>
                   <span className="text-foreground font-medium">Derived local path:</span>{' '}
