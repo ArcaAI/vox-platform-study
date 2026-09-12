@@ -15,6 +15,8 @@ export interface CreateAiUsageEventProps extends BaseEntityFactoryCreateProps {
   capability: IAiUsageEventEntity['capability'];
   operation: IAiUsageEventEntity['operation'];
   provider: IAiUsageEventEntity['provider'];
+  /** TASK-958 — the connection that served, when one did. */
+  connectionId?: IAiUsageEventEntity['connectionId'];
   model?: IAiUsageEventEntity['model'];
   deployment: IAiUsageEventEntity['deployment'];
 
@@ -74,6 +76,7 @@ export class AiUsageEventFactory {
       capability: props.capability,
       operation: props.operation,
       provider: props.provider,
+      connectionId: props.connectionId ?? null,
       model: props.model ?? null,
       deployment: props.deployment,
 

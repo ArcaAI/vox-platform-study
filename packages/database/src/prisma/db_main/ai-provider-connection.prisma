@@ -1,9 +1,16 @@
 // ============================================================================
 // AI Provider Connections (config-plane core — UNIFIED provider-connection plane)
 //
-// WHERE a serving provider lives and HOW to authenticate. One row per
-// (tenant, SERVICE, provider); the reserved SYSTEM tenant row is the platform
-// default. This is the ONE credential/connection store for all three AI
+// WHERE a serving provider lives and HOW to authenticate. TASK-958: one
+// DEFAULT row per (tenant, SERVICE, provider) plus any number of NAMED sibling
+// rows on the tenant tier — a tenant admin that holds two OpenAI accounts
+// keeps two connections, each with its own endpoint, key and ceilings. The
+// SYSTEM tier stays ONE row per (service, provider): the platform default is a
+// per-provider concept and the reserved SYSTEM tenant row is that default.
+// Identity is `(tenantId, service, slug)`; `defaultForProvider` (= `provider`
+// on the default row, NULL on every sibling) makes "exactly one default per
+// provider" a database fact rather than a service-layer convention.
+// This is the ONE credential/connection store for all three AI
 // capabilities — LLM (TEXT), STT and TTS — unifying the former
 // TenantTtsProviderCredential / TenantSttProviderCredential tables.
 //
@@ -35,8 +42,10 @@
 // SUPER_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
 // `encryptedApiKey` is Vault-Transit ciphertext via secret-field.util —
 // NEVER returned by any read DTO (hasKey boolean only).
-// Resolution: tenant row (enabled) → SYSTEM row → fail closed, filtered by
-// `service`. removed the former per-service ENV-key fallback for the
+// Resolution: the tenant's DEFAULT row (enabled) → SYSTEM row → fail closed,
+// filtered by `service`. A NON-default sibling is reached only by a model row
+// that names it (`AiModel.sourceConnectionId`); it never participates in the
+// provider-NAME cascade and therefore never vetoes a provider. removed the former per-service ENV-key fallback for the
 // STT/TTS/TEXT cloud credentials: the SYSTEM row IS the platform default, and a
 // request with no enabled tenant/SYSTEM row now fails closed (typically 503)
 // rather than substituting an env secret. (Bedrock/Vertex remain ambient-cloud-
@@ -58,16 +67,31 @@ model AiProviderConnection {
   tenantId String
 
   // core fields
-  service         String  @default("llm") // capability discriminator (PROVIDER_SERVICES: llm|stt|tts|embeddings|rerank|vector|model-registry); backfills existing rows to 'llm'. Plain TEXT with no CHECK constraint on purpose — widening the vocabulary costs NO DDL; the governance list in @arcaai/applications constants.ts is the source of truth.
-  provider        String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam, vector:qdrant, rerank:tei)
-  baseUrl         String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`; the Qdrant/TEI URL for the integration services)
-  region          String? // bedrock; classic Azure Speech
-  apiVersion      String? // azure
-  deploymentName  String? // azure
-  encryptedApiKey Bytes? // Vault-Transit ciphertext (secret-field.util); plaintext never stored
-  keyVersion      Int?
-  enabled         Boolean @default(false)
-  extraJson       Json?   @db.JsonB // provider-specific extras (validated per-provider in the DTO)
+  service            String  @default("llm") // capability discriminator (PROVIDER_SERVICES: llm|stt|tts|embeddings|rerank|vector|model-registry); backfills existing rows to 'llm'. Plain TEXT with no CHECK constraint on purpose — widening the vocabulary costs NO DDL; the governance list in @arcaai/applications constants.ts is the source of truth.
+  provider           String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam, vector:qdrant, rerank:tei)
+  // TASK-958 — connection IDENTITY within (tenant, service). Tenant-chosen,
+  // `^[a-z0-9][a-z0-9-]{1,62}$`, IMMUTABLE after create (it is embedded in BYO
+  // model slugs and in the `connection_key` on the Python wire, so a rename
+  // would re-key live bindings; the free-text `name` is what gets renamed).
+  // Backfilled to `provider` for every pre-TASK-958 row, which is what keeps
+  // every existing route, model slug and catalogue id byte-for-byte unchanged.
+  slug               String
+  // Display label a tenant admin recognises ("Research account"). NULL = fall
+  // back to the slug (or the provider label when slug == provider).
+  name               String?
+  // = `provider` on the tenant's DEFAULT row for that provider; NULL on every
+  // sibling. NULLs are distinct in Postgres, so the unique below expresses
+  // "at most one default per (tenant, service, provider)" without a partial
+  // index (which Prisma cannot declare).
+  defaultForProvider String?
+  baseUrl            String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`; the Qdrant/TEI URL for the integration services)
+  region             String? // bedrock; classic Azure Speech
+  apiVersion         String? // azure
+  deploymentName     String? // azure
+  encryptedApiKey    Bytes? // Vault-Transit ciphertext (secret-field.util); plaintext never stored
+  keyVersion         Int?
+  enabled            Boolean @default(false)
+  extraJson          Json?   @db.JsonB // provider-specific extras (validated per-provider in the DTO)
 
   // Connection-level CEILINGS (TASK-862 — moved here from the retired
   // `AiRuntimeProfile`). They bound what this connection may be driven at, per
@@ -107,8 +131,11 @@ model AiProviderConnection {
   // serve. `onDelete: Restrict` sits on the owning side.
   models          AiModel[]         @relation("AiModelSourceConnection")
 
-  // indexing — one connection per (tenant, service, provider)
-  @@unique([tenantId, service, provider], name: "AiProviderConnection_tenant_service_provider_unique")
+  // indexing — identity is (tenant, service, slug); at most one DEFAULT row per
+  // (tenant, service, provider). NOTE: `map:` is what names the DATABASE index;
+  // the client-facing compound key falls out of the field list.
+  @@unique([tenantId, service, slug], map: "AiProviderConnection_tenant_service_slug_key")
+  @@unique([tenantId, service, defaultForProvider], map: "AiProviderConnection_tenant_service_default_key")
   @@index([tenantId, service], name: "AiProviderConnection_tenantId_service_idx")
   @@index([service, provider], name: "AiProviderConnection_service_provider_idx")
   @@index([provider], name: "AiProviderConnection_provider_idx")

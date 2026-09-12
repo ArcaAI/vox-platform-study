@@ -15,6 +15,7 @@ export class AiUsageEvent extends BaseTenantDataModel {
   public capability: Enums.AiCapability;
   public operation: string;
   public provider: string;
+  public connectionId: string | null;
   public model: string | null;
   public deployment: Enums.AiDeploymentKind;
   public unit: Enums.AiUsageUnit;
@@ -38,6 +39,7 @@ export class AiUsageEvent extends BaseTenantDataModel {
     this.capability = data.capability;
     this.operation = data.operation;
     this.provider = data.provider;
+    this.connectionId = data.connectionId;
     this.model = data.model;
     this.deployment = data.deployment;
     this.unit = data.unit;

@@ -31,6 +31,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { MODELS_WITHOUT_SOFT_DELETE } from '../../../../client';
 import { SYSTEM_SHARED_READ_MODELS, TENANT_SCOPED_MODELS } from '../../../../extensions/tenant-scope';
@@ -418,11 +420,46 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
-  it('has unique ids and one row per (tenant, service, provider)', () => {
+  it('has unique ids, one DEFAULT per (tenant, service, provider), and unique (tenantId, service, slug)', () => {
+    // TASK-958 — the identity of a connection is `(tenantId, service, slug)`
+    // and its DEFAULT slot is `(tenantId, service, defaultForProvider)`. The
+    // SYSTEM tier writes `slug = defaultForProvider = provider` (multiplicity
+    // is a TENANT-tier property — see `seedAiProviderConnection`), so both keys
+    // are derived from `provider` here and BOTH must be unique: a duplicate
+    // would now violate a different index than it used to, and a seed that
+    // tripped only one of the two would fail halfway through a re-seed.
     const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
-    const triples = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
+    const identities = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
+    const defaults = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(triples).size).toBe(triples.length);
+    expect(new Set(identities).size, 'duplicate (tenantId, service, slug)').toBe(identities.length);
+    expect(new Set(defaults).size, 'duplicate (tenantId, service, defaultForProvider)').toBe(defaults.length);
+  });
+
+  // TASK-958 (test 4) — the seed WRITE, not the seed DATA. `AiProviderConnectionSeed`
+  // deliberately carries no `slug`/`defaultForProvider` field: there is exactly
+  // one derivation for a SYSTEM row and encoding it per row would let a future
+  // row seed a non-default platform connection, which nothing can resolve.
+  // These read the writer's source, the way the harness-migration tests do.
+  describe('the seed writer derives slug and defaultForProvider from provider', () => {
+    const SEED_SOURCE = readFileSync(resolve(__dirname, '../17-ai-provider-connection.ts'), 'utf8');
+
+    it('writes `slug: row.provider` and `defaultForProvider: row.provider` on create', () => {
+      expect(SEED_SOURCE).toMatch(/slug:\s*row\.provider,/);
+      expect(SEED_SOURCE).toMatch(/defaultForProvider:\s*row\.provider,/);
+    });
+
+    it('keys the create-only idempotency lookup on (tenantId, service, slug)', () => {
+      // Keying it on `provider` would still find the row today (slug ===
+      // provider on this tier), but it would be reading a column no unique
+      // index covers any more — and on a tenant tier that holds siblings it
+      // would match an arbitrary one of them.
+      expect(SEED_SOURCE).toMatch(/where: \{ tenantId: row\.tenantId, service: row\.service, slug: row\.provider \}/);
+    });
+
+    it('seeds no non-default row — the platform default is a per-provider concept', () => {
+      expect(SEED_SOURCE).not.toMatch(/defaultForProvider:\s*null/);
+    });
   });
 });
 
