@@ -122,10 +122,26 @@ This is the only flow that touches both systems.
    breaking-change commits and is **not publishable as-is** — a global admin edits it into plain
    language in the admin console. Draft it in the repo first, under
    [`docs/operations/release-notes/`](./release-notes/), so it is reviewable in the PR rather
-   than typed into a web form at the last minute. `ALL-3.0.0.md` is the worked example.
+   than typed into a web form at the last minute. [`ALL-2.2.0.md`](./release-notes/ALL-2.2.0.md)
+   is the worked example.
 4. **Push the tag.** `git tag ALL-3.1.0 && git push origin ALL-3.1.0`.
 5. **Let CI run.** Images built and scanned, digests captured, release rows registered, SDK
-   packages versioned and published, draft `ChangelogEntry` created.
+   packages versioned and published, and the `changelog-draft` job (`.gitlab/ci/publish.yml`)
+   renders the draft payload as a pipeline artifact.
+
+   > **The draft reaches a gateway only if you point it at one.** `changelog-draft` POSTs to
+   > `/admin/changelog` when `HOPE_GATEWAY_URL` is set, using the service account in
+   > `HOPE_SVC_CLIENT_ID` / `HOPE_SVC_CLIENT_SECRET` (masked + protected; it needs
+   > `svc:admin:changelog:manage`, and an API key can never reach that route). Without the
+   > variable the job still renders `changelog-draft.json` as an artifact and prints the by-hand
+   > command. To post it yourself at any time:
+   >
+   > ```bash
+   > HOPE_GATEWAY_URL=… HOPE_SVC_CLIENT_ID=… HOPE_SVC_CLIENT_SECRET=… pnpm changelog:draft ALL-3.1.0 --post
+   > ```
+   >
+   > Between `ALL-2.1.0` and `ALL-2.2.0` this job did not exist at all, which is why the
+   > console's What's New screen held zero rows across 1,257 commits (TASK-953).
 6. **Publish the release note** from the admin console. Until a global admin publishes it, it is
    invisible to every tenant.
 7. **Promote to an environment** — a separate manual step, digest only (versioning.md §4).

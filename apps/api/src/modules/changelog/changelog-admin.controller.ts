@@ -1,5 +1,5 @@
 import { ChangelogEntryResponse, CreateChangelogEntryRequest, IChangelogService, UpdateChangelogEntryRequest } from '@arcaai/applications';
-import { Body, Controller, Inject, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -27,6 +27,23 @@ export class ChangelogAdminController {
     @Inject(IChangelogService)
     private readonly changelogService: IChangelogService,
   ) {}
+
+  // AUTH-NOTE: SUPER_ADMIN-only — enforced in ChangelogService, see class doc.
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Read a release note for editing (DRAFT included)',
+    description:
+      'The authoring read. Answers a strong `ETag` carrying `_version`, which `PATCH` and `publish` both require as ' +
+      '`If-Match` — this route is how the client learns it. The reader plane (`GET /changelog`) is unaffected and ' +
+      'still serves PUBLISHED entries only.',
+  })
+  @ApiParam({ name: 'id', description: 'Changelog entry id' })
+  @ApiResponse({ status: 200, type: ChangelogEntryResponse })
+  @ApiResponse({ status: 403, description: 'Not a super admin.' })
+  @ApiResponse({ status: 404, description: 'No such entry.' })
+  async get(@Param('id') id: string): Promise<ChangelogEntryResponse> {
+    return this.changelogService.get(id);
+  }
 
   // AUTH-NOTE: SUPER_ADMIN-only — enforced in ChangelogService, see class doc.
   @Post()

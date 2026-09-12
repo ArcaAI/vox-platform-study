@@ -21,7 +21,7 @@ import type { ChangelogEntryResponse, CreateChangelogEntryRequest, UpdateChangel
  * names the scope in that error's message.
  *
  * Backed by controller ChangelogAdminController
- * (3 routes). Several controllers sharing one scope share one
+ * (4 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -40,6 +40,22 @@ export class AdminChangelogResource extends AdminResource {
       method: 'POST',
       path: 'admin/changelog',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read a release note for editing (DRAFT included)
+   *
+   * The authoring read. Answers a strong `ETag` carrying `_version`, which `PATCH` and `publish` both require as `If-Match` — this route is how the client learns it. The reader plane (`GET /changelog`) is unaffected and still serves PUBLISHED entries only.
+   *
+   * `GET /api/v1/admin/changelog/{id}` — `ChangelogAdminController.get`.
+   */
+  get(id: string, options: AdminRequestOptions = {}): Promise<ChangelogEntryResponse> {
+    return this.request<ChangelogEntryResponse>({
+      method: 'GET',
+      path: `admin/changelog/${encodePathSegment(String(id))}`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

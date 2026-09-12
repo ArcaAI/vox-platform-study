@@ -7,6 +7,7 @@ const makeService = () => ({
   list: vi.fn().mockResolvedValue({ data: [], count: 0, page: 0, limit: 10 }),
   listUnseen: vi.fn().mockResolvedValue([]),
   acknowledge: vi.fn().mockResolvedValue(undefined),
+  get: vi.fn().mockResolvedValue({ id: 'e1', version: 7 }),
   create: vi.fn().mockResolvedValue({ id: 'e1' }),
   update: vi.fn().mockResolvedValue({ id: 'e1' }),
   publish: vi.fn().mockResolvedValue({ id: 'e1' }),
@@ -52,13 +53,22 @@ describe('ChangelogAdminController — SUPER_ADMIN-only (imperative gate in the 
     // is `ChangelogService.assertSuperAdmin()`. Assert the 403 it raises
     // propagates unchanged from every route (nothing swallows or remaps it).
     const forbidden = new ForbiddenException('Only a super administrator may author release notes');
+    service.get.mockRejectedValue(forbidden);
     service.create.mockRejectedValue(forbidden);
     service.update.mockRejectedValue(forbidden);
     service.publish.mockRejectedValue(forbidden);
 
+    await expect(controller.get('e1')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(controller.create({} as never)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(controller.update('e1', {} as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(controller.publish('e1', 1)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('get delegates by id and returns the versioned body the ETag is stamped from', async () => {
+    // TASK-953: without this route the authoring client never learns `_version`,
+    // so `If-Match` on update/publish is unsatisfiable and a draft is stranded.
+    await expect(controller.get('e1')).resolves.toEqual({ id: 'e1', version: 7 });
+    expect(service.get).toHaveBeenCalledWith('e1');
   });
 
   it('folds the If-Match version into the update DTO', async () => {

@@ -51,13 +51,12 @@ const UNSEEN_SCAN_WINDOW = 50;
  *     (`05-nestjs-api.md` §Imperative Privilege Checks), and the routes carry an
  *     `// AUTH-NOTE:` marker pointing here.
  *
- * INTEGRATION NOTE (reported to the integrator, NOT fixed here — it lives in
- * `packages/database`, outside this unit's write set): `ChangelogEntry` rows are
- * SYSTEM-tenant owned but the model is listed in `TENANT_SCOPED_MODELS` WITHOUT
- * being in `SYSTEM_SHARED_READ_MODELS`. Until it is added there, a tenant-scoped
- * caller's reads get `tenantId = <their tenant>` injected and see nothing. This
- * service therefore never pins `tenantId` on a read, so it works correctly the
- * moment the shared-read widening lands.
+ * TENANCY: `ChangelogEntry` rows are SYSTEM-tenant owned, and the model is in
+ * BOTH `TENANT_SCOPED_MODELS` and `SYSTEM_SHARED_READ_MODELS`
+ * (`packages/database/src/extensions/tenant-scope.ts`), so a tenant-scoped
+ * caller's reads widen to the SYSTEM rows. This service therefore never pins
+ * `tenantId` on a read. (`UserChangelogAcknowledgement` is deliberately NOT
+ * shared-read — an acknowledgement belongs to the acknowledging user's tenant.)
  */
 @Injectable()
 export class ChangelogService extends BaseService implements IChangelogService {
@@ -180,6 +179,25 @@ export class ChangelogService extends BaseService implements IChangelogService {
   // ---------------------------------------------------------------------------
   // Authoring surface — SUPER_ADMIN only
   // ---------------------------------------------------------------------------
+
+  /**
+   * Authoring read — one entry by id, DRAFT included.
+   *
+   * The reader surface has no by-id route (a release note is read from the
+   * list), so this exists for ONE reason: it is the only place the authoring
+   * client can learn an entry's `_version`, which `update` and `publish` both
+   * require as `If-Match`. Without it the console can create a draft and never
+   * edit or publish it.
+   */
+  async get(id: string): Promise<ChangelogEntryResponse> {
+    this.assertSuperAdmin();
+
+    const entity = await this.changelogEntryRepository.findById(id);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id });
+
+    return ChangelogDtoMapper.toResponse(entity);
+  }
 
   async create(dto: CreateChangelogEntryRequest): Promise<ChangelogEntryResponse> {
     this.assertSuperAdmin();
