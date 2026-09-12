@@ -193,6 +193,10 @@ class APIGatewayClient:
         engine: str | None = None,
         deployment: str | None = None,
         connection_id: str | None = None,
+        device: str | None = None,
+        request_bytes: int | None = None,
+        response_bytes: int | None = None,
+        byte_source: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
@@ -201,7 +205,8 @@ class APIGatewayClient:
                 optional ``resultMetadata``.
 
         ``duration_seconds``/``processing_time_seconds``/
-                ``engine``/``deployment``/``connection_id`` ride as TYPED, top-level sibling fields —
+                ``engine``/``deployment``/``connection_id``/``device``/``request_bytes``/
+                ``response_bytes``/``byte_source`` ride as TYPED, top-level sibling fields —
                 NOT nested inside ``result_metadata`` — because the gateway encrypts
                 that blob into ciphertext on the completing persist
                 (``SttInternalService.completeJob``), making anything trapped only
@@ -226,6 +231,20 @@ class APIGatewayClient:
         # can attribute a tenant's two accounts of one vendor separately.
         if connection_id is not None:
             payload["connectionId"] = connection_id
+        # TASK-959 §3.2 — the device decides WHICH compute unit the gateway emits
+        # for `processingTimeSeconds` (cuda/mps -> GPU_SECOND, cpu -> CPU_SECOND).
+        # Without it the seconds the gateway already stores cannot be priced.
+        if device is not None:
+            payload["device"] = device
+        # TASK-959 §4.2 — per-tenant network bytes, which can only come from the
+        # application: the pod-level cAdvisor network series are dropped at scrape.
+        # Absent on a self-hosted engine, which made no third-party call.
+        if request_bytes is not None:
+            payload["requestBytes"] = request_bytes
+        if response_bytes is not None:
+            payload["responseBytes"] = response_bytes
+        if byte_source is not None:
+            payload["byteSource"] = byte_source
 
         return await self._request(
             "PATCH",

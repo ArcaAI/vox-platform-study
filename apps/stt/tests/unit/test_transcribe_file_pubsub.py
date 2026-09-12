@@ -41,6 +41,10 @@ def _make_result(
     processing_time: float = 1.2,
     engine: str | None = "whisper_cpp",
     deployment: str | None = "SELF_HOSTED",
+    device: str | None = None,
+    request_bytes: int | None = None,
+    response_bytes: int | None = None,
+    byte_source: str | None = None,
 ) -> TranscriptionResult:
     """Create a complete TranscriptionResult matching real pipeline output."""
     return TranscriptionResult(
@@ -55,6 +59,10 @@ def _make_result(
         metadata={"pipeline_id": "p-789"},
         engine=engine,
         deployment=deployment,
+        device=device,
+        request_bytes=request_bytes,
+        response_bytes=response_bytes,
+        byte_source=byte_source,
     )
 
 
@@ -410,6 +418,76 @@ class TestWorkerWithConsultation:
         # The blob is UNCHANGED — a second, typed channel, not a move.
         assert complete_kwargs["result_metadata"]["duration_seconds"] == 42.5
         assert complete_kwargs["result_metadata"]["processing_time_seconds"] == 9.75
+
+    # TASK-959 §3.2/§4.2 — the compute device and the network byte counters ride
+    # the SAME typed channel. Without `device` the gateway holds occupancy seconds
+    # it cannot map to a unit, so the seconds stay unpriced.
+    @pytest.mark.asyncio
+    async def test_completes_job_with_the_task959_compute_and_network_fields(
+        self, pubsub_capture
+    ):
+        api = AsyncMock()
+        api.start_job = AsyncMock()
+        api.update_job_progress = AsyncMock()
+        api.complete_job = AsyncMock()
+        api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-959"})
+
+        result = _make_result(
+            processing_time=9.75,
+            engine="sarvam",
+            deployment="BYOK",
+            device="cpu",
+            request_bytes=4096,
+            response_bytes=512,
+            byte_source="wire",
+        )
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api, result=result)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-959",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://audio.wav",
+                consultation_id="c-959",
+            )
+
+        complete_kwargs = api.complete_job.call_args.kwargs
+        assert complete_kwargs["processing_time_seconds"] == 9.75
+        assert complete_kwargs["device"] == "cpu"
+        assert complete_kwargs["request_bytes"] == 4096
+        assert complete_kwargs["response_bytes"] == 512
+        assert complete_kwargs["byte_source"] == "wire"
+
+    @pytest.mark.asyncio
+    async def test_a_self_hosted_job_forwards_a_device_but_no_byte_counters(
+        self, pubsub_capture
+    ):
+        """No third-party call was made, so the byte counters stay `None` and
+        `complete_job` omits them from the body entirely."""
+        api = AsyncMock()
+        api.start_job = AsyncMock()
+        api.update_job_progress = AsyncMock()
+        api.complete_job = AsyncMock()
+        api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-959b"})
+
+        result = _make_result(device="cuda")
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api, result=result)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-959b",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://audio.wav",
+                consultation_id="c-959b",
+            )
+
+        complete_kwargs = api.complete_job.call_args.kwargs
+        assert complete_kwargs["device"] == "cuda"
+        assert complete_kwargs["request_bytes"] is None
+        assert complete_kwargs["response_bytes"] is None
+        assert complete_kwargs["byte_source"] is None
 
     @pytest.mark.asyncio
     async def test_completes_job_without_engine_when_unresolved(self, pubsub_capture):

@@ -32,6 +32,7 @@ import structlog
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
 from stt.core.exceptions import ModelNotCacheServedError, SessionManagerDrainingError
+from stt.core.metering import normalize_device
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
     streaming_session_ended,
@@ -67,7 +68,12 @@ from stt.streaming.schemas import (
 )
 from stt.streaming.semantic_endpointer import SemanticEndpointer
 from stt.streaming.session import StreamSession
-from stt.streaming.usage_segments import EngineUsageAccumulator
+from stt.streaming.usage_segments import (
+    EngineUsageAccumulator,
+    EngineUsageCounters,
+    UsageSegment,
+    segment_device,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -1534,6 +1540,26 @@ class SessionManager:
         session = self._sessions.get(session_id)
         return session.total_duration_seconds if session is not None else 0.0
 
+    def _session_usage_counters(self, session_id: str) -> EngineUsageCounters:
+        """The inference worker's cumulative compute/network counters right now.
+
+        TASK-959 — the OTHER span boundary marker. Snapshotted at every engine
+        swap and at teardown so the accumulator bills each engine the difference,
+        which is what makes a fallback leg carry its own GPU seconds and its own
+        bytes instead of the whole session's landing on whichever engine finished.
+        A session with no worker yet (nothing ever transcribed) reports zeros —
+        a real measurement, not a gap.
+        """
+        worker = self._inference_workers.get(session_id)
+        if worker is None:
+            return EngineUsageCounters()
+        return EngineUsageCounters(
+            processing_seconds=worker.cumulative_processing_seconds,
+            request_bytes=worker.cumulative_request_bytes,
+            response_bytes=worker.cumulative_response_bytes,
+            byte_source=worker.last_byte_source,
+        )
+
     def _start_usage_segments(
         self, session_id: str, asr_format: Any | None = None, **kwargs: Any
     ) -> None:
@@ -1551,7 +1577,10 @@ class SessionManager:
         if asr_format is None:
             return
         self._session_usage_segments[session_id] = EngineUsageAccumulator(
-            asr_format, audio_seconds=self._session_audio_seconds(session_id), **kwargs
+            asr_format,
+            audio_seconds=self._session_audio_seconds(session_id),
+            counters=self._session_usage_counters(session_id),
+            **kwargs,
         )
 
     def _advance_usage_segments(self, session_id: str) -> None:
@@ -1560,7 +1589,11 @@ class SessionManager:
         asr_format = self._session_asr_formats.get(session_id)
         if accumulator is None or asr_format is None:
             return
-        accumulator.switch_to(asr_format, audio_seconds=self._session_audio_seconds(session_id))
+        accumulator.switch_to(
+            asr_format,
+            audio_seconds=self._session_audio_seconds(session_id),
+            counters=self._session_usage_counters(session_id),
+        )
 
     async def _build_fallback_asr_callable(
         self,
@@ -4079,6 +4112,20 @@ class SessionManager:
 
         audio_seconds = session.total_duration_seconds
         session_seconds = self._compute_session_seconds(session)
+
+        # `cumulative_processing_seconds` is the per-utterance ASR-only time this
+        # session's inference worker accumulated (see `StreamingInferenceWorker`);
+        # 0.0 (never having had a worker) is a safe default. It feeds the RTF
+        # metric below AND — TASK-959 — the per-engine compute rows: the segments
+        # are anchored to it, so they can never sum to something other than the
+        # figure reported here.
+        worker = self._inference_workers.get(session.session_id)
+        processing_seconds = worker.cumulative_processing_seconds if worker is not None else 0.0
+        # TASK-959 — the device is a per-PROCESS property (this profile's ASR
+        # device), normalised once; `segment_device` then gives a cloud segment
+        # `cpu` regardless, since what it occupied here is this service waiting.
+        local_device = normalize_device(self._profile.asr_device)
+
         accumulator = self._session_usage_segments.get(session.session_id)
         if accumulator is not None:
             segments = [
@@ -4087,21 +4134,33 @@ class SessionManager:
                     audio_seconds=audio_seconds,
                     total_audio_seconds=audio_seconds,
                     total_session_seconds=session_seconds,
+                    total_processing_seconds=processing_seconds,
+                    counters=self._session_usage_counters(session.session_id),
+                    device=local_device,
                     resolve=_attribute,
                 )
             ]
         elif engine is not None and deployment is not None:
             # No accumulator: a RECOVERED session (crash restart), which builds
             # no switch controller and so cannot change engines. One segment
-            # equal to the whole session is exact, not a degradation.
+            # equal to the whole session is exact, not a degradation. Built
+            # through `UsageSegment` rather than by hand so this branch cannot
+            # drift from the accumulator's shape as fields are added to it.
+            counters = self._session_usage_counters(session.session_id)
+            has_bytes = counters.byte_source is not None
             segments = [
-                {
-                    "engine": engine,
-                    "deployment": deployment,
-                    "audio_seconds": audio_seconds,
-                    "session_seconds": session_seconds,
-                    "connection_id": connection_id,
-                }
+                UsageSegment(
+                    engine=engine,
+                    deployment=deployment,
+                    audio_seconds=audio_seconds,
+                    session_seconds=session_seconds,
+                    connection_id=connection_id,
+                    processing_seconds=processing_seconds,
+                    device=segment_device(deployment, local_device),
+                    request_bytes=counters.request_bytes if has_bytes else None,
+                    response_bytes=counters.response_bytes if has_bytes else None,
+                    byte_source=counters.byte_source,
+                ).to_dict()
             ]
         else:
             segments = []
@@ -4109,13 +4168,8 @@ class SessionManager:
         # The streaming audio-duration histogram + real-time
         # factor the current-state review flagged as missing (batch has
         # stt_audio_duration_seconds; streaming had neither a duration signal
-        # in Prometheus nor an RTF at all). `cumulative_processing_seconds` is
-        # the per-utterance ASR-only time this session's inference worker
-        # accumulated (see `StreamingInferenceWorker`); 0.0 (never having had
-        # a worker) is a safe default. Labels bounded to
+        # in Prometheus nor an RTF at all). Labels bounded to
         # {pipeline, engine, status} — no tenant label.
-        worker = self._inference_workers.get(session.session_id)
-        processing_seconds = worker.cumulative_processing_seconds if worker is not None else 0.0
         record_streaming_teardown(
             pipeline=session.pipeline_id,
             engine=engine or "unknown",
