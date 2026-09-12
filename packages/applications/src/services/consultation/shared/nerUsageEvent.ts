@@ -1,6 +1,7 @@
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
-import { UsageEventBatchInput } from '../../usageLedger/dto';
+import { UsageEventBatchInput, UsageUnitInput } from '../../usageLedger/dto';
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
+import type { ComputeDevice } from '../../usageLedger/usage-attributes';
 
 export interface NerUsageEventParams {
   tenantId: string;
@@ -32,6 +33,21 @@ export interface NerUsageEventParams {
   charCount: number;
   /** The resolved AiRoutingPolicy model name, or null when resolution fail-opened (unknown, never guessed). */
   model: string | null;
+  /**
+   * TASK-959 §3.2 — wall-clock milliseconds `apps/nlp` spent in the model for THIS call
+   * (`inference_ms`, on every inference response since the P-NLP lane).
+   *
+   * OPTIONAL because the three call sites adopt it as their own paths start carrying it, and
+   * because an omitted reading must record NO compute row — a zero-second row would read as
+   * "measured, and it was free".
+   */
+  inferenceMs?: number | null;
+  /**
+   * TASK-959 §3.1 — the device the checkpoint was resolved onto, which DECIDES the unit
+   * (`cuda`/`mps` → `GPU_SECOND`, `cpu` → `CPU_SECOND`). Unlike the LLM engines, `apps/nlp`
+   * reports its own device, so nothing here consults the settings cascade.
+   */
+  device?: ComputeDevice | null;
 }
 
 /**
@@ -63,6 +79,19 @@ export interface NerUsageEventParams {
  */
 export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatchInput {
   const { tenantId, requestId, consultationId, doctorId, charCount, model } = params;
+  // TASK-959 T1-merge: this is the `appendComputeAndByteUnits` rule for a row that can only ever
+  // be SELF_HOSTED + INTERNAL (apps/nlp runs the platform's own weights, and there is no
+  // AiProviderConnection plane for NER at all), so there is no mixed-basis split to make here —
+  // the compute row rides the same batch. Bytes are not applicable: no vendor is called.
+  const computeUnits: UsageUnitInput[] = [];
+  const seconds = params.inferenceMs !== null && params.inferenceMs !== undefined ? Math.round(params.inferenceMs) / 1000 : null;
+  if (params.device && seconds !== null && seconds > 0) {
+    computeUnits.push({
+      unit: params.device === 'cpu' ? AiUsageUnit.CPU_SECOND : AiUsageUnit.GPU_SECOND,
+      quantity: seconds,
+      attributesJson: { device: params.device },
+    });
+  }
   return {
     common: {
       tenantId,
@@ -81,9 +110,6 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
       doctorId: doctorId ?? null,
       requestId,
     },
-    units: [
-      { unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 },
-      { unit: AiUsageUnit.REQUEST, quantity: 1 },
-    ],
+    units: [{ unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 }, { unit: AiUsageUnit.REQUEST, quantity: 1 }, ...computeUnits],
   };
 }
