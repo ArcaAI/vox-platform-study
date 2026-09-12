@@ -42,6 +42,32 @@ enum UsageMeterMetric {
   // `/api/v1/workflows/:slug/invoke`.
   WORKFLOW_INVOCATIONS
 
+  // ── TASK-959 — compute and storage meters ───────────────────────────────
+  //
+  // Three more LEDGER-DERIVED unit meters, same derivation as the six above
+  // (Σ `AiUsageRollupDaily` over the window), added so the figures are visible
+  // per tenant before any of them is a SELL unit. Wave 4 decides whether they
+  // gain allowance columns; a meter with no allowance is reported and never
+  // enforced, which is the safe direction (D-1).
+  //
+  // Σ (`GPU_SECOND` + `CPU_SECOND`) over the INFERENCE capabilities. One meter
+  // rather than two because the device split is a rollup dimension a caller can
+  // ask for, while the number a tenant is quoted — "compute you occupied" — is
+  // the sum; two meters would force every consumer to add them back together.
+  COMPUTE_SECONDS
+  // Σ `CPU_SECOND` under `capability: WORKFLOW` — the durable worker's own
+  // orchestration CPU, deliberately NOT folded into COMPUTE_SECONDS above. It
+  // is a different cost centre (a CPU node, not a GPU), it is apportioned
+  // fair-share across concurrent activities rather than measured exactly
+  // (D-5), and it is the figure "CPU time for each workflow" names.
+  WORKFLOW_CPU_SECONDS
+  // The LATEST `STORAGE_GB_DAY` snapshot, re-expressed in BYTES — i.e. bytes
+  // held right now, NOT the Σ over the window. This meter answers the QUOTA
+  // question (`storageQuotaBytes`, still soft-warn), and a quota compares
+  // against a stock, in the same unit the quota column is denominated in; the
+  // invoice sums GB-days over the period separately.
+  STORAGE_BYTES
+
   @@schema("core")
 }
 
