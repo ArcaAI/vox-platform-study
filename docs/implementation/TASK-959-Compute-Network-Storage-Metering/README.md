@@ -250,7 +250,7 @@ Gate: `pnpm text:test` (a unit test on the transport wrapper with a canned respo
 
 ### Wave 4 — sell (after D-1 … D-4)
 
-SELL rows per new unit, `BILLABLE_UNITS` += `{ WORKFLOW: [CPU_SECOND], STORAGE: [STORAGE_BYTE_DAY] }` plus `GPU_SECOND`/`CPU_SECOND` on the inference capabilities, with allowance columns `monthlyComputeSeconds`, `monthlyWorkflowCpuSeconds`, `monthlyStorageByteDays`; invoice lines "GPU compute — overage", "Storage — GB-month"; `task-959-invoice.spec.ts`. Until this wave the figures are visible on the consumption screen and in COGS, never on an invoice — which is the safe direction.
+SELL rows per new unit, `BILLABLE_UNITS` += `{ WORKFLOW: [CPU_SECOND], STORAGE: [STORAGE_GB_DAY] }` plus `GPU_SECOND`/`CPU_SECOND` on the inference capabilities, with allowance columns `monthlyComputeSeconds`, `monthlyWorkflowCpuSeconds`, `monthlyStorageByteDays`; invoice lines "GPU compute — overage", "Storage — GB-month"; `task-959-invoice.spec.ts`. Until this wave the figures are visible on the consumption screen and in COGS, never on an invoice — which is the safe direction.
 
 ### What this plan deliberately does not do
 
