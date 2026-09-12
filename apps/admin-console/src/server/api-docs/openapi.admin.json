@@ -14147,6 +14147,11 @@
             "description": "Row ID",
             "type": "string"
           },
+          "maxAiProviderConnections": {
+            "description": "Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited",
+            "nullable": true,
+            "type": "number"
+          },
           "maxApiKeys": {
             "description": "Max API keys; null = unlimited",
             "nullable": true,
@@ -19889,6 +19894,11 @@
             "description": "Row ID",
             "type": "string"
           },
+          "maxAiProviderConnections": {
+            "description": "Override max AI provider connections (per tenant, all services); null = inherit",
+            "nullable": true,
+            "type": "number"
+          },
           "maxApiKeys": {
             "description": "Override max API keys; null = inherit",
             "nullable": true,
@@ -22367,6 +22377,11 @@
             "description": "Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override.",
             "type": "boolean"
           },
+          "maxAiProviderConnections": {
+            "description": "Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited",
+            "nullable": true,
+            "type": "number"
+          },
           "maxApiKeys": {
             "description": "Max API keys; null = unlimited",
             "nullable": true,
@@ -23489,6 +23504,11 @@
             "description": "Grant (true) / deny (false) / inherit (null) the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential for this tenant. This is how the grant is issued — no plan tier carries it. Granting lets the platform fund this tenant's cloud provider calls.",
             "nullable": true,
             "type": "boolean"
+          },
+          "maxAiProviderConnections": {
+            "description": "Override max AI provider connections (per tenant, all services); null = inherit",
+            "nullable": true,
+            "type": "number"
           },
           "maxApiKeys": {
             "description": "Override max API keys; null = inherit",
