@@ -23,6 +23,13 @@ interface EntitlementLimits {
   monthlySummaries?: number | null;
   /** Monthly PUBLISHED-workflow invocations. */
   monthlyWorkflowInvocations?: number | null;
+  monthlySttSessionSeconds?: number | null;
+  /** Monthly LLM tokens, every billable kind summed. */
+  monthlyLlmTokens?: number | null;
+  /** Monthly TTS characters, counted as Unicode code points. */
+  monthlyTtsCharacters?: number | null;
+  monthlyNlpTextUnits?: number | null;
+  monthlyEmbeddingTokens?: number | null;
 }
 
 /** GET /admin/entitlements/plans rows (PlanEntitlementResponse). */
