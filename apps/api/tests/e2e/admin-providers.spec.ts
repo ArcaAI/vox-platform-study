@@ -7,10 +7,12 @@
  * `AiProviderConnection` rows across the `llm` / `stt` / `tts` services.
  *
  * What these specs prove that unit tests cannot:
- *   1. The unified controller is mounted at `admin/providers/:service/:provider`
- *      and the OCC chain (`@RequiresIfMatch()`) is wired end to end — a genuine
- *      428 for a missing header and a genuine 412 for a stale token, over real
- *      HTTP with real headers.
+ *   1. The unified controller is mounted at `admin/providers/:service/:slug`
+ *      (TASK-958 renamed the segment from `:provider`; a default connection's
+ *      slug IS its provider id, so every path below is unchanged) and the OCC
+ *      chain (`@RequiresIfMatch()`) is wired end to end — a genuine 428 for a
+ *      missing header and a genuine 412 for a stale token, over real HTTP with
+ *      real headers.
  *   2. The three new cloud LLM providers (openai / anthropic / vertex) are
  *      readable on the plane (governance + seed landed).
  *   3. The legacy `admin/ai-providers/*` alias still resolves to the same `llm`
@@ -57,6 +59,12 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
       expect(row.service, 'every row on this route is service=llm').toBe('llm');
       expect(row.hasKey, `${row.provider} key material must match the self-host placeholder posture`).toBe(SELF_HOST_KEYED.has(row.provider));
       expect(row).not.toHaveProperty('encryptedApiKey');
+      // TASK-958 — the platform tier is ONE connection per provider, named after
+      // it and always that provider's default. Every SYSTEM row must say so, or
+      // the provider-name cascade has nothing deterministic to resolve.
+      expect(row.slug, `${row.provider} platform row must be named after its provider`).toBe(row.provider);
+      expect(row.isDefault, `${row.provider} platform row must be the default`).toBe(true);
+      expect(typeof row.id, 'every row carries its id — what a declared model points at').toBe('string');
     }
   });
 

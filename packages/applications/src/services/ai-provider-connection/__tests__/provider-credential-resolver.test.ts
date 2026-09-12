@@ -16,11 +16,12 @@ import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { ProviderCredentialResolver } from '../provider-credential-resolver';
 import { ProviderVetoedException } from '../provider-vetoed.exception';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT = 'tenant-abc';
 
 function makeResolver(opts: { tenantRow?: any; systemRow?: any; entitled?: boolean; secretsBroken?: boolean; noSecrets?: boolean } = {}) {
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (_svc: string, _provider: string, tenantId: string) =>
       tenantId === SYSTEM_TENANT_ID ? (opts.systemRow ?? null) : (opts.tenantRow ?? null),
     ),
@@ -29,7 +30,7 @@ function makeResolver(opts: { tenantRow?: any; systemRow?: any; entitled?: boole
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT : undefined)) };
   const db = { baseClient: {} };
@@ -44,7 +45,7 @@ function makeResolver(opts: { tenantRow?: any; systemRow?: any; entitled?: boole
           : vi.fn(async () => Buffer.from('the-token', 'utf8')),
         supportsTransit: vi.fn(() => true),
       };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
   return { resolver: new ProviderCredentialResolver(svc), repo, entitlements };
 }
@@ -139,7 +140,7 @@ describe('ProviderCredentialResolver.resolve — the platform-default entitlemen
     await expect(resolver.resolve('llm', 'azure', TENANT)).rejects.toBeInstanceOf(QuotaExceededException);
   });
 
-  it("never gates a SELF-HOST SYSTEM row — platform infrastructure, not platform spend", async () => {
+  it('never gates a SELF-HOST SYSTEM row — platform infrastructure, not platform spend', async () => {
     const lmStudio = row({ provider: 'lm-studio' });
     const { resolver, entitlements } = makeResolver({ systemRow: lmStudio, entitled: false });
 

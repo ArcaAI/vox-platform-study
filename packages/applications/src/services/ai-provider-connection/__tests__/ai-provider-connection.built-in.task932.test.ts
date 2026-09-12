@@ -29,6 +29,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 import { BUILT_IN_CONNECTION_DEFAULTS } from '../built-in-defaults';
+import { withTask958Lookups } from './task958-repo-lookups';
 
 const TENANT = 'tenant-abc';
 
@@ -56,9 +57,13 @@ interface Opts {
 function makeService(opts: Opts = {}) {
   const stored = opts.rows ?? {};
   const deleted = opts.deletedRows ?? {};
-  const repo = {
-    findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => stored[`${tenantId}:${service}:${provider}`] ?? null),
-    findDeletedByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => deleted[`${tenantId}:${service}:${provider}`] ?? null),
+  const repo = withTask958Lookups({
+    findByTenantServiceProvider: vi.fn(
+      async (service: string, provider: string, tenantId: string) => stored[`${tenantId}:${service}:${provider}`] ?? null,
+    ),
+    findDeletedByTenantServiceProvider: vi.fn(
+      async (service: string, provider: string, tenantId: string) => deleted[`${tenantId}:${service}:${provider}`] ?? null,
+    ),
     findByTenantIdAndService: vi.fn(async (service: string, tenantId: string) =>
       Object.entries(stored)
         .filter(([key]) => key.startsWith(`${tenantId}:${service}:`))
@@ -67,7 +72,7 @@ function makeService(opts: Opts = {}) {
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const emitter = { emit: vi.fn() };
   const clsTenantId = opts.clsTenantId === undefined ? TENANT : opts.clsTenantId;
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)) };
@@ -79,7 +84,7 @@ function makeService(opts: Opts = {}) {
     supportsTransit: vi.fn(() => true),
     getSecretOptional: vi.fn(async (key: string) => secretsByKey[key]),
   };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => true), assertQuantityQuota: vi.fn() };
   const storageRepo = opts.withStorage === false ? undefined : { findAllTenantDefaults: vi.fn(async () => opts.storageRows ?? []) };
   const appSettings = { getValueWithDefault: vi.fn((_key: string, fallback: unknown) => fallback) };
 
@@ -286,7 +291,9 @@ describe('model-registry:s3 resolves to the platform storage (D-7)', () => {
 
   it('resolves an ENABLED keyless row from the platform storage configuration', async () => {
     const { svc } = makeService({
-      rows: { [`${SYSTEM_TENANT_ID}:model-registry:s3`]: row({ service: 'model-registry', provider: 's3', extraJson: { inheritsPlatformStorage: true } }) },
+      rows: {
+        [`${SYSTEM_TENANT_ID}:model-registry:s3`]: row({ service: 'model-registry', provider: 's3', extraJson: { inheritsPlatformStorage: true } }),
+      },
       storageRows: [SYSTEM_STORAGE_ROW],
       secretsByKey: STORAGE_SECRETS,
     });

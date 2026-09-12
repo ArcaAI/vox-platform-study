@@ -21,7 +21,7 @@ const TENANT = 'tenant-abc';
 const secrets = { decrypt: vi.fn(), supportsTransit: vi.fn(() => true) };
 
 function connections() {
-  return { assertResolvable: vi.fn(), findRow: vi.fn(async () => null) };
+  return { assertResolvable: vi.fn(), findRow: vi.fn(async () => null), findDefaultRow: vi.fn(async () => null) };
 }
 
 describe('discoveredModels', () => {

@@ -31,28 +31,41 @@ function assertProviderService(value: string): ProviderService {
  * (WHERE a serving provider lives, HOW to authenticate) on the UNIFIED plane,
  * mounted at `/admin/providers` (global prefix → `/api/v1/admin/providers`).
  *
- * A connection row is keyed by (tenant, SERVICE, provider): `service` is the
+ * A connection row is keyed by (tenant, SERVICE, SLUG): `service` is the
  * capability discriminator (`PROVIDER_SERVICES` — the three inference
  * capabilities plus the `embeddings`/`rerank`/`vector` integrations) carried in the path, and
- * `provider` is capability-scoped (`azure` is Azure OpenAI under `llm`, Azure
- * Speech under `stt`).
+ * `slug` is the tenant's name for ONE connection. `provider` (`azure` is Azure
+ * OpenAI under `llm`, Azure Speech under `stt`) is a property of the row.
  *
- *  - `GET :service`             → every connection row for the scoped tenant (masked).
+ * TASK-958 — a tenant may hold SEVERAL connections for one provider (two OpenAI
+ * accounts, two Azure resources). Exactly one of each group is the DEFAULT: the
+ * row the provider-name cascade resolves, the one the three-state `enabled` rule
+ * is read on, and the one every pre-958 caller addressed — because a default's
+ * slug IS its provider id, which is why every existing path still resolves the
+ * same row. A named sibling is reached by binding a model declared on it.
+ * The platform (SYSTEM) tier stays ONE row per provider.
+ *
+ *  - `GET :service`             → every connection row for the scoped tenant (masked),
+ *                                 grouped by provider, each group's default first.
  *  - `GET :service/platform-defaults` → the platform (SYSTEM) cloud rows the
  *                                 scoped TENANT inherits, masked and annotated
  *                                 with the cascade's verdict (TASK-954). Read-only.
- *  - `GET :service/:provider`   → ONE row (`version` drives the OCC token; a
+ *  - `GET :service/:slug`       → ONE row (`version` drives the OCC token; a
  *                                 `version: 0` placeholder when none exists yet).
- *  - `PUT :service/:provider`   → create (`expectedVersion` 0) or CAS-update under
- *                                 `If-Match` (drift → 412, missing → 428).
- *  - `PUT :service/:provider/models` → declare the models this connection serves
+ *  - `PUT :service/:slug`       → create (`expectedVersion` 0) or CAS-update under
+ *                                 `If-Match` (drift → 412, missing → 428). `provider`
+ *                                 is required for a slug that is not a provider id;
+ *                                 `isDefault: true` re-points the default atomically.
+ *  - `PUT :service/:slug/models` → declare the models this connection serves
  *                                 (TASK-890 §3.7a): each becomes a tenant-owned
  *                                 registry row; the list is a full replacement.
- *  - `DELETE :service/:provider`→ soft-delete (its declared models go with it).
- *  - `POST :service/:provider/reset` → restore a PLATFORM-MANAGED row to its
+ *  - `DELETE :service/:slug`    → soft-delete (its declared models go with it).
+ *                                 Refused while it is the default of a provider
+ *                                 whose siblings still live (409).
+ *  - `POST :service/:slug/reset` → restore a PLATFORM-MANAGED row to its
  *                                 built-in default (TASK-932): super-admin only,
  *                                 SYSTEM tier only, no OCC.
- *  - `POST :service/:provider/test` → ephemeral "Test connection" probe (TASK-862):
+ *  - `POST :service/:slug/test` → ephemeral "Test connection" probe (TASK-862):
  *                                 never persisted, no OCC; omitted fields fall
  *                                 back to the stored row (tenant → SYSTEM).
  *
@@ -114,7 +127,7 @@ export class ProviderConnectionController {
       'placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: ' +
       '`overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` ' +
       '(no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and ' +
-      'nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:provider`. ' +
+      'nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:slug`. ' +
       'Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it ' +
       'is the top of the cascade.',
   })
@@ -127,23 +140,30 @@ export class ProviderConnectionController {
     return this.connectionService.listPlatformDefaults(assertProviderService(service), this.resolveTenantId(tenantId));
   }
 
-  @Get(':service/:provider')
+  @Get(':service/:slug')
   @CanRead('GlobalSetting')
   @ApiOperation({ summary: 'Read one provider connection (key never returned; placeholder when absent).' })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiParam({
+    name: 'slug',
+    description:
+      'Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default ' +
+      'connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named ' +
+      'sibling carries its own (`openai-research`).',
+    example: 'azure',
+  })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
   @ApiResponse({ status: 404, description: 'Not found — including a row owned by another tenant.' })
   async getOne(
     @Param('service') service: string,
-    @Param('provider') provider: string,
+    @Param('slug') slug: string,
     @Query('tenantId') tenantId?: string,
   ): Promise<AiProviderConnectionResponse> {
-    return this.connectionService.getRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
+    return this.connectionService.getRow(assertProviderService(service), slug, this.resolveTenantId(tenantId));
   }
 
-  @Put(':service/:provider')
+  @Put(':service/:slug')
   @CanManage('GlobalSetting')
   @RequiresIfMatch()
   @ApiOperation({
@@ -156,7 +176,14 @@ export class ProviderConnectionController {
       `**\`enabled\` is three-state.** ${CONNECTION_ENABLED_SEMANTICS}`,
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiParam({
+    name: 'slug',
+    description:
+      'Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default ' +
+      'connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named ' +
+      'sibling carries its own (`openai-research`).',
+    example: 'azure',
+  })
   @ApiHeader({
     name: 'If-Match',
     description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
@@ -165,12 +192,30 @@ export class ProviderConnectionController {
   })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Unknown service segment, an incomplete body for the provider’s requirements, or one of the TASK-958 naming ' +
+      'rules: `CONNECTION_SLUG_INVALID` (the slug fails `^[a-z0-9][a-z0-9-]{1,62}$`) · `CONNECTION_PROVIDER_REQUIRED` ' +
+      '(a new slug that is not a provider id, with no `provider` in the body) · `CONNECTION_MULTIPLICITY_UNSUPPORTED` ' +
+      '(a second connection on a capability that resolves its provider by name only) · ' +
+      '`PLATFORM_CONNECTION_PER_PROVIDER` (the platform tier is one row per provider, named after it) · ' +
+      '`CONNECTION_DEFAULT_REQUIRED` (`isDefault: false` on the row that is, or would be, the default — elect ' +
+      'another row instead).',
+  })
   @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without super admin.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`CONNECTION_PROVIDER_IMMUTABLE` — the slug exists and serves a different vendor. A connection cannot change ' +
+      'vendor under the models declared on it; create a new one. Also `QUOTA_EXCEEDED` when the plan’s ' +
+      '`maxAiProviderConnections` ceiling is reached (CREATE only).',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async upsert(
     @Param('service') service: string,
-    @Param('provider') provider: string,
+    @Param('slug') slug: string,
     @Body() request: UpsertAiProviderConnectionRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
     @Query('tenantId') tenantId?: string,
@@ -182,10 +227,10 @@ export class ProviderConnectionController {
     // `If-Match: "0"` parses to 0 (create-intent) and the service CAS decides
     // create-vs-412.
     const dto = { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion };
-    return this.connectionService.upsertRow(assertProviderService(service), provider, dto, this.resolveTenantId(tenantId));
+    return this.connectionService.upsertRow(assertProviderService(service), slug, dto, this.resolveTenantId(tenantId));
   }
 
-  @Put(':service/:provider/models')
+  @Put(':service/:slug/models')
   @CanManage('GlobalSetting')
   @ApiOperation({
     summary: "Declare the models this tenant's connection serves.",
@@ -193,29 +238,44 @@ export class ProviderConnectionController {
       'Bring provider AND model together (TASK-890): the connection says WHERE the vendor account is, this says WHICH ' +
       'models it serves. Each entry becomes a TENANT-OWNED registry row visible only in this tenant\u2019s catalogue, ' +
       'bindable by an agent. The body is the WHOLE list — an entry that leaves it is soft-deleted (an agent still bound ' +
-      'to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable; a ' +
+      'to it keeps its reference and fails its next publish, observably). Slugs are SERVER-generated and stable, and ' +
+      'named after the CONNECTION (`<slug>-<wire model id>`), so two accounts of one vendor may declare the same ' +
+      'model and get two separately bindable rows; a ' +
       'generated slug that would shadow a platform model is refused with `409 BYO_SLUG_SHADOWS_PLATFORM`, which names ' +
       'the platform row and a `byo-` prefixed `suggestedSlug` to re-send. No `If-Match`: this writes registry rows, not ' +
       'the connection row, so it carries no version of its own. Platform models are declared in `/admin/ai-models`.',
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiParam({
+    name: 'slug',
+    description:
+      'Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default ' +
+      'connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named ' +
+      'sibling carries its own (`openai-research`).',
+    example: 'azure',
+  })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse, description: 'The connection, with its declared `models[]`.' })
   @ApiResponse({ status: 400, description: 'Unknown service, a task type the capability does not serve, or a duplicated model id.' })
   @ApiResponse({ status: 403, description: 'A SYSTEM connection, or a provider this tenant may not hold a row for.' })
   @ApiResponse({ status: 404, description: 'No connection row yet — save the credential before declaring its models.' })
-  @ApiResponse({ status: 409, description: 'A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A generated slug would shadow a platform model (`BYO_SLUG_SHADOWS_PLATFORM`), or another connection of this ' +
+      'tenant already minted it (`BYO_SLUG_TAKEN`, naming `otherConnectionSlug`). Both carry a `byo-` prefixed ' +
+      '`suggestedSlug` to re-send.',
+  })
   async declareModels(
     @Param('service') service: string,
-    @Param('provider') provider: string,
+    @Param('slug') slug: string,
     @Body() request: DeclareConnectionModelsRequest,
     @Query('tenantId') tenantId?: string,
   ): Promise<AiProviderConnectionResponse> {
-    return this.connectionService.declareModels(assertProviderService(service), provider, request, this.resolveTenantId(tenantId));
+    return this.connectionService.declareModels(assertProviderService(service), slug, request, this.resolveTenantId(tenantId));
   }
 
-  @Delete(':service/:provider')
+  @Delete(':service/:slug')
   @CanManage('GlobalSetting')
   @ApiOperation({
     summary: 'Soft-delete one provider connection.',
@@ -225,15 +285,30 @@ export class ProviderConnectionController {
       'platform-provided key — keep the row and set `enabled: false`, which is a veto.',
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiParam({
+    name: 'slug',
+    description:
+      'Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default ' +
+      'connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named ' +
+      'sibling carries its own (`openai-research`).',
+    example: 'azure',
+  })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, description: 'Deleted.' })
   @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without super admin.' })
-  async remove(@Param('service') service: string, @Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
-    return this.connectionService.deleteRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
+  @ApiResponse({ status: 404, description: 'No such connection — including one owned by another tenant.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`CONNECTION_IS_DEFAULT` — this is its provider’s default connection and other connections of that provider ' +
+      'still exist. Make one of them the default first (`PUT :service/:slug` with `isDefault: true`); the default is ' +
+      'never promoted automatically, because that would silently change which vendor account existing agents spend.',
+  })
+  async remove(@Param('service') service: string, @Param('slug') slug: string, @Query('tenantId') tenantId?: string): Promise<void> {
+    return this.connectionService.deleteRow(assertProviderService(service), slug, this.resolveTenantId(tenantId));
   }
 
-  @Post(':service/:provider/reset')
+  @Post(':service/:slug/reset')
   @HttpCode(200)
   @CanManage('GlobalSetting')
   @ApiOperation({
@@ -249,7 +324,11 @@ export class ProviderConnectionController {
       'says now, put it back”, so a stale token would refuse the caller who most needs it.',
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `lm-studio`.' })
+  @ApiParam({
+    name: 'slug',
+    description: 'Platform connection name. The platform tier holds one row per provider and its name IS the provider id, ' + 'e.g. `lm-studio`.',
+    example: 'lm-studio',
+  })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform tier only — the SYSTEM tenant.' })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse, description: 'The restored row, masked.' })
   @ApiResponse({ status: 400, description: 'Unknown service segment.' })
@@ -260,7 +339,7 @@ export class ProviderConnectionController {
   @ApiResponse({ status: 404, description: 'This (service, provider) ships no built-in default.' })
   async reset(
     @Param('service') service: string,
-    @Param('provider') provider: string,
+    @Param('slug') slug: string,
     @Query('tenantId') tenantId?: string,
   ): Promise<AiProviderConnectionResponse> {
     // AUTH-NOTE: SUPER_ADMIN-only, enforced imperatively in
@@ -271,10 +350,10 @@ export class ProviderConnectionController {
     // boundary on the caller's own tenant, not the 404-over-403 cross-tenant
     // posture; the privilege check is row-INDEPENDENT and therefore runs first,
     // so it leaks no existence oracle over the provider id space.
-    return this.connectionService.resetRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
+    return this.connectionService.resetRow(assertProviderService(service), slug, this.resolveTenantId(tenantId));
   }
 
-  @Post(':service/:provider/test')
+  @Post(':service/:slug/test')
   @HttpCode(200)
   @CanManage('GlobalSetting')
   @ApiOperation({
@@ -287,17 +366,24 @@ export class ProviderConnectionController {
       'Tenant-supplied URLs must be https and public.',
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
-  @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
+  @ApiParam({
+    name: 'slug',
+    description:
+      'Connection name within (tenant, service) — immutable after create. Equal to the provider id on the default ' +
+      'connection of each provider and on every platform row (`azure`), so pre-TASK-958 paths are unchanged; a named ' +
+      'sibling carries its own (`openai-research`).',
+    example: 'azure',
+  })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: TestProviderConnectionResponse })
   @ApiResponse({ status: 400, description: 'Unknown service, missing endpoint/region for the probe, or a URL that failed validation.' })
   async testConnection(
     @Param('service') service: string,
-    @Param('provider') provider: string,
+    @Param('slug') slug: string,
     @Body() body: TestProviderConnectionRequest,
     @Query('tenantId') tenantId?: string,
   ): Promise<TestProviderConnectionResponse> {
-    return this.probe.test(assertProviderService(service), provider, this.resolveTenantId(tenantId), body);
+    return this.probe.test(assertProviderService(service), slug, this.resolveTenantId(tenantId), body);
   }
 
   private resolveTenantId(queryTenantId?: string): string {
