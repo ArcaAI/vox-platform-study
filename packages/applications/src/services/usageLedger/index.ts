@@ -1,3 +1,5 @@
+export * from './compute-device.resolver';
+export * from './compute-units';
 export * from './dto';
 export * from './IUsageLedgerService';
 export * from './idempotency-keys';

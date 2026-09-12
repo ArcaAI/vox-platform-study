@@ -1,6 +1,7 @@
-import { buildLlmUsageInput, parseTextUsageDetail } from '../consultation/summary/text-usage';
+import { buildGuardrailUsageBatches, buildLlmUsageBatches, parseTextUsageDetail } from '../consultation/summary/text-usage';
+import type { ComputeAugmentedBatch } from './compute-units';
 import type { UsageEventBatchInput } from './dto';
-import type { UsageTrigger } from './usage-attributes';
+import type { ComputeDevice, UsageTrigger } from './usage-attributes';
 import { withUsageTrigger } from './usage-attributes';
 import type { UsageOperation } from './vocabulary';
 
@@ -63,11 +64,32 @@ export interface LlmStreamUsageTakeParams {
   consultationId?: string | null;
   doctorId?: string | null;
   departmentId?: string | null;
+  /**
+   * TASK-959 — the device a SELF-HOSTED engine occupied, resolved by the caller.
+   * Ignored for a cloud or BYOK stream, whose seconds are HOPE's own CPU.
+   */
+  device?: ComputeDevice | null;
+}
+
+/**
+ * What one stream consumed: the generation, and the guard call TEXT made on its
+ * behalf (TASK-957 F-3).
+ *
+ * Two batches rather than one because they are two OPERATIONS — `generate.stream`
+ * is the tenant's, `guardrail.validate` is platform-mandated safety that is
+ * metered for COGS and never invoiced (D16). Either half may be `null`: a
+ * stream with no guard configured carries no guardrail block, and a stream
+ * whose terminal frame never arrived carries neither.
+ */
+export interface LlmStreamUsageBatches {
+  generation: ComputeAugmentedBatch | null;
+  guardrail: ComputeAugmentedBatch | null;
 }
 
 export class LlmStreamUsageCollector {
   private tail = '';
   private terminalUsage: unknown = null;
+  private terminalGuardrailUsage: unknown = null;
   private taken = false;
 
   /** Bytes held back waiting for a frame boundary. Exposed for the bound test. */
@@ -111,11 +133,21 @@ export class LlmStreamUsageCollector {
       const dataLine = frame.split('\n').find((line) => line.startsWith('data:'));
       if (dataLine && dataLine.includes('"usage"')) {
         try {
-          const payload = JSON.parse(dataLine.slice('data:'.length).trim()) as { data?: { usage?: unknown }; usage?: unknown };
+          const payload = JSON.parse(dataLine.slice('data:'.length).trim()) as {
+            data?: { usage?: unknown; guardrail_usage?: unknown };
+            usage?: unknown;
+            guardrail_usage?: unknown;
+          };
           // `apps/text` nests it under `data`; accept the flat spelling too so a
           // frame shape change degrades to "not metered", never to a crash.
           const usage = payload?.data?.usage ?? payload?.usage;
           if (usage) this.terminalUsage = usage;
+          // TASK-957 F-3 — the guard call TEXT made for this stream. Read off
+          // the SAME frame (the scan only parses frames mentioning `"usage"`,
+          // which the terminal frame does by carrying the generation block),
+          // so a guardrail-only frame is not a shape that exists.
+          const guardrailUsage = payload?.data?.guardrail_usage ?? payload?.guardrail_usage;
+          if (guardrailUsage) this.terminalGuardrailUsage = guardrailUsage;
         } catch {
           // A partially-delivered or non-JSON frame is not worth a log line (and
           // its body may be PHI) — the next frame may still carry usage.
@@ -137,20 +169,74 @@ export class LlmStreamUsageCollector {
    * no row rather than a row saying nothing happened.
    */
   take(params: LlmStreamUsageTakeParams): UsageEventBatchInput | null {
+    return this.takeAll(params)?.generation?.batch ?? null;
+  }
+
+  /**
+   * Both halves, ONCE — the full-fidelity form of {@link take}.
+   *
+   * `take` keeps its single-batch return because its call sites are in other
+   * lanes' files (`agent.controller.ts`, `text-proxy.controller.ts`); each
+   * migrates here when its lane next opens the file. Until then a stream's
+   * guardrail COGS and the platform CPU leg of a BYOK stream stay unrecorded on
+   * that path — which is where they already were, not a regression.
+   *
+   * `null` still means "record nothing", and for the same three reasons: no
+   * terminal frame arrived, its block was a shape the normalizer refuses to
+   * guess at, or every counter was zero.
+   */
+  takeAll(params: LlmStreamUsageTakeParams): LlmStreamUsageBatches | null {
     if (this.taken || this.terminalUsage === null) return null;
     this.taken = true;
 
     const usage = parseTextUsageDetail(this.terminalUsage);
     if (!usage) return null;
 
-    const batch = buildLlmUsageInput({
+    const generation = buildLlmUsageBatches({
       usage: params.interrupted === undefined ? usage : { ...usage, interrupted: params.interrupted },
       tenantId: params.tenantId,
       operation: params.operation,
       consultationId: params.consultationId ?? null,
       doctorId: params.doctorId ?? null,
       departmentId: params.departmentId ?? null,
+      device: params.device,
     });
-    return params.trigger ? withUsageTrigger(batch, params.trigger) : batch;
+
+    // The `interrupted` override is deliberately NOT applied here: it records
+    // what happened to the DELIVERY of the generation stream, and the guard
+    // call completed before the first token was forwarded. Stamping it would
+    // claim a call was cut short that never was.
+    const guardrailDetail = this.terminalGuardrailUsage === null ? null : parseTextUsageDetail(this.terminalGuardrailUsage);
+    const guardrail = guardrailDetail
+      ? buildGuardrailUsageBatches({
+          usage: guardrailDetail,
+          tenantId: params.tenantId,
+          consultationId: params.consultationId ?? null,
+          doctorId: params.doctorId ?? null,
+          departmentId: params.departmentId ?? null,
+          fallbackRequestId: usage.taskId || usage.requestId || null,
+          device: params.device,
+        })
+      : null;
+
+    return {
+      generation: params.trigger ? withTrigger(generation, params.trigger) : generation,
+      guardrail: params.trigger ? withTrigger(guardrail, params.trigger) : guardrail,
+    };
   }
+}
+
+/**
+ * Stamp the caller's trigger on both members of a pair.
+ *
+ * `withUsageTrigger` works on one batch; the guardrail row belongs to the SAME
+ * product activity as the generation it screened, so it carries the same
+ * trigger — "why did this cost happen" has one answer per request.
+ */
+function withTrigger(pair: ComputeAugmentedBatch | null, trigger: UsageTrigger): ComputeAugmentedBatch | null {
+  if (!pair) return null;
+  const batch = withUsageTrigger(pair.batch, trigger);
+  if (!batch) return null;
+  const platformBatch = pair.platformBatch ? withUsageTrigger(pair.platformBatch, trigger) : undefined;
+  return platformBatch ? { batch, platformBatch } : { batch };
 }

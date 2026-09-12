@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { AiCostBasis, AiDeploymentKind, AiUsageOutboxFactory, AiUsageOutboxRepository, CorePrisma, JsonObject } from '@arcaai/domains';
+import { AiCostBasis, AiDeploymentKind, AiUsageOutboxFactory, AiUsageOutboxRepository, AiUsageUnit, CorePrisma, JsonObject } from '@arcaai/domains';
 
 import { IUsageLedgerService } from './IUsageLedgerService';
 import { RecordUsageResult, USAGE_OUTBOX_PAYLOAD_VERSION, UsageEventBatchInput, UsageEventInput, UsageOutboxPayload } from './dto';
@@ -104,7 +104,14 @@ export class UsageLedgerService implements IUsageLedgerService {
    * directions:
    *
    *  - **BYOK + INTERNAL** — platform spend over-reported. The safe direction
-   *    to be wrong in, which is exactly why it needs saying out loud.
+   *    to be wrong in, which is exactly why it needs saying out loud. ONE shape
+   *    is exempt (TASK-959 §6.3): a `CPU_SECOND` row. The seconds HOPE burned
+   *    CALLING a tenant's own vendor are platform cost even though the tokens
+   *    that call produced are the tenant's, so `appendComputeAndByteUnits`
+   *    emits exactly that combination on purpose. Warning on it would train
+   *    every reader to ignore the line that catches the real forgotten flag.
+   *    The exemption is deliberately narrow: it is the UNIT that carries the
+   *    meaning, so a BYOK *token* row on the INTERNAL basis still warns.
    *  - **non-BYOK + BYOK_NOTIONAL** — platform spend SILENTLY LOST. The drainer
    *    contributes `0` to every COGS rollup for a `BYOK_NOTIONAL` row
    *    (`usage-outbox.drainer.ts`), and billing resolves the provider-agnostic
@@ -118,7 +125,10 @@ export class UsageLedgerService implements IUsageLedgerService {
   private warnOnInconsistentCostBasis(events: UsageEventInput[]): void {
     const effectiveBasis = (event: UsageEventInput): AiCostBasis => event.costBasis ?? AiCostBasis.INTERNAL;
 
-    const unflaggedByok = events.filter((event) => event.deployment === AiDeploymentKind.BYOK && effectiveBasis(event) !== AiCostBasis.BYOK_NOTIONAL);
+    const unflaggedByok = events.filter(
+      (event) =>
+        event.deployment === AiDeploymentKind.BYOK && effectiveBasis(event) !== AiCostBasis.BYOK_NOTIONAL && !isSanctionedPlatformComputeLeg(event),
+    );
     if (unflaggedByok.length > 0) {
       this.logger.warn({
         message: 'BYOK usage recorded on the INTERNAL cost basis — platform spend will be over-reported unless this was a BYOK-to-platform failover',
@@ -144,6 +154,17 @@ export class UsageLedgerService implements IUsageLedgerService {
       });
     }
   }
+}
+
+/**
+ * The one sanctioned BYOK + INTERNAL row (TASK-959 §6.3).
+ *
+ * A `CPU_SECOND` row on a BYOK call is the PLATFORM's own occupancy while it
+ * made that call — real COGS on a request the tenant funded. Every other unit
+ * on a BYOK row is the tenant's spend and must carry `BYOK_NOTIONAL`.
+ */
+function isSanctionedPlatformComputeLeg(event: UsageEventInput): boolean {
+  return event.unit === AiUsageUnit.CPU_SECOND && (event.costBasis ?? AiCostBasis.INTERNAL) === AiCostBasis.INTERNAL;
 }
 
 /** Collapse the three accepted call shapes onto one list. */

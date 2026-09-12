@@ -2,6 +2,7 @@ import {
   CaptureFeedbackRequest,
   CaptureFeedbackResponse,
   ConsultationEndpointService,
+  ComputeSampleInput,
   ConsultationLoopEventService,
   CreateAgentTrajectoryStepInput,
   FinalizeDocumentsRequest,
@@ -239,19 +240,98 @@ class HarnessTrajectoryStepInput {
   correlationId?: string;
 }
 
-/** the `POST /internal/harness/trajectory` batch body. */
-class ReportTrajectoryRequest {
-  @ApiProperty({ type: [HarnessTrajectoryStepInput] })
+/**
+ * TASK-959 §3.4 — one Temporal activity execution's compute, as the durable
+ * worker's metering interceptor measured it.
+ *
+ * This is NOT a trajectory step. A step is the inference a node performed; this
+ * is what `hope-harness-worker` itself burned orchestrating it. It rides the
+ * same POST only because the worker already had a channel to the gateway.
+ *
+ * `cpuMs` / `wallMs` are `@IsNumber()`, deliberately NOT `@IsInt()`: a fast
+ * activity burns well under a millisecond of CPU, so an integer field would
+ * reject — under `forbidNonWhitelisted`, 400 the WHOLE batch, steps included —
+ * or round away the majority of this worker's samples.
+ */
+class HarnessComputeSampleInput {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiProperty({ description: 'Temporal workflow_id.' })
+  @IsString()
+  @IsNotEmpty()
+  sessionId: string;
+
+  @ApiProperty({ description: 'Temporal workflow_run_id.' })
+  @IsString()
+  @IsNotEmpty()
+  runId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  activityId: string;
+
+  @ApiProperty({ description: 'Temporal attempt number — a RETRY is a second execution and bills separately.' })
+  @IsInt()
+  @Min(0)
+  attempt: number;
+
+  @ApiProperty({ description: 'Temporal activity name, e.g. core.agent.' })
+  @IsString()
+  @IsNotEmpty()
+  activityType: string;
+
+  @ApiProperty({ description: 'Fair-shared thread CPU in milliseconds (fractional).' })
+  @IsNumber()
+  @Min(0)
+  cpuMs: number;
+
+  @ApiProperty({ description: 'Exact wall clock in milliseconds (fractional). Carried for reconciliation, not billed.' })
+  @IsNumber()
+  @Min(0)
+  wallMs: number;
+
+  @ApiPropertyOptional({ description: "OD-E's closed usage-trigger vocabulary, when the activity input carried one." })
+  @IsOptional()
+  @IsString()
+  trigger?: string;
+}
+
+/**
+ * the `POST /internal/harness/trajectory` batch body.
+ *
+ * BOTH arrays are optional and a POST may carry either or both (TASK-959
+ * §10.2): the worker flushes trajectory steps at phase boundaries and compute
+ * samples on their own timer, so a flush often has only one kind to send.
+ * A body carrying NEITHER key is rejected — there is nothing it could mean, and
+ * the harness guards against sending one, so a 400 names a caller bug rather
+ * than absorbing it. An explicitly EMPTY `steps: []` keeps its long-standing
+ * no-op ack.
+ */
+export class ReportTrajectoryRequest {
+  @ApiPropertyOptional({ type: [HarnessTrajectoryStepInput] })
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
   @ValidateNested({ each: true })
   @Type(() => HarnessTrajectoryStepInput)
-  steps: HarnessTrajectoryStepInput[];
+  steps?: HarnessTrajectoryStepInput[];
+
+  @ApiPropertyOptional({ type: [HarnessComputeSampleInput] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => HarnessComputeSampleInput)
+  computeSamples?: HarnessComputeSampleInput[];
 }
 
 /** best-effort ingest ack. */
 class ReportTrajectoryAck {
-  @ApiProperty({ description: 'Number of steps accepted for idempotent persistence.' })
+  @ApiProperty({ description: 'Number of steps AND compute samples accepted for idempotent persistence.' })
   accepted: number;
 }
 
@@ -720,15 +800,27 @@ export class HarnessInternalController {
   @HttpCode(202)
   @ApiOperation({ summary: 'Batch-ingest ordered agentic-trajectory steps from the harness (idempotent, tenant-scoped)' })
   async reportTrajectory(@Body() dto: ReportTrajectoryRequest, @Headers('Idempotency-Key') _idempotencyKey?: string): Promise<ReportTrajectoryAck> {
+    // A body carrying NEITHER key means nothing — see `ReportTrajectoryRequest`.
+    // `steps: []` is a different statement ("an empty batch") and keeps its
+    // long-standing no-op ack below, so nothing that works today starts 400ing.
+    if (dto.steps === undefined && dto.computeSamples === undefined) {
+      throw new BadRequestException('A trajectory report must carry steps, computeSamples, or both');
+    }
+
     const steps = dto.steps ?? [];
-    if (steps.length === 0) {
+    const samples = dto.computeSamples ?? [];
+    if (steps.length === 0 && samples.length === 0) {
       return { accepted: 0 };
     }
 
     // Single-tenant batch (recordSteps enforces this too). Re-establish CLS from
     // the batch tenantId — these service-token routes run outside the API-edge
     // ClsModule middleware, so the tenant-scope extension needs the context.
-    const tenantId = steps[0].tenantId;
+    //
+    // TASK-959 — the samples carry their own tenantId (the interceptor reads it
+    // off each activity's input), so a compute-only POST establishes CLS from
+    // the first sample rather than from a step batch that is not there.
+    const tenantId = steps[0]?.tenantId ?? samples[0].tenantId;
     const mapped: CreateAgentTrajectoryStepInput[] = steps.map((step) => ({
       tenantId: step.tenantId,
       consultationId: step.consultationId ?? undefined,
@@ -748,12 +840,28 @@ export class HarnessInternalController {
       correlationId: step.correlationId ?? undefined,
     }));
 
+    // The trigger is narrowed against the ledger's closed vocabulary inside the
+    // service, so an unknown value is dropped rather than rejected here — the
+    // whole batch must not 400 over one attribute the worker could not resolve.
+    const mappedSamples: ComputeSampleInput[] = samples.map((sample) => ({
+      tenantId: sample.tenantId,
+      sessionId: sample.sessionId,
+      runId: sample.runId,
+      activityId: sample.activityId,
+      attempt: sample.attempt,
+      activityType: sample.activityType,
+      cpuMs: sample.cpuMs,
+      wallMs: sample.wallMs,
+      trigger: sample.trigger as ComputeSampleInput['trigger'],
+    }));
+
     await this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      await this.agentTrajectoryService.recordSteps(mapped);
+      if (mapped.length > 0) await this.agentTrajectoryService.recordSteps(mapped);
+      if (mappedSamples.length > 0) await this.agentTrajectoryService.recordComputeSamples(mappedSamples);
     });
 
-    return { accepted: steps.length };
+    return { accepted: steps.length + samples.length };
   }
 
   /**
