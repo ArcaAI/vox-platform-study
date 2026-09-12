@@ -50,6 +50,10 @@ async function removeIfPresent(request: APIRequestContext, token: string, slug: 
   await request.delete(`${BASE}/${slug}`, { headers: bearer(token) });
 }
 
+// The tests share ONE mutable sibling slug on the seeded tenant, so they must not
+// interleave across workers (`fullyParallel: true`) — same guard as the 33 sibling specs.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('TASK-958 — multiple provider connections per tenant', () => {
   let tenantAdminToken: string;
   let superAdminToken: string;
