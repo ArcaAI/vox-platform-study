@@ -94,7 +94,21 @@ _CONFIG_LOAD_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(
 # usage ledger bills from — F14, `nodes/_shared.record_generation_and_flush`); the stride is the
 # headroom that keeps every node's steps inside its own base without claiming a
 # wall-clock-derived value.
-_SEQ_STRIDE = 4
+#
+# TASK-959 §6.2 — widened 4 → 16 (the value `workflows.py` has always used) because a node now
+# also records ONE step per fallback candidate that was TRIED and lost. At 4 the headroom was
+# two such attempts, and the third would have landed on the NEXT node's base — a colliding
+# `harness:step:<sessionId>:<runId>:<seq>` silently replaces a different node's step, which is
+# a worse failure than a dropped sample. `nodes/_shared.MAX_FAILED_ATTEMPT_STEPS` mirrors this
+# value (it cannot import it: `workflow.py` imports `_shared`), pinned by a parity test.
+#
+# REPLAY: this is a value inside an ACTIVITY INPUT, not a workflow command, so the recorded
+# command sequence is unchanged and no `workflow.patched` era is needed — the same argument
+# `TrajectoryContext`'s own docstring makes for being threaded additively. An in-flight run
+# resumes with the new stride from whichever node it had not yet reached, and the new bases
+# (16·k) are strictly above every seq the old ones (4·j, j < k) already emitted, so ordering
+# stays monotonic and no key is reused.
+_SEQ_STRIDE = 16
 
 # Deterministic, idempotent-on-start workflow id — mirrors
 # `consultation_loop_workflow_id` (workflows.py:1623-1625).

@@ -306,6 +306,12 @@ class SessionManager:
         # beside the format at the same choke point. `engine` names a vendor and a
         # tenant may hold several accounts of one, so the format alone can no longer
         # say which credential a session spent; `(connection_key, connection_id)` can.
+        # Like `_session_asr_formats`, this is a SINGLE slot holding whichever engine
+        # loaded last, so it answers only "what was live at teardown" — the teardown
+        # summary's own scalar. Per-SPAN billing takes its own copy at each span
+        # boundary (TASK-958 G3, `_start_usage_segments`/`_advance_usage_segments`);
+        # reading this slot for every span billed a platform-funded primary leg to
+        # whichever sibling a failover ended on, funding included.
         self._session_connections: dict[str, tuple[str | None, str | None]] = {}
         # TASK-874 — per-session ENGINE-TIME accounting. `_session_asr_formats`
         # above is a single slot holding whichever engine loaded LAST, so on its
@@ -1576,6 +1582,11 @@ class SessionManager:
             asr_format = self._session_asr_formats.get(session_id)
         if asr_format is None:
             return
+        # TASK-958 G3 — the span records the connection the engine that serves it
+        # authenticates as, taken from the same `_load_asr_pipeline` stamp that put
+        # the format there. The session-level slot keeps moving as engines switch;
+        # this copy does not, which is what lets each span bill its own account.
+        kwargs.setdefault("connection", self._session_connections.get(session_id))
         self._session_usage_segments[session_id] = EngineUsageAccumulator(
             asr_format,
             audio_seconds=self._session_audio_seconds(session_id),
@@ -1593,6 +1604,7 @@ class SessionManager:
             asr_format,
             audio_seconds=self._session_audio_seconds(session_id),
             counters=self._session_usage_counters(session_id),
+            connection=self._session_connections.get(session_id),
         )
 
     async def _build_fallback_asr_callable(
@@ -4072,12 +4084,14 @@ class SessionManager:
         spelling trap or any other provider mapping).
 
         TASK-958 — ``connection_id`` names WHICH of the tenant's connections for that
-        engine served. It is resolved from the connection the ACTIVE ASR model
-        authenticates as, so a session that switched engines reports the last one; the
-        per-span breakdown below carries the same value per row. A session that switched
-        between two connections of ONE engine is therefore attributed to the last, since
-        a span is identified by its ASR FORMAT and those two share it — see the note in
-        ``usage_segments``.
+        engine served. This SCALAR is the connection the ACTIVE ASR model authenticates
+        as, so a session that switched engines reports the last one — the same reading
+        as ``engine``/``deployment`` beside it. The per-span rows below do NOT inherit
+        it: each span carries the pair recorded when its own engine was loaded or
+        switched in (TASK-958 G3), so a session that failed over from a platform-funded
+        primary to a tenant sibling bills one ``CLOUD`` row and one ``BYOK`` row on
+        their own accounts, and two connections of ONE vendor are two rows even though
+        they share an ASR format.
 
         ``segments`` is the TASK-874 per-engine breakdown: one entry per
         ``(engine, deployment, connection_id)`` triple that actually served, each with its own
@@ -4096,12 +4110,24 @@ class SessionManager:
             session.session_id, (None, None)
         )
 
-        def _attribute(fmt: Any) -> tuple[str, str, str | None]:
+        def _attribute(
+            fmt: Any, connection: tuple[str | None, str | None] | None = None
+        ) -> tuple[str, str, str | None]:
+            """Attribute ONE span (or the summary's own scalars, with no span).
+
+            TASK-958 G3 — ``connection`` is the span's OWN recorded pair. The
+            session-level stamp applies only when a span recorded none: it names
+            whichever engine loaded LAST, so using it for every span billed a
+            platform-funded primary leg to the tenant sibling a failover ended on,
+            funding included (the entry is read under the DECLARED key).
+            """
+            pair = connection if connection is not None else (connection_key, connection_id_hint)
+            span_key, span_id = pair
             return resolve_usage_attribution(
                 fmt,
                 overrides,
-                connection_key=connection_key,
-                connection_id=connection_id_hint,
+                connection_key=span_key,
+                connection_id=span_id,
             )
 
         engine: str | None = None
