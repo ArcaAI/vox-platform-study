@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 CostBasis = Literal["INTERNAL", "BYOK_NOTIONAL"]
 """Whether the money on this row is REAL platform cost or an informational figure.
@@ -65,6 +65,12 @@ _DEFAULT_ENDPOINT_KIND = "openai.chat"
 def endpoint_kind_for(provider: str | None) -> str:
     """Map an Text provider key onto the API shape it speaks."""
     return _ENDPOINT_KIND_BY_PROVIDER.get((provider or "").strip().lower(), _DEFAULT_ENDPOINT_KIND)
+
+
+#: The TASK-959 fields whose ABSENCE is meaningful ("nothing measured it") and
+#: which are therefore omitted rather than serialized as `null`. `total_ms` is
+#: not among them: a wall clock always exists.
+_OMIT_WHEN_UNMEASURED = ("engine_ms", "request_bytes", "response_bytes")
 
 
 class UsageDetail(BaseModel):
@@ -126,6 +132,46 @@ class UsageDetail(BaseModel):
     # cache-read / cache-write / reasoning breakdown lives; the headline counts
     # above cannot express it.
     raw: dict[str, Any] | None = None
+
+    # ── Compute and network (TASK-959 M-3 / M-4) ─────────────────────────────
+    #
+    # The gateway turns these into unit rows on the SAME ledger batch as the
+    # tokens above: occupancy seconds for the engine that ran (or the platform's
+    # own CPU when the call went to a vendor), and body bytes for the network
+    # the call consumed. Text is the only process that can report them, for the
+    # same reason it is the only one that can report `provider`: it is the one
+    # that made the call.
+
+    #: Wall clock for the call, client-measured — `GenerationStats.total_ms`.
+    #: ALWAYS present, because there is always a clock: `0` means "not measured",
+    #: which is a number a rater can see rather than a field it must guess at.
+    total_ms: int = 0
+    #: The engine's OWN reported time, when it reports one (llama.cpp's
+    #: `prompt_ms + predicted_ms`, Ollama's `total_duration - load_duration`).
+    #: `None` — not zero, and not `total_ms` — when the engine reports nothing:
+    #: a client clock relabelled as engine time would over-count every cloud
+    #: call by the round trip.
+    engine_ms: int | None = None
+    #: Body bytes put on the wire and read back, from the pooled transport.
+    #: `None` when the adapter is off the pool (nothing observed it) rather than
+    #: `0`, which would claim a call sent nothing.
+    request_bytes: int | None = None
+    response_bytes: int | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unmeasured(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Drop the THREE new optional fields when they are `None`.
+
+        Scoped to the fields TASK-959 adds, deliberately: a blanket
+        `exclude_none` would also stop emitting `connection_id`, `service_tier`
+        and `raw`, which existing consumers have always seen as explicit nulls.
+        "An older gateway sees an unchanged shape" has to mean unchanged.
+        """
+        data: dict[str, Any] = handler(self)
+        for name in _OMIT_WHEN_UNMEASURED:
+            if data.get(name, 0) is None:
+                data.pop(name, None)
+        return data
 
 
 def _int_or_none(source: Any, name: str) -> int | None:
@@ -288,6 +334,65 @@ def raw_usage_from_stats(stats: Any) -> dict[str, Any] | None:
     return usage if isinstance(usage, dict) else None
 
 
+def engine_ms_from_stats(stats: Any) -> int | None:
+    """The ENGINE's own reported time, in milliseconds, or ``None``.
+
+    Read off ``engine_native``, which is the only place a native timing
+    survives the mapping into ``GenerationStats``. Two shapes report one:
+
+    * ``timings.prompt_ms + timings.predicted_ms`` — llama.cpp, already in ms.
+      Prefill plus decode IS the engine's time on the request; the wall clock
+      around it additionally contains the queue and the HTTP round trip.
+    * ``total_duration - load_duration`` — Ollama, in NANOSECONDS. Subtracting
+      the load is what makes it comparable: a cold model's 4-second load is a
+      platform cost shared by every request after it, not this tenant's compute.
+
+    Matched by SHAPE rather than by provider name, so a self-hosted server
+    registered under a new key still reports its native time and nothing has to
+    be added to a table to make that happen. Accepts a ``GenerationStats`` or
+    its ``model_dump()`` (the streaming ``usage`` chunk only ever carries the
+    dump), and returns ``None`` on every unexpected shape: a missing engine time
+    degrades the row to wall clock, which is recoverable.
+
+    A derivation that comes out negative — a reported load longer than the
+    reported total — is refused rather than clamped to zero: it says the engine's
+    own numbers disagree, and inventing 0 ms of compute would hide that.
+    """
+    if stats is None:
+        return None
+    native = (
+        stats.get("engine_native")
+        if isinstance(stats, dict)
+        else getattr(stats, "engine_native", None)
+    )
+    if not isinstance(native, dict):
+        return None
+
+    timings = native.get("timings")
+    if isinstance(timings, dict):
+        prefill = _float_or_none(timings.get("prompt_ms"))
+        decode = _float_or_none(timings.get("predicted_ms"))
+        if prefill is not None or decode is not None:
+            return _non_negative_ms((prefill or 0.0) + (decode or 0.0))
+
+    total_ns = _float_or_none(native.get("total_duration"))
+    if total_ns is not None:
+        load_ns = _float_or_none(native.get("load_duration")) or 0.0
+        return _non_negative_ms((total_ns - load_ns) / 1_000_000)
+
+    return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _non_negative_ms(value: float) -> int | None:
+    return int(round(value)) if value >= 0 else None
+
+
 def build_usage_detail(
     *,
     task_id: str,
@@ -303,6 +408,10 @@ def build_usage_detail(
     connection_id: str | None = None,
     service_tier: str | None = None,
     occurred_at: datetime | None = None,
+    total_ms: int = 0,
+    engine_ms: int | None = None,
+    request_bytes: int | None = None,
+    response_bytes: int | None = None,
 ) -> UsageDetail:
     """Assemble a ``UsageDetail``. Null-safe on every count.
 
@@ -329,6 +438,13 @@ def build_usage_detail(
         completion_tokens=completion,
         total_tokens=int(total_tokens) if total_tokens is not None else prompt + completion,
         raw=raw,
+        # Null-safe like every count above: a clock that came back negative (a
+        # monotonic source that isn't, a stats object built from a bad delta) is
+        # reported as unmeasured rather than as time travel.
+        total_ms=max(0, int(total_ms or 0)),
+        engine_ms=engine_ms,
+        request_bytes=request_bytes,
+        response_bytes=response_bytes,
     )
 
 
@@ -370,6 +486,13 @@ def _usage_detail_from_blob(blob: dict[str, Any]) -> UsageDetail | None:
             blob.get("service_tier") if isinstance(blob.get("service_tier"), str) else None
         ),
         occurred_at=occurred_at,
+        # TASK-959 — the peer is trusted for what it MEASURED (it made the call);
+        # only `cost_basis` is re-derived. Dropping these would lose the compute
+        # and network of every judgement that reaches the ledger by ride-back.
+        total_ms=_int_or_none(blob, "total_ms") or 0,
+        engine_ms=_int_or_none(blob, "engine_ms"),
+        request_bytes=_int_or_none(blob, "request_bytes"),
+        response_bytes=_int_or_none(blob, "response_bytes"),
     )
 
 
