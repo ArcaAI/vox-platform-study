@@ -38,7 +38,7 @@ Metering: a judgement's tokens are safety-plane spend, not the tenant's
 generation spend, and ride back to the billing plane on guardrail's verdict
 rather than on the tenant's ``/generate`` response. ``cost_basis`` is DERIVED
 from the funding tier of the credential that served the call (the same
-``_used_byok_credential`` derivation the public path uses) and is never stamped
+``_credential_attribution`` derivation the public path uses) and is never stamped
 here.
 """
 
@@ -54,9 +54,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 # The funding derivation and the stats coercion are imported, not re-implemented:
-# a second copy of `_used_byok_credential` is exactly how a call site starts
+# a second copy of `_credential_attribution` is exactly how a call site starts
 # stamping its own attribution.
-from text.api.endpoints.generate import _coerce_stats, _extract_usage, _used_byok_credential
+from text.api.endpoints.generate import _coerce_stats, _credential_attribution, _extract_usage
 from text.core.dependencies import (
     get_app_state,
     get_judge_circuit_breakers,
@@ -295,6 +295,9 @@ async def _run_judge(
             stats = degraded_stats(provider=provider_name, model=model, total_ms=latency_ms)
 
         prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
+        # DERIVED, never stamped: the funding tier AND the connection both come from the
+        # one override entry that served (see `_credential_attribution`).
+        byok, connection_id = _credential_attribution(generate_request)
         usage_detail = build_usage_detail(
             # A judgement has no task lifecycle, but the billing plane keys its
             # ledger idempotency on `task_id`, so it must still be unique per call.
@@ -306,9 +309,10 @@ async def _run_judge(
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw=raw_usage_from_stats(stats),
-            # DERIVED, never stamped: `cost_basis` follows from the funding tier
-            # of the credential that actually served the call.
-            byok=_used_byok_credential(generate_request),
+            # `cost_basis` follows from the funding tier of the credential that
+            # actually served the call.
+            byok=byok,
+            connection_id=connection_id,
         )
 
         logger.info(

@@ -192,6 +192,7 @@ class APIGatewayClient:
         processing_time_seconds: float | None = None,
         engine: str | None = None,
         deployment: str | None = None,
+        connection_id: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
@@ -200,7 +201,7 @@ class APIGatewayClient:
                 optional ``resultMetadata``.
 
         ``duration_seconds``/``processing_time_seconds``/
-                ``engine``/``deployment`` ride as TYPED, top-level sibling fields —
+                ``engine``/``deployment``/``connection_id`` ride as TYPED, top-level sibling fields —
                 NOT nested inside ``result_metadata`` — because the gateway encrypts
                 that blob into ciphertext on the completing persist
                 (``SttInternalService.completeJob``), making anything trapped only
@@ -221,6 +222,10 @@ class APIGatewayClient:
             payload["engine"] = engine
         if deployment is not None:
             payload["deployment"] = deployment
+        # TASK-958 — WHICH connection of that engine was spent, so `AiUsageEvent`
+        # can attribute a tenant's two accounts of one vendor separately.
+        if connection_id is not None:
+            payload["connectionId"] = connection_id
 
         return await self._request(
             "PATCH",

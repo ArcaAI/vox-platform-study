@@ -16,7 +16,7 @@ __all__ = [
     "_coerce_stats",
     "_extract_stream_usage",
     "_extract_usage",
-    "_used_byok_credential",
+    "_credential_attribution",
 ]
 
 
@@ -65,8 +65,8 @@ def _coerce_stats(result: Any, *, provider: str, model: str, latency_ms: int) ->
     )
 
 
-def _used_byok_credential(request_body: GenerateRequest) -> bool:
-    """True when the call was served on the TENANT's own credential.
+def _credential_attribution(request_body: GenerateRequest) -> tuple[bool, str | None]:
+    """``(byok, connection_id)`` for the credential that served this call.
 
     The presence of an override entry is no longer the answer:
     the gateway can inject a credential from the SYSTEM-tenant platform default
@@ -79,10 +79,20 @@ def _used_byok_credential(request_body: GenerateRequest) -> bool:
     Absent entry ⇒ platform env credential ⇒ not BYOK. Absent ``funding``
     ⇒ ``"tenant"`` (a sender with no platform tier can only inject the
     caller's own key), which keeps an older gateway byte-for-byte unchanged.
+
+    TASK-958 — the same entry also names WHICH of the tenant's connections for that
+    provider was spent, and the two answers are returned TOGETHER rather than from two
+    functions: they describe one credential, and a second lookup is how "who paid" and
+    "with which key" start disagreeing about the same call. ``None`` means the sender
+    stamped no connection id (a gateway that predates the field, or a platform env
+    credential with no row behind it) — never a provider name standing in for one,
+    because a provider name is exactly what two connections share.
     """
     overrides = request_body.provider_overrides or {}
     entry = overrides.get(request_body.provider)
-    return entry is not None and entry.funding == "tenant"
+    if entry is None:
+        return False, None
+    return entry.funding == "tenant", entry.connection_id
 
 
 def _extract_stream_usage(data: dict[str, Any]) -> tuple[int, int, int | None]:

@@ -52,18 +52,22 @@ class TestOverrideKeyMapAgreesWithTheLoaders:
         from stt.models.azure_speech_loader import AzureSpeechLoader
 
         assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_SPEECH] == AzureSpeechLoader.override_key
-        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_FOUNDRY] == AzureFoundryLoader.override_key
+        assert (
+            _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_FOUNDRY] == AzureFoundryLoader.override_key
+        )
         assert AzureFoundryLoader.override_key == "azure-foundry"
 
 
 class TestResolveUsageAttributionSelfHosted:
     def test_whisper_cpp_is_self_hosted(self):
-        engine, deployment = resolve_usage_attribution(AiModelFormat.WHISPER_CPP, None)
+        engine, deployment, _connection = resolve_usage_attribution(AiModelFormat.WHISPER_CPP, None)
         assert engine == "whisper_cpp"
         assert deployment == "SELF_HOSTED"
 
     def test_faster_whisper_is_self_hosted(self):
-        engine, deployment = resolve_usage_attribution(AiModelFormat.FASTER_WHISPER, None)
+        engine, deployment, _connection = resolve_usage_attribution(
+            AiModelFormat.FASTER_WHISPER, None
+        )
         assert engine == "faster_whisper"
         assert deployment == "SELF_HOSTED"
 
@@ -71,7 +75,7 @@ class TestResolveUsageAttributionSelfHosted:
         """A tenant BYOK override for an unrelated cloud provider must never
         flip a self-hosted engine's deployment — only formats in
         `_CLOUD_ASR_OVERRIDE_FORMATS` are BYOK-eligible."""
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.WHISPER_CPP, {"sarvam": {"apiKey": "x"}}
         )
         assert engine == "whisper_cpp"
@@ -84,37 +88,39 @@ class TestResolveUsageAttributionCloud:
         lowercases to `azure_speech` (underscore), but the seeded
         AiProviderConnection id — and KNOWN_PROVIDERS — spell it
         `azure-speech` (hyphen)."""
-        engine, deployment = resolve_usage_attribution(AiModelFormat.AZURE_SPEECH, None)
+        engine, deployment, _connection = resolve_usage_attribution(
+            AiModelFormat.AZURE_SPEECH, None
+        )
         assert engine == "azure-speech"
         assert deployment == "CLOUD"
 
     def test_sarvam_cloud_without_override_is_platform_funded(self):
-        engine, deployment = resolve_usage_attribution(AiModelFormat.SARVAM, None)
+        engine, deployment, _connection = resolve_usage_attribution(AiModelFormat.SARVAM, None)
         assert engine == "sarvam"
         assert deployment == "CLOUD"
 
     def test_openai_cloud_without_override_is_platform_funded(self):
-        engine, deployment = resolve_usage_attribution(AiModelFormat.OPENAI, None)
+        engine, deployment, _connection = resolve_usage_attribution(AiModelFormat.OPENAI, None)
         assert engine == "openai"
         assert deployment == "CLOUD"
 
     def test_empty_provider_overrides_dict_is_still_platform_funded(self):
         """`bool({})` is False — an empty overrides dict must behave
         identically to None, not accidentally flip to BYOK."""
-        engine, deployment = resolve_usage_attribution(AiModelFormat.SARVAM, {})
+        engine, deployment, _connection = resolve_usage_attribution(AiModelFormat.SARVAM, {})
         assert deployment == "CLOUD"
 
 
 class TestResolveUsageAttributionByok:
     def test_cloud_format_with_provider_overrides_is_byok(self):
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"sarvam": {"apiKey": "tenant-key"}}
         )
         assert engine == "sarvam"
         assert deployment == "BYOK"
 
     def test_azure_speech_with_overrides_is_byok_and_keeps_hyphenated_id(self):
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.AZURE_SPEECH, {"azure-speech": {"apiKey": "k"}}
         )
         assert engine == "azure-speech"
@@ -132,7 +138,7 @@ class TestResolveUsageAttributionIsKeySpecific:
     """
 
     def test_override_for_a_different_provider_is_not_byok(self):
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"azure-speech": {"api_key": "k"}}
         )
         assert engine == "sarvam"
@@ -142,7 +148,7 @@ class TestResolveUsageAttributionIsKeySpecific:
         """TASK-880 — Foundry has its OWN `azure-foundry` connection row; it used to
         alias `azure-speech`. Attribution must look under the key the loader reads, or
         a call served on the tenant's own Foundry key meters as platform CLOUD."""
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.AZURE_FOUNDRY, {"azure-foundry": {"api_key": "k"}}
         )
         assert engine == "azure-foundry"
@@ -151,19 +157,19 @@ class TestResolveUsageAttributionIsKeySpecific:
     def test_azure_foundry_no_longer_reads_the_azure_speech_key(self):
         """The alias is gone in both directions: an Azure SPEECH credential does not
         make a Foundry call BYOK, because it is not the credential that served it."""
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.AZURE_FOUNDRY, {"azure-speech": {"api_key": "k"}}
         )
         assert deployment == "CLOUD"
 
     def test_azure_foundry_with_only_an_unrelated_override_is_cloud(self):
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.AZURE_FOUNDRY, {"sarvam": {"api_key": "k"}}
         )
         assert deployment == "CLOUD"
 
     def test_empty_entry_for_the_serving_provider_is_not_byok(self):
-        _, deployment = resolve_usage_attribution(AiModelFormat.SARVAM, {"sarvam": {}})
+        _, deployment, _connection = resolve_usage_attribution(AiModelFormat.SARVAM, {"sarvam": {}})
         assert deployment == "CLOUD"
 
 
@@ -176,14 +182,14 @@ class TestResolveUsageAttributionFunding:
     """
 
     def test_platform_funded_entry_meters_as_cloud(self):
-        engine, deployment = resolve_usage_attribution(
+        engine, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "platform"}}
         )
         assert engine == "sarvam"
         assert deployment == "CLOUD"
 
     def test_tenant_funded_entry_meters_as_byok(self):
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "tenant"}}
         )
         assert deployment == "BYOK"
@@ -192,13 +198,13 @@ class TestResolveUsageAttributionFunding:
         """An older gateway sends no ``funding``. Every sender that predates R3
         can only ever inject the caller tenant's OWN credential, so ``tenant``
         is exactly correct for them — not merely a conservative guess."""
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"sarvam": {"api_key": "k"}}
         )
         assert deployment == "BYOK"
 
     def test_unrecognized_funding_value_falls_back_to_tenant(self):
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "wat"}}
         )
         assert deployment == "BYOK"
@@ -214,7 +220,7 @@ class TestResolveUsageAttributionFunding:
         assert resolve_usage_attribution(AiModelFormat.AZURE_SPEECH, overrides)[1] == "BYOK"
 
     def test_funding_never_promotes_a_self_hosted_engine(self):
-        _, deployment = resolve_usage_attribution(
+        _, deployment, _connection = resolve_usage_attribution(
             AiModelFormat.WHISPER_CPP, {"whisper_cpp": {"funding": "tenant"}}
         )
         assert deployment == "SELF_HOSTED"
@@ -227,6 +233,6 @@ class TestResolveUsageAttributionUnmappedFormat:
         `AiModelFormat` value rather than raising — shape-valid per the
         ledger's OPEN provider vocabulary, just not yet a KNOWN_PROVIDERS
         member. Never guessed as a name that collides with a real provider."""
-        engine, deployment = resolve_usage_attribution(AiModelFormat.ONNX, None)
+        engine, deployment, _connection = resolve_usage_attribution(AiModelFormat.ONNX, None)
         assert engine == "onnx"
         assert deployment == "SELF_HOSTED"

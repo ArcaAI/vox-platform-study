@@ -103,6 +103,7 @@ async def run_generation_producer(
     tenant_id: str | None = None,
     request_id: str | None = None,
     byok: bool = False,
+    connection_id: str | None = None,
     policy: GenerationPolicy | None = None,
     guardrail_client: ExternalGuardrailClient | None = None,
     app_state: Any = None,
@@ -211,6 +212,7 @@ async def run_generation_producer(
             raw=raw_usage,
             interrupted=interrupted,
             byok=byok,
+            connection_id=connection_id,
         ).model_dump(mode="json")
 
     def _log_audit(*, status: str, latency_ms: int, finish_reason: str, error: str | None) -> None:

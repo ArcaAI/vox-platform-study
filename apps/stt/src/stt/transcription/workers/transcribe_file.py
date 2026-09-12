@@ -443,6 +443,7 @@ async def _transcribe_file_async(
             processing_time_seconds=result.processing_time_seconds,
             engine=result.engine,
             deployment=result.deployment,
+            connection_id=result.connection_id,
         )
 
         # Publish status: COMPLETED

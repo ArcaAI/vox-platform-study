@@ -48,6 +48,7 @@ from ..core.metrics import (
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
+from ..models.cloud_asr import resolve_override_key
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.config_reader import get_model_reader
 from ..pipeline.dto import (
@@ -137,6 +138,7 @@ def _resolve_chunking(config: Any) -> tuple[float, int, int]:
             pass
     return chunk_length_s, int(default.stride_length_sec[0]), int(default.stride_length_sec[1])
 
+
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
 # dict (BYOK). For these the batch ASR load bypasses the shared by-slug
 # cache when an override is present. Mirrors the streaming set in session_manager.
@@ -183,9 +185,13 @@ _OVERRIDE_KEY_BY_FORMAT: dict[AiModelFormat, str] = {
 
 
 def resolve_usage_attribution(
-    asr_format: AiModelFormat, provider_overrides: dict[str, Any] | None
-) -> tuple[str, str]:
-    """Map the loaded ASR model's format to a usage-ledger ``(engine, deployment)``.
+    asr_format: AiModelFormat,
+    provider_overrides: dict[str, Any] | None,
+    *,
+    connection_key: str | None = None,
+    connection_id: str | None = None,
+) -> tuple[str, str, str | None]:
+    """Map the loaded ASR model's format to a ``(engine, deployment, connection_id)``.
 
     A format outside ``_CLOUD_ASR_OVERRIDE_FORMATS`` runs on the platform's own
     hardware and is ``"SELF_HOSTED"``. A cloud format is ``"BYOK"`` only when it
@@ -209,6 +215,21 @@ def resolve_usage_attribution(
     has no platform tier to draw from, so every credential it can inject is the
     caller's own. That makes the default exact for older senders rather than a
     guess, and an unrecognized value degrades the same conservative way.
+
+    TASK-958 — the third element names WHICH ``AiProviderConnection`` was spent. A
+    tenant may hold several connections for one vendor, so ``engine`` alone can no
+    longer answer "which of my two keys paid for this". Two things follow:
+
+    1. The entry is looked up under the chain's ``connection_key`` first (the tenant
+       connection's ``slug``) and the loader's ``override_key`` second — the SAME
+       two-step read `stt.models.cloud_asr.resolve_override_key` performs, because
+       attribution must follow the key the LOADER actually read or a call served on
+       account #2 would meter against account #1.
+    2. The id itself comes from that entry when it carries one, and otherwise from the
+       spec-declared ``connection_id`` — which is the only source a SELF_HOSTED engine
+       has, since it holds a connection row but no credential entry. ``None`` means the
+       sender stamped neither, and the ledger records no connection rather than
+       guessing one from the provider name.
     """
     is_cloud = asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
     engine = (
@@ -216,14 +237,23 @@ def resolve_usage_attribution(
         or str(getattr(asr_format, "value", asr_format)).lower()
     )
     if not is_cloud:
-        return engine, "SELF_HOSTED"
+        return engine, "SELF_HOSTED", connection_id
 
     override_key = _OVERRIDE_KEY_BY_FORMAT.get(asr_format)
-    entry = (provider_overrides or {}).get(override_key) if override_key else None
+    entry = (
+        resolve_override_key(provider_overrides, override_key, connection_key=connection_key)
+        if override_key
+        else None
+    )
     if not isinstance(entry, dict) or not entry:
-        return engine, "CLOUD"
+        return engine, "CLOUD", connection_id
 
-    return engine, ("CLOUD" if entry.get("funding") == "platform" else "BYOK")
+    served_connection = entry.get("connection_id") or connection_id
+    return (
+        engine,
+        ("CLOUD" if entry.get("funding") == "platform" else "BYOK"),
+        str(served_connection) if served_connection else None,
+    )
 
 
 class BatchTranscriptionService:
@@ -691,8 +721,12 @@ class BatchTranscriptionService:
             # Usage-ledger attribution, forwarded as typed
             # top-level fields on the complete_job() gateway callback (never
             # inside result.metadata — see TranscriptionResult.engine).
-            result.engine, result.deployment = resolve_usage_attribution(
-                asr_model.format, provider_overrides
+            _asr_model_config = (model_configs or {}).get(asr_model.model_slug)
+            result.engine, result.deployment, result.connection_id = resolve_usage_attribution(
+                asr_model.format,
+                provider_overrides,
+                connection_key=getattr(_asr_model_config, "connection_key", None),
+                connection_id=getattr(_asr_model_config, "connection_id", None),
             )
             result.metadata["job_id"] = job_id
             result.metadata["pipeline"] = pipeline_config.slug

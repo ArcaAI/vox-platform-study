@@ -226,6 +226,11 @@ class TranscriptionResult:
     # so they stay queryable after the blob is encrypted at rest.
     engine: str | None = None
     deployment: str | None = None
+    #: TASK-958 — WHICH ``AiProviderConnection`` served it. ``engine`` names the vendor,
+    #: and a tenant may now hold several accounts of one vendor, so this is the only
+    #: field that says which key was spent. Rides the gateway callback as a typed
+    #: top-level field beside the other two; ``None`` when the sender stamped none.
+    connection_id: str | None = None
 
     def build_transcript_segments(self) -> list[dict[str, Any]]:
         """Build consumer-shaped transcript segments for the gateway.
