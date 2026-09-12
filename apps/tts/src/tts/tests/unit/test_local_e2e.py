@@ -80,9 +80,7 @@ async def test_malayalam_voice_routes_to_parler_with_resample(client):
                     "indic_parler",
                     slug="indic-parler-tts",
                     source_uri="ai4bharat/indic-parler-tts",
-                    voices=[
-                        voice_binding("ml-female-1", locale="ml-IN", provider_voice="Anjali")
-                    ],
+                    voices=[voice_binding("ml-female-1", locale="ml-IN", provider_voice="Anjali")],
                     voice="ml-female-1",
                     language="ml",
                 )

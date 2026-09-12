@@ -44,9 +44,9 @@ def test_empty_model_path_is_still_the_hub_fallback():
 def test_error_does_not_name_the_retired_env_var(tmp_path):
     with pytest.raises(FileNotFoundError) as exc:
         resolve_kokoro_paths(_unpublished(tmp_path))
-    assert "TTS_KOKORO_MODEL_PATH" not in str(exc.value), (
-        "the message names a dead alias an operator cannot set — it must name the registry row"
-    )
+    assert "TTS_KOKORO_MODEL_PATH" not in str(
+        exc.value
+    ), "the message names a dead alias an operator cannot set — it must name the registry row"
 
 
 def test_error_names_the_registry_row_as_the_supplier(tmp_path):

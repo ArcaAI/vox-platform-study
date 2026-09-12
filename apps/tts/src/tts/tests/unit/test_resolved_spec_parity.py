@@ -84,7 +84,11 @@ def test_the_chain_is_walked_in_order_and_each_candidate_speaks_its_own_voice() 
     assert [c.engine for c in chain] == ["indic_parler", "azure", "kokoro"]
     # Each candidate's voice comes from ITS OWN agent + model, never the primary's: falling over
     # must not carry a voice name the next engine cannot say.
-    assert [c.binding_for(None).engine_voice for c in chain] == ["Anjali", "ml-IN-SobhanaNeural", "af_heart"]
+    assert [c.binding_for(None).engine_voice for c in chain] == [
+        "Anjali",
+        "ml-IN-SobhanaNeural",
+        "af_heart",
+    ]
 
 
 def test_auto_switch_off_runs_the_primary_and_stops() -> None:

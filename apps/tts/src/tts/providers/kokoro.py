@@ -100,6 +100,7 @@ def resolve_kokoro_voice(paths: KokoroPaths | None, voice: str) -> str:
             return candidate
     return voice
 
+
 # `next()` cannot signal exhaustion across a thread boundary by raising
 # StopIteration (it would be swallowed by the enclosing generator machinery), so
 # the pump returns this sentinel instead.

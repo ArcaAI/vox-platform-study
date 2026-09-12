@@ -112,7 +112,8 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_empty_input_422(self, client_with_azure):
         r = await client_with_azure.post(
-            "/api/v1/audio/speech", json={"input": "", "voice": "en-female-1", "resolved_spec": _spec()}
+            "/api/v1/audio/speech",
+            json={"input": "", "voice": "en-female-1", "resolved_spec": _spec()},
         )
         assert r.status_code == 422
 
@@ -129,7 +130,8 @@ class TestValidation:
     @pytest.mark.asyncio
     async def test_unknown_voice_404(self, client_with_azure):
         r = await client_with_azure.post(
-            "/api/v1/audio/speech", json={"input": "Hi.", "voice": "nope-1", "resolved_spec": _spec()}
+            "/api/v1/audio/speech",
+            json={"input": "Hi.", "voice": "nope-1", "resolved_spec": _spec()},
         )
         assert r.status_code == 404
 
@@ -149,7 +151,10 @@ class TestUnavailable:
     async def test_no_provider_returns_503(self):
         app = _app()  # no providers registered
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            r = await c.post("/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1", "resolved_spec": _spec()})
+            r = await c.post(
+                "/api/v1/audio/speech",
+                json={"input": "Hi.", "voice": "en-female-1", "resolved_spec": _spec()},
+            )
         assert r.status_code == 503
 
 

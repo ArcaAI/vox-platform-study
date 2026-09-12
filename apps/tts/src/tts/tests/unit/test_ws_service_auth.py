@@ -68,7 +68,11 @@ def _init_frame() -> dict:
         "type": "init",
         "voice": "en-female-1",
         "format": "pcm",
-        "resolved_spec": spec_json(candidate("azure", voices=[voice_binding("en-female-1", locale="en-IN")], voice="en-female-1")),
+        "resolved_spec": spec_json(
+            candidate(
+                "azure", voices=[voice_binding("en-female-1", locale="en-IN")], voice="en-female-1"
+            )
+        ),
     }
 
 

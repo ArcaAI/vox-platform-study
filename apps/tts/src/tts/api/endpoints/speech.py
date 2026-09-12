@@ -305,7 +305,9 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             **base_headers,
             "Cache-Control": "no-store",
             **({"X-Tts-Audio-Seconds": str(audio_seconds)} if audio_seconds is not None else {}),
-            **({"X-Tts-Synthesis-Ms": str(round(synthesis_ms))} if synthesis_ms is not None else {}),
+            **(
+                {"X-Tts-Synthesis-Ms": str(round(synthesis_ms))} if synthesis_ms is not None else {}
+            ),
             "X-Tts-Response-Bytes": str(audio_bytes_total),
             **({"X-Tts-Byte-Source": byte_source} if byte_source else {}),
         },

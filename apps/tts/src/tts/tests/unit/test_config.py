@@ -117,7 +117,9 @@ class TestAzureCredentialByok:
 
         assert (
             AzureSpeechProvider.from_spec(
-                Settings(), candidate("azure", source_uri="azure://neural-voices", region=None), {"api_key": "k"}
+                Settings(),
+                candidate("azure", source_uri="azure://neural-voices", region=None),
+                {"api_key": "k"},
             )
             is None
         )
