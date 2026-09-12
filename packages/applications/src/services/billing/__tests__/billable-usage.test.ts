@@ -118,3 +118,46 @@ describe('NON_BILLABLE_LLM_OPERATIONS', () => {
     expect([...NON_BILLABLE_LLM_OPERATIONS].sort()).toEqual(['guardrail.validate', 'harness.step']);
   });
 });
+
+/**
+ * TASK-957 F-1 / TASK-959 — `workflow.step` is billable BY CONSTRUCTION.
+ *
+ * D-1's recommendation was to introduce the operation and leave the exclusion
+ * lists alone, so that tenant-consumed workflow inference becomes billable
+ * because nobody excluded it — not because somebody remembered to include it.
+ * That makes the exclusion list itself the contract, and this is the test that
+ * makes a later "tidy-up" of it a failing test rather than a silent revenue
+ * decision.
+ */
+describe('TASK-959 — the operation exclusion list is the contract', () => {
+  it('excludes guardrail and the CONSULTATION harness lane, and nothing else', () => {
+    expect([...NON_BILLABLE_LLM_OPERATIONS]).toEqual(['guardrail.validate', 'harness.step']);
+  });
+
+  it('does NOT exclude workflow.step — a tenant’s workflow generation is the tenant’s spend', () => {
+    expect(NON_BILLABLE_LLM_OPERATIONS).not.toContain('workflow.step');
+  });
+
+  it('pools workflow.step LLM tokens into monthlyLlmTokens like any other generation', () => {
+    // The rollup carries `operation`, but `BILLABLE_UNITS` is keyed by
+    // CAPABILITY: a workflow step's tokens are LLM tokens, so they consume the
+    // same pooled allowance a summary's do. Nothing operation-shaped is needed
+    // here — the compensation path is what subtracts the excluded operations.
+    expect(BILLABLE_UNITS[AiCapability.LLM]).toContain(AiUsageUnit.INPUT_TOKEN);
+    expect(BILLABLE_UNITS[AiCapability.LLM]).toContain(AiUsageUnit.REASONING_TOKEN);
+  });
+
+  it('keeps the two new capabilities un-invoiced until their SELL rows ship', () => {
+    // A billable unit with no SELL rate makes the whole invoice draft throw, so
+    // these stay empty until wave 4 ships the rate and the allowance column
+    // together. Metered and visible now; invoiced later.
+    expect(BILLABLE_UNITS[AiCapability.WORKFLOW]).toEqual([]);
+    expect(BILLABLE_UNITS[AiCapability.STORAGE]).toEqual([]);
+  });
+
+  it('never bills an occupancy second or a byte as an LLM unit', () => {
+    for (const unit of [AiUsageUnit.GPU_SECOND, AiUsageUnit.CPU_SECOND, AiUsageUnit.EGRESS_BYTE, AiUsageUnit.INGRESS_BYTE]) {
+      expect(BILLABLE_UNITS[AiCapability.LLM]).not.toContain(unit);
+    }
+  });
+});
