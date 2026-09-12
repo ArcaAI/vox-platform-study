@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+import tts.routing.router as router_mod
 from tts.core.config import Settings
 from tts.main import create_app
 from tts.tests.fakes import FakeEngine, candidate, spec_json, voice_binding
@@ -274,3 +275,90 @@ class TestUsageMetering:
         after_secs = REGISTRY.get_sample_value("tts_synthesized_seconds_total", labels)
         assert after_chars == before_chars + 3
         assert after_secs == pytest.approx(before_secs + 14 / 48000)
+
+
+class TestComputeMetadataHeaders:
+    """TASK-959 — compute/device/byte metadata beside the existing usage headers.
+
+    ``X-Tts-Synthesis-Ms``/``X-Tts-Response-Bytes``/``X-Tts-Byte-Source`` are only knowable once
+    the whole utterance has been produced, so they ride the BATCH response only.
+    ``X-Tts-Device`` is known off the first chunk (like ``X-Tts-Provider``/``X-Tts-Connection-Id``)
+    and rides every response mode; it is absent for a cloud engine with no device of ours.
+    ``X-Tts-Ttfa-Ms`` is this lane's documented substitute on the two paths that stream the body
+    before the total synthesis time is known.
+    """
+
+    @pytest.mark.asyncio
+    async def test_batch_local_provider_carries_all_four_headers(self, monkeypatch):
+        # Bypass the real spec-built KokoroProvider (which would try to load actual model
+        # weights) and serve the registered FakeEngine instead — the same seam
+        # `test_router.py`'s `registered_engines_serve` fixture uses.
+        monkeypatch.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: None)
+        # `device` carries a dead validation alias (control-plane-owned field, see
+        # `moved_alias`) — `model_copy(update=...)` is the sanctioned way past it,
+        # the same seam `router.py` itself uses for the other per-request fields.
+        settings_override = Settings(debug=True, internal_access_token="")
+        settings_override.kokoro = settings_override.kokoro.model_copy(update={"device": "cuda"})
+        app = create_app(settings_override=settings_override)
+        app.state.provider_registry.register(
+            "kokoro", FakeEngine("kokoro", chunks=2, payload=b"PCMDATA")
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.post(
+                "/api/v1/audio/speech",
+                json={
+                    "input": "Hello.",
+                    "voice": "en-female-1",
+                    "response_format": "pcm",
+                    "resolved_spec": _spec(engine="kokoro"),
+                },
+            )
+        assert r.status_code == 200
+        assert r.headers["x-tts-provider"] == "kokoro"
+        assert r.headers["x-tts-device"] == "cuda"
+        assert int(r.headers["x-tts-synthesis-ms"]) >= 0
+        assert r.headers["x-tts-response-bytes"] == str(len(b"PCMDATA" * 2))
+        assert r.headers["x-tts-byte-source"] == "wire"
+
+    @pytest.mark.asyncio
+    async def test_batch_azure_omits_device_but_carries_synthesis_ms_and_app_byte_source(
+        self, client_with_azure
+    ):
+        # Azure Speech is a cloud engine that names no device of ours — the header must be
+        # ABSENT, never an empty string or a guessed value.
+        r = await client_with_azure.post(
+            "/api/v1/audio/speech",
+            json={
+                "input": "Hello.",
+                "voice": "en-female-1",
+                "response_format": "pcm",
+                "resolved_spec": _spec(),
+            },
+        )
+        assert r.status_code == 200
+        assert r.headers["x-tts-provider"] == "azure"
+        assert "x-tts-device" not in r.headers
+        assert int(r.headers["x-tts-synthesis-ms"]) >= 0
+        assert r.headers["x-tts-response-bytes"] == str(len(b"PCMDATA" * 2))
+        assert r.headers["x-tts-byte-source"] == "app"
+
+    @pytest.mark.asyncio
+    async def test_streaming_response_carries_ttfa_ms_and_omits_batch_only_headers(
+        self, client_with_azure
+    ):
+        # Headers commit before the body streams, so the total synthesis time and the total
+        # byte count are not knowable yet — only time-to-first-audio is.
+        r = await client_with_azure.post(
+            "/api/v1/audio/speech",
+            json={
+                "input": "Hi.",
+                "voice": "en-female-1",
+                "stream_format": "audio",
+                "resolved_spec": _spec(),
+            },
+        )
+        assert r.status_code == 200
+        assert int(r.headers["x-tts-ttfa-ms"]) >= 0
+        assert "x-tts-synthesis-ms" not in r.headers
+        assert "x-tts-response-bytes" not in r.headers
+        assert "x-tts-byte-source" not in r.headers
