@@ -565,6 +565,11 @@ export class SttInternalService extends BaseService implements ISttInternalServi
             model: null,
             deployment: AiDeploymentKind[dto.deployment ?? 'SELF_HOSTED'],
             ...(dto.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
+            // TASK-958 D-7 — WHICH account of that engine. Carried from the worker's
+            // own attribution (`resolve_usage_attribution`), which reads the key the
+            // LOADER authenticated with; never re-derived from `engine`, which two of
+            // a tenant's accounts share.
+            connectionId: dto.connectionId ?? null,
             consultationId: job.consultationId ?? null,
             requestId: jobId,
             attributesJson: {

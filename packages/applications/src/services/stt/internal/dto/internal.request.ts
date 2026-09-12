@@ -228,6 +228,17 @@ export class InternalCompleteJobRequest {
   @IsOptional()
   @IsIn(['SELF_HOSTED', 'CLOUD', 'BYOK'])
   deployment?: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-958 D-7 — the `AiProviderConnection` whose credential this transcription actually spent. `engine` names the VENDOR and a tenant may hold ' +
+      'several accounts of one, so this is the only field that separates their spend on a cost surface. Absent for a platform/self-hosted engine, ' +
+      'and from a worker that predates the field. DECLARED because the global pipe runs `forbidNonWhitelisted`: an undeclared field 400s the callback.',
+    example: '0199a861-0000-7000-8000-000000000042',
+  })
+  @IsString()
+  @IsOptional()
+  connectionId?: string;
 }
 
 /**
