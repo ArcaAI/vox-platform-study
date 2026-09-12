@@ -1,14 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  getMyEntitlements,
-  getMyPreferences,
-  getMyTenant,
-  listMyTenantConfigs,
-  listMySettings,
-  updateMyPreferences,
-  updateMySetting,
-  updateMyTenantConfigs,
-} from '../client';
+import * as client from '../client';
+import { getMyEntitlements, getMyPreferences, getMyTenant, listMySettings, updateMyPreferences, updateMySetting } from '../client';
 import { accountKeys } from '../keys';
 
 interface RecordedCall {
@@ -42,7 +34,6 @@ afterEach(() => {
 describe('accountKeys', () => {
   it('is stable and namespaced under account', () => {
     expect(accountKeys.tenant()).toEqual(accountKeys.tenant());
-    expect(accountKeys.tenantConfigs()).not.toEqual(accountKeys.tenant());
     for (const key of [accountKeys.tenant(), accountKeys.entitlements(), accountKeys.settings(), accountKeys.preferences()]) {
       expect(key[0]).toBe('account');
     }
@@ -50,26 +41,17 @@ describe('accountKeys', () => {
 });
 
 describe('account client (self-service)', () => {
-  it('reads tenants/me surfaces incl. the config ETag for the bulk PATCH', async () => {
+  it('reads the tenants/me identity and entitlement surfaces', async () => {
     const calls = installFetchMock();
     await getMyTenant();
-    const configs = await listMyTenantConfigs({ page: 0 });
     await getMyEntitlements();
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/tenants/me',
-      'GET /api/hope/tenants/me/config?page=0',
-      'GET /api/hope/tenants/me/entitlements',
-    ]);
-    expect(configs.etag).toBe('"4"');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/tenants/me', 'GET /api/hope/tenants/me/entitlements']);
   });
 
-  it('PATCHes tenants/me/config with If-Match (header folds onto every row)', async () => {
-    const calls = installFetchMock();
-    await updateMyTenantConfigs([{ id: 'cfg-1', value: 'on', expectedVersion: 4 }], '"4"');
-    expect(calls[0].method).toBe('PATCH');
-    expect(calls[0].url).toBe('/api/hope/tenants/me/config');
-    expect(calls[0].headers.get('if-match')).toBe('"4"');
-    expect(calls[0].body).toEqual([{ id: 'cfg-1', value: 'on', expectedVersion: 4 }]);
+  it('no longer carries a tenants/me/config client (TASK-956 — /settings and /settings-registry own those rows)', () => {
+    expect('listMyTenantConfigs' in client).toBe(false);
+    expect('updateMyTenantConfigs' in client).toBe(false);
+    expect('tenantConfigs' in accountKeys).toBe(false);
   });
 
   it('round-trips my settings and preferences', async () => {

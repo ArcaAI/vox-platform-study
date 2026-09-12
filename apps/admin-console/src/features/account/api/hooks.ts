@@ -1,29 +1,13 @@
 'use client';
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ListParams } from '@/shared/api';
-import type { UpdateTenantConfigItem } from '@/features/tenants/api/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UpdateUserSettingRequest } from '@/features/users/api/types';
-import {
-  getMyDepartments,
-  getMyEntitlements,
-  getMyPreferences,
-  getMyTenant,
-  listMySettings,
-  listMyTenantConfigs,
-  updateMyPreferences,
-  updateMySetting,
-  updateMyTenantConfigs,
-} from './client';
+import { getMyDepartments, getMyEntitlements, getMyPreferences, getMyTenant, listMySettings, updateMyPreferences, updateMySetting } from './client';
 import { accountKeys } from './keys';
 import type { UpdateUserPreferencesRequest } from './types';
 
 export function useMyTenant() {
   return useQuery({ queryKey: accountKeys.tenant(), queryFn: getMyTenant });
-}
-
-export function useMyTenantConfigs(params?: ListParams) {
-  return useQuery({ queryKey: accountKeys.tenantConfigs(params), queryFn: () => listMyTenantConfigs(params), placeholderData: keepPreviousData });
 }
 
 export function useMyEntitlements(enabled = true) {
@@ -46,14 +30,6 @@ export function useMyDepartments() {
 function useInvalidateAccount() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: accountKeys.root });
-}
-
-export function useUpdateMyTenantConfigs() {
-  const invalidate = useInvalidateAccount();
-  return useMutation({
-    mutationFn: ({ updates, etag }: { updates: UpdateTenantConfigItem[]; etag: string }) => updateMyTenantConfigs(updates, etag),
-    onSuccess: invalidate,
-  });
 }
 
 export function useUpdateMySetting() {

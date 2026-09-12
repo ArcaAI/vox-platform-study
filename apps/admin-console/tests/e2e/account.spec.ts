@@ -168,15 +168,16 @@ function tabsOrEmpty(page: Page) {
   return page.getByRole('tab', { name: 'Organization' }).or(page.getByText('No working tenant selected'));
 }
 
-test.describe('tenant profile — tabs + settings sub-nav', () => {
-  test('renders the three profile tabs (or the no-tenant empty state)', async ({ page }) => {
+test.describe('tenant profile — tabs + settings pointer', () => {
+  test('renders the two profile tabs (or the no-tenant empty state)', async ({ page }) => {
     await page.goto('/tenant-profile');
     await expect(page.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeVisible();
     await expect(tabsOrEmpty(page).first()).toBeVisible();
 
     if (await page.getByRole('tab', { name: 'Organization' }).isVisible()) {
       await expect(page.getByRole('tab', { name: 'Plan & usage' })).toBeVisible();
-      await expect(page.getByRole('tab', { name: 'Settings' })).toBeVisible();
+      // TASK-956: no Settings tab — /settings and /settings-registry own those rows.
+      await expect(page.getByRole('tab', { name: 'Settings' })).toHaveCount(0);
       await expect(page.getByRole('region', { name: 'Organization' })).toBeVisible();
     }
   });
@@ -188,25 +189,28 @@ test.describe('tenant profile — tabs + settings sub-nav', () => {
     await expect(page.getByRole('region', { name: 'Plan & usage' }).or(page.getByText('No working tenant selected')).first()).toBeVisible();
   });
 
-  test('Settings tab shows the category rail (or an empty settings state)', async ({ page }) => {
+  test('the Organization tab points at the settings editors (or shows the no-tenant state)', async ({ page }) => {
+    // The retired ?tab=settings deep link lands on Organization (TASK-956).
     await page.goto('/tenant-profile?tab=settings');
     await expect(page.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeVisible();
 
-    const settingsTab = page.getByRole('tab', { name: 'Settings' });
+    const pointer = page.getByRole('region', { name: 'Settings' });
     const noTenant = page.getByText('No working tenant selected');
-    await expect(settingsTab.or(noTenant).first()).toBeVisible();
+    await expect(pointer.or(noTenant).first()).toBeVisible();
 
-    if (await settingsTab.isVisible()) {
-      await expect(page.getByRole('navigation', { name: 'Settings categories' }).or(page.getByText('No tenant settings')).first()).toBeVisible();
+    if (await pointer.isVisible()) {
+      await expect(page.getByRole('tab', { name: 'Organization', selected: true })).toBeVisible();
+      await expect(pointer.getByRole('link', { name: /Settings registry/ })).toHaveAttribute('href', '/settings-registry');
+      await expect(pointer.getByRole('link', { name: /Settings rows & secrets/ })).toHaveAttribute('href', '/settings');
     } else {
       await expect(noTenant).toBeVisible();
     }
   });
 
-  test('has no WCAG 2.2 AA violations on the Settings tab (light + dark)', async ({ page }) => {
+  test('has no WCAG 2.2 AA violations on the Organization tab with the settings pointer (light + dark)', async ({ page }) => {
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
-      await page.goto('/tenant-profile?tab=settings');
+      await page.goto('/tenant-profile');
       await expect(page.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeVisible();
       await expect(tabsOrEmpty(page).first()).toBeVisible();
       await expectNoA11yViolations(page);

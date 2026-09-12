@@ -22,7 +22,7 @@ import { useSession } from '@/shared/auth';
 import type { CapabilityUsageRow } from '@/features/entitlements/api/types';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { useMyEntitlements, useMyTenant } from '../api/hooks';
-import { TenantSettingsTab } from './tenant-settings-tab';
+import { TenantSettingsPointer } from './tenant-settings-pointer';
 
 const EM_DASH = '—';
 
@@ -60,10 +60,15 @@ const FEATURE_LABELS: Record<string, string> = {
   agenticLoop: 'Agentic loop',
 };
 
+/**
+ * TASK-956 — no Settings tab. It was a third editor over the `GlobalSetting`
+ * rows `/settings` and `/settings-registry` own; the Organization tab now
+ * carries `TenantSettingsPointer` instead. A stale `?tab=settings` deep link
+ * falls back to Organization through the ordinary unknown-tab rule below.
+ */
 const ALL_TABS = [
   { value: 'organization', label: 'Organization' },
   { value: 'plan', label: 'Plan & usage' },
-  { value: 'settings', label: 'Settings' },
 ] as const;
 
 /**
@@ -201,20 +206,19 @@ function PlanUsagePanel() {
 
 /**
  * Frame 25 (tenant half) — Tenant profile (/tenant-profile, tier 20-29).
- * Self-service view of the working tenant, reframed into three tabs:
- * Organization (read-only identity — no self-serve tenant PATCH exists), Plan &
- * usage (entitlement/usage snapshot), and Settings (category sub-nav over the
- * editable tenants/me/config rows). Tenant-less super admins get the frame's
- * NoTenant empty state.
+ * Self-service view of the working tenant in two tabs: Organization (read-only
+ * identity — no self-serve tenant PATCH exists — plus the pointer to the two
+ * settings editors) and Plan & usage (entitlement/usage snapshot). Tenant-less
+ * super admins get the frame's NoTenant empty state.
  */
 export function TenantProfileScreen() {
   const uid = useId();
   const tenantQuery = useMyTenant();
   const session = useSession();
   // While impersonating (or for a real end-user), only the
-  // basic org identity + a read-only Settings tab render; Plan & usage
-  // (limits/meters/entitlements) is admin-only. Defaults to false (safe)
-  // until the session resolves, matching the harness-policy-screen pattern.
+  // basic org identity renders; Plan & usage (limits/meters/entitlements)
+  // is admin-only. Defaults to false (safe) until the session resolves,
+  // matching the harness-policy-screen pattern.
   const effectiveIsElevated = session.data?.effectiveIsElevated ?? false;
   const tabs = effectiveIsElevated ? ALL_TABS : ALL_TABS.filter((t) => t.value !== 'plan');
   const entitlementsQuery = useMyEntitlements(effectiveIsElevated);
@@ -280,7 +284,6 @@ export function TenantProfileScreen() {
   return (
     <Tabs value={tab} onValueChange={(next) => void setTabParam(next === 'organization' ? null : next)} className="flex min-h-0 flex-1 flex-col">
       <ScreenTemplate
-        contentMode={tab === 'settings' ? 'fill' : 'scroll'}
         header={header}
         tabs={
           <TabsList variant="line">
@@ -293,7 +296,7 @@ export function TenantProfileScreen() {
         }
         footer={footer}
       >
-        <TabsContent value="organization">
+        <TabsContent value="organization" className="flex flex-col gap-4">
           <section aria-labelledby={`${uid}-identity`} className="flex flex-col gap-3">
             <h2 id={`${uid}-identity`} className="sr-only">
               Organization
@@ -340,6 +343,7 @@ export function TenantProfileScreen() {
               </dl>
             </Card>
           </section>
+          <TenantSettingsPointer />
         </TabsContent>
         {effectiveIsElevated ? (
           <TabsContent value="plan">
@@ -351,14 +355,6 @@ export function TenantProfileScreen() {
             </section>
           </TabsContent>
         ) : null}
-        <TabsContent value="settings" className="flex min-h-0 flex-1 flex-col">
-          <section aria-labelledby={`${uid}-settings`} className="flex min-h-0 flex-1 flex-col gap-3">
-            <h2 id={`${uid}-settings`} className="sr-only">
-              Tenant settings
-            </h2>
-            <TenantSettingsTab readOnly={!effectiveIsElevated} />
-          </section>
-        </TabsContent>
       </ScreenTemplate>
     </Tabs>
   );
