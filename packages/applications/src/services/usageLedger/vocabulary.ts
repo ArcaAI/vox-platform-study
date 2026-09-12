@@ -39,7 +39,7 @@
  * | `harness.step` | — one agentic-loop step |
  * | `embed` | / — retrieval + diarization embeddings |
  * | `workflow.step` | — one durable/realtime workflow node, and the durable worker's own CPU for it |
- * | `storage.snapshot` | — the nightly per-(tenant, storage class) byte-day snapshot |
+ * | `storage.snapshot` | — the nightly per-(tenant, storage class) GB-day snapshot |
  *
  * TASK-959 added the last two, and they are the first two that are NOT "an
  * inference call landed". `workflow.step` carries BOTH the inference a node
@@ -116,8 +116,13 @@ export const KNOWN_PROVIDERS = [
   // --- self-hosted engine ids ----------------------------------------------
   'whisper_cpp',
   'faster_whisper',
+  // TASK-959: `parakeet_cpp` (stt/core/config/settings.py, control_plane.py) and
+  // `indic_f5` (tts/core/config.py, control_plane.py) are reported by the
+  // Python services and now carry GPU_SECOND COST rows, but were missing here.
+  'parakeet_cpp',
   'kokoro',
   'indic_parler',
+  'indic_f5',
   'silero',
   'gliner',
 ] as const;

@@ -104,7 +104,7 @@ export type UsageLeg = (typeof USAGE_LEGS)[number];
  * `media` = per-tenant MinIO objects (`SUM(Media.size)`); `text` = the encrypted
  * Postgres columns (`SUM(pg_column_size(...))` over the nine tenant-scoped
  * tables); `claim-check` = offloaded harness payloads (`payloadRef.size` +
- * `resultRef.sizeBytes`). They are one unit (`STORAGE_BYTE_DAY`) on one
+ * `resultRef.sizeBytes`). They are one unit (`STORAGE_GB_DAY`) on one
  * operation, split by this dimension, because a tenant asking "what am I paying
  * to store" needs the three answered separately while the invoice sums them.
  */
@@ -162,7 +162,7 @@ const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
  * | `guardrail` | the screening disposition ({@link GUARDRAIL_DISPOSITIONS}) |
  * | `device` | which device the request occupied — DECIDES the unit ({@link COMPUTE_DEVICES}) |
  * | `leg` | which attempt of a fallback chain this row bills ({@link USAGE_LEGS}) |
- * | `storageClass` | which storage pool a byte-day row snapshotted ({@link STORAGE_CLASSES}) |
+ * | `storageClass` | which storage pool a GB-day row snapshotted ({@link STORAGE_CLASSES}) |
  * | `activityType` | which Temporal activity burned the worker CPU (open set, shape-checked) |
  * | `byteSource` | whether a byte count is the wire or an app-level proxy ({@link BYTE_SOURCES}) |
  */

@@ -82,7 +82,19 @@ describe('provider vocabulary', () => {
   });
 
   it('carries the self-hosted engine ids the Python services report', () => {
-    for (const engine of ['whisper_cpp', 'faster_whisper', 'kokoro', 'indic_parler', 'silero', 'gliner']) {
+    for (const engine of [
+      'whisper_cpp',
+      'faster_whisper',
+      // TASK-959 — both are reported by their services and both now carry a
+      // GPU_SECOND COST row; an engine id missing here is an unshaped rollup
+      // dimension the price book already depends on.
+      'parakeet_cpp',
+      'kokoro',
+      'indic_parler',
+      'indic_f5',
+      'silero',
+      'gliner',
+    ]) {
       expect(isKnownProvider(engine)).toBe(true);
     }
   });

@@ -28,7 +28,7 @@ import { AiCapability, TenantPlan } from '@arcaai/domains';
  * Five, not seven: TASK-959's `STORAGE` and `WORKFLOW` capabilities have NO
  * allowance column yet (D-1 — cost visibility first, SELL after), so they
  * resolve to `null` = unlimited and no overage line can fall out of them. Wave
- * 4 adds `monthlyStorageByteDays` / `monthlyWorkflowCpuSeconds` here together
+ * 4 adds `monthlyStorageGbDays` / `monthlyWorkflowCpuSeconds` here together
  * with their SELL rows and their `BILLABLE_UNITS` entries.
  */
 export interface BillingAllowanceColumns {

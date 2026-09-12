@@ -592,13 +592,27 @@ enum AiUsageUnit {
   // for visibility and capacity planning until a SELL decision (D-3).
   EGRESS_BYTE
   INGRESS_BYTE
-  // Storage is a STOCK, and every other unit here is a flow. The byte-day is
+  // Storage is a STOCK, and every other unit here is a flow. The GIGABYTE-DAY is
   // what makes the two commensurable: one row per (tenant, class) per UTC day,
-  // quantity = bytes held at the snapshot, so the existing daily rollup and the
-  // existing invoice summation handle storage with no special case. GB-month
-  // for an invoice line is then Σ byte-days ÷ (1e9 × days in the period) —
+  // quantity = bytes held at the snapshot ÷ 1e9, so the existing daily rollup
+  // and the existing invoice summation handle storage with no special case.
+  // GB-month for an invoice line is then Σ GB-days ÷ days in the period —
   // arithmetic in the engine, not a second grain in the ledger (D-4).
-  STORAGE_BYTE_DAY
+  //
+  // GIGABYTES, NOT BYTES, and the reason is the price column. `unitPriceMicros`
+  // is an INTEGER number of micros per one unit, so the smallest rate it can
+  // express is 1µ. A byte-day at amortised disk (~$0.08/GB-month) costs
+  // ~0.0000027µ — six orders of magnitude under that floor — so a byte-day unit
+  // could only ever be priced at 0 (storage free forever) or at 1µ (a GB-month
+  // at ~$30,000). The gigabyte-day lands the same rate at ~2,667µ, comfortably
+  // inside integer micros, and it is also the unit the SELL side wants: a
+  // GB-month is a plain sum of GB-days.
+  //
+  // Resolution is bounded by the QUANTITY column, not the unit: `quantity` is
+  // `Decimal(24, 6)`, so six decimal places of a gigabyte = 1e-6 GB = 1 KB.
+  // Anything a tenant stores rounds to the nearest kilobyte-day, which is finer
+  // than any storage backend reports and far finer than a billing period needs.
+  STORAGE_GB_DAY
 
   @@schema("core")
 }
