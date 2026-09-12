@@ -38,10 +38,17 @@ def _en_spec(*engines: str):
     return spec(
         candidate(head, voices=[_EN], voice=_EN.id),
         chain=[
-            candidate(name, kind="platform-default", voices=[_EN], voice=_EN.id, version_id=f"agent-{name}")
+            candidate(
+                name,
+                kind="platform-default",
+                voices=[_EN],
+                voice=_EN.id,
+                version_id=f"agent-{name}",
+            )
             for name in rest
         ],
     )
+
 
 # --- split_confirmed ---------------------------------------------------------
 

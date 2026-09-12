@@ -136,8 +136,7 @@ class TestNoEnvPathToAVendorCredential:
         leaked = [
             path
             for path in _settings_fields()
-            if path.rsplit(".", 1)[-1] in ("api_key", "subscription_key")
-            and _read(settings, path)
+            if path.rsplit(".", 1)[-1] in ("api_key", "subscription_key") and _read(settings, path)
         ]
         assert leaked == [], (
             f"env populated credential field(s) {leaked}. TTS vendor credentials live "

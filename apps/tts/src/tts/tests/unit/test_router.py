@@ -53,13 +53,23 @@ def _en_spec(*engines: str, auto_switch: bool = True):
     head, *rest = engines
     return spec(
         candidate(head, voices=[EN], voice=EN.id),
-        chain=[candidate(name, kind="platform-default", voices=[EN], voice=EN.id, version_id=f"agent-{name}") for name in rest],
+        chain=[
+            candidate(
+                name, kind="platform-default", voices=[EN], voice=EN.id, version_id=f"agent-{name}"
+            )
+            for name in rest
+        ],
         auto_switch=auto_switch,
     )
 
 
 async def _collect(router: TTSRouter, resolved, **kwargs) -> list:
-    return [chunk async for chunk in router.synthesize(spec=resolved, text=kwargs.pop("text", "Hi."), **kwargs)]
+    return [
+        chunk
+        async for chunk in router.synthesize(
+            spec=resolved, text=kwargs.pop("text", "Hi."), **kwargs
+        )
+    ]
 
 
 class TestRouting:
@@ -75,7 +85,9 @@ class TestRouting:
     async def test_the_engine_voice_and_locale_come_from_the_candidate_binding(self) -> None:
         azure = FakeEngine("azure")
         router = _router({"azure": azure})
-        await _collect(router, spec(candidate("azure", voices=[ML], voice=ML.id, language="ml")), text="ഹലോ.")
+        await _collect(
+            router, spec(candidate("azure", voices=[ML], voice=ML.id, language="ml")), text="ഹലോ."
+        )
         # `providerVoice` is the engine-native name; the catalogue id is what the AGENT names.
         assert azure.requests[0].provider_voice == "ml-IN-SobhanaNeural"
         assert azure.requests[0].locale == "ml-IN"
@@ -87,7 +99,15 @@ class TestRouting:
         kokoro = FakeEngine("kokoro", chunks=1)
         resolved = spec(
             candidate("azure", voices=[ML], voice=ML.id, language="ml"),
-            chain=[candidate("kokoro", kind="platform-default", voices=[EN], voice=EN.id, version_id="agent-kokoro")],
+            chain=[
+                candidate(
+                    "kokoro",
+                    kind="platform-default",
+                    voices=[EN],
+                    voice=EN.id,
+                    version_id="agent-kokoro",
+                )
+            ],
         )
         router = _router({"azure": azure, "kokoro": kokoro})
         await _collect(router, resolved)
@@ -99,14 +119,18 @@ class TestRouting:
     async def test_the_sample_rate_comes_from_the_candidate(self) -> None:
         kokoro = FakeEngine("kokoro")
         router = _router({"kokoro": kokoro})
-        await _collect(router, spec(candidate("kokoro", voices=[EN], voice=EN.id, sample_rate=16000)))
+        await _collect(
+            router, spec(candidate("kokoro", voices=[EN], voice=EN.id, sample_rate=16000))
+        )
         assert kokoro.requests[0].sample_rate == 16000
 
     @pytest.mark.asyncio
     async def test_an_agent_that_named_no_rate_gets_the_one_code_default(self) -> None:
         kokoro = FakeEngine("kokoro")
         router = _router({"kokoro": kokoro})
-        await _collect(router, spec(candidate("kokoro", voices=[EN], voice=EN.id, sample_rate=None)))
+        await _collect(
+            router, spec(candidate("kokoro", voices=[EN], voice=EN.id, sample_rate=None))
+        )
         assert kokoro.requests[0].sample_rate == 24000
 
     @pytest.mark.asyncio
@@ -185,19 +209,37 @@ class TestGatewayDecisionsAreReadVerbatim:
         router = _router({"azure": FakeEngine("azure"), "kokoro": FakeEngine("kokoro")})
         resolved = spec(
             candidate("azure", voices=[EN], voice=EN.id, connection=False),
-            chain=[candidate("kokoro", kind="platform-default", voices=[EN], voice=EN.id, version_id="agent-kokoro")],
+            chain=[
+                candidate(
+                    "kokoro",
+                    kind="platform-default",
+                    voices=[EN],
+                    voice=EN.id,
+                    version_id="agent-kokoro",
+                )
+            ],
         )
         assert [c.engine for c in router.candidates(resolved)] == ["kokoro"]
 
     def test_auto_switch_off_runs_the_primary_and_stops(self) -> None:
         router = _router({"azure": FakeEngine("azure"), "kokoro": FakeEngine("kokoro")})
-        assert [c.engine for c in router.candidates(_en_spec("azure", "kokoro", auto_switch=False))] == ["azure"]
+        assert [
+            c.engine for c in router.candidates(_en_spec("azure", "kokoro", auto_switch=False))
+        ] == ["azure"]
 
     def test_a_caller_named_voice_excludes_the_candidates_that_cannot_say_it(self) -> None:
         router = _router({"azure": FakeEngine("azure"), "kokoro": FakeEngine("kokoro")})
         resolved = spec(
             candidate("azure", voices=[ML], voice=ML.id),
-            chain=[candidate("kokoro", kind="platform-default", voices=[EN], voice=EN.id, version_id="agent-kokoro")],
+            chain=[
+                candidate(
+                    "kokoro",
+                    kind="platform-default",
+                    voices=[EN],
+                    voice=EN.id,
+                    version_id="agent-kokoro",
+                )
+            ],
         )
         assert [c.engine for c in router.candidates(resolved, voice_id="en-female-1")] == ["kokoro"]
 
@@ -305,7 +347,9 @@ class TestEngineCaching:
     def test_same_facts_reuse_one_instance(self, monkeypatch) -> None:
         built: list[FakeEngine] = []
         monkeypatch.setattr(
-            router_mod, "_build_spec_engine", lambda *_a, **_k: built.append(FakeEngine("kokoro")) or built[-1]
+            router_mod,
+            "_build_spec_engine",
+            lambda *_a, **_k: built.append(FakeEngine("kokoro")) or built[-1],
         )
         router = _router({})
         cand = candidate("kokoro", voices=[EN], voice=EN.id, local_path="/mnt/models/kokoro")
@@ -321,7 +365,9 @@ class TestEngineCaching:
         assert first is not second
 
     def test_different_weights_build_a_different_instance(self, monkeypatch) -> None:
-        monkeypatch.setattr(router_mod, "_build_spec_engine", lambda *_a, **_k: FakeEngine("kokoro"))
+        monkeypatch.setattr(
+            router_mod, "_build_spec_engine", lambda *_a, **_k: FakeEngine("kokoro")
+        )
         router = _router({})
         a = candidate("kokoro", voices=[EN], voice=EN.id, local_path="/mnt/models/a")
         b = candidate("kokoro", voices=[EN], voice=EN.id, local_path="/mnt/models/b")
@@ -343,7 +389,15 @@ class TestAnEngineThisImageDoesNotContain:
         router = _router({"kokoro": kokoro})  # indic_parler is not in this image
         resolved = spec(
             candidate("indic_parler", voices=[ML], voice=ML.id, language="ml"),
-            chain=[candidate("kokoro", kind="platform-default", voices=[EN], voice=EN.id, version_id="agent-kokoro")],
+            chain=[
+                candidate(
+                    "kokoro",
+                    kind="platform-default",
+                    voices=[EN],
+                    voice=EN.id,
+                    version_id="agent-kokoro",
+                )
+            ],
         )
         chunks = await _collect(router, resolved)
         assert [c.provider for c in chunks] == ["kokoro"]
@@ -353,7 +407,15 @@ class TestAnEngineThisImageDoesNotContain:
         router = _router({"kokoro": FakeEngine("kokoro", chunks=1)}, cb_threshold=1)
         resolved = spec(
             candidate("indic_parler", voices=[ML], voice=ML.id, language="ml"),
-            chain=[candidate("kokoro", kind="platform-default", voices=[EN], voice=EN.id, version_id="agent-kokoro")],
+            chain=[
+                candidate(
+                    "kokoro",
+                    kind="platform-default",
+                    voices=[EN],
+                    voice=EN.id,
+                    version_id="agent-kokoro",
+                )
+            ],
         )
         await _collect(router, resolved)
         assert not router.breaker("indic_parler").is_open()
@@ -397,5 +459,7 @@ class TestKeylessCloudEngine:
             lambda _s, _c, override: keyed if override.get("api_key") else None,
         )
         router = _router({"azure": FakeEngine("azure", configured=False)})
-        chunks = await _collect(router, _en_spec("azure"), provider_overrides={"azure": {"api_key": "byo"}})
+        chunks = await _collect(
+            router, _en_spec("azure"), provider_overrides={"azure": {"api_key": "byo"}}
+        )
         assert [c.provider for c in chunks] == ["azure"] and keyed.calls == 1

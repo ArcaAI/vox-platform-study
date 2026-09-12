@@ -130,7 +130,10 @@ def test_the_mirror_and_the_description_tokenizer_come_from_the_row_too():
         ),
         {},
     )
-    assert _resolve_model_source(built._config) == ("/mnt/models/indic-parler-tts", {"local_files_only": True})
+    assert _resolve_model_source(built._config) == (
+        "/mnt/models/indic-parler-tts",
+        {"local_files_only": True},
+    )
     assert _resolve_desc_source(built._config, "google/flan-t5-large") == (
         "/mnt/models/flan-t5-large",
         {"local_files_only": True},

@@ -72,7 +72,9 @@ def test_pipeline_is_built_from_kmodel_with_explicit_paths(tmp_path):
     with patch.dict(sys.modules, {"kokoro": fake}):
         pipeline = asyncio.run(provider._load_pipeline("kokoro"))
 
-    fake.KModel.assert_called_once_with(config=str(tmp_path / "config.json"), model=str(tmp_path / "kokoro-v1_0.pth"))
+    fake.KModel.assert_called_once_with(
+        config=str(tmp_path / "config.json"), model=str(tmp_path / "kokoro-v1_0.pth")
+    )
     fake.KPipeline.assert_called_once_with(lang_code="a", model=fake.KModel.return_value)
     assert pipeline is fake.KPipeline.return_value
 
