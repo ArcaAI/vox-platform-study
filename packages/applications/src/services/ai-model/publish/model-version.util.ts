@@ -126,6 +126,24 @@ export function isRelevantModelSourceFile(path: string): boolean {
 }
 
 /**
+ * Whether `path` is a WEIGHT file — the narrower half of
+ * `isRelevantModelSourceFile`, with the tokenizer/config companions left out.
+ *
+ * The model inventory asks a different question of a bucket prefix than the
+ * downloader asks of a source repo: "is this an admin-staged MODEL, or just a
+ * directory of loose files?". A prefix holding only a `config.json` is not a
+ * model, so `RELEVANT_BASENAMES` must not answer that question — only the
+ * weight extensions may, minus the trainer bookkeeping that shares `.bin`/`.pt`
+ * with them.
+ */
+export function isModelWeightFile(path: string): boolean {
+  const base = (path.split('/').pop() ?? path).toLowerCase();
+  // Trainer bookkeeping first: it shares `.bin`/`.pt` with real weights.
+  if (NON_WEIGHT_BASENAMES.has(base)) return false;
+  return WEIGHT_EXTENSIONS.some((ext) => base.endsWith(ext));
+}
+
+/**
  * Render the `SHA256SUMS` object exactly as `shasum -a 256 ./*` would: one
  * `<sha256> <path>` line per file (two spaces, matching `shasum`/`mc`
  * interop), newline-terminated.
