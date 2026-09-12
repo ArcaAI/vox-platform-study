@@ -887,7 +887,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       let providerConnectionId: string | null = null;
       if (entry.connection) {
         const targetRow = await this.providerConnectionService
-          .findRow(entry.connection.service as ProviderService, entry.connection.provider, tenantId)
+          .findDefaultRow(entry.connection.service as ProviderService, entry.connection.provider, tenantId)
           .catch(() => null);
         providerConnectionId = targetRow?.id ?? null;
       }

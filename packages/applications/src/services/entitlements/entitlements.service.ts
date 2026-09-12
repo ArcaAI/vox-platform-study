@@ -546,6 +546,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'maxAsrPipelines', (v) => (row.maxAsrPipelines = v));
     this.applyLimitField(request, 'maxApiKeys', (v) => (row.maxApiKeys = v));
     this.applyLimitField(request, 'maxWorkflowDefinitions', (v) => (row.maxWorkflowDefinitions = v));
+    this.applyLimitField(request, 'maxAiProviderConnections', (v) => (row.maxAiProviderConnections = v));
     if (request.storageQuotaBytes !== undefined) {
       row.storageQuotaBytes = request.storageQuotaBytes === null ? null : BigInt(request.storageQuotaBytes);
     }
@@ -617,6 +618,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxAsrPipelines: request.maxAsrPipelines ?? null,
       maxApiKeys: request.maxApiKeys ?? null,
       maxWorkflowDefinitions: request.maxWorkflowDefinitions ?? null,
+      maxAiProviderConnections: request.maxAiProviderConnections ?? null,
       storageQuotaBytes: request.storageQuotaBytes === null || request.storageQuotaBytes === undefined ? null : BigInt(request.storageQuotaBytes),
       maxConcurrentSessions: request.maxConcurrentSessions ?? null,
       monthlyConsultations: request.monthlyConsultations ?? null,
@@ -661,6 +663,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.maxAsrPipelines = null;
     existing.maxApiKeys = null;
     existing.maxWorkflowDefinitions = null;
+    existing.maxAiProviderConnections = null;
     existing.storageQuotaBytes = null;
     existing.maxConcurrentSessions = null;
     existing.monthlyConsultations = null;
@@ -730,6 +733,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.maxAsrPipelines !== undefined) entity.maxAsrPipelines = request.maxAsrPipelines;
     if (request.maxApiKeys !== undefined) entity.maxApiKeys = request.maxApiKeys;
     if (request.maxWorkflowDefinitions !== undefined) entity.maxWorkflowDefinitions = request.maxWorkflowDefinitions;
+    if (request.maxAiProviderConnections !== undefined) entity.maxAiProviderConnections = request.maxAiProviderConnections;
     if (request.storageQuotaBytes !== undefined) {
       entity.storageQuotaBytes = request.storageQuotaBytes === null ? null : BigInt(request.storageQuotaBytes);
     }
@@ -779,6 +783,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxPromptTemplates: row.maxPromptTemplates ?? null,
       maxAsrPipelines: row.maxAsrPipelines ?? null,
       maxApiKeys: row.maxApiKeys ?? null,
+      maxAiProviderConnections: row.maxAiProviderConnections ?? null,
       storageQuotaBytes: row.storageQuotaBytes === null || row.storageQuotaBytes === undefined ? null : Number(row.storageQuotaBytes),
       maxConcurrentSessions: row.maxConcurrentSessions ?? null,
       monthlyConsultations: row.monthlyConsultations ?? null,
@@ -807,6 +812,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxPromptTemplates: row.maxPromptTemplates ?? null,
       maxAsrPipelines: row.maxAsrPipelines ?? null,
       maxApiKeys: row.maxApiKeys ?? null,
+      maxAiProviderConnections: row.maxAiProviderConnections ?? null,
       storageQuotaBytes: row.storageQuotaBytes === null || row.storageQuotaBytes === undefined ? null : Number(row.storageQuotaBytes),
       maxConcurrentSessions: row.maxConcurrentSessions ?? null,
       monthlyConsultations: row.monthlyConsultations ?? null,

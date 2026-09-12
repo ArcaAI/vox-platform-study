@@ -32,6 +32,9 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions ; null = inherit', nullable: true })
   maxWorkflowDefinitions?: number | null;
 
+  @ApiPropertyOptional({ description: 'Override max AI provider connections (per tenant, all services); null = inherit', nullable: true })
+  maxAiProviderConnections?: number | null;
+
   @ApiPropertyOptional({ description: 'Override storage quota bytes; null = inherit', nullable: true })
   storageQuotaBytes?: number | null;
 
@@ -128,6 +131,12 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   maxWorkflowDefinitions?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override max AI provider connections (per tenant, all services); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAiProviderConnections?: number | null;
 
   @ApiPropertyOptional({ description: 'Override storage quota bytes; null = inherit', nullable: true })
   @IsOptional()

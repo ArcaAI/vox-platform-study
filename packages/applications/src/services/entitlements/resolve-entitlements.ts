@@ -36,16 +36,8 @@ export interface ResolvedLimits {
    * TASK-958 D-8 — how many provider CONNECTIONS one tenant may hold, across
    * every service. A tenant that brings two OpenAI accounts holds two rows, so
    * the count is a real commercial dimension; `null` = unbounded, which is what
-   * every plan resolves to today.
-   *
-   * NO DB COLUMN YET, by the `featurePaletteStt` precedent above: the seeded
-   * matrix (`PLAN_ENTITLEMENT_DEFAULTS`) and its parity guard live in lockstep
-   * with `PlanEntitlement`'s Prisma columns, which is Lane A's surface, not
-   * this one. Until that column exists the value is `null` for every plan —
-   * which is EXACTLY the seeded value D-8 asks for, so adding the column later
-   * is a pure addition and changes no behaviour. `PlanEntitlementInput` /
-   * `TenantEntitlementOverrideInput` already accept it, so an operator-set cap
-   * starts being honoured the moment the column lands.
+   * every seeded plan resolves to today. Enforced by `assertQuantityQuota` on
+   * CREATE only.
    */
   maxAiProviderConnections: number | null;
   storageQuotaBytes: number | null;
@@ -142,7 +134,7 @@ export interface PlanEntitlementInput {
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   maxWorkflowDefinitions?: number | null;
-  /** TASK-958 — no DB column yet; see `ResolvedLimits.maxAiProviderConnections`. Always `undefined` on a real Prisma row today. */
+  /** TASK-958 D-8 — the tenant's provider-connection ceiling; see `ResolvedLimits.maxAiProviderConnections`. */
   maxAiProviderConnections?: number | null;
   storageQuotaBytes?: number | bigint | null;
   maxConcurrentSessions?: number | null;
@@ -183,7 +175,7 @@ export interface TenantEntitlementOverrideInput {
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
   maxWorkflowDefinitions?: number | null;
-  /** TASK-958 — no DB column yet; see `PlanEntitlementInput.maxAiProviderConnections`. */
+  /** TASK-958 D-8 — per-tenant override of the connection ceiling; see `PlanEntitlementInput.maxAiProviderConnections`. */
   maxAiProviderConnections?: number | null;
   storageQuotaBytes?: number | bigint | null;
   maxConcurrentSessions?: number | null;
@@ -323,6 +315,7 @@ export function resolveEntitlements(
     maxAsrPipelines: pick(planRow?.maxAsrPipelines, seeded.maxAsrPipelines),
     maxApiKeys: pick(planRow?.maxApiKeys, seeded.maxApiKeys),
     maxWorkflowDefinitions: pick(planRow?.maxWorkflowDefinitions, seeded.maxWorkflowDefinitions),
+    maxAiProviderConnections: pick(planRow?.maxAiProviderConnections, seeded.maxAiProviderConnections),
     storageQuotaBytes: pick(toNum(planRow?.storageQuotaBytes), seeded.storageQuotaBytes),
     maxConcurrentSessions: pick(planRow?.maxConcurrentSessions, seeded.maxConcurrentSessions),
     monthlyConsultations: pick(planRow?.monthlyConsultations, seeded.monthlyConsultations),
@@ -354,12 +347,7 @@ export function resolveEntitlements(
       maxAsrPipelines: pick(override?.maxAsrPipelines, base.maxAsrPipelines),
       maxApiKeys: pick(override?.maxApiKeys, base.maxApiKeys),
       maxWorkflowDefinitions: pick(override?.maxWorkflowDefinitions, base.maxWorkflowDefinitions),
-      // TASK-958 — resolved BESIDE `base` rather than through it: the seeded
-      // matrix is `PlanEntitlementValues`, which is pinned field-for-field
-      // against `packages/database`'s plan seed, and this key has no column
-      // there yet. Precedence is the same three layers, with `null`
-      // (unbounded) standing in for the seeded default.
-      maxAiProviderConnections: pick(override?.maxAiProviderConnections, pick(planRow?.maxAiProviderConnections, null)),
+      maxAiProviderConnections: pick(override?.maxAiProviderConnections, base.maxAiProviderConnections),
       storageQuotaBytes: pick(toNum(override?.storageQuotaBytes), base.storageQuotaBytes),
       maxConcurrentSessions: pick(override?.maxConcurrentSessions, base.maxConcurrentSessions),
       monthlyConsultations: pick(override?.monthlyConsultations, base.monthlyConsultations),

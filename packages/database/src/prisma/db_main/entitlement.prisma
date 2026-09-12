@@ -63,16 +63,21 @@ model PlanEntitlement {
   plan TenantPlan @unique
 
   // quantity limits (null = unlimited)
-  maxUsers           Int?
-  maxDepartments     Int?
-  maxPromptTemplates Int?
-  maxAsrPipelines    Int?
-  maxApiKeys         Int?
-  storageQuotaBytes  BigInt?
+  maxUsers                 Int?
+  maxDepartments           Int?
+  maxPromptTemplates       Int?
+  maxAsrPipelines          Int?
+  maxApiKeys               Int?
+  storageQuotaBytes        BigInt?
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs a tenant may hold
   // ( exposure plane), modelled verbatim on `maxAsrPipelines`. Checked
   // by authoring create path, not this migration's own caller.
-  maxWorkflowDefinitions Int?
+  maxWorkflowDefinitions   Int?
+  // TASK-958 D-8 — how many `AiProviderConnection` rows one tenant may hold
+  // (per tenant, all services; NULL = unbounded). A tenant that brings two
+  // OpenAI accounts holds two rows, so the count is a real commercial
+  // dimension. Checked by `assertQuantityQuota` on CREATE only.
+  maxAiProviderConnections Int?
 
   // concurrency limit — simultaneous active STT sessions (null = unlimited).
   // A distinct axis from the total-seat cap (`maxUsers`): "how many doctors can
@@ -189,15 +194,19 @@ model TenantEntitlement {
   tenantId String @unique
 
   // per-tenant limit overrides (null = inherit plan default)
-  maxUsers           Int?
-  maxDepartments     Int?
-  maxPromptTemplates Int?
-  maxAsrPipelines    Int?
-  maxApiKeys         Int?
-  storageQuotaBytes  BigInt?
+  maxUsers                 Int?
+  maxDepartments           Int?
+  maxPromptTemplates       Int?
+  maxAsrPipelines          Int?
+  maxApiKeys               Int?
+  storageQuotaBytes        BigInt?
   // Per-tenant override of `PlanEntitlement.maxWorkflowDefinitions` (null =
   // inherit the plan default).
-  maxWorkflowDefinitions Int?
+  maxWorkflowDefinitions   Int?
+  // TASK-958 D-8 — per-tenant override of
+  // `PlanEntitlement.maxAiProviderConnections` (per tenant, all services;
+  // NULL = unbounded / inherit the plan default).
+  maxAiProviderConnections Int?
 
   // per-tenant concurrency override (null = inherit plan default) — "increase
   // on demand" for simultaneous active STT sessions.

@@ -14,6 +14,9 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   maxApiKeys?: number | null;
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs.
   maxWorkflowDefinitions?: number | null;
+  // TASK-958 D-8 — quantity ceiling on `AiProviderConnection` rows (per tenant,
+  // all services; null = unbounded).
+  maxAiProviderConnections?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
@@ -48,6 +51,7 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _maxAsrPipelines?: IPlanEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: IPlanEntitlementEntity['maxApiKeys'];
   private _maxWorkflowDefinitions?: IPlanEntitlementEntity['maxWorkflowDefinitions'];
+  private _maxAiProviderConnections?: IPlanEntitlementEntity['maxAiProviderConnections'];
   private _storageQuotaBytes?: IPlanEntitlementEntity['storageQuotaBytes'];
   private _maxConcurrentSessions?: IPlanEntitlementEntity['maxConcurrentSessions'];
   private _monthlyConsultations?: IPlanEntitlementEntity['monthlyConsultations'];
@@ -76,6 +80,7 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
     this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
+    this._maxAiProviderConnections = init.maxAiProviderConnections;
     this._storageQuotaBytes = init.storageQuotaBytes;
     this._maxConcurrentSessions = init.maxConcurrentSessions;
     this._monthlyConsultations = init.monthlyConsultations;
@@ -150,6 +155,14 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set maxWorkflowDefinitions(value: IPlanEntitlementEntity['maxWorkflowDefinitions']) {
     this.setProperty('maxWorkflowDefinitions', value);
+  }
+
+  get maxAiProviderConnections(): IPlanEntitlementEntity['maxAiProviderConnections'] {
+    return this._maxAiProviderConnections;
+  }
+
+  set maxAiProviderConnections(value: IPlanEntitlementEntity['maxAiProviderConnections']) {
+    this.setProperty('maxAiProviderConnections', value);
   }
 
   get storageQuotaBytes(): IPlanEntitlementEntity['storageQuotaBytes'] {

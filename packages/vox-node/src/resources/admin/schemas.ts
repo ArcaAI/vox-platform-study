@@ -3861,6 +3861,8 @@ export interface PlanEntitlementResponse {
   featurePlatformDefaultCredential: boolean;
   /** Row ID */
   id: string;
+  /** Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited */
+  maxAiProviderConnections?: number | null;
   /** Max API keys; null = unlimited */
   maxApiKeys?: number | null;
   /** Max ASR pipelines; null = unlimited */
@@ -5339,6 +5341,8 @@ export interface TenantEntitlementResponse {
   featurePlatformDefaultCredential?: boolean | null;
   /** Row ID */
   id: string;
+  /** Override max AI provider connections (per tenant, all services); null = inherit */
+  maxAiProviderConnections?: number | null;
   /** Override max API keys; null = inherit */
   maxApiKeys?: number | null;
   /** Override max ASR pipelines; null = inherit */
@@ -6193,6 +6197,8 @@ export interface UpdatePlanEntitlementRequest {
   featureAgenticLoop?: boolean;
   /** Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override. */
   featurePlatformDefaultCredential?: boolean;
+  /** Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited */
+  maxAiProviderConnections?: number | null;
   /** Max API keys; null = unlimited */
   maxApiKeys?: number | null;
   /** Max ASR pipelines; null = unlimited */
@@ -6576,6 +6582,8 @@ export interface UpsertTenantEntitlementRequest {
   featureAgenticLoop?: boolean | null;
   /** Grant (true) / deny (false) / inherit (null) the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential for this tenant. This is how the grant is issued — no plan tier carries it. Granting lets the platform fund this tenant's cloud provider calls. */
   featurePlatformDefaultCredential?: boolean | null;
+  /** Override max AI provider connections (per tenant, all services); null = inherit */
+  maxAiProviderConnections?: number | null;
   /** Override max API keys; null = inherit */
   maxApiKeys?: number | null;
   /** Override max ASR pipelines; null = inherit */

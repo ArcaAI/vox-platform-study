@@ -33,6 +33,12 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions ; null = unlimited', nullable: true })
   maxWorkflowDefinitions?: number | null;
 
+  @ApiPropertyOptional({
+    description: 'Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited',
+    nullable: true,
+  })
+  maxAiProviderConnections?: number | null;
+
   @ApiPropertyOptional({ description: 'Storage quota in bytes; null = unlimited', nullable: true })
   storageQuotaBytes?: number | null;
 
@@ -136,6 +142,15 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   maxWorkflowDefinitions?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Max AI provider connections a tenant on this plan may hold (per tenant, all services); null = unlimited',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAiProviderConnections?: number | null;
 
   @ApiPropertyOptional({ description: 'Storage quota in bytes; null = unlimited', nullable: true })
   @IsOptional()
