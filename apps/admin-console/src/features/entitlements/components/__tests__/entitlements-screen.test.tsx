@@ -272,7 +272,7 @@ describe('EntitlementsScreen', () => {
     fireEvent.click(await screen.findByText('Pro'));
     const dialog = await screen.findByRole('dialog');
 
-    const workflowDefinitions = (await within(dialog).findByLabelText('Max workflow definitions')) as HTMLInputElement;
+    const workflowDefinitions = (await within(dialog).findByLabelText('Max published workflow definitions')) as HTMLInputElement;
     const providerConnections = within(dialog).getByLabelText('Max AI provider connections') as HTMLInputElement;
     const workflowInvocations = within(dialog).getByLabelText('Monthly workflow invocations') as HTMLInputElement;
     expect([workflowDefinitions.value, providerConnections.value, workflowInvocations.value]).toEqual(['3', '4', '500']);

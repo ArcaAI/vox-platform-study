@@ -12,13 +12,16 @@ interface EntitlementLimits {
   /** @deprecated TASK-861 — removed in R4 with audio pipelines. */
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  /** Max PUBLISHED workflow definitions. */
   maxWorkflowDefinitions?: number | null;
+  /** Max AI provider connections per tenant, across every service. */
   maxAiProviderConnections?: number | null;
   storageQuotaBytes?: number | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  /** Monthly PUBLISHED-workflow invocations. */
   monthlyWorkflowInvocations?: number | null;
 }
 
