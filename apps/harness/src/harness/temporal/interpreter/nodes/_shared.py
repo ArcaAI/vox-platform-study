@@ -9,16 +9,20 @@ a nested value out of ``bound_inputs``) in one place rather than five near-dupli
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from harness.core.config import get_settings
 from harness.temporal.activities import (
+    FAILED_ATTEMPT_OFFSET_BASE,
+    MAX_FAILED_ATTEMPT_STEPS,
     STATUS_DEGRADED,
     STATUS_ERROR,
     STATUS_OK,
     STEP_LLM_CALL,
     STEP_NODE,
     _now,
+    record_failed_attempts,
 )
 from harness.temporal.activities import (
     _TrajectoryBatch as TrajectoryBatch,  # reuse, never a second emitter — noqa: SLF001
@@ -26,6 +30,8 @@ from harness.temporal.activities import (
 from harness.temporal.interpreter.models import NodeActivityInput
 
 __all__ = [
+    "FAILED_ATTEMPT_OFFSET_BASE",
+    "MAX_FAILED_ATTEMPT_STEPS",
     "MISSING",
     "STATUS_DEGRADED",
     "STATUS_ERROR",
@@ -50,13 +56,18 @@ async def record_and_flush(
     started: Any,
     error_code: str | None = None,
     stats: dict[str, Any] | None = None,
+    failed_attempts: Sequence[dict[str, Any]] | None = None,
 ) -> None:
     """One NODE trajectory step per node activity (mirrors `interpreter/activities.py`'s own
     seed-node helper — deliberately not imported from there to keep this package's five node
     modules free of a dependency on the seed noop/passthrough module).
 
     ``stats`` is node-level PROVENANCE (TASK-947 OD-11: ``{"prompt_fragments": [keys]}``), never
-    a billable block — the gateway bills LLM_CALL steps only (``harness-usage.mapper.ts``)."""
+    a billable block — the gateway bills LLM_CALL steps only (``harness-usage.mapper.ts``).
+
+    ``failed_attempts`` rides the SAME batch when a node degraded after trying (and losing) one
+    or more candidates: the attempts still cost platform compute, and this is the only path they
+    have to the ledger."""
     batch = TrajectoryBatch(get_settings(), payload.trajectory)
     batch.record(
         step_type=STEP_NODE,
@@ -66,6 +77,7 @@ async def record_and_flush(
         error_code=error_code,
         stats=stats,
     )
+    record_failed_attempts(batch, failed_attempts, started)
     await batch.flush()
 
 
@@ -75,6 +87,7 @@ async def record_generation_and_flush(
     started: Any,
     stats: dict[str, Any],
     node_stats: dict[str, Any] | None = None,
+    failed_attempts: Sequence[dict[str, Any]] | None = None,
 ) -> None:
     """The node step PLUS the LLM_CALL step a generation is BILLED from (F14).
 
@@ -109,6 +122,9 @@ async def record_generation_and_flush(
         stats=stats,
         offset=1,
     )
+    # §6.2 Gap A — the candidates that were TRIED and lost, on the same batch as the one that
+    # served, so a chain's full cost is one atomic report.
+    record_failed_attempts(batch, failed_attempts, started)
     await batch.flush()
 
 

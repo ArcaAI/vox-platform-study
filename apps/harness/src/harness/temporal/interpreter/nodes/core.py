@@ -31,6 +31,7 @@ import base64
 import json
 import re
 from collections.abc import Callable
+from time import perf_counter
 from typing import Any
 
 import jsonschema
@@ -42,8 +43,14 @@ from harness.guards.phi.egress import ensure_egress_safe
 from harness.guards.phi.redactor import PhiEgressBlocked
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
-from harness.services.text_client import TextServiceError
-from harness.temporal.activities import _api_client, _nlp_client, _phi_redactor, _text_client
+from harness.services.text_client import TextServiceError, usage_detail_counters
+from harness.temporal.activities import (
+    _api_client,
+    _nlp_client,
+    _phi_redactor,
+    _text_client,
+    failed_attempt_stats,
+)
 from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.guardrail_optout import (
@@ -839,6 +846,12 @@ def _generation_stats(
     stats["guardrail"] = (
         GUARDRAIL_DISPOSITION_SCREENED if guardrail.enabled else GUARDRAIL_DISPOSITION_OPTED_OUT
     )
+    # TASK-957 F-6 / TASK-959 §10.2 — the counts AD-1 `GenerationStats` cannot express. Text
+    # returns them on the SAME response, in `usage_detail`; the mapper zeroed cache-read,
+    # cache-write and reasoning because nothing ever put them on the step, so reasoning-model
+    # spend inside a workflow was structurally unbillable. Copied only when present — an absent
+    # count stays absent rather than becoming a zero the rater would price.
+    stats.update(usage_detail_counters(getattr(result, "usage_detail", None)))
     return stats
 
 
@@ -1310,6 +1323,10 @@ async def _run_text_generation(
     run_context = _run_context(payload)
     redactor = _phi_redactor()
     last_error: TextServiceError | None = None
+    # §6.2 Gap A — one stats block per candidate that was TRIED and lost. The walk used to do
+    # `last_error = exc; continue` with no timer at all, so a failed BYOK attempt cost the
+    # platform CPU and network and left no trace anywhere.
+    failed_attempts: list[dict[str, Any]] = []
     exhausted = False
     for index, (selection_source, candidate) in enumerate(candidates):
         if index > 0 and not budget.allows_another():
@@ -1414,6 +1431,7 @@ async def _run_text_generation(
                 resolved.slug, resolved.output_schema, parameters
             )
 
+        attempt_started = perf_counter()
         try:
             result = await _text_client(settings).generate(
                 tenant_id=payload.tenant_id,
@@ -1431,6 +1449,17 @@ async def _run_text_generation(
             # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —
             # the after-send guard protects the SAME call from being re-issued, not the chain).
             last_error = exc
+            failed_attempts.append(
+                failed_attempt_stats(
+                    provider=provider,
+                    model=model,
+                    funding_tier=candidate.funding_tier,
+                    total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                    # The workflow lane knows WHY the inference happened; the consultation lane
+                    # does not stamp one on its successful step either, so it stamps none here.
+                    trigger=USAGE_TRIGGER_WORKFLOW_RUN,
+                )
+            )
             continue
 
         output: dict[str, Any] = {
@@ -1456,13 +1485,21 @@ async def _run_text_generation(
         # F14 — the LLM_CALL step this generation is BILLED from. Before it, every
         # interpreter node persisted `stats = null` and the gateway's co-emission hook
         # (`buildHarnessUsageEvent`) had nothing to bill: a real generation, zero ledger rows.
+        # Both extras are passed ONLY when there is something to say, so a single-body agent
+        # whose primary served records byte-identically to before:
+        # * TASK-947 OD-11 `node_stats` — which fragments of a composite instruction ran, KEYS
+        #   only, on the node step;
+        # * TASK-959 §6.2 `failed_attempts` — the legs that lost, on the same batch as the leg
+        #   that served, at their own offsets inside this node's seq base.
+        extras: dict[str, Any] = {}
+        if prompt_fragments:
+            extras["node_stats"] = {"prompt_fragments": prompt_fragments}
+        if failed_attempts:
+            extras["failed_attempts"] = failed_attempts
         await record_generation_and_flush(
             payload,
             started=started,
-            # TASK-947 OD-11 — which fragments of a composite instruction ran, KEYS only, on the
-            # node step. Passed only when there is something to say, so a single-body agent's
-            # record is byte-identical to before.
-            **({"node_stats": {"prompt_fragments": prompt_fragments}} if prompt_fragments else {}),
+            **extras,
             stats=_generation_stats(
                 result,
                 provider=provider,
@@ -1514,7 +1551,11 @@ async def _run_text_generation(
         # DEGRADED, never a raise: raising is what makes Temporal retry the activity from the
         # primary, which is exactly the double-spend this guard exists to prevent.
         await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="text_budget_exhausted"
+            payload,
+            status=STATUS_DEGRADED,
+            started=started,
+            error_code="text_budget_exhausted",
+            failed_attempts=failed_attempts,
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -1524,7 +1565,11 @@ async def _run_text_generation(
             ),
         )
     await record_and_flush(
-        payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
+        payload,
+        status=STATUS_DEGRADED,
+        started=started,
+        error_code="text_generate_failed",
+        failed_attempts=failed_attempts,
     )
     return NodeActivityResult(
         status="DEGRADED",

@@ -23,6 +23,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Any
 
 from temporalio import activity
@@ -99,7 +100,12 @@ from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
-from harness.services.text_client import TextClient, TextGenerationResult, TextServiceError
+from harness.services.text_client import (
+    TextClient,
+    TextGenerationResult,
+    TextServiceError,
+    usage_detail_counters,
+)
 from harness.temporal.claim_check import (
     ClaimCheckRef,
     build_blob_store,
@@ -176,6 +182,11 @@ from harness.temporal.models import (
 from harness.temporal.prompt_cache import (
     assemble_generation_prompt,
     build_segment_citations_block,
+)
+from harness.temporal.trajectory_delivery import (
+    TRAJECTORY_HTTP_TIMEOUT_S,
+    deliver_trajectory,
+    trajectory_api_client,
 )
 from harness.tools.egress_guard import (
     EgressBlocked,
@@ -404,16 +415,15 @@ def _progress_api_client(settings: Settings) -> ApiClient:
 
 # trajectory reporting is fire-and-forget (like progress) —
 # a short HTTP timeout so a wedged gateway never holds a phase boundary hostage.
-_TRAJECTORY_HTTP_TIMEOUT_S = 5.0
+# TASK-957 F-5 — the timeout, the client and the retry/spool policy now live in ONE place
+# (`temporal/trajectory_delivery.py`), because the worker's compute-sample flush delivers on
+# the same route and must not grow a second, divergent copy of any of them. This name stays
+# as the monkeypatch seam every existing trajectory test already uses.
+_TRAJECTORY_HTTP_TIMEOUT_S = TRAJECTORY_HTTP_TIMEOUT_S
 
 
 def _trajectory_api_client(settings: Settings) -> ApiClient:
-    return ApiClient(
-        settings.api_base_url,
-        internal_prefix=settings.api_internal_prefix,
-        service_token=settings.peer_service_token(settings.service_token),
-        timeout=min(_TRAJECTORY_HTTP_TIMEOUT_S, settings.api_timeout_s),
-    )
+    return trajectory_api_client(settings)
 
 
 def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
@@ -503,20 +513,139 @@ class _TrajectoryBatch:
         )
 
     async def flush(self) -> None:
+        """POST this batch, retried and spooled; never raises, never re-posts on its own.
+
+        TASK-957 F-5 — this used to catch every exception, log, and clear ``self._steps`` in
+        ``finally``: the steps AND every ledger row they would have produced were gone for
+        good. ``deliver_trajectory`` now retries a transient failure inside a wall-clock
+        budget and spools what it still cannot deliver, for the worker's flusher to re-drain.
+        The fire-and-forget CONTRACT is unchanged — it returns a boolean, it does not raise —
+        so a trajectory outage still cannot fail the clinical loop.
+        """
         if not self._steps:
             return
         steps: Sequence[TrajectoryStepInput] = self._steps
-        try:
-            await _trajectory_api_client(self._settings).report_trajectory(
-                steps, idempotency_key=_idempotency_key("traj")
-            )
-        except Exception as exc:  # noqa: BLE001 — trajectory is fire-and-forget, never raise
-            activity.logger.warning(
-                "harness.report_trajectory.failed",
-                extra={"steps": len(steps), "error": str(exc)},
-            )
-        finally:
-            self._steps = []
+        self._steps = []
+        await deliver_trajectory(
+            _trajectory_api_client(self._settings),
+            steps=steps,
+            idempotency_key=_idempotency_key("traj"),
+        )
+
+
+#: The first offset a FAILED fallback attempt may take inside an activity's strided seq base.
+#: Both lanes reserve 0 and 1 for the step that actually happened — the consultation lane's
+#: `LLM_CALL` + `THINKING`, the interpreter lane's `NODE` + successful `LLM_CALL` — so the
+#: candidates that were tried and lost start at 2.
+FAILED_ATTEMPT_OFFSET_BASE = 2
+
+#: How many of them fit. Both `workflows.py` and `interpreter/workflow.py` stride their seq
+#: bases by 16, and `test_core_agent_failed_leg_task959.py` pins all three in step: a value
+#: larger than the stride lets one activity's steps land on the next one's base, and a
+#: colliding `harness:step:<sessionId>:<runId>:<seq>` silently replaces a different step.
+MAX_FAILED_ATTEMPT_STEPS = 16 - FAILED_ATTEMPT_OFFSET_BASE
+
+
+#: The `leg` attribute of a fallback candidate that raised (`USAGE_ATTRIBUTES`' `leg`:
+#: `primary` | `fallback` | `failed`). Only this member is claimed by a failed attempt — which
+#: of the survivors was primary is already answered elsewhere on the step.
+LEG_FAILED = "failed"
+
+
+def failed_attempt_stats(
+    *,
+    provider: str | None,
+    model: str | None,
+    funding_tier: str | None,
+    total_ms: int,
+    trigger: str | None = None,
+) -> dict[str, Any]:
+    """The stats block of a candidate that RAISED before another one served (§6.2 Gap A).
+
+    Deliberately carries NO token counts: nothing was generated, so `toUsageUnitQuantities`
+    finds no billable unit and the token plane of `buildHarnessUsageEvent` returns null. What it
+    DOES carry is the CPU leg — `total_ms` against the failed candidate's own provider/model —
+    which is what the owner's model counts ("CPU time used calling the provider") and what the
+    ledger reads to emit a `CPU_SECOND` row with `leg: "failed"`.
+
+    `funding_tier` is DERIVED (the gateway's tier for that candidate) and omitted when it was
+    never established: a guessed tier converts tenant-funded spend into platform COGS on one
+    wrong literal. `trigger` is OD-E's closed vocabulary and is only supplied by the lane that
+    knows it — the workflow lane, whose successful step already carries it; the consultation
+    lane's successful step carries none, so neither does its failed one.
+    """
+    stats: dict[str, Any] = {
+        "provider": provider,
+        "model": model,
+        "total_ms": total_ms,
+        "leg": LEG_FAILED,
+    }
+    if funding_tier:
+        stats["funding_tier"] = funding_tier
+    if trigger:
+        stats["trigger"] = trigger
+    return stats
+
+
+async def _flush_failed_attempts(
+    settings: Settings,
+    trajectory: TrajectoryContext | None,
+    failed_attempts: Sequence[dict[str, Any]],
+    started: datetime,
+) -> None:
+    """Record the losing legs when NO candidate served, so a total failure still meters.
+
+    Before this the walk raised with nothing recorded at all: the run failed, the platform had
+    spent CPU on every candidate, and the ledger saw none of it.
+    """
+    if not failed_attempts:
+        return
+    batch = _TrajectoryBatch(settings, trajectory)
+    record_failed_attempts(batch, failed_attempts, started)
+    await batch.flush()
+
+
+def record_failed_attempts(
+    batch: _TrajectoryBatch,
+    failed_attempts: Sequence[dict[str, Any]] | None,
+    started: datetime,
+) -> None:
+    """One ERROR ``LLM_CALL`` step per candidate that raised before another served (§6.2).
+
+    A failed BYOK candidate cost the platform CPU time and network bytes and the tenant
+    nothing, and the owner's measurement model counts both — but both fallback walks recorded
+    `last_error = exc; continue` and nothing else, so the attempt was invisible to the ledger
+    AND to anyone asking why a run was slow.
+
+    **The offset scheme.** ``seq`` is workflow-owned and deterministic (a workflow body may not
+    read a clock), so an activity cannot mint a fresh one — it offsets inside the base the
+    workflow allocated it, exactly as the ``THINKING`` step already does. Attempt ``i`` takes
+    ``FAILED_ATTEMPT_OFFSET_BASE + i``, which keeps the gateway's
+    ``harness:step:<sessionId>:<runId>:<seq>`` key stable across a Temporal redelivery. An
+    attempt past ``MAX_FAILED_ATTEMPT_STEPS`` is DROPPED with a warning rather than allowed to
+    collide with the next activity's base — a dropped sample is recoverable, an overwritten
+    step is not. In practice the activity budget stops a chain long before that: every
+    candidate burns a full per-call timeout inside ONE activity.
+    """
+    if not failed_attempts:
+        return
+    for index, stats in enumerate(failed_attempts[:MAX_FAILED_ATTEMPT_STEPS]):
+        batch.record(
+            step_type=STEP_LLM_CALL,
+            name="generate",
+            status=STATUS_ERROR,
+            started=started,
+            stats=stats,
+            offset=FAILED_ATTEMPT_OFFSET_BASE + index,
+        )
+    if len(failed_attempts) > MAX_FAILED_ATTEMPT_STEPS:
+        activity.logger.warning(
+            "harness.failed_attempts.truncated",
+            extra={
+                "recorded": MAX_FAILED_ATTEMPT_STEPS,
+                "total": len(failed_attempts),
+            },
+        )
 
 
 def _now() -> datetime:
@@ -1516,9 +1645,14 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # fallback chain (empty unless the tenant's EFFECTIVE `autoSwitch` is on — the gateway already
     # funding-gated that, so nothing here re-derives it). The SAME walker `core.agent` uses.
     fallback_block = read_text_fallback({"textFallback": payload.text_fallback})
-    attempts: list[tuple[str | None, str | None]] = [(payload.provider, payload.model)]
+    # TASK-959 §6.2 — the tier rides along so a FAILED candidate's step can name who funded the
+    # attempt. DERIVED by the gateway per candidate; the snapshotted primary carries none on
+    # this lane, and an underived tier stays absent rather than being guessed.
+    attempts: list[tuple[str | None, str | None, str | None]] = [
+        (payload.provider, payload.model, None)
+    ]
     attempts.extend(
-        (wire_provider(candidate.provider), candidate.model)
+        (wire_provider(candidate.provider), candidate.model, candidate.funding_tier)
         for candidate in chain_candidates(fallback_block)
     )
     # The whole walk shares ONE activity budget: a candidate started too late times the activity
@@ -1530,7 +1664,8 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     result = None
     last_exc: TextServiceError | None = None
     exhausted = False
-    for index, (attempt_provider, attempt_model) in enumerate(attempts):
+    failed_attempts: list[dict[str, Any]] = []
+    for index, (attempt_provider, attempt_model, attempt_funding_tier) in enumerate(attempts):
         if index > 0 and not budget.allows_another():
             activity.logger.warning(
                 "harness.text_fallback.budget_exhausted",
@@ -1598,6 +1733,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 },
             )
 
+        attempt_started = perf_counter()
         try:
             result = await _text_client(settings).generate(
                 tenant_id=_required_tenant(payload.tenant_id, "generate"),
@@ -1619,6 +1755,15 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
             break
         except TextServiceError as exc:
             last_exc = exc
+            # §6.2 Gap A — the leg that lost still burned platform CPU calling the provider.
+            failed_attempts.append(
+                failed_attempt_stats(
+                    provider=attempt_provider,
+                    model=attempt_model,
+                    funding_tier=attempt_funding_tier,
+                    total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                )
+            )
             if index + 1 < len(attempts):
                 activity.logger.warning(
                     "harness.text_fallback.switching",
@@ -1626,6 +1771,10 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 )
 
     if result is None:
+        # Every candidate lost, so there is no LLM_CALL step to hang them off — but the CPU was
+        # spent all the same. Flushed BEFORE the raise, and `flush` never raises, so the
+        # Text-failure invariant (no draft, the workflow fails) is exactly as it was.
+        await _flush_failed_attempts(settings, payload.trajectory, failed_attempts, started)
         if exhausted:
             # The budget ran out before another candidate could be STARTED. Failing NON-RETRYABLY
             # is the durable-lane equivalent of `core.agent`'s DEGRADED: a retryable failure is
@@ -1696,6 +1845,11 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
         llm_stats["provider"] = result.provider
     if not llm_stats.get("model") and result.model:
         llm_stats["model"] = result.model
+    # TASK-957 F-6 / TASK-959 §10.2 — the counts AD-1 `GenerationStats` cannot express
+    # (cache read/write, reasoning) plus the timing and byte counts, from the `usage_detail`
+    # block Text returns on the SAME response. The mapper zeroed all three because nothing ever
+    # put them on the step; copied only when present, so an absent count stays absent.
+    llm_stats.update(usage_detail_counters(result.usage_detail))
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
@@ -1704,6 +1858,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
         started=started,
         stats=llm_stats,
     )
+    record_failed_attempts(batch, failed_attempts, started)
     reasoning = _reasoning_tokens(result.stats)
     if reasoning > 0:
         batch.record(
