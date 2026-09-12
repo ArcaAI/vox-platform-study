@@ -23838,6 +23838,55 @@
         ],
         "type": "object"
       },
+      "UsageComputeSeconds": {
+        "properties": {
+          "cpuSeconds": {
+            "description": "Σ CPU_SECOND across the inference capabilities. EXCLUDES the durable worker (capability WORKFLOW) — that is reported separately as workflowCpuSeconds. Fixed-point, 6 dp.",
+            "type": "string"
+          },
+          "gpuSeconds": {
+            "description": "Σ GPU_SECOND across the inference capabilities (device cuda or mps). Fixed-point, 6 dp.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gpuSeconds",
+          "cpuSeconds"
+        ],
+        "type": "object"
+      },
+      "UsageStorageSnapshotSummary": {
+        "properties": {
+          "asOf": {
+            "description": "When the snapshot was taken (the end of the UTC day it measured), ISO-8601.",
+            "type": "string"
+          },
+          "claimCheckGb": {
+            "description": "Offloaded harness claim-check payloads. Fixed-point GB, 6 dp.",
+            "type": "string"
+          },
+          "mediaGb": {
+            "description": "Per-tenant MinIO objects (Media.size). Fixed-point GB, 6 dp.",
+            "type": "string"
+          },
+          "textGb": {
+            "description": "Encrypted Postgres columns (pg_column_size of the stored bytes). Fixed-point GB, 6 dp.",
+            "type": "string"
+          },
+          "totalGb": {
+            "description": "Σ of the three classes. Fixed-point GB, 6 dp.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mediaGb",
+          "textGb",
+          "claimCheckGb",
+          "totalGb",
+          "asOf"
+        ],
+        "type": "object"
+      },
       "UsageSummaryLine": {
         "properties": {
           "capability": {
@@ -23880,6 +23929,14 @@
             "description": "BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14).",
             "type": "object"
           },
+          "computeSeconds": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageComputeSeconds"
+              }
+            ],
+            "description": "GPU vs CPU occupancy seconds across the inference capabilities."
+          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/UsageSummaryLine"
@@ -23896,8 +23953,30 @@
           "periodStart": {
             "type": "string"
           },
+          "storage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageStorageSnapshotSummary"
+              }
+            ],
+            "description": "What the tenant was HOLDING at the latest nightly snapshot within the period, split by class — a level, not the period’s GB-day sum. Null when no snapshot exists for the period, which is deliberately distinct from a zeroed object.",
+            "nullable": true,
+            "type": "object"
+          },
+          "thirdPartyBytes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageThirdPartyBytes"
+              }
+            ],
+            "description": "Bytes that crossed to a vendor (deployment CLOUD or BYOK). Self-hosted traffic excluded."
+          },
           "totalCostMicros": {
             "description": "Σ costMicros across every line (INTERNAL basis only).",
+            "type": "string"
+          },
+          "workflowCpuSeconds": {
+            "description": "Σ CPU_SECOND under capability WORKFLOW — the durable worker's own CPU for this tenant's runs. Its own figure because a run's worker CPU is neither STT nor LLM, and adding it to computeSeconds would double-count it against a compute allowance. Fixed-point, 6 dp.",
             "type": "string"
           }
         },
@@ -23907,7 +23986,28 @@
           "periodEnd",
           "lines",
           "totalCostMicros",
-          "byokNotionalCostMicrosByCapability"
+          "byokNotionalCostMicrosByCapability",
+          "computeSeconds",
+          "workflowCpuSeconds",
+          "thirdPartyBytes",
+          "storage"
+        ],
+        "type": "object"
+      },
+      "UsageThirdPartyBytes": {
+        "properties": {
+          "egressBytes": {
+            "description": "Σ EGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp.",
+            "type": "string"
+          },
+          "ingressBytes": {
+            "description": "Σ INGRESS_BYTE on CLOUD/BYOK rows. Fixed-point, 6 dp.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "egressBytes",
+          "ingressBytes"
         ],
         "type": "object"
       },
@@ -23917,6 +24017,14 @@
             "description": "UTC bucket start, ISO-8601.",
             "type": "string"
           },
+          "computeSeconds": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageComputeSeconds"
+              }
+            ],
+            "description": "GPU vs CPU occupancy seconds in this bucket, inference capabilities only."
+          },
           "costMicros": {
             "description": "Summed INTERNAL-basis rated cost, integer micros.",
             "type": "string"
@@ -23924,12 +24032,33 @@
           "quantity": {
             "description": "Summed quantity in `unit`, across every provider/model.",
             "type": "string"
+          },
+          "storageGb": {
+            "description": "Σ STORAGE_GB_DAY in this bucket across every class — the rollup grain cannot split media from claim-check (both are provider `minio`), so this is the total; the per-class split is on the summary. Null when the bucket carries no snapshot at all, which for hourly granularity is every hour but the one the job ran in.",
+            "nullable": true,
+            "type": "string"
+          },
+          "thirdPartyBytes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageThirdPartyBytes"
+              }
+            ],
+            "description": "Bytes to a vendor in this bucket (CLOUD/BYOK only)."
+          },
+          "workflowCpuSeconds": {
+            "description": "Σ CPU_SECOND under capability WORKFLOW in this bucket — the durable worker's own CPU. Fixed-point, 6 dp.",
+            "type": "string"
           }
         },
         "required": [
           "bucketStart",
           "quantity",
-          "costMicros"
+          "costMicros",
+          "computeSeconds",
+          "workflowCpuSeconds",
+          "thirdPartyBytes",
+          "storageGb"
         ],
         "type": "object"
       },
@@ -25465,6 +25594,117 @@
         "required": [
           "runId",
           "status"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunDetailResponse": {
+        "properties": {
+          "actingUserId": {
+            "description": "TASK-950 — the clinician this run acts FOR, read back from the row's `_metadata.actingUserId`. Recorded only for a STANDALONE machine-triggered run whose trigger schema declares a user-identity field; it sits BESIDE the actor the audit envelope already names (the service account), never instead of it. `null` for a human caller (the caller already IS the clinician), for a consultation-bound run (identity is `Consultation.doctorId`), and for a schema that declares no identity field — three different reasons, one honest absence.",
+            "nullable": true,
+            "type": "string"
+          },
+          "cpuSeconds": {
+            "description": "Σ CPU_SECOND under capability WORKFLOW for this run — the durable worker's own CPU, fair-share apportioned across concurrently executing activities (§3.4, D-5). NULL, not 0, when the run has no such rows: a run that predates the metering interceptor and a run that burned no measurable CPU are different facts. Orchestration CPU (the sandboxed workflow bodies and their replay) and the SDK's Rust core are deliberately NOT in this number — they are reconciled monthly against the pod's own CPU.",
+            "nullable": true,
+            "type": "number"
+          },
+          "createdAt": {
+            "description": "Row creation instant (ISO-8601).",
+            "type": "string"
+          },
+          "definitionName": {
+            "description": "Denormalized WorkflowDefinition.name at run time.",
+            "type": "string"
+          },
+          "degradedNodeCount": {
+            "description": "Count of nodes that degraded (produced a marked nothing) — a flag, never a run status.",
+            "type": "number"
+          },
+          "durationMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "endedAt": {
+            "description": "Run end (ISO-8601), null while RUNNING.",
+            "nullable": true,
+            "type": "string"
+          },
+          "failedNodeCount": {
+            "type": "number"
+          },
+          "firstErrorCode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isSandbox": {
+            "type": "boolean"
+          },
+          "nodeCount": {
+            "nullable": true,
+            "type": "number"
+          },
+          "resultRef": {
+            "additionalProperties": true,
+            "description": "The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node.",
+            "nullable": true,
+            "type": "object"
+          },
+          "runId": {
+            "description": "The domain run id (empty-string sentinel convention).",
+            "type": "string"
+          },
+          "sessionId": {
+            "description": "The AgentTrajectoryStep join key (\"workflow-interpreter-{runId}\").",
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "Run start (ISO-8601).",
+            "type": "string"
+          },
+          "status": {
+            "description": "RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT. No DEGRADED value — see degradedNodeCount.",
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "trigger": {
+            "description": "consultation open | api invoke | webhook | schedule.",
+            "type": "string"
+          },
+          "workflowSlug": {
+            "description": "WorkflowDefinition.slug — the stable lineage key across versions.",
+            "type": "string"
+          },
+          "workflowVersionId": {
+            "description": "WorkflowDefinition.id of the exact PUBLISHED, immutable version row pinned for this run.",
+            "type": "string"
+          },
+          "workflowVersionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "workflowVersionId",
+          "workflowSlug",
+          "workflowVersionNumber",
+          "definitionName",
+          "sessionId",
+          "runId",
+          "trigger",
+          "status",
+          "isSandbox",
+          "startedAt",
+          "failedNodeCount",
+          "degradedNodeCount",
+          "createdAt",
+          "cpuSeconds"
         ],
         "type": "object"
       },
@@ -53025,7 +53265,7 @@
     },
     "/api/v1/admin/usage/summary": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:usage:manage`).\n\n**Abilities** — `manage:UsageAnalytics`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Also carries four figures the per-model breakdown cannot answer on its own (TASK-959): `computeSeconds` (GPU vs CPU occupancy across the inference capabilities), `workflowCpuSeconds` (the durable worker, kept separate so it is not billed twice), `thirdPartyBytes` (CLOUD/BYOK only — self-hosted LAN traffic is excluded) and `storage`, which is the LATEST nightly snapshot in the period split by class, not the period’s GB-day sum. `storage` is null when no snapshot exists for the period.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:usage:manage`).\n\n**Abilities** — `manage:UsageAnalytics`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminUsageController_summary",
         "parameters": [
           {
@@ -53090,7 +53330,7 @@
     },
     "/api/v1/admin/usage/timeseries": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:usage:manage`).\n\n**Abilities** — `manage:UsageAnalytics`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Each point carries the selected series (`quantity`/`costMicros`) plus that bucket's compute, workflow CPU, third-party bytes and storage GB across EVERY capability — so one request draws a series against the platform cost that moved with it. A bucket holding only those companion figures still yields a point, with a zeroed selected series.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:usage:manage`).\n\n**Abilities** — `manage:UsageAnalytics`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AdminUsageController_timeseries",
         "parameters": [
           {
@@ -58174,7 +58414,7 @@
     },
     "/api/v1/admin/workflow-runs/{runId}": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-run:read`).\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "`cpuSeconds` is the durable worker's own CPU for this run, summed from the usage ledger rather than read off the run row — so it lands minutes after the run finishes and is null for a run the metering interceptor never saw.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-run:read`).\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowRunController_getRun",
         "parameters": [
           {
@@ -58192,7 +58432,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                  "$ref": "#/components/schemas/WorkflowRunDetailResponse"
                 }
               }
             },
@@ -58210,7 +58450,7 @@
             "bearer": []
           }
         ],
-        "summary": "A single run. Cross-tenant / nonexistent id → 404 (never 403).",
+        "summary": "A single run, with the worker CPU it consumed. Cross-tenant / nonexistent id → 404 (never 403).",
         "tags": [
           "admin-workflow-runs"
         ],
@@ -58934,6 +59174,9 @@
           "400": {
             "description": "The body does not match the agent’s inputSchema, the `context` does not satisfy the schema the agent binds (`CONTEXT_SCHEMA_VIOLATION`), the agent is not a TEXT_GENERATION agent, or — for a service-account caller on an agent whose schema declares a user-identity field — the supplied staff identifier is unusable (`USER_IDENTITY_INVALID`) or no department could be resolved to provision the clinician in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`)."
           },
+          "402": {
+            "description": "The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent."
+          },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent — one answer. Also the answer when a service-account caller supplies a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act (`USER_IDENTITY_NOT_USABLE`)."
           },
@@ -58997,6 +59240,9 @@
           "400": {
             "description": "Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent."
           },
+          "402": {
+            "description": "The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent."
+          },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent."
           }
@@ -59050,6 +59296,9 @@
           },
           "400": {
             "description": "Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent."
+          },
+          "402": {
+            "description": "The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent."
           },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent (or media)."
