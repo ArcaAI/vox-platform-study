@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
@@ -556,6 +557,17 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    * batch whose steps already landed. What changes is that an exhausted budget
    * now increments a counter an alert can watch, instead of a warn line nobody
    * reads.
+   *
+   * TWO CASES DO NOT RETRY, and both are worse than useless rather than merely
+   * wasteful:
+   *
+   *  - **Inside an open transaction.** A failed statement poisons the whole
+   *    Postgres transaction, so no later attempt on the same `tx` can land —
+   *    and the jittered sleeps hold its locks open while it waits to fail
+   *    again. Recovery there belongs to the harness's own POST retry.
+   *  - **A validation failure.** It is deterministic: the same batch will be
+   *    refused every time. On a 500-step POST, three attempts each would add
+   *    minutes to a request the harness is waiting on and then fail anyway.
    */
   private async emitWithRetry(
     batch: UsageEventBatchInput,
@@ -566,12 +578,14 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
   ): Promise<void> {
     if (!this.usageLedgerService) return;
 
-    for (let attempt = 1; attempt <= USAGE_EMIT_ATTEMPTS; attempt += 1) {
+    const budget = tx ? 1 : USAGE_EMIT_ATTEMPTS;
+
+    for (let attempt = 1; attempt <= budget; attempt += 1) {
       try {
         await this.usageLedgerService.recordUsage(batch, tx);
         return;
       } catch (error) {
-        const lastAttempt = attempt === USAGE_EMIT_ATTEMPTS;
+        const lastAttempt = attempt === budget || error instanceof ArgumentInvalidException;
         this.logger.warn({
           message: lastAttempt ? 'Usage-ledger emission failed and was NOT billed' : 'Usage-ledger emission failed — retrying',
           operation,
