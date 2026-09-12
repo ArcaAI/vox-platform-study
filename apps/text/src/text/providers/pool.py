@@ -324,8 +324,10 @@ def apply_pool_policy(snapshot: EffectiveConfigSnapshot) -> set[str]:
 # What is counted is BODY bytes: `len(request.content)` up, and the sum of the
 # parts iterated (plus the close-time drain) down. Headers, TLS framing and
 # HTTP/2 control frames are not counted and not estimated — an invented number
-# is worse than a documented floor, and the ledger row says `byteSource: wire`
-# for exactly this reason.
+# is worse than a documented floor. These are observed on the wire rather than
+# reconstructed at the application layer, which is the distinction the ledger's
+# `byteSource` attribute records (`wire` here, `app` where a service can only
+# report what it handed to an SDK).
 #
 # ## Why a contextvar and not a field on the response
 #
