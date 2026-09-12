@@ -164,7 +164,8 @@ function PlanEditForm({
 function PlanEditSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {Array.from({ length: 8 }, (_, index) => (
+      {/* One row per rendered field: the limits plus the two tier inputs. */}
+      {Array.from({ length: LIMIT_FIELDS.length + 2 }, (_, index) => (
         <div key={index} className="flex flex-col gap-2">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="h-9 w-full" />

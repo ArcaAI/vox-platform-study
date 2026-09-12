@@ -12,11 +12,14 @@ interface EntitlementLimits {
   /** @deprecated TASK-861 — removed in R4 with audio pipelines. */
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  maxWorkflowDefinitions?: number | null;
+  maxAiProviderConnections?: number | null;
   storageQuotaBytes?: number | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  monthlyWorkflowInvocations?: number | null;
 }
 
 /** GET /admin/entitlements/plans rows (PlanEntitlementResponse). */
