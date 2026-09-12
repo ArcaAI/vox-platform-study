@@ -5,7 +5,7 @@
  * tenant gate, and axe-cleanliness.
  */
 
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
@@ -121,5 +121,85 @@ describe('ConsumptionCostScreen', () => {
     const { container } = renderWithProviders(<ConsumptionCostScreen />);
     await screen.findAllByText('$3.00');
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-958 D-7 — with two accounts of one vendor on a tenant, `provider` is no
+ * longer an answer to "which key did this spend?". The usage line carries
+ * `connectionId` and the table resolves it to the connection a tenant admin
+ * named.
+ *
+ * The column is rendered ONLY when the field is PRESENT: a gateway that does not
+ * yet serve it (Lane B2 is not merged) must not grow a column of dashes, and an
+ * absent field is not the same answer as a platform-funded null.
+ */
+const SUMMARY_WITH_CONNECTIONS = {
+  ...SUMMARY,
+  lines: [
+    { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '1000', costMicros: '2000000', connectionId: 'conn-2' },
+    { capability: 'LLM', provider: 'openai', model: 'gpt-x', unit: 'INPUT_TOKEN', quantity: '500', costMicros: '500000', connectionId: 'conn-unknown-id-7f3a' },
+    { capability: 'STT', provider: 'whisper_cpp', model: '', unit: 'AUDIO_SECOND', quantity: '300', costMicros: '1000000', connectionId: null },
+  ],
+};
+
+const CONNECTIONS: Record<string, unknown[]> = {
+  llm: [
+    { id: 'conn-1', tenantId: 'tnt-1', service: 'llm', provider: 'openai', slug: 'openai', name: 'Production account', isDefault: true },
+    { id: 'conn-2', tenantId: 'tnt-1', service: 'llm', provider: 'openai', slug: 'openai-research', name: 'Research account', isDefault: false },
+  ],
+  stt: [],
+  tts: [],
+};
+
+function stubFetchWithConnections(summary: unknown = SUMMARY_WITH_CONNECTIONS) {
+  const paths: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request) => {
+      const path = String(input).split('?')[0]!;
+      paths.push(path);
+      if (path === '/api/auth/session') return Response.json(SESSION);
+      if (path === '/api/hope/admin/usage/summary') return Response.json(summary);
+      if (path === '/api/hope/admin/usage/cost-per-encounter') return Response.json(COST_PER_ENCOUNTER);
+      if (path === '/api/hope/admin/usage/top-tenants') return Response.json(TOP_TENANTS);
+      if (path.startsWith('/api/hope/admin/providers/')) {
+        return Response.json(CONNECTIONS[path.replace('/api/hope/admin/providers/', '')] ?? []);
+      }
+      throw new Error(`Unhandled fetch: ${path}`);
+    }),
+  );
+  return paths;
+}
+
+describe('ConsumptionCostScreen — which connection spent this (958 D-7)', () => {
+  it('names the connection on a BYO line, and says "platform" where none funded it', async () => {
+    stubFetchWithConnections();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    const table = await screen.findByRole('table', { name: /Usage detail/ });
+    await waitFor(() => expect(within(table).getByText('Research account')).toBeDefined());
+    expect(within(table).getByRole('columnheader', { name: 'Connection' })).toBeDefined();
+    // An id the provider lists do not carry still identifies the row — 8 chars
+    // of the id beat an em dash, which would read as "platform-funded".
+    expect(within(table).getByText('conn-unk')).toBeDefined();
+    // `connectionId: null` IS an answer: the platform's own credential served it.
+    expect(within(table).getAllByText('Platform').length).toBe(1);
+  });
+
+  it('renders NO Connection column when the gateway does not carry the field', async () => {
+    stubFetch();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    const table = await screen.findByRole('table', { name: /Usage detail/ });
+    expect(within(table).queryByRole('columnheader', { name: 'Connection' })).toBeNull();
+  });
+
+  it('does not read the provider lists at all when no line carries a connection', async () => {
+    const paths = stubFetchWithConnections(SUMMARY);
+    renderWithProviders(<ConsumptionCostScreen />);
+    await screen.findByRole('table', { name: /Usage detail/ });
+
+    expect(paths.some((path) => path.startsWith('/api/hope/admin/providers/'))).toBe(false);
   });
 });
