@@ -30,6 +30,7 @@ import {
   OriginRegistryServiceModule,
   RateLimitServiceModule,
   RedisServiceModule,
+  StorageSnapshotServiceModule,
   SysEventServiceModule,
   UnifiedAuthGuard,
   UsageLedgerServiceModule,
@@ -402,6 +403,12 @@ const common = [
   // BullMQ root config supplies the connection either way. Placed here, beside
   // the other background workers, so the drainer starts with them.
   UsageLedgerServiceModule,
+  // TASK-959 §5.2 — the nightly per-(tenant, storage class) GB-day snapshot.
+  // Beside the ledger it emits into, and beside the other background workers.
+  // Unlike the metering reconcile it ships ENABLED: it is the only writer of a
+  // measure that cannot be recomputed for a past day, so a night it does not
+  // run is a day that is permanently unbilled.
+  StorageSnapshotServiceModule,
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   // Machine-identity authenticator — same ordering requirement as the line
   // above: UnifiedAuthGuard resolves the token when it is constructed.

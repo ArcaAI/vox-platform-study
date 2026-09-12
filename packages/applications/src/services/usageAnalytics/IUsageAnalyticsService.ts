@@ -41,6 +41,17 @@ export interface IUsageAnalyticsService {
 
   /** Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. */
   getBudgetBurndown(tenantId: string, period: string): Promise<BudgetBurndownResponse>;
+
+  /**
+   * TASK-959 §3.4 — Σ `CPU_SECOND` under capability `WORKFLOW` for ONE workflow
+   * run, tenant-scoped. `null` when the run has no worker-CPU rows at all.
+   *
+   * On this interface rather than the workflow-run service because it is a
+   * LEDGER question, not a run question: the sum lives on `AiUsageEvent` keyed
+   * by `requestId`, and the workflow-run read plane has no business learning
+   * the metering schema to answer it.
+   */
+  getWorkflowRunCpuSeconds(tenantId: string, runId: string): Promise<number | null>;
 }
 
 export const IUsageAnalyticsService = Symbol('IUsageAnalyticsService');
