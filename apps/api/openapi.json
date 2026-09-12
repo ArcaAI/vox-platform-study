@@ -3249,6 +3249,18 @@
             "nullable": true,
             "type": "string"
           },
+          "connectionName": {
+            "description": "The tenant's display label for the connection, when it set one. NULL otherwise — the slug stands in.",
+            "example": "Research account",
+            "nullable": true,
+            "type": "string"
+          },
+          "connectionSlug": {
+            "description": "The connection's tenant-chosen slug (TASK-958 D-5) — `=== provider` on the DEFAULT row, which is why every pre-958 entry keeps its id. NULL for the `hope` group and for a model whose connection is gone.",
+            "example": "openai-research",
+            "nullable": true,
+            "type": "string"
+          },
           "group": {
             "description": "Which half of the picker this entry belongs to.",
             "enum": [
@@ -3258,8 +3270,13 @@
             "type": "string"
           },
           "id": {
-            "description": "`byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry).",
+            "description": "`byo:<service>:<connectionSlug>` for ONE tenant connection (TASK-958 D-5 — a tenant may hold several per vendor), or the literal `hope` (exactly one entry). A DEFAULT connection carries `slug === provider`, so every id that existed before that ticket is unchanged.",
             "type": "string"
+          },
+          "isDefault": {
+            "description": "Whether this is the provider's DEFAULT connection — the one a SYSTEM catalogue model spends. NULL for the `hope` group.",
+            "nullable": true,
+            "type": "boolean"
           },
           "modelCount": {
             "description": "Models listed under this entry after every filter.",
