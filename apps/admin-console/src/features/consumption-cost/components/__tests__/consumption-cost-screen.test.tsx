@@ -5,7 +5,7 @@
  * tenant gate, and axe-cleanliness.
  */
 
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
@@ -35,9 +35,34 @@ const SUMMARY = {
   ],
   totalCostMicros: '3000000',
   byokNotionalCostMicrosByCapability: { LLM: '500000' },
+  // TASK-959 — compute, network and storage (§10.2 wire contract).
+  computeSeconds: { gpuSeconds: '12.500000', cpuSeconds: '3.250000' },
+  workflowCpuSeconds: '0.750000',
+  thirdPartyBytes: { egressBytes: '1073741824.000000', ingressBytes: '2147483648.000000' },
+  storage: { mediaGb: '1.500000', textGb: '0.250000', claimCheckGb: '0.010000', totalGb: '1.760000', asOf: '2026-08-30T23:59:59.999Z' },
 };
 
 const EMPTY_SUMMARY = { ...SUMMARY, lines: [], totalCostMicros: '0', byokNotionalCostMicrosByCapability: {} };
+
+/** GET admin/usage/timeseries for SUMMARY's default series (LLM's only line, INPUT_TOKEN). */
+const TIMESERIES = {
+  capability: 'LLM',
+  unit: 'INPUT_TOKEN',
+  granularity: 'day',
+  from: SUMMARY.periodStart,
+  to: SUMMARY.periodEnd,
+  points: [
+    {
+      bucketStart: '2026-08-01T00:00:00.000Z',
+      quantity: '500',
+      costMicros: '1000000',
+      computeSeconds: { gpuSeconds: '12.500000', cpuSeconds: '3.250000' },
+      workflowCpuSeconds: '0.750000',
+      thirdPartyBytes: { egressBytes: '1073741824.000000', ingressBytes: '2147483648.000000' },
+      storageGb: '1.760000',
+    },
+  ],
+};
 
 const COST_PER_ENCOUNTER = {
   period: '2026-08',
@@ -62,9 +87,10 @@ const TOP_TENANTS = {
 interface StubConfig {
   session?: typeof SESSION;
   summary?: unknown;
+  timeseries?: unknown;
 }
 
-function stubFetch({ session = SESSION, summary = SUMMARY }: StubConfig = {}) {
+function stubFetch({ session = SESSION, summary = SUMMARY, timeseries = TIMESERIES }: StubConfig = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request) => {
@@ -73,6 +99,7 @@ function stubFetch({ session = SESSION, summary = SUMMARY }: StubConfig = {}) {
       if (path === '/api/hope/admin/usage/summary') return Response.json(summary);
       if (path === '/api/hope/admin/usage/cost-per-encounter') return Response.json(COST_PER_ENCOUNTER);
       if (path === '/api/hope/admin/usage/top-tenants') return Response.json(TOP_TENANTS);
+      if (path === '/api/hope/admin/usage/timeseries') return Response.json(timeseries);
       throw new Error(`Unhandled fetch: ${path}`);
     }),
   );
@@ -121,6 +148,72 @@ describe('ConsumptionCostScreen', () => {
     const { container } = renderWithProviders(<ConsumptionCostScreen />);
     await screen.findAllByText('$3.00');
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-959 — the compute/network/storage cards and the usage-over-time
+ * chart. All four figures ride on `UsageSummaryResponse` fields this ticket
+ * added (§10.2); the fixtures above already carry them for every other test
+ * in this file, which is itself a regression check that the new fields
+ * don't disturb the existing KPIs/tables/chart.
+ */
+describe('ConsumptionCostScreen — compute, network and storage (959)', () => {
+  it('renders the Compute, Third-party network and Storage cards from the summary', async () => {
+    stubFetch();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Compute' })).toBeDefined();
+    expect(await screen.findByText('12.500 s')).toBeDefined(); // GPU seconds
+    expect(screen.getByText('3.250 s')).toBeDefined(); // CPU seconds
+    expect(screen.getByText('0.750 s')).toBeDefined(); // workflow-worker CPU, its own line
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Third-party network' })).toBeDefined();
+    expect(await screen.findByText('1 GB')).toBeDefined(); // egress, 1 GiB
+    expect(screen.getByText('2 GB')).toBeDefined(); // ingress, 2 GiB
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Storage' })).toBeDefined();
+    expect(await screen.findByText('1.50 GB')).toBeDefined(); // media
+    expect(screen.getByText('0.2500 GB')).toBeDefined(); // text — sub-1GB precision
+    expect(screen.getByText('0.0100 GB')).toBeDefined(); // claim-check
+    expect(screen.getByText('1.76 GB')).toBeDefined(); // total
+  });
+
+  it('shows the byte formatter\'s raw value on hover', async () => {
+    stubFetch();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    const egress = await screen.findByText('1 GB');
+    expect(egress.getAttribute('title')).toBe('1073741824.000000 bytes');
+  });
+
+  it('renders "No snapshot yet" instead of a blank card when storage is null', async () => {
+    stubFetch({ summary: { ...SUMMARY, storage: null } });
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    expect(await screen.findByText('No snapshot yet')).toBeDefined();
+    // The rows that WOULD have rendered from a real snapshot must not appear.
+    expect(screen.queryByText('1.50 GB')).toBeNull();
+  });
+
+  it('shows the usage-over-time chart with only the selected series on by default, and toggles a new series on', async () => {
+    stubFetch();
+    renderWithProviders(<ConsumptionCostScreen />);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Usage over time' })).toBeDefined();
+    const table = await screen.findByRole('table', { name: /usage by day/i });
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['bucketStart', 'LLM · INPUT_TOKEN']);
+
+    // The new compute/storage series start OFF — checked here BEFORE any click.
+    expect(screen.getByRole('checkbox', { name: 'GPU seconds' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('checkbox', { name: 'Selected usage' }).getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'GPU seconds' }));
+
+    await waitFor(() => {
+      const updated = screen.getByRole('table', { name: /usage by day/i });
+      expect(within(updated).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['bucketStart', 'LLM · INPUT_TOKEN', 'GPU seconds']);
+    });
   });
 });
 
