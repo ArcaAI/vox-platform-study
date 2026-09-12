@@ -6,6 +6,7 @@ import {
   getInferenceReadiness,
   getPlatformDefaults,
   getProviderConnection,
+  listProviderConnections,
   listRoutingBindings,
   putConnectionModels,
   putProviderConnection,
@@ -15,10 +16,27 @@ import {
 import { providerConnectionKeys } from './keys';
 import type { DeclareConnectionModelsRequest, ProviderService, TestProviderConnectionRequest, UpsertProviderConnectionRequest } from './types';
 
-export function useProviderConnection(service: ProviderService, provider: string, tenantId?: string, enabled = true) {
+export function useProviderConnection(service: ProviderService, slug: string, tenantId?: string, enabled = true) {
   return useQuery({
-    queryKey: providerConnectionKeys.row(service, provider, tenantId),
-    queryFn: () => getProviderConnection(service, provider, tenantId),
+    queryKey: providerConnectionKeys.row(service, slug, tenantId),
+    queryFn: () => getProviderConnection(service, slug, tenantId),
+    enabled,
+  });
+}
+
+/**
+ * TASK-958 — every connection the scoped tenant holds for one capability.
+ *
+ * Read ONCE per tab and shared by every card group, which derives its own
+ * provider's rows from it. A gateway that does not serve the multiplicity
+ * fields yet answers the same array it always did, and `connectionSlugOf` /
+ * `connectionIsDefault` make every row of it the default of its provider —
+ * which is exactly what it is.
+ */
+export function useProviderConnections(service: ProviderService, tenantId?: string, enabled = true) {
+  return useQuery({
+    queryKey: providerConnectionKeys.list(service, tenantId),
+    queryFn: () => listProviderConnections(service, tenantId),
     enabled,
   });
 }
@@ -37,17 +55,17 @@ export function usePutProviderConnection() {
   return useMutation({
     mutationFn: ({
       service,
-      provider,
+      slug,
       body,
       etag,
       tenantId,
     }: {
       service: ProviderService;
-      provider: string;
+      slug: string;
       body: Omit<UpsertProviderConnectionRequest, 'expectedVersion'>;
       etag: string | null;
       tenantId?: string;
-    }) => putProviderConnection(service, provider, body, etag, tenantId),
+    }) => putProviderConnection(service, slug, body, etag, tenantId),
     onSuccess: (_data, variables) => queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) }),
   });
 }
@@ -55,8 +73,8 @@ export function usePutProviderConnection() {
 export function useDeleteProviderConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ service, provider, tenantId }: { service: ProviderService; provider: string; tenantId?: string }) =>
-      deleteProviderConnection(service, provider, tenantId),
+    mutationFn: ({ service, slug, tenantId }: { service: ProviderService; slug: string; tenantId?: string }) =>
+      deleteProviderConnection(service, slug, tenantId),
     onSuccess: (_data, variables) => queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) }),
   });
 }
@@ -73,17 +91,17 @@ export function useDeclareConnectionModels() {
   return useMutation({
     mutationFn: ({
       service,
-      provider,
+      slug,
       body,
       tenantId,
     }: {
       service: ProviderService;
-      provider: string;
+      slug: string;
       body: DeclareConnectionModelsRequest;
       tenantId?: string;
-    }) => putConnectionModels(service, provider, body, tenantId),
+    }) => putConnectionModels(service, slug, body, tenantId),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.row(variables.service, variables.provider, variables.tenantId) });
+      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.row(variables.service, variables.slug, variables.tenantId) });
       void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) });
     },
   });
@@ -94,15 +112,15 @@ export function useTestProviderConnection() {
   return useMutation({
     mutationFn: ({
       service,
-      provider,
+      slug,
       body,
       tenantId,
     }: {
       service: ProviderService;
-      provider: string;
+      slug: string;
       body: TestProviderConnectionRequest;
       tenantId?: string;
-    }) => testProviderConnection(service, provider, body, tenantId),
+    }) => testProviderConnection(service, slug, body, tenantId),
   });
 }
 
@@ -124,10 +142,10 @@ export function useRoutingBindings(tenantId: string, enabled = true) {
 export function useResetProviderConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ service, provider, tenantId }: { service: ProviderService; provider: string; tenantId?: string }) =>
-      resetProviderConnection(service, provider, tenantId),
+    mutationFn: ({ service, slug, tenantId }: { service: ProviderService; slug: string; tenantId?: string }) =>
+      resetProviderConnection(service, slug, tenantId),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.row(variables.service, variables.provider, variables.tenantId) });
+      void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.row(variables.service, variables.slug, variables.tenantId) });
       void queryClient.invalidateQueries({ queryKey: providerConnectionKeys.service(variables.service, variables.tenantId) });
     },
   });
