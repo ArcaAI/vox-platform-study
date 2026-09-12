@@ -10,6 +10,10 @@ import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
+// TASK-959 T1-merge: the local compute/byte unit builder, replaced by T1's
+// `appendComputeAndByteUnits`. Reached across `stt/internal` because the two
+// STT emitters share the rule and nothing else does.
+import { computeAndByteUnits } from '../internal/compute-network-units';
 import { IStreamingSessionService } from './IStreamingSessionService';
 import {
   CreateStreamingSessionRequest,
@@ -492,45 +496,72 @@ export class StreamingSessionService implements IStreamingSessionService {
 
     try {
       for (const [index, segment] of segments.entries()) {
-        await this.usageLedgerService.recordUsage({
-          common: {
-            tenantId: summary.tenant_id,
-            sessionId: summary.session_id,
-            consultationId: summary.consultation_id ?? null,
-            doctorId: summary.user_id ?? null,
-            idempotencyKey: index === 0 ? baseKey : `${baseKey}:${index}`,
-            occurredAt: summary.closed_at,
-            capability: AiCapability.STT,
-            operation: 'transcribe.stream',
-            provider: segment.engine,
-            model: null,
-            deployment: AiDeploymentKind[segment.deployment as keyof typeof AiDeploymentKind],
-            ...(segment.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
-            // TASK-958 D-7 — PER SEGMENT, not per session: a session that failed over
-            // from one of the tenant's accounts to another bills two rows, and each
-            // must name the account it actually spent.
-            connectionId: segment.connection_id ?? null,
-            attributesJson: {
-              engine: segment.engine,
-              pipelineId: summary.pipeline_id,
-              languageMode: summary.language_mode ?? null,
-              // Real dual-/multi-mic signal from the teardown summary;
-              // defaults to 1 for a single mic or an older STT that omits it.
-              channelCount: summary.channel_count ?? 1,
-              streamKind: 'ws',
-              interrupted,
-              // NOT a segment index/count: `attributesJson` is a closed PHI
-              // allow-list (`usageLedger/usage-attributes.ts`) and a key that is
-              // not declared there is REJECTED at emission, not dropped. A
-              // failed-over session is already countable without one — its rows
-              // share `sessionId` and differ in `provider`/`deployment`.
-            },
+        const costBasis = segment.deployment === 'BYOK' ? AiCostBasis.BYOK_NOTIONAL : undefined;
+        // TASK-959 §3.2/§4.2 — this segment's OWN occupancy seconds and bytes.
+        // Per segment, not per session: a cloud leg occupied this service's CPU
+        // waiting on the vendor while a self-hosted leg of the same session held
+        // a real accelerator, so the two bill different units.
+        const extra = computeAndByteUnits(
+          {
+            processingSeconds: segment.processing_seconds,
+            device: segment.device,
+            requestBytes: segment.request_bytes,
+            responseBytes: segment.response_bytes,
+            byteSource: segment.byte_source,
           },
+          costBasis,
+        );
+        const common = {
+          tenantId: summary.tenant_id,
+          sessionId: summary.session_id,
+          consultationId: summary.consultation_id ?? null,
+          doctorId: summary.user_id ?? null,
+          idempotencyKey: index === 0 ? baseKey : `${baseKey}:${index}`,
+          occurredAt: summary.closed_at,
+          capability: AiCapability.STT,
+          operation: 'transcribe.stream' as const,
+          provider: segment.engine,
+          model: null,
+          deployment: AiDeploymentKind[segment.deployment as keyof typeof AiDeploymentKind],
+          ...(costBasis ? { costBasis } : {}),
+          // TASK-958 D-7 — PER SEGMENT, not per session: a session that failed over
+          // from one of the tenant's accounts to another bills two rows, and each
+          // must name the account it actually spent.
+          connectionId: segment.connection_id ?? null,
+          attributesJson: {
+            engine: segment.engine,
+            pipelineId: summary.pipeline_id,
+            languageMode: summary.language_mode ?? null,
+            // Real dual-/multi-mic signal from the teardown summary;
+            // defaults to 1 for a single mic or an older STT that omits it.
+            channelCount: summary.channel_count ?? 1,
+            streamKind: 'ws',
+            interrupted,
+            // NOT a segment index/count: `attributesJson` is a closed PHI
+            // allow-list (`usageLedger/usage-attributes.ts`) and a key that is
+            // not declared there is REJECTED at emission, not dropped. A
+            // failed-over session is already countable without one — its rows
+            // share `sessionId` and differ in `provider`/`deployment`.
+          },
+        };
+
+        await this.usageLedgerService.recordUsage({
+          common,
           units: [
             { unit: AiUsageUnit.SESSION_SECOND, quantity: segment.session_seconds },
             { unit: AiUsageUnit.AUDIO_SECOND, quantity: segment.audio_seconds },
+            ...extra.onCallBasis,
           ],
         });
+
+        // The one sanctioned mixed-basis case: a BYOK leg's vendor minutes are
+        // the tenant's, but the CPU this service burned CALLING the vendor is the
+        // platform's. `costBasis` is a `common` field, so the second basis is a
+        // second batch on the SAME per-segment key — `expandUsageBatch` appends
+        // `:<UNIT>`, so the rows stay distinct without a new key.
+        if (extra.onInternalBasis.length > 0) {
+          await this.usageLedgerService.recordUsage({ common: { ...common, costBasis: AiCostBasis.INTERNAL }, units: extra.onInternalBasis });
+        }
       }
     } catch (error) {
       this.logger.error({
