@@ -8,7 +8,7 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { usePutProviderConnection } from '../api/hooks';
-import { isValidConnectionSlug, type ProviderService } from '../api/types';
+import { gatewayErrorCode, isReservedConnectionSlug, isValidConnectionSlug, type ProviderService } from '../api/types';
 import type { ProviderMeta } from './provider-meta';
 
 /**
@@ -66,6 +66,9 @@ export function AddConnectionDialog({
     }
   }
 
+  /** The one sentence that turns any reserved-name refusal into an action. */
+  const reservedHint = `Choose a name of your own, such as “${meta.id}-research”.`;
+
   function validate(): string | null {
     const value = slug.trim();
     if (!value) return 'Enter a connection id.';
@@ -73,6 +76,15 @@ export function AddConnectionDialog({
       return 'Use 2–63 lowercase letters, digits or hyphens, starting with a letter or digit.';
     }
     if (existingSlugs.includes(value)) return `This tenant already has a ${meta.label} connection called “${value}”.`;
+    // TASK-958 — the gateway's `CONNECTION_SLUG_RESERVED`, caught here because
+    // the slug is IMMUTABLE after create. The duplicate check above cannot
+    // stand in for it: this group knows only ITS OWN provider's slugs, so
+    // naming an OpenAI sibling `sarvam` looks valid right up to the 400.
+    if (isReservedConnectionSlug(value)) {
+      return value === 'platform-defaults'
+        ? `“${value}” is reserved — it is a route name on this API, so a connection called that could not be opened. ${reservedHint}`
+        : `“${value}” is reserved: it names a provider, and that name belongs to the provider’s own default connection. ${reservedHint}`;
+    }
     return null;
   }
 
@@ -102,7 +114,14 @@ export function AddConnectionDialog({
           onOpenChange(false);
           onCreated(value);
         },
-        onError: (mutationError) => setError(mutationError.message),
+        // A reserved name the CLIENT mirror does not know about (the gateway's
+        // provider table may be wider than what a tenant may bring) still comes
+        // back as `CONNECTION_SLUG_RESERVED` — rendered with the same one action
+        // that unblocks it, so a server-only refusal is no less actionable.
+        onError: (mutationError) =>
+          setError(
+            gatewayErrorCode(mutationError) === 'CONNECTION_SLUG_RESERVED' ? `${mutationError.message} ${reservedHint}` : mutationError.message,
+          ),
       },
     );
   }

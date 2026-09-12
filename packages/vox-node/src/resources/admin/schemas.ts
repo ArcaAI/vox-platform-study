@@ -822,10 +822,16 @@ export interface CatalogueModelResponse {
 export interface CatalogueProviderResponse {
   /** The tenant `AiProviderConnection` behind a BYO entry; NULL for `hope`. */
   connectionId: string | null;
+  /** The tenant's display label for the connection, when it set one. NULL otherwise — the slug stands in. */
+  connectionName?: string | null;
+  /** The connection's tenant-chosen slug (TASK-958 D-5) — `=== provider` on the DEFAULT row, which is why every pre-958 entry keeps its id. NULL for the `hope` group and for a model whose connection is gone. */
+  connectionSlug?: string | null;
   /** Which half of the picker this entry belongs to. */
   group: 'byo' | 'hope';
-  /** `byo:<service>:<provider>` for a tenant connection, or the literal `hope` (exactly one entry). */
+  /** `byo:<service>:<connectionSlug>` for ONE tenant connection (TASK-958 D-5 — a tenant may hold several per vendor), or the literal `hope` (exactly one entry). A DEFAULT connection carries `slug === provider`, so every id that existed before that ticket is unchanged. */
   id: string;
+  /** Whether this is the provider's DEFAULT connection — the one a SYSTEM catalogue model spends. NULL for the `hope` group. */
+  isDefault?: boolean | null;
   /** Models listed under this entry after every filter. */
   modelCount: number;
   /** Display name. */
@@ -1424,7 +1430,7 @@ export interface CreateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`) when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
   bucketPrefix?: string;
   /** Model category */
   category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
@@ -5730,7 +5736,7 @@ export interface TriggerModelDownloadResponse {
 
 export interface UnregisteredBucketPrefix {
   bucketPrefix: string;
-  layout: 'flat' | 'hf-cache';
+  layout: 'flat' | 'hf-cache' | 'staged';
   objectCount: number;
   slug?: string | null;
   totalBytes?: number | null;
@@ -5985,7 +5991,7 @@ export interface UpdateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. Send an empty string to clear. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`). Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
   bucketPrefix?: string;
   /** Model category */
   category?: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';

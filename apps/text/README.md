@@ -20,6 +20,11 @@ The gateway fronts this service. Browsers should not call it directly.
 - **Provider listing + health** — `GET /api/v1/providers`, `GET /api/v1/health` (+ live/ready).
 - **Optional worker pool** — `pnpm text:worker:dev` consumes Redis-Streams worker-pool tasks
   (separate process from the API).
+- **Usage passthrough** — every generation answers a `usage_detail` block (on the blocking
+  response, on the streaming terminal frame, and on a judge response) carrying what only this
+  service can know: which provider served, its own usage object, the funding tier, `total_ms`,
+  the engine's own `engine_ms` where it reports one, and the body bytes the call put on the
+  wire. The gateway turns those into ledger rows; this service never rates anything.
 
 Providers registered from connection config (local engines by `base_url`; cloud BYO registered
 unconditionally so the gateway can inject credentials per request): LM Studio (`lm-studio`),
@@ -125,7 +130,7 @@ These are **live** names, not leftovers to “fix” in code or docs that descri
 | Health `service` field | `text` |
 | Effective-config query | `?service=text` |
 | Redis streams | `text:stream:` (DB 3) |
-| Prometheus metrics | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`) |
+| Prometheus metrics | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`, `text_provider_bytes_total`) |
 | OTEL service name (image default) | `text` (`TEXT_OTEL_SERVICE_NAME`) |
 | Compat HTTP (gateway) | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync` |
 | Task keys | `text.live`, `text.finalize`, `text.test` |

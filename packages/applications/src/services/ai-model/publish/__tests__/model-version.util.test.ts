@@ -15,6 +15,7 @@ import {
   buildSha256SumsContent,
   deriveModelVersion,
   deriveQuantTokenFromFilenames,
+  isModelWeightFile,
   isRelevantModelSourceFile,
   normalizeQuantToken,
   sha256Hex,
@@ -178,5 +179,38 @@ describe('isRelevantModelSourceFile — real repo listings ', () => {
       const weights = kept(files).filter((f) => /\.(gguf|safetensors|bin|onnx|nemo|pt|pth)$/i.test(f));
       expect(weights.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * TASK-960 — `isModelWeightFile` is the narrower half of
+ * `isRelevantModelSourceFile`: WEIGHTS ONLY, no tokenizer/config companions.
+ *
+ * The model inventory uses it to decide whether a manifest-less bucket prefix
+ * is an admin-staged MODEL or just a directory of loose files, so a prefix
+ * holding only a `config.json` must NOT qualify.
+ */
+describe('isModelWeightFile', () => {
+  it('accepts every weight extension the platform can serve', () => {
+    for (const path of ['model.gguf', 'model.safetensors', 'ggml-whisper-f16.bin', 'silero_vad.onnx', 'parakeet.nemo', 'kokoro.pt', 'voices.pth', 'spm.model']) {
+      expect(isModelWeightFile(path)).toBe(true);
+    }
+  });
+
+  it('rejects the tokenizer/config companions that `isRelevantModelSourceFile` keeps', () => {
+    for (const path of ['config.json', 'tokenizer.json', 'merges.txt', 'preprocessor_config.json']) {
+      expect(isModelWeightFile(path)).toBe(false);
+      expect(isRelevantModelSourceFile(path)).toBe(true);
+    }
+  });
+
+  it('rejects trainer bookkeeping that shares the .bin/.pt extensions', () => {
+    expect(isModelWeightFile('training_args.bin')).toBe(false);
+    expect(isModelWeightFile('optimizer.pt')).toBe(false);
+  });
+
+  it('rejects unrelated files and matches on the basename of a nested path', () => {
+    expect(isModelWeightFile('README.md')).toBe(false);
+    expect(isModelWeightFile('a/b/c/model.safetensors')).toBe(true);
   });
 });

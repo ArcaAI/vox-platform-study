@@ -3,9 +3,16 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getCostPerEncounter, getTopTenants, getUsageConnections, getUsageSummary } from './client';
+import { getCostPerEncounter, getTopTenants, getUsageConnections, getUsagePlatformDefaults, getUsageSummary } from './client';
 import { consumptionKeys } from './keys';
-import type { CostPerEncounterResponse, TopTenantsResponse, UsageConnection, UsagePeriodParams, UsageSummaryResponse } from './types';
+import type {
+  CostPerEncounterResponse,
+  TopTenantsResponse,
+  UsageConnection,
+  UsagePeriodParams,
+  UsagePlatformDefaults,
+  UsageSummaryResponse,
+} from './types';
 
 /**
  * TanStack Query hooks for the Consumption & Cost screen.
@@ -86,6 +93,20 @@ export function useTopTenants(enabled: boolean, params?: UsagePeriodParams): Top
  * no usage line carries a `connectionId` there is nothing to resolve, and this
  * screen must not read the provider plane at all.
  *
+ * BOTH TIERS OF THE CASCADE, not just the tenant's own (wire review #6). A
+ * platform-funded generation carries the SYSTEM row's `connectionId` — `null` is
+ * reserved for a self-hosted engine, which spends no vendor account at all — so
+ * resolving against the tenant's list alone left every platform-funded line
+ * rendering 8 characters of a UUID. That reads as "a connection of yours we
+ * could not name" for a row the tenant does not own, cannot name and cannot
+ * open. A SYSTEM row is therefore labelled by what it IS: `Platform · <provider>`.
+ *
+ * The label comes from the row itself rather than from a vendor-label table:
+ * `features/ai-providers` owns that table, features never import one another,
+ * and a second copy here would drift silently. The provider id is what the
+ * cascade calls the row, and it is the half of the answer that matters — WHOSE
+ * account paid.
+ *
  * A failed or forbidden read is NOT an error state here — it degrades to an
  * empty map and the table falls back to the id, which still distinguishes two
  * accounts. Naming is a nicety; identity is the requirement.
@@ -94,8 +115,12 @@ export function useUsageConnectionNames(enabled: boolean): Map<string, string> {
   const query = useQuery({
     queryKey: consumptionKeys.connections(),
     queryFn: async () => {
-      const lists = await Promise.all((['llm', 'stt', 'tts'] as const).map((service) => getUsageConnections(service).catch(() => [] as UsageConnection[])));
-      return lists.flat();
+      const services = ['llm', 'stt', 'tts'] as const;
+      const [tenant, platform] = await Promise.all([
+        Promise.all(services.map((service) => getUsageConnections(service).catch(() => [] as UsageConnection[]))),
+        Promise.all(services.map((service) => getUsagePlatformDefaults(service).catch(() => ({}) as UsagePlatformDefaults))),
+      ]);
+      return { tenant: tenant.flat(), platform: platform.flatMap((defaults) => defaults.connections ?? []) };
     },
     enabled,
     retry: false,
@@ -104,9 +129,15 @@ export function useUsageConnectionNames(enabled: boolean): Map<string, string> {
 
   return useMemo(() => {
     const names = new Map<string, string>();
-    for (const row of query.data ?? []) {
-      if (!row.id) continue;
-      names.set(row.id, row.name?.trim() || row.slug || row.provider);
+    // Platform first, so a tenant row would win a (impossible) collision: the
+    // tenant's own name for its own account is always the better answer.
+    for (const row of query.data?.platform ?? []) {
+      // No id = a `version: 0` placeholder: the platform holds no row for that
+      // provider, so it funded nothing and names nothing.
+      if (row.id) names.set(row.id, `Platform · ${row.provider}`);
+    }
+    for (const row of query.data?.tenant ?? []) {
+      if (row.id) names.set(row.id, row.name?.trim() || row.slug || row.provider);
     }
     return names;
   }, [query.data]);

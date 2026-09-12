@@ -19,6 +19,12 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
  *      these rows UNDERSTATE self-hosted COGS at a realistic duty cycle, which
  *      is the margin-flattering direction. Each affected row carries the
  *      scaling in its note.
+ *   3. TASK-959's compute / network / storage rows are NOT part of that
+ *      ratification. They carry their own `bookVersion`
+ *      (`COMPUTE_BOOK_VERSION`) and every one is a PLACEHOLDER — see the block
+ *      comment above them. `bookVersion` is stamped onto every ledger row the
+ *      rater prices, so filing them under the ratified book would tell an
+ *      auditor a rate was signed off when it was not.
  * ============================================================================
  *
  * The seed exists so the plane is EXERCISABLE end to end from a fresh database:
@@ -70,6 +76,20 @@ const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 const BOOK_VERSION = '2026-08-08-commercial-v1';
 
 /**
+ * TASK-959's compute / network / storage COST rows carry their OWN book
+ * version, and that is not tidiness — `bookVersion` is stamped onto every
+ * ledger row the rater prices, so it is the only thing that tells an auditor
+ * WHICH card produced a figure. Filing 2026-09-12 placeholders under the
+ * 2026-08-08 RATIFIED book would make the two indistinguishable: a reader
+ * checking whether a `GPU_SECOND` rate was signed off would be told yes, by a
+ * provenance string that means nothing of the sort.
+ *
+ * Every row under this version is a PLACEHOLDER awaiting the amortised hardware
+ * numbers (and, for storage, a representable unit — see the row's note).
+ */
+const COMPUTE_BOOK_VERSION = '2026-09-12-compute-network-storage-v1';
+
+/**
  * Far enough in the past that every historical event a fresh dev database can
  * produce falls inside the window. Real rows are dated at the instant the price
  * actually took effect.
@@ -88,6 +108,10 @@ interface PriceBookSeed {
   unitPriceMicros: bigint;
   /** Why this number, in units a human can sanity-check. */
   note: string;
+  /** Defaults to {@link BOOK_VERSION}. Set it when a row is NOT part of the ratified book. */
+  bookVersion?: string;
+  /** Defaults to the ratification date of {@link BOOK_VERSION}. */
+  ratifiedOn?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +393,369 @@ const COST_ROWS: PriceBookSeed[] = [
     unitPriceMicros: 1n,
     note: 'OpenAI text-embedding-3-small, $0.02/1M (0.02µ rounded up to the integer floor).',
   },
+
+  // =========================================================================
+  // TASK-959 — COMPUTE, NETWORK AND STORAGE (book `2026-09-12-…`, PLACEHOLDERS)
+  // =========================================================================
+  //
+  // ONE ROW PER (UNIT, EMITTING CAPABILITY), and that is a hard requirement of
+  // the rater, not a stylistic choice. `findEffectiveCandidates` puts
+  // `capability` in the SQL `where` as an EXACT match — it is not one of the
+  // wildcard dimensions `selectMostSpecificPrice` resolves — and
+  // `AiUsageEvent.capability` is NOT NULL. A `USAGE_UNIT` row with
+  // `capability: null` is therefore unreachable: it looks like coverage and
+  // rates nothing. `provider: null` IS a real wildcard and is used throughout.
+  //
+  // Every rate below is a PLACEHOLDER carrying its own arithmetic in the note,
+  // because §2.3's first gate makes an unrated event harmless (it appends with
+  // `costMicros: null`, so a day's COGS is honestly unknown) while a
+  // real-looking wrong rate is invisible. `$0.036/vCPU-hour` and
+  // `$1.98/GPU-hour` are placeholders; superseding either is one admin row, not
+  // a code change.
+
+  // --- CPU_SECOND: the platform's own compute, per capability ---------------
+  //
+  // §3.2 puts CPU occupancy on five capabilities for two different reasons.
+  // Four are inference on a CPU device (a CPU ASR engine, GLiNER, TTS at its
+  // `cpu` settings default, the TEI CPU image). The fifth, LLM, is NOT
+  // inference: it is the owner's M-3, "CPU time spent CALLING a third-party
+  // provider", which is why a BYOK generation carries a CPU_SECOND row at
+  // `costBasis: INTERNAL` beside token rows at `BYOK_NOTIONAL` (§6.3) — the
+  // tenant paid the vendor, the platform paid for the call.
+  //
+  // One rate, five rows: the vCPU-hour does not vary by what the vCPU was
+  // doing, so five identical prices is the honest encoding, and each is
+  // separately supersedable the day one capability's hardware diverges.
+  {
+    id: 'B1000000-0000-0000-0000-000000000060',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: null,
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised (10µ/s × 3600). CPU-hosted ASR occupancy; see the GPU_SECOND rows for a GPU engine.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000061',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: null,
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised. On the LLM capability this is NOT inference: it is the gateway/service CPU spent CALLING a cloud or BYOK provider (M-3), so the row is platform cost even on a BYOK batch.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000062',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.NLP,
+    provider: null,
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised. NLP runs GLiNER on CPU by default (nlp/core/device.py).',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000063',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: null,
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised. TTS defaults to device `cpu` in its settings (tts/core/config.py).',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000064',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.EMBEDDING,
+    provider: null,
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised. TEI runs its CPU image by default, so embed/rerank occupancy is CPU seconds.',
+  },
+  {
+    // The durable-function server (M-6, §3.4). Provider-KEYED rather than a
+    // wildcard: `harness` is a CPU node with no GPU at all, and a wildcard row
+    // under WORKFLOW would hand its rate to whatever else lands on the
+    // capability later.
+    id: 'B1000000-0000-0000-0000-000000000065',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.WORKFLOW,
+    provider: 'harness',
+    unit: AiUsageUnit.CPU_SECOND,
+    unitPriceMicros: 10n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — ~$0.036/vCPU-hour amortised on the hope-harness-worker node (CPU request 1 / limit 4). Fair-share apportioned across concurrent activities (D-5), so it sums to the worker thread’s true CPU and the unattributed residual (orchestration, SDK core) is reconciled monthly against container_cpu_usage_seconds_total.',
+  },
+
+  // --- GPU_SECOND per self-hosted provider: occupancy ÷ parallel slots -------
+  //
+  // §3.1 is the reason this dimension exists. A GPU_SECOND is OCCUPANCY — the
+  // wall-clock a request held the model — and every engine serves several
+  // requests on one card at once, so Σ occupancy over-counts physical device
+  // time by a concurrency factor NO service records. The price book absorbs it
+  // instead of the emitters: a provider's rate is the device-hour rate ÷ its
+  // parallel slots, which is exact when the engine is saturated and
+  // OVERSTATES cost when it is not — the margin-conservative direction.
+  //
+  // The provider-wildcard row (…-0014, 550µ = ~$1.98/GPU-hour) stays as the
+  // catch-all for every engine without a row of its own, including the STT and
+  // TTS GPU engines: those capabilities have no GPU_SECOND row at all yet, so
+  // their rows drain unrated until one is added. That is the safe direction
+  // (unknown, not wrong) and it is an open item, not an oversight.
+  {
+    id: 'B1000000-0000-0000-0000-000000000070',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'lm-studio',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 138n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 4 decode slots = 137.5µ, rounded UP to 138µ. Divisor is LMS_PARALLEL=4 from deployment/k8s/base/lmstudio.yaml, because the k3s cluster is the only environment that exists today. The EKS scale-30-users component sets 8 (→ 69µ) but has no namespace and no Argo Application; supersede with a tenant/environment row if it is ever deployed.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000071',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'vllm',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 sequences = 68.75µ, rounded UP to 69µ. Divisor is VLLM_MAX_NUM_SEQS=8 (deployment base/config/vllm.env). vLLM batches continuously, so 8 is a CEILING the KV cache may not reach — at lower achieved concurrency this UNDERSTATES cost, the one direction here that flatters margin.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000072',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'ollama',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor is 1 DELIBERATELY: neither this repo nor the deployment repo configures OLLAMA_NUM_PARALLEL and Ollama is not a cluster workload, so no parallelism is claimed. The row exists (equal to the wildcard today) to record that the divisor was decided, not skipped.',
+  },
+
+  // --- GPU_SECOND for the STT engines ---------------------------------------
+  //
+  // Divisor 8 = the BATCH worker's own concurrency: `--processes 2 --threads 4`
+  // (apps/stt/docker/Dockerfile:464), i.e. eight Dramatiq slots sharing the
+  // card, with `worker_threads` defaulting to 4 in `stt/core/config/settings.py`.
+  //
+  // REPRICING ITEM, stated rather than averaged away: STREAMING has a different
+  // divisor. Its scheduler batches utterances from up to ~20 live sessions per
+  // GPU (ticket §3.1), so a streaming occupancy-second over-counts physical
+  // device time by ~20×, not ~8×, and these rows therefore OVERSTATE streaming
+  // COGS by roughly 2.5×. Splitting them needs a price dimension the book does
+  // not have yet (the row is keyed on provider, and both lanes report the same
+  // engine id); the `operation` dimension — `transcribe.batch` vs
+  // `transcribe.stream` — is the natural axis when one is added.
+  {
+    id: 'B1000000-0000-0000-0000-000000000073',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'faster_whisper',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads (apps/stt/docker/Dockerfile). STREAMING admits up to ~20 sessions per GPU, so its true divisor is ~20 and this row overstates streaming COGS by ~2.5× — a repricing item awaiting an `operation` price dimension.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000074',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'whisper_cpp',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads. whisper.cpp runs CPU in most deployments (`whisper_cpp_num_threads`), so this row fires only on a CUDA build — it exists so such a build rates instead of draining unrated. STREAMING’s divisor is ~20 sessions per GPU: repricing item.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000075',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'parakeet_cpp',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads. Same CPU-build caveat as whisper_cpp (`parakeet_cpp_num_threads`). STREAMING’s divisor is ~20 sessions per GPU: repricing item.',
+  },
+
+  // --- GPU_SECOND for the TTS engines ---------------------------------------
+  //
+  // Divisor 1, because these engines serve ONE synthesis at a time and, more
+  // to the point, both default to `device: cpu` (tts/core/config.py) — so on
+  // today's deployment they emit CPU_SECOND and never reach these rows at all.
+  // The rows exist for the deployment that flips a voice onto CUDA: without
+  // them that traffic drains UNRATED, which reads as "storage/TTS cost us
+  // nothing" rather than "we did not price it".
+  {
+    id: 'B1000000-0000-0000-0000-000000000076',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'kokoro',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ (~$1.98/GPU-hour). Divisor 1: one synthesis per engine at a time. Kokoro defaults to device `cpu`, so this row only fires on a CUDA deployment; it exists so that deployment rates instead of draining unrated.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000077',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'indic_parler',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor 1: one synthesis at a time. CPU by default; the row covers a CUDA deployment.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000078',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'indic_f5',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor 1: one synthesis at a time. CPU by default; the row covers a CUDA deployment.',
+  },
+
+  // --- STORAGE_GB_DAY -------------------------------------------------------
+  //
+  // The unit is the GIGABYTE-day, not the byte-day, and that choice is what
+  // makes this row priceable at all: `unitPriceMicros` is an INTEGER micro
+  // count, so a byte-day at amortised disk (~0.0000027µ) could only round to 0
+  // (storage free forever) or to 1µ (a GB-month at ~$30,000). Quantity is
+  // `bytes ÷ 1e9` in a `Decimal(24, 6)` column, so the emitter keeps 1 KB of
+  // resolution.
+  {
+    id: 'B1000000-0000-0000-0000-000000000080',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STORAGE,
+    provider: null, // wildcard — `minio` (media, claim-check) and `postgres` (text) alike
+    unit: AiUsageUnit.STORAGE_GB_DAY,
+    unitPriceMicros: 2_667n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — amortised disk at ~$0.08/GB-month = 80000µ ÷ 30 days = 2666.7µ per GB-day, rounded UP to 2667µ (≈ $0.0800/GB-month). Covers MinIO objects and Postgres columns alike; the class split rides attributesJson.storageClass. NOTE the cluster reality this understates: local-path PVCs enforce no quota, so a tenant over-consuming shows up as node DiskPressure long before it shows up here.',
+  },
+
+  // --- EGRESS_BYTE / INGRESS_BYTE ------------------------------------------
+  //
+  // Zero is a REAL rate here (D-3: record now, price later) — no vendor and no
+  // Cloudflare tunnel bills the platform per byte today — which is exactly why
+  // the rows must exist: a resolved 0 puts the event in the RATED bucket, where
+  // it is distinguishable from a genuinely missing price.
+  //
+  // Four capabilities, because §4.1 found outbound third-party calls on exactly
+  // four: LLM and EMBEDDING (apps/text, over the shared httpx pool), STT (the
+  // three REST adapters + Azure Speech) and TTS (Azure Speech). apps/nlp and
+  // apps/guardrail call peer services only, so a byte row under NLP would
+  // describe traffic that does not exist.
+  {
+    id: 'B1000000-0000-0000-0000-000000000090',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: null,
+    unit: AiUsageUnit.EGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — audio uploaded to a managed ASR vendor costs the platform nothing per byte. Recorded for visibility and capacity planning; `attributesJson.byteSource` says whether the figure is the wire or an app-level proxy.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000091',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: null,
+    unit: AiUsageUnit.INGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — transcript bytes returned by a managed ASR vendor. Recorded for visibility only.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000092',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: null,
+    unit: AiUsageUnit.EGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — prompt bytes on the wire to a cloud/BYOK provider, counted at the shared httpx transport. Self-hosted bytes are counted too but carry `deployment: SELF_HOSTED`, which keeps them out of third-party sums.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000093',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: null,
+    unit: AiUsageUnit.INGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — completion bytes off the wire. Recorded for visibility only.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000094',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: null,
+    unit: AiUsageUnit.EGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — SSML/text sent to a managed TTS vendor. For the Azure Speech SDK this is an application-level proxy (`byteSource: app`), never the encoded wire.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000095',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: null,
+    unit: AiUsageUnit.INGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — synthesised audio bytes returned. Summed 4 KiB chunks for the Azure SDK path (`byteSource: app`).',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000096',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.EMBEDDING,
+    provider: null,
+    unit: AiUsageUnit.EGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — text sent to a managed embedding vendor. Recorded for visibility only.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000097',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.EMBEDDING,
+    provider: null,
+    unit: AiUsageUnit.INGRESS_BYTE,
+    unitPriceMicros: 0n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'ZERO BY DECISION (D-3) — vector bytes returned. Recorded for visibility only.',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -554,7 +941,10 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
 export const PRICE_BOOK_SEED_ROWS: PriceBookSeed[] = [...COST_ROWS, ...PLAN_FEE_ROWS, ...OVERAGE_ROWS];
 
 export const seedAiPriceBook = async (client: CorePrismaClient) => {
-  console.log(`Seeding AI price book (${PRICE_BOOK_SEED_ROWS.length} SYSTEM rows, ratified book "${BOOK_VERSION}")...`);
+  console.log(
+    `Seeding AI price book (${PRICE_BOOK_SEED_ROWS.length} SYSTEM rows; ratified book "${BOOK_VERSION}", ` +
+      `plus placeholder book "${COMPUTE_BOOK_VERSION}")...`,
+  );
 
   let created = 0;
   for (const row of PRICE_BOOK_SEED_ROWS) {
@@ -579,10 +969,10 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
         unitPriceMicros: row.unitPriceMicros,
         effectiveFrom: EFFECTIVE_FROM,
         effectiveTo: null,
-        bookVersion: BOOK_VERSION,
+        bookVersion: row.bookVersion ?? BOOK_VERSION,
         // Provenance travels with the row so an admin screen can show WHY a
         // rate is what it is without consulting this file.
-        metaData: { ratifiedBy: '', ratifiedOn: '2026-08-08', note: row.note },
+        metaData: { ratifiedBy: '', ratifiedOn: row.ratifiedOn ?? '2026-08-08', note: row.note },
         createdBy: CREATED_BY,
       },
     });

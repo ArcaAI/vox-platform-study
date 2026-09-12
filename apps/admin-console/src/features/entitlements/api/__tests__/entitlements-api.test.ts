@@ -78,6 +78,74 @@ describe('entitlements client', () => {
     expect(calls[2].body).toEqual({ maxUsers: 50, expectedVersion: 3 });
   });
 
+  it('carries the workflow and provider-connection caps on both tiers', async () => {
+    const calls = installFetchMock();
+    await updatePlanEntitlement('PRO', {
+      maxWorkflowDefinitions: 25,
+      monthlyWorkflowInvocations: 50_000,
+      maxAiProviderConnections: 4,
+      expectedVersion: 3,
+    });
+    // The tenant tier expresses "inherit the plan default" as an explicit null.
+    await upsertTenantOverride('t-1', {
+      maxWorkflowDefinitions: null,
+      monthlyWorkflowInvocations: 900,
+      maxAiProviderConnections: 1,
+      expectedVersion: 2,
+    });
+
+    expect(calls[0].body).toEqual({
+      maxWorkflowDefinitions: 25,
+      monthlyWorkflowInvocations: 50_000,
+      maxAiProviderConnections: 4,
+      expectedVersion: 3,
+    });
+    expect(calls[1].body).toEqual({
+      maxWorkflowDefinitions: null,
+      monthlyWorkflowInvocations: 900,
+      maxAiProviderConnections: 1,
+      expectedVersion: 2,
+    });
+  });
+
+  it('carries the five monthly service allowances on both tiers', async () => {
+    const calls = installFetchMock();
+    await updatePlanEntitlement('PRO', {
+      monthlySttSessionSeconds: 360_000,
+      monthlyLlmTokens: 20_000_000,
+      monthlyTtsCharacters: 1_500_000,
+      monthlyNlpTextUnits: 80_000,
+      monthlyEmbeddingTokens: 5_000_000,
+      expectedVersion: 3,
+    });
+    // Same inherit-vs-set split the caps use: null inherits, a number overrides.
+    await upsertTenantOverride('t-1', {
+      monthlySttSessionSeconds: null,
+      monthlyLlmTokens: 999,
+      monthlyTtsCharacters: null,
+      monthlyNlpTextUnits: null,
+      monthlyEmbeddingTokens: null,
+      expectedVersion: 2,
+    });
+
+    expect(calls[0].body).toEqual({
+      monthlySttSessionSeconds: 360_000,
+      monthlyLlmTokens: 20_000_000,
+      monthlyTtsCharacters: 1_500_000,
+      monthlyNlpTextUnits: 80_000,
+      monthlyEmbeddingTokens: 5_000_000,
+      expectedVersion: 3,
+    });
+    expect(calls[1].body).toEqual({
+      monthlySttSessionSeconds: null,
+      monthlyLlmTokens: 999,
+      monthlyTtsCharacters: null,
+      monthlyNlpTextUnits: null,
+      monthlyEmbeddingTokens: null,
+      expectedVersion: 2,
+    });
+  });
+
   it('manages per-tenant overrides and operational triggers', async () => {
     const calls = installFetchMock();
     await getTenantEntitlements('t-1');

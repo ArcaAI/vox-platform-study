@@ -3,8 +3,16 @@
  * (HuggingFace repo id, or an existing `s3://` prefix) into a flat list of
  * downloaded, sha256-stamped files. `HuggingFaceModelSourceClient` and
  * `IS3Service` are mocked; no real network/MinIO I/O.
+ *
+ * `fetch()` takes `AiModel.source` as its FIRST argument (TASK-960 D1): a
+ * `LOCAL` row's weights are expected already staged under the bucket mount,
+ * so it must be refused before any scheme dispatch runs — a `LOCAL` row whose
+ * `sourceUri` happens to be `org/repo`-shaped must never reach the
+ * HuggingFace client (that used to produce a misleading HTTP 401, since the
+ * repo does not exist on the Hub).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AiModelSource } from '@arcaai/domains';
 import { ModelSourceFetcherService } from '../model-source-fetcher.service';
 import { sha256Hex } from '../model-version.util';
 
@@ -19,6 +27,21 @@ describe('ModelSourceFetcherService', () => {
     service = new ModelSourceFetcherService(mockHfClient as never, mockS3Service as never);
   });
 
+  describe('LOCAL sources', () => {
+    it('refuses to fetch — before any scheme dispatch — even when sourceUri is org/repo-shaped', async () => {
+      await expect(service.fetch(AiModelSource.LOCAL, 'org/repo', null)).rejects.toThrow(/mnt\/models-bucket/);
+
+      expect(mockHfClient.listRepoFiles).not.toHaveBeenCalled();
+      expect(mockHfClient.downloadFile).not.toHaveBeenCalled();
+      expect(mockS3Service.listFiles).not.toHaveBeenCalled();
+      expect(mockS3Service.getFile).not.toHaveBeenCalled();
+    });
+
+    it('never mentions credentials or tokens — the HF 401 the old dispatch produced was never the right diagnosis', async () => {
+      await expect(service.fetch(AiModelSource.LOCAL, 'hf:org/repo', null)).rejects.not.toThrow(/token|credential/i);
+    });
+  });
+
   describe('HuggingFace sources', () => {
     it('downloads only the relevant files (gguf + known companions), skipping README/license/etc', async () => {
       mockHfClient.listRepoFiles.mockResolvedValue([
@@ -30,7 +53,7 @@ describe('ModelSourceFetcherService', () => {
       ]);
       mockHfClient.downloadFile.mockImplementation(async (_repo: string, path: string) => Buffer.from(path));
 
-      const files = await service.fetch('google/gemma-4-e2b-it-qat-q4_0-gguf', null);
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'google/gemma-4-e2b-it-qat-q4_0-gguf', null);
 
       const paths = files.map((f) => f.path).sort();
       expect(paths).toEqual(['config.json', 'model-q4_0.gguf', 'tokenizer.json']);
@@ -44,7 +67,7 @@ describe('ModelSourceFetcherService', () => {
       mockHfClient.listRepoFiles.mockResolvedValue([{ path: 'model.gguf', size: 1 }]);
       mockHfClient.downloadFile.mockResolvedValue(Buffer.from('x'));
 
-      await service.fetch('hf:google/gemma-4-e2b-it-qat-q4_0-gguf', null);
+      await service.fetch(AiModelSource.HUGGINGFACE, 'hf:google/gemma-4-e2b-it-qat-q4_0-gguf', null);
 
       expect(mockHfClient.listRepoFiles).toHaveBeenCalledWith('google/gemma-4-e2b-it-qat-q4_0-gguf');
     });
@@ -58,7 +81,7 @@ describe('ModelSourceFetcherService', () => {
       ]);
       mockHfClient.downloadFile.mockImplementation(async (_repo: string, path: string) => Buffer.from(path));
 
-      const files = await service.fetch('org/multi-quant-gguf', 'Q4_K_M');
+      const files = await service.fetch(AiModelSource.HUGGINGFACE, 'org/multi-quant-gguf', 'Q4_K_M');
 
       const paths = files.map((f) => f.path).sort();
       expect(paths).toEqual(['config.json', 'model-Q4_K_M.gguf', 'model-mmproj.gguf']);
@@ -66,7 +89,7 @@ describe('ModelSourceFetcherService', () => {
 
     it('throws when nothing in the repo matches', async () => {
       mockHfClient.listRepoFiles.mockResolvedValue([{ path: 'README.md', size: 1 }]);
-      await expect(service.fetch('org/empty-repo', null)).rejects.toThrow();
+      await expect(service.fetch(AiModelSource.HUGGINGFACE, 'org/empty-repo', null)).rejects.toThrow();
     });
   });
 
@@ -79,7 +102,7 @@ describe('ModelSourceFetcherService', () => {
       ]);
       mockS3Service.getFile.mockImplementation(async (_bucket: string, key: string) => Buffer.from(key));
 
-      const files = await service.fetch('s3://hope-models/qwen3-4b-awq/v1/', null);
+      const files = await service.fetch(AiModelSource.S3, 's3://hope-models/qwen3-4b-awq/v1/', null);
 
       const paths = files.map((f) => f.path).sort();
       expect(paths).toEqual(['config.json', 'model.gguf']);
@@ -89,8 +112,8 @@ describe('ModelSourceFetcherService', () => {
 
   describe('unsupported sources', () => {
     it('rejects file:// and any other scheme rather than silently falling back', async () => {
-      await expect(service.fetch('file:///opt/models/x', null)).rejects.toThrow();
-      await expect(service.fetch('azure-blob://container/prefix', null)).rejects.toThrow();
+      await expect(service.fetch(AiModelSource.HUGGINGFACE, 'file:///opt/models/x', null)).rejects.toThrow();
+      await expect(service.fetch(AiModelSource.HUGGINGFACE, 'azure-blob://container/prefix', null)).rejects.toThrow();
     });
   });
 });

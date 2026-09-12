@@ -79,8 +79,15 @@ from text.core.runtime_defaults import LaneBudget
 from text.models.requests import GenerateRequest, ProviderOverride, ResponseFormat, RetryConfig
 from text.models.responses import ErrorResponse
 from text.models.stats import GenerationStats, degraded_stats
-from text.models.usage import UsageDetail, build_usage_detail, raw_usage_from_stats
+from text.models.usage import (
+    UsageDetail,
+    build_usage_detail,
+    engine_ms_from_stats,
+    raw_usage_from_stats,
+)
 from text.providers.base import ProviderNotFoundError, ProviderRegistry
+from text.providers.pool import count_provider_bytes
+from text.routing.usage import funding_label
 from text.services.circuit_breaker import CircuitBreaker
 from text.services.judge_guard import judge_scope
 from text.services.resizable_semaphore import ResizableSemaphore
@@ -275,11 +282,19 @@ async def _run_judge(
         ) from None
 
     start = time.monotonic()
+    # DERIVED, never stamped: the funding tier AND the connection both come from the
+    # one override entry that served (see `_credential_attribution`). Read BEFORE the
+    # call because the byte counters below are labelled by the same answer.
+    byok, connection_id = _credential_attribution(generate_request)
     try:
-        content, reasoning, gen_result = await asyncio.wait_for(
-            provider.generate(generate_request),
-            timeout=float(budget.timeout_s),
-        )
+        # TASK-959 M-3/M-4 — a judgement is an inference call like any other, and
+        # guardrail forwards this `usage_detail` verbatim, so what is not measured
+        # here is lost for the whole safety plane.
+        with count_provider_bytes(provider_name, funding=funding_label(byok)) as byte_counts:
+            content, reasoning, gen_result = await asyncio.wait_for(
+                provider.generate(generate_request),
+                timeout=float(budget.timeout_s),
+            )
         breaker.record_success()
         latency_ms = int((time.monotonic() - start) * 1000)
 
@@ -295,9 +310,6 @@ async def _run_judge(
             stats = degraded_stats(provider=provider_name, model=model, total_ms=latency_ms)
 
         prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
-        # DERIVED, never stamped: the funding tier AND the connection both come from the
-        # one override entry that served (see `_credential_attribution`).
-        byok, connection_id = _credential_attribution(generate_request)
         usage_detail = build_usage_detail(
             # A judgement has no task lifecycle, but the billing plane keys its
             # ledger idempotency on `task_id`, so it must still be unique per call.
@@ -313,6 +325,10 @@ async def _run_judge(
             # actually served the call.
             byok=byok,
             connection_id=connection_id,
+            total_ms=stats.total_ms,
+            engine_ms=engine_ms_from_stats(stats),
+            request_bytes=byte_counts.request_bytes if byte_counts.observed else None,
+            response_bytes=byte_counts.response_bytes if byte_counts.observed else None,
         )
 
         logger.info(

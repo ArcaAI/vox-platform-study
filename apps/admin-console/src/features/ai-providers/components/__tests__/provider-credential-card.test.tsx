@@ -261,3 +261,81 @@ describe('ProviderCredentialCard — unsaved BYO row signposts the models step',
     expect(screen.queryByText('The models this connection serves are declared here once the credential is saved.')).toBeNull();
   });
 });
+
+/**
+ * TASK-958 (review) — what the card sends, and what it says back, once a
+ * provider can hold more than one connection.
+ *
+ * Two facts the gateway cannot infer on its own:
+ *
+ *  - **an UNSAVED row has no vendor to read.** `:slug` is the only hint the
+ *    probe route gets, and for a named sibling the slug is not a provider id at
+ *    all — so the probe must name the vendor the card is FOR.
+ *  - **`CONNECTION_DEFAULT_REQUIRED` is guidance, not a toast.** A provider has
+ *    exactly one default; you MOVE it, you do not clear it. The action that
+ *    unblocks it is on this very group, so the refusal stays on screen beside
+ *    the control that produced it — the same treatment `CONNECTION_IS_DEFAULT`
+ *    already gets on remove.
+ */
+describe('ProviderCredentialCard — the probe names the vendor on an unsaved row (958)', () => {
+  function mount(version: number, slug?: string) {
+    const calls = stubFetch((call) => {
+      if (!call.url.includes(`/admin/providers/llm/${slug ?? META.id}`)) return undefined;
+      if (call.method === 'POST') return Response.json({ ok: true, message: 'Connected', probe: 'auth', source: 'request' });
+      return Response.json(row({ service: 'llm', provider: 'azure', slug: slug ?? META.id, hasKey: version > 0, enabled: version > 0, version }), {
+        headers: { etag: `"${version}"` },
+      });
+    });
+    renderCard({ service: 'llm', meta: META, slug, tenantId: 'tnt-1', tier: 'tenant' });
+    return calls;
+  }
+
+  async function probeBody(calls: RecordedCall[]): Promise<Record<string, unknown>> {
+    await waitFor(() => expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1));
+    return calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
+  }
+
+  it('sends `provider` when the row does not exist yet', async () => {
+    const calls = mount(0);
+
+    const key = await screen.findByLabelText(/API key/);
+    fireEvent.change(key, { target: { value: 'sk-probe' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Test the Azure OpenAI connection' }));
+
+    expect(await probeBody(calls)).toMatchObject({ provider: 'azure', apiKey: 'sk-probe' });
+  });
+
+  it('omits `provider` once the row is stored — the row already says which vendor it is', async () => {
+    const calls = mount(2);
+
+    await screen.findByLabelText(/API key/);
+    fireEvent.click(screen.getByRole('button', { name: 'Test the Azure OpenAI connection' }));
+
+    expect(Object.hasOwn(await probeBody(calls), 'provider')).toBe(false);
+  });
+});
+
+describe('ProviderCredentialCard — CONNECTION_DEFAULT_REQUIRED is in-place guidance (958)', () => {
+  it('keeps the refusal on screen beside the control, rather than in a toast that vanishes', async () => {
+    stubFetch((call) => {
+      if (!call.url.includes('/admin/providers/llm/azure-research')) return undefined;
+      if (call.method === 'PUT') {
+        return Response.json(
+          { statusCode: 400, code: 'CONNECTION_DEFAULT_REQUIRED', message: 'A provider always has exactly one default connection.' },
+          { status: 400 },
+        );
+      }
+      return Response.json(row({ service: 'llm', provider: 'azure', slug: 'azure-research', isDefault: false, hasKey: true, enabled: true, version: 2 }), {
+        headers: { etag: '"2"' },
+      });
+    });
+    renderCard({ service: 'llm', meta: META, slug: 'azure-research', connectionName: 'Research', tenantId: 'tnt-1', tier: 'tenant', canMakeDefault: true });
+
+    const flip = await screen.findByRole('button', { name: /Make .* the default Azure OpenAI connection/ });
+    fireEvent.click(flip);
+
+    const alert = await screen.findByText(/A provider always has exactly one default connection\./);
+    expect(alert).toBeDefined();
+    expect(alert.textContent).toMatch(/Elect another connection/i);
+  });
+});

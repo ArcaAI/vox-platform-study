@@ -1,10 +1,18 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { AiModelAvailability, AiModelEntity, AiModelRepository, CoreDatabaseService, ResourceStatusType, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import {
+  AiModelAvailability,
+  AiModelEntity,
+  AiModelRepository,
+  AiModelSource,
+  CoreDatabaseService,
+  ResourceStatusType,
+  SYSTEM_TENANT_ID,
+} from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IInferenceReadinessService } from '../../ai-readiness/IInferenceReadinessService';
 import { HOPE_MODELS_BUCKET } from '../constants';
-import { sha256Hex } from '../publish/model-version.util';
+import { isModelWeightFile, sha256Hex } from '../publish/model-version.util';
 import { MODEL_INVENTORY_REPORT_KEY, MODEL_INVENTORY_REPORT_TTL_SECONDS } from './model-inventory.constants';
 import type { ModelInventoryReport, ModelInventoryRow, UnregisteredBucketPrefix } from './dto';
 
@@ -18,6 +26,19 @@ const WEIGHTLESS_LIBRARIES: ReadonlySet<string> = new Set(['pyrnnoise', 'deepfil
 const MANIFEST_OBJECT = 'manifest.json';
 const FLAT_PREFIX_RE = /^([^/]+)\/([^/]+)\/$/;
 const HF_SNAPSHOT_PREFIX_RE = /^hf\/hub\/models--[^/]+\/snapshots\/[^/]+\/$/;
+/**
+ * The HuggingFace cache tree. Every snapshot under it is a directory of
+ * manifest-less weights, so STAGED discovery would report the whole cache as
+ * adoptable. Manifest-BEARING prefixes inside it are still discovered by
+ * `HF_SNAPSHOT_PREFIX_RE` above; this only bounds the manifest-less pass.
+ */
+const HF_CACHE_ROOT = 'hf/';
+
+/** One entry of the single bucket listing a run performs. */
+interface BucketObject {
+  key: string;
+  size?: number;
+}
 
 interface ManifestSummary {
   slug: string | null;
@@ -62,7 +83,7 @@ export class ModelInventoryService {
 
     // ONE listing — a bucket read error is surfaced, never turned into a
     // false MISSING on every row.
-    const listed = (await this.s3Service.listFiles(HOPE_MODELS_BUCKET, '')) as Array<{ key: string; size?: number }>;
+    const listed = (await this.s3Service.listFiles(HOPE_MODELS_BUCKET, '')) as BucketObject[];
     const keys = new Set(listed.map((item) => item.key));
 
     const rows = await this.aiModelRepository.findAll({
@@ -86,7 +107,7 @@ export class ModelInventoryService {
       verdicts.push({ id: row.id, slug: row.slug, availability: verdict.availability, detail: verdict.detail });
     }
 
-    const unregistered = await this.findUnregisteredPrefixes(keys, referencedPrefixes);
+    const unregistered = await this.findUnregisteredPrefixes(listed, keys, referencedPrefixes);
 
     const counts = {
       available: verdicts.filter((v) => v.availability === AiModelAvailability.AVAILABLE).length,
@@ -184,6 +205,17 @@ export class ModelInventoryService {
     }
 
     const prefix = normalizePrefix(row.bucketPrefix);
+
+    // TASK-960 OD-1. A LOCAL row was staged in the bucket by an admin through
+    // the MinIO browser — nothing downloaded it, so nothing wrote a manifest,
+    // and demanding one stamped every correct upload MISSING forever. It is
+    // verified by LISTING instead, which is also why it can never be PARTIAL:
+    // PARTIAL means "the manifest and the bucket disagree", and this row owns
+    // no manifest whose digest could drift.
+    if (row.source === AiModelSource.LOCAL) {
+      return measureByListing(row, keys, prefix);
+    }
+
     const manifestKey = `${prefix}${MANIFEST_OBJECT}`;
     if (!keys.has(manifestKey)) {
       return { availability: AiModelAvailability.MISSING, detail: { reason: `${MANIFEST_OBJECT} not found under ${prefix}`, bucketPrefix: prefix } };
@@ -215,10 +247,16 @@ export class ModelInventoryService {
   }
 
   /**
-   * Every manifest-bearing prefix in the bucket (flat `<slug>/<version>/` or
-   * an HF-cache snapshot) that no catalogue row references.
+   * Every prefix in the bucket no catalogue row references, in two passes:
+   *
+   * - manifest-bearing (flat `<slug>/<version>/` or an HF-cache snapshot) —
+   *   what the publisher itself wrote;
+   * - manifest-LESS but weight-bearing ("staged") — what an admin uploaded.
+   *
+   * Before TASK-960 only the first pass existed, so the drawer discovered
+   * exactly the prefixes that need no adopting and never the one that does.
    */
-  private async findUnregisteredPrefixes(keys: Set<string>, referenced: Set<string>): Promise<UnregisteredBucketPrefix[]> {
+  private async findUnregisteredPrefixes(listed: BucketObject[], keys: Set<string>, referenced: Set<string>): Promise<UnregisteredBucketPrefix[]> {
     const result: UnregisteredBucketPrefix[] = [];
     for (const key of keys) {
       if (!key.endsWith(`/${MANIFEST_OBJECT}`)) continue;
@@ -246,8 +284,111 @@ export class ModelInventoryService {
         totalBytes: summary.totalBytes,
       });
     }
+
+    result.push(...findStagedPrefixes(listed, keys, referenced));
     return result.sort((a, b) => a.bucketPrefix.localeCompare(b.bucketPrefix));
   }
+}
+
+/**
+ * The verdict for a LOCAL row: does the bucket actually hold what the row
+ * points at? `primaryObject` is the single file a single-file loader opens, so
+ * when it is set its presence IS the answer; otherwise any object under the
+ * prefix is enough, since a directory loader reads the whole prefix.
+ */
+function measureByListing(
+  row: AiModelEntity,
+  keys: Set<string>,
+  prefix: string,
+): { availability: AiModelAvailability; detail: Record<string, unknown> } {
+  const primaryObject = row.primaryObject ?? null;
+  const objectsChecked = countObjectsUnder(keys, prefix);
+  const detail: Record<string, unknown> = { bucketPrefix: prefix, primaryObject, objectsChecked, verifiedBy: 'listing' };
+
+  if (primaryObject) {
+    if (!keys.has(`${prefix}${primaryObject.replace(/^\/+/, '')}`)) {
+      return {
+        availability: AiModelAvailability.MISSING,
+        detail: { ...detail, reason: `primaryObject ${primaryObject} not found under ${prefix}`, missingObjects: [primaryObject] },
+      };
+    }
+    return { availability: AiModelAvailability.AVAILABLE, detail };
+  }
+
+  if (objectsChecked === 0) {
+    return { availability: AiModelAvailability.MISSING, detail: { ...detail, reason: `no objects found under ${prefix}` } };
+  }
+  return { availability: AiModelAvailability.AVAILABLE, detail };
+}
+
+/** How many objects the listing holds under `prefix` (the prefix marker aside). */
+function countObjectsUnder(keys: Set<string>, prefix: string): number {
+  let count = 0;
+  for (const key of keys) {
+    if (key !== prefix && key.startsWith(prefix)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Manifest-less directories holding at least one weight file — an admin upload
+ * through the MinIO browser, which is the only way a LOCAL model arrives.
+ *
+ * Objects are grouped by their containing directory rather than matched against
+ * a shape, because a staged upload is routinely ONE segment deep
+ * (`arcaai-whisper-en-2609/ggml-….bin`) and `FLAT_PREFIX_RE` requires two.
+ */
+function findStagedPrefixes(listed: BucketObject[], keys: Set<string>, referenced: Set<string>): UnregisteredBucketPrefix[] {
+  const groups = new Map<string, { objectCount: number; bytes: number; sized: boolean; hasWeight: boolean }>();
+
+  for (const item of listed) {
+    const key = item.key;
+    // A directory marker is not an object, and the HF cache is not adoptable.
+    if (key.endsWith('/') || key.startsWith(HF_CACHE_ROOT)) continue;
+    const slash = key.lastIndexOf('/');
+    if (slash < 0) continue; // an object at the bucket root belongs to no prefix
+    const dir = key.slice(0, slash + 1);
+
+    const group = groups.get(dir) ?? { objectCount: 0, bytes: 0, sized: false, hasWeight: false };
+    group.objectCount += 1;
+    if (typeof item.size === 'number') {
+      group.bytes += item.size;
+      group.sized = true;
+    }
+    if (isModelWeightFile(key)) group.hasWeight = true;
+    groups.set(dir, group);
+  }
+
+  const staged: UnregisteredBucketPrefix[] = [];
+  for (const [dir, group] of groups) {
+    if (!group.hasWeight) continue;
+    if (isUnderKnownPrefix(dir, keys, referenced)) continue;
+    const segments = dir.slice(0, -1).split('/');
+    staged.push({
+      bucketPrefix: dir,
+      layout: 'staged',
+      slug: segments[0] ?? null,
+      version: segments.length === 2 ? segments[1] : null,
+      objectCount: group.objectCount,
+      totalBytes: group.sized ? group.bytes : null,
+    });
+  }
+  return staged;
+}
+
+/**
+ * Whether `dir`, or any prefix above it, is already published (carries a
+ * manifest) or already registered. Without the ANCESTOR walk, every
+ * subdirectory of a published model would be offered for registration.
+ */
+function isUnderKnownPrefix(dir: string, keys: Set<string>, referenced: Set<string>): boolean {
+  const segments = dir.slice(0, -1).split('/');
+  for (let depth = segments.length; depth > 0; depth -= 1) {
+    const ancestor = `${segments.slice(0, depth).join('/')}/`;
+    if (referenced.has(ancestor)) return true;
+    if (keys.has(`${ancestor}${MANIFEST_OBJECT}`)) return true;
+  }
+  return false;
 }
 
 function normalizePrefix(prefix: string): string {

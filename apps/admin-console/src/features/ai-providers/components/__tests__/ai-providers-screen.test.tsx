@@ -83,10 +83,17 @@ function platformDefaults(service: string, tenantId: string, over: Partial<{ ent
     service,
     tenantId,
     entitled: over.entitled ?? true,
+    // A STORED platform row carries an `id` like any other connection — which is
+    // what a platform-funded binding points at. A `version: 0` placeholder does
+    // not: the platform holds no row there, so there is nothing to name.
     connections: [
-      { ...row(service, 'azure', SYSTEM_TENANT, { hasKey: true, enabled: true, baseUrl: 'https://platform.openai.azure.com', version: 3 }), resolution: 'inherited' },
+      {
+        ...row(service, 'azure', SYSTEM_TENANT, { hasKey: true, enabled: true, baseUrl: 'https://platform.openai.azure.com', version: 3 }),
+        id: `conn-sys-${service}-azure`,
+        resolution: 'inherited',
+      },
       { ...row(service, 'bedrock', SYSTEM_TENANT), resolution: 'not-configured' },
-      { ...row(service, 'openai', SYSTEM_TENANT, { hasKey: true, enabled: false, version: 2 }), resolution: 'off' },
+      { ...row(service, 'openai', SYSTEM_TENANT, { hasKey: true, enabled: false, version: 2 }), id: `conn-sys-${service}-openai`, resolution: 'off' },
       { ...row(service, 'anthropic', SYSTEM_TENANT), resolution: 'not-configured' },
       { ...row(service, 'vertex', SYSTEM_TENANT), resolution: 'not-configured' },
     ],
@@ -542,6 +549,28 @@ describe('AiProvidersScreen — used by', () => {
     // the vendor both rows share.
     await waitFor(() => expect(within(table).getByText('openai-research')).toBeDefined());
     expect(within(table).getByText('platform-served')).toBeDefined();
+  });
+
+  /**
+   * TASK-958 (wire review #6) — a binding on the PLATFORM's own connection.
+   *
+   * `AiRoutingPolicy.providerConnectionId` may point at the SYSTEM row a tenant
+   * inherits, which is absent from the tenant's own list by construction. Resolved
+   * against that list alone it rendered 8 characters of a UUID — "a connection of
+   * yours we could not name" for a row the tenant does not own and cannot open.
+   */
+  it('names a binding on the PLATFORM row as the platform, not as an unresolved id', async () => {
+    stubFetch({
+      session: TENANT_SESSION,
+      bindings: [binding({ id: 'cfg-3', tenantId: 'tnt-1', taskKey: 'text.summarize', providerConnectionId: 'conn-sys-llm-azure' })],
+    });
+    renderWithProviders(<AiProvidersScreen />);
+
+    const table = await screen.findByRole('table', { name: 'Task configurations bound to a provider' });
+    // The VENDOR label, per service — `azure` is "Azure OpenAI" on llm and
+    // "Azure Speech" on tts, so the lookup can never be a flat provider map.
+    await waitFor(() => expect(within(table).getByText('Platform · Azure OpenAI')).toBeDefined());
+    expect(within(table).queryByText('conn-sys')).toBeNull();
   });
 
   it('renders the SUPER_ADMIN-only routing plane 403 as "managed by the platform", not as an error', async () => {

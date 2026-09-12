@@ -64,27 +64,31 @@ def resolve_override_key(
     ``{connection key: {api_key, base_url?, endpoint?, region?, model?, connection_id?}}``.
 
     TASK-958 — the map key is the CONNECTION KEY, which is a tenant connection's
-    ``slug`` for a tenant row and the provider id for a platform row. ``connection_key``
-    is read FIRST and ``provider_key`` second, and that ordering is the whole point: a
-    tenant may hold two accounts of one vendor, and a provider-keyed read would hand
-    both chains the same entry — so a fallback to the second connection would be served
-    on the first connection's key.
+    ``slug`` for a tenant row and the provider id for a platform row. A tenant may hold
+    two accounts of one vendor, and a provider-keyed read would hand both chains the
+    same entry — so a fallback to the second connection would be served on the first
+    connection's key.
 
-    The second read is not a fallback for correctness but for COMPATIBILITY: a tenant's
-    DEFAULT connection has ``slug == provider``, so the two reads coincide for it, and a
-    gateway that stamps no ``connection_key`` at all keeps resolving exactly as before.
+    **A DECLARED key is the ONLY key read** (wire review #4). When ``connection_key`` is
+    present and non-empty, this returns the entry under it or ``None``; ``provider_key``
+    is not consulted. The gateway folds a connection OUT of the map deliberately — a
+    disabled, keyless or vetoed sibling has no entry, and that absence IS the decision.
+    Falling back to the provider id there would spend the tenant's DEFAULT vendor
+    account: the wrong key, the wrong invoice, and a key the tenant took out of play.
 
-    Returns ``None`` when neither key holds a non-empty entry, so the caller fails
-    closed on its own terms.
+    ``provider_key`` is read only when NO connection key was declared, which is pure
+    COMPATIBILITY: a tenant's DEFAULT connection has ``slug == provider``, so the two
+    reads coincide for it, and a gateway that stamps no ``connection_key`` at all keeps
+    resolving exactly as before. An empty string is not a declaration — that is what a
+    mis-serialised field looks like, and it must not fail a legacy payload closed.
+
+    Returns ``None`` when the key that applies holds no non-empty entry, so the caller
+    fails closed on its own terms (for these loaders, the named ``CloudASRAuthError``).
     """
     if not provider_overrides:
         return None
-    keys = [connection_key, provider_key] if connection_key else [provider_key]
-    for key in keys:
-        entry = provider_overrides.get(key)
-        if entry and isinstance(entry, dict):
-            return entry
-    return None
+    entry = provider_overrides.get(connection_key if connection_key else provider_key)
+    return entry if entry and isinstance(entry, dict) else None
 
 
 def wav_bytes_from_samples(samples: np.ndarray, sample_rate: int) -> bytes:

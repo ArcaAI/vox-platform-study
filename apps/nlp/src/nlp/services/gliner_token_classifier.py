@@ -20,6 +20,7 @@ ran and found nothing".
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Any
 
@@ -77,7 +78,9 @@ class Gliner2TokenClassifier(TokenClassifier):
         # Absent ⇒ 0.0: the model's own answer rides through and the CALLER
         # filters at its own threshold. A floor chosen here would be policy.
         threshold = float(request.threshold) if request.threshold is not None else 0.0
+        started = time.perf_counter()
         spans = await self._runtime.extract_entities(request.text, labels, threshold)
+        inference_ms = round((time.perf_counter() - started) * 1000)
         entities = [entity for entity in map(self._to_entity, spans or []) if entity is not None]
         logger.info(
             f"nlp.gliner_token_classifier.extracted model={self.model_name} "
@@ -89,6 +92,11 @@ class Gliner2TokenClassifier(TokenClassifier):
             # No vitals pass: those are the clinical NER contract, driven by the
             # taxonomy of a checkpoint that declares one. Never fabricated here.
             vitals=None,
+            inference_ms=inference_ms,
+            # The runtime is the shared `Gliner2GuardService` (its `.device`
+            # already resolved from `nlp.core.device`); a bare stub without one
+            # (unit tests) falls back to the cheaper unit rather than nothing.
+            device=getattr(self._runtime, "device", "cpu"),
         )
 
     def _to_entity(self, span: Any) -> Entity | None:

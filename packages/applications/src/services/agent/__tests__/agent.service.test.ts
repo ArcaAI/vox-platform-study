@@ -57,7 +57,11 @@ const mockAiModelRepository = { findById: vi.fn(), findByIdOrNull: vi.fn(), find
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 const mockAssignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'platform-default' })) };
 const KEYED = new Uint8Array([1, 2, 3]);
-const mockProviderConnections = { resolveConnection: vi.fn(), findRow: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
+// TASK-958 — a provider now names a GROUP of connections, so "the tier's row for this
+// provider" is `findDefaultRow`; `findRow` became by-SLUG. A BYO model that names its
+// own connection (`sourceConnectionId`) is read through `resolveConnection`'s by-id
+// branch instead — see the cases below, which exercise both halves.
+const mockProviderConnections = { resolveConnection: vi.fn(), findRow: vi.fn(), findDefaultRow: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
 const mockContextSchemas = { resolveReference: vi.fn() };
 const mockReadiness = { getSnapshot: vi.fn(async () => null) };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -181,6 +185,7 @@ beforeEach(() => {
   // The happy default is a resolved, keyed connection; the cases that care override it.
   mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system', encryptedApiKey: KEYED });
   mockProviderConnections.findRow.mockResolvedValue(null);
+  mockProviderConnections.findDefaultRow.mockResolvedValue(null);
   mockContextSchemas.resolveReference.mockResolvedValue({ outcome: 'failed', failure: 'CONTEXT_SCHEMA_NOT_FOUND' });
   mockReadiness.getSnapshot.mockResolvedValue(null);
   mockAiModelRepository.findById.mockImplementation(async (id: string) => {
@@ -508,9 +513,11 @@ describe('publish — availability via the provider class table (§3.7)', () => 
     const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai' };
     mockAiModelRepository.findById.mockResolvedValue(byo);
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
-    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: null });
+    mockProviderConnections.findDefaultRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: null });
     await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
-    expect(mockProviderConnections.findRow).toHaveBeenCalledWith('llm', 'openai', TENANT);
+    // A row that names NO connection is checked against the provider's DEFAULT — what
+    // this check meant before a provider named a group of them.
+    expect(mockProviderConnections.findDefaultRow).toHaveBeenCalledWith('llm', 'openai', TENANT);
   });
 
   // TASK-890 §3.1 (L10 → L8, wired at the wave-2b close) — routing was re-pointed off the
@@ -521,7 +528,7 @@ describe('publish — availability via the provider class table (§3.7)', () => 
     const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai', wireModelId: null };
     mockAiModelRepository.findById.mockResolvedValue(byo);
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
-    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: 'k' });
+    mockProviderConnections.findDefaultRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: 'k' });
     await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({
       response: {
         code: 'MODEL_UNAVAILABLE',
@@ -548,8 +555,37 @@ describe('publish — availability via the provider class table (§3.7)', () => 
     mockAiModelRepository.findById.mockResolvedValue(byo);
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
-    mockProviderConnections.findRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: KEYED });
+    mockProviderConnections.findDefaultRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: KEYED });
     await expect(makeService().publish('agent-1', {})).resolves.toMatchObject({ status: 'PUBLISHED' });
+  });
+
+  // TASK-958 D-3 — a BYO row declared on a connection is checked against THAT
+  // connection. Checking the provider's DEFAULT instead would pass a model whose own
+  // (disabled) connection can never serve it, and refuse one declared on a sibling
+  // while the default is merely absent.
+  it('checks a BYO row that NAMES a connection against that connection, by id — never the default', async () => {
+    const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai', sourceConnectionId: 'conn-2' };
+    mockAiModelRepository.findById.mockResolvedValue(byo);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
+    mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
+    // The DEFAULT row is keyed and would pass; the NAMED one is what decides.
+    mockProviderConnections.findDefaultRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: KEYED });
+    mockProviderConnections.resolveConnection.mockImplementation(async (_s: string, _p: string, _t: string, options?: { connectionId?: string }) =>
+      options?.connectionId === 'conn-2' ? { source: 'tenant', encryptedApiKey: KEYED } : null,
+    );
+    await expect(makeService().publish('agent-1', {})).resolves.toMatchObject({ status: 'PUBLISHED' });
+    expect(mockProviderConnections.resolveConnection).toHaveBeenCalledWith('llm', 'openai', TENANT, { connectionId: 'conn-2' });
+    expect(mockProviderConnections.findDefaultRow).not.toHaveBeenCalled();
+  });
+
+  it('refuses a BYO row whose NAMED connection is disabled, even when the tenant default is fine', async () => {
+    const byo = { ...LLM_MODEL, id: 'model-byo', tenantId: TENANT, slug: 'byo-openai-gpt', provider: 'openai', sourceConnectionId: 'conn-2' };
+    mockAiModelRepository.findById.mockResolvedValue(byo);
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ modelId: 'model-byo' }));
+    mockProviderConnections.findDefaultRow.mockResolvedValue({ id: 'conn-1', enabled: true, encryptedApiKey: KEYED });
+    // A disabled row resolves to `null` through the by-id branch — fail closed.
+    mockProviderConnections.resolveConnection.mockResolvedValue(null);
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'MODEL_UNAVAILABLE' } });
   });
 
   it('records MODEL_NOT_READY as a WARNING and still publishes (readiness is advisory)', async () => {

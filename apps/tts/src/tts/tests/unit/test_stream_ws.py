@@ -63,7 +63,9 @@ def test_unknown_voice_errors_before_audio():
     app = _app()
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "nope-voice", "format": "pcm", "resolved_spec": _spec()})
+            ws.send_json(
+                {"type": "init", "voice": "nope-voice", "format": "pcm", "resolved_spec": _spec()}
+            )
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "invalid_voice"
 
@@ -82,7 +84,9 @@ def test_no_provider_errors_up_front():
     app = _app(providers={})  # nothing registered → no candidate
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm", "resolved_spec": _spec()})
+            ws.send_json(
+                {"type": "init", "voice": "en-female-1", "format": "pcm", "resolved_spec": _spec()}
+            )
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "provider_unavailable"
 
@@ -100,7 +104,9 @@ def test_non_pcm_format_rejected():
     app = _app()
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "mp3", "resolved_spec": _spec()})
+            ws.send_json(
+                {"type": "init", "voice": "en-female-1", "format": "mp3", "resolved_spec": _spec()}
+            )
             msg = ws.receive_json()
             assert msg["type"] == "error" and msg["code"] == "invalid_input"
 

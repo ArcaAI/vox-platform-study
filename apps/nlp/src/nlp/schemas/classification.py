@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from nlp.schemas.clinical_taxonomy import ClinicalTaxonomy
-from nlp.schemas.common import Entity, SupportedLanguage
+from nlp.schemas.common import DeviceLabel, Entity, SupportedLanguage
 
 # REST
 
@@ -31,6 +31,10 @@ class TextClassificationResponse(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Classification confidence")
     probabilities: dict[str, float] = Field(..., description="All class probabilities")
     model_version: str = Field(..., description="Text classification model version")
+    inference_ms: int = Field(
+        ..., ge=0, description="Wall-clock model inference time in milliseconds (TASK-959)"
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 
 # Multi-label text classification (owner decision 2026-08-20,
@@ -96,6 +100,10 @@ class MultiLabelClassificationResponse(BaseModel):
     )
     threshold: float = Field(..., description="The cls_threshold actually applied")
     model_version: str = Field(..., description="Text classification model version")
+    inference_ms: int = Field(
+        ..., ge=0, description="Wall-clock model inference time in milliseconds (TASK-959)"
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 
 # Token Classification
@@ -195,6 +203,17 @@ class TokenClassificationResponse(BaseModel):
         default=None,
         description="Deterministically extracted vital signs (BP/HR/SpO2/temp/weight); None when none were found.",
     )
+    inference_ms: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Wall-clock model inference time in milliseconds (TASK-959). When this "
+            "request was coalesced into a batched forward pass, this is the "
+            "request's SHARE of that pass (pass wall time / requests in the batch), "
+            "never the whole pass's time."
+        ),
+    )
+    device: DeviceLabel = Field(..., description="Resolved inference device placement (TASK-959)")
 
 
 # Topic / Intent Classification — OPEN-taxonomy tasks delegated to

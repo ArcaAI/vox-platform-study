@@ -19,8 +19,22 @@
  *
  * It deliberately does NOT demand byte-identity: the copies carry legitimate
  * per-service differences (harness uses boto3 because it already ships it and
- * no `minio`; tts documents having no `AiModel.localPath`). A brittle guard is
- * one somebody weakens. These two assertions are the load-bearing ones.
+ * no `minio`; tts adds `resolve_local_override`, a tts-ONLY helper that
+ * materialises an `s3://` value an operator typed into a CONFIG field —
+ * `IndicParlerConfig.model_path` / `.desc_encoder_path`, `IndicF5Config
+ * .model_path` — which stt and harness have no equivalent of). A brittle guard
+ * is one somebody weakens. These two assertions are the load-bearing ones.
+ *
+ * ⚠️ This parenthetical used to read "tts documents having no
+ * `AiModel.localPath`", which was read in 2026-09-12 as "a bucket-staged TTS
+ * model cannot work" and nearly bought a ticket that had nothing to fix. It is
+ * false, and the assertions below already prove it false for all four copies:
+ * `AgentResolverService` derives `localPath` (`derivedLocalPath`), `tts-spec.ts`
+ * forwards it verbatim into `TtsSpecModel`, `tts/spec.py` receives it as
+ * `local_path`, and kokoro / indic_f5 / indic_parler / the router all consume
+ * it. `resolve_local_override` is about an OPERATOR CONFIG string, which is a
+ * different input from the registry row's derived mirror — do not conflate the
+ * two again.
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';

@@ -33,6 +33,18 @@ export interface ResolveTtsSpecInput {
 }
 
 /** What ONE synthesis request needs from the gateway: the spec, plus the credentials that ride beside it. */
+/**
+ * TASK-958 — the identity of the connection that supplied ONE candidate's cloud
+ * credential: the key it was filed under in `provider_overrides`, and the row it
+ * came from (`null` on the "resolver not wired" and "primary with no credential"
+ * paths, which name no row).
+ */
+interface CloudCredential {
+  connectionKey: string;
+  connectionId: string | null;
+  connectionSlug: string | null;
+}
+
 export interface ResolvedTtsSession {
   spec: ResolvedTtsSpec;
   /** Decrypted BYO/platform cloud credentials keyed by engine — in-memory only, never persisted. */
@@ -147,9 +159,14 @@ export class TtsAgentResolverService {
     // Only the engines the spec actually kept may carry a credential: the chain de-dupes by
     // dispatch endpoint, so a dropped duplicate must not leave a key on the wire for an engine
     // nothing will route to.
-    const kept = new Set([spec.primary, ...spec.fallback.chain].map((candidate) => candidate.model.provider).filter((p): p is string => !!p));
-    for (const provider of Object.keys(overrides)) {
-      if (!kept.has(provider)) delete overrides[provider];
+    // TASK-958 — by CONNECTION KEY, which is what the map is keyed by: with two
+    // accounts of one vendor in the chain, filtering by provider NAME would keep or
+    // drop both together.
+    const kept = new Set(
+      [spec.primary, ...spec.fallback.chain].map((candidate) => candidate.connectionKey ?? candidate.model.provider).filter((p): p is string => !!p),
+    );
+    for (const key of Object.keys(overrides)) {
+      if (!kept.has(key)) delete overrides[key];
     }
     return { spec, ...(Object.keys(overrides).length > 0 ? { providerOverrides: overrides } : {}) };
   }
@@ -184,15 +201,25 @@ export class TtsAgentResolverService {
     const metaData = await this.metaDataFor(model, tenantId);
     const engine = ttsEngineProvider(model, metaData);
 
+    // TASK-958 D-3 — the MODEL ROW names the account. A row declared on a connection
+    // resolves THAT connection; a SYSTEM catalogue row names none and keeps the
+    // provider-name cascade (B1 narrowed it to the tenant's DEFAULT row).
+    const boundConnectionId = model.sourceConnectionId ?? null;
+    let credential: CloudCredential | null = null;
     if (engine && isCloudByoProvider('tts', engine)) {
-      const credentialled = await this.applyCloudCredential(agent, engine, kind, tenantId, overrides);
-      if (!credentialled) return null;
+      credential = await this.applyCloudCredential(agent, engine, kind, tenantId, overrides, boundConnectionId);
+      if (!credential) return null;
     }
 
-    const connection = engine ? await this.connectionFor(engine, tenantId) : null;
-    const fundingTier: AgentFundingTier = overrides[engine ?? '']?.funding ?? (connection ? connection.funding : fundingOfAgentRow(agent));
+    // TASK-958 D-4 — the key `provider_overrides` is keyed by, and the key
+    // `apps/tts` reads its entry under. `engine` for a platform/default row, so a
+    // pre-958 payload is byte-identical.
+    const connectionKey = credential?.connectionKey ?? engine ?? undefined;
+    const connection = engine ? await this.connectionFor(engine, tenantId, credential) : null;
+    const fundingTier: AgentFundingTier =
+      (connectionKey ? overrides[connectionKey]?.funding : undefined) ?? (connection ? connection.funding : fundingOfAgentRow(agent));
 
-    return { agent, model, kind, metaData, connection, fundingTier };
+    return { agent, model, kind, metaData, connection, fundingTier, ...(connectionKey ? { connectionKey } : {}) };
   }
 
   /**
@@ -209,25 +236,34 @@ export class TtsAgentResolverService {
     kind: TtsCandidateKind,
     tenantId: string,
     overrides: ProviderOverrides,
-  ): Promise<boolean> {
-    if (overrides[engine]) return true;
+    boundConnectionId: string | null,
+  ): Promise<CloudCredential | null> {
     if (!this.credentials) {
       // TASK-862's resolver is not wired: the agent resolver's own one-hop override serves.
       const own = agent.providerOverride;
       if (own && own.provider === engine) {
         const { provider: _provider, ...entry } = own;
-        overrides[engine] = entry as ProviderOverrides[string];
-        return true;
+        const key = typeof entry.connection_slug === 'string' ? entry.connection_slug : engine;
+        overrides[key] = entry as ProviderOverrides[string];
+        return { connectionKey: key, connectionId: typeof entry.connection_id === 'string' ? entry.connection_id : null, connectionSlug: key };
       }
-      return kind === 'primary';
+      return kind === 'primary' ? { connectionKey: engine, connectionId: null, connectionSlug: null } : null;
     }
     try {
-      const binding = await this.credentials.resolve('tts', engine, tenantId);
+      const binding = boundConnectionId
+        ? await this.credentials.resolve('tts', engine, tenantId, { connectionId: boundConnectionId })
+        : await this.credentials.resolve('tts', engine, tenantId);
       if (binding) {
-        overrides[engine] = binding.override;
-        return true;
+        const slug = typeof binding.override.connection_slug === 'string' ? binding.override.connection_slug : engine;
+        overrides[slug] = binding.override;
+        return { connectionKey: slug, connectionId: binding.connectionId, connectionSlug: slug };
       }
-      return kind === 'primary';
+      // A NAMED connection that answered `null` is disabled or keyless: THAT candidate
+      // is unusable and must never widen to the tenant's default — even for a primary,
+      // which then fails closed at `buildResolvedTtsSpec` rather than synthesising on
+      // an account the binding did not name.
+      if (boundConnectionId) return null;
+      return kind === 'primary' ? { connectionKey: engine, connectionId: null, connectionSlug: null } : null;
     } catch (error) {
       if (kind === 'primary' || !(error instanceof ProviderVetoedException || error instanceof QuotaExceededException)) throw error;
       this.logger.warn({
@@ -238,14 +274,25 @@ export class TtsAgentResolverService {
         kind,
         reason: error instanceof ProviderVetoedException ? 'vetoed' : 'platform-default-not-entitled',
       });
-      return false;
+      return null;
     }
   }
 
-  /** The connection row that serves `engine`, projected onto the wire block. `null` = no enabled row. */
-  private async connectionFor(engine: string, tenantId: string): Promise<TtsSpecConnection | null> {
+  /**
+   * The connection row that serves `engine`, projected onto the wire block. `null` =
+   * no enabled row.
+   *
+   * TASK-958 — when the candidate is bound to a NAMED connection the endpoint facts
+   * come from THAT row (`options.connectionId`), not from the provider-name cascade,
+   * so a sibling's `baseUrl`/`region`/`timeoutS` cannot be read off the default. The
+   * row's IDENTITY comes from the credential that already resolved it, which is the
+   * one place it is decided.
+   */
+  private async connectionFor(engine: string, tenantId: string, credential: CloudCredential | null): Promise<TtsSpecConnection | null> {
     if (!this.connections) return null;
-    const resolved = await this.connections.resolveConnection('tts', engine, tenantId);
+    const resolved = credential?.connectionId
+      ? await this.connections.resolveConnection('tts', engine, tenantId, { connectionId: credential.connectionId })
+      : await this.connections.resolveConnection('tts', engine, tenantId);
     if (!resolved) return null;
     return {
       provider: engine,
@@ -253,6 +300,9 @@ export class TtsAgentResolverService {
       region: resolved.region ?? null,
       timeoutS: resolved.timeoutS ?? null,
       funding: resolved.source === 'tenant' ? 'tenant' : 'platform',
+      // OMIT-WHEN-ABSENT, matching `tts.spec.TtsSpecConnection.OPTIONAL_FIELDS`.
+      ...(credential?.connectionId ? { connectionId: credential.connectionId } : {}),
+      ...(credential?.connectionSlug ? { connectionSlug: credential.connectionSlug } : {}),
     };
   }
 

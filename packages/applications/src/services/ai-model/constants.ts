@@ -1,3 +1,4 @@
+import { ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 import { ModelTaskType } from '@arcaai/domains';
 
 /**
@@ -153,6 +154,45 @@ export function deriveLocalPath(bucketPrefix: string, primaryObject?: string | n
   const prefix = bucketPrefix.replace(/^\/+/, '').replace(/\/+$/, '');
   const base = `${HOPE_MODELS_MOUNT}/${prefix}/`;
   return primaryObject ? `${base}${primaryObject.replace(/^\/+/, '')}` : base;
+}
+
+/**
+ * `bucketPrefix` must be RELATIVE to the `hope-models` bucket root, never
+ * bucket-qualified (TASK-960 D2): `HOPE_MODELS_MOUNT` already IS that bucket's
+ * root inside every serving pod, so a stored value of `hope-models/x` (or an
+ * `s3://hope-models/x` URI pasted in from a `sourceUri` field) makes
+ * `deriveLocalPath()` produce `/mnt/models-bucket/hope-models/x` — a path
+ * that does not exist. Applied to `bucketPrefix` on both `CreateModelRequest`
+ * and `UpdateModelRequest` via `@Validate(BucketRelativePrefixConstraint)`.
+ *
+ * An empty string is deliberately ACCEPTED: it is the documented sentinel the
+ * update DTO uses to CLEAR `bucketPrefix` (+ `primaryObject`), not a value to
+ * validate as a path. Presence/absence and other shape checks (`@IsString`,
+ * `@MaxLength`) are the other decorators' job — this constraint answers only
+ * "is this bucket-relative?".
+ */
+@ValidatorConstraint({ name: 'bucketRelativePrefix', async: false })
+export class BucketRelativePrefixConstraint implements ValidatorConstraintInterface {
+  /** Ensures a single trailing slash, without asserting anything about validity. */
+  static normalize(value: string): string {
+    const trimmed = value.replace(/^\/+/, '');
+    return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
+  }
+
+  validate(value: unknown): boolean {
+    if (typeof value !== 'string' || value === '') return true;
+    if (/^s3:\/\//i.test(value)) return false;
+    const normalized = BucketRelativePrefixConstraint.normalize(value);
+    return normalized !== `${HOPE_MODELS_BUCKET}/` && !normalized.startsWith(`${HOPE_MODELS_BUCKET}/`);
+  }
+
+  defaultMessage(): string {
+    return (
+      `bucketPrefix must be a path relative to the '${HOPE_MODELS_BUCKET}' bucket root — do not repeat the bucket ` +
+      `name or use an 's3://' scheme. The bucket is already mounted at '${HOPE_MODELS_MOUNT}', so a bucket-qualified ` +
+      `value resolves to a path that does not exist.`
+    );
+  }
 }
 
 /**

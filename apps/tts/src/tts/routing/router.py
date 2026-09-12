@@ -96,19 +96,31 @@ def override_for(
 ) -> dict[str, str]:
     """The credential entry that serves THIS candidate.
 
-    ``connection_key`` first, engine name second. The second read is what keeps a
-    legacy payload — and every platform-tier candidate, whose key IS the engine name —
-    resolving exactly as it did; the first is the only thing that can tell two
-    candidates apart when a tenant holds two accounts of one vendor and both name the
-    same engine. Without it the chain reads ONE entry twice and a failover spends the
-    key that just failed.
+    A candidate's ``connection_key`` is the only thing that can tell two candidates
+    apart when a tenant holds two accounts of one vendor and both name the same engine.
+    Without it the chain reads ONE entry twice and a failover spends the key that just
+    failed.
+
+    **A DECLARED key is the ONLY key read** (TASK-958, wire review #4). When the
+    candidate carries a non-empty ``connection_key``, this returns the entry under it or
+    ``{}``; the engine name is not consulted. The gateway folds a connection OUT of
+    ``provider_overrides`` deliberately — a disabled, keyless or vetoed sibling has no
+    entry, and that absence IS the decision. Falling back to the engine name there would
+    serve the candidate on the tenant's DEFAULT vendor account: the wrong key, the wrong
+    invoice, and a key the tenant took out of play. ``{}`` instead makes the adapter
+    refuse (``from_spec`` returns ``None``), which the router already reads as "this
+    candidate cannot serve" and walks past — a routing outcome, which is what the chain
+    is for.
+
+    The engine-name read is reached only when NO connection key was declared, and that
+    is pure COMPATIBILITY: it keeps a legacy payload — and every platform-tier
+    candidate, whose key IS the engine name — resolving exactly as it did. An empty
+    string is not a declaration; that is what a mis-serialised field looks like.
     """
     if not overrides:
         return {}
     if candidate.connection_key:
-        entry = overrides.get(candidate.connection_key)
-        if entry:
-            return entry
+        return overrides.get(candidate.connection_key) or {}
     return overrides.get(candidate.engine or "") or {}
 
 
@@ -343,7 +355,16 @@ class TTSRouter:
         speed: float = 1.0,
         request_id: str = "",
         provider_overrides: ProviderOverrides | None = None,
+        timing: dict[str, float] | None = None,
     ) -> AsyncIterator[AudioChunk]:
+        """Failover chain, as before. ``timing`` (TASK-959) is an OUT-parameter: on a successful
+        completion this writes ``timing["synthesis_ms"]`` — the same wall-clock ``gen_s`` already
+        fed to ``_observe_rtf``, in milliseconds. It has to be an out-parameter rather than a
+        return value or a stamp on the last chunk: the caller only learns which chunk was last
+        AFTER consuming it (``StopAsyncIteration``), by which point every chunk has already been
+        yielded — a dict the caller holds a reference to is the only way to hand back a fact this
+        generator does not know until its body resumes past the final ``yield``.
+        """
         candidates = self.candidates(spec, voice_id=voice_id)
         requested_voice = voice_id or spec.primary.parameters.voice or ""
         if not candidates:
@@ -385,20 +406,31 @@ class TTSRouter:
                 with track_model_inference(name):
                     async with aclosing(source) as stream:
                         async for chunk in stream:
+                            # TASK-959 — time-to-first-audio, stamped on the FIRST chunk only:
+                            # the one synthesis-timing fact a caller draining the stream
+                            # incrementally (raw/SSE) can report before the total is known.
+                            ttfa_ms: float | None = None
                             if not emitted:
-                                TTS_TTFA.labels(provider=name, locale=locale).observe(
-                                    time.perf_counter() - started
-                                )
+                                elapsed = time.perf_counter() - started
+                                TTS_TTFA.labels(provider=name, locale=locale).observe(elapsed)
+                                ttfa_ms = elapsed * 1000.0
                                 emitted = True
                             audio_bytes += len(chunk.data)
-                            # Stamp the winning provider AND its connection (usage
-                            # attribution) — a caller doesn't know which
-                            # candidate won until the first byte ships.
+                            # Stamp the winning provider, its connection (usage attribution) and
+                            # its configured device — a caller doesn't know which candidate won
+                            # until the first byte ships.
                             yield replace(
-                                chunk, provider=name, connection_id=_connection_id(candidate)
+                                chunk,
+                                provider=name,
+                                connection_id=_connection_id(candidate),
+                                device=self._device_for(name),
+                                ttfa_ms=ttfa_ms,
                             )
                 breaker.record_success()
-                self._observe_rtf(name, req, audio_bytes, time.perf_counter() - started)
+                gen_s = time.perf_counter() - started
+                self._observe_rtf(name, req, audio_bytes, gen_s)
+                if timing is not None:
+                    timing["synthesis_ms"] = gen_s * 1000.0
                 TTS_REQUESTS.labels(provider=name, locale=locale, status="ok").inc()
                 return
             except Exception as exc:
@@ -488,6 +520,18 @@ class TTSRouter:
             async with aclosing(engine.synthesize(sub)) as stream:
                 async for chunk in stream:
                     yield chunk
+
+    def _device_for(self, name: str) -> str | None:
+        """The serving engine's CONFIGURED device (TASK-959), or ``None``.
+
+        Device is a deployment property, not a per-request discovery: each self-hosted engine's
+        sub-config on ``Settings`` names its own (``KokoroConfig.device`` etc.), keyed by exactly
+        the engine name it registers under (``candidate.engine``). A cloud engine's sub-config
+        (Azure, Sarvam) carries no ``device`` field at all, so this returns ``None`` for them —
+        never a guess — and the same happens, harmlessly, for an engine name this process does
+        not recognise.
+        """
+        return getattr(getattr(self._settings, name, None), "device", None)
 
     def _observe_rtf(
         self, name: str, req: SynthesisRequest, audio_bytes: int, gen_s: float
