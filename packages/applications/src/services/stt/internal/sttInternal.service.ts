@@ -31,6 +31,7 @@ import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../co
 import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
+import { computeAndByteUnits } from './compute-network-units';
 import { ISttInternalService } from './ISttInternalService';
 import { computeSegmentOffsets, type TranscriptSegmentInputShape } from '../../consultation/lib/transcript-segments';
 import {
@@ -541,7 +542,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * Build and record the `transcribe.batch` `AUDIO_SECOND` usage row.
+   * Build and record the `transcribe.batch` usage rows: the `AUDIO_SECOND` the
+   * job was always billed on, plus TASK-959's compute and network units when the
+   * worker measured them.
    * Caller guarantees `dto.durationSeconds > 0` and `dto.engine` present.
    * Never throws — a ledger-side failure is logged and swallowed so it can
    * never roll back the job-completion transaction it rides inside.
@@ -553,35 +556,61 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     tx: CorePrisma.TransactionClient,
   ): Promise<void> {
     try {
+      const costBasis = dto.deployment === 'BYOK' ? AiCostBasis.BYOK_NOTIONAL : undefined;
+      // TASK-959 §3.2/§4.2 — the occupancy seconds and the third-party bytes the
+      // worker measured. `device` decides which compute unit they are and arrives
+      // ON THE WIRE; an absent device emits no compute row rather than guessing.
+      const extra = computeAndByteUnits(
+        {
+          processingSeconds: dto.processingTimeSeconds,
+          device: dto.device,
+          requestBytes: dto.requestBytes,
+          responseBytes: dto.responseBytes,
+          byteSource: dto.byteSource,
+        },
+        costBasis,
+      );
+
+      const common = {
+        tenantId: job.tenantId ?? '',
+        idempotencyKey: UsageIdempotencyKey.sttBatchJob(jobId),
+        occurredAt: job.completedAt ?? new Date(),
+        capability: AiCapability.STT,
+        operation: 'transcribe.batch' as const,
+        provider: dto.engine!,
+        model: null,
+        deployment: AiDeploymentKind[dto.deployment ?? 'SELF_HOSTED'],
+        ...(costBasis ? { costBasis } : {}),
+        // TASK-958 D-7 — WHICH account of that engine. Carried from the worker's
+        // own attribution (`resolve_usage_attribution`), which reads the key the
+        // LOADER authenticated with; never re-derived from `engine`, which two of
+        // a tenant's accounts share.
+        connectionId: dto.connectionId ?? null,
+        consultationId: job.consultationId ?? null,
+        requestId: jobId,
+        attributesJson: {
+          engine: dto.engine!,
+          pipelineId: job.pipelineId ?? null,
+          channelCount: 1,
+        },
+      };
+
       await this.usageLedgerService!.recordUsage(
         {
-          common: {
-            tenantId: job.tenantId ?? '',
-            idempotencyKey: UsageIdempotencyKey.sttBatchJob(jobId),
-            occurredAt: job.completedAt ?? new Date(),
-            capability: AiCapability.STT,
-            operation: 'transcribe.batch',
-            provider: dto.engine!,
-            model: null,
-            deployment: AiDeploymentKind[dto.deployment ?? 'SELF_HOSTED'],
-            ...(dto.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
-            // TASK-958 D-7 — WHICH account of that engine. Carried from the worker's
-            // own attribution (`resolve_usage_attribution`), which reads the key the
-            // LOADER authenticated with; never re-derived from `engine`, which two of
-            // a tenant's accounts share.
-            connectionId: dto.connectionId ?? null,
-            consultationId: job.consultationId ?? null,
-            requestId: jobId,
-            attributesJson: {
-              engine: dto.engine!,
-              pipelineId: job.pipelineId ?? null,
-              channelCount: 1,
-            },
-          },
-          units: [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: dto.durationSeconds! }],
+          common,
+          units: [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: dto.durationSeconds! }, ...extra.onCallBasis],
         },
         tx,
       );
+
+      // The one sanctioned mixed-basis case: a BYOK job's vendor spend is the
+      // tenant's, but the CPU this service burned CALLING the vendor is the
+      // platform's. `costBasis` lives on `common`, so the second basis is a
+      // second batch — same base key, same transaction, distinct rows because
+      // `expandUsageBatch` appends `:<UNIT>`.
+      if (extra.onInternalBasis.length > 0) {
+        await this.usageLedgerService!.recordUsage({ common: { ...common, costBasis: AiCostBasis.INTERNAL }, units: extra.onInternalBasis }, tx);
+      }
     } catch (error) {
       this.logger.error({
         message: 'stt.batch.usage_emit_failed — job completed but the transcribe.batch usage row was not recorded',
