@@ -342,7 +342,11 @@ async def run_generation_producer(
                     # The engine's OWN time, where the engine reports one. It
                     # rides on the same chunk's `engine_native`, which is the
                     # only place a native timing survives into the stream.
-                    engine_ms = engine_ms_from_stats(chunk.data) or engine_ms
+                    # An explicit None check, not `or`: a genuine 0 ms (a
+                    # one-token completion, rounded) is an observation.
+                    reported_engine_ms = engine_ms_from_stats(chunk.data)
+                    if reported_engine_ms is not None:
+                        engine_ms = reported_engine_ms
                 if chunk.type == "done":
                     if isinstance(chunk.data, dict):
                         stream_finish_reason = (

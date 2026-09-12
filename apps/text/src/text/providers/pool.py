@@ -71,7 +71,7 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -364,7 +364,7 @@ class ProviderByteCounts:
     response_bytes: int = 0
     #: Requests observed. A zero here is how a caller tells "the adapter is off
     #: the pool" (report `None` on the wire) from "the call sent nothing".
-    requests: int = field(default=0)
+    requests: int = 0
 
     def add_request(self, count: int) -> None:
         if count > 0:
