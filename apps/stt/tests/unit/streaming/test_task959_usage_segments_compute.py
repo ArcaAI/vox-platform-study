@@ -409,21 +409,11 @@ class TestTheSegmentDictIsTheWire:
             "byte_source": BYTE_SOURCE_WIRE,
         }
 
-    @pytest.mark.xfail(
-        reason=(
-            "OWNED BY ANOTHER LANE. `apps/stt/src/stt/streaming/api/schemas.py` is being "
-            "edited concurrently by TASK-958, so P-STT left it untouched at the "
-            "orchestrator's instruction. Until `StreamingUsageSegment` declares "
-            "processing_seconds / device / request_bytes / response_bytes / byte_source, "
-            "`response_model=StreamingSessionTeardownResponse` FILTERS them off the "
-            "DELETE-teardown response — the summary carries them faithfully (asserted "
-            "above) and the reaper push-back, which POSTs the raw dict, delivers them, "
-            "but the DELETE path silently drops them exactly as it already drops "
-            "TASK-958's connection_id. This test xpasses the moment the five fields are "
-            "declared; do not delete it, declare them."
-        ),
-        strict=False,
-    )
+    # `response_model=StreamingSessionTeardownResponse` FILTERS the summary, so the
+    # five fields must be DECLARED on `StreamingUsageSegment` or the DELETE-teardown
+    # path silently drops them (the reaper push-back POSTs the raw dict and is not
+    # affected). Declared by the orchestrator after TASK-958 Lane C's own change to
+    # the same file; this test pins that the declaration stays.
     def test_the_teardown_schema_declares_the_new_fields_or_they_never_reach_the_wire(self):
         from stt.streaming.api.schemas import StreamingUsageSegment
 
