@@ -114,7 +114,13 @@ describe('TtsAgentResolverService — selection', () => {
     h.agents.resolve.mockResolvedValueOnce(platformClone());
     const { spec } = await h.service.resolve({ tenantId: TENANT, departmentId: 'dept-1' });
 
-    expect(h.agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.TEXT_TO_SPEECH, agentSlug: null, departmentId: 'dept-1' });
+    expect(h.agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.TEXT_TO_SPEECH,
+      agentSlug: null,
+      departmentId: 'dept-1',
+      primaryBinding: 'mark',
+    });
     expect(spec.agent.slug).toBe('platform-tts');
     expect(spec.primary.model.provider).toBe('kokoro');
     expect(spec.primary.voice?.id).toBe('af_heart');
@@ -130,6 +136,7 @@ describe('TtsAgentResolverService — selection', () => {
       task: AgentTask.TEXT_TO_SPEECH,
       agentSlug: 'someone-elses-voice',
       departmentId: null,
+      primaryBinding: 'mark',
     });
   });
 

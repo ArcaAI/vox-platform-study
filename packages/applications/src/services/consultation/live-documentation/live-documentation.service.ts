@@ -5460,7 +5460,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private async resolveRealtimeAgentView(ref: RealtimeAgentRef, tenantId: string): Promise<RealtimeResolvedAgentView | null> {
     const { slug, versionNumber } = ref as { slug?: string; versionNumber?: number };
     if (slug === undefined || !this.agentResolver) return null;
-    const resolved = await this.agentResolver.resolve({ tenantId, agentSlug: slug });
+    // TASK-958 F11 — a read-out of what an agent IS (task, schemas, parameters); it
+    // spends nothing, so an unusable credential binding must not hide the agent.
+    const resolved = await this.agentResolver.resolve({ tenantId, agentSlug: slug, primaryBinding: 'mark' });
     // The resolver serves the ACTIVE published version and takes no pin, so honouring one means
     // REFUSING a different version — a pin that ran whatever is active would be no pin at all.
     if (versionNumber !== undefined && resolved.versionNumber !== versionNumber) {

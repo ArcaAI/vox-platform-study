@@ -474,3 +474,33 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('unmetered') }));
   });
 });
+
+/**
+ * TASK-958 F11 — the bench spends the account the DRAFT is bound to.
+ *
+ * `AgentDraftTestService` pre-sets `provider_overrides` from the bound connection, but it
+ * can only do that if this service tells it which one: the model row is resolved here and
+ * nowhere else on the bench path.
+ */
+describe('testDraft — the bound connection travels to the transport', () => {
+  it('passes the primary model`s connection when the target is the row`s own', async () => {
+    mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, provider: 'azure', sourceConnectionId: 'conn-azure-2', wireModelId: 'gpt-5.4-mini' });
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' }, input: { text: 'go' }, dryRun: false });
+    expect(mockDraftTest.submit).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'conn-azure-2', connectionProvider: 'azure' }));
+  });
+
+  it('sends no connection for a caller-supplied {provider, model} override — that is a different target', async () => {
+    mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, provider: 'azure', sourceConnectionId: 'conn-azure-2', wireModelId: 'gpt-5.4-mini' });
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    await makeService().testDraft('agent-1', {
+      context: { clinic: 'Ward B' },
+      input: { text: 'go' },
+      dryRun: false,
+      provider: 'lm-studio',
+      model: 'gemma-4-e2b-it-qat',
+    });
+    const sent = mockDraftTest.submit.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(sent.connectionId).toBeUndefined();
+  });
+});
