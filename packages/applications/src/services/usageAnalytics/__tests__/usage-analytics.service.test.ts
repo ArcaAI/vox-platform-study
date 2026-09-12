@@ -46,6 +46,11 @@ function makeService(repos: ReturnType<typeof makeRepos>, user: { roles?: string
     repos.planEntitlementRepository as never,
     repos.tenantEntitlementRepository as never,
     cls as never,
+    // TASK-959 — the two bounded raw-ledger reads (the storage snapshot's
+    // per-class split and one run's worker CPU). Empty by default here: these
+    // tests are about the rollup-derived figures, and the new ones have their
+    // own file (`usage-analytics.task959.test.ts`).
+    { baseClient: { aiUsageEvent: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn(), aggregate: vi.fn() } } } as never,
   );
 }
 

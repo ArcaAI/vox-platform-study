@@ -234,7 +234,9 @@ describe('StorageSnapshotService.snapshotAll', () => {
     const result = await service.snapshotAll(DAY);
 
     expect(result).toEqual({ tenants: 2, rows: 3 });
-    const keys = emitted(recordUsage).map((row) => row.idempotencyKey).sort();
+    const keys = emitted(recordUsage)
+      .map((row) => row.idempotencyKey)
+      .sort();
     expect(keys).toEqual(['storage:t1:media:2026-09-12', 'storage:t2:media:2026-09-12', 'storage:t2:text:2026-09-12']);
   });
 

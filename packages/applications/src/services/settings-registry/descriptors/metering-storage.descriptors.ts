@@ -30,7 +30,11 @@
 // protection-enable flag rather than a kill-switch.
 
 import { SettingDescriptor } from '../registry.types';
-import { STORAGE_SNAPSHOT_CRON_KEY, STORAGE_SNAPSHOT_DEFAULTS, STORAGE_SNAPSHOT_ENABLED_KEY } from '../../storage-snapshot/storage-snapshot.constants';
+import {
+  STORAGE_SNAPSHOT_CRON_KEY,
+  STORAGE_SNAPSHOT_DEFAULTS,
+  STORAGE_SNAPSHOT_ENABLED_KEY,
+} from '../../storage-snapshot/storage-snapshot.constants';
 
 export const METERING_STORAGE_SETTINGS: SettingDescriptor[] = [
   {

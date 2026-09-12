@@ -432,7 +432,7 @@ export class StorageSnapshotService implements IStorageSnapshotService, OnModule
         await this.handleScheduledSnapshot();
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `SchedulerRegistry.addCronJob` types its argument against the `cron` version Nest was built against; ours is newer and structurally compatible. Same cast, same reason, as `MeteringService.replaceJob`.
       this.schedulerRegistry.addCronJob(STORAGE_SNAPSHOT_JOB_NAME, job as any);
       job.start();
       this.activeCron = cron;
