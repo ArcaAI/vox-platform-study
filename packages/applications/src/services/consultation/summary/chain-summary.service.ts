@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  AiDeploymentKind,
   ContextItemRepository,
   ConsultationRepository,
   CoreUnitOfWorkService,
@@ -17,8 +18,12 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from './text-generate';
-import { buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
+import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
+import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
+import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
+import type { UsageEventBatchInput } from '../../usageLedger/dto';
+import type { ComputeDevice } from '../../usageLedger/usage-attributes';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -101,6 +106,10 @@ export class ChainSummaryService extends BaseService {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-959 §3.1 — which device a SELF-HOSTED engine ran on. Without it the appender
+    // records NO compute row for a self-hosted call rather than guessing one, and this is the
+    // most expensive generation the platform runs. Optional + trailing like the ledger above it.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -483,18 +492,23 @@ export class ChainSummaryService extends BaseService {
     usage: TextUsageDetail | null,
     attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
   ): Promise<void> {
-    const input = usage
-      ? buildLlmUsageInput({
-          usage,
-          tenantId: attribution.tenantId,
-          operation: 'generate',
-          consultationId: attribution.consultationId,
-          doctorId: attribution.doctorId,
-          departmentId: attribution.departmentId,
-        })
-      : null;
+    // TASK-959 — the `*Batches` sibling, not `buildLlmUsageInput`: the BUILDER appends the
+    // compute and byte rows, and only this form hands back the platform CPU leg of a BYOK call.
+    const inputs = usageBatches(
+      usage
+        ? buildLlmUsageBatches({
+            usage,
+            tenantId: attribution.tenantId,
+            operation: 'generate',
+            consultationId: attribution.consultationId,
+            doctorId: attribution.doctorId,
+            departmentId: attribution.departmentId,
+            device: await this.llmDevice(attribution.tenantId, usage),
+          })
+        : null,
+    );
 
-    if (!this.usageLedger || !this.unitOfWork || !input) {
+    if (!this.usageLedger || !this.unitOfWork || inputs.length === 0) {
       await this.summaryMetaRepository.create(summaryMeta);
       return;
     }
@@ -502,7 +516,9 @@ export class ChainSummaryService extends BaseService {
     try {
       await this.unitOfWork.runInTransaction(async (tx) => {
         await this.summaryMetaRepository.create(summaryMeta, tx);
-        await this.usageLedger!.recordUsage(input, tx);
+        for (const input of inputs) {
+          await this.usageLedger!.recordUsage(input, tx);
+        }
       });
     } catch (error) {
       this.logger.warn({
@@ -511,6 +527,33 @@ export class ChainSummaryService extends BaseService {
         error: error instanceof Error ? error.message : String(error),
       });
       await this.summaryMetaRepository.create(summaryMeta);
+    }
+  }
+
+  /**
+   * Which device this generation's seconds were spent on — `null` when this service has no
+   * business naming one (TASK-959 §3.1).
+   *
+   * A CLOUD or BYOK call is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The
+   * provider is read off TEXT's OWN usage block — the engine that actually served — never the
+   * one this service asked for, so a fallback is never priced against a server it never touched.
+   *
+   * Never raises: an unresolvable device costs a compute row, and losing the whole batch —
+   * tokens included — to protect a device label is the expensive direction to be wrong in.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this chain summary without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -720,4 +763,14 @@ export class ChainSummaryService extends BaseService {
       isFollowUp: Boolean(consultation.parentConsultationId),
     });
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3) — the tokens, and the platform CPU leg a
+ * BYOK call splits onto its own `INTERNAL` batch because `costBasis` lives on `common`. A
+ * non-BYOK pair flattens to the one batch it always was.
+ */
+function usageBatches(pair: ComputeAugmentedBatch | null): UsageEventBatchInput[] {
+  if (!pair) return [];
+  return pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
 }
