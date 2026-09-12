@@ -4,6 +4,7 @@ import { CommonServiceModule } from '../baseServices';
 import { RedisCacheModule } from '../baseServices/redis';
 import { ConsultationServiceModule } from '../consultation/consultation/consultation.service.module';
 import { HarnessGatewayServiceModule } from '../consultation/harness/harness-gateway.service.module';
+import { BillingServiceModule } from '../billing/billing.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { ContextUserIdentityServiceModule } from '../user/identity';
@@ -36,6 +37,10 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     HarnessGatewayServiceModule,
     WorkflowRunServiceModule,
     EntitlementsServiceModule,
+    // TASK-957 F-4 -> `IBillingService.assertSpendLimit`. Without the import the `@Optional()`
+    // injection is always undefined and the ceiling is never checked at run start -- the defect
+    // F-4 names. No cycle: BillingServiceModule imports CoreDatabaseModule + PriceBookServiceModule.
+    BillingServiceModule,
     // TASK-932 D-4 said this plane resolves `workflowExposure.enabled` through the
     // tenant -> SYSTEM cascade. It could not: nothing here provided
     // `TenantSettingsService`, so the `@Optional()` injection was ALWAYS undefined and
