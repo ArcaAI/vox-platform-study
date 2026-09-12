@@ -55,6 +55,7 @@ import {
   IProviderConnectionService,
   type IProviderConnectionService as IProviderConnectionServicePort,
 } from '../ai-provider-connection/IProviderConnectionService';
+import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
 import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
 import type { ModelTier } from '../entitlements/entitlements.constants';
 import { BaseService } from '../../common';
@@ -77,9 +78,38 @@ interface Usability {
 
 const USABLE: Usability = { usable: true, reason: null };
 
-/** The picker id of ONE tenant BYO connection. `hope` is the only other group. */
-function byoProviderId(service: ProviderService | null, provider: string | null | undefined): string {
-  return `byo:${service ?? 'unknown'}:${provider ?? 'unknown'}`;
+/**
+ * The picker id of ONE tenant BYO connection (TASK-958 D-5).
+ *
+ * Keyed by the connection's SLUG, not by the provider: a tenant may hold several
+ * accounts of one vendor and an author choosing between them needs two entries, not
+ * one. A DEFAULT connection carries `slug === provider`, so every id that exists
+ * today is unchanged.
+ */
+function byoProviderId(service: ProviderService | null, connectionSlug: string | null | undefined): string {
+  return `byo:${service ?? 'unknown'}:${connectionSlug ?? 'unknown'}`;
+}
+
+/**
+ * The tenant's connection rows for one catalogue read, indexed BY ID — which is what
+ * `AiModel.sourceConnectionId` names.
+ *
+ * Read once per service in scope (`list` returns every non-deleted row of the tenant,
+ * enabled or not) so the classification loop, the usability verdict and the provider
+ * entries all answer from ONE snapshot and cannot disagree about which connection a
+ * model sits under.
+ */
+type ConnectionIndex = Map<string, AiProviderConnectionResponse>;
+
+/**
+ * The SLUG of the connection a model row was declared on — the picker group it
+ * belongs to (TASK-958 D-5). `null` for a row that names no connection (a SYSTEM
+ * catalogue row) or one whose connection is gone, in which case the caller falls
+ * back to the provider id, which is exactly the pre-958 group.
+ */
+function connectionSlugOf(entity: AiModelEntity, index: ConnectionIndex): string | null {
+  if (!entity.sourceConnectionId) return null;
+  return index.get(entity.sourceConnectionId)?.slug ?? null;
 }
 
 /**
@@ -184,6 +214,12 @@ export class AiModelService extends BaseService implements IAiModelService {
     const classified: Array<{ entity: AiModelEntity; service: ProviderService | null; providerClass: ProviderClass; providerId: string }> = [];
     let unassignedProviderCount = 0;
 
+    // TASK-958 D-5 — the tenant's connection rows, indexed by the id
+    // `AiModel.sourceConnectionId` names, read ONCE for every service in scope. It has
+    // to precede the loop below because a model's picker GROUP is now its connection,
+    // not its vendor.
+    const connectionIndex = await this.connectionIndex(rows, tenantId);
+
     for (const entity of rows) {
       const service = MODEL_TASK_TYPE_SERVICE[entity.taskType] ?? null;
       const providerClass = providerClassOf(service, entity.provider, entity);
@@ -201,7 +237,8 @@ export class AiModelService extends BaseService implements IAiModelService {
       // a vendor for.
       if (entity.tenantId === SYSTEM_TENANT_ID && !modelAllowedForTier(entity.tags, tier)) continue;
 
-      const providerId = providerClass === 'cloud-byo' ? byoProviderId(service, entity.provider) : PROVIDER_GROUP_HOPE;
+      const providerId =
+        providerClass === 'cloud-byo' ? byoProviderId(service, connectionSlugOf(entity, connectionIndex) ?? entity.provider) : PROVIDER_GROUP_HOPE;
       classified.push({ entity, service, providerClass, providerId });
     }
 
@@ -215,7 +252,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       // row is usable on the bucket measurement OR the runtime one, and the
       // runtime one lives here.
       const verdict = modelReadinessFrom(snapshot, entity.id);
-      const usability = await this.usabilityOf(providerClass, service, entity, tenantId, facts, verdict.readiness);
+      const usability = await this.usabilityOf(providerClass, service, entity, tenantId, facts, verdict.readiness, connectionIndex);
       models.push(
         toCatalogueModel(entity, {
           providerId,
@@ -230,7 +267,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     }
 
     const visible = filter.usableOnly ? models.filter((m) => m.usable) : models;
-    const providers = await this.catalogueProviders(visible, classified, tenantId, facts);
+    const providers = await this.catalogueProviders(visible, classified, tenantId, facts, connectionIndex);
     const scoped = filter.providerGroup ? providers.filter((p) => p.group === filter.providerGroup) : providers;
     const scopedIds = new Set(scoped.map((p) => p.id));
 
@@ -647,6 +684,32 @@ export class AiModelService extends BaseService implements IAiModelService {
   }
 
   /**
+   * Every connection row of the tenant, for every service the catalogue rows touch,
+   * indexed by id (TASK-958 D-5).
+   *
+   * `list` returns non-deleted rows whether ENABLED or not, which is deliberate: a
+   * model declared on a connection the tenant later disabled must stay listed UNDER
+   * THAT CONNECTION and unusable, rather than silently re-grouping under the default
+   * — which would read as "this model spends the default key", and it does not.
+   *
+   * Empty for the SYSTEM tenant: the platform catalogue has no BYO group.
+   */
+  private async connectionIndex(rows: AiModelEntity[], tenantId: string): Promise<ConnectionIndex> {
+    const index: ConnectionIndex = new Map();
+    if (!this.providerConnections || tenantId === SYSTEM_TENANT_ID) return index;
+    const services = new Set<ProviderService>();
+    for (const entity of rows) {
+      const service = MODEL_TASK_TYPE_SERVICE[entity.taskType] ?? null;
+      if (service) services.add(service);
+    }
+    for (const service of services) {
+      const listed = await this.providerConnections.list(service, tenantId).catch(() => []);
+      for (const connection of listed) index.set(connection.id, connection);
+    }
+    return index;
+  }
+
+  /**
    * The `(service, provider)` connection facts, resolved ONCE per catalogue read.
    *
    * Three reads, because three different questions are being asked and no single
@@ -668,8 +731,12 @@ export class AiModelService extends BaseService implements IAiModelService {
 
     const port = this.providerConnections!;
     const [tenantRow, systemRow, resolved] = await Promise.all([
-      port.findRow(service, provider, tenantId).catch(() => null),
-      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : port.findRow(service, provider, SYSTEM_TENANT_ID).catch(() => null),
+      // TASK-958 — by PROVIDER these read the tier's DEFAULT connection, which is what
+      // `findRow(service, provider, …)` meant before a provider named a GROUP of rows.
+      // `findRow` is by SLUG now, and a slug that happens to equal a provider id is a
+      // coincidence this must not depend on.
+      port.findDefaultRow(service, provider, tenantId).catch(() => null),
+      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : port.findDefaultRow(service, provider, SYSTEM_TENANT_ID).catch(() => null),
       port.resolveConnection(service, provider, tenantId).catch(() => null),
     ]);
 
@@ -694,6 +761,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     tenantId: string,
     cache: Map<string, ConnectionFacts>,
     readiness: ModelReadiness,
+    connectionIndex: ConnectionIndex,
   ): Promise<Usability> {
     if (providerClass === 'platform-self-host') {
       // TWO ways to have the weights, and either one is enough (J1 MAJOR-A).
@@ -731,9 +799,14 @@ export class AiModelService extends BaseService implements IAiModelService {
     const facts = await this.connectionFacts(service, entity.provider, tenantId, cache);
 
     if (providerClass === 'cloud-byo') {
-      if (!facts.tenantRow) return { usable: false, reason: 'no-enabled-connection' };
-      if (!facts.tenantRow.enabled) return { usable: false, reason: 'no-enabled-connection' };
-      return facts.tenantRow.hasKey ? USABLE : { usable: false, reason: 'credential-missing' };
+      // TASK-958 D-3 — the verdict is about the connection this row was DECLARED on,
+      // not about whichever row happens to hold the provider name. Without this, a
+      // model on a disabled sibling would read `usable` because the tenant's DEFAULT
+      // openai connection is fine — and then 503 at run time on a key it never names.
+      const declared = entity.sourceConnectionId ? connectionIndex.get(entity.sourceConnectionId) : undefined;
+      const row = declared ? { enabled: declared.enabled, hasKey: declared.hasKey } : facts.tenantRow;
+      if (!row || !row.enabled) return { usable: false, reason: 'no-enabled-connection' };
+      return row.hasKey ? USABLE : { usable: false, reason: 'credential-missing' };
     }
 
     if (providerClass === 'engine-served') {
@@ -763,48 +836,58 @@ export class AiModelService extends BaseService implements IAiModelService {
     classified: Array<{ entity: AiModelEntity; service: ProviderService | null; providerClass: ProviderClass; providerId: string }>,
     tenantId: string,
     cache: Map<string, ConnectionFacts>,
+    connectionIndex: ConnectionIndex,
   ): Promise<CatalogueProviderResponse[]> {
     const countByProviderId = new Map<string, number>();
     for (const model of visibleModels) countByProviderId.set(model.providerId, (countByProviderId.get(model.providerId) ?? 0) + 1);
 
     const byo = new Map<string, CatalogueProviderResponse>();
 
-    // (a) the tenant's own ENABLED connections, per service in scope.
+    // (a) the tenant's own ENABLED connections — ONE entry per CONNECTION (D-5), not
+    // per vendor, so two accounts of one vendor are two things an author can pick
+    // between. `name` stays the VENDOR label: the console renders it as
+    // `<name> (BYO) · <connection>`, so putting the connection in both halves would
+    // say the same thing twice and lose which vendor is being spent.
     if (this.providerConnections && tenantId !== SYSTEM_TENANT_ID) {
       const services = new Set<ProviderService>();
       for (const { service } of classified) if (service) services.add(service);
-      for (const service of services) {
-        const rows = await this.providerConnections.list(service, tenantId).catch(() => []);
-        for (const row of rows) {
-          if (!row.enabled || !isCloudByoProvider(service, row.provider)) continue;
-          const id = byoProviderId(service, row.provider);
-          const facts = await this.connectionFacts(service, row.provider, tenantId, cache);
-          byo.set(id, {
-            id,
-            group: 'byo',
-            name: row.provider,
-            providerClass: 'cloud-byo',
-            connectionId: facts.tenantRow?.id ?? null,
-            usable: row.hasKey,
-            reason: row.hasKey ? null : 'credential-missing',
-            modelCount: countByProviderId.get(id) ?? 0,
-          });
-        }
+      for (const row of connectionIndex.values()) {
+        const service = row.service as ProviderService;
+        if (!services.has(service) || !row.enabled || !isCloudByoProvider(service, row.provider)) continue;
+        const id = byoProviderId(service, row.slug);
+        byo.set(id, {
+          id,
+          group: 'byo',
+          name: row.provider,
+          providerClass: 'cloud-byo',
+          connectionId: row.id,
+          connectionSlug: row.slug,
+          connectionName: row.name ?? null,
+          isDefault: row.isDefault,
+          usable: row.hasKey,
+          reason: row.hasKey ? null : 'credential-missing',
+          modelCount: countByProviderId.get(id) ?? 0,
+        });
       }
     }
 
-    // (b) any provider the tenant's OWN rows name that (a) did not produce — a
-    // connection that was disabled or deleted under its models. The models stay
-    // listed and unusable rather than vanishing without explanation.
+    // (b) any CONNECTION the tenant's OWN rows name that (a) did not produce — one
+    // that was disabled, or deleted under its models. The models stay listed and
+    // unusable under their own connection rather than vanishing, or (worse) merging
+    // into the default and reading as "this spends the default key".
     for (const { entity, service, providerClass, providerId } of classified) {
       if (providerClass !== 'cloud-byo' || byo.has(providerId)) continue;
+      const declared = entity.sourceConnectionId ? connectionIndex.get(entity.sourceConnectionId) : undefined;
       const facts = service && entity.provider ? await this.connectionFacts(service, entity.provider, tenantId, cache) : null;
       byo.set(providerId, {
         id: providerId,
         group: 'byo',
         name: entity.provider ?? providerId,
         providerClass: 'cloud-byo',
-        connectionId: facts?.tenantRow?.id ?? null,
+        connectionId: declared?.id ?? entity.sourceConnectionId ?? facts?.tenantRow?.id ?? null,
+        connectionSlug: declared?.slug ?? null,
+        connectionName: declared?.name ?? null,
+        isDefault: declared ? declared.isDefault : null,
         usable: false,
         reason: 'no-enabled-connection',
         modelCount: countByProviderId.get(providerId) ?? 0,
@@ -820,6 +903,11 @@ export class AiModelService extends BaseService implements IAiModelService {
       // The GROUP has no class; each of its models carries its own.
       providerClass: null,
       connectionId: null,
+      // The `hope` group is the PLATFORM's own credential, so naming a tenant
+      // connection beside it would be a claim about spend that is simply untrue.
+      connectionSlug: null,
+      connectionName: null,
+      isDefault: null,
       usable: hopeUsable,
       reason: hopeUsable ? null : 'no-usable-model',
       modelCount: hopeCount,
