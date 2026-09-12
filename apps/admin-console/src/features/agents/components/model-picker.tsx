@@ -71,6 +71,34 @@ function providerLabel(provider: CatalogueProvider): string {
   return `${provider.name}${provider.group === 'byo' ? ' (BYO)' : ''}${provider.usable ? '' : ` — ${reasonGuidance(provider.reason ?? 'unavailable')}`}`;
 }
 
+/**
+ * TASK-958 D-5/D-10 — WHICH account of the vendor this entry is.
+ *
+ * With two OpenAI connections on a tenant, `provider.name` is the same string
+ * twice; the connection is the whole difference between them, and an author
+ * choosing blind cannot tell which key the agent will spend. Null when the
+ * catalogue names no connection — the `hope` group (which has none) and any
+ * payload from a gateway that predates the field.
+ */
+export function connectionLabel(provider: CatalogueProvider): string | null {
+  if (!provider.connectionSlug) return null;
+  const named = provider.connectionName?.trim() || provider.connectionSlug;
+  return provider.isDefault ? `${named} · Default` : named;
+}
+
+/**
+ * The fallback list's option label. A BYO model carries its connection; a Hope
+ * model does NOT — a platform model resolves through the platform's own
+ * credential, so naming a tenant connection beside it would be a claim about
+ * spend that is simply untrue.
+ */
+export function fallbackModelOptionLabel(model: CatalogueModel, providers: readonly CatalogueProvider[]): string {
+  const provider = providers.find((candidate) => candidate.id === model.providerId);
+  if (!provider || provider.group !== 'byo') return model.name;
+  const connection = provider.connectionName?.trim() || provider.connectionSlug;
+  return connection ? `${model.name} · ${connection}` : model.name;
+}
+
 function modelLabel(model: CatalogueModel): string {
   const readiness = model.providerClass === 'cloud-byo' ? '' : ` · ${modelReadinessLabel(model)}`;
   const unusable = model.usable ? '' : ` — ${reasonGuidance(model.unusableReason ?? 'unavailable')}`;
@@ -139,11 +167,17 @@ export function ModelPicker({ id, label = 'Model', task, value, onChange, disabl
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {providers.map((provider) => (
-              <SelectItem key={provider.id} value={provider.id}>
-                {providerLabel(provider)}
-              </SelectItem>
-            ))}
+            {providers.map((provider) => {
+              const connection = connectionLabel(provider);
+              return (
+                // `textValue` keeps typeahead on the whole label once the item
+                // carries more than one text node.
+                <SelectItem key={provider.id} value={provider.id} textValue={`${providerLabel(provider)}${connection ? ` · ${connection}` : ''}`}>
+                  <span>{providerLabel(provider)}</span>
+                  {connection ? <span className="text-muted-foreground text-xs">{` · ${connection}`}</span> : null}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
         {activeProvider && !activeProvider.usable ? (

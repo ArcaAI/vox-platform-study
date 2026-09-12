@@ -13,7 +13,20 @@ export const providerConnectionKeys = {
   root: ['ai-providers'] as const,
   tenant: (tenantId: string | undefined) => [...providerConnectionKeys.root, tenantId ?? 'cls'] as const,
   service: (service: ProviderService, tenantId?: string) => [...providerConnectionKeys.tenant(tenantId), service] as const,
-  row: (service: ProviderService, provider: string, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'row', provider] as const,
+  /**
+   * TASK-958 — the leaf is the connection SLUG, not the provider.
+   *
+   * For every row that exists today `slug === provider`, so this key's VALUES
+   * are unchanged; what changes is that a tenant's second `openai` account has
+   * a key of its own instead of overwriting the first one's cache entry.
+   */
+  row: (service: ProviderService, slug: string, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'row', slug] as const,
+  /**
+   * `GET admin/providers/:service` — every connection the tenant holds for one
+   * capability. Nested under the service key so a save or a remove (which
+   * invalidate it) refreshes the group a card sits in.
+   */
+  list: (service: ProviderService, tenantId?: string) => [...providerConnectionKeys.service(service, tenantId), 'list'] as const,
   /**
    * TASK-954 — nested under the SERVICE key on purpose: a tenant's own save or
    * remove changes the verdict (`overridden` / `vetoed` / back to `inherited`),

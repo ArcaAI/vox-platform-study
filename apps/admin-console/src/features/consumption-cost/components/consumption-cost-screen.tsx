@@ -16,7 +16,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 
 import { aggregateCostByCapability, sumMicrosMap } from '../api/aggregate';
-import { useCostPerEncounter, useTopTenants, useUsageSummary } from '../api/hooks';
+import { useCostPerEncounter, useTopTenants, useUsageConnectionNames, useUsageSummary } from '../api/hooks';
 import type { CostPerEncounterView, TopTenantsView, UsageSummaryView } from '../api/hooks';
 
 const MONTH_COUNT = 12;
@@ -225,16 +225,46 @@ function CostPerEncounterCard({ cpe }: { cpe: CostPerEncounterView }) {
   );
 }
 
+/**
+ * TASK-958 D-7 — "which key did this spend?".
+ *
+ * A tenant may hold several accounts of one vendor, so `provider` stopped being
+ * an answer: two OpenAI connections bill to the same provider name and the same
+ * model. The ledger carries `AiUsageEvent.connectionId`, and this column is
+ * where a tenant reads it back.
+ *
+ * The column exists only when the FIELD does. An absent `connectionId` is a
+ * gateway that cannot say (Lane B2 is in flight), which is not the same claim as
+ * `null` — "the platform's own credential funded this" — and a column of dashes
+ * would render the two identically.
+ */
 function UsageDetailCard({ summary }: { summary: UsageSummaryView }) {
-  const rows =
-    summary.data?.lines.map((line) => ({
-      capability: line.capability,
-      provider: line.provider,
-      model: line.model === '' ? '—' : line.model,
-      unit: line.unit,
-      quantity: formatNumber(Number(line.quantity)),
-      cost: formatMicros(line.costMicros),
-    })) ?? [];
+  const lines = summary.data?.lines ?? [];
+  const showConnection = lines.some((line) => line.connectionId !== undefined);
+  const names = useUsageConnectionNames(showConnection);
+
+  const rows = lines.map((line) => ({
+    capability: line.capability,
+    provider: line.provider,
+    ...(showConnection
+      ? {
+          connection:
+            line.connectionId == null ? (
+              <span className="text-muted-foreground">Platform</span>
+            ) : (
+              // An unresolved id still IDENTIFIES the row — it is the one thing
+              // that tells two accounts apart — so it is shortened, never
+              // replaced by a dash that would read as "platform-funded".
+              <span className="font-mono text-xs">{names.get(line.connectionId) ?? line.connectionId.slice(0, 8)}</span>
+            ),
+        }
+      : {}),
+    model: line.model === '' ? '—' : line.model,
+    unit: line.unit,
+    quantity: formatNumber(Number(line.quantity)),
+    cost: formatMicros(line.costMicros),
+  }));
+
   return (
     <Card className="gap-4">
       <CardHeader>
@@ -245,14 +275,15 @@ function UsageDetailCard({ summary }: { summary: UsageSummaryView }) {
           columns={[
             { key: 'capability', label: 'Capability' },
             { key: 'provider', label: 'Provider' },
+            ...(showConnection ? [{ key: 'connection', label: 'Connection' }] : []),
             { key: 'model', label: 'Model' },
             { key: 'unit', label: 'Unit' },
-            { key: 'quantity', label: 'Quantity', format: 'numeric' },
-            { key: 'cost', label: 'Cost', format: 'numeric' },
+            { key: 'quantity', label: 'Quantity', format: 'numeric' as const },
+            { key: 'cost', label: 'Cost', format: 'numeric' as const },
           ]}
           rows={rows}
           zebra
-          caption="Metered usage by capability × provider × model × unit"
+          caption={showConnection ? 'Metered usage by capability × provider × connection × model × unit' : 'Metered usage by capability × provider × model × unit'}
           aria-label="Usage detail by capability, provider, model and unit"
           isLoading={summary.isPending}
           error={summary.error ?? undefined}

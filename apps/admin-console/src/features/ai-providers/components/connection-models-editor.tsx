@@ -32,7 +32,8 @@ function toDraft(model: ConnectionModel): DraftModel {
  *  - **the list is the fact.** Save sends the WHOLE list, and the server
  *     withdraws whatever left it. The button says so.
  *  - **names are the server's.** The slug an agent binds is generated from the
- *     provider and the wire id; nothing here invents one. A save refused with
+ *     CONNECTION's slug and the wire id (TASK-958 D-5), so two accounts of one
+ *     vendor mint distinct model slugs; nothing here invents one. A save refused with
  *     `BYO_SLUG_SHADOWS_PLATFORM` is surfaced verbatim, because the fix (use the
  *     suggested `byo-…` name) is a decision for the admin, not for this form.
  *  - **"Derive from provider" needs no typing.** It fills from the ids the last
@@ -40,14 +41,15 @@ function toDraft(model: ConnectionModel): DraftModel {
  */
 export function ConnectionModelsEditor({
   service,
-  provider,
+  slug,
   label,
   tenantId,
   models,
   discoveredModels,
 }: {
   service: ProviderService;
-  provider: string;
+  /** TASK-958 — the CONNECTION this list belongs to. `=== provider` on a default row. */
+  slug: string;
   label: string;
   tenantId?: string;
   models: ConnectionModel[];
@@ -84,7 +86,7 @@ export function ConnectionModelsEditor({
     declare.mutate(
       {
         service,
-        provider,
+        slug,
         tenantId,
         body: {
           models: rows.map(({ wireModelId, name, taskType, slug }) => ({
