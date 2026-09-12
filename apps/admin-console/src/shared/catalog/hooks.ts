@@ -122,13 +122,29 @@ export type CatalogueProviderGroup = 'byo' | 'hope';
 export type CatalogueProviderClass = 'cloud-byo' | 'cloud-platform' | 'engine-served' | 'platform-self-host';
 export type CatalogueModelReadiness = 'ready' | 'loadable' | 'engine_down' | 'weights_missing' | 'credential_missing' | 'unknown';
 
-/** `GET admin/ai-models/catalogue` provider row — mirrors `CatalogueProviderResponse`. */
+/**
+ * `GET admin/ai-models/catalogue` provider row — mirrors `CatalogueProviderResponse`.
+ *
+ * TASK-958 D-5 — the entry is per CONNECTION, not per vendor: a tenant with two
+ * OpenAI accounts gets two rows whose `id` is `byo:<service>:<connectionSlug>`
+ * and whose `name` is the same vendor label, so the connection fields are the
+ * only thing that tells them apart. All three are `null` on the `hope` group
+ * (a platform model resolves through no tenant connection) and on any payload
+ * from a gateway that predates the field — `fallbackModelOptionLabel` and the
+ * picker both treat absent as "name no connection", which is what it means.
+ */
 export interface CatalogueProvider {
   id: string;
   group: CatalogueProviderGroup;
   name: string;
   providerClass: CatalogueProviderClass | null;
   connectionId: string | null;
+  /** The connection's tenant-chosen slug — `=== provider` on a default row. */
+  connectionSlug?: string | null;
+  /** The tenant's label for the connection, when it named one. */
+  connectionName?: string | null;
+  /** Whether this is the provider's DEFAULT connection (what a SYSTEM-catalogue model spends). */
+  isDefault?: boolean | null;
   usable: boolean;
   reason: string | null;
   modelCount: number;

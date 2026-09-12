@@ -96,14 +96,44 @@ export function declarableService(service: ProviderService): boolean {
 }
 
 /**
- * GET admin/providers/:service/:provider — the MASKED row. There is
- * deliberately no key field and no reveal route: presence of key material is
- * reported as `hasKey` + `keyVersion` only.
+ * TASK-958 D-1 — a connection SLUG is what the route addresses now.
+ *
+ * `^[a-z0-9][a-z0-9-]{1,62}$`, verbatim from the gateway contract (§4.1). It is
+ * IMMUTABLE after create — the slug is embedded in every model slug the
+ * connection mints (`<connectionSlug>-<wireModelId>`) and rides the wire as
+ * `connection_key` — so a client-side refusal is the last cheap place to catch
+ * a typo before it becomes permanent. Renaming is what `name` is for.
+ */
+export const CONNECTION_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+export function isValidConnectionSlug(value: string): boolean {
+  return CONNECTION_SLUG_PATTERN.test(value);
+}
+
+/**
+ * GET admin/providers/:service/:slug — the MASKED row. There is deliberately no
+ * key field and no reveal route: presence of key material is reported as
+ * `hasKey` + `keyVersion` only.
+ *
+ * TASK-958: `id` / `slug` / `name` / `isDefault` are the multiplicity fields.
+ * They are OPTIONAL here only for the MERGE WINDOW — Lane B1 always sends them,
+ * but this lane ships against the interface contract while the gateway half is
+ * in flight, and a row read from a gateway that predates it must still render.
+ * Never read them raw: `connectionSlugOf` / `connectionIsDefault` carry the
+ * derivation (`slug ?? provider`, `isDefault ?? true`), which is exactly right
+ * for every row that exists today — one row per provider, and it IS the default.
  */
 export interface ProviderConnection {
+  id?: string;
   tenantId: string;
   service: ProviderService;
   provider: string;
+  /** Tenant-chosen connection id, unique per `(tenant, service)`. `=== provider` on every default row. */
+  slug?: string;
+  /** Free-text display label. Null = unnamed; the slug is then the name. */
+  name?: string | null;
+  /** Whether this row is the tenant's DEFAULT connection for `provider` (D-3: what a SYSTEM-catalogue model resolves through). */
+  isDefault?: boolean;
   baseUrl: string | null;
   region: string | null;
   apiVersion: string | null;
@@ -124,6 +154,29 @@ export interface ProviderConnection {
   models?: ConnectionModel[];
 }
 
+/** The slug a row is addressed by — `provider` for every pre-TASK-958 row. */
+export function connectionSlugOf(row: Pick<ProviderConnection, 'slug' | 'provider'>): string {
+  return row.slug ?? row.provider;
+}
+
+/** Whether a row is its provider's default. Absent = true: a lone row always was. */
+export function connectionIsDefault(row: Pick<ProviderConnection, 'isDefault'>): boolean {
+  return row.isDefault ?? true;
+}
+
+/**
+ * The `code` of a structured gateway refusal (`CONNECTION_IS_DEFAULT`,
+ * `CONNECTION_SLUG_INVALID`, …). The gateway throws
+ * `new ConflictException({ code, message, … })`, so the code rides the BODY,
+ * which `GatewayError` keeps in `details`; `GatewayError.code` is Nest's own
+ * error NAME ("Conflict") and is not it. Read through this, never by hand.
+ */
+export function gatewayErrorCode(error: unknown): string | undefined {
+  const details = (error as { details?: unknown } | null)?.details;
+  const code = (details as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' ? code : undefined;
+}
+
 /** The ceiling columns, in display order. */
 export const CONNECTION_CEILINGS = [
   { name: 'maxConcurrent', label: 'Max concurrent', placeholder: 'e.g. 8', help: 'simultaneous in-flight requests' },
@@ -134,8 +187,30 @@ export const CONNECTION_CEILINGS = [
 
 export type ConnectionCeiling = (typeof CONNECTION_CEILINGS)[number]['name'];
 
-/** PUT admin/providers/:service/:provider body. `apiKey` is write-only. */
+/**
+ * PUT admin/providers/:service/:slug body. `apiKey` is write-only.
+ *
+ * An OMITTED field means "leave the stored value untouched", which is what makes
+ * the TASK-958 flips safe to send on their own: "make this the default" carries
+ * `isDefault` and nothing else, and creating a sibling carries only the three
+ * facts the gateway cannot infer.
+ */
 export interface UpsertProviderConnectionRequest {
+  /**
+   * TASK-958 D-2 — the VENDOR this slug is an account of. REQUIRED by the
+   * gateway whenever the slug is not itself a `CLOUD_BYO_PROVIDERS` id (it
+   * defaults to the slug otherwise), and on update it must equal the row's
+   * provider — a connection cannot change vendor (409 `CONNECTION_PROVIDER_IMMUTABLE`).
+   */
+  provider?: string;
+  /** Display label. The one part of a connection's identity that IS renameable (OQ-7). */
+  name?: string | null;
+  /**
+   * `true` flips the provider's default onto this row in ONE transaction (the
+   * sibling that held it is cleared). `false` on the current default is a 400 —
+   * a provider always has exactly one default; you move it, you do not clear it.
+   */
+  isDefault?: boolean;
   apiKey?: string;
   baseUrl?: string | null;
   region?: string | null;

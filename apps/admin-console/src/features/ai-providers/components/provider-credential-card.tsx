@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { IconPlugConnectedX, IconRestore, IconTestPipe } from '@tabler/icons-react';
+import { IconPlugConnectedX, IconRestore, IconStar, IconTestPipe } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -24,6 +24,7 @@ import {
   CONNECTION_CEILINGS,
   connectionStateOf,
   declarableService,
+  gatewayErrorCode,
   platformStateOf,
   type ConnectionCeiling,
   type ConnectionState,
@@ -83,6 +84,23 @@ const PLATFORM_STATE_LABEL: Record<PlatformConnectionState, { label: string; var
   off: { label: 'Off', variant: 'destructive' },
 };
 
+/**
+ * A NON-DEFAULT connection's own vocabulary (TASK-958 D-6).
+ *
+ * The tenant map above is written about a PROVIDER: "use platform default",
+ * "disabled for this tenant" — claims about the whole vendor, true only of the
+ * row the provider-name cascade actually reads, which is the DEFAULT one.
+ * Applied to a sibling every word of it is wrong: a keyless sibling is not
+ * "using the platform default" (nothing resolves through it at all), and a
+ * disabled sibling vetoes NOTHING — it fails its own bindings closed and the
+ * chain walks on. Same defect shape as R-11, one tier down.
+ */
+const SIBLING_STATE_LABEL: Record<ConnectionState, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  'platform-default': { label: 'No key yet', variant: 'outline' },
+  'bring-your-own': { label: 'Bring your own', variant: 'default' },
+  disabled: { label: 'Not in use', variant: 'outline' },
+};
+
 /** Readiness, as an engine card shows it. `unknown` = not measured, never a verdict. */
 const READINESS_LABEL: Record<ReadinessEngine['status'], { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
   up: { label: 'reachable', variant: 'secondary' },
@@ -115,6 +133,11 @@ function parseCeiling(raw: string): number | null | undefined {
 export function ProviderCredentialCard({
   service,
   meta,
+  slug,
+  connectionName,
+  defaultBadge = false,
+  canMakeDefault = false,
+  autoFocusKey = false,
   tenantId,
   tier = 'tenant',
   readiness,
@@ -124,6 +147,20 @@ export function ProviderCredentialCard({
 }: {
   service: ProviderService;
   meta: ProviderMeta;
+  /**
+   * TASK-958 — the CONNECTION this card edits. Defaults to `meta.id`, which is
+   * the slug of every row that exists today (and of the one a tenant creates
+   * first), so an unqualified card is byte-for-byte the card it was before.
+   */
+  slug?: string;
+  /** The tenant's label for a sibling connection; the title reads `‹Provider› · ‹name›`. */
+  connectionName?: string | null;
+  /** Render the `Default` badge — the group passes it only where a provider HAS siblings. */
+  defaultBadge?: boolean;
+  /** Offer "Make default": a sibling that exists and is not already the default. */
+  canMakeDefault?: boolean;
+  /** Focus the key field on mount — where the dialog that just created this row sends the admin. */
+  autoFocusKey?: boolean;
   tenantId?: string;
   /** Which tier this card is editing — it decides the WORDING, not the route. */
   tier?: ProviderTier;
@@ -140,7 +177,11 @@ export function ProviderCredentialCard({
   platformDefault?: PlatformDefaultConnection | undefined;
 }) {
   const uid = useId();
-  const query = useProviderConnection(service, meta.id, tenantId, queriesEnabled);
+  const connectionSlug = slug ?? meta.id;
+  const isSibling = connectionSlug !== meta.id;
+  // What this card is CALLED, everywhere a message or a label names it.
+  const title = isSibling ? `${meta.label} · ${connectionName?.trim() || connectionSlug}` : meta.label;
+  const query = useProviderConnection(service, connectionSlug, tenantId, queriesEnabled);
   const putMutation = usePutProviderConnection();
   const deleteMutation = useDeleteProviderConnection();
   const testMutation = useTestProviderConnection();
@@ -152,6 +193,10 @@ export function ProviderCredentialCard({
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  // A refused REMOVE is guidance, not a toast: the fix ("make another connection
+  // the default first") is an action on this very group, and a toast that
+  // vanishes leaves the confirm row saying nothing about why nothing happened.
+  const [removeRefusal, setRemoveRefusal] = useState<string | null>(null);
 
   if (query.isPending) return <CardSkeleton />;
   if (query.error || !query.data) {
@@ -165,14 +210,16 @@ export function ProviderCredentialCard({
   const platformTier = tier === 'platform';
   const state = connectionStateOf(current);
   const platformState = platformStateOf(current);
-  const badge = platformTier ? PLATFORM_STATE_LABEL[platformState] : STATE_LABEL[state];
+  const badge = platformTier ? PLATFORM_STATE_LABEL[platformState] : isSibling ? SIBLING_STATE_LABEL[state] : STATE_LABEL[state];
   const providerClass = classOf(meta);
   // A built-in plane row with nothing on it is not "unconfigured" — it is the
   // platform's own default serving it (TASK-932 D-7). Said in words, because
   // "no key" on this card previously read as a fault.
   const runningOnPlatformDefaults = platformTier && providerClass !== 'cloud-byo' && current.version > 0 && current.enabled && !hasKey;
   // What "Use platform default" actually means for THIS tenant today (TASK-954).
-  const inheritedHint = !platformTier && state === 'platform-default' ? platformDefaultHint(platformDefault) : null;
+  // A SIBLING inherits nothing: the platform default is what the PROVIDER falls
+  // back to, which is a fact about the default row, not about this one.
+  const inheritedHint = !platformTier && !isSibling && state === 'platform-default' ? platformDefaultHint(platformDefault) : null;
   const currentColumns = current as unknown as Record<string, unknown>;
 
   /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
@@ -244,10 +291,10 @@ export function ProviderCredentialCard({
   function handleSave() {
     if (!canSave) return;
     putMutation.mutate(
-      { service, provider: meta.id, body: buildBody(), etag, tenantId },
+      { service, slug: connectionSlug, body: buildBody(), etag, tenantId },
       {
         onSuccess: () => {
-          toast.success(`${meta.label} connection saved`);
+          toast.success(`${title} connection saved`);
           setApiKey('');
           setDraft(null);
           setCeilingDraft(null);
@@ -274,13 +321,13 @@ export function ProviderCredentialCard({
       if (value) body[field.name] = value;
     }
     testMutation.mutate(
-      { service, provider: meta.id, body, tenantId },
+      { service, slug: connectionSlug, body, tenantId },
       {
         onSuccess: (result) => {
           const via = result.probe === 'auth' ? 'credential verified' : 'endpoint reachable';
           const from = result.source === 'request' ? 'typed values' : result.source === 'tenant' ? 'the tenant row' : 'the platform row';
-          if (result.ok) toast.success(`${meta.label}: ${result.message} (${via}, ${from})`);
-          else toast.error(`${meta.label}: ${result.message}`);
+          if (result.ok) toast.success(`${title}: ${result.message} (${via}, ${from})`);
+          else toast.error(`${title}: ${result.message}`);
         },
         onError: (error) => toast.error(error.message),
       },
@@ -289,10 +336,10 @@ export function ProviderCredentialCard({
 
   function handleReset() {
     resetMutation.mutate(
-      { service, provider: meta.id, tenantId },
+      { service, slug: connectionSlug, tenantId },
       {
         onSuccess: () => {
-          toast.success(`${meta.label} restored to its built-in default`);
+          toast.success(`${title} restored to its built-in default`);
           setConfirmingReset(false);
           // Drop every draft: what is on screen now is the SERVER's answer, and
           // keeping a typed endpoint next to a "restored" toast would show the
@@ -308,17 +355,52 @@ export function ProviderCredentialCard({
   }
 
   function handleRemove() {
+    setRemoveRefusal(null);
     deleteMutation.mutate(
-      { service, provider: meta.id, tenantId },
+      { service, slug: connectionSlug, tenantId },
       {
         onSuccess: () => {
-          toast.success(`${meta.label} connection removed — the platform default serves this provider again`);
+          toast.success(
+            isSibling
+              ? `${title} connection removed`
+              : `${meta.label} connection removed — the platform default serves this provider again`,
+          );
           setConfirmingRemove(false);
           setDraft(null);
           setCeilingDraft(null);
           setEnabledDraft(null);
         },
-        onError: (error) => toast.error(error.message),
+        onError: (error) => {
+          // TASK-958 OQ-6 — the gateway REFUSES to delete a default that still
+          // has siblings rather than auto-promoting one, because an automatic
+          // promotion silently changes which key every SYSTEM-model agent
+          // spends. Say which action unblocks it, in place.
+          if (gatewayErrorCode(error) === 'CONNECTION_IS_DEFAULT') {
+            setRemoveRefusal(error.message);
+            return;
+          }
+          toast.error(error.message);
+        },
+      },
+    );
+  }
+
+  /**
+   * TASK-958 D-1/D-3 — make THIS connection the provider's default.
+   *
+   * A partial PUT on purpose: an omitted field leaves the stored value
+   * untouched, so the flip carries no credential, no endpoint and no ceiling —
+   * only the one fact it changes. The gateway clears the sibling that held it,
+   * in one transaction (D-2), so there is never a moment with two defaults.
+   */
+  function handleMakeDefault() {
+    putMutation.mutate(
+      { service, slug: connectionSlug, body: { isDefault: true }, etag, tenantId },
+      {
+        onSuccess: () => toast.success(`${title} is now the default ${meta.label} connection`),
+        onError: (error) => {
+          if (!(error as { isVersionConflict?: boolean }).isVersionConflict) toast.error(error.message);
+        },
       },
     );
   }
@@ -327,14 +409,26 @@ export function ProviderCredentialCard({
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
         <h3 id={`${uid}-title`} className="text-sm font-medium">
-          {meta.label}
+          {title}
         </h3>
+        {/*
+          TASK-958 — WHICH key a SYSTEM-catalogue model spends. Rendered only
+          where the provider actually has more than one connection: a lone card
+          is its provider's default by construction, and saying so on every card
+          would be noise on the screen it already is.
+        */}
+        {defaultBadge ? <Badge variant="default">Default</Badge> : null}
         <Badge variant={badge.variant}>{badge.label}</Badge>
         {hasKey ? (
           <Badge variant="secondary">key configured{current.keyVersion != null ? ` · v${current.keyVersion}` : ''}</Badge>
         ) : keyOptional ? null : (
           <Badge variant="outline">no key</Badge>
         )}
+        {isSibling ? (
+          <Badge variant="outline" className="font-mono text-xs">
+            {connectionSlug}
+          </Badge>
+        ) : null}
         {readiness ? (
           <Badge variant={READINESS_LABEL[readiness.status].variant} title={readiness.detail ?? undefined}>
             {READINESS_LABEL[readiness.status].label}
@@ -360,6 +454,9 @@ export function ProviderCredentialCard({
           id={`${uid}-key`}
           type="password"
           autoComplete="off"
+          // The dialog that created this row closes onto it; focus lands where
+          // the one thing still missing (the credential) is typed.
+          autoFocus={autoFocusKey}
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
           placeholder={hasKey ? '•••••••• (write-only — never shown)' : (meta.keyPlaceholder ?? 'Paste the provider API key')}
@@ -432,9 +529,13 @@ export function ProviderCredentialCard({
             ? enabled
               ? 'This connection serves every tenant that has no opinion of its own.'
               : 'Off means this provider serves nobody — no tenant can inherit it, and nothing falls through to another provider.'
-            : enabled
-              ? 'Your credential serves this provider. Remove the connection to fall back to the platform-provided key.'
-              : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
+            : isSibling
+              ? enabled
+                ? 'This credential serves the models declared on THIS connection. It is not the provider’s default, so nothing else resolves through it.'
+                : 'Off means the models declared on this connection fail closed and the agent’s next fallback is tried. It does NOT disable this provider — that is the default connection’s switch.'
+              : enabled
+                ? 'Your credential serves this provider. Remove the connection to fall back to the platform-provided key.'
+                : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the connection instead to use the platform default.'}
         </p>
       </div>
 
@@ -455,8 +556,8 @@ export function ProviderCredentialCard({
         current.version > 0 ? (
           <ConnectionModelsEditor
             service={service}
-            provider={meta.id}
-            label={meta.label}
+            slug={connectionSlug}
+            label={title}
             tenantId={tenantId}
             models={current.models ?? []}
             discoveredModels={testMutation.data?.discoveredModels}
@@ -480,7 +581,30 @@ export function ProviderCredentialCard({
         }}
       />
 
+      {/*
+        A refused delete (409 `CONNECTION_IS_DEFAULT`) says what it says, plus
+        the one action that unblocks it — and stays on screen, beside the
+        confirmation that produced it.
+      */}
+      {removeRefusal ? (
+        <p className="text-destructive text-xs" role="alert">
+          {removeRefusal} Make another connection the default first, then remove this one.
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {canMakeDefault ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMakeDefault}
+            disabled={putMutation.isPending}
+            aria-label={`Make ${title} the default ${meta.label} connection`}
+          >
+            {putMutation.isPending ? <Spinner /> : <IconStar aria-hidden />}
+            Make default
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           size="sm"
@@ -489,7 +613,7 @@ export function ProviderCredentialCard({
           // built-in plane — it is a REACHABILITY test of the endpoint, which is
           // the only question those rows can be wrong about.
           disabled={testMutation.isPending || (!keyOptional && apiKey.trim().length === 0 && !hasKey)}
-          aria-label={`Test the ${meta.label} connection`}
+          aria-label={`Test the ${title} connection`}
           title={!keyOptional && apiKey.trim().length === 0 && !hasKey ? 'Enter a key (or save one) to test this connection' : undefined}
         >
           {testMutation.isPending ? <Spinner /> : <IconTestPipe aria-hidden />}
@@ -532,9 +656,22 @@ export function ProviderCredentialCard({
         ) : null}
         {!resettable && current.version > 0 ? (
           confirmingRemove ? (
-            <div role="alertdialog" aria-live="assertive" aria-label={`Confirm removing the ${meta.label} connection`} className="contents">
-              <span className="text-muted-foreground text-xs">Remove this connection and use the platform default?</span>
-              <Button variant="ghost" size="sm" autoFocus onClick={() => setConfirmingRemove(false)} disabled={deleteMutation.isPending}>
+            <div role="alertdialog" aria-live="assertive" aria-label={`Confirm removing the ${title} connection`} className="contents">
+              <span className="text-muted-foreground text-xs">
+                {isSibling
+                  ? 'Remove this connection? Models declared on it are withdrawn with it.'
+                  : 'Remove this connection and use the platform default?'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                autoFocus
+                onClick={() => {
+                  setConfirmingRemove(false);
+                  setRemoveRefusal(null);
+                }}
+                disabled={deleteMutation.isPending}
+              >
                 Cancel
               </Button>
               <Button variant="destructive" size="sm" onClick={handleRemove} disabled={deleteMutation.isPending}>
@@ -547,14 +684,14 @@ export function ProviderCredentialCard({
               variant="outline"
               size="sm"
               onClick={() => setConfirmingRemove(true)}
-              aria-label={`Remove the ${meta.label} connection (use platform default)`}
+              aria-label={isSibling ? `Remove the ${title} connection` : `Remove the ${meta.label} connection (use platform default)`}
             >
               <IconPlugConnectedX aria-hidden />
-              Use platform default
+              {isSibling ? 'Remove connection' : 'Use platform default'}
             </Button>
           )
         ) : null}
-        <Button size="sm" onClick={handleSave} disabled={!canSave} aria-label={`${hasKey ? 'Save' : 'Save key'} for ${meta.label} · If-Match`}>
+        <Button size="sm" onClick={handleSave} disabled={!canSave} aria-label={`${hasKey ? 'Save' : 'Save key'} for ${title} · If-Match`}>
           {putMutation.isPending ? <Spinner /> : null}
           {hasKey ? (apiKey.trim().length > 0 ? 'Rotate key & save' : 'Save') : 'Save key'}
         </Button>

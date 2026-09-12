@@ -47,7 +47,7 @@ afterEach(() => {
 describe('ConnectionModelsEditor', () => {
   it('renders the declared list and saves the WHOLE list after an edit', async () => {
     const capture = stubFetch();
-    renderWithProviders(<ConnectionModelsEditor service="llm" provider="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
+    renderWithProviders(<ConnectionModelsEditor service="llm" slug="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
 
     expect((screen.getByDisplayValue('gpt-4o-mini') as HTMLInputElement).value).toBe('gpt-4o-mini');
 
@@ -73,7 +73,7 @@ describe('ConnectionModelsEditor', () => {
     renderWithProviders(
       <ConnectionModelsEditor
         service="llm"
-        provider="azure"
+        slug="azure"
         label="Azure OpenAI"
         tenantId="t-1"
         models={DECLARED}
@@ -90,7 +90,7 @@ describe('ConnectionModelsEditor', () => {
 
   it('cannot derive before a probe has listed anything, and says why', () => {
     stubFetch();
-    renderWithProviders(<ConnectionModelsEditor service="llm" provider="azure" label="Azure OpenAI" tenantId="t-1" models={[]} />);
+    renderWithProviders(<ConnectionModelsEditor service="llm" slug="azure" label="Azure OpenAI" tenantId="t-1" models={[]} />);
     const derive = screen.getByRole('button', { name: /derive from provider/i }) as HTMLButtonElement;
     expect(derive.disabled).toBe(true);
     expect(derive.getAttribute('title')).toContain('Test connection');
@@ -98,7 +98,7 @@ describe('ConnectionModelsEditor', () => {
 
   it('refuses to save an incomplete row and names what is missing', () => {
     stubFetch();
-    renderWithProviders(<ConnectionModelsEditor service="llm" provider="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
+    renderWithProviders(<ConnectionModelsEditor service="llm" slug="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
 
     fireEvent.click(screen.getByRole('button', { name: /add model/i }));
 
@@ -108,7 +108,7 @@ describe('ConnectionModelsEditor', () => {
 
   it('removes a row, and Save then sends the shorter list', async () => {
     const capture = stubFetch();
-    renderWithProviders(<ConnectionModelsEditor service="llm" provider="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
+    renderWithProviders(<ConnectionModelsEditor service="llm" slug="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} />);
 
     fireEvent.click(screen.getByRole('button', { name: /remove gpt-4o-mini/i }));
     fireEvent.click(screen.getByRole('button', { name: /save the azure openai model list/i }));
@@ -120,7 +120,7 @@ describe('ConnectionModelsEditor', () => {
   it('has no axe violations', async () => {
     stubFetch();
     const { container } = renderWithProviders(
-      <ConnectionModelsEditor service="llm" provider="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} discoveredModels={['gpt-4.1']} />,
+      <ConnectionModelsEditor service="llm" slug="azure" label="Azure OpenAI" tenantId="t-1" models={DECLARED} discoveredModels={['gpt-4.1']} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
