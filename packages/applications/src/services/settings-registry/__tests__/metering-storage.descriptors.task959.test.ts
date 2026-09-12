@@ -11,7 +11,11 @@ import { describe, expect, it } from 'vitest';
 
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { METERING_STORAGE_SETTINGS } from '../descriptors/metering-storage.descriptors';
-import { STORAGE_SNAPSHOT_CRON_KEY, STORAGE_SNAPSHOT_DEFAULTS, STORAGE_SNAPSHOT_ENABLED_KEY } from '../../storage-snapshot/storage-snapshot.constants';
+import {
+  STORAGE_SNAPSHOT_CRON_KEY,
+  STORAGE_SNAPSHOT_DEFAULTS,
+  STORAGE_SNAPSHOT_ENABLED_KEY,
+} from '../../storage-snapshot/storage-snapshot.constants';
 
 describe('metering.storageSnapshot descriptors', () => {
   it('registers both keys in the assembled catalog', () => {
