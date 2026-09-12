@@ -1,3 +1,4 @@
+import { BYTE_SOURCES, COMPUTE_DEVICES, type ByteSource, type ComputeDevice } from '@arcaai/applications';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
@@ -42,6 +43,65 @@ export class SttStreamingUsageSegmentRequest {
   @IsString()
   @IsOptional()
   connection_id?: string | null;
+
+  // TASK-959 §3.2/§4.2 — the compute and network halves of the same question,
+  // per SEGMENT rather than per session: a fallback leg carries its own ASR
+  // seconds and its own bytes, instead of the whole session's compute landing on
+  // whichever engine happened to finish.
+  //
+  // Unlike the batch callback, `UsageSegment.to_dict()` dumps EVERY field, so
+  // these arrive as explicit `null`s on a self-hosted leg rather than being
+  // omitted. `@IsOptional()` accepts both spellings; only an older STT, which
+  // predates the fields entirely, sends neither.
+  @ApiPropertyOptional({
+    description:
+      'ASR-only wall-clock seconds spent on THIS engine. Becomes a GPU_SECOND or CPU_SECOND row depending on `device`. Absent from an STT that ' +
+      'predates the field; `0` from a crash-recovered session that kept no accumulator.',
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  processing_seconds?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Which device THIS segment occupied. DECIDES THE UNIT (cuda/mps -> GPU_SECOND, cpu -> CPU_SECOND), which is why it is resolved per segment: a ' +
+      'cloud leg occupied this service\'s CPU waiting on the vendor even when the self-hosted leg of the same session held a real accelerator.',
+    enum: COMPUTE_DEVICES,
+  })
+  @IsString()
+  @IsIn([...COMPUTE_DEVICES])
+  @IsOptional()
+  device?: ComputeDevice;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Bytes this engine sent to a third party (EGRESS_BYTE). NULL — never 0 — on a self-hosted engine, which made no such call: "never applicable" ' +
+      'and "measured zero" are different facts and the ledger must not conflate them.',
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  request_bytes?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Bytes this engine received from a third party (INGRESS_BYTE). Same null-vs-zero rule.' })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  response_bytes?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'How honest this segment\'s byte counts are: `wire` (counted at the HTTP transport) or `app` (an application-level proxy, because the vendor ' +
+      'SDK owns its own websocket). Null alongside null byte counts.',
+    enum: BYTE_SOURCES,
+  })
+  @IsString()
+  @IsIn([...BYTE_SOURCES])
+  @IsOptional()
+  byte_source?: ByteSource | null;
 }
 
 /**
