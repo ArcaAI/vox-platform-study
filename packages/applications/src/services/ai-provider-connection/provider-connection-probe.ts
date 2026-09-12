@@ -1,9 +1,9 @@
-import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Optional } from '@nestjs/common';
 import { AiProviderConnectionEntity, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
 import { decryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
 import { AiProviderConnectionService } from './ai-provider-connection.service';
-import { ProviderService } from './constants';
+import { CONNECTION_ERROR_CODES, ProviderService, isKnownProviderId } from './constants';
 import { TestProviderConnectionRequest, TestProviderConnectionResponse } from './dto';
 
 /** Probe timeout — generous enough for a slow link, short enough for a synchronous admin click. */
@@ -20,10 +20,12 @@ interface ProbeTarget {
   apiVersion: string | null;
   deploymentName: string | null;
   /**
-   * TASK-958 — the VENDOR this probe talks to, read off the stored row (the
-   * path segment is the connection slug, which for a named sibling is not a
-   * provider id). Falls back to the segment when no row was found, which is the
-   * only way an unsaved connection can be probed at all.
+   * TASK-958 — the VENDOR this probe talks to. In precedence order: the STORED
+   * row (authoritative and immutable), the body's own `provider` (the create
+   * dialog, before any row exists), or the path segment when that segment IS a
+   * provider id (every pre-958 call). There is no fourth fallback: a connection
+   * slug that names no vendor and has no row is a 400, not a probe of a vendor
+   * nobody serves. See `resolveProbeVendor`.
    */
   provider: string;
   source: TestProviderConnectionResponse['source'];
@@ -93,9 +95,10 @@ export class ProviderConnectionProbe {
     this.connections.assertResolvable(service, slug, tenantId);
 
     // TASK-958 — the path segment is the connection SLUG, and which probe to run
-    // is a property of the VENDOR. The stored row answers that; a slug with no
-    // row can only be its own provider id (that is what makes it addressable at
-    // all), so falling back to it preserves every pre-958 call.
+    // is a property of the VENDOR. `resolveProbeVendor` (below) is the single
+    // place that decides it: the stored row, else the body's `provider`, else
+    // the slug when the slug IS a provider id — and a named 400 when none of
+    // the three answers, rather than a probe of a vendor nobody serves.
     const target = await this.resolveTarget(service, slug, tenantId, dto);
     const provider = target.provider;
     const outcome = await this.run(service, provider, tenantId, target);
@@ -112,20 +115,26 @@ export class ProviderConnectionProbe {
       dto.apiVersion === undefined ||
       dto.deploymentName === undefined;
 
-    let row: AiProviderConnectionEntity | null = null;
-    let tier: TestProviderConnectionResponse['source'] = 'request';
-    if (needsStored) {
-      // The caller's own row is looked up by SLUG (it may be a named sibling);
-      // the platform fallback by the PROVIDER that row names, because the
-      // platform tier holds one row per provider and knows nothing of a tenant's
-      // names for its connections.
-      row = await this.connections.findRow(service, slug, tenantId);
-      tier = row ? 'tenant' : 'request';
-      if (!row && tenantId !== SYSTEM_TENANT_ID) {
-        row = await this.connections.findDefaultRow(service, slug, SYSTEM_TENANT_ID);
-        tier = row ? 'platform' : 'request';
-      }
-      if (tenantId === SYSTEM_TENANT_ID && row) tier = 'platform';
+    // The caller's own row is looked up by SLUG — it may be a named sibling —
+    // and UNCONDITIONALLY, even when the body supplies every field: the row is
+    // what says which VENDOR this connection is, and a saved connection must
+    // never need the caller to restate that (nor be allowed to contradict it).
+    // It is still only the FIELD fallback when the body left something out, so
+    // `source` below is unchanged for every pre-TASK-958 call.
+    let row: AiProviderConnectionEntity | null = await this.connections.findRow(service, slug, tenantId);
+    let tier: TestProviderConnectionResponse['source'] = row ? (tenantId === SYSTEM_TENANT_ID ? 'platform' : 'tenant') : 'request';
+
+    // WHICH VENDOR (TASK-958). The row answers it when there is one; the body
+    // answers it when there is not; the slug answers it when the slug is itself
+    // a provider id, which is every call that predates named connections.
+    const provider = this.resolveProbeVendor(service, slug, row, dto);
+
+    if (needsStored && !row && tenantId !== SYSTEM_TENANT_ID) {
+      // The platform fallback is read by the resolved VENDOR, never by the
+      // slug: the platform tier holds one row per provider and knows nothing of
+      // a tenant's names for its connections.
+      row = await this.connections.findDefaultRow(service, provider, SYSTEM_TENANT_ID);
+      tier = row ? 'platform' : 'request';
     }
 
     const clean = (v: string | null | undefined): string | null => {
@@ -154,9 +163,78 @@ export class ProviderConnectionProbe {
       region: clean(dto.region) ?? clean(row?.region),
       apiVersion: clean(dto.apiVersion) ?? clean(row?.apiVersion),
       deploymentName: clean(dto.deploymentName) ?? clean(row?.deploymentName),
-      provider: row?.provider ?? slug,
+      provider,
       source,
     };
+  }
+
+  /**
+   * The vendor this probe talks to — the one decision that selects WHICH probe
+   * runs and, with it, which endpoint a stored key is presented to.
+   *
+   * ORDER, and why each step is where it is:
+   *   1. A SAVED row is authoritative and its provider is immutable (the write
+   *      path's own rule). A body that contradicts it is REFUSED, not ignored:
+   *      quietly honouring `{provider:'anthropic'}` on an OpenAI row would send
+   *      that row's decrypted key to a vendor that never issued it.
+   *   2. The BODY, for a connection the operator has not saved yet — the create
+   *      dialog's "Test connection" before "Save".
+   *   3. The SLUG, when the slug is itself a provider id: every call that
+   *      predates TASK-958, unchanged.
+   *   4. Otherwise a named 400. `openai-research` is a connection name; guessing
+   *      a vendor from it produced a "reachability" pass that proved nothing
+   *      about the key just typed.
+   *
+   * `isKnownProviderId` is deliberately service-agnostic here, exactly as it is
+   * on the write path: whether THIS tier may hold THIS (service, provider) is
+   * the connection service's boundary to draw, not this probe's.
+   */
+  private resolveProbeVendor(
+    service: ProviderService,
+    slug: string,
+    row: AiProviderConnectionEntity | null,
+    dto: TestProviderConnectionRequest,
+  ): string {
+    const requested = dto.provider?.trim() || undefined;
+
+    if (row) {
+      if (requested !== undefined && requested !== row.provider) {
+        throw new ConflictException({
+          code: CONNECTION_ERROR_CODES.PROVIDER_IMMUTABLE,
+          message:
+            `Connection '${slug}' serves '${row.provider}', so it cannot be tested as '${requested}' — a connection never ` +
+            'changes vendor. Drop `provider` to test the saved connection, or test the other vendor on its own connection.',
+          slug,
+          provider: row.provider,
+          requestedProvider: requested,
+        });
+      }
+      return row.provider;
+    }
+
+    if (requested !== undefined) {
+      if (!isKnownProviderId(requested)) {
+        throw new BadRequestException({
+          code: CONNECTION_ERROR_CODES.PROVIDER_REQUIRED,
+          message: `'${requested}' is not a provider this platform serves, so there is nothing to probe. Send the vendor id (for example \`openai\`).`,
+          slug,
+          service,
+          provider: requested,
+        });
+      }
+      return requested;
+    }
+
+    if (isKnownProviderId(slug)) return slug;
+
+    throw new BadRequestException({
+      code: CONNECTION_ERROR_CODES.PROVIDER_REQUIRED,
+      message:
+        `'${slug}' is a connection name, not a provider, and no connection by that name is saved yet — so this request does ` +
+        'not say which vendor to test. Send `provider` (for example `{"provider": "openai"}`) alongside the credentials.',
+      slug,
+      service,
+    });
   }
 
   // ───────────────────────────── the per-provider probes ─────────────────────────────

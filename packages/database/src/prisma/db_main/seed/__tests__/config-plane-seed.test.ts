@@ -428,9 +428,24 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     // are derived from `provider` here and BOTH must be unique: a duplicate
     // would now violate a different index than it used to, and a seed that
     // tripped only one of the two would fail halfway through a re-seed.
+    //
+    // The two keys are read through the writer's OWN derivations rather than
+    // through one shared expression: `slug` and `defaultForProvider` are both
+    // `row.provider` TODAY, and spelling that twice would make this assertion
+    // true by construction instead of true about the seed. A row that ever
+    // carries its own `slug` (or seeds a non-default connection, `null` marker)
+    // is then measured against the index it would actually violate — and a
+    // `null` marker is excluded exactly as Postgres excludes it, NULLs being
+    // distinct in a unique index.
+    type SeededConnection = (typeof SYSTEM_AI_PROVIDER_CONNECTIONS)[number] & { slug?: string; defaultForProvider?: string | null };
+    const slugOf = (c: SeededConnection): string => c.slug ?? c.provider;
+    const defaultMarkerOf = (c: SeededConnection): string | null => (c.defaultForProvider === undefined ? c.provider : c.defaultForProvider);
+
     const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
-    const identities = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
-    const defaults = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
+    const identities = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${slugOf(c)}`);
+    const defaults = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => defaultMarkerOf(c) !== null).map(
+      (c) => `${c.tenantId}::${c.service}::${defaultMarkerOf(c)}`,
+    );
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(identities).size, 'duplicate (tenantId, service, slug)').toBe(identities.length);
     expect(new Set(defaults).size, 'duplicate (tenantId, service, defaultForProvider)').toBe(defaults.length);
