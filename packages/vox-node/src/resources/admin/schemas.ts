@@ -1430,7 +1430,7 @@ export interface CreateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`) when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
   bucketPrefix?: string;
   /** Model category */
   category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
@@ -5736,7 +5736,7 @@ export interface TriggerModelDownloadResponse {
 
 export interface UnregisteredBucketPrefix {
   bucketPrefix: string;
-  layout: 'flat' | 'hf-cache';
+  layout: 'flat' | 'hf-cache' | 'staged';
   objectCount: number;
   slug?: string | null;
   totalBytes?: number | null;
@@ -5991,7 +5991,7 @@ export interface UpdateModelRequest {
   asrProfile?: AsrProfileRequest;
   /** Upstream base checkpoint. Send an empty string to clear. */
   baseModel?: string;
-  /** Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
+  /** Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`). Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
   bucketPrefix?: string;
   /** Model category */
   category?: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
