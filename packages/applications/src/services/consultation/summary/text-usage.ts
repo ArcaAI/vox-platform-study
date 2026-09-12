@@ -1,6 +1,7 @@
 import { AiCapability, AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
 
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
+import { appendComputeAndByteUnits, type ComputeAugmentedBatch } from '../../usageLedger/compute-units';
 import type { UsageEventBatchInput } from '../../usageLedger/dto';
 import {
   LLM_ENDPOINT_KINDS,
@@ -9,7 +10,7 @@ import {
   normalizeLlmUsage,
   toUsageUnitQuantities,
 } from '../../usageLedger/normalizer/llm-usage-normalizer';
-import type { UsageAttributes } from '../../usageLedger/usage-attributes';
+import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-attributes';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 
 /**
@@ -57,6 +58,20 @@ export interface TextUsageDetail {
   occurredAt: Date;
   promptTokens: number;
   completionTokens: number;
+  /**
+   * TASK-959 §3.2 — the four compute/network readings.
+   *
+   * `totalMs` is TEXT's client wall clock around the call and is present on
+   * every modern response; `engineMs` is the engine's OWN reported time
+   * (llama.cpp `prompt_ms + predicted_ms`, Ollama `total_duration - load_duration`)
+   * and is `null` when the engine reports none. `null` throughout means NOT
+   * MEASURED — an older TEXT, or an adapter off the byte-counting pool — which
+   * is a different fact from a measured zero and must not become a row.
+   */
+  totalMs: number | null;
+  engineMs: number | null;
+  requestBytes: number | null;
+  responseBytes: number | null;
   /** The provider's own usage object, in its wire shape (may be absent). */
   raw: unknown;
 }
@@ -147,6 +162,12 @@ export function parseTextUsageDetail(raw: unknown): TextUsageDetail | null {
     occurredAt: Number.isNaN(occurredAt.getTime()) ? new Date() : occurredAt,
     promptTokens: toCount(block.prompt_tokens),
     completionTokens: toCount(block.completion_tokens),
+    // TASK-959 — omitted-when-unmeasured on the wire, so absence stays `null`
+    // here rather than collapsing to a zero that would meter as a real reading.
+    totalMs: toMeasurement(block.total_ms),
+    engineMs: toMeasurement(block.engine_ms),
+    requestBytes: toMeasurement(block.request_bytes),
+    responseBytes: toMeasurement(block.response_bytes),
     raw: block.raw ?? null,
   };
 }
@@ -158,6 +179,17 @@ interface BuildLlmUsageParams {
   consultationId?: string | null;
   doctorId?: string | null;
   departmentId?: string | null;
+  /**
+   * TASK-959 §3.1 — which device a SELF-HOSTED engine ran on, resolved by the
+   * caller from `metering.compute.deviceByProvider`.
+   *
+   * Supplied rather than discovered: `apps/text` is stateless per call and has
+   * no device field on any request or model row to report one from. Omitted
+   * resolves to `cpu` (the cheaper unit, never nothing), and it is IGNORED
+   * entirely for a cloud or BYOK call — those seconds are HOPE's own CPU
+   * spent calling the vendor, never the vendor's hardware.
+   */
+  device?: ComputeDevice | null;
 }
 
 /**
@@ -168,6 +200,26 @@ interface BuildLlmUsageParams {
  * gets no rows at all rather than a row saying "nothing happened".
  */
 export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatchInput | null {
+  return buildLlmUsageBatches(params)?.batch ?? null;
+}
+
+/**
+ * The FULL-FIDELITY form of {@link buildLlmUsageInput} (TASK-959 §6.3).
+ *
+ * Identical in every case but one: a BYOK call's platform CPU leg carries
+ * `costBasis: INTERNAL` while its token rows stay `BYOK_NOTIONAL`, and
+ * `costBasis` lives on `common`, so saying both takes two batches. A caller
+ * that records only `batch` loses that one row — never a token, never a byte.
+ *
+ * {@link buildLlmUsageInput} keeps its single-batch return because its six call
+ * sites live in other lanes' files (`summary.service.ts`,
+ * `chain-summary.service.ts`, `live-documentation.service.ts`,
+ * `comprehensive-summary.processor.ts`, `agent-draft-test.service.ts`,
+ * `prompt-management.service.ts`); each migrates here when its lane next opens
+ * the file, and until then a BYOK call from that path is metered exactly as it
+ * is today plus its byte rows.
+ */
+export function buildLlmUsageBatches(params: BuildLlmUsageParams): ComputeAugmentedBatch | null {
   const { usage, tenantId, operation } = params;
 
   const units = normalizeUnits(usage);
@@ -175,7 +227,7 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
 
   const provider = toLedgerProvider(usage.textProvider);
 
-  return {
+  const batch: UsageEventBatchInput = {
     common: {
       tenantId,
       // The TEXT task id — stable across the completion and abort paths, so an
@@ -202,6 +254,8 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
     },
     units,
   };
+
+  return appendComputeAndByteUnits(batch, measurementsOf(usage, params.device));
 }
 
 interface BuildGuardrailUsageParams {
@@ -212,6 +266,8 @@ interface BuildGuardrailUsageParams {
   departmentId?: string | null;
   /** Used when guardrail reported no request id of its own. */
   fallbackRequestId?: string | null;
+  /** See {@link BuildLlmUsageParams.device}. */
+  device?: ComputeDevice | null;
 }
 
 /**
@@ -222,6 +278,11 @@ interface BuildGuardrailUsageParams {
  * margin, not on a bill.
  */
 export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): UsageEventBatchInput | null {
+  return buildGuardrailUsageBatches(params)?.batch ?? null;
+}
+
+/** The full-fidelity form of {@link buildGuardrailUsageInput} — see {@link buildLlmUsageBatches}. */
+export function buildGuardrailUsageBatches(params: BuildGuardrailUsageParams): ComputeAugmentedBatch | null {
   const { usage, tenantId } = params;
 
   const units = normalizeUnits(usage);
@@ -230,7 +291,7 @@ export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): Usa
   const requestId = usage.taskId || usage.requestId || params.fallbackRequestId || '';
   const provider = toLedgerProvider(usage.textProvider);
 
-  return {
+  const batch: UsageEventBatchInput = {
     common: {
       tenantId,
       idempotencyKey: UsageIdempotencyKey.guardrailRequest(requestId),
@@ -250,6 +311,8 @@ export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): Usa
     },
     units,
   };
+
+  return appendComputeAndByteUnits(batch, measurementsOf(usage, params.device));
 }
 
 interface BuildLlmUsageFromTokenCountsParams {
@@ -266,6 +329,15 @@ interface BuildLlmUsageFromTokenCountsParams {
   consultationId?: string | null;
   doctorId?: string | null;
   departmentId?: string | null;
+  /** See {@link BuildLlmUsageParams.device}. */
+  device?: ComputeDevice | null;
+  /**
+   * Wall clock around the call, when this caller measured one. This builder
+   * exists for writers that never called TEXT, so there is usually nothing to
+   * time — omitted means no compute row, not a zero-second one.
+   */
+  totalMs?: number | null;
+  engineMs?: number | null;
 }
 
 /**
@@ -285,6 +357,11 @@ interface BuildLlmUsageFromTokenCountsParams {
  * cache/reasoning split, no provider translation.
  */
 export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromTokenCountsParams): UsageEventBatchInput | null {
+  return buildLlmUsageBatchesFromTokenCounts(params)?.batch ?? null;
+}
+
+/** The full-fidelity form of {@link buildLlmUsageInputFromTokenCounts} — see {@link buildLlmUsageBatches}. */
+export function buildLlmUsageBatchesFromTokenCounts(params: BuildLlmUsageFromTokenCountsParams): ComputeAugmentedBatch | null {
   const units = toUsageUnitQuantities({
     inputTokens: toCount(params.inputTokens),
     outputTokens: toCount(params.outputTokens),
@@ -294,7 +371,7 @@ export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromToken
   });
   if (units.length === 0) return null;
 
-  return {
+  const batch: UsageEventBatchInput = {
     common: {
       tenantId: params.tenantId,
       idempotencyKey: UsageIdempotencyKey.llmRequest(params.requestId),
@@ -315,6 +392,8 @@ export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromToken
     },
     units,
   };
+
+  return appendComputeAndByteUnits(batch, { device: params.device, totalMs: params.totalMs, engineMs: params.engineMs });
 }
 
 // ── internals ───────────────────────────────────────────────────────────────
@@ -366,6 +445,41 @@ function buildAttributes(usage: TextUsageDetail): UsageAttributes {
   }
 
   return attributes;
+}
+
+/**
+ * The compute/network readings a TEXT usage block carries, as the shared
+ * appender wants them.
+ *
+ * `byteSource` is hard-coded `wire` and that is a claim about WHERE the count
+ * came from: `apps/text` counts inside its own httpx transport
+ * (`providers/pool.py`), so the number includes framing and is what the vendor
+ * saw. It is stamped only when a byte count is actually present — the appender
+ * drops the attribute along with the rows when nothing was observed.
+ */
+function measurementsOf(usage: TextUsageDetail, device?: ComputeDevice | null) {
+  return {
+    device,
+    totalMs: usage.totalMs,
+    engineMs: usage.engineMs,
+    requestBytes: usage.requestBytes,
+    responseBytes: usage.responseBytes,
+    byteSource: 'wire' as const,
+  };
+}
+
+/**
+ * A non-negative finite reading, or `null` for "not measured".
+ *
+ * Deliberately NOT {@link toCount}, which floors a missing value to `0`: a zero
+ * token count and a zero-millisecond call mean the same thing (nothing
+ * happened), but a MISSING millisecond count means the service did not report
+ * one, and metering that as zero would quietly claim every older call took no
+ * time at all.
+ */
+function toMeasurement(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function toCount(value: unknown): number {
