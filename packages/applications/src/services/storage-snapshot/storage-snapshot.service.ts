@@ -3,7 +3,15 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
 import Decimal from 'decimal.js';
-import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
+import {
+  AiCapability,
+  AiCostBasis,
+  AiDeploymentKind,
+  AiUsageUnit,
+  CoreDatabaseService,
+  ResourceStatusType,
+  StorageTopologyType,
+} from '@arcaai/domains';
 
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
@@ -228,7 +236,9 @@ export class StorageSnapshotService implements IStorageSnapshotService, OnModule
   // ── Internals ────────────────────────────────────────────────────────────
 
   /**
-   * The nine aggregates, issued ONCE and grouped by tenant.
+   * The TEN aggregates — one media, seven text, two claim-check — issued ONCE
+   * and grouped by tenant, plus the dedicated-topology lookup they are filtered
+   * against.
    *
    * @param tenantId a single tenant, or `null` for the whole platform.
    */
@@ -248,7 +258,7 @@ export class StorageSnapshotService implements IStorageSnapshotService, OnModule
         where: { ...tenantFilter, resourceStatus: { not: ResourceStatusType.DELETED } },
       }),
       client.tenantStorageConfig.findMany({
-        where: { ...tenantFilter, topology: 'DEDICATED', resourceStatus: { not: ResourceStatusType.DELETED } },
+        where: { ...tenantFilter, topology: StorageTopologyType.DEDICATED, resourceStatus: { not: ResourceStatusType.DELETED } },
         select: { tenantId: true },
         distinct: ['tenantId'],
       }),

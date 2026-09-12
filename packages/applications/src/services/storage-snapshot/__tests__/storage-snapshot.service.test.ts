@@ -240,7 +240,7 @@ describe('StorageSnapshotService.snapshotAll', () => {
     expect(keys).toEqual(['storage:t1:media:2026-09-12', 'storage:t2:media:2026-09-12', 'storage:t2:text:2026-09-12']);
   });
 
-  it('issues the nine aggregates ONCE for the whole sweep, not once per tenant', async () => {
+  it('issues its aggregates ONCE for the whole sweep, not once per tenant', async () => {
     const fixture = emptyFixture();
     fixture.tenants = [{ id: 't1' }, { id: 't2' }, { id: 't3' }];
     const { service, queryRaw, baseClient } = makeService(fixture);
