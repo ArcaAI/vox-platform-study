@@ -49,8 +49,13 @@ export interface TextUsageDetail {
    *
    * `byok` says WHOSE money; this says WHICH of the tenant's accounts. A tenant may
    * hold several connections for one vendor, so `textProvider` no longer identifies
-   * the credential that was spent. `null` = a platform credential, or a TEXT that
-   * predates the field — never guessed from the provider name.
+   * the credential that was spent.
+   *
+   * `null` does NOT mean "the platform paid": a platform-default credential comes from
+   * the SYSTEM tenant's own connection row and carries THAT row's id (which is how
+   * platform spend stays reconcilable against the platform's own bill). `null` means
+   * no row at all — a self-hosted engine, an environment credential, or a TEXT that
+   * predates the field. Never guessed from the provider name.
    */
   connectionId: string | null;
   serviceTier: string | null;

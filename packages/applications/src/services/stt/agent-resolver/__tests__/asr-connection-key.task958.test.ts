@@ -6,8 +6,9 @@
  * fallback chain would authenticate with the key that just failed. `AsrSpecCore`
  * carries `connectionKey` / `connectionId` / `connectionSlug` (they sit on the CORE
  * so they cover the primary AND the fallback core), and `provider_overrides` is
- * keyed by `connectionKey` — which equals the provider id for a default or platform
- * row, so every pre-958 payload is byte-identical.
+ * keyed by `connectionKey` — the provider id for a default or platform row (so every
+ * pre-958 payload is byte-identical), `provider:slug` for a named sibling (G2a F6:
+ * a bare slug would share a namespace with provider ids).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -67,11 +68,11 @@ describe('TASK-958 (ASR) — the core names its connection and provider_override
     expect(spec.connectionKey).toBe('openai');
     expect(spec.connectionId).toBe(OPENAI_1);
     expect(spec.connectionSlug).toBe('openai');
-    expect(spec.fallback.spec?.connectionKey).toBe('openai-research');
+    expect(spec.fallback.spec?.connectionKey).toBe('openai:openai-research');
     expect(spec.fallback.spec?.connectionId).toBe(OPENAI_2);
-    expect(Object.keys(providerOverrides ?? {}).sort()).toEqual(['openai', 'openai-research']);
+    expect(Object.keys(providerOverrides ?? {}).sort()).toEqual(['openai', 'openai:openai-research']);
     expect(providerOverrides?.['openai'].api_key).toBe('key-one');
-    expect(providerOverrides?.['openai-research'].api_key).toBe('key-two');
+    expect(providerOverrides?.['openai:openai-research'].api_key).toBe('key-two');
   });
 
   it('an unbound (SYSTEM catalogue) core keys by the PROVIDER id — the pre-958 payload — while still naming the row that answered', async () => {
@@ -104,7 +105,10 @@ describe('TASK-958 (ASR) — the core names its connection and provider_override
 
   it('a disabled named connection leaves that chain without a credential rather than lending it the default key', async () => {
     agents.resolve.mockResolvedValueOnce(bind(cloudAgent, OPENAI_1)).mockResolvedValueOnce(bind(cloudFallbackAgent, 'conn-disabled'));
-    const { providerOverrides } = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
+    const { spec, providerOverrides } = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-azure-transcription' });
     expect(Object.keys(providerOverrides ?? {})).toEqual(['openai']);
+    // G2a F7 — and the chain SAYS which connection it wanted, under a key nothing filled,
+    // so `apps/stt` fails it closed instead of reading the default row's entry.
+    expect(spec.fallback.spec?.connectionKey).toBe('openai:conn-disabled');
   });
 });

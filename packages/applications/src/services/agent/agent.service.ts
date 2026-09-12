@@ -679,6 +679,16 @@ export class AgentService extends BaseService implements IAgentService {
       provider: resolved.provider,
       model: resolved.model,
       guardrailEnabled: compiled.guardrail?.enabled ?? true,
+      // TASK-958 F11 — the account the draft is BOUND to (D-3: the model row names the
+      // connection), so the bench spends the same one the published agent will. Sent only
+      // when the target is the row's OWN: a caller-supplied `{provider, model}` override is
+      // a different target, and the row's connection says nothing about it.
+      ...(resolved.source === 'row' && (model as AiModelEntity).sourceConnectionId
+        ? {
+            connectionId: (model as AiModelEntity).sourceConnectionId,
+            connectionProvider: (model as AiModelEntity).provider ?? null,
+          }
+        : {}),
       // TASK-891 (OD-4) — the draft's reasoning posture travels with the run. The bench is where
       // an author checks the control they just set, so it has to be the run that obeys it.
       generation: asRecord(compiled.parameters)?.generation,

@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import type { Readable } from 'node:stream';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
@@ -8,6 +8,8 @@ import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { readGenerationId } from '../text-request/text-stream-open';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
+import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
+import { AGENT_CONNECTION_UNAVAILABLE } from './agent-resolver.service';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import type { IEntitlementsService as IEntitlementsServicePort } from '../entitlements/IEntitlementsService';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
@@ -56,6 +58,17 @@ export interface DraftTestSubmitInput {
    * authored no block has nothing to say and must produce the body it produced before.
    */
   generation?: unknown;
+  /**
+   * TASK-958 F11 — the `AiProviderConnection` the draft's primary model is DECLARED on
+   * (`AiModel.sourceConnectionId`), and the provider that connection is filed under.
+   *
+   * Both absent for a SYSTEM catalogue model, which names no connection: the run then
+   * takes the ordinary tenant → SYSTEM fold, exactly as it did before multiplicity.
+   * Present, they are authoritative — the bench must spend the account the author bound,
+   * or it is benching a different agent than the one they are about to publish.
+   */
+  connectionId?: string | null;
+  connectionProvider?: string | null;
 }
 
 /**
@@ -104,6 +117,10 @@ export class AgentDraftTestService {
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsServicePort,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerServicePort,
+    // TASK-958 F11 — the by-id credential resolve for a draft bound to a NAMED connection.
+    // `@Optional()` and TRAILING: without it a bound draft still refuses to bench on the
+    // wrong account (the guard below fires), and an unbound one is untouched.
+    @Optional() private readonly credentials?: ProviderCredentialResolver,
   ) {
     // Env tier, bootstrap TRANSPORT address (rule 00 §Configuration Tiers) — the same resolution
     // `PromptManagementService` and `SummaryService` make.
@@ -135,6 +152,13 @@ export class AgentDraftTestService {
 
     if (this.textRequestEnrichment) {
       await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, input.generation);
+      // TASK-958 F11 — the BOUND account first, exactly as `AgentInvocationService` does.
+      // `applyTenantProviderOverrides` folds by PROVIDER NAME, which can only ever answer
+      // with the tenant's DEFAULT connection, so a draft declared on the second OpenAI
+      // account would otherwise be benched — and metered — on the first one's key. The
+      // enrichment returns early when `provider_overrides` is already set, which is
+      // exactly the contract it states.
+      await this.applyBoundConnection(body, input);
       await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     }
 
@@ -278,6 +302,44 @@ export class AgentDraftTestService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Pre-set `provider_overrides` from the connection the draft's model is declared on.
+   *
+   * Keyed by the body's OWN provider (the wire id `apps/text` registers), because that is
+   * the key both the enrichment and TEXT read it under — the connection plane's own
+   * provider id is what the credential is RESOLVED by, not what it is filed under here.
+   *
+   * A binding that cannot serve REFUSES the run with the same 409 the invocation plane
+   * raises. Falling through would bench the draft on the tenant's default account and
+   * report a green result for an agent that cannot run.
+   *
+   * Only a NOT-FOUND is folded into that refusal. A veto (409) and an un-entitled
+   * platform default (403) are already attributable answers with their own remedies, and
+   * flattening them into one generic code would tell an admin to re-key a connection they
+   * deliberately disabled.
+   */
+  private async applyBoundConnection(body: Record<string, unknown>, input: DraftTestSubmitInput): Promise<void> {
+    const { connectionId, connectionProvider } = input;
+    if (!connectionId || !connectionProvider) return;
+    const binding = this.credentials
+      ? await this.credentials.resolve('llm', connectionProvider, input.tenantId, { connectionId }).catch((error: unknown) => {
+          if (error instanceof NotFoundException) return null;
+          throw error;
+        })
+      : null;
+    if (!binding) {
+      throw new ConflictException({
+        code: AGENT_CONNECTION_UNAVAILABLE,
+        message:
+          `This draft's model is declared on a ${connectionProvider} connection that cannot serve ` +
+          '(disabled, missing its key, or no longer visible to this tenant). Enable or re-key that connection before testing.',
+        modelSlug: input.model,
+        connectionId,
+      });
+    }
+    body.provider_overrides = { [input.provider]: binding.override };
   }
 
   /** The ONE shared `INTERNAL_ACCESS_TOKEN`; `X-Tenant-Id` is never conditional (TASK-888). */

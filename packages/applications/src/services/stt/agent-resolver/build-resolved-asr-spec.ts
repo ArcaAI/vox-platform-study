@@ -79,7 +79,13 @@ export interface AsrProfileRejection {
  */
 export interface AsrConnectionBinding {
   connectionId: string;
-  connectionSlug: string;
+  /**
+   * OPTIONAL since G2a's F7: a binding that FAILED CLOSED still declares itself on the
+   * core (id + key), but the tenant's own name for the row may not be readable — the
+   * connection plane is optional on the resolver, and the row may be gone. The key is
+   * namespaced either way, so a missing slug can never make it collide.
+   */
+  connectionSlug?: string;
   connectionKey: string;
 }
 
@@ -458,7 +464,11 @@ export function buildAsrSpecCore(
     // lists all three in its `OPTIONAL_FIELDS`, so an unset optional has to be absent
     // for the two halves to stay independently deployable.
     ...(connection
-      ? { connectionId: connection.connectionId, connectionSlug: connection.connectionSlug, connectionKey: connection.connectionKey }
+      ? {
+          connectionId: connection.connectionId,
+          ...(connection.connectionSlug ? { connectionSlug: connection.connectionSlug } : {}),
+          connectionKey: connection.connectionKey,
+        }
       : {}),
     agent: { slug: agent.slug, versionId: agent.agentVersionId, versionNumber: agent.versionNumber, tenantId: agent.tenantId, source: agent.source },
     models,

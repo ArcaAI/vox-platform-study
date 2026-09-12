@@ -65,10 +65,14 @@ export interface UsageEventInput {
    *
    * CARRIED, never derived: the service that actually authenticated reports it
    * (TEXT's `usage_detail.connection_id`, STT's completion + teardown payloads,
-   * TTS's `X-Tts-Connection-Id` / usage frames). `null` is a real answer — a
-   * platform env credential belongs to no row, and a sender that predates the
-   * field names none. Nothing here infers it from `provider` or `deployment`: a
-   * guessed account id is worse than none.
+   * TTS's `X-Tts-Connection-Id` / usage frames).
+   *
+   * `null` is a real answer, and it is NOT the platform tier: a platform-default
+   * credential is the SYSTEM tenant's own connection row and arrives with that
+   * row's id, so `CLOUD` spend is attributable too. `null` means no row — a
+   * self-hosted engine, an environment credential, or a sender that predates the
+   * field. Nothing here infers it from `provider` or `deployment`: a guessed
+   * account id is worse than none.
    *
    * It is NOT a pricing dimension. The price book still resolves on
    * `(plane, capability, provider, model, unit)`; which of a tenant's own keys

@@ -1450,7 +1450,7 @@
         "fallback": {
           "connectionId": "c0000002-0000-4000-8000-000000000002",
           "connectionSlug": "azure-speech-research",
-          "connectionKey": "azure-speech-research"
+          "connectionKey": "azure-speech:azure-speech-research"
         }
       }
     },
@@ -1552,7 +1552,7 @@
           "runtimeKey": "0199a861-0000-7000-8000-000000000011:fallback:azure-speech-stt-research",
           "connectionId": "c0000002-0000-4000-8000-000000000002",
           "connectionSlug": "azure-speech-research",
-          "connectionKey": "azure-speech-research",
+          "connectionKey": "azure-speech:azure-speech-research",
           "agent": {
             "slug": "clinic-azure-transcription",
             "versionId": "0199a861-0000-7000-8000-000000000011",

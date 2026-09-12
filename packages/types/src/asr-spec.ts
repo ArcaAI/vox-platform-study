@@ -331,9 +331,16 @@ export interface AsrSpecCore {
    * chains can name the SAME cloud engine on DIFFERENT accounts and a
    * provider-keyed credential map would hand both the same entry — a failover that
    * spends the key that just failed. `connectionKey` is what the `apps/stt` loaders
-   * read their entry under (the tenant connection's `slug`; the provider id for a
-   * platform row, which is what keeps every pre-958 payload byte-identical), and
-   * `connectionId` is what the usage ledger attributes the spend to (D-7).
+   * read their entry under — the provider id for the tenant's DEFAULT connection and
+   * for a platform row (which is what keeps every pre-958 payload byte-identical),
+   * `provider:slug` for a named sibling — and `connectionId` is what the usage ledger
+   * attributes the spend to (D-7).
+   *
+   * The `provider:` prefix keeps tenant-chosen names out of the provider-id namespace,
+   * and the key is OPAQUE to `apps/stt`: a loader looks the string up, it never parses
+   * it. A chain whose connection could not serve (disabled, keyless, gone) still carries
+   * its key — one nothing filled — so the loader MISSES and fails that chain closed
+   * rather than authenticating as whichever account happens to hold the provider key.
    *
    * All three are OMIT-WHEN-ABSENT rather than nullable. The `apps/stt` mirror
    * (`stt.pipeline.spec.AsrSpecCore`) is `extra='forbid'` and lists them in its
