@@ -17,6 +17,7 @@ __all__ = [
     "_extract_stream_usage",
     "_extract_usage",
     "_credential_attribution",
+    "funding_label",
 ]
 
 
@@ -93,6 +94,17 @@ def _credential_attribution(request_body: GenerateRequest) -> tuple[bool, str | 
     if entry is None:
         return False, None
     return entry.funding == "tenant", entry.connection_id
+
+
+def funding_label(byok: bool) -> str:
+    """The tier that paid, as the TASK-959 byte metric labels it.
+
+    Derived from the SAME `byok` that decides `cost_basis`, in one place, so a
+    byte total and a token total can never disagree about who funded the call
+    they describe. `tenant` = the tenant's own credential (BYOK); `platform` =
+    the platform's, including the SYSTEM-tenant default a tenant inherited.
+    """
+    return "tenant" if byok else "platform"
 
 
 def _extract_stream_usage(data: dict[str, Any]) -> tuple[int, int, int | None]:
