@@ -773,8 +773,8 @@ describe('StreamingSessionService', () => {
         expect(byokVendor.units).toEqual([
           { unit: 'SESSION_SECOND', quantity: 60.0 },
           { unit: 'AUDIO_SECOND', quantity: 20.0 },
-          { unit: 'EGRESS_BYTE', quantity: 4096, attributesJson: { byteSource: 'wire' } },
-          { unit: 'INGRESS_BYTE', quantity: 512, attributesJson: { byteSource: 'wire' } },
+          { unit: 'EGRESS_BYTE', quantity: '4096', attributesJson: { byteSource: 'wire' } },
+          { unit: 'INGRESS_BYTE', quantity: '512', attributesJson: { byteSource: 'wire' } },
         ]);
 
         // The CPU this service burned calling the tenant's vendor is the
@@ -782,7 +782,7 @@ describe('StreamingSessionService', () => {
         expect(byokPlatform.common.idempotencyKey).toBe('stt:session:s-1');
         expect(byokPlatform.common.costBasis).toBe('INTERNAL');
         expect(byokPlatform.common.connectionId).toBe('conn-1');
-        expect(byokPlatform.units).toEqual([{ unit: 'CPU_SECOND', quantity: 4.0, attributesJson: { device: 'cpu' } }]);
+        expect(byokPlatform.units).toEqual([{ unit: 'CPU_SECOND', quantity: '4.000', attributesJson: { device: 'cpu' } }]);
 
         // The self-hosted leg keeps its own ordinal key, its own device, and no
         // byte rows at all — `null` is "no third-party call", not a zero.
@@ -791,7 +791,7 @@ describe('StreamingSessionService', () => {
         expect(selfHosted.units).toEqual([
           { unit: 'SESSION_SECOND', quantity: 30.0 },
           { unit: 'AUDIO_SECOND', quantity: 22.5 },
-          { unit: 'GPU_SECOND', quantity: 11.25, attributesJson: { device: 'cuda' } },
+          { unit: 'GPU_SECOND', quantity: '11.250', attributesJson: { device: 'cuda' } },
         ]);
       });
 
@@ -845,7 +845,7 @@ describe('StreamingSessionService', () => {
 
         expect(calls).toHaveLength(1);
         expect(calls[0].common.costBasis).toBeUndefined();
-        expect(calls[0].units).toContainEqual({ unit: 'CPU_SECOND', quantity: 4.0, attributesJson: { device: 'cpu' } });
+        expect(calls[0].units).toContainEqual({ unit: 'CPU_SECOND', quantity: '4.000', attributesJson: { device: 'cpu' } });
       });
 
       it('every attributesJson bag it builds — common AND per-unit — passes the allow-list', async () => {

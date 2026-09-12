@@ -1,5 +1,6 @@
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
-import { UsageEventBatchInput, UsageUnitInput } from '../../usageLedger/dto';
+import { appendComputeAndByteUnits } from '../../usageLedger/compute-units';
+import { UsageEventBatchInput } from '../../usageLedger/dto';
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
 import type { ComputeDevice } from '../../usageLedger/usage-attributes';
 
@@ -79,20 +80,12 @@ export interface NerUsageEventParams {
  */
 export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatchInput {
   const { tenantId, requestId, consultationId, doctorId, charCount, model } = params;
-  // TASK-959 T1-merge: this is the `appendComputeAndByteUnits` rule for a row that can only ever
-  // be SELF_HOSTED + INTERNAL (apps/nlp runs the platform's own weights, and there is no
-  // AiProviderConnection plane for NER at all), so there is no mixed-basis split to make here —
-  // the compute row rides the same batch. Bytes are not applicable: no vendor is called.
-  const computeUnits: UsageUnitInput[] = [];
-  const seconds = params.inferenceMs !== null && params.inferenceMs !== undefined ? Math.round(params.inferenceMs) / 1000 : null;
-  if (params.device && seconds !== null && seconds > 0) {
-    computeUnits.push({
-      unit: params.device === 'cpu' ? AiUsageUnit.CPU_SECOND : AiUsageUnit.GPU_SECOND,
-      quantity: seconds,
-      attributesJson: { device: params.device },
-    });
-  }
-  return {
+  // TASK-959 — the compute row is appended by the ONE shared helper, here, because this function
+  // is what BUILDS the batch (see `usageLedger/compute-units.ts`). A NER row can only ever be
+  // SELF_HOSTED + INTERNAL (apps/nlp runs the platform's own weights, and there is no
+  // AiProviderConnection plane for NER at all), so `platformBatch` is unreachable for it and the
+  // compute row always rides this batch. Bytes are not applicable: no vendor is called.
+  const batch: UsageEventBatchInput = {
     common: {
       tenantId,
       idempotencyKey: UsageIdempotencyKey.nlpRequest(requestId),
@@ -110,6 +103,11 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
       doctorId: doctorId ?? null,
       requestId,
     },
-    units: [{ unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 }, { unit: AiUsageUnit.REQUEST, quantity: 1 }, ...computeUnits],
+    units: [
+      { unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 },
+      { unit: AiUsageUnit.REQUEST, quantity: 1 },
+    ],
   };
+
+  return appendComputeAndByteUnits(batch, { device: params.device, totalMs: params.inferenceMs }).batch;
 }

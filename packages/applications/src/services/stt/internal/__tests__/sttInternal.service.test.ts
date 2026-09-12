@@ -812,7 +812,7 @@ describe('SttInternalService', () => {
           { unit: 'AUDIO_SECOND', quantity: 42.5 },
           // `device` rides the UNIT's own attributes, not `common`: the
           // AUDIO_SECOND row is unchanged by this ticket, byte for byte.
-          { unit: 'GPU_SECOND', quantity: 12.5, attributesJson: { device: 'cuda' } },
+          { unit: 'GPU_SECOND', quantity: '12.500', attributesJson: { device: 'cuda' } },
         ]);
         expect(input.common.attributesJson.device).toBeUndefined();
       });
@@ -829,7 +829,7 @@ describe('SttInternalService', () => {
         });
         expect(mockUsageLedgerService.recordUsage.mock.calls[0][0].units).toContainEqual({
           unit: 'CPU_SECOND',
-          quantity: 3,
+          quantity: '3.000',
           attributesJson: { device: 'cpu' },
         });
 
@@ -845,7 +845,7 @@ describe('SttInternalService', () => {
         });
         expect(mockUsageLedgerService.recordUsage.mock.calls[0][0].units).toContainEqual({
           unit: 'GPU_SECOND',
-          quantity: 2,
+          quantity: '2.000',
           attributesJson: { device: 'mps' },
         });
       });
@@ -881,8 +881,8 @@ describe('SttInternalService', () => {
         });
 
         const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
-        expect(input.units).toContainEqual({ unit: 'EGRESS_BYTE', quantity: 4096, attributesJson: { byteSource: 'wire' } });
-        expect(input.units).toContainEqual({ unit: 'INGRESS_BYTE', quantity: 512, attributesJson: { byteSource: 'wire' } });
+        expect(input.units).toContainEqual({ unit: 'EGRESS_BYTE', quantity: '4096', attributesJson: { byteSource: 'wire' } });
+        expect(input.units).toContainEqual({ unit: 'INGRESS_BYTE', quantity: '512', attributesJson: { byteSource: 'wire' } });
       });
 
       it('emits no byte rows for a self-hosted job that made no third-party call', async () => {
@@ -930,7 +930,7 @@ describe('SttInternalService', () => {
         expect(vendorBatch.units.map((u: any) => u.unit)).toEqual(['AUDIO_SECOND', 'EGRESS_BYTE', 'INGRESS_BYTE']);
 
         expect(platformBatch.common.costBasis).toBe('INTERNAL');
-        expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: 3, attributesJson: { device: 'cpu' } }]);
+        expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: '3.000', attributesJson: { device: 'cpu' } }]);
         // Same key, same attribution, same transaction — one call, two bases.
         expect(platformBatch.common.idempotencyKey).toBe(vendorBatch.common.idempotencyKey);
         expect(platformBatch.common.connectionId).toBe('conn-1');
@@ -967,7 +967,9 @@ describe('SttInternalService', () => {
         });
 
         const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
-        expect(input.units).toContainEqual({ unit: 'CPU_SECOND', quantity: 0.3, attributesJson: { device: 'cpu' } });
+        // `0.1 + 0.2` is `0.30000000000000004` as a double; a fixed-3dp STRING is the only form
+        // that survives the trip to a price without carrying that artefact with it.
+        expect(input.units).toContainEqual({ unit: 'CPU_SECOND', quantity: '0.300', attributesJson: { device: 'cpu' } });
       });
 
       it('still completes the job when the second (INTERNAL-basis) emission throws', async () => {

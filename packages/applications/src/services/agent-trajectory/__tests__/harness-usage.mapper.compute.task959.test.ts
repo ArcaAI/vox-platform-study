@@ -128,8 +128,13 @@ describe('buildHarnessUsageEvent — compute and bytes', () => {
 
     expect(quantityOf(buildHarnessUsageEvent(step, { device: 'cuda' }), AiUsageUnit.GPU_SECOND)).toBe('2.500');
     expect(quantityOf(buildHarnessUsageEvent(step, { device: 'cpu' }), AiUsageUnit.CPU_SECOND)).toBe('2.500');
-    // No device resolved → the cheaper unit, never nothing.
-    expect(quantityOf(buildHarnessUsageEvent(step), AiUsageUnit.CPU_SECOND)).toBe('2.500');
+    // No device resolved → NO compute row. `cuda` and `cpu` are priced an order of magnitude
+    // apart, so the fallback for "unresolved" is not the cheaper unit — it is nothing. The
+    // caller's `IComputeDeviceResolver` is what answers `cpu` for an unlisted provider; the
+    // tokens of this step are billed either way.
+    expect(quantityOf(buildHarnessUsageEvent(step), AiUsageUnit.CPU_SECOND)).toBeUndefined();
+    expect(quantityOf(buildHarnessUsageEvent(step), AiUsageUnit.GPU_SECOND)).toBeUndefined();
+    expect(quantityOf(buildHarnessUsageEvent(step), AiUsageUnit.INPUT_TOKEN)).toBe(10);
   });
 
   it('prefers the engine clock and records bytes as wire counts', () => {
@@ -150,9 +155,12 @@ describe('buildHarnessUsageEvent — compute and bytes', () => {
 
     // A cloud call is metered on the PLATFORM's CPU, whatever the engine reported.
     expect(quantityOf(event, AiUsageUnit.CPU_SECOND)).toBe('2.400');
-    expect(quantityOf(event, AiUsageUnit.EGRESS_BYTE)).toBe(4096);
-    expect(quantityOf(event, AiUsageUnit.INGRESS_BYTE)).toBe(8192);
-    expect(event?.common.attributesJson?.byteSource).toBe('wire');
+    expect(quantityOf(event, AiUsageUnit.EGRESS_BYTE)).toBe('4096');
+    expect(quantityOf(event, AiUsageUnit.INGRESS_BYTE)).toBe('8192');
+    // Per byte row, not on `common`: the token rows beside them say nothing about how a byte
+    // count was taken.
+    expect(event?.units.find((line) => line.unit === AiUsageUnit.EGRESS_BYTE)?.attributesJson).toEqual({ byteSource: 'wire' });
+    expect(event?.common.attributesJson?.byteSource).toBeUndefined();
   });
 
   it('splits a tenant-funded step: notional tokens, INTERNAL platform second', () => {
@@ -186,7 +194,7 @@ describe('buildHarnessUsageEvent — a losing fallback leg (§6.2)', () => {
   it('bills ONE CPU_SECOND row and no token rows', () => {
     const event = buildHarnessUsageEvent(failedStep());
 
-    expect(event?.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '0.850' }]);
+    expect(event?.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '0.850', attributesJson: { device: 'cpu' } }]);
     expect(event?.common.attributesJson?.leg).toBe('failed');
     // The provider spelling is canonicalized exactly as a serving leg's is.
     expect(event?.common.provider).toBe('azure');
@@ -205,7 +213,7 @@ describe('buildHarnessUsageEvent — a losing fallback leg (§6.2)', () => {
 
     expect(result?.batch.common.deployment).toBe(AiDeploymentKind.BYOK);
     expect(result?.batch.common.costBasis).toBe(AiCostBasis.INTERNAL);
-    expect(result?.batch.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '0.850' }]);
+    expect(result?.batch.units).toEqual([{ unit: AiUsageUnit.CPU_SECOND, quantity: '0.850', attributesJson: { device: 'cpu' } }]);
     expect(result?.platformBatch).toBeUndefined();
   });
 
