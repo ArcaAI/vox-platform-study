@@ -26,6 +26,7 @@ import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ProviderCredentialVetoedException, QuotaExceededException } from '@arcaai/exceptions';
 import { AiProviderConnectionService } from '../../ai-provider-connection/ai-provider-connection.service';
 import { TextRequestEnrichmentService } from '../text-request-enrichment.service';
+import { withTask958Lookups } from '../../ai-provider-connection/__tests__/task958-repo-lookups';
 
 const TENANT_A = 'tenant-aaa';
 
@@ -34,13 +35,7 @@ const SELF_HOST = 'vllm';
 /** A cloud BYO LLM provider: platform SPEND when the SYSTEM tier supplies it. */
 const CLOUD = 'azure';
 
-function makeRow(o: {
-  tenantId?: string;
-  provider?: string;
-  enabled?: boolean;
-  baseUrl?: string | null;
-  encryptedApiKey?: Uint8Array | null;
-}) {
+function makeRow(o: { tenantId?: string; provider?: string; enabled?: boolean; baseUrl?: string | null; encryptedApiKey?: Uint8Array | null }) {
   return AiProviderConnectionFactory.CreateAiProviderConnection({
     tenantId: o.tenantId ?? SYSTEM_TENANT_ID,
     service: 'llm',
@@ -59,7 +54,7 @@ function makeRow(o: {
  */
 function makeEnrichment(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?: boolean } = {}) {
   const rowsByTenant = opts.rowsByTenant ?? {};
-  const repo = {
+  const repo = withTask958Lookups({
     findByTenantServiceProvider: vi.fn(async (service: string, provider: string, tenantId: string) => {
       const rows = (rowsByTenant[tenantId] ?? []) as any[];
       return rows.find((r) => r.service === service && r.provider === provider) ?? null;
@@ -71,7 +66,7 @@ function makeEnrichment(opts: { rowsByTenant?: Record<string, unknown[]>; entitl
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
-  };
+  });
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: [] } : k === 'tenantId' ? TENANT_A : undefined)),
   };
@@ -80,7 +75,7 @@ function makeEnrichment(opts: { rowsByTenant?: Record<string, unknown[]>; entitl
     decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
     supportsTransit: vi.fn(() => true),
   };
-  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true), assertQuantityQuota: vi.fn() };
 
   const connections = new AiProviderConnectionService(
     repo as any,
@@ -234,9 +229,7 @@ describe('R2-C.1 — every resolver guarantee survives the wider path', () => {
       },
     });
 
-    await expect(enrichment.applyTenantProviderOverrides({ provider: CLOUD })).rejects.toBeInstanceOf(
-      ProviderCredentialVetoedException,
-    );
+    await expect(enrichment.applyTenantProviderOverrides({ provider: CLOUD })).rejects.toBeInstanceOf(ProviderCredentialVetoedException);
   });
 
   it('a resolver ERROR still fails OPEN with no injection (a fault is not a policy decision)', async () => {
