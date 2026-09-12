@@ -1,8 +1,15 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+#: The resolved inference-device placement (TASK-959 metering). Every model
+#: inference response reports which of these it actually ran on — never a
+#: raw torch device string like "cuda:0" (the caller normalises), and never
+#: absent: a service that cannot resolve one reports "cpu", the cheaper unit,
+#: rather than nothing.
+DeviceLabel = Literal["cuda", "mps", "cpu"]
 
 
 class ModelType(StrEnum):
