@@ -14,7 +14,7 @@ shorter ``/internal/harness``).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import httpx
 import structlog
@@ -243,6 +243,35 @@ class TrajectoryReportResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     accepted: int = 0
+
+
+class _Wireable(Protocol):
+    """Anything that can render itself as one camelCase wire object.
+
+    Both halves of a trajectory POST satisfy it — :class:`TrajectoryStepInput` and the
+    worker's ``ComputeSample`` — which is what lets this module build the body without
+    importing ``harness.temporal.compute_metering`` (it imports this one).
+    """
+
+    def to_wire(self) -> dict[str, Any]: ...
+
+
+def trajectory_body(
+    steps: Sequence[_Wireable] = (), compute_samples: Sequence[_Wireable] = ()
+) -> dict[str, Any]:
+    """The ``POST {internal_prefix}/trajectory`` body for a batch of steps and/or samples.
+
+    Each key is present only when it has content, which is exactly the TASK-959 §10.2
+    contract: *"a POST may carry ``steps`` only, ``computeSamples`` only, or both."* A
+    steps-only batch is therefore byte-identical to what this client has always sent, so a
+    gateway that predates ``computeSamples`` sees no change on the path it already serves.
+    """
+    body: dict[str, Any] = {}
+    if steps:
+        body["steps"] = [s.to_wire() for s in steps]
+    if compute_samples:
+        body["computeSamples"] = [s.to_wire() for s in compute_samples]
+    return body
 
 
 def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str, Any]:
@@ -1450,18 +1479,35 @@ class ApiClient:
         self,
         steps: Sequence[TrajectoryStepInput],
         *,
+        compute_samples: Sequence[_Wireable] = (),
         idempotency_key: str | None = None,
     ) -> TrajectoryReportResponse:
-        """Publish a BATCH of ordered trajectory steps.
+        """Publish a BATCH of ordered trajectory steps and/or worker compute samples.
 
-        POSTs ``{"steps": [...]}`` to the NEW gateway route
-        ``POST {internal_prefix}/trajectory`` (service-token auth, like every other
+        POSTs ``{"steps": [...]}`` / ``{"computeSamples": [...]}`` (or both) to the gateway
+        route ``POST {internal_prefix}/trajectory`` (service-token auth, like every other
         method). Raises :class:`ApiServiceError` on transport/HTTP error; the harness
         ACTIVITY is the fire-and-forget swallow layer (a trajectory/gateway outage must
         NEVER fail the clinical loop — same posture as ``report_progress``), and it
         batches at phase boundaries to bound the call count. The optional
         ``Idempotency-Key`` lets apps/api dedup a retried/redelivered batch.
+
+        TASK-959 §3.4 — ``compute_samples`` carries the worker's own per-activity CPU on the
+        SAME route rather than a new endpoint, because it is the same delivery hazard and
+        gets the same retry + spool (``temporal/trajectory_delivery.py``).
         """
-        body = {"steps": [s.to_wire() for s in steps]}
+        return await self.report_trajectory_body(
+            trajectory_body(steps, compute_samples), idempotency_key=idempotency_key
+        )
+
+    async def report_trajectory_body(
+        self, body: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> TrajectoryReportResponse:
+        """POST an ALREADY-BUILT trajectory body.
+
+        The re-delivery seam: a batch that could not be delivered is spooled as its wire
+        body (camelCase, one-way — ``TrajectoryStepInput`` is snake_case and ``extra="forbid"``,
+        so a wire object cannot be validated back into one), and the drain replays it here.
+        """
         data = await self._post("/trajectory", body, idempotency_key=idempotency_key)
         return TrajectoryReportResponse(accepted=int(data.get("accepted", 0)))

@@ -34,6 +34,12 @@ from harness.temporal.activities import (
     ping_activity,
 )
 from harness.temporal.client import get_temporal_client
+from harness.temporal.compute_metering import (
+    FLUSH_INTERVAL_S,
+    ComputeMeteringInterceptor,
+    ComputeSampleBuffer,
+    get_compute_sample_buffer,
+)
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
@@ -43,6 +49,7 @@ from harness.temporal.interpreter.loop_activities import (
 )
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
+from harness.temporal.trajectory_delivery import drain_trajectory_spool
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
     HarnessDocWorkflow,
@@ -174,6 +181,43 @@ async def _sweep_model_caches_forever(
             logger.info("harness.worker.model_cache_swept", released=released)
 
 
+async def _flush_compute_metering_once(buffer: ComputeSampleBuffer) -> int:
+    """One metering turn: post buffered samples, then re-drain the spool. NEVER raises.
+
+    The two halves are one job on purpose. Samples and trajectory steps travel the same
+    route, so the outage that spools one spools the other - and the drain belongs HERE, in
+    the worker's own background loop, rather than in an activity's flush: making one tenant's
+    phase boundary pay for a past gateway outage is exactly the latency the deliberately short
+    trajectory HTTP timeout exists to prevent.
+    """
+    flushed = await buffer.flush()
+    try:
+        await drain_trajectory_spool()
+    except Exception as exc:  # noqa: BLE001 - metering housekeeping never breaks the worker
+        logger.warning(
+            "harness.worker.trajectory_spool_drain_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+    return flushed
+
+
+async def _flush_compute_metering_forever(
+    buffer: ComputeSampleBuffer, interval_s: float = FLUSH_INTERVAL_S
+) -> None:
+    """Flush per-activity CPU samples on a timer, or early once enough have accumulated.
+
+    Cancelled when the worker shuts down - and the shutdown path flushes ONCE MORE after that
+    cancel, because Temporal drains in-flight activities inside the worker's context manager,
+    so the last samples are buffered only after that context exits.
+    """
+    while True:
+        await buffer.wait_for_work(timeout_s=interval_s)
+        flushed = await _flush_compute_metering_once(buffer)
+        if flushed:
+            logger.debug("harness.worker.compute_samples_flushed", samples=flushed)
+
+
 # Liveness heartbeat ────────────────────────────────────────────────────────
 #
 # The worker serves no HTTP, so it has no endpoint for a kubelet httpGet probe.
@@ -291,6 +335,11 @@ async def run_worker() -> None:
             # fall back to the KeyboardInterrupt path handled in main().
             pass
 
+    # §3.4 - the worker's own CPU, metered per activity without touching any activity's code.
+    # Additive to the client's interceptors (`Worker` prepends those), so the OpenTelemetry
+    # `TracingInterceptor` wired in `get_temporal_client` is untouched.
+    compute_samples = get_compute_sample_buffer()
+
     worker = Worker(
         client,
         task_queue=settings.temporal.task_queue,
@@ -334,6 +383,7 @@ async def run_worker() -> None:
         # Temporal admits unbounded concurrent activities, which just queue behind
         # that single process-wide semaphore once they reach an inferential call.
         max_concurrent_activities=settings.max_concurrent_activities,
+        interceptors=[ComputeMeteringInterceptor(compute_samples)],
     )
 
     logger.info(
@@ -344,6 +394,7 @@ async def run_worker() -> None:
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     heartbeat = asyncio.create_task(_write_heartbeat_forever())
+    metering = asyncio.create_task(_flush_compute_metering_forever(compute_samples))
     # Push invalidation for the control-plane pull client.
     invalidation = start_config_invalidation_listener()
 
@@ -371,12 +422,16 @@ async def run_worker() -> None:
         async with worker:
             await interrupt_event.wait()
     finally:
-        for task in (sweeper, heartbeat, invalidation):
+        for task in (sweeper, heartbeat, metering, invalidation):
             if task is None:
                 continue
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        # Temporal drained its in-flight activities inside the context manager above, so their
+        # samples were buffered AFTER the flusher's last tick. This is the flush that stops a
+        # rolled worker losing the CPU of the work it had just finished.
+        await _flush_compute_metering_once(compute_samples)
         await stop_registration(service_release_task)
         await service_release_http_client.aclose()
     logger.info("harness.worker.stopped")
