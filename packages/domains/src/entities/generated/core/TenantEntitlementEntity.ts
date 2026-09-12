@@ -13,6 +13,9 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   maxApiKeys?: number | null;
   // Per-tenant override of PlanEntitlement.maxWorkflowDefinitions.
   maxWorkflowDefinitions?: number | null;
+  // TASK-958 D-8 — per-tenant override of the connection ceiling (per tenant,
+  // all services; null = unbounded / inherit the plan default).
+  maxAiProviderConnections?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
@@ -46,6 +49,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
   private _maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
+  private _maxAiProviderConnections?: ITenantEntitlementEntity['maxAiProviderConnections'];
   private _storageQuotaBytes?: ITenantEntitlementEntity['storageQuotaBytes'];
   private _maxConcurrentSessions?: ITenantEntitlementEntity['maxConcurrentSessions'];
   private _monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
@@ -74,6 +78,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
     this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
+    this._maxAiProviderConnections = init.maxAiProviderConnections;
     this._storageQuotaBytes = init.storageQuotaBytes;
     this._maxConcurrentSessions = init.maxConcurrentSessions;
     this._monthlyConsultations = init.monthlyConsultations;
@@ -141,6 +146,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set maxWorkflowDefinitions(value: ITenantEntitlementEntity['maxWorkflowDefinitions']) {
     this.setProperty('maxWorkflowDefinitions', value);
+  }
+
+  get maxAiProviderConnections(): ITenantEntitlementEntity['maxAiProviderConnections'] {
+    return this._maxAiProviderConnections;
+  }
+
+  set maxAiProviderConnections(value: ITenantEntitlementEntity['maxAiProviderConnections']) {
+    this.setProperty('maxAiProviderConnections', value);
   }
 
   get storageQuotaBytes(): ITenantEntitlementEntity['storageQuotaBytes'] {

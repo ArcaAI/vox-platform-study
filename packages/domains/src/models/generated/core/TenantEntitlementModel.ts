@@ -15,6 +15,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public maxApiKeys: number | null;
   public storageQuotaBytes: bigint | null;
   public maxWorkflowDefinitions: number | null;
+  public maxAiProviderConnections: number | null;
   public maxConcurrentSessions: number | null;
   public monthlyConsultations: number | null;
   public monthlyTranscriptionMinutes: number | null;
@@ -46,6 +47,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.maxApiKeys = data.maxApiKeys;
     this.storageQuotaBytes = data.storageQuotaBytes;
     this.maxWorkflowDefinitions = data.maxWorkflowDefinitions;
+    this.maxAiProviderConnections = data.maxAiProviderConnections;
     this.maxConcurrentSessions = data.maxConcurrentSessions;
     this.monthlyConsultations = data.monthlyConsultations;
     this.monthlyTranscriptionMinutes = data.monthlyTranscriptionMinutes;
