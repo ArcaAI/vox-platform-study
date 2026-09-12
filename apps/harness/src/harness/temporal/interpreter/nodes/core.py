@@ -1446,6 +1446,13 @@ async def _run_text_generation(
                 top_p=generation.get("topP"),
                 response_format=wire_format,
                 guardrail_policy={"enabled": guardrail_decision.enabled},
+                # TASK-958 G3 — THIS candidate's own connection. The gateway resolved it from
+                # the model row's `sourceConnectionId`, so a sibling-bound agent authenticates
+                # as the account it names; without it the client fell back to a lookup by
+                # provider NAME, which is the tenant's DEFAULT account for that vendor. Each
+                # candidate of the chain carries its own, so a fallback does not inherit the
+                # primary's.
+                provider_override=candidate.provider_override,
             )
         except TextServiceError as exc:
             # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —

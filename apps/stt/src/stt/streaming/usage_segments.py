@@ -24,11 +24,14 @@ Two properties the rest of the system depends on:
   and ``stt_provider_switch_total``. TASK-958 added the connection to that key
   because a tenant with two accounts of one vendor has two engines with ONE name,
   and billing them as one row is the thing this module exists to prevent.
-  Known bound on that key (TASK-958): a span is identified by its ASR FORMAT, so a
-  session that switched between two CONNECTIONS of one engine — same format, different
-  account — is one span and is attributed to the connection the session manager last
-  stamped. Making it exact means giving a span its own connection identity, which is a
-  change to ``switch_to`` and the engine-switch controller, not to this aggregation.
+  That bound used to be approximate and is no longer (TASK-958 G3): a span now
+  RECORDS the ``(connection_key, connection_id)`` of the engine that serves it, at
+  the moment it is loaded or switched in, so two CONNECTIONS of one vendor — same
+  ASR format, different account — are two spans and two rows. Before, a span was
+  identified by its format alone and every span took the connection the session
+  manager had stamped LAST, which re-labelled a platform-funded primary leg with
+  the tenant sibling a failover happened to end on: the funding flips with it,
+  because the override entry is read under the declared key.
 
 * **Segments are anchored to the session totals.** Every span but the last takes
   its measured delta (clamped into what is left); the last takes the remainder.
@@ -136,6 +139,14 @@ class _Span:
     #: is the difference.
     counters_start: EngineUsageCounters = EngineUsageCounters()
     counters_end: EngineUsageCounters | None = None
+    #: TASK-958 G3 — the ``(connection_key, connection_id)`` of the engine serving
+    #: this span, anchored exactly like the counters above: recorded when the span
+    #: opens, never re-read afterwards. ``None`` means this span recorded none (a
+    #: caller that predates the field); the resolver is handed that ``None`` and
+    #: applies the session-level stamp instead. That is a FALLBACK, not a default —
+    #: a recorded ``(None, None)`` is a real answer (an engine that authenticates as
+    #: no connection at all) and must not be overwritten by the session's.
+    connection: tuple[str | None, str | None] | None = None
 
 
 def _anchor(raw: list[float], total: float) -> list[float]:
@@ -214,11 +225,14 @@ class EngineUsageAccumulator:
         *,
         audio_seconds: float = 0.0,
         counters: EngineUsageCounters = EngineUsageCounters(),
+        connection: tuple[str | None, str | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._clock = clock
         self._spans: list[_Span] = [
-            _Span(asr_format, audio_seconds, clock(), counters_start=counters)
+            _Span(
+                asr_format, audio_seconds, clock(), counters_start=counters, connection=connection
+            )
         ]
 
     @property
@@ -231,6 +245,7 @@ class EngineUsageAccumulator:
         *,
         audio_seconds: float,
         counters: EngineUsageCounters = EngineUsageCounters(),
+        connection: tuple[str | None, str | None] | None = None,
     ) -> None:
         """Close the live span and open one on ``asr_format``.
 
@@ -243,13 +258,25 @@ class EngineUsageAccumulator:
         ``counters`` is the worker's cumulative snapshot AT the swap: it closes
         the outgoing span's compute/byte window and opens the incoming one's, so
         the fallback leg cannot inherit the primary's GPU seconds (TASK-959).
+
+        ``connection`` is the same idea for MONEY (TASK-958 G3): the incoming
+        engine's ``(connection_key, connection_id)``, taken at the swap, so the
+        outgoing leg keeps the account it actually spent. It is why a switch
+        between two connections of ONE vendor is a real boundary here even though
+        ``asr_format`` does not change.
         """
         live = self._spans[-1]
         live.audio_end = audio_seconds
         live.wall_end = self._clock()
         live.counters_end = counters
         self._spans.append(
-            _Span(asr_format, audio_seconds, live.wall_end, counters_start=counters)
+            _Span(
+                asr_format,
+                audio_seconds,
+                live.wall_end,
+                counters_start=counters,
+                connection=connection,
+            )
         )
 
     def close(
@@ -258,7 +285,9 @@ class EngineUsageAccumulator:
         audio_seconds: float,
         total_audio_seconds: float,
         total_session_seconds: float,
-        resolve: Callable[[Any], tuple[str, str, str | None] | None],
+        resolve: Callable[
+            [Any, tuple[str | None, str | None] | None], tuple[str, str, str | None] | None
+        ],
         total_processing_seconds: float = 0.0,
         counters: EngineUsageCounters = EngineUsageCounters(),
         device: str | None = None,
@@ -268,6 +297,14 @@ class EngineUsageAccumulator:
         Pure: the spans are not mutated, so a teardown summary built twice (a
         reaper push-back racing a late DELETE) yields identical segments and the
         idempotency keys derived from them line up.
+
+        ``resolve`` is called once per span with that span's OWN
+        ``(asr_format, connection)`` — the second argument being the
+        ``(connection_key, connection_id)`` recorded when the span opened, or
+        ``None`` when it recorded none. Attribution is therefore a property of the
+        span, not of the session: the funding tier follows from the override entry
+        under the span's own key, so a platform-funded leg stays ``CLOUD`` however
+        the session ends (TASK-958 G3).
 
         A span whose format ``resolve`` cannot attribute is LEFT OUT rather than
         guessed, and a span with neither audio nor wall-clock time is dropped —
@@ -318,7 +355,7 @@ class EngineUsageAccumulator:
         for span, ended, span_audio, span_wall, span_processing in zip(
             self._spans, span_counters, audio, wall, processing, strict=True
         ):
-            attribution = resolve(span.asr_format)
+            attribution = resolve(span.asr_format, span.connection)
             if attribution is None:
                 continue
             bucket = totals.setdefault(attribution, _Totals())

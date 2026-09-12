@@ -525,6 +525,9 @@ export class AgentController {
       ...(agentRequest.response_format ? { response_format: agentRequest.response_format } : {}),
       ...(agentRequest.speed !== undefined ? { speed: agentRequest.speed } : {}),
     };
+    // TASK-958 G3 — the connection the PRIMARY candidate was bound to. Used only as the
+    // classification fallback below, for an `apps/tts` that echoes no `X-Tts-Connection-Id`.
+    let boundConnectionId: string | null = null;
     if (this.ttsResolver) {
       // FAILS CLOSED: `apps/tts` refuses a request with no resolved spec, so an unresolvable
       // agent must surface as the 404/409 it is rather than as an opaque downstream 503.
@@ -533,6 +536,7 @@ export class AgentController {
       forwardBody.response_format = forwardBody.response_format ?? spec.primary.parameters.format ?? undefined;
       forwardBody.speed = forwardBody.speed ?? spec.primary.parameters.speed ?? undefined;
       if (providerOverrides && Object.keys(providerOverrides).length > 0) forwardBody.provider_overrides = providerOverrides;
+      boundConnectionId = spec.primary.connection?.connectionId ?? null;
     }
 
     if (this.entitlementsService) {
@@ -580,8 +584,21 @@ export class AgentController {
     // agent may bind a NON-default connection, so the provider name no longer says it.
     const connectionId = (upstream.headers['x-tts-connection-id'] as string | undefined) || null;
     const overridesForClassification = forwardBody.provider_overrides as Parameters<typeof classifyTtsProvider>[1] | undefined;
+    // TASK-958 G3 (W1d) — the FOURTH `classifyTtsProvider` call site, and the one that was
+    // still calling it with two arguments while reading the header two lines above. The map is
+    // keyed by CONNECTION KEY, so without the served id the classifier falls back to
+    // `servingEntry`'s heuristics — the exact provider key, else exactly ONE `provider:`
+    // prefixed entry. A tenant with TWO accounts of one vendor in the chain is ambiguous by
+    // construction there, so its own BYOK synthesis was labelled platform `CLOUD` and charged
+    // to COGS.
+    //
+    // The spec's primary connection is the fallback for an `apps/tts` that echoes no header.
+    // It is deliberately NOT stamped on the ledger row below: the echo names the candidate
+    // that actually served, the spec names the one we asked for, and selecting an entry out of
+    // a map this request itself sent is a weaker claim than naming the row that was spent.
+    const classifyConnectionId = connectionId ?? boundConnectionId;
     const { deployment, costBasis } = provider
-      ? classifyTtsProvider(provider, overridesForClassification)
+      ? classifyTtsProvider(provider, overridesForClassification, classifyConnectionId)
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
     const characters = [...agentRequest.input].length;
