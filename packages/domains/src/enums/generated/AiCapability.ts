@@ -8,4 +8,6 @@ export enum AiCapability {
   NLP = 'NLP',
   TTS = 'TTS',
   EMBEDDING = 'EMBEDDING',
+  STORAGE = 'STORAGE',
+  WORKFLOW = 'WORKFLOW',
 }

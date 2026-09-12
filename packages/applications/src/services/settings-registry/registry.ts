@@ -20,6 +20,7 @@ import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descript
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
+import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
@@ -69,6 +70,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Outbox-drain schedule (handoff) + the
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
   ...METERING_SETTINGS,
+  // TASK-959 — which DEVICE each self-hosted LLM server runs on, which is what
+  // decides whether a call's occupancy seconds are metered as GPU_SECOND or
+  // CPU_SECOND. Its own file, and NOT part of the family above: every key there
+  // is `globalOnly` platform plumbing at `maxScope: 'system'`, while this one is
+  // tenant-overridable and deliberately tenant-visible — a tenant that brings
+  // its own self-hosted server is the only party who knows its hardware.
+  ...METERING_COMPUTE_SETTINGS,
   // AI task-model defaults (guardrail/NLP/TEXT).
   // `GUARDRAIL_POLICY_SETTINGS` (13 `guardrail.policy.*` keys) was here. Every
   // one was UNREAD — nothing on any path resolved them — so they were removed
