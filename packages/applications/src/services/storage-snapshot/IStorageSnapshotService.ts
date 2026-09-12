@@ -50,8 +50,14 @@ export interface StorageSnapshotResult {
  *
  * IDEMPOTENT BY CONSTRUCTION. The key is
  * `storage:<tenantId>:<class>:<YYYY-MM-DD>`, so a re-run for the same day
- * converges on one ledger row at the drainer rather than double-counting —
- * which is what makes a manual backfill of a missed night safe.
+ * converges on one ledger row at the drainer rather than double-counting.
+ *
+ * THAT MAKES A RE-RUN SAFE, NOT A BACKFILL ACCURATE. The queries always measure
+ * what is held NOW, so running this for a day already past records today's
+ * level under that day's key. Re-running the SAME night's job after a partial
+ * failure is therefore correct; "filling in" a night that was missed a week ago
+ * is not, and there is no way to make it so — the bytes that day held are gone.
+ * A gap is better left visible than papered over with the wrong number.
  *
  * QUANTITY IS A STRING. `bytes / 1e9` at terabyte scale exceeds what an IEEE
  * double represents exactly at six decimal places, and the ledger column is
