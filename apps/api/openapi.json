@@ -2418,7 +2418,9 @@
               "LLM",
               "NLP",
               "TTS",
-              "EMBEDDING"
+              "EMBEDDING",
+              "STORAGE",
+              "WORKFLOW"
             ],
             "nullable": true,
             "type": "string"
@@ -2465,7 +2467,11 @@
               "CHARACTER",
               "TEXT_UNIT",
               "REQUEST",
-              "GPU_SECOND"
+              "GPU_SECOND",
+              "CPU_SECOND",
+              "EGRESS_BYTE",
+              "INGRESS_BYTE",
+              "STORAGE_GB_DAY"
             ],
             "nullable": true,
             "type": "string"
@@ -6458,7 +6464,9 @@
               "LLM",
               "NLP",
               "TTS",
-              "EMBEDDING"
+              "EMBEDDING",
+              "STORAGE",
+              "WORKFLOW"
             ],
             "type": "string"
           },
@@ -6517,7 +6525,11 @@
               "CHARACTER",
               "TEXT_UNIT",
               "REQUEST",
-              "GPU_SECOND"
+              "GPU_SECOND",
+              "CPU_SECOND",
+              "EGRESS_BYTE",
+              "INGRESS_BYTE",
+              "STORAGE_GB_DAY"
             ],
             "type": "string"
           },
@@ -17937,7 +17949,9 @@
               "LLM",
               "NLP",
               "TTS",
-              "EMBEDDING"
+              "EMBEDDING",
+              "STORAGE",
+              "WORKFLOW"
             ],
             "nullable": true,
             "type": "string"
@@ -18011,7 +18025,11 @@
               "CHARACTER",
               "TEXT_UNIT",
               "REQUEST",
-              "GPU_SECOND"
+              "GPU_SECOND",
+              "CPU_SECOND",
+              "EGRESS_BYTE",
+              "INGRESS_BYTE",
+              "STORAGE_GB_DAY"
             ],
             "nullable": true,
             "type": "string"
@@ -31857,7 +31875,9 @@
                 "LLM",
                 "NLP",
                 "TTS",
-                "EMBEDDING"
+                "EMBEDDING",
+                "STORAGE",
+                "WORKFLOW"
               ],
               "type": "string"
             }
@@ -31878,7 +31898,11 @@
                 "CHARACTER",
                 "TEXT_UNIT",
                 "REQUEST",
-                "GPU_SECOND"
+                "GPU_SECOND",
+                "CPU_SECOND",
+                "EGRESS_BYTE",
+                "INGRESS_BYTE",
+                "STORAGE_GB_DAY"
               ],
               "type": "string"
             }
@@ -47397,7 +47421,9 @@
                 "LLM",
                 "NLP",
                 "TTS",
-                "EMBEDDING"
+                "EMBEDDING",
+                "STORAGE",
+                "WORKFLOW"
               ],
               "type": "string"
             }
@@ -47418,7 +47444,11 @@
                 "CHARACTER",
                 "TEXT_UNIT",
                 "REQUEST",
-                "GPU_SECOND"
+                "GPU_SECOND",
+                "CPU_SECOND",
+                "EGRESS_BYTE",
+                "INGRESS_BYTE",
+                "STORAGE_GB_DAY"
               ],
               "type": "string"
             }
@@ -47538,7 +47568,9 @@
                 "LLM",
                 "NLP",
                 "TTS",
-                "EMBEDDING"
+                "EMBEDDING",
+                "STORAGE",
+                "WORKFLOW"
               ],
               "type": "string"
             }

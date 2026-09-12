@@ -562,7 +562,7 @@ export interface BillingAdjustmentResponse {
 export interface BillingInvoiceLineResponse {
   /** Line amount, integer micros, HALF-UP at line level. Σ lines == invoice total. */
   amountMicros: string;
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | null;
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW' | null;
   description?: string | null;
   id: string;
   /** The POOLED capability allowance the usage was measured against (D11). */
@@ -584,6 +584,10 @@ export interface BillingInvoiceLineResponse {
     | 'TEXT_UNIT'
     | 'REQUEST'
     | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY'
     | null;
   /** PLAN_FEE: full-period fee · OVERAGE: the SELL rate applied. Integer micros. */
   unitPriceMicros?: string | null;
@@ -1696,7 +1700,7 @@ export interface CreateSellRateRequest {
   /** Human-traceable book label stamped onto everything this row prices. */
   bookVersion: string;
   /** Required for USAGE_UNIT rows; forbidden on PLAN_FEE rows. */
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING';
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW';
   /** Optional long-context price band (e.g. "0-128k"). */
   contextBand?: string;
   /** ISO 4217 currency. Defaults to USD; v1 invoices are single-currency. */
@@ -1725,7 +1729,11 @@ export interface CreateSellRateRequest {
     | 'CHARACTER'
     | 'TEXT_UNIT'
     | 'REQUEST'
-    | 'GPU_SECOND';
+    | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY';
   /** Integer micros (1e-6 of currency) per unit — or per period for PLAN_FEE. Non-negative decimal-integer string. */
   unitPriceMicros: string;
 }
@@ -4929,7 +4937,7 @@ export interface SecurityPolicyResponse {
 
 export interface SellRateResponse {
   bookVersion: string;
-  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | null;
+  capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW' | null;
   contextBand?: string | null;
   createdAt: string;
   currency: string;
@@ -4956,6 +4964,10 @@ export interface SellRateResponse {
     | 'TEXT_UNIT'
     | 'REQUEST'
     | 'GPU_SECOND'
+    | 'CPU_SECOND'
+    | 'EGRESS_BYTE'
+    | 'INGRESS_BYTE'
+    | 'STORAGE_GB_DAY'
     | null;
   /** Integer micros per unit (or per period for PLAN_FEE), as a decimal-integer string. */
   unitPriceMicros: string;

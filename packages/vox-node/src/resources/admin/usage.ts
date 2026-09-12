@@ -65,7 +65,7 @@ export class AdminUsageResource extends AdminResource {
   timeseries(
     options: AdminRequestOptions & {
       query?: {
-        capability: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING';
+        capability: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW';
         from: string;
         granularity: 'day' | 'hour';
         tenantId?: string;
@@ -81,7 +81,11 @@ export class AdminUsageResource extends AdminResource {
           | 'CHARACTER'
           | 'TEXT_UNIT'
           | 'REQUEST'
-          | 'GPU_SECOND';
+          | 'GPU_SECOND'
+          | 'CPU_SECOND'
+          | 'EGRESS_BYTE'
+          | 'INGRESS_BYTE'
+          | 'STORAGE_GB_DAY';
       };
     } = {},
   ): Promise<UsageTimeseriesResponse> {
@@ -101,7 +105,7 @@ export class AdminUsageResource extends AdminResource {
    */
   topTenants(
     options: AdminRequestOptions & {
-      query?: { capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING'; limit?: number; metric?: 'cost'; period?: string };
+      query?: { capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | 'STORAGE' | 'WORKFLOW'; limit?: number; metric?: 'cost'; period?: string };
     } = {},
   ): Promise<TopTenantsResponse> {
     return this.request<TopTenantsResponse>({
