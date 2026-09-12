@@ -7,8 +7,9 @@ import {
   SecretsService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ResolvedTtsSpec } from '@arcaai/applications';
+import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -322,45 +323,84 @@ export class SpeechProxyController {
         : { deployment: undefined, costBasis: undefined };
       const requestId = generateId();
       let proxiedBytes = 0;
+      // TASK-959 §3.2 — the gateway's own clock, set at the FIRST relayed byte. It is the
+      // fallback occupancy figure for the streamed modes, where `apps/tts` never sends
+      // `X-Tts-Synthesis-Ms` (the total is unknown at header-commit time).
+      let firstByteAtMs: number | null = null;
       let emitted = false;
+
+      const onUsageError = (err: unknown): void => {
+        // Never let a metering failure surface to the caller — synthesis
+        // already happened; this is a side effect of work already done.
+        this.logger.warn({
+          message: 'TTS usage emission failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      };
 
       const emitUsage = (interrupted: boolean): void => {
         if (emitted || !tenantId || !this.usageLedger) return;
         emitted = true;
         const audioSeconds = this.resolveAudioSeconds(upstream.headers, proxiedBytes);
-        this.usageLedger
-          .recordUsage({
-            common: {
-              tenantId,
-              idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
-              occurredAt: new Date(),
-              capability: AiCapability.TTS,
-              operation: 'tts.synthesize',
-              provider: provider ?? 'none',
-              model: null,
-              deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
-              ...(costBasis ? { costBasis } : {}),
-              connectionId,
-              requestId,
-              attributesJson: { interrupted },
-            },
-            units: [
-              { unit: AiUsageUnit.CHARACTER, quantity: characters },
-              ...(audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: audioSeconds }] : []),
-            ],
-          })
-          .catch((err: unknown) => {
-            // Never let a metering failure surface to the caller — synthesis
-            // already happened; this is a side effect of work already done.
-            this.logger.warn({
-              message: 'TTS usage emission failed',
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
+        const batch: UsageEventBatchInput = {
+          common: {
+            tenantId,
+            idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+            occurredAt: new Date(),
+            capability: AiCapability.TTS,
+            operation: 'tts.synthesize',
+            provider: provider ?? 'none',
+            model: null,
+            deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+            ...(costBasis ? { costBasis } : {}),
+            connectionId,
+            requestId,
+            attributesJson: { interrupted },
+          },
+          units: [
+            { unit: AiUsageUnit.CHARACTER, quantity: characters },
+            ...(audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: audioSeconds }] : []),
+          ],
+        };
+
+        // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis, plus the gateway's
+        // own fallbacks. The compute RULE belongs to `appendComputeAndByteUnits`, not this call
+        // site: `engineMs` (the service's own `X-Tts-Synthesis-Ms`) and `totalMs` (this gateway's
+        // wall-clock, ALWAYS computed) are both passed, and the helper picks — preferring the
+        // engine's own reading, and, for anything other than a SELF_HOSTED call, billing the
+        // platform's calling CPU regardless of `device`. Only a SELF_HOSTED call with no
+        // resolved device gets no compute row.
+        const device = upstream.headers['x-tts-device'] as string | undefined;
+        const synthesisMs = Number(upstream.headers['x-tts-synthesis-ms']);
+        const wallClockMs = firstByteAtMs !== null ? Date.now() - firstByteAtMs : null;
+        const reportedBytes = Number(upstream.headers['x-tts-response-bytes']);
+        const hasReportedBytes = Number.isFinite(reportedBytes) && reportedBytes > 0;
+        // The service's own count first; the gateway's own relay count — an application-level
+        // proxy for what was actually sent, not the wire — only when it reported none.
+        const responseBytes = hasReportedBytes ? reportedBytes : proxiedBytes;
+        const byteSource = hasReportedBytes ? (upstream.headers['x-tts-byte-source'] as string | undefined) : proxiedBytes > 0 ? 'app' : undefined;
+
+        const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
+          device,
+          engineMs: synthesisMs,
+          totalMs: wallClockMs,
+          // No vendor "request" bytes concept here: the input is JSON text the gateway sent,
+          // never counted as bytes spent AT a vendor the way an outbound STT/TEXT call is.
+          requestBytes: undefined,
+          responseBytes,
+          byteSource,
+        });
+        this.usageLedger.recordUsage(augmented).catch(onUsageError);
+        if (platformBatch) {
+          // TASK-959 §6.3 — the platform's own CPU on a BYOK call: same batch shape, disjoint
+          // idempotency key (`:CPU_SECOND`), separate row so it never drops off `augmented`'s key.
+          this.usageLedger.recordUsage(platformBatch).catch(onUsageError);
+        }
       };
 
       const stream = upstream.data;
       stream.on('data', (chunk: Buffer) => {
+        if (firstByteAtMs === null) firstByteAtMs = Date.now();
         proxiedBytes += chunk.length;
         res.write(chunk);
       });

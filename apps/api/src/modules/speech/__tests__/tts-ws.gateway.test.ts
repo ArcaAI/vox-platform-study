@@ -476,5 +476,100 @@ describe('TtsWsGateway', () => {
       expect(client.send).toHaveBeenCalledWith(pcm, { binary: true });
       expect(client.send).toHaveBeenCalledWith(doneFrame, { binary: false });
     });
+
+    // TASK-959 T2b — `stream_ws.py`'s usage frame carries no device, synthesis timing, or byte
+    // count of its own; the gateway's own relayed-byte observation is the one thing it can add.
+    describe('compute + byte units (TASK-959)', () => {
+      it('records the relayed audio bytes as an app-level INGRESS_BYTE row, and bills the platform calling CPU on the gateway wall-clock', async () => {
+        // `stream_ws.py` reports no device/timing of its own, but the compute RULE is the
+        // shared helper's: `totalMs` (this bridge's wall-clock, first relayed audio frame →
+        // teardown) is passed ALWAYS, and a non-SELF_HOSTED (here CLOUD, azure with no override)
+        // session still bills the platform's calling CPU on it.
+        const nowSpy = vi.spyOn(Date, 'now');
+        // `createMockTicketService.consumeTicket` itself reads `Date.now()` for its ticket's
+        // `exp` (real, since `Date.now` is spied globally) — one leading value absorbs that
+        // before the two this test actually cares about: firstAudioAtMs, then the wall-clock read.
+        nowSpy.mockReturnValueOnce(500).mockReturnValueOnce(1_000).mockReturnValueOnce(1_070);
+        const usageLedger = createMockUsageLedger();
+        gateway = buildGateway(usageLedger);
+        gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+        const client = makeSocket();
+        await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+        upstream.emit('open');
+
+        upstream.emit('message', Buffer.from([1, 2, 3, 4]), true);
+        upstream.emit('message', Buffer.from([5, 6]), true);
+        upstream.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' })),
+          false,
+        );
+
+        // No split: this azure leg carries no tenant-funded override, so costBasis is undefined
+        // (CLOUD, already INTERNAL) rather than BYOK_NOTIONAL.
+        expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+        const call = usageLedger.recordUsage.mock.calls[0][0];
+        // `device`/`byteSource` ride each UNIT row's own attributesJson (SWAP), never `common`;
+        // every quantity the helper emits is a string.
+        expect(call.units).toEqual(
+          expect.arrayContaining([
+            { unit: 'CHARACTER', quantity: 10 },
+            { unit: 'AUDIO_SECOND', quantity: 0.2 },
+            { unit: 'INGRESS_BYTE', quantity: '6', attributesJson: { byteSource: 'app' } },
+            { unit: 'CPU_SECOND', quantity: '0.070', attributesJson: { device: 'cpu' } },
+          ]),
+        );
+        expect(call.common.attributesJson).toEqual({ interrupted: false });
+        nowSpy.mockRestore();
+      });
+
+      it('emits no compute row for a SELF_HOSTED session even when audio was relayed (stream_ws.py reports no device)', async () => {
+        // The one case the helper still refuses to guess: a SELF_HOSTED call whose device
+        // nobody resolved — unlike the CLOUD case above, there is no vendor to bill CPU on
+        // behalf of, and `stream_ws.py` never reports a device for this bridge to trust.
+        const nowSpy = vi.spyOn(Date, 'now');
+        // Leading value absorbs `createMockTicketService.consumeTicket`'s own `Date.now()` read.
+        nowSpy.mockReturnValueOnce(500).mockReturnValueOnce(1_000).mockReturnValueOnce(1_500);
+        const usageLedger = createMockUsageLedger();
+        gateway = buildGateway(usageLedger);
+        gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+        const client = makeSocket();
+        await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+        upstream.emit('open');
+
+        upstream.emit('message', Buffer.from([1, 2, 3, 4]), true);
+        upstream.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: 0.1, interrupted: false, provider: 'kokoro' })),
+          false,
+        );
+
+        const call = usageLedger.recordUsage.mock.calls[0][0];
+        expect(call.units.find((u: { unit: string }) => u.unit === 'CPU_SECOND' || u.unit === 'GPU_SECOND')).toBeUndefined();
+        expect(call.units).toEqual(
+          expect.arrayContaining([{ unit: 'INGRESS_BYTE', quantity: '4', attributesJson: { byteSource: 'app' } }]),
+        );
+        nowSpy.mockRestore();
+      });
+
+      it('emits no byte row when no binary frame was ever relayed before teardown', async () => {
+        const usageLedger = createMockUsageLedger();
+        gateway = buildGateway(usageLedger);
+        gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+        const client = makeSocket();
+        await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+        upstream.emit('open');
+
+        upstream.emit(
+          'message',
+          Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: null })),
+          false,
+        );
+
+        const call = usageLedger.recordUsage.mock.calls[0][0];
+        expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 4 }]);
+        expect(call.common.attributesJson).toEqual({ interrupted: true });
+      });
+    });
   });
 });

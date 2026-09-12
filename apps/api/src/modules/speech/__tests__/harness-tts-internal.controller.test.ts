@@ -224,4 +224,162 @@ describe('HarnessTtsInternalController — the agentic.tts synthesis dispatch', 
     const { controller } = build({ config: { getConfigValue: vi.fn(() => undefined) } });
     await expect(controller.synthesize(REQUEST)).rejects.toThrow(/not wired/);
   });
+
+  // TASK-959 T2b — the four new headers `apps/tts` sends beside `X-Tts-Audio-Seconds`; this
+  // route always buffers the full body (`responseType: 'arraybuffer'`), so `X-Tts-Synthesis-Ms`
+  // is the expected batch case and the gateway's own wall-clock is the defensive fallback.
+  describe('compute + byte units (TASK-959)', () => {
+    // A self-hosted engine with NO provider_overrides entry for it — `classifyTtsProvider`
+    // falls through to `SELF_HOSTED_TTS_PROVIDERS`, so the reported device is trusted.
+    const selfHostedResolver = () => ({ resolve: vi.fn().mockResolvedValue({ spec: SPEC, providerOverrides: {} }) });
+
+    it('a batch response with all four headers yields the compute + byte rows with the right units and attributes', async () => {
+      const http = createHttp({
+        data: AUDIO.buffer.slice(AUDIO.byteOffset, AUDIO.byteOffset + AUDIO.byteLength),
+        headers: {
+          'content-type': 'audio/wav',
+          'x-tts-provider': 'kokoro',
+          'x-tts-characters': '23',
+          'x-tts-audio-seconds': '1.5',
+          'x-tts-synthesis-ms': '210',
+          'x-tts-device': 'cuda',
+          'x-tts-response-bytes': String(AUDIO.length),
+          'x-tts-byte-source': 'wire',
+        },
+      });
+      const { controller, deps } = build({ http, resolver: selfHostedResolver() });
+      await controller.synthesize(REQUEST);
+
+      expect(deps.ledger.recordUsage).toHaveBeenCalledTimes(1);
+      const [event] = deps.ledger.recordUsage.mock.calls[0];
+      expect(event.common).toMatchObject({ provider: 'kokoro', deployment: 'SELF_HOSTED' });
+      // `device`/`byteSource` ride each UNIT row's own attributesJson (SWAP), never `common`;
+      // every quantity the helper emits is a string.
+      expect(event.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 23 },
+          { unit: 'AUDIO_SECOND', quantity: 1.5 },
+          { unit: 'GPU_SECOND', quantity: '0.210', attributesJson: { device: 'cuda' } },
+          { unit: 'INGRESS_BYTE', quantity: String(AUDIO.length), attributesJson: { byteSource: 'wire' } },
+        ]),
+      );
+      expect(event.common.attributesJson).toBeUndefined();
+    });
+
+    it('falls back to the gateway wall-clock when apps/tts reports no X-Tts-Synthesis-Ms, and to the buffered length when it reports no bytes', async () => {
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(1_000).mockReturnValueOnce(1_130); // startedAtMs, then wallClockMs
+      const http = createHttp({
+        data: AUDIO.buffer.slice(AUDIO.byteOffset, AUDIO.byteOffset + AUDIO.byteLength),
+        headers: {
+          'content-type': 'audio/wav',
+          'x-tts-provider': 'kokoro',
+          'x-tts-characters': '23',
+          'x-tts-device': 'cpu',
+          // No X-Tts-Synthesis-Ms / X-Tts-Response-Bytes / X-Tts-Byte-Source — a stream would
+          // omit these; this route never actually streams, so this exercises the defensive path.
+        },
+      });
+      const { controller, deps } = build({ http, resolver: selfHostedResolver() });
+      await controller.synthesize(REQUEST);
+
+      const [event] = deps.ledger.recordUsage.mock.calls[0];
+      expect(event.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CPU_SECOND', quantity: '0.130', attributesJson: { device: 'cpu' } },
+          { unit: 'INGRESS_BYTE', quantity: String(AUDIO.length), attributesJson: { byteSource: 'app' } },
+        ]),
+      );
+      expect(event.common.attributesJson).toBeUndefined();
+      nowSpy.mockRestore();
+    });
+
+    it('a cloud response with no X-Tts-Device still bills the platform calling CPU (a non-SELF_HOSTED deployment is always cpu)', async () => {
+      // The default fixture resolver's azure override carries `funding: 'tenant'`, so this leg
+      // classifies BYOK — exercising the split half of the same rule the next test covers for
+      // CLOUD. `costBasis` on `tokenBatch` (BYOK_NOTIONAL) is why it splits at all.
+      const http = createHttp({
+        data: AUDIO.buffer.slice(AUDIO.byteOffset, AUDIO.byteOffset + AUDIO.byteLength),
+        headers: {
+          'content-type': 'audio/wav',
+          'x-tts-provider': 'azure',
+          'x-tts-characters': '23',
+          'x-tts-audio-seconds': '1.5',
+          'x-tts-synthesis-ms': '340', // present — no device header, but the deployment forces the unit to cpu anyway.
+        },
+      });
+      const { controller, deps } = build({ http });
+      await controller.synthesize(REQUEST);
+
+      expect(deps.ledger.recordUsage).toHaveBeenCalledTimes(2);
+      const [tokenBatch, platformBatch] = deps.ledger.recordUsage.mock.calls.map((call: unknown[]) => call[0]);
+      expect(tokenBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
+      expect(tokenBatch.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 23 },
+          { unit: 'AUDIO_SECOND', quantity: 1.5 },
+          { unit: 'INGRESS_BYTE', quantity: String(AUDIO.length), attributesJson: { byteSource: 'app' } },
+        ]),
+      );
+      expect(platformBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'INTERNAL' });
+      expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: '0.340', attributesJson: { device: 'cpu' } }]);
+    });
+
+    it('a SELF_HOSTED response with no reported timing and no X-Tts-Device gets no compute row at all', async () => {
+      // The one case the helper still refuses to guess: a SELF_HOSTED call whose device nobody
+      // resolved. Distinct from the CLOUD/BYOK case above — there is no vendor to bill CPU on
+      // behalf of, and no device to bill GPU/CPU on behalf of either.
+      const http = createHttp({
+        data: AUDIO.buffer.slice(AUDIO.byteOffset, AUDIO.byteOffset + AUDIO.byteLength),
+        headers: {
+          'content-type': 'audio/wav',
+          'x-tts-provider': 'kokoro',
+          'x-tts-characters': '23',
+          // No X-Tts-Device, no X-Tts-Synthesis-Ms, no X-Tts-Response-Bytes.
+        },
+      });
+      const { controller, deps } = build({ http, resolver: selfHostedResolver() });
+      await controller.synthesize(REQUEST);
+
+      expect(deps.ledger.recordUsage).toHaveBeenCalledTimes(1);
+      const [event] = deps.ledger.recordUsage.mock.calls[0];
+      // The buffered artifact's own byte length is still a real observation, even with nothing
+      // else measured — this route always has SOME bytes once the response is buffered.
+      expect(event.units).toEqual([
+        { unit: 'CHARACTER', quantity: 23 },
+        { unit: 'INGRESS_BYTE', quantity: String(AUDIO.length), attributesJson: { byteSource: 'app' } },
+      ]);
+    });
+
+    it("splits a BYOK call's platform CPU leg into its own INTERNAL batch (the sanctioned mixed-basis case)", async () => {
+      // The default fixture resolver already supplies a tenant-funded azure override; a
+      // self-hosted PROVIDER with the SAME shape of override is what makes device trusted AND
+      // the call BYOK at once (`classifyTtsProvider` tests the override before the self-hosted
+      // allow-list).
+      const http = createHttp({
+        data: AUDIO.buffer.slice(AUDIO.byteOffset, AUDIO.byteOffset + AUDIO.byteLength),
+        headers: {
+          'content-type': 'audio/wav',
+          'x-tts-provider': 'kokoro',
+          'x-tts-characters': '23',
+          'x-tts-synthesis-ms': '210',
+          'x-tts-device': 'cuda',
+        },
+      });
+      const resolver = { resolve: vi.fn().mockResolvedValue({ spec: SPEC, providerOverrides: { kokoro: { api_key: 'k', funding: 'tenant' } } }) };
+      const { controller, deps } = build({ http, resolver });
+      await controller.synthesize(REQUEST);
+
+      expect(deps.ledger.recordUsage).toHaveBeenCalledTimes(2);
+      const [tokenBatch, platformBatch] = deps.ledger.recordUsage.mock.calls.map((call: unknown[]) => call[0]);
+      expect(tokenBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
+      expect(tokenBatch.units.find((u: { unit: string }) => u.unit === 'CPU_SECOND' || u.unit === 'GPU_SECOND')).toBeUndefined();
+      expect(platformBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'INTERNAL' });
+      // `appendComputeAndByteUnits` rule 2 — a non-SELF_HOSTED deployment metres the PLATFORM's
+      // own CPU regardless of the resolved device, so this still bills CPU_SECOND, not GPU_SECOND;
+      // `device` rides the unit's own attributesJson (SWAP).
+      expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: '0.210', attributesJson: { device: 'cpu' } }]);
+      expect(platformBatch.common.idempotencyKey).toBe(tokenBatch.common.idempotencyKey);
+    });
+  });
 });

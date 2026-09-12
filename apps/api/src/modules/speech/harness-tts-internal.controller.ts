@@ -6,7 +6,9 @@ import {
   SecretsService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  appendComputeAndByteUnits,
 } from '@arcaai/applications';
+import type { UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { BadRequestException, Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, UseGuards } from '@nestjs/common';
@@ -174,6 +176,10 @@ export class HarnessTtsInternalController {
         await this.entitlementsService.assertMeterQuota(dto.tenantId, 'monthlyTtsCharacters', characterEstimate);
       }
 
+      // TASK-959 §3.2 — this route always waits for the full body (`responseType: 'arraybuffer'`),
+      // so this is the batch-equivalent wall-clock fallback for the rare case `apps/tts` reports
+      // no `X-Tts-Synthesis-Ms` at all.
+      const startedAtMs = Date.now();
       let upstream;
       try {
         upstream = await this.httpService.axiosRef.post(`${base}/api/v1/audio/speech`, forwardBody, {
@@ -198,6 +204,9 @@ export class HarnessTtsInternalController {
         overrides: forwardBody.provider_overrides,
         // TASK-958 D-7 — WHICH account of that vendor `apps/tts` spent.
         connectionId: (headers['x-tts-connection-id'] as string | undefined) || null,
+        headers,
+        wallClockMs: Date.now() - startedAtMs,
+        proxiedBytes: audio.length,
       });
 
       return {
@@ -291,6 +300,12 @@ export class HarnessTtsInternalController {
     audioSeconds: number | null;
     overrides?: unknown;
     connectionId?: string | null;
+    /** The raw upstream response headers — read here for the TASK-959 compute/byte dimensions. */
+    headers: Record<string, unknown>;
+    /** Gateway wall-clock around the whole upstream call (this route always buffers the full body). */
+    wallClockMs: number;
+    /** The buffered artifact's byte length — the relay-count fallback when tts reports none. */
+    proxiedBytes: number;
   }): void {
     if (!this.usageLedger) return;
     const { deployment, costBasis } = args.provider
@@ -299,37 +314,69 @@ export class HarnessTtsInternalController {
         classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1], args.connectionId)
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
-    this.usageLedger
-      .recordUsage({
-        common: {
-          tenantId: args.tenantId,
-          idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
-          occurredAt: new Date(),
-          capability: AiCapability.TTS,
-          operation: 'tts.synthesize',
-          provider: args.provider ?? 'none',
-          model: null,
-          deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
-          ...(costBasis ? { costBasis } : {}),
-          connectionId: args.connectionId ?? null,
-          requestId,
-          // No `attributesJson`. `UsageAttributes` is a deliberately CLOSED allow-list that
-          // keeps PHI and free text out of the ledger, and none of its declared keys means
-          // "which internal surface called this" — `endpointKind` is which API shape the
-          // normalizer branched on. Widening the allow-list for a provenance nicety would
-          // trade that guarantee for nothing the row does not already carry via `operation`.
-        },
-        units: [
-          { unit: AiUsageUnit.CHARACTER, quantity: args.characters },
-          ...(args.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: args.audioSeconds }] : []),
-        ],
-      })
-      .catch((err: unknown) => {
-        this.logger.warn({
-          message: 'TTS usage emission failed for a harness synthesis',
-          error: err instanceof Error ? err.message : String(err),
-        });
+
+    const batch: UsageEventBatchInput = {
+      common: {
+        tenantId: args.tenantId,
+        idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+        occurredAt: new Date(),
+        capability: AiCapability.TTS,
+        operation: 'tts.synthesize',
+        provider: args.provider ?? 'none',
+        model: null,
+        deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+        ...(costBasis ? { costBasis } : {}),
+        connectionId: args.connectionId ?? null,
+        requestId,
+        // `attributesJson` stays unset here; `appendComputeAndByteUnits` below adds `device`/
+        // `byteSource` ONLY when it actually appended the matching unit row. `UsageAttributes`
+        // is a deliberately CLOSED allow-list that keeps PHI and free text out of the ledger.
+      },
+      units: [
+        { unit: AiUsageUnit.CHARACTER, quantity: args.characters },
+        ...(args.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: args.audioSeconds }] : []),
+      ],
+    };
+
+    // TASK-959 §3.2/§4.2 — what `apps/tts` reported about THIS synthesis, plus the gateway's own
+    // fallbacks. The compute RULE belongs to `appendComputeAndByteUnits`, not this call site:
+    // `engineMs` (the service's own `X-Tts-Synthesis-Ms`) and `totalMs` (this gateway's
+    // wall-clock, ALWAYS passed) both go in, and the helper picks — preferring the engine's own
+    // reading, and, for anything other than a SELF_HOSTED call, billing the platform's calling
+    // CPU regardless of `device`. Only a SELF_HOSTED call with no resolved device gets no
+    // compute row.
+    const device = args.headers['x-tts-device'] as string | undefined;
+    const synthesisMs = Number(args.headers['x-tts-synthesis-ms']);
+    const reportedBytes = Number(args.headers['x-tts-response-bytes']);
+    const hasReportedBytes = Number.isFinite(reportedBytes) && reportedBytes > 0;
+    // The service's own count first; the buffered artifact length — an application-level proxy,
+    // not the wire — only when it reported none.
+    const responseBytes = hasReportedBytes ? reportedBytes : args.proxiedBytes;
+    const byteSource = hasReportedBytes ? (args.headers['x-tts-byte-source'] as string | undefined) : args.proxiedBytes > 0 ? 'app' : undefined;
+
+    const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
+      device,
+      engineMs: synthesisMs,
+      totalMs: args.wallClockMs,
+      // No vendor "request" bytes concept here: the node's text is a JSON field, never counted
+      // as bytes spent AT a vendor the way an outbound STT/TEXT call is.
+      requestBytes: undefined,
+      responseBytes,
+      byteSource,
+    });
+
+    const onUsageError = (err: unknown): void => {
+      this.logger.warn({
+        message: 'TTS usage emission failed for a harness synthesis',
+        error: err instanceof Error ? err.message : String(err),
       });
+    };
+    this.usageLedger.recordUsage(augmented).catch(onUsageError);
+    if (platformBatch) {
+      // TASK-959 §6.3 — the platform's own CPU on a BYOK call: same batch shape, disjoint
+      // idempotency key (`:CPU_SECOND`), separate row so it never drops off `augmented`'s key.
+      this.usageLedger.recordUsage(platformBatch).catch(onUsageError);
+    }
   }
 
   /** Never forward or log the upstream body — a synthesis error can echo the input text (PHI). */
