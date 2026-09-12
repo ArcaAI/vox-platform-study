@@ -479,10 +479,11 @@ describe('EntitlementsService', () => {
     /*
      * TASK-958 D-8 — the connection ceiling must survive the WHOLE round trip.
      *
-     * Deliberately stronger than its sibling `maxWorkflowDefinitions`, which
-     * the request DTO accepts and the service writes but neither response
-     * mapper reads back — so a super admin sets it, reloads, and sees nothing.
-     * Pinning the read-back here keeps this cap from acquiring the same gap.
+     * Its siblings `maxWorkflowDefinitions` and `monthlyWorkflowInvocations`
+     * had exactly that gap: the request DTO accepted them and the service
+     * wrote them, but neither response mapper read them back, so a super admin
+     * set a value, reloaded, and saw nothing. Closed as a TASK-958 follow-up
+     * and pinned by the round-trip tests below.
      */
     it('writes AND echoes the AI-provider-connection ceiling', async () => {
       const row = fakePlanEntity({ plan: 'PRO', version: 1 });
@@ -504,6 +505,45 @@ describe('EntitlementsService', () => {
 
       expect(row.maxAiProviderConnections).toBeNull();
       expect(res.maxAiProviderConnections).toBeNull();
+    });
+
+    it('writes AND echoes the published-workflow-definition ceiling', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', { maxWorkflowDefinitions: 7, expectedVersion: 1 });
+
+      expect(row.maxWorkflowDefinitions).toBe(7);
+      expect(res.maxWorkflowDefinitions).toBe(7);
+    });
+
+    it('writes AND echoes the monthly workflow-invocation allowance', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', { monthlyWorkflowInvocations: 5_000, expectedVersion: 1 });
+
+      expect(row.monthlyWorkflowInvocations).toBe(5_000);
+      expect(res.monthlyWorkflowInvocations).toBe(5_000);
+    });
+
+    it('clears both workflow ceilings back to unlimited on an explicit null', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1, maxWorkflowDefinitions: 7, monthlyWorkflowInvocations: 5_000 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', {
+        maxWorkflowDefinitions: null,
+        monthlyWorkflowInvocations: null,
+        expectedVersion: 1,
+      });
+
+      expect(row.maxWorkflowDefinitions).toBeNull();
+      expect(row.monthlyWorkflowInvocations).toBeNull();
+      expect(res.maxWorkflowDefinitions).toBeNull();
+      expect(res.monthlyWorkflowInvocations).toBeNull();
     });
 
     it('A null allowance ceiling clears it to unlimited', async () => {
@@ -618,6 +658,34 @@ describe('EntitlementsService', () => {
       const res = await makeService().upsertTenantEntitlement('tenant-1', { maxAiProviderConnections: 3 });
 
       expect(res.maxAiProviderConnections).toBe(3);
+    });
+
+    it('writes AND echoes the per-tenant workflow overrides', async () => {
+      const row = fakeTenantEntity({ version: 2 });
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
+      tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', {
+        maxWorkflowDefinitions: 4,
+        monthlyWorkflowInvocations: 900,
+        expectedVersion: 2,
+      });
+
+      expect(row.maxWorkflowDefinitions).toBe(4);
+      expect(row.monthlyWorkflowInvocations).toBe(900);
+      expect(res.maxWorkflowDefinitions).toBe(4);
+      expect(res.monthlyWorkflowInvocations).toBe(900);
+    });
+
+    it('carries the workflow overrides onto the FIRST override row', async () => {
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantRepository.findById.mockResolvedValue({ id: 'tenant-1' });
+      tenantEntitlementRepository.create.mockImplementation(async (entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', { maxWorkflowDefinitions: 4, monthlyWorkflowInvocations: 900 });
+
+      expect(res.maxWorkflowDefinitions).toBe(4);
+      expect(res.monthlyWorkflowInvocations).toBe(900);
     });
 
     it('is a no-op when clearing a tenant with no override', async () => {
