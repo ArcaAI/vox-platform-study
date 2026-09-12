@@ -1,6 +1,6 @@
 /**
  * Unified tenant BYO cloud-credential client (C2/C3) —
- * `admin/providers/:service/:provider` serves every capability's credentials
+ * `admin/providers/:service/:slug` serves every capability's credentials
  * through one route family. Paths are gateway-relative; the shared core prepends
  * the BFF proxy mount.
  *
@@ -37,8 +37,18 @@ const FIRST_EDIT_ETAG = '"0"';
 const tenantParams = (tenantId?: string) => (tenantId ? { tenantId } : undefined);
 
 /** Masked row + its ETag (a `version: 0` placeholder when none exists yet). */
-export function getProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<WithEtag<ProviderConnection>> {
-  return getWithEtag(`${BASE}/${service}/${provider}`, tenantParams(tenantId));
+export function getProviderConnection(service: ProviderService, slug: string, tenantId?: string): Promise<WithEtag<ProviderConnection>> {
+  return getWithEtag(`${BASE}/${service}/${slug}`, tenantParams(tenantId));
+}
+
+/**
+ * TASK-958 — every connection the scoped tenant holds for one capability,
+ * default first (the gateway orders them). A tenant may hold SEVERAL accounts
+ * of one vendor, so the per-provider card group reads the list once per tab and
+ * derives its siblings from it rather than probing slugs it cannot know.
+ */
+export function listProviderConnections(service: ProviderService, tenantId?: string): Promise<ProviderConnection[]> {
+  return getJson(`${BASE}/${service}`, tenantParams(tenantId));
 }
 
 /**
@@ -54,13 +64,13 @@ export function getPlatformDefaults(service: ProviderService, tenantId?: string)
 /** OCC PUT: If-Match + body expectedVersion from the read ETag (0 on create). */
 export function putProviderConnection(
   service: ProviderService,
-  provider: string,
+  slug: string,
   body: Omit<UpsertProviderConnectionRequest, 'expectedVersion'>,
   etag: string | null,
   tenantId?: string,
 ): Promise<WithEtag<ProviderConnection>> {
   const expectedVersion = etag ? versionFromEtag(etag) : 0;
-  return request(`${BASE}/${service}/${provider}`, {
+  return request(`${BASE}/${service}/${slug}`, {
     method: 'PUT',
     body: { ...body, expectedVersion },
     etag: etag ?? FIRST_EDIT_ETAG,
@@ -78,12 +88,12 @@ export function putProviderConnection(
  */
 export async function putConnectionModels(
   service: ProviderService,
-  provider: string,
+  slug: string,
   body: DeclareConnectionModelsRequest,
   tenantId?: string,
 ): Promise<ProviderConnection> {
   // No ETag to carry: the route writes registry rows, not the connection row.
-  const { data } = await request<ProviderConnection>(`${BASE}/${service}/${provider}/models`, {
+  const { data } = await request<ProviderConnection>(`${BASE}/${service}/${slug}/models`, {
     method: 'PUT',
     body,
     params: tenantParams(tenantId),
@@ -92,8 +102,8 @@ export async function putConnectionModels(
 }
 
 /** Remove the tenant's credential (soft delete) — returns the provider to "platform default". */
-export async function deleteProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<void> {
-  await request<void>(`${BASE}/${service}/${provider}`, { method: 'DELETE', params: tenantParams(tenantId) });
+export async function deleteProviderConnection(service: ProviderService, slug: string, tenantId?: string): Promise<void> {
+  await request<void>(`${BASE}/${service}/${slug}`, { method: 'DELETE', params: tenantParams(tenantId) });
 }
 
 /**
@@ -105,8 +115,8 @@ export async function deleteProviderConnection(service: ProviderService, provide
  * most needs it. Super-admin only, platform tier only — a tenant-tier card never
  * renders the control.
  */
-export function resetProviderConnection(service: ProviderService, provider: string, tenantId?: string): Promise<ProviderConnection> {
-  return postJson(`${BASE}/${service}/${provider}/reset`, {}, tenantParams(tenantId));
+export function resetProviderConnection(service: ProviderService, slug: string, tenantId?: string): Promise<ProviderConnection> {
+  return postJson(`${BASE}/${service}/${slug}/reset`, {}, tenantParams(tenantId));
 }
 
 /**
@@ -123,11 +133,11 @@ export function getInferenceReadiness(): Promise<InferenceReadinessSnapshot> {
 /** Ephemeral "Test connection" probe — never persisted, no OCC. */
 export function testProviderConnection(
   service: ProviderService,
-  provider: string,
+  slug: string,
   body: TestProviderConnectionRequest,
   tenantId?: string,
 ): Promise<TestProviderConnectionResult> {
-  return postJson(`${BASE}/${service}/${provider}/test`, body, tenantParams(tenantId));
+  return postJson(`${BASE}/${service}/${slug}/test`, body, tenantParams(tenantId));
 }
 
 /**
