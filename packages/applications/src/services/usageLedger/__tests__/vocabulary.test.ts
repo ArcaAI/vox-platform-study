@@ -10,11 +10,18 @@
 import { describe, expect, it } from 'vitest';
 import { AiUsageUnit } from '@arcaai/domains';
 
-import { KNOWN_PROVIDERS, USAGE_OPERATIONS, isKnownProvider, isUsageOperation, validateProviderId } from '../vocabulary';
+import {
+  KNOWN_PROVIDERS,
+  SELF_HOSTED_PROVIDER_IDS,
+  USAGE_OPERATIONS,
+  isKnownProvider,
+  isUsageOperation,
+  validateProviderId,
+} from '../vocabulary';
 import { UsageIdempotencyKey, validateIdempotencyKey } from '../idempotency-keys';
 
 describe('operation vocabulary', () => {
-  it('freezes exactly the ten operations wave-1 emitters may use', () => {
+  it('freezes exactly the twelve operations the emitters may use', () => {
     expect([...USAGE_OPERATIONS].sort()).toEqual(
       [
         'transcribe.stream',
@@ -27,8 +34,23 @@ describe('operation vocabulary', () => {
         'tts.synthesize',
         'harness.step',
         'embed',
+        // TASK-959 W0 (§10.2) — the durable worker's own compute and the
+        // nightly storage snapshot are BILLING rows on operations nothing else
+        // emits, so both had to enter the closed list before their emitters
+        // could be written.
+        'workflow.step',
+        'storage.snapshot',
       ].sort(),
     );
+  });
+
+  it('carries the two TASK-959 operations under their exact spellings', () => {
+    // A typo here does not fail — it silently forks a rollup dimension, and a
+    // workflow's worker CPU would land under an operation no invoice sums.
+    expect(isUsageOperation('workflow.step')).toBe(true);
+    expect(isUsageOperation('storage.snapshot')).toBe(true);
+    expect(isUsageOperation('workflow_step')).toBe(false);
+    expect(isUsageOperation('storage.Snapshot')).toBe(false);
   });
 
   it('recognises a member and rejects a near-miss', () => {
@@ -87,6 +109,20 @@ describe('provider vocabulary', () => {
     expect(validateProviderId('')).toHaveLength(1);
     expect(validateProviderId('a'.repeat(65))).toHaveLength(1);
     expect(validateProviderId(null)).toHaveLength(1);
+  });
+
+  it('carries `harness` — the durable worker is a self-hosted engine that bills its own CPU (TASK-959 §3.4)', () => {
+    expect(isKnownProvider('harness')).toBe(true);
+    // And it must be DERIVABLE as self-hosted, or every `WORKFLOW`/`CPU_SECOND`
+    // row the interceptor emits would be classified CLOUD and billed against a
+    // vendor that was never called.
+    expect(SELF_HOSTED_PROVIDER_IDS.has('harness')).toBe(true);
+  });
+
+  it('keeps SELF_HOSTED_PROVIDER_IDS a strict subset of KNOWN_PROVIDERS', () => {
+    for (const provider of SELF_HOSTED_PROVIDER_IDS) {
+      expect(isKnownProvider(provider), provider).toBe(true);
+    }
   });
 
   it('exposes the known set as data for the contract doc', () => {
