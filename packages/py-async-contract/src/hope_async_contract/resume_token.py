@@ -52,10 +52,6 @@ def decode_resume_token(token: str) -> dict[str, str] | None:
         return None
     transport = parsed.get("t")
     cursor = parsed.get("c")
-    if (
-        parsed.get("v") != 1
-        or not isinstance(transport, str)
-        or not isinstance(cursor, str)
-    ):
+    if parsed.get("v") != 1 or not isinstance(transport, str) or not isinstance(cursor, str):
         return None
     return {"transport": transport, "cursor": cursor}

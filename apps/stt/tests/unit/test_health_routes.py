@@ -275,9 +275,7 @@ class TestCheckDatabase:
         from stt.core.database.connection import DatabaseDisabledError
         from stt.health.api.routes import _check_database
 
-        with patch(
-            "stt.health.api.routes.get_db_session", side_effect=DatabaseDisabledError()
-        ):
+        with patch("stt.health.api.routes.get_db_session", side_effect=DatabaseDisabledError()):
             result = await _check_database()
 
         assert result.name == "database"

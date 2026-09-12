@@ -281,7 +281,9 @@ class TestWorkerNewServiceCleanup:
                     "stt.vad.silero_service.get_vad_service",
                     side_effect=RuntimeError("VAD error"),
                 ),
-                patch("stt.core.database.connection.close_database", new_callable=AsyncMock) as mock_close_db,
+                patch(
+                    "stt.core.database.connection.close_database", new_callable=AsyncMock
+                ) as mock_close_db,
             ):
                 from stt.worker import cleanup_services
 

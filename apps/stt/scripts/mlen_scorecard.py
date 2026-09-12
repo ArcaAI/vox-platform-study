@@ -112,14 +112,23 @@ def main() -> int:
     # TASK-891 A3 — the two priming-prompt kill-switches are now independent, and
     # this is the instrument that decides whether either should default ON. Both
     # OFF reproduces the committed baseline exactly.
-    ap.add_argument("--pair-priming-prompt", action="store_true",
-                    help="enable the BILINGUAL priming prompt for a code-switch pair")
-    ap.add_argument("--single-priming-prompt", action="store_true",
-                    help="enable the SINGLE-LANGUAGE priming prompt")
+    ap.add_argument(
+        "--pair-priming-prompt",
+        action="store_true",
+        help="enable the BILINGUAL priming prompt for a code-switch pair",
+    )
+    ap.add_argument(
+        "--single-priming-prompt",
+        action="store_true",
+        help="enable the SINGLE-LANGUAGE priming prompt",
+    )
     # TASK-891 A4 — the adapter refuses word-splitting when the decode may emit a
     # non-space-delimited script; pass this to measure the refusal's effect.
-    ap.add_argument("--word-timestamps", action="store_true",
-                    help="request per-word timestamps (max_len=1 word-split decode)")
+    ap.add_argument(
+        "--word-timestamps",
+        action="store_true",
+        help="request per-word timestamps (max_len=1 word-split decode)",
+    )
     args = ap.parse_args()
 
     language_modes.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = args.pair_priming_prompt
@@ -130,11 +139,18 @@ def main() -> int:
 
     from pywhispercpp.model import Model
 
-    model = Model(model=args.gguf, context_params={"use_gpu": True},
-                  print_progress=False, print_realtime=False)
+    model = Model(
+        model=args.gguf,
+        context_params={"use_gpu": True},
+        print_progress=False,
+        print_realtime=False,
+    )
     loaded = LoadedModel(
-        model_id="mlen", model_slug="arcaai-whisper-large-ml-en-gguf", model=model,
-        format=AiModelFormat.WHISPER_CPP, device="auto",
+        model_id="mlen",
+        model_slug="arcaai-whisper-large-ml-en-gguf",
+        model=model,
+        format=AiModelFormat.WHISPER_CPP,
+        device="auto",
         extra={"model_path": args.gguf, "num_threads": 4},
     )
     # TASK-880 — the decode window is `InferenceConfig.max_decode_window_sec`
@@ -172,9 +188,16 @@ def main() -> int:
         ref = Path(lab).read_text(encoding="utf-8").strip()
         hyp = adapter(audio, sr, prompt=priming_prompt)["text"]
         score = cer(ref, hyp)
-        rows.append({"id": cid, "clip": os.path.basename(wav),
-                     "duration_s": round(len(audio) / sr, 1), "cer": round(score, 4),
-                     "ref": ref, "hyp": hyp})
+        rows.append(
+            {
+                "id": cid,
+                "clip": os.path.basename(wav),
+                "duration_s": round(len(audio) / sr, 1),
+                "cer": round(score, 4),
+                "ref": ref,
+                "hyp": hyp,
+            }
+        )
         print("=" * 92)
         print(f"[{cid}] {os.path.basename(wav)}  {len(audio)/sr:4.1f}s  CER={score:.3f}")
         print(f"  REF: {ref}")
@@ -184,17 +207,23 @@ def main() -> int:
     print("=" * 92)
     print(f"MEAN CER over {len(rows)} clips: {mean:.3f}")
 
-    scorecard = {"model": os.path.basename(args.gguf), "language": args.language,
-                 "max_audio_seconds": args.max_audio_seconds or "disabled",
-                 # TASK-891 — recorded so an A/B pair of scorecards says which
-                 # configuration produced which number.
-                 "pair_priming_prompt": args.pair_priming_prompt,
-                 "single_priming_prompt": args.single_priming_prompt,
-                 "word_timestamps": args.word_timestamps,
-                 "word_split_applied": adapter._want_word_timestamps,
-                 "mean_cer": round(mean, 4), "clips": rows}
+    scorecard = {
+        "model": os.path.basename(args.gguf),
+        "language": args.language,
+        "max_audio_seconds": args.max_audio_seconds or "disabled",
+        # TASK-891 — recorded so an A/B pair of scorecards says which
+        # configuration produced which number.
+        "pair_priming_prompt": args.pair_priming_prompt,
+        "single_priming_prompt": args.single_priming_prompt,
+        "word_timestamps": args.word_timestamps,
+        "word_split_applied": adapter._want_word_timestamps,
+        "mean_cer": round(mean, 4),
+        "clips": rows,
+    }
     if args.out:
-        Path(args.out).write_text(json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8")
+        Path(args.out).write_text(
+            json.dumps(scorecard, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         print(f"wrote {args.out}")
     return 0
 

@@ -138,7 +138,12 @@ def test_the_decode_window_comes_from_the_model_row_not_a_platform_setting() -> 
     assert WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml", 7.0))._max_audio_seconds == 7.0
     assert WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))._max_audio_seconds == 0.0
     # A config predating the field (the deprecated pipeline path) must not explode.
-    assert WhisperCppAsrAdapter(_loaded_model(model), SimpleNamespace(language="ml"))._max_audio_seconds == 0.0
+    assert (
+        WhisperCppAsrAdapter(
+            _loaded_model(model), SimpleNamespace(language="ml")
+        )._max_audio_seconds
+        == 0.0
+    )
 
 
 # --- Decode mode: clean (default) vs word-timestamp -------------------------
@@ -508,9 +513,7 @@ def test_task891_word_split_is_refused_when_the_script_may_be_corrupted(
     """Unpinned (auto / code-switch pair) or Malayalam ⇒ clean sentence-level
     decode even though word timestamps were requested."""
     model = _CapturingModel()
-    adapter = WhisperCppAsrAdapter(
-        _loaded_model(model), _cfg(language), want_word_timestamps=True
-    )
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg(language), want_word_timestamps=True)
 
     adapter(_audio(), 16000)
 
@@ -525,9 +528,7 @@ def test_task891_word_split_still_runs_for_a_declared_latin_language(language: s
     """A DECLARED space-delimited language keeps real word timings — the
     technique's intended use. Refusing everywhere would be over-reach."""
     model = _CapturingModel()
-    adapter = WhisperCppAsrAdapter(
-        _loaded_model(model), _cfg(language), want_word_timestamps=True
-    )
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg(language), want_word_timestamps=True)
 
     adapter(_audio(), 16000)
 

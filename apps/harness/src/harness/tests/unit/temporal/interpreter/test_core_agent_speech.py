@@ -200,8 +200,10 @@ class TestTheDeltaLane:
 
 class TestItStillResolvesNothingItself:
     async def test_an_agent_that_names_no_voice_degrades_rather_than_picking_one(
-        self, producer: _RecordingProducer, synthesized: dict[str, Any],
-        monkeypatch: pytest.MonkeyPatch
+        self,
+        producer: _RecordingProducer,
+        synthesized: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
             core, "_api_client", lambda _settings: _StubApi({**_TTS_WIRE, "parameters": {}})

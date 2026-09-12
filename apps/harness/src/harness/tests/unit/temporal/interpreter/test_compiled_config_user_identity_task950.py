@@ -188,18 +188,24 @@ class TestTriggerValidationIsUnaffected:
         # D-2: presence is governed by the schema's own `required` flags, never by the marker.
         # `_DERIVED_CONTEXT_SCHEMA` declares no `required`, so a payload omitting the identity
         # field is still valid — the marker says what to do with a value, not that there is one.
-        result = await core.interpreter_core_trigger(_trigger({"visit_type": "revisit"}, with_marker=True))
+        result = await core.interpreter_core_trigger(
+            _trigger({"visit_type": "revisit"}, with_marker=True)
+        )
         assert result.status == "SUCCEEDED"
 
     @pytest.mark.asyncio
     async def test_additionalProperties_false_still_bites(self) -> None:
         with pytest.raises(RuntimeError, match="violates the declared context schema"):
-            await core.interpreter_core_trigger(_trigger({"not_a_declared_kind": "x"}, with_marker=True))
+            await core.interpreter_core_trigger(
+                _trigger({"not_a_declared_kind": "x"}, with_marker=True)
+            )
 
     @pytest.mark.asyncio
     async def test_a_declared_value_is_still_type_checked(self) -> None:
         with pytest.raises(RuntimeError, match="violates the declared context schema"):
-            await core.interpreter_core_trigger(_trigger({"visit_type": "third-visit"}, with_marker=True))
+            await core.interpreter_core_trigger(
+                _trigger({"visit_type": "third-visit"}, with_marker=True)
+            )
 
     @pytest.mark.parametrize("key", RESERVED_RUN_IDENTITY_KEYS)
     @pytest.mark.asyncio
@@ -216,10 +222,14 @@ class TestTriggerValidationIsUnaffected:
             RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
         )
         for with_marker in (True, False):
-            result = await core.interpreter_core_trigger(_trigger(accepted, with_marker=with_marker))
+            result = await core.interpreter_core_trigger(
+                _trigger(accepted, with_marker=with_marker)
+            )
             assert result.status == "SUCCEEDED"
             assert result.output == {"context": accepted}
 
         for with_marker in (True, False):
             with pytest.raises(RuntimeError, match="violates the declared context schema"):
-                await core.interpreter_core_trigger(_trigger({"undeclared": 1}, with_marker=with_marker))
+                await core.interpreter_core_trigger(
+                    _trigger({"undeclared": 1}, with_marker=with_marker)
+                )

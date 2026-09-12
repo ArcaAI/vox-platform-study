@@ -45,9 +45,7 @@ def idempotency_key_problems(key: object) -> list[str]:
 def _require_id(value: str, name: str) -> str:
     """Reject a blank intent id — a blank id collapses every event onto ONE key."""
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(
-            f"AsyncIdempotencyKey: {name} is required and must be non-blank"
-        )
+        raise ValueError(f"AsyncIdempotencyKey: {name} is required and must be non-blank")
     return value.strip()
 
 
@@ -57,9 +55,7 @@ class AsyncIdempotencyKey:
     @staticmethod
     def stt_segment(session_id: str, utterance_index: int) -> str:
         """``stt:session:<sessionId>:seg:<utteranceIndex>``."""
-        return (
-            f"stt:session:{_require_id(session_id, 'session_id')}:seg:{utterance_index}"
-        )
+        return f"stt:session:{_require_id(session_id, 'session_id')}:seg:{utterance_index}"
 
     @staticmethod
     def text_chunk(task_id: str, sequence: int) -> str:

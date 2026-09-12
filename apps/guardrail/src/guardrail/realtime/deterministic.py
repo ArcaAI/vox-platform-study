@@ -215,9 +215,7 @@ class StreamMatcher:
             if self._tail_len:
                 self._tail = (self._tail + char)[-self._tail_len :]
             for rule_id, length in self._node.outputs:
-                match = RuleMatch(
-                    rule_id=rule_id, start=self._offset - length, end=self._offset
-                )
+                match = RuleMatch(rule_id=rule_id, start=self._offset - length, end=self._offset)
                 self._matches.append(match)
                 found.append(match)
         return tuple(found)

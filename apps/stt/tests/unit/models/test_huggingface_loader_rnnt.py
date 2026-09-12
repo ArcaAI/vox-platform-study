@@ -19,7 +19,9 @@ from stt.models.huggingface_loader import RNNT_MIN_TRANSFORMERS, HuggingFaceLoad
 from stt.pipeline.dto import ModelTaskType
 
 
-def _fake_transformers(*, architectures: list[str], model_type: str, with_rnnt: bool) -> types.ModuleType:
+def _fake_transformers(
+    *, architectures: list[str], model_type: str, with_rnnt: bool
+) -> types.ModuleType:
     mod = types.ModuleType("transformers")
     config = MagicMock(model_type=model_type, architectures=architectures, audio_config=None)
     mod.AutoConfig = MagicMock()  # type: ignore[attr-defined]
@@ -56,7 +58,9 @@ def _load(mod: types.ModuleType):
 
 
 def test_rnnt_checkpoint_loads_through_auto_model_for_rnnt_from_a_local_snapshot():
-    mod = _fake_transformers(architectures=["ParakeetForRNNT"], model_type="parakeet_rnnt", with_rnnt=True)
+    mod = _fake_transformers(
+        architectures=["ParakeetForRNNT"], model_type="parakeet_rnnt", with_rnnt=True
+    )
 
     model, _tokenizer, processor, _fe, is_multimodal, is_rnnt = _load(mod)
 
@@ -73,7 +77,9 @@ def test_rnnt_checkpoint_loads_through_auto_model_for_rnnt_from_a_local_snapshot
 
 
 def test_rnnt_checkpoint_on_an_old_transformers_fails_closed_with_the_version_floor():
-    mod = _fake_transformers(architectures=["ParakeetForRNNT"], model_type="parakeet_rnnt", with_rnnt=False)
+    mod = _fake_transformers(
+        architectures=["ParakeetForRNNT"], model_type="parakeet_rnnt", with_rnnt=False
+    )
 
     with pytest.raises(ModelLoadError) as exc_info:
         _load(mod)
@@ -87,7 +93,9 @@ def test_rnnt_checkpoint_on_an_old_transformers_fails_closed_with_the_version_fl
 
 
 def test_whisper_checkpoint_is_not_mistaken_for_rnnt():
-    mod = _fake_transformers(architectures=["WhisperForConditionalGeneration"], model_type="whisper", with_rnnt=True)
+    mod = _fake_transformers(
+        architectures=["WhisperForConditionalGeneration"], model_type="whisper", with_rnnt=True
+    )
 
     _model, _tok, _proc, _fe, _is_mm, is_rnnt = _load(mod)
 

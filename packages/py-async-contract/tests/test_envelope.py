@@ -16,11 +16,7 @@ from hope_async_contract.envelope import (
 )
 
 EXAMPLES_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "async-contract"
-    / "src"
-    / "__tests__"
-    / "examples"
+    Path(__file__).resolve().parents[2] / "async-contract" / "src" / "__tests__" / "examples"
 )
 
 

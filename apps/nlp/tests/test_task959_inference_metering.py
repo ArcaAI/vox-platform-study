@@ -208,9 +208,7 @@ class TestGlinerTokenClassifierReportsInferenceMsAndDevice:
         )
         service.is_initialized = True
 
-        response = await service.process(
-            TokenClassificationRequest(text="hi", labels=["person"])
-        )
+        response = await service.process(TokenClassificationRequest(text="hi", labels=["person"]))
 
         assert response.device == "cpu"
 
@@ -226,7 +224,13 @@ class TestDiagnosisSumsInferenceMsAcrossBothModels:
         # text short-circuits `_predict_diseases` before it calls the model).
         ner_pipe = MagicMock(
             return_value=[
-                {"entity_group": "B-SIGN_SYMPTOM", "word": "fever", "score": 0.99, "start": 0, "end": 5}
+                {
+                    "entity_group": "B-SIGN_SYMPTOM",
+                    "word": "fever",
+                    "score": 0.99,
+                    "start": 0,
+                    "end": 5,
+                }
             ]
         )
 
@@ -312,9 +316,7 @@ class TestGuardRoutesReportInferenceMsAndDevice:
     def test_pii_reports_device_from_the_service(self, client, monkeypatch) -> None:
         import nlp.api.v1.rest.guard as guard_module
 
-        monkeypatch.setattr(
-            guard_module, "_acquire_guard", _fake_acquire(_SlowBatchGuard(0.0))
-        )
+        monkeypatch.setattr(guard_module, "_acquire_guard", _fake_acquire(_SlowBatchGuard(0.0)))
         response = client.post(
             "/api/v1/guard/pii",
             json={
@@ -332,9 +334,7 @@ class TestGuardRoutesReportInferenceMsAndDevice:
     def test_classify_reports_device_from_the_service(self, client, monkeypatch) -> None:
         import nlp.api.v1.rest.guard as guard_module
 
-        monkeypatch.setattr(
-            guard_module, "_acquire_guard", _fake_acquire(_SlowBatchGuard(0.0))
-        )
+        monkeypatch.setattr(guard_module, "_acquire_guard", _fake_acquire(_SlowBatchGuard(0.0)))
         response = client.post(
             "/api/v1/guard/classify",
             json={

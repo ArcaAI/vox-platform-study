@@ -34,7 +34,6 @@ def mock_embedding_registry(mock_embedding_provider):
     return registry
 
 
-
 @pytest.fixture
 def mock_task_manager():
     tm = AsyncMock()
@@ -89,4 +88,3 @@ class TestSyncEmbeddings:
     async def test_blank_texts_list_rejected(self, client):
         resp = await client.post("/api/v1/embeddings", json={"texts": []})
         assert resp.status_code == 422
-

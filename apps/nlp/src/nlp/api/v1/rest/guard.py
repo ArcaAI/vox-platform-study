@@ -156,9 +156,7 @@ async def _submit_pii(
     batch is not billed the whole pass.
     """
 
-    async def run_batch(
-        _group: str, texts: list[str]
-    ) -> list[tuple[list[dict[str, Any]], int]]:
+    async def run_batch(_group: str, texts: list[str]) -> list[tuple[list[dict[str, Any]], int]]:
         started = time.perf_counter()
         spans: list[list[dict[str, Any]]] = await service.batch_extract_entities(
             texts, labels, threshold, batch_size
@@ -202,9 +200,7 @@ async def _submit_classify(
     batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
-        results, inference_ms = await batcher.submit(
-            classify_group_key(tasks, threshold), text
-        )
+        results, inference_ms = await batcher.submit(classify_group_key(tasks, threshold), text)
         return results, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)

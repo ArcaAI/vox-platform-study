@@ -41,7 +41,9 @@ def _reset() -> None:
 
 def _settings() -> MagicMock:
     """Only the three KEPT platform knobs — the deleted two must not be consulted."""
-    settings = MagicMock(spec=["punctuation_device", "punctuation_model_cache_dir", "punctuation_max_length"])
+    settings = MagicMock(
+        spec=["punctuation_device", "punctuation_model_cache_dir", "punctuation_max_length"]
+    )
     settings.punctuation_device = "cpu"
     settings.punctuation_model_cache_dir = None
     settings.punctuation_max_length = 300
@@ -58,7 +60,9 @@ def test_the_spec_model_is_loaded_with_no_platform_key_in_sight(mock_settings) -
     """
     mock_settings.return_value = _settings()
     loaded = MagicMock()
-    with patch.dict("sys.modules", {"cadence": MagicMock(PunctuationModel=MagicMock(return_value=loaded))}):
+    with patch.dict(
+        "sys.modules", {"cadence": MagicMock(PunctuationModel=MagicMock(return_value=loaded))}
+    ):
         assert service.ensure_initialized("Cadence-Fast") is True
         assert service.get_model("Cadence-Fast") is loaded
 
@@ -76,7 +80,9 @@ async def test_punctuate_uses_the_spec_model(mock_settings) -> None:
     mock_settings.return_value = _settings()
     model = MagicMock()
     model.punctuate.return_value = ["Hello, world."]
-    with patch.dict("sys.modules", {"cadence": MagicMock(PunctuationModel=MagicMock(return_value=model))}):
+    with patch.dict(
+        "sys.modules", {"cadence": MagicMock(PunctuationModel=MagicMock(return_value=model))}
+    ):
         assert await service.punctuate("hello world", model_name="Cadence-Fast") == "Hello, world."
 
 

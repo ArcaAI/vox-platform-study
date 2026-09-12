@@ -122,9 +122,7 @@ def _verdict(**over: object) -> TranscriptSegmentVerdict:
     base: dict[str, object] = {
         "segment_id": "0198-seg",
         "scope": _scope(),
-        "content_harm": ContentHarm(
-            categories=(), confidence=0.0, classifier_version="clf-1"
-        ),
+        "content_harm": ContentHarm(categories=(), confidence=0.0, classifier_version="clf-1"),
         "injection_risk": InjectionRisk(
             decision="PASS",
             assembly_template_id="summarize.partial@3",
@@ -132,9 +130,7 @@ def _verdict(**over: object) -> TranscriptSegmentVerdict:
             confidence=0.0,
         ),
         "clinical": (),
-        "window": WindowAssertion(
-            inspected_chars=10, consumer_window_chars=0, complete=False
-        ),
+        "window": WindowAssertion(inspected_chars=10, consumer_window_chars=0, complete=False),
     }
     base.update(over)
     return TranscriptSegmentVerdict(**base)  # type: ignore[arg-type]
@@ -153,19 +149,25 @@ def test_a_maximal_clinical_signal_never_gates_a_derivation() -> None:
 
 
 def test_content_harm_and_injection_block_do_gate() -> None:
-    assert _verdict(
-        content_harm=ContentHarm(
-            categories=("weapons",), confidence=0.9, classifier_version="clf-1"
-        )
-    ).gates_derivations is True
-    assert _verdict(
-        injection_risk=InjectionRisk(
-            decision="BLOCK",
-            assembly_template_id="summarize.partial@3",
-            capability_set_id="readonly-text",
-            confidence=0.9,
-        )
-    ).gates_derivations is True
+    assert (
+        _verdict(
+            content_harm=ContentHarm(
+                categories=("weapons",), confidence=0.9, classifier_version="clf-1"
+            )
+        ).gates_derivations
+        is True
+    )
+    assert (
+        _verdict(
+            injection_risk=InjectionRisk(
+                decision="BLOCK",
+                assembly_template_id="summarize.partial@3",
+                capability_set_id="readonly-text",
+                confidence=0.9,
+            )
+        ).gates_derivations
+        is True
+    )
 
 
 def test_clinical_signals_do_not_change_the_gate_when_added_to_a_blocking_verdict() -> None:

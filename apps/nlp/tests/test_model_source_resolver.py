@@ -253,7 +253,9 @@ async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, mon
     assert "HF_HUB_OFFLINE" in str(exc.value)
 
 
-async def test_hf_offline_cached_is_served_from_cache(config: ModelSourceConfig, monkeypatch) -> None:
+async def test_hf_offline_cached_is_served_from_cache(
+    config: ModelSourceConfig, monkeypatch
+) -> None:
     """Offline + ALREADY CACHED must resolve, not raise.
 
     The sibling test above is named `..._offline_uncached_raises_cleanly`, and

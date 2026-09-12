@@ -250,7 +250,9 @@ class TestExtractionServiceEmbeddingSpace:
             from stt.diarization.dto import SpeakerEmbedding
 
             vec = np.ones(256, dtype=np.float32)
-            return SpeakerEmbedding(embedding=(vec / np.linalg.norm(vec)).tolist(), segment_start=0.0, segment_end=1.0)
+            return SpeakerEmbedding(
+                embedding=(vec / np.linalg.norm(vec)).tolist(), segment_start=0.0, segment_end=1.0
+            )
 
         emb_service.extract_from_samples = AsyncMock(side_effect=fake_extract)
         service = ExtractionService(embedding_service=emb_service, vad_service=MagicMock())

@@ -68,7 +68,9 @@ def _candidate(**over: Any) -> dict[str, Any]:
     return base
 
 
-def _block(*, auto_switch: bool = True, chain: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _block(
+    *, auto_switch: bool = True, chain: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     return {
         "autoSwitch": auto_switch,
         "chain": [_candidate()] if chain is None else chain,

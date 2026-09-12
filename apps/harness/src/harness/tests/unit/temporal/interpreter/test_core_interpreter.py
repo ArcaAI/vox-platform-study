@@ -520,7 +520,9 @@ class TestContextAndDelegation:
                 },
             ]
         )
-        _, by_id = await _run(body, subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"))
+        _, by_id = await _run(
+            body, subject=RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001")
+        )
         assert by_id["n_live"].status == "SKIPPED"
         assert by_id["n_live"].reason == "realtime_lane"
 

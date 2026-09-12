@@ -169,9 +169,7 @@ def test_no_vendor_env_var_reaches_the_settings_tree(monkeypatch):
 
     settings = Settings()
     leaked = [
-        field
-        for field in _settings_secret_fields()
-        if _read(settings, field) == "leaked-from-env"
+        field for field in _settings_secret_fields() if _read(settings, field) == "leaked-from-env"
     ]
     assert leaked == [], (
         f"vendor env var(s) populated {leaked}. apps/nlp runs local weights and "

@@ -54,8 +54,12 @@ async def main() -> None:
     rc = settings.retrieval
     print("=== RetrievalConfig (live) ===")
     print(f"  qdrant={rc.qdrant_url} collection={rc.collection}")
-    print(f"  embeddings={rc.embeddings_base_url} model={rc.embeddings_model} dim={rc.embeddings_dim}")
-    print(f"  reranker={rc.reranker_base_url} top_k_retrieval={rc.top_k_retrieval} top_k_rerank={rc.top_k_rerank}")
+    print(
+        f"  embeddings={rc.embeddings_base_url} model={rc.embeddings_model} dim={rc.embeddings_dim}"
+    )
+    print(
+        f"  reranker={rc.reranker_base_url} top_k_retrieval={rc.top_k_retrieval} top_k_rerank={rc.top_k_rerank}"
+    )
 
     retriever = _hybrid_retriever(settings)
 
@@ -71,7 +75,9 @@ async def main() -> None:
     leaks = [c.chunk_id for c in rb.chunks if c.chunk_id == CHUNK_A]
     foreign = [c.chunk_id for c in rb.chunks if c.knowledge_document_id and c.chunk_id == CHUNK_A]
     iso_ok = len(leaks) == 0
-    print(f"  => CROSS-TENANT ISOLATION: {'PASS' if iso_ok else 'FAIL'} (tenant-A leaks into B: {leaks or 0})")
+    print(
+        f"  => CROSS-TENANT ISOLATION: {'PASS' if iso_ok else 'FAIL'} (tenant-A leaks into B: {leaks or 0})"
+    )
 
     # 3) Degrade: reranker down (unroutable port).
     degr_rerank = HybridRetriever(
@@ -91,7 +97,9 @@ async def main() -> None:
 
     # 4) Degrade: embeddings down (unroutable port).
     degr_embed = HybridRetriever(
-        embeddings=EmbeddingsClient("http://localhost:9/v1", model=rc.embeddings_model, timeout=3.0),
+        embeddings=EmbeddingsClient(
+            "http://localhost:9/v1", model=rc.embeddings_model, timeout=3.0
+        ),
         sparse=SparseBm25Embedder(),
         store=KnowledgeQdrantStore(rc.qdrant_url, rc.collection, timeout=rc.qdrant_timeout_s),
         reranker=RerankerClient(rc.reranker_base_url, timeout=rc.reranker_timeout_s),

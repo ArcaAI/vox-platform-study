@@ -200,9 +200,7 @@ class Gliner2GuardService:
     def _sync_classify(self, text: str, tasks: dict[str, Any], threshold: float) -> dict[str, Any]:
         # `include_confidence=True` — see `_sync_batch_classify`.
         return dict(
-            self.runtime.classify_text(
-                text, tasks, threshold=threshold, include_confidence=True
-            )
+            self.runtime.classify_text(text, tasks, threshold=threshold, include_confidence=True)
             or {}
         )
 
