@@ -39,14 +39,42 @@ export class ConnectionModelResponse {
  * reveal route for provider keys.
  */
 export class AiProviderConnectionResponse {
+  @ApiProperty({
+    description:
+      'Row id — what a declared model carries as `sourceConnectionId` and what the usage ledger attributes a ' +
+      'generation to. EMPTY STRING on the `version: 0` placeholder, which is the shape of a connection that does ' +
+      'not exist yet.',
+  })
+  id!: string;
+
   @ApiProperty({ description: 'Owning tenant. The reserved SYSTEM tenant row is the platform default.' })
   tenantId!: string;
 
   @ApiProperty({ description: 'Capability the connection serves.', example: 'llm', enum: PROVIDER_SERVICES })
   service!: string;
 
+  @ApiProperty({
+    description:
+      'Connection identity within (tenant, service) — the `:slug` path segment, immutable after create. Equal to ' +
+      '`provider` on the default connection of each provider (and on every platform row), so the pre-TASK-958 ' +
+      'addressing is unchanged; a named sibling carries its own, e.g. `openai-research`.',
+    example: 'openai-research',
+  })
+  slug!: string;
+
   @ApiProperty({ description: 'Capability-scoped serving provider identifier.', example: 'azure' })
   provider!: string;
+
+  @ApiProperty({ description: 'Tenant-chosen display label. `null` = fall back to the slug.', nullable: true, example: 'Research account' })
+  name!: string | null;
+
+  @ApiProperty({
+    description:
+      "Whether this is the tenant's DEFAULT connection for `provider` — the one the provider-name cascade " +
+      'resolves, and therefore the one the three-state `enabled` rule is read on. Exactly one per (tenant, ' +
+      'service, provider).',
+  })
+  isDefault!: boolean;
 
   @ApiProperty({ description: 'Base URL of the serving endpoint.', nullable: true })
   baseUrl!: string | null;

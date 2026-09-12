@@ -172,11 +172,14 @@ export type CloudByoProvider = (typeof CLOUD_BYO_PROVIDERS)[ProviderService][num
  * surfaces an operator actually reads. The console's helper text mirrors it.
  */
 export const CONNECTION_ENABLED_SEMANTICS =
-  'Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve ' +
-  'this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own ' +
-  'credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the ' +
-  'platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a ' +
-  'tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion".';
+  'Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no ' +
+  'opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the ' +
+  'platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this ' +
+  'provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather ' +
+  'than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting ' +
+  'the row instead returns it to "no opinion". A NON-DEFAULT sibling connection is never read by the ' +
+  'provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails ' +
+  'closed and the chain walks on) and vetoes nothing.';
 
 /**
  * Whether a tenant may hold its own connection row for `(service, provider)`.
@@ -303,3 +306,88 @@ export function providerClassOf(
   if (service && isCloudByoProvider(service, provider)) return 'cloud-platform';
   return null;
 }
+
+// ===========================================================================
+// TASK-958 — multiplicity: several connections of one provider per tenant
+// ===========================================================================
+
+/**
+ * Every provider id this platform RECOGNISES, across every service.
+ *
+ * Used for ONE decision: when a tenant PUTs `admin/providers/:service/:slug`
+ * with no `provider` in the body, is the slug itself a provider id?
+ *
+ *  - YES → the write is the pre-TASK-958 shape (`PUT llm/openai`), the provider
+ *    is the slug, and the existing governance answers it: a cloud BYO pair is
+ *    allowed, a platform-managed one is the same 403 it always was.
+ *  - NO → the caller means a NAMED sibling and must say which vendor it is
+ *    (400 `CONNECTION_PROVIDER_REQUIRED`).
+ *
+ * DELIBERATELY SERVICE-AGNOSTIC. `openai` is a real provider id that a tenant
+ * may not hold under `tts`; answering "unknown slug, name your provider" there
+ * would replace today's 403 with a 400 and tell an operator the wrong thing.
+ * The privilege boundary is `assertWriteAllowed`'s to draw, per (service,
+ * provider); this set only decides whether a provider was NAMED at all.
+ *
+ * The three literals are the platform-managed planes that have a SYSTEM row but
+ * no BYO entry anywhere (`model-registry:{huggingface,s3}`, `rerank:tei`), so no
+ * other list above carries them. They are spelled here rather than imported
+ * from `built-in-defaults.ts` because that module imports this one.
+ */
+export const KNOWN_PROVIDER_IDS: ReadonlySet<string> = new Set<string>([
+  ...Object.values(CLOUD_BYO_PROVIDERS).flatMap((ids) => [...ids]),
+  ...Object.values(PLATFORM_SELF_HOST_PROVIDERS).flatMap((ids) => [...(ids ?? [])]),
+  ...ENGINE_SERVED_PROVIDERS,
+  PLATFORM_SELF_HOST_MODEL_PROVIDER,
+  'huggingface',
+  's3',
+  'tei',
+]);
+
+/** Whether `provider` names a serving provider this platform knows — see `KNOWN_PROVIDER_IDS`. */
+export function isKnownProviderId(provider: string): boolean {
+  return KNOWN_PROVIDER_IDS.has(provider);
+}
+
+/**
+ * The named refusals of the connection plane (TASK-958 §4.1).
+ *
+ * Codes, not prose: a console dialog and an SDK caller both branch on these,
+ * and both would otherwise have to match on a message. Every one is thrown as
+ * `new BadRequestException({ code, message, ...detail })` /
+ * `new ConflictException(...)`, the `BYO_SLUG_SHADOWS_PLATFORM` shape.
+ */
+export const CONNECTION_ERROR_CODES = Object.freeze({
+  /** 400 — the slug fails `AiProviderConnectionEntity.SLUG_PATTERN`. */
+  SLUG_INVALID: 'CONNECTION_SLUG_INVALID',
+  /** 400 — a new slug that is not itself a provider id, with no `provider` in the body. */
+  PROVIDER_REQUIRED: 'CONNECTION_PROVIDER_REQUIRED',
+  /** 400 — a NON-DEFAULT row on a service that serves no per-tenant model rows (D-9). */
+  MULTIPLICITY_UNSUPPORTED: 'CONNECTION_MULTIPLICITY_UNSUPPORTED',
+  /** 400 — the platform (SYSTEM) tier is one row per provider: `slug === provider`, always the default. */
+  PLATFORM_ONE_PER_PROVIDER: 'PLATFORM_CONNECTION_PER_PROVIDER',
+  /**
+   * 400 — `isDefault: false` on the row that IS (or would be) the default.
+   *
+   * Not in §4.1's table, which named the rule without naming a code: a provider
+   * group with no default is unresolvable by every consumer that binds by
+   * provider name, so the refusal needs a code the console can branch on just
+   * like its siblings. Re-point the default by sending `isDefault: true` on the
+   * row that should hold it — that flip clears the old one atomically.
+   */
+  DEFAULT_REQUIRED: 'CONNECTION_DEFAULT_REQUIRED',
+  /** 409 — PUT on an existing slug naming a different provider (slug and provider are both immutable). */
+  PROVIDER_IMMUTABLE: 'CONNECTION_PROVIDER_IMMUTABLE',
+  /** 409 — DELETE of the default while siblings live (OQ-6: refuse, never auto-promote). */
+  IS_DEFAULT: 'CONNECTION_IS_DEFAULT',
+  /** 409 — a declared model's slug is already minted by another connection of this tenant. */
+  BYO_SLUG_TAKEN: 'BYO_SLUG_TAKEN',
+  /** 409 — a declared model's slug would shadow a platform row (pre-existing, P-29). */
+  BYO_SLUG_SHADOWS_PLATFORM: 'BYO_SLUG_SHADOWS_PLATFORM',
+} as const);
+
+/**
+ * The entitlement key bounding how many connections one tenant may hold, across
+ * every service (D-8 / OQ-4). `null` = unbounded, which is every plan today.
+ */
+export const MAX_AI_PROVIDER_CONNECTIONS_KEY = 'maxAiProviderConnections' as const;
