@@ -343,7 +343,16 @@ class TTSRouter:
         speed: float = 1.0,
         request_id: str = "",
         provider_overrides: ProviderOverrides | None = None,
+        timing: dict[str, float] | None = None,
     ) -> AsyncIterator[AudioChunk]:
+        """Failover chain, as before. ``timing`` (TASK-959) is an OUT-parameter: on a successful
+        completion this writes ``timing["synthesis_ms"]`` — the same wall-clock ``gen_s`` already
+        fed to ``_observe_rtf``, in milliseconds. It has to be an out-parameter rather than a
+        return value or a stamp on the last chunk: the caller only learns which chunk was last
+        AFTER consuming it (``StopAsyncIteration``), by which point every chunk has already been
+        yielded — a dict the caller holds a reference to is the only way to hand back a fact this
+        generator does not know until its body resumes past the final ``yield``.
+        """
         candidates = self.candidates(spec, voice_id=voice_id)
         requested_voice = voice_id or spec.primary.parameters.voice or ""
         if not candidates:
@@ -385,20 +394,31 @@ class TTSRouter:
                 with track_model_inference(name):
                     async with aclosing(source) as stream:
                         async for chunk in stream:
+                            # TASK-959 — time-to-first-audio, stamped on the FIRST chunk only:
+                            # the one synthesis-timing fact a caller draining the stream
+                            # incrementally (raw/SSE) can report before the total is known.
+                            ttfa_ms: float | None = None
                             if not emitted:
-                                TTS_TTFA.labels(provider=name, locale=locale).observe(
-                                    time.perf_counter() - started
-                                )
+                                elapsed = time.perf_counter() - started
+                                TTS_TTFA.labels(provider=name, locale=locale).observe(elapsed)
+                                ttfa_ms = elapsed * 1000.0
                                 emitted = True
                             audio_bytes += len(chunk.data)
-                            # Stamp the winning provider AND its connection (usage
-                            # attribution) — a caller doesn't know which
-                            # candidate won until the first byte ships.
+                            # Stamp the winning provider, its connection (usage attribution) and
+                            # its configured device — a caller doesn't know which candidate won
+                            # until the first byte ships.
                             yield replace(
-                                chunk, provider=name, connection_id=_connection_id(candidate)
+                                chunk,
+                                provider=name,
+                                connection_id=_connection_id(candidate),
+                                device=self._device_for(name),
+                                ttfa_ms=ttfa_ms,
                             )
                 breaker.record_success()
-                self._observe_rtf(name, req, audio_bytes, time.perf_counter() - started)
+                gen_s = time.perf_counter() - started
+                self._observe_rtf(name, req, audio_bytes, gen_s)
+                if timing is not None:
+                    timing["synthesis_ms"] = gen_s * 1000.0
                 TTS_REQUESTS.labels(provider=name, locale=locale, status="ok").inc()
                 return
             except Exception as exc:
@@ -488,6 +508,18 @@ class TTSRouter:
             async with aclosing(engine.synthesize(sub)) as stream:
                 async for chunk in stream:
                     yield chunk
+
+    def _device_for(self, name: str) -> str | None:
+        """The serving engine's CONFIGURED device (TASK-959), or ``None``.
+
+        Device is a deployment property, not a per-request discovery: each self-hosted engine's
+        sub-config on ``Settings`` names its own (``KokoroConfig.device`` etc.), keyed by exactly
+        the engine name it registers under (``candidate.engine``). A cloud engine's sub-config
+        (Azure, Sarvam) carries no ``device`` field at all, so this returns ``None`` for them —
+        never a guess — and the same happens, harmlessly, for an engine name this process does
+        not recognise.
+        """
+        return getattr(getattr(self._settings, name, None), "device", None)
 
     def _observe_rtf(
         self, name: str, req: SynthesisRequest, audio_bytes: int, gen_s: float
