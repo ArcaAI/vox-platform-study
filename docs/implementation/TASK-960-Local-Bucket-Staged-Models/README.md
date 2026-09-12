@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** |
+| Status | **Completed** |
 | Type | bugfix + feature |
 | Branch | `dev-2.2` |
 | Owner decision | OD-1 (2026-09-12): LOCAL rows are verified **by object listing**, not by `manifest.json` |
@@ -175,10 +175,85 @@ After Lane C, step 1–2 become optional: the flat upload verifies by listing on
 
 ## 7. Implementation Summary
 
-*(to be completed during Phase 4)*
+Delivered on `dev-2.2` in three file-disjoint worktree lanes, merged by the orchestrator.
+
+| Lane | Branch | Merge | Model tier |
+|---|---|---|---|
+| W1 guards (plan lanes A+B) | `task-960/guards` | `c8990685d` | `sonnet` |
+| W2 inventory (lane C) | `task-960/inventory` | `9bf0c6d13` | `opus` |
+| W3 console (lane D) | `task-960/console` | `faf95813c` | `sonnet` |
+| API artifacts (orchestrator) | — | `051985241` | — |
+
+W2 took the higher tier because it carried the only subtle work (directory grouping, `hf/`
+exclusion, suppressing a `PARTIAL` a manifest-less row cannot have, and keeping non-LOCAL
+verification byte-for-byte). W1/W3 were mechanical against an exact spec.
+
+### What changed
+
+- **D1/D5** — `ModelSourceFetcherService.fetch(source, sourceUri, quantFilter)` refuses
+  `AiModelSource.LOCAL` **before** any scheme dispatch, so the HF branch is now structurally
+  unreachable for a bucket-staged row. `AiModelDownloadService.triggerDownload` refuses a LOCAL
+  row with `ConflictException` (409) after the `findById` existence check but before the
+  in-flight check and before any write — so an unknown id still answers 404 and the refusal
+  never becomes an existence oracle.
+- **D2** — `BucketRelativePrefixConstraint` (exported from `constants.ts`) rejects a
+  bucket-qualified or `s3://`-schemed `bucketPrefix` on both the create and update DTOs.
+- **D4** — `ModelInventoryService.measure()` gained a `source === LOCAL` branch ahead of the
+  manifest lookup (verify by object listing, per OD-1), placed *after* the `isCloud` and
+  weightless-library early returns so those keep precedence. `findUnregisteredPrefixes` gained a
+  second pass reporting manifest-less weight-bearing prefixes as `layout: 'staged'`, grouped by
+  directory, with the `hf/` cache tree excluded. `isModelWeightFile` was added to
+  `model-version.util.ts` as a pure addition (0 removed lines).
+- **D3** — the console gained `S3` in its source vocabulary, renders the `staged` layout
+  distinctly, and derives a LOCAL row's `sourceUri` as `s3://hope-models/<bucketPrefix>` so the
+  two can never disagree.
+
+### Evidence
+
+| Gate | Result |
+|---|---|
+| `tests/contracts` | 25 files, 354 tests passed |
+| `pnpm --filter @arcaai/applications test` | 812 passed \| 1 skipped (813 files); 13343 passed \| 4 skipped |
+| `pnpm --filter @arcaai/applications build` | exit 0 |
+| `pnpm --filter @arcaai/admin-console build lint test` | build + lint clean; 2959 tests / 324 files passed (lane run) |
+| Five API artifacts | regenerated; `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check` all green |
+
+`route-manifest.json` is unchanged — no route changed, only DTO shape and documentation.
+
+### Live verification (dev cluster, 2026-09-12)
+
+The `arcaai-whisper-2609` row (`01a090d5-…`) was repaired and the model **proven to load**:
+
+```
+whisper_model_load: type = 5 (large v3)
+whisper_model_load: CUDA0 total size = 1623.92 MB
+whisper_backend_init_gpu: using CUDA0 backend
+LOADED OK
+TRANSCRIBE_OK segments= 1
+```
+
+and through STT's own resolver rather than a direct loader call:
+
+```
+stt.model_source.local_path_hit path=/mnt/models-bucket/arcaai-whisper-en-2609/ggml-…-f16.bin
+RESOLVER_OK -> /mnt/models-bucket/arcaai-whisper-en-2609/ggml-arcaai-whisper-en-2609-f16.bin
+```
+
+No network call, no credential resolved, checksum verified.
+
+### Known residual
+
+- **Themes were never verified in a running browser.** W3 substituted axe tests (0 violations)
+  and a "no new hardcoded colours" argument. That is a reasonable proxy, not the check
+  `13-nextjs-apps.md` asks for.
+- **`audit-correlation.test.ts` is load-flaky**, not broken: it timed out for both W1 and W2
+  while the host sat at load 140–170 under three concurrent ticket waves, and passed in the
+  clean post-merge run above. Pre-existing on `dev-2.2`; W2 disproved ownership by reverting all
+  five of its files and reproducing on a pristine tree.
 
 ## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-12 | Ticket opened. Diagnosis of the live `arcaai-whisper-2609` failure; five defects recorded; OD-1 taken (verify LOCAL by object listing). Plan pending approval. |
+| 2026-09-12 | All three lanes merged (`c8990685d`, `9bf0c6d13`, `faf95813c`) and the five API artifacts regenerated (`051985241`). Post-merge gates green. Live row `arcaai-whisper-2609` repaired and proven to load on CUDA0 through STT's own resolver. A `manifest.json` + `SHA256SUMS` were staged into the prefix as a BRIDGE so the currently-deployed (pre-TASK-960) hourly inventory verifies it too; redundant once the new image ships. |
