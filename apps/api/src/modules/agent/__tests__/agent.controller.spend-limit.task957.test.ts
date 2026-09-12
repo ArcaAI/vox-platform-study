@@ -55,8 +55,8 @@ const overLimit = () =>
   new SpendLimitExceededException('Tenant has reached its monthly spend limit for 2026-09.', {
     tenantId: TENANT,
     period: '2026-09',
-    spendLimitMicros: 1_000_000,
-    overageSpendMicros: 1_000_000,
+    spendLimitMicros: '1000000',
+    overageSpendMicros: '1000000',
   });
 
 function fakeRes() {
