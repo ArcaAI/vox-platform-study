@@ -97,6 +97,21 @@ export interface ResolvedAgentModel {
   provider: string | null;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */
   tenantId: string;
+  /**
+   * TASK-958 D-3 — the `AiProviderConnection` this row was DECLARED on ("the model
+   * row names the connection"), the FK TASK-890 already wrote at declaration time.
+   *
+   * It is the binding a tenant admin actually makes: a tenant may hold several
+   * connections for one `(service, provider)`, so the provider NAME names a GROUP
+   * of accounts and can no longer select a credential. Present ⇒ THAT connection
+   * serves or the candidate fails closed; `null`/absent ⇒ a SYSTEM catalogue row,
+   * which resolves through the tenant's DEFAULT connection exactly as before.
+   *
+   * ADDITIVE-OPTIONAL, and omitted rather than nulled by `AgentResolverService`:
+   * this shape crosses the wire to the harness (`GET /internal/agents/resolve`),
+   * so a field one half has not learned yet has to be able to be missing.
+   */
+  sourceConnectionId?: string | null;
   /** The narrow `AiModel._metadata` slice a runtime may act on; absent when the row declares none. */
   metaData?: ResolvedAgentModelMetadata | null;
 }
