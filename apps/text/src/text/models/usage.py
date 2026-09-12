@@ -97,6 +97,11 @@ class UsageDetail(BaseModel):
     # override was actually USED (a malformed override degrades to the platform
     # credential).
     byok: bool = False
+    # TASK-958 — WHICH `AiProviderConnection` was spent. `provider` names the vendor,
+    # and a tenant may hold several accounts of one vendor, so this is the only field
+    # that separates their spend on a cost surface. Nullable: a platform env credential
+    # has no row, and a gateway that predates the field stamps none.
+    connection_id: str | None = None
     # DERIVED from ``byok`` (never passed in): a tenant-funded call is
     # ``BYOK_NOTIONAL`` — metered and rated for visibility, never invoiced,
     # excluded from platform-spend aggregates — and everything else is real
@@ -295,6 +300,7 @@ def build_usage_detail(
     raw: dict[str, Any] | None = None,
     interrupted: bool = False,
     byok: bool = False,
+    connection_id: str | None = None,
     service_tier: str | None = None,
     occurred_at: datetime | None = None,
 ) -> UsageDetail:
@@ -313,6 +319,9 @@ def build_usage_detail(
         endpoint_kind=endpoint_kind_for(provider),
         interrupted=interrupted,
         byok=byok,
+        # TASK-958 — WHICH key; `cost_basis` below still derives from `byok` alone,
+        # because which key was spent never decides whose money it was.
+        connection_id=connection_id,
         cost_basis="BYOK_NOTIONAL" if byok else "INTERNAL",
         service_tier=service_tier,
         occurred_at=(occurred_at or datetime.now(UTC)).isoformat(),
@@ -356,6 +365,7 @@ def _usage_detail_from_blob(blob: dict[str, Any]) -> UsageDetail | None:
         raw=blob.get("raw") if isinstance(blob.get("raw"), dict) else None,
         interrupted=bool(blob.get("interrupted", False)),
         byok=bool(blob.get("byok", False)),
+        connection_id=(str(blob["connection_id"]) if blob.get("connection_id") else None),
         service_tier=(
             blob.get("service_tier") if isinstance(blob.get("service_tier"), str) else None
         ),

@@ -58,7 +58,11 @@ class OpenAILoader(BaseModelLoader):
         Raises:
             CloudASRAuthError: when no key is available from either source.
         """
-        override = resolve_override_key(provider_overrides, OPENAI_OVERRIDE_KEY)
+        override = resolve_override_key(
+            provider_overrides,
+            OPENAI_OVERRIDE_KEY,
+            connection_key=model_config.connection_key,
+        )
 
         api_key_str = None
         # TASK-880 — `stt.openai.baseUrl` is deleted. An override entry exists ONLY

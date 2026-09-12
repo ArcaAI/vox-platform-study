@@ -24,10 +24,11 @@ than routed into.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 from pydantic.alias_generators import to_camel
+from pydantic_core.core_schema import SerializerFunctionWrapHandler
 
 RESOLVED_TTS_SPEC_SCHEMA_VERSION = 1
 
@@ -42,7 +43,25 @@ class UnsupportedTtsSpecError(ValueError):
 
 
 class _Wire(BaseModel):
-    """Base for every wire model: camelCase aliases, strict field set, immutable."""
+    """Base for every wire model: camelCase aliases, strict field set, immutable.
+
+    ``OPTIONAL_FIELDS`` names the fields that are OMITTED from the wire when they
+    are ``None``, rather than serialised as ``null``. That distinction is
+    load-bearing, not cosmetic: this model is ``extra='forbid'``, so a key the
+    other half has not learned yet is a CONTRACT DRIFT. Omitting an unset optional
+    lets a field be added on either side first — the gateway may send it or not,
+    and either way the bytes round-trip against the committed fixture — which is
+    what makes the two halves independently deployable. A field that is always
+    present and merely nullable (``baseUrl``, ``region``, …) does NOT belong in
+    this set: for those, ``null`` is the resolver's "no value" and must survive
+    the round trip.
+
+    Same mechanism, same wording as ``stt.pipeline.spec._Wire`` (TASK-944); the
+    two ASR/TTS mirrors face the identical two-sided-deploy problem.
+    """
+
+    #: Field names (not aliases) omitted from the dump when their value is ``None``.
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -50,6 +69,21 @@ class _Wire(BaseModel):
         extra="forbid",
         frozen=True,
     )
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        dumped: dict[str, object] = handler(self)
+        if not self.OPTIONAL_FIELDS:
+            return dumped
+        # The dump is keyed by alias under `by_alias=True` and by field name
+        # otherwise, so drop both spellings.
+        omit: set[str] = set()
+        for name in self.OPTIONAL_FIELDS:
+            omit.add(name)
+            alias = type(self).model_fields[name].alias
+            if alias:
+                omit.add(alias)
+        return {key: value for key, value in dumped.items() if not (value is None and key in omit)}
 
 
 TtsFunding = Literal["tenant", "platform"]
@@ -121,11 +155,21 @@ class TtsSpecConnection(_Wire):
     may serve". The credential itself never rides here — it arrives as ``provider_overrides``.
     """
 
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"connection_id", "connection_slug"})
+
     provider: str
     base_url: str | None
     region: str | None
     timeout_s: int | None
     funding: TtsFunding
+    #: TASK-958 — WHICH connection row of this provider answered. A tenant may now hold
+    #: several rows for one ``(service, provider)``; ``provider`` alone no longer names
+    #: one. ``connection_id`` is what the usage ledger attributes the spend to (D-7) and
+    #: ``connection_slug`` is the tenant-chosen name it is recognised by. Both OPTIONAL
+    #: (omit-when-absent): a gateway that predates the field sends neither, and the row
+    #: it resolved is that provider's DEFAULT connection — exactly today's behaviour.
+    connection_id: str | None = None
+    connection_slug: str | None = None
 
 
 class TtsSpecAgent(_Wire):
@@ -141,6 +185,8 @@ class TtsSpecAgent(_Wire):
 class ResolvedTtsCandidate(_Wire):
     """One runnable engine choice."""
 
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"connection_key"})
+
     kind: TtsCandidateKind
     runtime_key: str
     agent: TtsSpecAgent
@@ -150,6 +196,14 @@ class ResolvedTtsCandidate(_Wire):
     voice: TtsVoiceBinding | None
     connection: TtsSpecConnection | None
     funding_tier: TtsFunding
+    #: TASK-958 — the key this candidate's credential arrives under in
+    #: ``provider_overrides``: the tenant connection's ``slug`` for a tenant row, the
+    #: provider/engine name for a platform row. It exists because two candidates in one
+    #: chain may name the SAME engine on DIFFERENT accounts, which a provider-keyed map
+    #: cannot express: both would read one entry and the failover would spend the key
+    #: that just failed. ``None`` ⇒ a sender that predates the field, and the reader
+    #: falls back to the engine name, which is what it has always done.
+    connection_key: str | None = None
 
     @property
     def engine(self) -> str | None:
@@ -188,7 +242,9 @@ class ResolvedTtsSpec(_Wire):
     fallback: ResolvedTtsFallback
 
 
-def candidate_chain(spec: ResolvedTtsSpec, *, voice_id: str | None = None) -> list[ResolvedTtsCandidate]:
+def candidate_chain(
+    spec: ResolvedTtsSpec, *, voice_id: str | None = None
+) -> list[ResolvedTtsCandidate]:
     """The ordered candidates this request may actually run, in failover order.
 
     Three filters, and each one is a decision the GATEWAY already made that this service must not
@@ -207,5 +263,11 @@ def candidate_chain(spec: ResolvedTtsSpec, *, voice_id: str | None = None) -> li
             f"resolved TTS spec schemaVersion {spec.schema_version} is not supported by this runtime "
             f"(expected {RESOLVED_TTS_SPEC_SCHEMA_VERSION})"
         )
-    ordered = [spec.primary] if not spec.fallback.auto_switch else [spec.primary, *spec.fallback.chain]
-    return [candidate for candidate in ordered if candidate.routable and candidate.binding_for(voice_id) is not None]
+    ordered = (
+        [spec.primary] if not spec.fallback.auto_switch else [spec.primary, *spec.fallback.chain]
+    )
+    return [
+        candidate
+        for candidate in ordered
+        if candidate.routable and candidate.binding_for(voice_id) is not None
+    ]
