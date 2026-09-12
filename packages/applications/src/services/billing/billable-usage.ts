@@ -60,6 +60,21 @@ export const BILLABLE_UNITS: Record<AiCapability, readonly AiUsageUnit[]> = {
   // REQUEST rows are a shape metric (seeded at 0 cost) — text units carry NLP billing.
   [AiCapability.NLP]: [AiUsageUnit.TEXT_UNIT],
   [AiCapability.EMBEDDING]: [AiUsageUnit.INPUT_TOKEN],
+  // TASK-959 W0 — EMPTY ON PURPOSE, and it must stay empty until wave 4.
+  //
+  // The two new capabilities are metered from the day their emitters ship, but
+  // a billable unit with no SELL row makes `BillingService` THROW
+  // (`MissingSellRateError` → 409), which aborts the whole invoice draft — not
+  // just that line. The ticket's §2.3 gate is exactly this: emit first (rows
+  // land, unrated at worst, and show on the consumption screen), price second,
+  // sell third. An empty list here is what keeps `STORAGE_BYTE_DAY` and the
+  // `WORKFLOW` CPU seconds VISIBLE and un-invoiced in the meantime.
+  //
+  // Adding a unit here is therefore a wave-4 act that ships WITH its SELL row
+  // and its allowance column (`monthlyStorageByteDays`,
+  // `monthlyWorkflowCpuSeconds`), never before.
+  [AiCapability.STORAGE]: [],
+  [AiCapability.WORKFLOW]: [],
 };
 
 /** D16 — metered for COGS, never line-itemed to tenants. */
