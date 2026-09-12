@@ -135,6 +135,7 @@ class TextClient:
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         guardrail_policy: dict[str, Any] | None = None,
+        provider_override: dict[str, Any] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -148,6 +149,11 @@ class TextClient:
         Genuinely tenant-less internal work declares itself with a
         ``tenantless:<reason>`` marker; a blank value is a CALLER defect and
         raises here rather than being papered over downstream.
+
+        ``provider_override`` is a gateway-RESOLVED connection entry
+        (``ResolvedAgent.providerOverride``) for the row the caller is bound to. When
+        present it is authoritative and the by-name credential resolver is skipped
+        entirely — see the fold below.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
@@ -190,7 +196,31 @@ class TextClient:
         # folds the gateway-resolved connection (tenant → SYSTEM, ``funding`` derived
         # gateway-side) in itself. A DENIED/UNAVAILABLE outcome fails CLOSED here, as the
         # error type every call site already degrades on, before anything is sent.
-        if provider and self._credential_resolver is not None:
+        #
+        # TASK-958 G3 — the caller's RESOLVED override wins, and the by-name fetch is then
+        # not consulted at all. `resolve_provider_credential(service, provider, tenant)`
+        # answers with the tenant's DEFAULT connection for that vendor, which since TASK-958
+        # is one of several: an agent bound to a SIBLING (`AiModel.sourceConnectionId`)
+        # spent — and was billed to — the default account instead. `ResolvedAgent`
+        # `providerOverride` is the credential of the bound row, already resolved gateway-side
+        # with `connection_id`/`connection_slug` and the DERIVED funding on it, so it is
+        # forwarded as-is. The `elif` is the fail-closed half: an override that carries no
+        # credential material must never be RESCUED by the name lookup, because the rescue
+        # spends an account the binding did not name.
+        if provider and provider_override:
+            # `provider` rides inside the entry (`{ provider, ...binding.override }`) and is
+            # stripped before it becomes the map's VALUE — the same strip the gateway's own
+            # realtime fold performs (`live-documentation.service.ts`). The map is keyed by
+            # the provider this request declares, because that is the key `apps/text` reads.
+            entry = {key: value for key, value in provider_override.items() if key != "provider"}
+            if not entry.get("api_key") and not entry.get("base_url"):
+                raise TextServiceError(
+                    f"text generate refused: the resolved connection for {provider!r} carries "
+                    "neither a key nor an endpoint; it cannot serve this call, and the "
+                    "tenant's default account for that provider is not a substitute for it"
+                )
+            body["provider_overrides"] = {provider: entry}
+        elif provider and self._credential_resolver is not None:
             credential = await self._credential_resolver(provider, tenant_id.strip())
             try:
                 credential.raise_if_unusable(service="llm", provider=provider)
