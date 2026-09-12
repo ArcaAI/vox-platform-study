@@ -353,6 +353,28 @@ describe('EntitlementsScreen', () => {
     });
   });
 
+  it('files each limit under its own section, as a labelled group', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByLabelText('Max users');
+
+    // <fieldset> is an ARIA group named by its <legend>, so the sections are
+    // reachable by assistive tech rather than being visual headings only.
+    const quantities = within(dialog).getByRole('group', { name: 'Quantity ceilings' });
+    const meters = within(dialog).getByRole('group', { name: 'Monthly meters' });
+    const tiers = within(dialog).getByRole('group', { name: 'Tiers' });
+
+    expect(within(quantities).getByLabelText('Max users')).toBeDefined();
+    expect(within(quantities).getByLabelText('Storage quota (bytes)')).toBeDefined();
+    expect(within(meters).getByLabelText('Monthly LLM tokens')).toBeDefined();
+    expect(within(tiers).getByLabelText('Model tier')).toBeDefined();
+    // A meter must not also appear among the ceilings.
+    expect(within(quantities).queryByLabelText('Monthly LLM tokens')).toBeNull();
+  });
+
   it('surfaces the OCC conflict alert when the plan update returns 412', async () => {
     stubEntitlements((call) => {
       if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
