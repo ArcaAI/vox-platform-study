@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { IconPlus } from '@tabler/icons-react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -52,6 +52,13 @@ export function ProviderConnectionGroup({
   connections: UseQueryResult<ProviderConnection[]>;
 }) {
   const [adding, setAdding] = useState(false);
+  /**
+   * The control that opens the dialog, so the dialog can hand focus BACK to it
+   * (TASK-958). Radix restores focus to its own `DialogTrigger`; this dialog is
+   * opened from state instead, which left the trigger ref empty and dropped a
+   * keyboard user on `<body>` after Escape.
+   */
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   // The connection the admin just created: its card takes focus on the key
   // field, which is the only thing still missing from it.
   const [created, setCreated] = useState<string | null>(null);
@@ -101,7 +108,7 @@ export function ProviderConnectionGroup({
         />
       ))}
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => setAdding(true)} aria-label={`Add another ${meta.label} connection`}>
+        <Button ref={addButtonRef} variant="outline" size="sm" onClick={() => setAdding(true)} aria-label={`Add another ${meta.label} connection`}>
           <IconPlus aria-hidden />
           Add another {meta.label} connection
         </Button>
@@ -121,6 +128,7 @@ export function ProviderConnectionGroup({
         open={adding}
         onOpenChange={setAdding}
         onCreated={setCreated}
+        returnFocusTo={addButtonRef}
       />
     </div>
   );

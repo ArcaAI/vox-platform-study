@@ -174,7 +174,11 @@ async function openTextGenerationTab(page: Page): Promise<void> {
 /** Declare ONE model on a card and save the list. */
 async function declareModel(page: Page, target: ReturnType<typeof card>, wireModelId: string, displayName: string): Promise<void> {
   await expect(target.getByText('Models this connection serves')).toBeVisible();
-  await target.getByRole('button', { name: 'Add model', exact: true }).click();
+  // `Add model to ‹connection›` since the duplicate-name defect below was fixed:
+  // the visible label is still "Add model", the accessible name now says which
+  // account it adds to. Matched by prefix so the card's own title need not be
+  // threaded through this helper.
+  await target.getByRole('button', { name: /^Add model to / }).click();
   const idField = target.getByRole('textbox', { name: 'Model / deployment id' }).last();
   await idField.fill(wireModelId);
   await target.getByRole('textbox', { name: 'Display name' }).last().fill(displayName);
@@ -372,16 +376,14 @@ test.describe('TASK-958 — /ai-providers, one vendor with several connections',
    * sibling path is silent.
    *
    * This breaks rule 11 §5 ("every action produces visible feedback"; "never
-   * silently succeed"). It is Lane G's to fix, not this lane's.
+   * silently succeed").
    *
-   * `test.fail()` keeps the CORRECT assertion in the suite without weakening it:
-   * the run stays green while the defect is open, and turns red the moment it is
-   * fixed ("expected to fail but passed") — which is the signal to delete this
-   * marker rather than to edit the assertion.
+   * FIXED by Lane G4: the success handler moved onto the MUTATION
+   * (`useDeleteProviderConnection({ onRemoved })`), which `Mutation.execute()`
+   * runs before the invalidation that unmounts anything. The assertion below is
+   * unchanged — it is now the regression guard for that fix.
    */
   test('DEFECT: removing a sibling connection reports success to the user', async ({ page }) => {
-    test.fail();
-
     await page.goto('/ai-providers');
     const tenantId = await scopedTenantId(page);
     const rows = await listConnections(page, tenantId);
@@ -519,16 +521,18 @@ test.describe('TASK-958 — /ai-providers accessibility, themes and zoom', () =>
    * is therefore dumped back to the start of the document and has to traverse
    * the whole page again to get back to where they were. Rule 11 §11 asks for
    * exactly the opposite ("dialogs/popovers manage focus — Radix primitives
-   * already do; don't break it"), and Radix restores focus to the node that held
-   * it at open time, so the likely cause is that the group re-renders while the
-   * dialog is open and the remembered node is no longer the one in the document.
+   * already do; don't break it").
    *
-   * `test.fail()`: the assertion is correct and stays; the run is green while
-   * the defect is open and turns red when focus restoration starts working.
+   * FIXED by Lane G4. The cause was narrower than "a re-render": Radix restores
+   * focus to its own `DialogTrigger`, and this dialog is opened from STATE, so
+   * `triggerRef` was empty — its `onCloseAutoFocus` then prevented the default
+   * restore and focused nothing, which is exactly the `<body>` this reported.
+   * The group now hands the dialog a ref to its own button and the dialog
+   * focuses it on close. A successful CREATE is the one exception: focus is
+   * handed to the new card's key field instead, which the create case above
+   * asserts.
    */
   test('DEFECT: closing the add dialog returns focus to the button that opened it', async ({ page }) => {
-    test.fail();
-
     await openTextGenerationTab(page);
     const addButton = group(page).getByRole('button', { name: `Add another ${PROVIDER_LABEL} connection`, exact: true });
     await addButton.click();
@@ -571,15 +575,13 @@ test.describe('TASK-958 — /ai-providers accessibility, themes and zoom', () =>
    * but this ticket makes it the headline case — two accounts of ONE vendor —
    * and the pair is not in the helper's `KNOWN_DUPLICATES` allowlist.
    *
-   * `test.fail()` again: the assertion is the correct one, the run stays green
-   * while the defect is open, and it turns red the moment the names are fixed.
-   * Fixing it belongs to the console lane, not to this verification lane; the
-   * allowlist is deliberately NOT extended, because that would record the
+   * FIXED by Lane G4, the way the guard prescribes: both names were EXTENDED
+   * with the connection (`Add model to ‹connection›`, `Derive from provider for
+   * ‹connection›`) via an `aria-label` that starts with the visible label. The
+   * allowlist was deliberately NOT extended — that would have recorded the
    * ambiguity as acceptable.
    */
   test('DEFECT: the per-connection model editors have distinct control names', async ({ page }) => {
-    test.fail();
-
     await openTextGenerationTab(page);
     await expect(siblingCard(page)).toBeVisible();
     await expectDistinctControlNames(page);
