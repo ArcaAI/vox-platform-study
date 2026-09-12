@@ -24,11 +24,14 @@ function planEntitlement(overrides: Partial<PlanEntitlement> = {}): PlanEntitlem
     maxPromptTemplates: 10,
     maxAsrPipelines: 1,
     maxApiKeys: 2,
+    maxWorkflowDefinitions: 3,
+    maxAiProviderConnections: 4,
     storageQuotaBytes: 107374182400,
     maxConcurrentSessions: 2,
     monthlyConsultations: 200,
     monthlyTranscriptionMinutes: 1200,
     monthlySummaries: 400,
+    monthlyWorkflowInvocations: 500,
     modelTier: 'standard',
     rateLimitTier: 'basic',
     version: 3,
@@ -84,11 +87,14 @@ const OVERRIDE: TenantEntitlement = {
   maxPromptTemplates: null,
   maxAsrPipelines: null,
   maxApiKeys: null,
+  maxWorkflowDefinitions: null,
+  maxAiProviderConnections: null,
   storageQuotaBytes: null,
   maxConcurrentSessions: null,
   monthlyConsultations: null,
   monthlyTranscriptionMinutes: null,
   monthlySummaries: null,
+  monthlyWorkflowInvocations: null,
   modelTier: null,
   rateLimitTier: null,
   rateLimitPerMinute: null,
@@ -253,6 +259,42 @@ describe('EntitlementsScreen', () => {
     });
   });
 
+  it('edits the workflow and provider-connection ceilings alongside the older plan limits', async () => {
+    const calls = stubEntitlements((call) => {
+      if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
+        return Response.json({ ...PLANS[1], version: 6 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+
+    const workflowDefinitions = (await within(dialog).findByLabelText('Max workflow definitions')) as HTMLInputElement;
+    const providerConnections = within(dialog).getByLabelText('Max AI provider connections') as HTMLInputElement;
+    const workflowInvocations = within(dialog).getByLabelText('Monthly workflow invocations') as HTMLInputElement;
+    expect([workflowDefinitions.value, providerConnections.value, workflowInvocations.value]).toEqual(['3', '4', '500']);
+
+    fireEvent.change(workflowDefinitions, { target: { value: '12' } });
+    fireEvent.change(providerConnections, { target: { value: '6' } });
+    // Empty is the unlimited sentinel the other limits already use.
+    fireEvent.change(workflowInvocations, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO'));
+      expect(patch?.body).toEqual(
+        expect.objectContaining({
+          maxWorkflowDefinitions: 12,
+          maxAiProviderConnections: 6,
+          monthlyWorkflowInvocations: null,
+          expectedVersion: 5,
+        }),
+      );
+    });
+  });
+
   it('surfaces the OCC conflict alert when the plan update returns 412', async () => {
     stubEntitlements((call) => {
       if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
@@ -281,6 +323,17 @@ describe('EntitlementsScreen', () => {
     expect(screen.getByText(/exceeded/i)).toBeDefined();
     const editor = (await screen.findByLabelText(/override json/i)) as HTMLTextAreaElement;
     expect(editor.value).toContain('"maxUsers": 60');
+  });
+
+  it('offers the workflow and provider-connection ceilings in the override document', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />, { searchParams: '?tab=overrides&tenant=t-1' });
+
+    const editor = (await screen.findByLabelText(/override json/i)) as HTMLTextAreaElement;
+    const parsed = JSON.parse(editor.value) as Record<string, unknown>;
+    expect(parsed).toHaveProperty('maxWorkflowDefinitions', null);
+    expect(parsed).toHaveProperty('maxAiProviderConnections', null);
+    expect(parsed).toHaveProperty('monthlyWorkflowInvocations', null);
   });
 
   it('upserts the tenant override with the existing row version behind a confirm', async () => {
