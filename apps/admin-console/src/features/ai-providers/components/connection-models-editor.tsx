@@ -174,8 +174,22 @@ export function ConnectionModelsEditor({
         </div>
       ))}
 
+      {/*
+        TASK-958 — both names carry the CONNECTION, because a tenant now holds
+        several accounts of one vendor and each card renders its own copy of this
+        editor. Two page-level buttons called "Add model" leave a screen-reader
+        user no way to tell which account they are adding to (the save button and
+        the row deletes were already scoped; these two were not). The visible
+        label is unchanged and the accessible name STARTS with it — WCAG 2.5.3
+        Label in Name, so a speech-input user can still say what they see.
+      */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => edit([...rows, { wireModelId: '', name: '', taskType: defaultTaskType }])}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => edit([...rows, { wireModelId: '', name: '', taskType: defaultTaskType }])}
+          aria-label={`Add model to ${label}`}
+        >
           <IconPlus aria-hidden />
           Add model
         </Button>
@@ -184,6 +198,7 @@ export function ConnectionModelsEditor({
           size="sm"
           onClick={derive}
           disabled={!discoveredModels || discoveredModels.length === 0}
+          aria-label={`Derive from provider for ${label}`}
           title={discoveredModels?.length ? undefined : 'Run "Test connection" first — the provider lists its models during the probe.'}
         >
           <IconSparkles aria-hidden />

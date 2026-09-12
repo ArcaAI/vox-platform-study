@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -37,6 +37,7 @@ export function AddConnectionDialog({
   open,
   onOpenChange,
   onCreated,
+  returnFocusTo,
 }: {
   service: ProviderService;
   meta: ProviderMeta;
@@ -46,12 +47,27 @@ export function AddConnectionDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (slug: string) => void;
+  /**
+   * The control that opened this dialog. Radix returns focus to its own
+   * `DialogTrigger`; opened from state there IS no trigger, so it returned focus
+   * to nothing and a keyboard user who pressed Escape landed on `<body>`, with
+   * the whole page to traverse again (TASK-958, rule 11 §11).
+   */
+  returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
   const uid = useId();
   const put = usePutProviderConnection();
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Did this close follow a successful CREATE? Then focus has already been
+   * promised to the new card's key field (`autoFocusKey` — the one thing still
+   * missing from the row), and pulling it back to this button would take the
+   * admin away from the very field they were sent to. Every other way out —
+   * Escape, Cancel, the close button, a click outside — returns to the trigger.
+   */
+  const handedOffToNewCard = useRef(false);
 
   // Re-seed on each open: a dialog that reopens holding the last attempt's
   // refusal would explain a row the admin is no longer creating.
@@ -111,6 +127,7 @@ export function AddConnectionDialog({
       {
         onSuccess: () => {
           toast.success(`${meta.label} connection “${name.trim() || value}” created — add its credential to enable it`);
+          handedOffToNewCard.current = true;
           onOpenChange(false);
           onCreated(value);
         },
@@ -128,7 +145,22 @@ export function AddConnectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !put.isPending && onOpenChange(next)}>
-      <DialogContent className="flex flex-col sm:max-w-md">
+      <DialogContent
+        className="flex flex-col sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          if (handedOffToNewCard.current) {
+            // Leave focus where the new card claims it. Radix's own handler then
+            // runs, prevents the default restore and focuses its (absent)
+            // trigger — i.e. moves nothing, which is what this path wants.
+            handedOffToNewCard.current = false;
+            return;
+          }
+          // Pre-empt Radix's restore (it would aim at a `DialogTrigger` this
+          // dialog does not have) and put focus back on the button that opened it.
+          event.preventDefault();
+          returnFocusTo?.current?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Add another {meta.label} connection</DialogTitle>
           <DialogDescription>
