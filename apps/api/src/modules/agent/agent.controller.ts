@@ -770,11 +770,7 @@ export class AgentController {
    * vendor answered; only an unfunded call lets the provider decide
    * self-hosted vs cloud.
    */
-  private buildBlockingUsageFromCounts(
-    tenantId: string,
-    resolved: ResolvedAgent,
-    result: AgentTextInvocationResult,
-  ): UsageEventBatchInput | null {
+  private buildBlockingUsageFromCounts(tenantId: string, resolved: ResolvedAgent, result: AgentTextInvocationResult): UsageEventBatchInput | null {
     if (!result.usage) return null;
     const byok = resolved.fundingTier === 'tenant';
     const provider = toLedgerProvider(result.provider ?? resolved.compiledConfig.model.provider ?? '');
