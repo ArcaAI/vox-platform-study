@@ -31785,6 +31785,51 @@
       }
     },
     "/api/v1/admin/changelog/{id}": {
+      "get": {
+        "description": "The authoring read. Answers a strong `ETag` carrying `_version`, which `PATCH` and `publish` both require as `If-Match` — this route is how the client learns it. The reader plane (`GET /changelog`) is unaffected and still serves PUBLISHED entries only.",
+        "operationId": "ChangelogAdminController_get",
+        "parameters": [
+          {
+            "description": "Changelog entry id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangelogEntryResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin."
+          },
+          "404": {
+            "description": "No such entry."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a release note for editing (DRAFT included)",
+        "tags": [
+          "admin-changelog"
+        ]
+      },
       "patch": {
         "description": "Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against `_version`; drift → 412, missing → 428.",
         "operationId": "ChangelogAdminController_update",

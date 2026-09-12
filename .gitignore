@@ -210,3 +210,8 @@ ds-bundle/
 
 # Image tarball bundles from scripts/fetch-images.sh (multi-GB, never committed)
 image-bundles/
+
+# Generated draft release-note payload (scripts/changelog-draft.ts, CI job `changelog-draft`).
+# A pipeline artifact and a local scratch file — the reviewable source text for a
+# release note lives in docs/operations/release-notes/, never here.
+changelog-draft.json

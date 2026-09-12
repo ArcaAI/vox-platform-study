@@ -155,6 +155,92 @@ publish-sdk:
     - if: $PIPELINE_TYPE == "release_sdk"
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Platform release note — the DRAFT ChangelogEntry
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# `docs/operations/versioning.md` §3 and `release-runbook.md` §5 have said since
+# TASK-648 that CI creates a DRAFT `ChangelogEntry` on an `ALL-` tag. Until
+# TASK-953 no job did, so the admin console's What's New screen held zero rows
+# through 1,257 commits between ALL-2.1.0 and ALL-2.2.0. This is that job.
+#
+# ── Two halves, and why only one of them is unconditional ────────────────────
+#
+#   RENDER is pure git: classify the commits since the previous `ALL-` tag and
+#   write `changelog-draft.json`. It always runs and is kept as an artifact, so
+#   the release always carries its generated draft even if nothing is posted.
+#
+#   POST is opt-in on HOPE_GATEWAY_URL being set, because a TAG pipeline builds
+#   IMAGES — it does not know which environment should receive the note, and
+#   nothing else in this pipeline talks to a running gateway (promotion goes
+#   through the deployment repo over git). Setting the variable is how an
+#   operator says "this train's note belongs on that gateway".
+#
+#   It is deliberately NOT a silent skip: when the variable is absent the job
+#   says so and names the by-hand command, and when it is PRESENT but the
+#   credentials are missing the script hard-errors. Silence is what let this
+#   sit unnoticed for a year.
+#
+# ── The credential is a service account, and can be nothing else ─────────────
+#
+#   `POST /admin/changelog` carries `@ForbidApiKey()` + `svc:admin:changelog:manage`,
+#   so an API key cannot reach it under any scope. HOPE_SVC_CLIENT_ID /
+#   HOPE_SVC_CLIENT_SECRET belong to a SUPER_ADMIN-issued service account; add
+#   them as MASKED, PROTECTED variables. The token binds its tenant at exchange,
+#   so no X-Tenant-Id is sent.
+#
+# NOTHING HERE PUBLISHES. The gateway forces DRAFT, and a super admin rewrites
+# it into plain language and presses Publish in the console. Until then it is
+# invisible to every tenant.
+changelog-draft:
+  stage: publish
+  extends: .node-base
+  tags: [fast]
+  interruptible: false
+  variables:
+    # The range is computed from `git tag --list 'ALL-*'` and a commit walk back
+    # to the previous train. A shallow clone has neither, and would silently
+    # produce a draft covering only the last few commits.
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+  before_script:
+    - corepack enable
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile --prefer-offline
+  script:
+    - |
+      if [ -n "${HOPE_GATEWAY_URL}" ]; then
+        echo "changelog-draft: posting the draft to ${HOPE_GATEWAY_URL}"
+        pnpm changelog:draft "${CI_COMMIT_TAG}" --out changelog-draft.json --post
+      else
+        echo "changelog-draft: HOPE_GATEWAY_URL is not set — rendering the draft only."
+        echo "  The payload is kept as this job's artifact (changelog-draft.json)."
+        echo "  To have CI create the DRAFT directly, set HOPE_GATEWAY_URL plus the"
+        echo "  masked/protected HOPE_SVC_CLIENT_ID and HOPE_SVC_CLIENT_SECRET of a"
+        echo "  service account holding svc:admin:changelog:manage."
+        echo "  To post it by hand later:"
+        echo "    HOPE_GATEWAY_URL=… HOPE_SVC_CLIENT_ID=… HOPE_SVC_CLIENT_SECRET=… \\"
+        echo "      pnpm changelog:draft ${CI_COMMIT_TAG} --post"
+        pnpm changelog:draft "${CI_COMMIT_TAG}" --out changelog-draft.json
+      fi
+  artifacts:
+    name: "changelog-draft-$CI_COMMIT_TAG"
+    paths:
+      - changelog-draft.json
+    expire_in: 1 year
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store
+      policy: pull
+  rules:
+    # Platform trains only. A per-service tag ships one image and has no
+    # cross-service "what's new" story; the script itself no-ops on one anyway.
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Image signing + SBOM attestation
 # ══════════════════════════════════════════════════════════════════════════════
 #

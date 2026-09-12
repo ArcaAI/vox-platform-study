@@ -124,9 +124,17 @@ different tag family entirely — see §4.
    same family, groups them by Conventional Commit type, and attaches the JSON to the
    release row (`ServiceRelease.changelog`) — this is machine-generated and never
    hand-edited.
-6. **On an `ALL-` tag only**: CI also creates a **DRAFT** `ChangelogEntry` — the curated,
-   human-readable "what's new" note — pre-filled from the `feat` + breaking-change
-   commits.
+6. **On an `ALL-` tag only**: the `changelog-draft` job (`.gitlab/ci/publish.yml`) renders the
+   curated, human-readable "what's new" note — pre-filled from the `feat` + breaking-change
+   commits — as the pipeline artifact `changelog-draft.json`, and **creates it as a DRAFT
+   `ChangelogEntry` on the gateway named by `HOPE_GATEWAY_URL`** when that variable is set.
+   A tag pipeline builds images and does not otherwise know which deployed environment should
+   receive the note, so pointing it at one is a deliberate act; without the variable the job
+   still renders the artifact and prints the by-hand `pnpm changelog:draft … --post` command.
+   The credential is a service account (`HOPE_SVC_CLIENT_ID` / `HOPE_SVC_CLIENT_SECRET`,
+   `svc:admin:changelog:manage`) — `/admin/*` is `@ForbidApiKey()`, so an API key cannot be used.
+   **Nothing here publishes:** the gateway forces `DRAFT`, and it stays invisible to every tenant
+   until a super admin publishes it (step 5 of §4's worked example).
 
 What still needs a human:
 
@@ -229,8 +237,9 @@ record and changelog, then — separately — tag the same commit `vX.Y.Z` and r
    `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`,
    `harness-worker`, `database`, `qdrant-init`, `hope-python-base`), each tagged
    `ALL-2.2.0` + `sha-<sha8>`. CI collects the commits since the previous `ALL-` tag,
-   generates the technical changelog per service, and creates a **DRAFT**
-   `ChangelogEntry` for the platform version `2.2.0`.
+   generates the technical changelog per service, and the `changelog-draft` job renders — and,
+   with `HOPE_GATEWAY_URL` set, creates — a **DRAFT** `ChangelogEntry` for the platform version
+   `2.2.0` (§3 step 6).
 5. **Publish the release note.** In the admin console, a super admin opens the draft,
    rewrites it for a tenant-admin audience, and publishes it. It will now appear once,
    on next login, to every admin who hasn't seen it (never during impersonation).

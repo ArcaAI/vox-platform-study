@@ -2454,6 +2454,29 @@
     },
     {
       "controller": "ChangelogAdminController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/admin/changelog/{id}",
+      "routePath": "/admin/changelog/:id",
+      "svcScopes": [
+        "svc:admin:changelog:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ChangelogEntry"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ChangelogAdminController",
       "handler": "update",
       "method": "PATCH",
       "path": "/api/v1/admin/changelog/{id}",

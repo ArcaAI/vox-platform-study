@@ -33353,6 +33353,65 @@
       }
     },
     "/api/v1/admin/changelog/{id}": {
+      "get": {
+        "description": "The authoring read. Answers a strong `ETag` carrying `_version`, which `PATCH` and `publish` both require as `If-Match` — this route is how the client learns it. The reader plane (`GET /changelog`) is unaffected and still serves PUBLISHED entries only.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:changelog:manage`).\n\n**Abilities** — `manage:ChangelogEntry`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ChangelogAdminController_get",
+        "parameters": [
+          {
+            "description": "Changelog entry id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangelogEntryResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin."
+          },
+          "404": {
+            "description": "No such entry."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a release note for editing (DRAFT included)",
+        "tags": [
+          "admin-changelog"
+        ],
+        "x-hope-abilities": [
+          "manage:ChangelogEntry"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:changelog:manage"
+        ]
+      },
       "patch": {
         "description": "Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against `_version`; drift → 412, missing → 428.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:changelog:manage`).\n\n**Abilities** — `manage:ChangelogEntry`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ChangelogAdminController_update",

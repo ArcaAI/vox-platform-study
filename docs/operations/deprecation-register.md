@@ -8,7 +8,9 @@
 
 Status values: `planned` (ticket not started) · `marked` (marker landed) · `removed`.
 
-**R1 = &lt;tag TBD&gt;.** The first removal release has no tag yet — TASK-859 OD-2 is still open, so `R1`..`R4` remain placeholders. Its content is drafted in [`release-notes/ALL-4.0.0.md`](./release-notes/ALL-4.0.0.md); rename that file (and the `Remove in` cells here) once the owner names the tag.
+**R1 = `ALL-2.2.0`** (tagged 2026-09-11). The removals R1 carried have landed and shipped; they are written up in [`release-notes/ALL-2.2.0.md`](./release-notes/ALL-2.2.0.md) §7. The `ALL-4.0.0.md` that used to draft R1 was a working name, never a tag, and is now a [superseded stub](./release-notes/ALL-4.0.0.md).
+
+**`R2`..`R4` are still unnamed** — that half of TASK-859 OD-2 remains open, so the `Remove in` cells below stay placeholders until the owner names them.
 
 ## Wave 3a (TASK-879..883, 887, 888) — what was removed outright vs. deprecated
 
