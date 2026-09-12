@@ -19,6 +19,12 @@
  * `task-776-route-authz-matrix.spec.ts` for every route in the manifest and is
  * deliberately NOT hand-written here.
  *
+ * (28)-(30) are the G1 review fixes, added after the lanes merged: the DEFAULT
+ * slot is RELEASED when its row is deleted (a tombstone used to wedge the whole
+ * provider behind an unmapped P2002), a slug may not impersonate another
+ * vendor's id or a route segment, and an unsaved connection NAME 404s as a
+ * connection rather than as a provider.
+ *
  * CLEANUP. Each test that creates a sibling deletes it again, because the suite
  * shares one seeded database with the rest of the e2e run and a stray
  * `openai-research` row would change what the catalogue and the provider list
@@ -178,6 +184,85 @@ test.describe('TASK-958 — multiple provider connections per tenant', () => {
     // …and the sibling deletes cleanly, which is the remedy the error names.
     const delSibling = await request.delete(`${BASE}/${SIBLING}`, { headers: bearer(tenantAdminToken) });
     expect(delSibling.status()).toBe(200);
+  });
+
+  /**
+   * (28) TASK-958/G1 F1 (correctness review #1) — the DEFAULT survives its own
+   * deletion as a RELEASED slot, not as a wedge.
+   *
+   * The tombstone used to keep `defaultForProvider = provider`, and the unique
+   * index behind it counts deleted rows, so after deleting a provider's only
+   * connection EVERY new slug for that provider died on an unmapped P2002. The
+   * probe runs on `anthropic` rather than `openai` so no other spec's row is
+   * touched: it creates what it deletes, and deletes what it creates.
+   */
+  test('(28) after deleting a provider’s only connection, a NEW slug for it creates and becomes the default', async ({ request }) => {
+    const create = await request.put(`${BASE}/anthropic`, {
+      headers: { ...bearer(tenantAdminToken), 'If-Match': '"0"' },
+      data: { enabled: false },
+    });
+    expect(create.status(), await create.text()).toBe(200);
+    expect((await create.json()) as { isDefault: boolean }).toMatchObject({ isDefault: true });
+
+    const del = await request.delete(`${BASE}/anthropic`, { headers: bearer(tenantAdminToken) });
+    expect(del.status(), 'the only connection of a provider deletes without a sibling to block it').toBe(200);
+
+    const reborn = await request.put(`${BASE}/anthropic-research`, {
+      headers: { ...bearer(tenantAdminToken), 'If-Match': '"0"' },
+      data: { provider: 'anthropic', name: 'Research account', enabled: false },
+    });
+    expect(reborn.status(), await reborn.text()).toBe(200);
+    expect((await reborn.json()) as { slug: string; provider: string; isDefault: boolean }).toMatchObject({
+      slug: 'anthropic-research',
+      provider: 'anthropic',
+      isDefault: true,
+    });
+
+    // Leave the tenant as we found it (tombstones only — the shared seeded DB).
+    const cleanup = await request.delete(`${BASE}/anthropic-research`, { headers: bearer(tenantAdminToken) });
+    expect(cleanup.status()).toBe(200);
+  });
+
+  /**
+   * (29) TASK-958/G1 F2 (security review, HIGH) — a connection may not be NAMED
+   * after a vendor it does not serve. The slug travels to the Python services as
+   * `connection_key`, so `PUT llm/sarvam {provider:'openai'}` would mint a row
+   * that stands in for the platform `sarvam` credential on the wire.
+   */
+  test('(29) a slug that impersonates another provider’s id → 400 CONNECTION_SLUG_RESERVED', async ({ request }) => {
+    const res = await request.put(`${BASE}/sarvam`, {
+      headers: { ...bearer(tenantAdminToken), 'If-Match': '"0"' },
+      data: { provider: 'openai', enabled: false },
+    });
+    expect(res.status()).toBe(400);
+    const body = (await res.json()) as { code?: string; reason?: string };
+    expect(body.code).toBe('CONNECTION_SLUG_RESERVED');
+    expect(body.reason).toBe('provider-id');
+  });
+
+  test('(29b) `platform-defaults` is a route segment, not a connection name → 400 CONNECTION_SLUG_RESERVED', async ({ request }) => {
+    const res = await request.put(`${BASE}/platform-defaults`, {
+      headers: { ...bearer(tenantAdminToken), 'If-Match': '"0"' },
+      data: { provider: 'openai', enabled: false },
+    });
+    expect(res.status()).toBe(400);
+    const body = (await res.json()) as { code?: string; reason?: string };
+    expect(body.code).toBe('CONNECTION_SLUG_RESERVED');
+    expect(body.reason).toBe('route-segment');
+  });
+
+  /**
+   * (30) TASK-958/G1 F4 (correctness review #7) — reading a connection NAME
+   * nobody saved is still a 404, but it says so in terms of the connection. The
+   * old message called the slug a provider and sent operators (and the console)
+   * looking for a vendor that does not exist.
+   */
+  test('(30) reading an unsaved sibling slug 404s about the CONNECTION, not about a provider', async ({ request }) => {
+    const res = await readRow(request, tenantAdminToken, 'openai-not-saved-at-all');
+    expect(res.status()).toBe(404);
+    const message = JSON.stringify(await res.json());
+    expect(message).toContain('connection');
+    expect(message, 'the slug is not a provider and must not be described as one').not.toContain("provider 'openai-not-saved-at-all'");
   });
 
   /** (27) D-9 — the platform tier is one row per provider, named after it. */

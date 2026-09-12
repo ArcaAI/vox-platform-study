@@ -350,6 +350,21 @@ export function isKnownProviderId(provider: string): boolean {
 }
 
 /**
+ * Connection names that are already spoken for by the ROUTE, not by a vendor.
+ *
+ * `GET admin/providers/:service/platform-defaults` is declared BEFORE
+ * `:service/:slug` (Nest matches in declaration order), so a row actually named
+ * `platform-defaults` could be written and deleted but never read back — the
+ * literal segment wins. A name whose row cannot be read is a trap, so it is
+ * refused at the one place it can be: the write.
+ *
+ * Kept beside `KNOWN_PROVIDER_IDS` because the two halves answer the same
+ * question ("may this string be a connection's name?") and a reader who finds
+ * one must find the other.
+ */
+export const RESERVED_CONNECTION_SLUGS: ReadonlySet<string> = new Set<string>(['platform-defaults']);
+
+/**
  * The named refusals of the connection plane (TASK-958 §4.1).
  *
  * Codes, not prose: a console dialog and an SDK caller both branch on these,
@@ -362,6 +377,18 @@ export const CONNECTION_ERROR_CODES = Object.freeze({
   SLUG_INVALID: 'CONNECTION_SLUG_INVALID',
   /** 400 — a new slug that is not itself a provider id, with no `provider` in the body. */
   PROVIDER_REQUIRED: 'CONNECTION_PROVIDER_REQUIRED',
+  /**
+   * 400 — the slug names something that is not this connection's to be called:
+   * ANOTHER vendor's provider id (`PUT tts/azure {provider:'sarvam'}`), or a
+   * literal route segment (`platform-defaults`).
+   *
+   * The first half is a SECURITY refusal, not a tidiness one: a connection's
+   * slug is its `connection_key` on the TTS/STT wire and the prefix of every
+   * model slug it mints, so a row named after a provider it does not serve
+   * aliases that provider's credential for every reader that folds by key.
+   * `detail.reason` is `provider-id` or `route-segment`.
+   */
+  SLUG_RESERVED: 'CONNECTION_SLUG_RESERVED',
   /** 400 — a NON-DEFAULT row on a service that serves no per-tenant model rows (D-9). */
   MULTIPLICITY_UNSUPPORTED: 'CONNECTION_MULTIPLICITY_UNSUPPORTED',
   /** 400 — the platform (SYSTEM) tier is one row per provider: `slug === provider`, always the default. */

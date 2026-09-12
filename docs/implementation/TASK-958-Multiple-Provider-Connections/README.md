@@ -170,10 +170,11 @@ Entity: `slug`, `name`, `defaultForProvider` props + derived `isDefault` getter.
 | HTTP | `code` | When |
 |---|---|---|
 | 400 | `CONNECTION_SLUG_INVALID` | slug fails the pattern |
-| 400 | `CONNECTION_PROVIDER_REQUIRED` | new slug that is not a provider id, and no `provider` in the body |
+| 400 | `CONNECTION_PROVIDER_REQUIRED` | new slug that is not a provider id, and no `provider` in the body — also on `POST :service/:slug/test`, where the probe has no vendor to select (G1/F3) |
+| 400 | `CONNECTION_SLUG_RESERVED` | (G1/F2) a CREATE whose slug impersonates another vendor's provider id (`PUT tts/azure {provider:'sarvam'}`) or takes a literal route segment (`platform-defaults`); carries `slug`, `provider`, `service`, `reason` (`provider-id` \| `route-segment`) |
 | 400 | `CONNECTION_MULTIPLICITY_UNSUPPORTED` | a non-default row on `embeddings` / `rerank` / `vector` / `model-registry` |
 | 400 | `PLATFORM_CONNECTION_PER_PROVIDER` | SYSTEM tier: `slug !== provider`, or a non-default row |
-| 409 | `CONNECTION_PROVIDER_IMMUTABLE` | PUT on an existing slug with a different `provider` |
+| 409 | `CONNECTION_PROVIDER_IMMUTABLE` | PUT on an existing slug with a different `provider` — and (G1/F3) `POST :service/:slug/test` whose body `provider` contradicts the saved row |
 | 409 | `CONNECTION_IS_DEFAULT` | DELETE of the default while siblings exist |
 | 409 | `BYO_SLUG_TAKEN` | a declared model's slug already exists on ANOTHER connection of the same tenant (carries `slug`, `otherConnectionSlug`) |
 | 409 | `QUOTA_EXCEEDED` (existing) | `maxAiProviderConnections` reached on create |

@@ -74,7 +74,11 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null; with
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)),
   };
-  const db = { baseClient: { $lane: 'unscoped-base-client' } };
+  // TASK-958/G1 — deleting a DEFAULT connection clears its `defaultForProvider`
+  // marker and soft-deletes it in ONE transaction (the tombstone would otherwise
+  // keep holding the provider's unique default slot), so the double must offer
+  // `$transaction`. It runs the callback on a distinguishable lane.
+  const db = { baseClient: { $lane: 'unscoped-base-client', $transaction: vi.fn(async (cb: any) => cb({ $lane: 'tx' })) } };
   const secrets =
     opts.withVault === false
       ? undefined
