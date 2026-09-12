@@ -24,7 +24,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, NamedTuple
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -590,8 +590,7 @@ def failed_attempt_stats(
 async def _flush_failed_attempts(
     settings: Settings,
     trajectory: TrajectoryContext | None,
-    failed_attempts: Sequence[dict[str, Any]],
-    started: datetime,
+    failed_attempts: Sequence[FailedAttempt],
 ) -> None:
     """Record the losing legs when NO candidate served, so a total failure still meters.
 
@@ -601,14 +600,26 @@ async def _flush_failed_attempts(
     if not failed_attempts:
         return
     batch = _TrajectoryBatch(settings, trajectory)
-    record_failed_attempts(batch, failed_attempts, started)
+    record_failed_attempts(batch, failed_attempts)
     await batch.flush()
+
+
+class FailedAttempt(NamedTuple):
+    """One losing candidate: when its call STARTED, and the stats block it reports.
+
+    The start instant is carried per attempt rather than reusing the activity's own, because
+    `durationMs` on a trajectory step is what the console renders and what
+    `harness_step_duration_seconds` observes. Charging a 4-second failed attempt with the
+    30 seconds the whole activity took would put wrong numbers in both.
+    """
+
+    started_at: datetime
+    stats: dict[str, Any]
 
 
 def record_failed_attempts(
     batch: _TrajectoryBatch,
-    failed_attempts: Sequence[dict[str, Any]] | None,
-    started: datetime,
+    failed_attempts: Sequence[FailedAttempt] | None,
 ) -> None:
     """One ERROR ``LLM_CALL`` step per candidate that raised before another served (§6.2).
 
@@ -629,13 +640,13 @@ def record_failed_attempts(
     """
     if not failed_attempts:
         return
-    for index, stats in enumerate(failed_attempts[:MAX_FAILED_ATTEMPT_STEPS]):
+    for index, attempt in enumerate(failed_attempts[:MAX_FAILED_ATTEMPT_STEPS]):
         batch.record(
             step_type=STEP_LLM_CALL,
             name="generate",
             status=STATUS_ERROR,
-            started=started,
-            stats=stats,
+            started=attempt.started_at,
+            stats=attempt.stats,
             offset=FAILED_ATTEMPT_OFFSET_BASE + index,
         )
     if len(failed_attempts) > MAX_FAILED_ATTEMPT_STEPS:
@@ -1664,7 +1675,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     result = None
     last_exc: TextServiceError | None = None
     exhausted = False
-    failed_attempts: list[dict[str, Any]] = []
+    failed_attempts: list[FailedAttempt] = []
     for index, (attempt_provider, attempt_model, attempt_funding_tier) in enumerate(attempts):
         if index > 0 and not budget.allows_another():
             activity.logger.warning(
@@ -1733,6 +1744,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 },
             )
 
+        attempt_started_at = _now()
         attempt_started = perf_counter()
         try:
             result = await _text_client(settings).generate(
@@ -1757,11 +1769,14 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
             last_exc = exc
             # §6.2 Gap A — the leg that lost still burned platform CPU calling the provider.
             failed_attempts.append(
-                failed_attempt_stats(
-                    provider=attempt_provider,
-                    model=attempt_model,
-                    funding_tier=attempt_funding_tier,
-                    total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                FailedAttempt(
+                    attempt_started_at,
+                    failed_attempt_stats(
+                        provider=attempt_provider,
+                        model=attempt_model,
+                        funding_tier=attempt_funding_tier,
+                        total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                    ),
                 )
             )
             if index + 1 < len(attempts):
@@ -1774,7 +1789,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
         # Every candidate lost, so there is no LLM_CALL step to hang them off — but the CPU was
         # spent all the same. Flushed BEFORE the raise, and `flush` never raises, so the
         # Text-failure invariant (no draft, the workflow fails) is exactly as it was.
-        await _flush_failed_attempts(settings, payload.trajectory, failed_attempts, started)
+        await _flush_failed_attempts(settings, payload.trajectory, failed_attempts)
         if exhausted:
             # The budget ran out before another candidate could be STARTED. Failing NON-RETRYABLY
             # is the durable-lane equivalent of `core.agent`'s DEGRADED: a retryable failure is
@@ -1858,7 +1873,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
         started=started,
         stats=llm_stats,
     )
-    record_failed_attempts(batch, failed_attempts, started)
+    record_failed_attempts(batch, failed_attempts)
     reasoning = _reasoning_tokens(result.stats)
     if reasoning > 0:
         batch.record(

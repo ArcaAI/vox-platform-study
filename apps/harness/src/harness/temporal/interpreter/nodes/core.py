@@ -45,6 +45,7 @@ from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
+    FailedAttempt,
     _api_client,
     _nlp_client,
     _phi_redactor,
@@ -1326,7 +1327,7 @@ async def _run_text_generation(
     # §6.2 Gap A — one stats block per candidate that was TRIED and lost. The walk used to do
     # `last_error = exc; continue` with no timer at all, so a failed BYOK attempt cost the
     # platform CPU and network and left no trace anywhere.
-    failed_attempts: list[dict[str, Any]] = []
+    failed_attempts: list[FailedAttempt] = []
     exhausted = False
     for index, (selection_source, candidate) in enumerate(candidates):
         if index > 0 and not budget.allows_another():
@@ -1431,6 +1432,7 @@ async def _run_text_generation(
                 resolved.slug, resolved.output_schema, parameters
             )
 
+        attempt_started_at = now()
         attempt_started = perf_counter()
         try:
             result = await _text_client(settings).generate(
@@ -1450,14 +1452,17 @@ async def _run_text_generation(
             # the after-send guard protects the SAME call from being re-issued, not the chain).
             last_error = exc
             failed_attempts.append(
-                failed_attempt_stats(
-                    provider=provider,
-                    model=model,
-                    funding_tier=candidate.funding_tier,
-                    total_ms=round((perf_counter() - attempt_started) * 1000.0),
-                    # The workflow lane knows WHY the inference happened; the consultation lane
-                    # does not stamp one on its successful step either, so it stamps none here.
-                    trigger=USAGE_TRIGGER_WORKFLOW_RUN,
+                FailedAttempt(
+                    attempt_started_at,
+                    failed_attempt_stats(
+                        provider=provider,
+                        model=model,
+                        funding_tier=candidate.funding_tier,
+                        total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                        # The workflow lane knows WHY the inference happened; the consultation
+                        # lane stamps none on its successful step, so it stamps none here.
+                        trigger=USAGE_TRIGGER_WORKFLOW_RUN,
+                    ),
                 )
             )
             continue
