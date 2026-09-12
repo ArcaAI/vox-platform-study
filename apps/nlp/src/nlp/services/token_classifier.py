@@ -12,12 +12,13 @@ from nlp.core.logging import get_logger
 from nlp.core.metrics import (
     MODEL_MEDICAL_NER,
     NLP_DOCUMENTS_PROCESSED_TOTAL,
+    InferenceTiming,
     nlp_metrics,
     track_model_inference,
 )
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.clinical_taxonomy import AssertionTaxonomy, ClinicalTaxonomy, LinkerTaxonomy
-from nlp.schemas.common import Entity, TextPosition
+from nlp.schemas.common import DeviceLabel, Entity, TextPosition
 from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
 from nlp.services.ontology_linker import OntologyLinker
 from nlp.services.vitals_extractor import extract_vitals
@@ -109,6 +110,9 @@ class TransformerTokenClassifier(TokenClassifier):
         self.tokenizer: Any = None
         self.model: Any = None
         self.pipeline: Any = None
+        # Resolved placement (TASK-959 metering). Set for real in `initialize()`;
+        # this floor covers a caller that stubs `.pipeline` directly in tests.
+        self._device: DeviceLabel = "cpu"
         # The linker and the assertion classifier are built PER REQUEST from the
         # gateway-injected taxonomy, NOT held on the instance: this object lives
         # in a model cache keyed on weight identity alone, so instance-level
@@ -130,13 +134,17 @@ class TransformerTokenClassifier(TokenClassifier):
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForTokenClassification.from_pretrained(self.model_name)
 
+            # `configs.use_gpu` (default True) gates GPU use; default preserves
+            # auto-detect-when-available behavior. This pipeline never checks
+            # MPS (unchanged), so the resolved placement (TASK-959) is honestly
+            # cuda-or-cpu, never mps.
+            use_accelerator = self.configs.use_gpu and torch.cuda.is_available()
+            self._device = "cuda" if use_accelerator else "cpu"
             self.pipeline = pipeline(
                 "token-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                # `configs.use_gpu` (default True) gates GPU use;
-                # default preserves auto-detect-when-available behavior.
-                device=0 if (self.configs.use_gpu and torch.cuda.is_available()) else -1,
+                device=0 if use_accelerator else -1,
             )
 
             self.label_mapping = self.model.config.id2label
@@ -153,6 +161,7 @@ class TransformerTokenClassifier(TokenClassifier):
         if not self.is_initialized:
             await self.initialize()
 
+        timing: InferenceTiming | None = None
         try:
             # The clinical taxonomy the gateway resolved from
             # `AiModel._metadata.clinicalTaxonomy` for THIS request. Absent ⇒ an
@@ -169,8 +178,9 @@ class TransformerTokenClassifier(TokenClassifier):
                 or taxonomy.token_classifier.aggregation_strategy
                 or "simple"
             )
-            # Per-model running gauge + inference latency (Medical-NER).
-            with track_model_inference(MODEL_MEDICAL_NER):
+            # Per-model running gauge + inference latency (Medical-NER); `timing`
+            # carries the elapsed ms out for the response (TASK-959 metering).
+            with track_model_inference(MODEL_MEDICAL_NER) as timing:
                 pipeline_results = self.pipeline(request.text, aggregation_strategy=strategy)
 
             entities = self._to_entities(pipeline_results, taxonomy)
@@ -202,6 +212,8 @@ class TransformerTokenClassifier(TokenClassifier):
                 model_version=self.version,
                 # Deterministic vitals over the request text (null-safe; None when absent).
                 vitals=extract_vitals(request.text, taxonomy.vitals),
+                inference_ms=round(timing.elapsed_ms) if timing is not None else 0,
+                device=self._device,
             )
 
         except Exception as e:
@@ -216,6 +228,8 @@ class TransformerTokenClassifier(TokenClassifier):
                 # labels=labels,
                 # confidences=confidences,
                 entities=entities,
+                inference_ms=round(timing.elapsed_ms) if timing is not None else 0,
+                device=self._device,
                 model_version=self.version,
             )
 
