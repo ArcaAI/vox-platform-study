@@ -38,7 +38,7 @@ import { AiCapability, AiPriceBookPlane, AiPriceRowKind, AiUsageUnit } from '../
 import { PRICE_BOOK_SEED_ROWS } from '../20-ai-price-book';
 
 /** The four units TASK-959 introduced, plus the one it finally prices per provider. */
-const NEW_UNITS = [AiUsageUnit.CPU_SECOND, AiUsageUnit.EGRESS_BYTE, AiUsageUnit.INGRESS_BYTE, AiUsageUnit.STORAGE_BYTE_DAY] as const;
+const NEW_UNITS = [AiUsageUnit.CPU_SECOND, AiUsageUnit.EGRESS_BYTE, AiUsageUnit.INGRESS_BYTE, AiUsageUnit.STORAGE_GB_DAY] as const;
 
 const costRows = PRICE_BOOK_SEED_ROWS.filter((row) => row.plane === AiPriceBookPlane.COST);
 const sellRows = PRICE_BOOK_SEED_ROWS.filter((row) => row.plane === AiPriceBookPlane.SELL);
@@ -68,7 +68,7 @@ describe('CPU_SECOND — every capability that can emit occupancy on a CPU devic
     expect(rows[0]!.unitPriceMicros).toBeGreaterThan(0n);
   });
 
-  it('declares no CPU_SECOND row under STORAGE — the snapshot job bills byte-days, never seconds', () => {
+  it('declares no CPU_SECOND row under STORAGE — the snapshot job bills GB-days, never seconds', () => {
     expect(costRowsFor(AiUsageUnit.CPU_SECOND).filter((row) => row.capability === AiCapability.STORAGE)).toHaveLength(0);
   });
 });
@@ -82,11 +82,37 @@ describe('GPU_SECOND — occupancy divided by the provider’s parallel slots', 
     expect(wildcard!.unitPriceMicros).toBe(550n);
   });
 
-  it.each([
-    ['lm-studio', 8],
-    ['vllm', 8],
-    ['ollama', 1],
-  ])('prices %s at the device-hour rate ÷ %i parallel slots', (provider, slots) => {
+  // (provider, divisor, capability). The divisor is the engine's concurrency on
+  // one card, and every one of these is CITED in the row's own note — a
+  // divisor nobody can trace back to a config line is a number, not a rate.
+  const DIVISORS: ReadonlyArray<[string, number, AiCapability]> = [
+    // LMS_PARALLEL=4 in deployment/k8s/base/lmstudio.yaml. The k3s cluster is
+    // the only environment that exists (rule 09 §Cluster Deploys): the EKS
+    // component's 8 has no namespace and no Argo Application behind it.
+    ['lm-studio', 4, AiCapability.LLM],
+    // VLLM_MAX_NUM_SEQS=8 (deployment base/config/vllm.env).
+    ['vllm', 8, AiCapability.LLM],
+    // Nothing configures OLLAMA_NUM_PARALLEL in either repo, so no parallelism
+    // is claimed. Equal to the wildcard by construction — the row records that
+    // the divisor was decided, not skipped.
+    ['ollama', 1, AiCapability.LLM],
+    // The stt BATCH worker's own concurrency: `--processes 2 --threads 4`
+    // (apps/stt/docker/Dockerfile). STREAMING admits ~20 sessions per GPU, so
+    // these rows overstate streaming COGS by ~2.5× until the book gains an
+    // `operation` dimension — stated in each note, not averaged away.
+    ['faster_whisper', 8, AiCapability.STT],
+    ['whisper_cpp', 8, AiCapability.STT],
+    ['parakeet_cpp', 8, AiCapability.STT],
+    // One synthesis at a time, and all three default to device `cpu` — so on
+    // today's deployment they emit CPU_SECOND and never reach these rows. The
+    // rows exist so a CUDA deployment RATES instead of draining unrated, which
+    // would read as "TTS cost us nothing" rather than "we never priced it".
+    ['kokoro', 1, AiCapability.TTS],
+    ['indic_parler', 1, AiCapability.TTS],
+    ['indic_f5', 1, AiCapability.TTS],
+  ];
+
+  it.each(DIVISORS)('prices %s at the device-hour rate ÷ %i parallel slots, under %s', (provider, slots, capability) => {
     const row = gpuRows.find((candidate) => candidate.provider === provider);
     expect(row, `no GPU_SECOND COST row for ${provider}`).toBeDefined();
     // Occupancy over-counts physical device time by the concurrency factor
@@ -94,19 +120,34 @@ describe('GPU_SECOND — occupancy divided by the provider’s parallel slots', 
     // OVERSTATES cost — the margin-conservative direction for a placeholder.
     const expected = BigInt(Math.ceil(550 / slots));
     expect(row!.unitPriceMicros).toBe(expected);
-    expect(row!.capability).toBe(AiCapability.LLM);
+    expect(row!.capability).toBe(capability);
   });
 
-  it('leaves the provider rows STRICTLY cheaper than the wildcard wherever slots > 1', () => {
-    for (const provider of ['lm-studio', 'vllm']) {
+  it('leaves a provider row STRICTLY cheaper than the wildcard wherever slots > 1, and EQUAL at 1', () => {
+    for (const [provider, slots] of DIVISORS) {
       const row = gpuRows.find((candidate) => candidate.provider === provider)!;
-      expect(row.unitPriceMicros, provider).toBeLessThan(wildcard!.unitPriceMicros);
+      if (slots > 1) expect(row.unitPriceMicros, provider).toBeLessThan(wildcard!.unitPriceMicros);
+      else expect(row.unitPriceMicros, provider).toBe(wildcard!.unitPriceMicros);
+    }
+  });
+
+  it('covers the STT and TTS engines that used to drain unrated — no GPU capability is left without a row', () => {
+    for (const capability of [AiCapability.STT, AiCapability.TTS]) {
+      expect(gpuRows.filter((row) => row.capability === capability).length, `${capability} has no GPU_SECOND rate`).toBeGreaterThan(0);
+    }
+  });
+
+  it('names every GPU provider with an id the ledger vocabulary already shapes', () => {
+    // A price row keyed on `whispercpp` would never resolve and nothing would
+    // say so — it would simply look like the engine was free.
+    for (const [provider] of DIVISORS) {
+      expect(provider).toMatch(/^[a-z0-9][a-z0-9._-]{0,63}$/);
     }
   });
 });
 
-describe('STORAGE_BYTE_DAY — priced under the STORAGE capability', () => {
-  const rows = costRowsFor(AiUsageUnit.STORAGE_BYTE_DAY);
+describe('STORAGE_GB_DAY — priced under the STORAGE capability', () => {
+  const rows = costRowsFor(AiUsageUnit.STORAGE_GB_DAY);
 
   it('has exactly one provider-wildcard row, under capability STORAGE', () => {
     expect(rows).toHaveLength(1);
@@ -114,13 +155,25 @@ describe('STORAGE_BYTE_DAY — priced under the STORAGE capability', () => {
     expect(rows[0]!.provider ?? null).toBeNull();
   });
 
-  it('is ZERO, and says in its note that the integer-micro floor is why', () => {
-    // A byte-day at any real disk price is ~2.7e-6 micros, six orders of
-    // magnitude below the 1-micro floor. Rounding UP to 1µ would price a
-    // GB-month at ~$30,000. Zero is the only representable answer, and the
-    // note has to carry the arithmetic or the next reader "fixes" it.
-    expect(rows[0]!.unitPriceMicros).toBe(0n);
-    expect(rows[0]!.note).toMatch(/micro/i);
+  it('prices a GB-day at the amortised disk rate, NOT zero', () => {
+    // The GIGABYTE-day is what makes this representable: `unitPriceMicros` is
+    // an integer micro count, so a BYTE-day at the same underlying rate is
+    // ~0.0000027µ and could only round to 0 (storage free forever) or 1µ (a
+    // GB-month at ~$30,000). ~$0.08/GB-month ÷ 30 = 2666.7µ, rounded UP.
+    expect(rows[0]!.unitPriceMicros).toBe(2_667n);
+    // Round-trip the rate the SELL side will actually quote.
+    const gbMonth = Number(rows[0]!.unitPriceMicros) * 30 / 1_000_000;
+    expect(gbMonth).toBeCloseTo(0.08, 3);
+  });
+
+  it('carries the arithmetic in its note, so the next reader does not "fix" it', () => {
+    expect(rows[0]!.note).toMatch(/GB-month/);
+    expect(rows[0]!.note).toMatch(/30/);
+  });
+
+  it('is the ONLY storage unit — there is no byte-day row left behind', () => {
+    const storageUnits = new Set(costRows.filter((row) => row.capability === AiCapability.STORAGE).map((row) => row.unit));
+    expect([...storageUnits]).toEqual([AiUsageUnit.STORAGE_GB_DAY]);
   });
 });
 

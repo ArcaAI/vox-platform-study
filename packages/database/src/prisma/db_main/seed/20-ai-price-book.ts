@@ -518,10 +518,10 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     provider: 'lm-studio',
     unit: AiUsageUnit.GPU_SECOND,
-    unitPriceMicros: 69n,
+    unitPriceMicros: 138n,
     bookVersion: COMPUTE_BOOK_VERSION,
     ratifiedOn: '2026-09-12',
-    note: 'PLACEHOLDER — 550µ ÷ 8 decode slots = 68.75µ, rounded UP to 69µ. Divisor is LMS_PARALLEL: 8 in the EKS scale-30-users component (eks/components/scale-30-users/gpu-plane.yaml) and its capacity doc; the k3s base runs 4 (base/lmstudio.yaml), which would be 138µ. Supersede per environment if the two diverge in practice.',
+    note: 'PLACEHOLDER — 550µ ÷ 4 decode slots = 137.5µ, rounded UP to 138µ. Divisor is LMS_PARALLEL=4 from deployment/k8s/base/lmstudio.yaml, because the k3s cluster is the only environment that exists today. The EKS scale-30-users component sets 8 (→ 69µ) but has no namespace and no Argo Application; supersede with a tenant/environment row if it is ever deployed.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000071',
@@ -546,17 +546,114 @@ const COST_ROWS: PriceBookSeed[] = [
     note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor is 1 DELIBERATELY: neither this repo nor the deployment repo configures OLLAMA_NUM_PARALLEL and Ollama is not a cluster workload, so no parallelism is claimed. The row exists (equal to the wildcard today) to record that the divisor was decided, not skipped.',
   },
 
-  // --- STORAGE_BYTE_DAY -----------------------------------------------------
+  // --- GPU_SECOND for the STT engines ---------------------------------------
+  //
+  // Divisor 8 = the BATCH worker's own concurrency: `--processes 2 --threads 4`
+  // (apps/stt/docker/Dockerfile:464), i.e. eight Dramatiq slots sharing the
+  // card, with `worker_threads` defaulting to 4 in `stt/core/config/settings.py`.
+  //
+  // REPRICING ITEM, stated rather than averaged away: STREAMING has a different
+  // divisor. Its scheduler batches utterances from up to ~20 live sessions per
+  // GPU (ticket §3.1), so a streaming occupancy-second over-counts physical
+  // device time by ~20×, not ~8×, and these rows therefore OVERSTATE streaming
+  // COGS by roughly 2.5×. Splitting them needs a price dimension the book does
+  // not have yet (the row is keyed on provider, and both lanes report the same
+  // engine id); the `operation` dimension — `transcribe.batch` vs
+  // `transcribe.stream` — is the natural axis when one is added.
+  {
+    id: 'B1000000-0000-0000-0000-000000000073',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'faster_whisper',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads (apps/stt/docker/Dockerfile). STREAMING admits up to ~20 sessions per GPU, so its true divisor is ~20 and this row overstates streaming COGS by ~2.5× — a repricing item awaiting an `operation` price dimension.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000074',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'whisper_cpp',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads. whisper.cpp runs CPU in most deployments (`whisper_cpp_num_threads`), so this row fires only on a CUDA build — it exists so such a build rates instead of draining unrated. STREAMING’s divisor is ~20 sessions per GPU: repricing item.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000075',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.STT,
+    provider: 'parakeet_cpp',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 69n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 8 = 68.75µ, rounded UP to 69µ. Divisor is the batch worker’s 2 processes × 4 threads. Same CPU-build caveat as whisper_cpp (`parakeet_cpp_num_threads`). STREAMING’s divisor is ~20 sessions per GPU: repricing item.',
+  },
+
+  // --- GPU_SECOND for the TTS engines ---------------------------------------
+  //
+  // Divisor 1, because these engines serve ONE synthesis at a time and, more
+  // to the point, both default to `device: cpu` (tts/core/config.py) — so on
+  // today's deployment they emit CPU_SECOND and never reach these rows at all.
+  // The rows exist for the deployment that flips a voice onto CUDA: without
+  // them that traffic drains UNRATED, which reads as "storage/TTS cost us
+  // nothing" rather than "we did not price it".
+  {
+    id: 'B1000000-0000-0000-0000-000000000076',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'kokoro',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ (~$1.98/GPU-hour). Divisor 1: one synthesis per engine at a time. Kokoro defaults to device `cpu`, so this row only fires on a CUDA deployment; it exists so that deployment rates instead of draining unrated.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000077',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'indic_parler',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor 1: one synthesis at a time. CPU by default; the row covers a CUDA deployment.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000078',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: 'indic_f5',
+    unit: AiUsageUnit.GPU_SECOND,
+    unitPriceMicros: 550n,
+    bookVersion: COMPUTE_BOOK_VERSION,
+    ratifiedOn: '2026-09-12',
+    note: 'PLACEHOLDER — 550µ ÷ 1 = 550µ. Divisor 1: one synthesis at a time. CPU by default; the row covers a CUDA deployment.',
+  },
+
+  // --- STORAGE_GB_DAY -------------------------------------------------------
+  //
+  // The unit is the GIGABYTE-day, not the byte-day, and that choice is what
+  // makes this row priceable at all: `unitPriceMicros` is an INTEGER micro
+  // count, so a byte-day at amortised disk (~0.0000027µ) could only round to 0
+  // (storage free forever) or to 1µ (a GB-month at ~$30,000). Quantity is
+  // `bytes ÷ 1e9` in a `Decimal(24, 6)` column, so the emitter keeps 1 KB of
+  // resolution.
   {
     id: 'B1000000-0000-0000-0000-000000000080',
     plane: AiPriceBookPlane.COST,
     capability: AiCapability.STORAGE,
     provider: null, // wildcard — `minio` (media, claim-check) and `postgres` (text) alike
-    unit: AiUsageUnit.STORAGE_BYTE_DAY,
-    unitPriceMicros: 0n,
+    unit: AiUsageUnit.STORAGE_GB_DAY,
+    unitPriceMicros: 2_667n,
     bookVersion: COMPUTE_BOOK_VERSION,
     ratifiedOn: '2026-09-12',
-    note: 'PLACEHOLDER, and 0 is a REPRESENTATION limit, not a decision: amortised disk at ~$0.08/GB-month is 80000µ ÷ (1e9 bytes × 30 days) = ~0.0000027µ per byte-day — six orders of magnitude below the 1µ integer floor. Rounding UP to 1µ would price a GB-month at ~$30,000. Storage COGS therefore needs either a GB-month unit or sub-micro price precision; until then these rows carry quantity and no cost.',
+    note: 'PLACEHOLDER — amortised disk at ~$0.08/GB-month = 80000µ ÷ 30 days = 2666.7µ per GB-day, rounded UP to 2667µ (≈ $0.0800/GB-month). Covers MinIO objects and Postgres columns alike; the class split rides attributesJson.storageClass. NOTE the cluster reality this understates: local-path PVCs enforce no quota, so a tenant over-consuming shows up as node DiskPressure long before it shows up here.',
   },
 
   // --- EGRESS_BYTE / INGRESS_BYTE ------------------------------------------

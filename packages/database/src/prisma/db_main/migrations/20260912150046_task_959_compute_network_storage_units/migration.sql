@@ -20,7 +20,7 @@ ALTER TYPE "core"."AiCapability" ADD VALUE 'WORKFLOW';
 ALTER TYPE "core"."AiUsageUnit" ADD VALUE 'CPU_SECOND';
 ALTER TYPE "core"."AiUsageUnit" ADD VALUE 'EGRESS_BYTE';
 ALTER TYPE "core"."AiUsageUnit" ADD VALUE 'INGRESS_BYTE';
-ALTER TYPE "core"."AiUsageUnit" ADD VALUE 'STORAGE_BYTE_DAY';
+ALTER TYPE "core"."AiUsageUnit" ADD VALUE 'STORAGE_GB_DAY';
 
 -- AlterEnum
 -- This migration adds more than one value to an enum.

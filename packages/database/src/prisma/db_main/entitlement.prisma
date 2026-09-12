@@ -61,10 +61,11 @@ enum UsageMeterMetric {
   // fair-share across concurrent activities rather than measured exactly
   // (D-5), and it is the figure "CPU time for each workflow" names.
   WORKFLOW_CPU_SECONDS
-  // The LATEST `STORAGE_BYTE_DAY` snapshot, i.e. bytes held right now — NOT the
-  // Σ over the window. This meter answers the QUOTA question
-  // (`storageQuotaBytes`, still soft-warn), and a quota compares against a
-  // stock; the invoice sums byte-days over the period separately.
+  // The LATEST `STORAGE_GB_DAY` snapshot, re-expressed in BYTES — i.e. bytes
+  // held right now, NOT the Σ over the window. This meter answers the QUOTA
+  // question (`storageQuotaBytes`, still soft-warn), and a quota compares
+  // against a stock, in the same unit the quota column is denominated in; the
+  // invoice sums GB-days over the period separately.
   STORAGE_BYTES
 
   @@schema("core")

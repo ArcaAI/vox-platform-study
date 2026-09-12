@@ -67,11 +67,11 @@ export const BILLABLE_UNITS: Record<AiCapability, readonly AiUsageUnit[]> = {
   // (`MissingSellRateError` → 409), which aborts the whole invoice draft — not
   // just that line. The ticket's §2.3 gate is exactly this: emit first (rows
   // land, unrated at worst, and show on the consumption screen), price second,
-  // sell third. An empty list here is what keeps `STORAGE_BYTE_DAY` and the
+  // sell third. An empty list here is what keeps `STORAGE_GB_DAY` and the
   // `WORKFLOW` CPU seconds VISIBLE and un-invoiced in the meantime.
   //
   // Adding a unit here is therefore a wave-4 act that ships WITH its SELL row
-  // and its allowance column (`monthlyStorageByteDays`,
+  // and its allowance column (`monthlyStorageGbDays`,
   // `monthlyWorkflowCpuSeconds`), never before.
   [AiCapability.STORAGE]: [],
   [AiCapability.WORKFLOW]: [],
