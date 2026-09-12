@@ -15,6 +15,7 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   maxAsrPipelines?: IPlanEntitlementEntity['maxAsrPipelines'];
   maxApiKeys?: IPlanEntitlementEntity['maxApiKeys'];
   maxWorkflowDefinitions?: IPlanEntitlementEntity['maxWorkflowDefinitions'];
+  maxAiProviderConnections?: IPlanEntitlementEntity['maxAiProviderConnections'];
   storageQuotaBytes?: IPlanEntitlementEntity['storageQuotaBytes'];
   maxConcurrentSessions?: IPlanEntitlementEntity['maxConcurrentSessions'];
   monthlyConsultations?: IPlanEntitlementEntity['monthlyConsultations'];
@@ -58,6 +59,7 @@ export class PlanEntitlementFactory {
       maxAsrPipelines: props.maxAsrPipelines ?? null,
       maxApiKeys: props.maxApiKeys ?? null,
       maxWorkflowDefinitions: props.maxWorkflowDefinitions ?? null,
+      maxAiProviderConnections: props.maxAiProviderConnections ?? null,
       storageQuotaBytes: props.storageQuotaBytes ?? null,
       maxConcurrentSessions: props.maxConcurrentSessions ?? null,
       monthlyConsultations: props.monthlyConsultations ?? null,
