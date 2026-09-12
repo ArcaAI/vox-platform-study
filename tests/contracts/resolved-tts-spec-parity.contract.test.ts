@@ -88,12 +88,14 @@ describe('ResolvedTtsSpec parity — producer half', () => {
   it('names the CONNECTION a candidate spends, and omits all three fields when it names none (TASK-958)', () => {
     // D-4 — two candidates of one vendor share a provider NAME, so `connectionKey` is
     // the only thing that can select their credential apart. `connectionKey === engine`
-    // for a default/platform row, which leaves every pre-958 payload byte-identical.
+    // for a default/platform row, which leaves every pre-958 payload byte-identical, and
+    // `engine:slug` for a named sibling (G2a F6 — a bare slug would share a namespace
+    // with engine ids).
     const twoAccounts = fixture.twoConnectionsOfOneVendor as FixtureCase;
     expect(twoAccounts.expected.primary.connectionKey).toBe('azure');
     expect(twoAccounts.expected.primary.connection?.connectionId).toBe('c0000001-0000-4000-8000-00000000000a');
     expect(twoAccounts.expected.fallback.chain).toHaveLength(1);
-    expect(twoAccounts.expected.fallback.chain[0].connectionKey).toBe('azure-research');
+    expect(twoAccounts.expected.fallback.chain[0].connectionKey).toBe('azure:azure-research');
     expect(twoAccounts.expected.fallback.chain[0].connection?.connectionSlug).toBe('azure-research');
 
     // Omit-when-absent: `tts.spec` is `extra='forbid'` and lists these in OPTIONAL_FIELDS.

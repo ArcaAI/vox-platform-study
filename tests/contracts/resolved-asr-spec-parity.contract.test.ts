@@ -180,14 +180,16 @@ describe('ResolvedAsrSpec parity — producer half', () => {
     // D-4 — a tenant may hold two accounts of one vendor, so the provider id no longer
     // selects a `provider_overrides` entry. The core carries the key the loaders read
     // under; `connectionKey === provider` for a default/platform row, which is what
-    // leaves every pre-958 payload byte-identical.
+    // leaves every pre-958 payload byte-identical, and `provider:slug` for a named
+    // sibling (G2a F6 — a bare slug would share a namespace with provider ids, so a
+    // connection a tenant chose to call `azure` would alias the azure entry).
     const twoAccounts = fixture.twoConnectionsOfOneVendor as FixtureCase;
     expect(twoAccounts.expected.connectionKey).toBe('azure-speech');
     expect(twoAccounts.expected.connectionSlug).toBe('azure-speech');
     expect(twoAccounts.expected.connectionId).toBe('c0000001-0000-4000-8000-000000000001');
     // The FALLBACK core names the sibling — the whole point: without a per-core key the
     // failover would re-read the entry of the account that just failed.
-    expect(twoAccounts.expected.fallback.spec?.connectionKey).toBe('azure-speech-research');
+    expect(twoAccounts.expected.fallback.spec?.connectionKey).toBe('azure-speech:azure-speech-research');
     expect(twoAccounts.expected.fallback.spec?.connectionId).toBe('c0000002-0000-4000-8000-000000000002');
     expect(twoAccounts.expected.fallback.spec?.connectionKey).not.toBe(twoAccounts.expected.connectionKey);
 

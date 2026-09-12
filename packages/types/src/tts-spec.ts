@@ -170,14 +170,20 @@ export interface ResolvedTtsCandidate {
   fundingTier: AgentFundingTier;
   /**
    * TASK-958 D-4 — the key this candidate's credential arrives under in
-   * `provider_overrides`: the tenant connection's `slug` for a tenant row, the
-   * provider/engine name for a platform row.
+   * `provider_overrides`: the provider/engine name for the tenant's DEFAULT connection
+   * and for a platform row, `engine:slug` for a named sibling.
    *
    * It exists because two candidates in ONE chain may name the same engine on
    * different accounts, which a provider-keyed map cannot express: both would read
    * one entry and the failover would spend the key that just failed. Absent ⇒ a
    * sender that predates the field, and `apps/tts` falls back to the engine name,
    * which is what it has always done.
+   *
+   * The `engine:` prefix is what keeps the two NAMESPACES apart. A sibling keyed by its
+   * bare slug would sit in the same space as provider ids, so a tenant that called its
+   * second Sarvam account `azure` would collide with the `azure` entry. Provider ids
+   * never contain `:`. The key is OPAQUE to `apps/tts`: it looks the string up, it does
+   * not parse it.
    */
   connectionKey?: string;
 }

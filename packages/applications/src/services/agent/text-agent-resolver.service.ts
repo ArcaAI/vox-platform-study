@@ -156,6 +156,10 @@ export class TextAgentResolverService {
         task: AgentTask.TEXT_GENERATION,
         agentSlug: input.agentSlug ?? null,
         departmentId: input.departmentId ?? null,
+        // TASK-958 F11 — this plane walks its OWN chain, so a primary whose named
+        // connection cannot serve is a candidate to skip (`fundingFor` returns `null`
+        // for it below), not a 409 out of the agent resolver.
+        primaryBinding: 'mark',
         // Absent, not empty, when there is nothing to say — see `ResolveAgentInput.selectorTags`.
         ...(input.selectorTags?.length ? { selectorTags: input.selectorTags } : {}),
       });
@@ -229,7 +233,7 @@ export class TextAgentResolverService {
 
   private async tryResolveAgent(tenantId: string, slug: string, role: string, primarySlug: string): Promise<ResolvedAgent | null> {
     try {
-      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug, departmentId: null });
+      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_GENERATION, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
     } catch (error) {
       this.logger.warn({
         message: `Text ${role} did not resolve; continuing without it`,

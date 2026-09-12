@@ -13,7 +13,7 @@ import type {
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
 import { ProviderVetoedException } from '../ai-provider-connection/provider-vetoed.exception';
-import { AgentResolverService } from './agent-resolver.service';
+import { AgentResolverService, ConnectionIdentityLookup, providerOverrideKey } from './agent-resolver.service';
 import { fundingOfAgentRow } from './text-generation-spec';
 import {
   TtsSpecBuildError,
@@ -43,6 +43,16 @@ interface CloudCredential {
   connectionKey: string;
   connectionId: string | null;
   connectionSlug: string | null;
+}
+
+/**
+ * TASK-958 — the per-request state one chain resolution shares across its candidates:
+ * the connection-row identities the wire key is derived from, and the credential already
+ * resolved for each key.
+ */
+interface ChainContext {
+  identities: ConnectionIdentityLookup;
+  memo: Map<string, CloudCredential>;
 }
 
 export interface ResolvedTtsSession {
@@ -101,6 +111,9 @@ export class TtsAgentResolverService {
       task: AgentTask.TEXT_TO_SPEECH,
       agentSlug: input.agentSlug ?? null,
       departmentId: input.departmentId ?? null,
+      // TASK-958 F11 — a chain plane: `applyCloudCredential` resolves a credential per
+      // candidate and decides there what an unusable binding means.
+      primaryBinding: 'mark',
     });
     return this.resolveFromAgent(agent, input.tenantId);
   }
@@ -119,7 +132,11 @@ export class TtsAgentResolverService {
     }
 
     const overrides: ProviderOverrides = {};
-    const primary = await this.source(agent, primaryModel, 'primary', tenantId, overrides);
+    // TASK-958 — ONE masked connection read and ONE decrypt per connection, shared by every
+    // candidate of this chain. Both are per-request state, so they are built here rather
+    // than held on the service: a credential must never outlive the request that resolved it.
+    const context: ChainContext = { identities: new ConnectionIdentityLookup(this.connections, 'tts', tenantId), memo: new Map() };
+    const primary = await this.source(agent, primaryModel, 'primary', tenantId, overrides, context);
     if (!primary) {
       // Unreachable for `kind: 'primary'` — `source` never returns null there — but stated so a
       // future edit cannot silently turn a primary failure into an empty spec.
@@ -138,9 +155,9 @@ export class TtsAgentResolverService {
     if (governance.agentSlug && governance.agentSlug !== agent.slug) {
       const fallbackAgent = await this.tryResolveAgent(tenantId, governance.agentSlug, 'fallback agent', agent.slug);
       const model = fallbackAgent ? primaryTtsModelOf(fallbackAgent) : undefined;
-      if (fallbackAgent && model) push(await this.source(fallbackAgent, model, 'fallback-agent', tenantId, overrides));
+      if (fallbackAgent && model) push(await this.source(fallbackAgent, model, 'fallback-agent', tenantId, overrides, context));
     } else {
-      for (const model of fallbackTtsModelsOf(agent)) push(await this.source(agent, model, 'fallback-model', tenantId, overrides));
+      for (const model of fallbackTtsModelsOf(agent)) push(await this.source(agent, model, 'fallback-model', tenantId, overrides, context));
     }
 
     // TASK-890 OD-M — the terminal SYSTEM-assigned candidate is GONE, for the reason spelled
@@ -173,7 +190,7 @@ export class TtsAgentResolverService {
 
   private async tryResolveAgent(tenantId: string, slug: string, role: string, primarySlug: string): Promise<ResolvedAgent | null> {
     try {
-      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug, departmentId: null });
+      return await this.agents.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
     } catch (error) {
       this.logger.warn({
         message: `Speech ${role} did not resolve; continuing without it`,
@@ -197,6 +214,7 @@ export class TtsAgentResolverService {
     kind: TtsCandidateKind,
     tenantId: string,
     overrides: ProviderOverrides,
+    context: ChainContext,
   ): Promise<TtsCandidateSource | null> {
     const metaData = await this.metaDataFor(model, tenantId);
     const engine = ttsEngineProvider(model, metaData);
@@ -207,13 +225,14 @@ export class TtsAgentResolverService {
     const boundConnectionId = model.sourceConnectionId ?? null;
     let credential: CloudCredential | null = null;
     if (engine && isCloudByoProvider('tts', engine)) {
-      credential = await this.applyCloudCredential(agent, engine, kind, tenantId, overrides, boundConnectionId);
+      credential = await this.applyCloudCredential(agent, engine, kind, tenantId, overrides, boundConnectionId, context);
       if (!credential) return null;
     }
 
-    // TASK-958 D-4 — the key `provider_overrides` is keyed by, and the key
+    // TASK-958 D-4/F6 — the key `provider_overrides` is keyed by, and the key
     // `apps/tts` reads its entry under. `engine` for a platform/default row, so a
-    // pre-958 payload is byte-identical.
+    // pre-958 payload is byte-identical; `engine:slug` for a named sibling, which is
+    // a namespace a provider id can never reach into.
     const connectionKey = credential?.connectionKey ?? engine ?? undefined;
     const connection = engine ? await this.connectionFor(engine, tenantId, credential) : null;
     const fundingTier: AgentFundingTier =
@@ -237,15 +256,38 @@ export class TtsAgentResolverService {
     tenantId: string,
     overrides: ProviderOverrides,
     boundConnectionId: string | null,
+    context: ChainContext,
   ): Promise<CloudCredential | null> {
+    // TASK-958 (correctness #5) — the key is known BEFORE the decrypt, because it is a
+    // property of the ROW, so a chain naming one connection twice resolves it once. It
+    // also keeps a fallback candidate in the chain when the credential it needs is the
+    // one the primary already resolved — the `!this.credentials` path below could only
+    // answer for the agent that CARRIED the one-hop override, and dropped the rest.
+    const bound = boundConnectionId ? await context.identities.byId(boundConnectionId) : null;
+    const plannedKey = boundConnectionId ? (bound ? providerOverrideKey(engine, bound) : null) : engine;
+    if (plannedKey) {
+      const memoised = context.memo.get(plannedKey);
+      if (memoised) return memoised;
+    }
+
+    const remember = (credential: CloudCredential): CloudCredential => {
+      context.memo.set(credential.connectionKey, credential);
+      return credential;
+    };
+
     if (!this.credentials) {
       // TASK-862's resolver is not wired: the agent resolver's own one-hop override serves.
       const own = agent.providerOverride;
       if (own && own.provider === engine) {
         const { provider: _provider, ...entry } = own;
-        const key = typeof entry.connection_slug === 'string' ? entry.connection_slug : engine;
+        const slug = typeof entry.connection_slug === 'string' ? entry.connection_slug : engine;
+        const key = boundConnectionId ? providerOverrideKey(engine, { slug, isDefault: bound?.isDefault }) : engine;
         overrides[key] = entry as ProviderOverrides[string];
-        return { connectionKey: key, connectionId: typeof entry.connection_id === 'string' ? entry.connection_id : null, connectionSlug: key };
+        return remember({
+          connectionKey: key,
+          connectionId: typeof entry.connection_id === 'string' ? entry.connection_id : null,
+          connectionSlug: slug,
+        });
       }
       return kind === 'primary' ? { connectionKey: engine, connectionId: null, connectionSlug: null } : null;
     }
@@ -255,8 +297,14 @@ export class TtsAgentResolverService {
         : await this.credentials.resolve('tts', engine, tenantId);
       if (binding) {
         const slug = typeof binding.override.connection_slug === 'string' ? binding.override.connection_slug : engine;
-        overrides[slug] = binding.override;
-        return { connectionKey: slug, connectionId: binding.connectionId, connectionSlug: slug };
+        // An UNBOUND resolve can only have been answered by the tenant's DEFAULT row or by
+        // the platform's, so it keeps the bare engine key whatever the row is called.
+        const key = boundConnectionId ? providerOverrideKey(engine, { slug, isDefault: bound?.isDefault }) : engine;
+        overrides[key] = binding.override;
+        // TASK-958 F12 — the id comes off the ENTRY, the one value that also travels to
+        // `apps/tts`, so the spec block and the credential cannot name different rows.
+        const connectionId = typeof binding.override.connection_id === 'string' ? binding.override.connection_id : binding.connectionId;
+        return remember({ connectionKey: key, connectionId, connectionSlug: slug });
       }
       // A NAMED connection that answered `null` is disabled or keyless: THAT candidate
       // is unusable and must never widen to the tenant's default — even for a primary,

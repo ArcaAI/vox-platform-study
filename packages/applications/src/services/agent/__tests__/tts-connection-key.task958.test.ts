@@ -4,10 +4,11 @@
  * `apps/tts` walks the fallback chain itself, so this is where the collision was
  * real: two candidates naming the SAME engine on DIFFERENT connections both read
  * `provider_overrides[engine]` and the failover spends the key that just failed.
- * The fix is a per-candidate `connectionKey` (the tenant connection's slug; the
- * engine name for a platform row) and a `provider_overrides` map keyed by it —
- * which leaves every default/platform payload byte-identical, because there
- * `connectionKey === engine`.
+ * The fix is a per-candidate `connectionKey` — the engine name for the tenant's
+ * DEFAULT row and for a platform row, `engine:slug` for a named sibling (G2a F6:
+ * a bare slug would share a namespace with provider ids) — and a
+ * `provider_overrides` map keyed by it, which leaves every default/platform
+ * payload byte-identical because there `connectionKey === engine`.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
@@ -109,10 +110,10 @@ describe('TASK-958 (TTS) — provider_overrides is keyed by connectionKey', () =
 
     expect(resolved.spec.primary.connectionKey).toBe('azure');
     expect(resolved.spec.fallback.chain).toHaveLength(1);
-    expect(resolved.spec.fallback.chain[0].connectionKey).toBe('azure-research');
-    expect(Object.keys(resolved.providerOverrides ?? {}).sort()).toEqual(['azure', 'azure-research']);
+    expect(resolved.spec.fallback.chain[0].connectionKey).toBe('azure:azure-research');
+    expect(Object.keys(resolved.providerOverrides ?? {}).sort()).toEqual(['azure', 'azure:azure-research']);
     expect(resolved.providerOverrides?.['azure'].api_key).toBe('key-one');
-    expect(resolved.providerOverrides?.['azure-research'].api_key).toBe('key-two');
+    expect(resolved.providerOverrides?.['azure:azure-research'].api_key).toBe('key-two');
   });
 
   it('the connection block names the row that answered', async () => {
