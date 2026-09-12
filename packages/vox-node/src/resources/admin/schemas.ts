@@ -5601,6 +5601,8 @@ export interface TestProviderConnectionRequest {
   baseUrl?: string;
   /** Deployment name (Azure OpenAI) — verified against the listed deployments when given. */
   deploymentName?: string;
+  /** Vendor this connection talks to (e.g. `openai`). Required when the slug is not itself a provider id and no row is saved yet; on a saved connection it must match the stored provider. */
+  provider?: string;
   /** Region (classic Azure Speech, Bedrock). Omit to use the stored row. */
   region?: string;
 }
