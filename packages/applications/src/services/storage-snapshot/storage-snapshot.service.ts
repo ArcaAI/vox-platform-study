@@ -89,8 +89,10 @@ function toBigIntSafe(value: bigint | number | string | null | undefined): bigin
  * `IUsageLedgerService.recordUsage`, which writes an outbox row the drainer
  * later rates and appends — so a snapshot can never be half-recorded, and a
  * re-run converges on one ledger row per (tenant, class, day) at the drainer
- * rather than double-counting. That is what makes backfilling a missed night
- * safe, and it is the whole reason the key is intent-derived.
+ * rather than double-counting. That is the whole reason the key is
+ * intent-derived. It makes a RETRY of the same night correct; it does not make
+ * a LATE backfill accurate, because the queries always measure what is held
+ * now — see {@link IStorageSnapshotService}.
  *
  * ONE SWEEP, NOT N SWEEPS. `snapshotAll` issues the nine aggregates ONCE,
  * grouped by `tenantId`, and then loops the tenants to emit. Running them per
