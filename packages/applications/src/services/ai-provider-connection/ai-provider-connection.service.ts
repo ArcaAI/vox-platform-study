@@ -60,6 +60,7 @@ import {
   MAX_AI_PROVIDER_CONNECTIONS_KEY,
   PROVIDER_SERVICES,
   ProviderService,
+  RESERVED_CONNECTION_SLUGS,
   isCloudByoProvider,
   isKnownProviderId,
 } from './constants';
@@ -181,8 +182,10 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     const row = await this.connectionRepository.findByTenantServiceSlug(service, slug, scopedTenantId, tx);
     // TASK-958 — the tier boundary is drawn on the row's PROVIDER, which for an
     // existing row is the row's own and for a miss can only be read off the slug
-    // (a placeholder is only ever offered for the provider-named default).
-    this.assertVisibleToTier(service, row?.provider ?? slug, scopedTenantId);
+    // (a placeholder is only ever offered for the provider-named default). A
+    // miss whose slug is NOT a provider id is a question about a CONNECTION
+    // NAME, so it is answered as one — see `assertVisibleToTier`.
+    this.assertVisibleToTier(service, row?.provider ?? slug, scopedTenantId, row === null && !isKnownProviderId(slug) ? slug : null);
     if (!row) return { ...AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, slug), models: [] };
     // TASK-890 §3.7a — the single-row read carries the models declared on it, so
     // the console edits credential and model list from ONE payload.
@@ -478,6 +481,10 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // immutable; on a create the body says so, or the slug does when it is
     // itself a provider id — which is every call that predates this ticket.
     const provider = this.resolveProviderForWrite(service, slug, dto, existing, scopedTenantId);
+    // WHETHER THIS NAME IS THIS ROW'S TO TAKE. Identity before governance, and
+    // only on a write that MINTS a name (a create or a revive) — an existing row
+    // keeps the name it was created under whatever the lists say today.
+    if (!existing) this.assertSlugNotReserved(service, slug, provider);
     this.assertWriteAllowed(service, provider, scopedTenantId);
     // The platform tier has no notion of a named or non-default connection at
     // all, so it is answered BEFORE the default is reasoned about — otherwise a
@@ -654,15 +661,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
     // `_expectedVersion` is accepted for C2 arity; soft-delete stays version-less
     // (the HTTP `@RequiresIfMatch()` guard remains the OCC gate at the edge).
-    // `softDelete(id, updatedBy)` takes no tx client — it writes through the
-    // extended client, relying on the SYSTEM-shared-read widening for a global
-    // admin deleting a SYSTEM row under a working tenant.
     // TASK-890 §3.7a — the models DECLARED on this connection go first: the
     // `AiModel.sourceConnectionId` FK is `Restrict`, so a connection may not
     // vanish under rows that still point at it, and a declared model outliving
     // its credential is a row nothing can serve.
     await this.softDeleteDeclaredModels(existing, scopedTenantId, tx);
-    await this.connectionRepository.softDelete(existing.id, this.requestUserId ?? undefined);
+    await this.releaseDefaultAndSoftDelete(existing);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: existing.id,
       data: { service, provider, slug, tenantId: scopedTenantId, action: 'connection-deleted' },
@@ -1692,8 +1696,23 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     return isCloudByoProvider(service, provider);
   }
 
-  private assertVisibleToTier(service: ProviderService, provider: string, targetTenantId: string): void {
+  /**
+   * `unnamedSlug` is the TASK-958 half: a read whose path segment is a
+   * connection NAME nobody has saved (`openai-research`) is still a 404 — the
+   * row does not exist — but calling that name "a provider" told the console
+   * the platform had a vendor by that name and sent an operator looking for the
+   * wrong mistake. Pass it ONLY when the slug names no known provider; a miss on
+   * a real provider id (`lm-studio` under a tenant) keeps the provider-shaped
+   * message, which is the one that discloses nothing about the platform tier.
+   */
+  private assertVisibleToTier(service: ProviderService, provider: string, targetTenantId: string, unnamedSlug: string | null = null): void {
     if (this.isVisibleToTier(service, provider, targetTenantId)) return;
+    if (unnamedSlug !== null) {
+      throw new NotFoundException(
+        `No connection named '${unnamedSlug}' (service '${service}'). A connection slug that is not itself a provider id ` +
+          'exists only once it is created, naming the vendor it talks to.',
+      );
+    }
     throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
   }
 
@@ -1715,6 +1734,47 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         slug,
       });
     }
+  }
+
+  /**
+   * A connection may not be NAMED after something that is not its own.
+   *
+   * Two halves, one rule — the slug is an IDENTITY, and these are the strings
+   * that already identify something else:
+   *
+   *   1. a ROUTE SEGMENT (`RESERVED_CONNECTION_SLUGS`). Refused unconditionally,
+   *      including when the caller passes it as the provider too: the collision
+   *      is with the URL, which does not care what vendor the row serves.
+   *   2. ANOTHER VENDOR'S PROVIDER ID, in ANY service. `PUT tts/azure
+   *      {provider: 'sarvam'}` used to mint a row whose slug is `azure` and
+   *      whose vendor is Sarvam. That is not a naming inconvenience: the slug IS
+   *      `connection_key` on the TTS/STT wire and the prefix of every model slug
+   *      the connection mints, so the row aliases the platform `azure`
+   *      credential for every reader that folds by key. Service-agnostic on
+   *      purpose, exactly like `isKnownProviderId` — `azure-speech` names a
+   *      vendor whatever plane it is written on.
+   *
+   * `slug === provider` is the pre-TASK-958 shape and is never refused here: a
+   * row named after the vendor it actually serves impersonates nobody.
+   */
+  private assertSlugNotReserved(service: ProviderService, slug: string, provider: string): void {
+    const reason = RESERVED_CONNECTION_SLUGS.has(slug) ? 'route-segment' : slug !== provider && isKnownProviderId(slug) ? 'provider-id' : null;
+    if (reason === null) return;
+
+    throw new BadRequestException({
+      code: CONNECTION_ERROR_CODES.SLUG_RESERVED,
+      message:
+        reason === 'route-segment'
+          ? `'${slug}' is reserved: \`admin/providers/${service}/${slug}\` is a route of its own, so a connection by that ` +
+            'name could be written but never read back. Choose another name.'
+          : `'${slug}' is the id of the '${slug}' provider, and this connection serves '${provider}'. A connection's name ` +
+            'travels to the inference services as its key, so a row named after another vendor would stand in for that ' +
+            `vendor's credential. Name it for the account instead (for example \`${provider}-${slug}\`).`,
+      slug,
+      provider,
+      service,
+      reason,
+    });
   }
 
   /**
@@ -1909,6 +1969,53 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         },
       });
       return result;
+    });
+  }
+
+  /**
+   * Soft-delete a connection, RELEASING the provider's default slot first when
+   * it held it — both writes in ONE transaction.
+   *
+   * WHY THIS IS NOT OPTIONAL. `AiProviderConnection_tenant_service_default_key`
+   * is a plain unique index: it is not partial, and it knows nothing about
+   * `resourceStatus`. A tombstone that still carries `defaultForProvider =
+   * provider` therefore keeps OCCUPYING the slot. The effect is not a stale
+   * read but a WEDGE — delete the tenant's only `llm/openai` row and every
+   * subsequent `PUT llm/<any-new-slug> {provider: 'openai'}` (which must elect
+   * itself default, since no live default remains) dies on a raw P2002 that no
+   * layer maps, until the exact original slug happens to be revived.
+   *
+   * Clearing the marker also states the truth: a deleted row is not anybody's
+   * default. Whether a REVIVED row takes the job back is decided the same way a
+   * create decides it (`resolveDefaultIntent`), never by what the tombstone
+   * happened to carry.
+   *
+   * The clear is an OCC write (`updateWithVersion` on the version just read), so
+   * a racing editor still loses; `softDelete` bumps the version again on top.
+   * A non-default row costs no transaction — the same shape as
+   * `withDefaultFlip` above, and the same reason.
+   *
+   * No separate `ResourceUpdated` event: unlike `withDefaultFlip`, which clears
+   * a SURVIVING row and must say so, this clears the row that is being deleted
+   * in the same breath. `ResourceDeleted` (broadcast by `deleteRow`) is the one
+   * true statement about it.
+   */
+  private async releaseDefaultAndSoftDelete(row: AiProviderConnectionEntity): Promise<void> {
+    const updatedBy = this.requestUserId ?? undefined;
+    if (!row.isDefault) {
+      // `softDelete(id, updatedBy)` takes no tx client — it writes through the
+      // extended client, relying on the SYSTEM-shared-read widening for a global
+      // admin deleting a SYSTEM row under a working tenant.
+      await this.connectionRepository.softDelete(row.id, updatedBy);
+      return;
+    }
+
+    await this.databaseService.baseClient.$transaction(async (client) => {
+      const lane = client as unknown as CoreDatabaseService['baseClient'];
+      const expectedVersion = row.version;
+      await this.updateEntity(row, { defaultForProvider: null });
+      await this.connectionRepository.updateWithVersion(row.id, row, expectedVersion, lane);
+      await this.connectionRepository.softDelete(row.id, updatedBy, lane);
     });
   }
 
