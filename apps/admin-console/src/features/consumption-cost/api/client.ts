@@ -1,6 +1,13 @@
 import { getJson } from '@/shared/api';
 
-import type { CostPerEncounterResponse, TopTenantsResponse, UsageConnection, UsagePeriodParams, UsageSummaryResponse } from './types';
+import type {
+  CostPerEncounterResponse,
+  TopTenantsResponse,
+  UsageConnection,
+  UsagePeriodParams,
+  UsagePlatformDefaults,
+  UsageSummaryResponse,
+} from './types';
 
 /**
  * Typed reads over the BFF proxy. Paths are gateway-relative
@@ -35,4 +42,17 @@ export function getTopTenants(params?: UsagePeriodParams): Promise<TopTenantsRes
  */
 export function getUsageConnections(service: 'llm' | 'stt' | 'tts'): Promise<UsageConnection[]> {
   return getJson(`admin/providers/${service}`);
+}
+
+/**
+ * TASK-958 (wire review #6) — the PLATFORM rows the working tenant inherits for
+ * one capability, read for the same reason and in the same way: to NAME the
+ * `connectionId` on a usage line.
+ *
+ * A platform-funded line carries the SYSTEM row's id, which is absent from the
+ * tenant's own list by construction, so without this read it could only ever
+ * render as an unresolved id.
+ */
+export function getUsagePlatformDefaults(service: 'llm' | 'stt' | 'tts'): Promise<UsagePlatformDefaults> {
+  return getJson(`admin/providers/${service}/platform-defaults`);
 }

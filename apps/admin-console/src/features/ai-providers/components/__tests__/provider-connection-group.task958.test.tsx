@@ -74,7 +74,11 @@ interface RecordedCall {
  * the tab (the platform-defaults panel) answers empty so the cases read as the
  * one behaviour each pins.
  */
-function stubFetch(rows: Record<string, Record<string, unknown>> = {}): RecordedCall[] {
+function stubFetch(
+  rows: Record<string, Record<string, unknown>> = {},
+  /** A refusal the gateway answers a create with, for the cases that pin how one is rendered. */
+  fail?: { putStatus: number; putBody: Record<string, unknown> },
+): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -91,6 +95,7 @@ function stubFetch(rows: Record<string, Record<string, unknown>> = {}): Recorded
       if (slug === 'platform-defaults') return Response.json({ service, tenantId: TENANT, entitled: true, connections: [] });
       if (slug === undefined) return Response.json(Object.values(rows));
       if (method === 'PUT') {
+        if (fail) return Response.json(fail.putBody, { status: fail.putStatus });
         const created = row({ ...(rows[slug] ?? {}), ...body, id: `conn-${slug}`, slug, version: 1 });
         return Response.json(created, { headers: { etag: '"1"' } });
       }
@@ -201,6 +206,55 @@ describe('ProviderCredentialsTab — the add-connection dialog (34)', () => {
 
     expect(within(dialog).getByRole('alert').textContent).toMatch(/already/i);
     expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
+  /**
+   * TASK-958 — the gateway's 400 `CONNECTION_SLUG_RESERVED`, mirrored.
+   *
+   * A slug equal to ANY known provider id belongs to that provider's DEFAULT
+   * connection, and `platform-defaults` is a ROUTE segment on the same family —
+   * a row named after it would be unaddressable. Neither is caught by the
+   * duplicate check: the group only knows the slugs of ITS OWN provider, so
+   * naming an OpenAI sibling `sarvam` looked perfectly valid here and came back
+   * a 400 with a slug the admin has already mentally committed to.
+   */
+  it.each(['sarvam', 'azure', 'platform-defaults'])('refuses the reserved slug %s before it is sent', async (reserved) => {
+    const { calls, dialog } = await openDialog();
+
+    fireEvent.change(within(dialog).getByLabelText(/Connection id/), { target: { value: reserved } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create connection' }));
+    });
+
+    expect(within(dialog).getByRole('alert').textContent).toMatch(/reserved/i);
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
+  it('renders the gateway CONNECTION_SLUG_RESERVED refusal as guidance when one still arrives', async () => {
+    const calls = stubFetch(
+      { openai: { id: 'conn-1', provider: 'openai', slug: 'openai', isDefault: true, hasKey: true, enabled: true, version: 3 } },
+      {
+        putStatus: 400,
+        putBody: { statusCode: 400, code: 'CONNECTION_SLUG_RESERVED', message: "'vertex' names a provider and cannot be a connection slug." },
+      },
+    );
+    renderWithProviders(<ProviderCredentialsTab service="llm" tenantId={TENANT} tier="tenant" />);
+    const group = await screen.findByRole('group', { name: 'OpenAI connections' });
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'Add another OpenAI connection' }));
+    });
+    const dialog = await screen.findByRole('dialog');
+
+    // A slug the CLIENT mirror does not know about — only the gateway refuses it.
+    fireEvent.change(within(dialog).getByLabelText(/Connection id/), { target: { value: 'gemini' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create connection' }));
+    });
+
+    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toMatch(/names a provider/));
+    // Guidance, not just the raw refusal: say what to do about it.
+    expect(within(dialog).getByRole('alert').textContent).toMatch(/Choose a name/i);
+    expect(calls.some((call) => call.method === 'PUT')).toBe(true);
   });
 });
 

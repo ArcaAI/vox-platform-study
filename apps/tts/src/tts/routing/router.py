@@ -96,19 +96,31 @@ def override_for(
 ) -> dict[str, str]:
     """The credential entry that serves THIS candidate.
 
-    ``connection_key`` first, engine name second. The second read is what keeps a
-    legacy payload — and every platform-tier candidate, whose key IS the engine name —
-    resolving exactly as it did; the first is the only thing that can tell two
-    candidates apart when a tenant holds two accounts of one vendor and both name the
-    same engine. Without it the chain reads ONE entry twice and a failover spends the
-    key that just failed.
+    A candidate's ``connection_key`` is the only thing that can tell two candidates
+    apart when a tenant holds two accounts of one vendor and both name the same engine.
+    Without it the chain reads ONE entry twice and a failover spends the key that just
+    failed.
+
+    **A DECLARED key is the ONLY key read** (TASK-958, wire review #4). When the
+    candidate carries a non-empty ``connection_key``, this returns the entry under it or
+    ``{}``; the engine name is not consulted. The gateway folds a connection OUT of
+    ``provider_overrides`` deliberately — a disabled, keyless or vetoed sibling has no
+    entry, and that absence IS the decision. Falling back to the engine name there would
+    serve the candidate on the tenant's DEFAULT vendor account: the wrong key, the wrong
+    invoice, and a key the tenant took out of play. ``{}`` instead makes the adapter
+    refuse (``from_spec`` returns ``None``), which the router already reads as "this
+    candidate cannot serve" and walks past — a routing outcome, which is what the chain
+    is for.
+
+    The engine-name read is reached only when NO connection key was declared, and that
+    is pure COMPATIBILITY: it keeps a legacy payload — and every platform-tier
+    candidate, whose key IS the engine name — resolving exactly as it did. An empty
+    string is not a declaration; that is what a mis-serialised field looks like.
     """
     if not overrides:
         return {}
     if candidate.connection_key:
-        entry = overrides.get(candidate.connection_key)
-        if entry:
-            return entry
+        return overrides.get(candidate.connection_key) or {}
     return overrides.get(candidate.engine or "") or {}
 
 
