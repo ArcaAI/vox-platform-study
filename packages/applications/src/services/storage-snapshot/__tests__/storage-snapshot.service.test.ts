@@ -120,7 +120,7 @@ describe('StorageSnapshotService.snapshotTenant — the emitted row contract', (
     const byClass = Object.fromEntries(emitted(recordUsage).map((row) => [row.attributesJson.storageClass, row]));
 
     expect(byClass.media.quantity).toBe('2.500000');
-    // 1 234 567 B / 1e9 = 0.001234567 GB, truncated to the column's 6 dp.
+    // 1 234 567 B / 1e9 = 0.001234567 GB, ROUNDED (not truncated) to the column's 6 dp.
     expect(byClass.text.quantity).toBe('0.001235');
     expect(typeof byClass.media.quantity).toBe('string');
   });
