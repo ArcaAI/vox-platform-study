@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `In Progress` — plan approved by the owner 2026-09-12; lanes running in worktrees (§4.9) |
+| **Status** | `Review` — feature + fix lanes merged on `dev-2.2` (2026-09-13, not pushed); G4 (three console defects) landing; G3 (STT streaming per-span attribution, harness `provider_override`, one TTS classification call site) deferred behind TASK-959's STT/harness merges |
 | **Type** | `feature` (schema + domain + services + API + Python wire + console) |
 | **Branch** | `dev-2.2` |
 | **Reported as** | "A tenant admin cannot configure multiple providers — for example two OpenAI providers. The tenant admin must be able to utilize different providers for building tenant agents and workflows." Raised after the TASK-890 answer that two Azure deployments on ONE resource are expressible only as two declared models on ONE connection. |
@@ -281,7 +281,48 @@ Tier rationale (`14-multi-agent-worktrees.md` §1): every lane is a multi-file c
 
 ## 5. Implementation Summary
 
-_Not started. Filled in at Phase 4/5 with what changed, decisions taken, evidence, and follow-ups._
+### 5.1 What changed (by layer)
+
+| Layer | Change |
+|---|---|
+| Database (A, E, G1) | `AiProviderConnection` gains `slug` (immutable, `^[a-z0-9][a-z0-9-]{1,62}$`), `name`, `defaultForProvider`; unique `(tenantId, service, slug)` and `(tenantId, service, defaultForProvider)` replace the old `(tenantId, service, provider)` key; `AiUsageEvent.connectionId` (+ index); `PlanEntitlement`/`TenantEntitlement.maxAiProviderConnections`. Migrations: `20260912123256_task_958_provider_connection_multiplicity` (hand-ordered: nullable add → backfill `slug = defaultForProvider = provider` → NOT NULL → index swap), `20260912134123_task_958_entitlement_max_ai_provider_connections`, `20260912163621_task_958_clear_default_marker_on_tombstones` (data). Seeds write `slug`/`defaultForProvider`; all four plans carry `maxAiProviderConnections: null`. |
+| Domain (A, E) | Entity invariants (`SLUG_PATTERN`, `defaultForProvider ∈ {provider, null}`), derived `isDefault`, factory omitted-vs-null semantics; repository `findByTenantServiceSlug`, `findAllByTenantServiceProvider` (default first), `findDefaultByTenantServiceProvider`, `findDeletedByTenantServiceSlug`; `findByTenantServiceProvider` kept as a deprecated alias (removed in R4). |
+| Connection service + API (B1, G1) | Identity by slug on every method and all six routes (`:service/:slug`; every pre-958 row keeps `slug === provider`, so no caller changed); `provider` inferred from the slug or required in the body; first row per provider is the default, `isDefault: true` flips atomically, `isDefault: false` on the default → `CONNECTION_DEFAULT_REQUIRED`; delete of a default with live siblings → `CONNECTION_IS_DEFAULT`; deleting a default clears its marker in one transaction; siblings only on `llm/stt/tts` (`CONNECTION_MULTIPLICITY_UNSUPPORTED`), SYSTEM tier one per provider (`PLATFORM_CONNECTION_PER_PROVIDER`); reserved slugs (`CONNECTION_SLUG_RESERVED`: any provider id of any service, `platform-defaults`); the cascade and the three-state veto are evaluated on the DEFAULT row; by-id resolution `resolve(service, provider, tenantId, { connectionId })` pinned to `[caller tenant, SYSTEM]` (404 for a foreign/unknown id, `null` for disabled/keyless, veto checked first); every override entry carries `connection_id`/`connection_slug`; declared-model slugs `<connectionSlug>-<wireId>` with `BYO_SLUG_TAKEN`; probe body `provider` for unsaved siblings; `maxAiProviderConnections` enforced on create; routing-policy promote/import re-point at the default. Response DTO += `id`, `slug`, `name`, `isDefault`. |
+| Binding, catalogue, ledger (B2, G2a) | "The model row names the connection": `AiModel.sourceConnectionId` → by-id resolve in the text, TTS and ASR resolvers and the agent publish gate; a SYSTEM model still resolves the default by provider name. Wire key `provider` for default/SYSTEM rows, `provider:slug` for siblings, read from the row's `isDefault` (never inferred from the slug); a failed-closed binding still declares its namespaced key with no map entry; `candidateEndpointKey` folds the connection id; TTS per-key credential memo; STT batch credential pull enumerates every enabled connection. Catalogue: one `byo:<service>:<connectionSlug>` entry per connection with `connectionSlug/connectionName/isDefault`. Ledger: `connectionId` from text `usage_detail.connection_id`, STT batch completion and streaming teardown (per segment), TTS `X-Tts-Connection-Id` / SSE / WS; `classifyTtsProvider(provider, overrides, connectionId?)`; WS usage-frame guard; `AGENT_CONNECTION_UNAVAILABLE` (409) for the invoke/bench planes (`primaryBinding: 'fail-closed' | 'mark'`), the bench pre-sets the bound account. |
+| Python (C, G2b) | `ProviderOverride.connection_id/connection_slug` (text); `TtsSpecConnection.connection_id/slug`, `ResolvedTtsCandidate.connection_key`, router `override_for` (tts); `AsrSpecCore.connection_id/slug/key`, `resolve_override_key` in the four cloud loaders (stt); a DECLARED key fails closed (no provider fallback), an absent key keeps the legacy read; usage attribution carries `connection_id` on all three planes (text `_credential_attribution`, stt `resolve_usage_attribution` + `complete_job` `connectionId` + teardown summary/segments, tts `AudioChunk.connection_id` → header/SSE/WS). `apps/harness`/`apps/guardrail` unchanged by design (provider-name resolution = the default connection). |
+| Console (D, G2b, F) | `/ai-providers` tenant tier: one card group per provider (default badge, siblings with name/slug, "Make default", 409 guidance in place, add-connection dialog with client-side slug rules), models editor per card, used-by per connection; agent pickers list one entry per connection and label fallbacks `Model · Connection`; consumption "Connection" column (`Platform · provider` for SYSTEM rows); Playwright runtime specs `task-958-providers.spec.ts`, `task-958-agent-picker.spec.ts`. |
+| SDK / artifacts | `route-manifest.json`, `openapi.json`, portal docs, `packages/vox-node/src/resources/admin/*` regenerated together at each API-visible change; `vox-node` admin methods are `(service, slug, …)` (values unchanged for existing rows). |
+
+### 5.2 Decisions taken (owner may overrule)
+
+- Route identity is the slug in the existing path (OQ-1); default marker is the `defaultForProvider` column (OQ-2); binding a SYSTEM model to a non-default connection is deferred (OQ-3); the cap is per tenant, `null` = unbounded (OQ-4); per-connection ledger attribution is in scope (OQ-5); deleting a default with siblings is refused (OQ-6); slugs are immutable (OQ-7).
+- A platform credential stamps the SYSTEM row's `connectionId` (not `null`); only a self-hosted/env credential yields `null`. The console renders it as `Platform · provider`.
+- Catalogue `name` stays the vendor label; the connection identity lives in the three new fields (Lane D already rendered it that way).
+- TASK-952 D-4 is reversed by this ticket.
+
+### 5.3 Evidence (merged tree, `dev-2.2`)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/database` test | 1773 passed |
+| `@arcaai/domains` build/test/lint | 1953 passed; 0 new warnings |
+| `gen:model/entity/factory :check` | no drift, schema coverage OK |
+| `@arcaai/applications` build/test/lint | 13406 passed / 8 skipped; 0 warnings in touched files |
+| `apps/api` build/lint, five artifacts + three `:check`s | green after every API-visible change (last regeneration `4b8587fb5`) |
+| workspace `pnpm test:unit` | fully green after G2a (25.6k tests); earlier runs had 11 ordering-only `ai-model/publish` failures and 4 unrelated 30 s timeouts, all pass in isolation; `audit-correlation` Vault timeout is pre-existing and environmental |
+| Python | tts 448 passed; text 1679 passed; stt unit 3350 passed + strict/parity 56 passed (one pre-existing MinIO env-leak failure); lints and mypy clean |
+| API e2e (live gateway on 8968, fresh `hope_test` seeded from the ledger) | 57 passed / 2 skipped / 0 failed across `task-958-provider-connections`, `task-958-multi-connection-invoke`, `admin-providers`, `ai-provider-connections(-cross-tenant)`, `task-932-providers`, `byo-llm-credentials`, `task-890-byo-models` |
+| Console | typecheck/lint/build green; 2975+ unit tests (two run-order fetch escapes pass in isolation); Playwright runtime: providers group, dialog, make-default, 409-in-place, picker per connection, fallback labels, both themes, axe 0 violations (group, dialog, picker), 200 % zoom, keyboard tab order — PASS; three defects recorded (D-1 silent sibling removal, D-2 duplicate model-editor control names, D-3 focus not returned) → G4 |
+| Reviews | three read-only lenses (correctness, tenancy + secrets, wire contract): no cross-tenant read found; every CONFIRMED defect fixed in G1/G2a/G2b except the three G3 items |
+
+### 5.4 Not done / follow-ups
+
+- **G3** (after TASK-959 P-STT `61f8f2beb`/`059bfece2` and P-HARNESS merge): STT streaming per-span `(connection_key, connection_id)` (today a failover session attributes every span to the last-loaded connection); harness `text_client.py` prefers `spec.provider_override`; `agent.controller.ts` passes `X-Tts-Connection-Id` to `classifyTtsProvider` (the single-prefix rule covers one sibling, not two).
+- The invoke half of e2e (28) — a real generation with a revoked primary — needs the env-gated text stub; covered by unit tests.
+- `/ai-providers` issues ~12 gateway reads per tab visit (one per card + list + platform-defaults) and trips the tiered throttler under dense e2e; hydrate cards from the list query.
+- `HOPE_INTEG_DB=1` gates the new applications integration suite; add it to CI's `test:integration` if wanted.
+- Console entitlements screen for the new cap was shipped by the parallel console session (`473027c0f` and follow-ups), not by this ticket's lanes.
+- Cross-session hazards recorded: a `git reset HEAD~` + recommit on the shared primary absorbed another session's dirty edit; ~88 Python files were left modified in the primary by a formatter sweep (owner to settle); a peer lane's boot smoke briefly bound the shared dev gateway port.
 
 ---
 
