@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger';
 import { AgentTrajectoryService } from './agent-trajectory.service';
 import { IAgentTrajectoryService } from './IAgentTrajectoryService';
@@ -14,14 +15,20 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  *   `CoreUnitOfWorkService` that folds `createMany` + the
  *   usage-ledger emission into one transaction in `recordSteps`.
  * - UsageLedgerServiceModule → `IUsageLedgerService` for the
- *   usage-ledger emission hook in `recordSteps` (injected @Optional so unit
- *   fixtures can still construct the service without it).
+ *   usage-ledger emission hook in `recordSteps`, and `IComputeDeviceResolver`
+ *   for the device a self-hosted engine occupied (both injected @Optional so
+ *   unit fixtures can still construct the service without them).
+ *
+ * - MetricsServiceModule → `IMetricsService` for the
+ *   `hope_usage_emission_failed_total` counter (TASK-957 F-5). Imported
+ *   explicitly — it is not a @Global module — and injected @Optional, because
+ *   observability of a lost emission must never become a second failure mode.
  *
  * Exports both the symbol token (for `@Inject(IAgentTrajectoryService)`) and the
  * concrete class so emitter modules (live-doc, summary) can wire it directly.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, UsageLedgerServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, UsageLedgerServiceModule, MetricsServiceModule],
   providers: [
     AgentTrajectoryService,
     {

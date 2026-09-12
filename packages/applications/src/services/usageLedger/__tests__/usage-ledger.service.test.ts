@@ -365,3 +365,54 @@ describe('UsageLedgerService.recordUsage — deployment/costBasis consistency wa
     expect(writtenPayload().events[0].costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
   });
 });
+
+/**
+ * TASK-959 §6.3 — the ONE sanctioned mixed-cost-basis shape.
+ *
+ * A successful BYOK generation is the tenant's tokens on the tenant's
+ * credential (`BYOK_NOTIONAL`, contributing nothing to COGS) PLUS the seconds
+ * HOPE's own service burned making the call, which are platform cost
+ * (`INTERNAL`). The two arrive on one `recordUsage` because they belong to one
+ * request. The consistency warning must know that shape and stay quiet for it —
+ * a warning that fires on the expected case trains every reader to ignore the
+ * line that catches the real forgotten flag.
+ */
+describe('UsageLedgerService — the platform CPU leg of a BYOK call', () => {
+  const byokComputeLeg = (overrides: Partial<UsageEventInput> = {}): UsageEventInput =>
+    validInput({
+      idempotencyKey: 'llm:req-byok:CPU_SECOND',
+      deployment: AiDeploymentKind.BYOK,
+      unit: AiUsageUnit.CPU_SECOND,
+      quantity: '4.200',
+      costBasis: AiCostBasis.INTERNAL,
+      attributesJson: { device: 'cpu' },
+      ...overrides,
+    });
+
+  it('does not warn for a CPU_SECOND row on a BYOK call', async () => {
+    const service = new UsageLedgerService(mockOutboxRepository as never);
+    const warn = vi.spyOn((service as never as { logger: { warn: (payload: unknown) => void } }).logger, 'warn');
+
+    await service.recordUsage(byokComputeLeg());
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('still warns for a BYOK TOKEN row on the INTERNAL basis — the exemption is the UNIT, not the deployment', async () => {
+    const service = new UsageLedgerService(mockOutboxRepository as never);
+    const warn = vi.spyOn((service as never as { logger: { warn: (payload: unknown) => void } }).logger, 'warn');
+
+    await service.recordUsage(byokComputeLeg({ unit: AiUsageUnit.INPUT_TOKEN, quantity: 1200, idempotencyKey: 'llm:req-byok:INPUT_TOKEN' }));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('still warns for a GPU_SECOND row on a BYOK call — a vendor GPU is never HOPE occupancy', async () => {
+    const service = new UsageLedgerService(mockOutboxRepository as never);
+    const warn = vi.spyOn((service as never as { logger: { warn: (payload: unknown) => void } }).logger, 'warn');
+
+    await service.recordUsage(byokComputeLeg({ unit: AiUsageUnit.GPU_SECOND, idempotencyKey: 'llm:req-byok:GPU_SECOND' }));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});

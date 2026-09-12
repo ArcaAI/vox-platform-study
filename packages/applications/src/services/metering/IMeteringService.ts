@@ -48,6 +48,66 @@ export interface MeterUsage {
   guardrailCalls: number;
   /** EMBEDDING_TOKENS — all five billable token kinds summed under capability `EMBEDDING`. */
   embeddingTokens: number;
+
+  /**
+   * COMPUTE_SECONDS — `GPU_SECOND` + `CPU_SECOND` over the five INFERENCE
+   * capabilities, excluding `guardrail.validate` (TASK-959 §3).
+   *
+   * OCCUPANCY, not physical hardware time: the seconds a request held a model
+   * on a device. Every service already measures that per request; none can
+   * attribute a physical GPU-second, because concurrency (LM Studio's parallel
+   * slots, vLLM's continuous batching, STT's utterance batching, time-slicing)
+   * is never recorded per call. COGS truth comes from a monthly DCGM
+   * reconciliation, not from this figure (D-2).
+   *
+   * Guardrail is excluded for the same reason it is excluded from
+   * `llmTokens`: it is platform-mandated safety the tenant did not ask for and
+   * is never billed (D16). `harness.step` is NOT excluded — after TASK-957 F-1
+   * it means the consultation lane, whose compute is the tenant's own clinical
+   * work.
+   */
+  computeSeconds: number;
+
+  /**
+   * WORKFLOW_CPU_SECONDS — `CPU_SECOND` under capability `WORKFLOW` (§3.4).
+   *
+   * What `hope-harness-worker` itself burned orchestrating this tenant's runs,
+   * as opposed to the inference those runs called. Disjoint from
+   * {@link computeSeconds} by capability, so a workflow run's LLM seconds and
+   * its worker CPU each count exactly once.
+   *
+   * `CPU_SECOND` alone, matching the name: the worker is a Python event loop
+   * and the emitter stamps `device: 'cpu'` unconditionally, so a
+   * `WORKFLOW`/`GPU_SECOND` row is not a shape anything produces.
+   */
+  workflowCpuSeconds: number;
+
+  /**
+   * The gigabytes this tenant was holding at the LATEST snapshot in the window
+   * (§5).
+   *
+   * A LEVEL, not a sum. `STORAGE_GB_DAY` rows accumulate one per day, so
+   * summing a month answers "GB-days consumed" — which is what the INVOICE
+   * wants — while "how much am I storing" is the last snapshot alone. Adding
+   * the month here would report roughly thirty times the truth.
+   *
+   * The one FRACTIONAL field on this interface. Rounding it would report `0`
+   * for every tenant holding less than a gigabyte; the integer that reaches
+   * `TenantUsageMeter` is the BYTE count derived from it.
+   */
+  storageGb: number;
+
+  /**
+   * `EGRESS_BYTE` + `INGRESS_BYTE` on CLOUD and BYOK legs, all capabilities
+   * (§4).
+   *
+   * Self-hosted legs are deliberately excluded even though they are counted in
+   * the ledger: LAN traffic to HOPE's own LM Studio is not third-party
+   * consumption, and the figure exists to answer what left the platform.
+   * Recorded for visibility and capacity planning; priced later, if at all
+   * (D-3).
+   */
+  thirdPartyBytes: number;
 }
 
 /**
