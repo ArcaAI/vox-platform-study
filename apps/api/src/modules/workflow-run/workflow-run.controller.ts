@@ -3,6 +3,7 @@ import {
   CursorPage,
   IActiveUserContext,
   isSuperAdmin,
+  IUsageAnalyticsService,
   IWorkflowRunService,
   RunGateStateResponse,
   RunTraceResponse,
@@ -12,7 +13,7 @@ import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query }
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, CanRead, ForbidApiKey, ForbidServiceAccount, RequiredSvcScopes } from '../../decorators';
-import { ListWorkflowRunsQuery } from './dto';
+import { ListWorkflowRunsQuery, WorkflowRunDetailResponse } from './dto';
 
 /**
  * WorkflowRunController — the tenant-scoped runs/observability read plane
@@ -49,6 +50,12 @@ export class WorkflowRunController {
   constructor(
     @Inject(IWorkflowRunService)
     private readonly workflowRunService: IWorkflowRunService,
+    // TASK-959 §3.4 — the run's worker CPU is a LEDGER sum, not a run column.
+    // Injected here rather than folded into `WorkflowRunService` so the runs
+    // read plane keeps knowing nothing about the metering schema, and so the
+    // LIST route (which shares the run projection) never pays for it.
+    @Inject(IUsageAnalyticsService)
+    private readonly usageAnalytics: IUsageAnalyticsService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
@@ -82,13 +89,22 @@ export class WorkflowRunController {
   }
 
   @Get(':runId')
-  @ApiOperation({ summary: 'A single run. Cross-tenant / nonexistent id → 404 (never 403).' })
+  @ApiOperation({
+    summary: 'A single run, with the worker CPU it consumed. Cross-tenant / nonexistent id → 404 (never 403).',
+    description:
+      "`cpuSeconds` is the durable worker's own CPU for this run, summed from the usage ledger rather than read off the run row — so it lands minutes after the run finishes and is null for a run the metering interceptor never saw.",
+  })
   @ApiParam({ name: 'runId', description: 'The domain run id.' })
-  @ApiResponse({ status: 200, type: WorkflowRunResponse })
+  @ApiResponse({ status: 200, type: WorkflowRunDetailResponse })
   @ApiResponse({ status: 404, description: 'Run not found for the tenant (absent or belongs to another tenant).' })
-  async getRun(@Param('runId') runId: string): Promise<WorkflowRunResponse> {
+  async getRun(@Param('runId') runId: string): Promise<WorkflowRunDetailResponse> {
     const tenantId = this.resolveWorkingTenantId();
-    return this.workflowRunService.getRun(tenantId, runId);
+    // Existence FIRST: a run that is not the caller's must 404 without the
+    // ledger being consulted at all, or the metering read becomes an oracle
+    // over the run id space.
+    const run = await this.workflowRunService.getRun(tenantId, runId);
+    const cpuSeconds = await this.usageAnalytics.getWorkflowRunCpuSeconds(tenantId, runId);
+    return Object.assign(new WorkflowRunDetailResponse(), run, { cpuSeconds });
   }
 
   @Get(':runId/trace')
