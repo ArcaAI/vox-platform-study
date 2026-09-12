@@ -21,6 +21,7 @@ import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descriptors';
+import { METERING_STORAGE_SETTINGS } from './descriptors/metering-storage.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
@@ -77,6 +78,12 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // tenant-overridable and deliberately tenant-visible — a tenant that brings
   // its own self-hosted server is the only party who knows its hardware.
   ...METERING_COMPUTE_SETTINGS,
+  // TASK-959 §5.2 — the nightly storage snapshot's schedule and master switch.
+  // Its own file, and NOT part of the family above, for one reason: those
+  // sweeps persist figures a live aggregate can recompute and therefore
+  // default OFF, while a storage LEVEL is observable only on the day it is
+  // taken — so this one defaults ON. See the descriptor file's header.
+  ...METERING_STORAGE_SETTINGS,
   // AI task-model defaults (guardrail/NLP/TEXT).
   // `GUARDRAIL_POLICY_SETTINGS` (13 `guardrail.policy.*` keys) was here. Every
   // one was UNREAD — nothing on any path resolved them — so they were removed
