@@ -777,6 +777,215 @@ describe('SttInternalService', () => {
         expect(mockJobRepository.update).toHaveBeenCalledWith('job-bare', job);
       });
     });
+
+    // =========================================================================
+    // TASK-959 §3.2/§4.2 — compute and network rows on the SAME batch
+    //
+    // `processingTimeSeconds` has ridden this callback since TASK-874 and been
+    // stored ever since; the ledger simply dropped it. What makes it billable is
+    // the `device` beside it: `cuda`/`mps` are a GPU_SECOND, `cpu` a CPU_SECOND,
+    // and the two are priced an order of magnitude apart — so an absent device
+    // emits NO compute row rather than guessing the cheap one.
+    // =========================================================================
+    describe('compute + network emission (TASK-959)', () => {
+      const processingJob = (id: string) => {
+        const job = createBehavioralJobEntity({ id, tenantId: 'tenant-1', pipelineId: 'pipeline-9', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+        return job;
+      };
+
+      it('appends a GPU_SECOND row for a self-hosted `cuda` job, device on the ROW', async () => {
+        processingJob('job-gpu');
+
+        await service.completeJob('job-gpu', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 12.5,
+          engine: 'faster_whisper',
+          deployment: 'SELF_HOSTED',
+          device: 'cuda',
+        });
+
+        expect(mockUsageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.units).toEqual([
+          { unit: 'AUDIO_SECOND', quantity: 42.5 },
+          // `device` rides the UNIT's own attributes, not `common`: the
+          // AUDIO_SECOND row is unchanged by this ticket, byte for byte.
+          { unit: 'GPU_SECOND', quantity: 12.5, attributesJson: { device: 'cuda' } },
+        ]);
+        expect(input.common.attributesJson.device).toBeUndefined();
+      });
+
+      it('appends a CPU_SECOND row for `cpu`, and `mps` counts as a GPU', async () => {
+        processingJob('job-cpu');
+        await service.completeJob('job-cpu', {
+          resultText: 'text',
+          durationSeconds: 10,
+          processingTimeSeconds: 3,
+          engine: 'sarvam',
+          deployment: 'CLOUD',
+          device: 'cpu',
+        });
+        expect(mockUsageLedgerService.recordUsage.mock.calls[0][0].units).toContainEqual({
+          unit: 'CPU_SECOND',
+          quantity: 3,
+          attributesJson: { device: 'cpu' },
+        });
+
+        vi.clearAllMocks();
+        processingJob('job-mps');
+        await service.completeJob('job-mps', {
+          resultText: 'text',
+          durationSeconds: 10,
+          processingTimeSeconds: 2,
+          engine: 'whisper_cpp',
+          deployment: 'SELF_HOSTED',
+          device: 'mps',
+        });
+        expect(mockUsageLedgerService.recordUsage.mock.calls[0][0].units).toContainEqual({
+          unit: 'GPU_SECOND',
+          quantity: 2,
+          attributesJson: { device: 'mps' },
+        });
+      });
+
+      it('emits NO compute row when the worker names no device — the unit would be a guess', async () => {
+        processingJob('job-no-device');
+
+        await service.completeJob('job-no-device', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 9.1,
+          engine: 'whisper_cpp',
+          deployment: 'SELF_HOSTED',
+        });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.units).toEqual([{ unit: 'AUDIO_SECOND', quantity: 42.5 }]);
+      });
+
+      it('appends EGRESS_BYTE / INGRESS_BYTE with the byteSource that produced them', async () => {
+        processingJob('job-bytes');
+
+        await service.completeJob('job-bytes', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 3,
+          engine: 'sarvam',
+          deployment: 'CLOUD',
+          device: 'cpu',
+          requestBytes: 4096,
+          responseBytes: 512,
+          byteSource: 'wire',
+        });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.units).toContainEqual({ unit: 'EGRESS_BYTE', quantity: 4096, attributesJson: { byteSource: 'wire' } });
+        expect(input.units).toContainEqual({ unit: 'INGRESS_BYTE', quantity: 512, attributesJson: { byteSource: 'wire' } });
+      });
+
+      it('emits no byte rows for a self-hosted job that made no third-party call', async () => {
+        processingJob('job-self-hosted');
+
+        await service.completeJob('job-self-hosted', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 12.5,
+          engine: 'faster_whisper',
+          deployment: 'SELF_HOSTED',
+          device: 'cuda',
+        });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.units.map((u: any) => u.unit)).toEqual(['AUDIO_SECOND', 'GPU_SECOND']);
+      });
+
+      it('splits a BYOK job in two: the vendor row stays BYOK_NOTIONAL, its CPU row is INTERNAL', async () => {
+        // The one sanctioned mixed-basis case (§10.2). The tenant's own key paid
+        // the vendor, but the CPU this service burned CALLING it is the
+        // platform's real cost — and `costBasis` lives on `common`, so two bases
+        // means two batches. They share the base idempotency key; `expandUsageBatch`
+        // appends `:<UNIT>`, so the rows stay distinct without a second key.
+        processingJob('job-byok-cpu');
+
+        await service.completeJob('job-byok-cpu', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 3,
+          engine: 'sarvam',
+          deployment: 'BYOK',
+          connectionId: 'conn-1',
+          device: 'cpu',
+          requestBytes: 4096,
+          responseBytes: 512,
+          byteSource: 'wire',
+        });
+
+        expect(mockUsageLedgerService.recordUsage).toHaveBeenCalledTimes(2);
+        const [vendorBatch, vendorTx] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        const [platformBatch, platformTx] = mockUsageLedgerService.recordUsage.mock.calls[1];
+
+        expect(vendorBatch.common.costBasis).toBe('BYOK_NOTIONAL');
+        expect(vendorBatch.units.map((u: any) => u.unit)).toEqual(['AUDIO_SECOND', 'EGRESS_BYTE', 'INGRESS_BYTE']);
+
+        expect(platformBatch.common.costBasis).toBe('INTERNAL');
+        expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: 3, attributesJson: { device: 'cpu' } }]);
+        // Same key, same attribution, same transaction — one call, two bases.
+        expect(platformBatch.common.idempotencyKey).toBe(vendorBatch.common.idempotencyKey);
+        expect(platformBatch.common.connectionId).toBe('conn-1');
+        expect(platformBatch.common.deployment).toBe('BYOK');
+        expect(platformTx).toBe(vendorTx);
+        expect(platformTx).toBe(FAKE_TX);
+      });
+
+      it('does NOT split a CLOUD job — its batch is already INTERNAL', async () => {
+        processingJob('job-cloud');
+
+        await service.completeJob('job-cloud', {
+          resultText: 'text',
+          durationSeconds: 42.5,
+          processingTimeSeconds: 3,
+          engine: 'sarvam',
+          deployment: 'CLOUD',
+          device: 'cpu',
+        });
+
+        expect(mockUsageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      });
+
+      it('rounds occupancy seconds to 3 dp — a float artefact is not a measurement', async () => {
+        processingJob('job-round');
+
+        await service.completeJob('job-round', {
+          resultText: 'text',
+          durationSeconds: 10,
+          processingTimeSeconds: 0.1 + 0.2,
+          engine: 'whisper_cpp',
+          deployment: 'SELF_HOSTED',
+          device: 'cpu',
+        });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.units).toContainEqual({ unit: 'CPU_SECOND', quantity: 0.3, attributesJson: { device: 'cpu' } });
+      });
+
+      it('still completes the job when the second (INTERNAL-basis) emission throws', async () => {
+        processingJob('job-byok-boom');
+        mockUsageLedgerService.recordUsage.mockResolvedValueOnce({ outboxIds: ['o-1'], events: 1 }).mockRejectedValueOnce(new Error('ledger boom'));
+
+        const result = await service.completeJob('job-byok-boom', {
+          resultText: 'text',
+          durationSeconds: 10,
+          processingTimeSeconds: 3,
+          engine: 'sarvam',
+          deployment: 'BYOK',
+          device: 'cpu',
+        });
+
+        expect(result.status).toBe(TranscriptionJobStatus.COMPLETED);
+      });
+    });
   });
 
   describe('failJob', () => {

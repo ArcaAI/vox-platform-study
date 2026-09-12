@@ -714,6 +714,163 @@ describe('StreamingSessionService', () => {
       await expect(service.removeSession('s-1')).resolves.toBeUndefined();
       expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
     });
+
+    // =========================================================================
+    // TASK-959 §3.2/§4.2 — compute and network, PER SEGMENT
+    //
+    // `cumulative_processing_seconds` was read once at teardown for a Prometheus
+    // RTF gauge and then dropped. Per segment it becomes billable, and per
+    // segment is the only grain that works: a cloud leg occupied this service's
+    // CPU waiting on the vendor while the self-hosted leg of the same session
+    // held a real accelerator, so the two legs bill DIFFERENT units.
+    // =========================================================================
+    describe('compute + network per segment (TASK-959)', () => {
+      const emit = async (segments: unknown[]) => {
+        httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary({ segments }) }));
+        const usageLedgerService = mockUsageLedgerService();
+        const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+        await service.removeSession('s-1');
+        return usageLedgerService.recordUsage.mock.calls.map(([input]: any[]) => input);
+      };
+
+      /** `UsageSegment.to_dict()` for a BYOK cloud leg — bytes measured on the wire. */
+      const cloudLeg = {
+        engine: 'sarvam',
+        deployment: 'BYOK',
+        audio_seconds: 20.0,
+        session_seconds: 60.0,
+        connection_id: 'conn-1',
+        processing_seconds: 4.0,
+        device: 'cpu',
+        request_bytes: 4096,
+        response_bytes: 512,
+        byte_source: 'wire',
+      };
+
+      /** …and for a self-hosted GPU leg: real accelerator, NULL bytes (no such call). */
+      const selfHostedLeg = {
+        engine: 'whisper_cpp',
+        deployment: 'SELF_HOSTED',
+        audio_seconds: 22.5,
+        session_seconds: 30.0,
+        connection_id: null,
+        processing_seconds: 11.25,
+        device: 'cuda',
+        request_bytes: null,
+        response_bytes: null,
+        byte_source: null,
+      };
+
+      it('bills each leg of a switched session its OWN unit — cloud CPU, self-hosted GPU', async () => {
+        const calls = await emit([cloudLeg, selfHostedLeg]);
+
+        // Three batches: the BYOK leg splits its CPU row onto the INTERNAL basis.
+        expect(calls).toHaveLength(3);
+        const [byokVendor, byokPlatform, selfHosted] = calls;
+
+        expect(byokVendor.common.idempotencyKey).toBe('stt:session:s-1');
+        expect(byokVendor.common.costBasis).toBe('BYOK_NOTIONAL');
+        expect(byokVendor.units).toEqual([
+          { unit: 'SESSION_SECOND', quantity: 60.0 },
+          { unit: 'AUDIO_SECOND', quantity: 20.0 },
+          { unit: 'EGRESS_BYTE', quantity: 4096, attributesJson: { byteSource: 'wire' } },
+          { unit: 'INGRESS_BYTE', quantity: 512, attributesJson: { byteSource: 'wire' } },
+        ]);
+
+        // The CPU this service burned calling the tenant's vendor is the
+        // PLATFORM's cost — same base key, INTERNAL basis, connection preserved.
+        expect(byokPlatform.common.idempotencyKey).toBe('stt:session:s-1');
+        expect(byokPlatform.common.costBasis).toBe('INTERNAL');
+        expect(byokPlatform.common.connectionId).toBe('conn-1');
+        expect(byokPlatform.units).toEqual([{ unit: 'CPU_SECOND', quantity: 4.0, attributesJson: { device: 'cpu' } }]);
+
+        // The self-hosted leg keeps its own ordinal key, its own device, and no
+        // byte rows at all — `null` is "no third-party call", not a zero.
+        expect(selfHosted.common.idempotencyKey).toBe('stt:session:s-1:1');
+        expect(selfHosted.common.costBasis).toBeUndefined();
+        expect(selfHosted.units).toEqual([
+          { unit: 'SESSION_SECOND', quantity: 30.0 },
+          { unit: 'AUDIO_SECOND', quantity: 22.5 },
+          { unit: 'GPU_SECOND', quantity: 11.25, attributesJson: { device: 'cuda' } },
+        ]);
+      });
+
+      it('emits no compute row for a RECOVERED session — 0.0 seconds on the default device', async () => {
+        // A crash-restarted session keeps no accumulator, so `to_dict` reports
+        // `processing_seconds: 0.0, device: "cpu"`. Billing a zero-second CPU row
+        // would put a priceable-looking row on a session nobody measured.
+        const calls = await emit([
+          {
+            engine: 'whisper_cpp',
+            deployment: 'SELF_HOSTED',
+            audio_seconds: 42.5,
+            session_seconds: 90.0,
+            connection_id: null,
+            processing_seconds: 0.0,
+            device: 'cpu',
+            request_bytes: null,
+            response_bytes: null,
+            byte_source: null,
+          },
+        ]);
+
+        expect(calls).toHaveLength(1);
+        expect(calls[0].units).toEqual([
+          { unit: 'SESSION_SECOND', quantity: 90.0 },
+          { unit: 'AUDIO_SECOND', quantity: 42.5 },
+        ]);
+      });
+
+      it('emits no compute row for a segment from an STT that predates the fields', async () => {
+        const calls = await emit([{ engine: 'whisper_cpp', deployment: 'SELF_HOSTED', audio_seconds: 42.5, session_seconds: 90.0 }]);
+
+        expect(calls[0].units).toEqual([
+          { unit: 'SESSION_SECOND', quantity: 90.0 },
+          { unit: 'AUDIO_SECOND', quantity: 42.5 },
+        ]);
+      });
+
+      it('ignores a device spelling the ledger does not price — the DELETE path is unvalidated', async () => {
+        // `removeSession` reads the STT response body with no ValidationPipe in
+        // front of it (only the reaper push-back goes through a DTO), so the
+        // helper is the enforcement point. A `gpu` here must not become a
+        // GPU_SECOND by string luck, nor a CPU_SECOND by falling through.
+        const calls = await emit([{ ...selfHostedLeg, device: 'gpu' }]);
+
+        expect(calls[0].units.map((u: any) => u.unit)).toEqual(['SESSION_SECOND', 'AUDIO_SECOND']);
+      });
+
+      it('a CLOUD leg needs no split — its batch is already INTERNAL', async () => {
+        const calls = await emit([{ ...cloudLeg, deployment: 'CLOUD', connection_id: null }]);
+
+        expect(calls).toHaveLength(1);
+        expect(calls[0].common.costBasis).toBeUndefined();
+        expect(calls[0].units).toContainEqual({ unit: 'CPU_SECOND', quantity: 4.0, attributesJson: { device: 'cpu' } });
+      });
+
+      it('every attributesJson bag it builds — common AND per-unit — passes the allow-list', async () => {
+        // `recordUsage` REJECTS an undeclared key (nothing written), and a per-unit
+        // bag is merged over the common one at expansion, so both must pass.
+        const calls = await emit([cloudLeg, selfHostedLeg]);
+
+        for (const input of calls) {
+          expect(validateUsageAttributes(input.common.attributesJson)).toEqual([]);
+          for (const unit of input.units) {
+            expect(validateUsageAttributes({ ...input.common.attributesJson, ...(unit.attributesJson ?? {}) })).toEqual([]);
+          }
+        }
+      });
+
+      it('still resolves when the second (INTERNAL-basis) emission throws', async () => {
+        httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary({ segments: [cloudLeg] }) }));
+        const usageLedgerService = {
+          recordUsage: vi.fn().mockResolvedValueOnce({ outboxIds: ['o-1'], events: 4 }).mockRejectedValueOnce(new Error('ledger boom')),
+        };
+        const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+        await expect(service.removeSession('s-1')).resolves.toBeUndefined();
+      });
+    });
   });
 });
 
