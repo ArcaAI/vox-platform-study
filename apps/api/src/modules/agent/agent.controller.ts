@@ -157,6 +157,22 @@ function positiveNumber(value: unknown): number | null {
 }
 
 /**
+ * TASK-959 §3.1 — `X-Tts-Device`, from the CLOSED vocabulary only.
+ *
+ * ABSENT is a real answer and the common one: `apps/tts` omits the header for a cloud engine
+ * that runs on nobody's hardware of ours (Azure, Sarvam). `null` records no compute row, because
+ * a platform CPU/GPU second on a vendor's synthesis is a cost the platform never paid.
+ */
+function computeDeviceHeader(value: unknown): ComputeDevice | null {
+  return typeof value === 'string' && (COMPUTE_DEVICES as readonly string[]).includes(value) ? (value as ComputeDevice) : null;
+}
+
+/** TASK-959 §4.2 — `X-Tts-Byte-Source`, from the closed vocabulary only. */
+function byteSourceHeader(value: unknown): ByteSource | null {
+  return value === 'wire' || value === 'app' ? value : null;
+}
+
+/**
  * AgentController — the Agent BUSINESS plane (TASK-863 §3.5), mounted at `/agents`
  * (global prefix -> `/api/v1/agents`). API key or JWT; every route pairs an authorization
  * decorator (the deny-by-default boot audit) with `@RequiredScopes` (the API-key gate).
@@ -531,6 +547,10 @@ export class AgentController {
     if (serviceToken) headers['X-Service-Token'] = serviceToken;
 
     let upstream;
+    // TASK-959 §3.2 — the gateway's own clock, started before the request leaves. It is the
+    // fallback occupancy figure for the STREAMED modes, where `apps/tts` cannot know a total at
+    // header time and says so by omitting the header rather than sending a wrong one.
+    const startedAtMs = Date.now();
     try {
       upstream = await this.httpService.axiosRef.post(`${this.configService.getConfigValue('TTS_URL')}/api/v1/audio/speech`, forwardBody, {
         headers,
@@ -565,37 +585,66 @@ export class AgentController {
       : { deployment: undefined, costBasis: undefined };
     const requestId = generateId();
     const characters = [...agentRequest.input].length;
+    // TASK-959 §3.2 — what `apps/tts` reported about THIS synthesis. Every reader refuses to
+    // guess: an absent device records no compute row at all (a cloud vendor's hardware is not
+    // ours to bill as platform compute), and an absent byte count falls back to what this
+    // gateway itself relayed, declared as an app-level count rather than a wire one.
+    const synthesisMs = positiveNumber(upstream.headers['x-tts-synthesis-ms']);
+    const device = computeDeviceHeader(upstream.headers['x-tts-device']);
+    const reportedBytes = positiveNumber(upstream.headers['x-tts-response-bytes']);
+    const reportedByteSource = byteSourceHeader(upstream.headers['x-tts-byte-source']);
+    let relayedBytes = 0;
     let emitted = false;
     const emitUsage = (interrupted: boolean): void => {
       if (emitted || !this.usageLedger) return;
       emitted = true;
-      this.usageLedger
-        .recordUsage({
-          common: {
-            tenantId,
-            idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
-            occurredAt: new Date(),
-            capability: AiCapability.TTS,
-            operation: 'tts.synthesize', // the frozen TTS operation; the agent identity rides on attributesJson
-            provider: provider ?? 'none',
-            model: resolved.compiledConfig.model.slug,
-            deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
-            ...(costBasis ? { costBasis } : {}),
-            connectionId,
-            requestId,
-            // Allow-listed dimensions only (usage-attributes.ts); the agent identity is
-            // on the response headers. `trigger` names the ACTIVITY (TASK-890 OD-E).
-            attributesJson: { interrupted, trigger: AGENT_INVOCATION_TRIGGER },
-          },
-          units: [{ unit: AiUsageUnit.CHARACTER, quantity: characters }],
-        })
-        .catch((err: unknown) =>
-          this.logger.warn({ message: 'Agent speech usage emission failed', error: err instanceof Error ? err.message : String(err) }),
-        );
+      const responseBytes = reportedBytes ?? (relayedBytes > 0 ? relayedBytes : null);
+      const batch: UsageEventBatchInput = {
+        common: {
+          tenantId,
+          idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+          occurredAt: new Date(),
+          capability: AiCapability.TTS,
+          operation: 'tts.synthesize', // the frozen TTS operation; the agent identity rides on attributesJson
+          provider: provider ?? 'none',
+          model: resolved.compiledConfig.model.slug,
+          deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+          ...(costBasis ? { costBasis } : {}),
+          connectionId,
+          requestId,
+          // Allow-listed dimensions only (usage-attributes.ts); the agent identity is
+          // on the response headers. `trigger` names the ACTIVITY (TASK-890 OD-E).
+          attributesJson: { interrupted, trigger: AGENT_INVOCATION_TRIGGER },
+        },
+        units: [{ unit: AiUsageUnit.CHARACTER, quantity: characters }],
+      };
+      // The service's own measurement first; the relay's own wall clock only when it reported
+      // none, which is exactly the streamed modes (`X-Tts-Synthesis-Ms` is batch-only, because a
+      // stream's total is unknown at header time).
+      const occupancyMs = synthesisMs ?? Date.now() - startedAtMs;
+      // TASK-959 T1-merge: `appendComputeAndByteUnits` moves to `usageLedger/compute-units.ts`.
+      const inputs = appendComputeAndByteUnits(batch, {
+        device,
+        seconds: occupancyMs / 1000,
+        responseBytes,
+        // The service says how it counted when it counted; our own relay count is an
+        // application-level proxy for the audio produced, and says so.
+        byteSource: responseBytes === null ? null : (reportedByteSource ?? (reportedBytes === null ? 'app' : null)),
+      });
+      for (const input of inputs) {
+        this.usageLedger
+          .recordUsage(input)
+          .catch((err: unknown) =>
+            this.logger.warn({ message: 'Agent speech usage emission failed', error: err instanceof Error ? err.message : String(err) }),
+          );
+      }
     };
 
     const stream = upstream.data;
-    stream.on('data', (chunk: Buffer) => res.write(chunk));
+    stream.on('data', (chunk: Buffer) => {
+      relayedBytes += chunk.length;
+      res.write(chunk);
+    });
     stream.on('end', () => {
       res.end();
       emitUsage(false);
