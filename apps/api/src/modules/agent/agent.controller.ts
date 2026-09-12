@@ -285,6 +285,13 @@ export class AgentController {
     status: 429,
     description: 'The tenant has reached its `monthlyLlmTokens` allowance. Refused before the model runs, so nothing is billed.',
   })
+  // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
+  // route here because an integrator meets it as an HTTP status long before it meets the
+  // billing plane, and 402 is a refusal no retry resolves.
+  @ApiResponse({
+    status: 402,
+    description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
+  })
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
     // TASK-930 §2.4 — resolved WITHOUT a task pin, then dispatched on the agent's own task.
@@ -313,6 +320,12 @@ export class AgentController {
     // allowance rather than predicting this call — the same call shape
     // `summary.service.ts` uses. Kill-switch-gated inside; → 429 when over.
     await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
+    // TASK-957 F-4 — and the tenant's optional monthly SPEND ceiling (D12), which the meter above
+    // cannot express: a meter caps a QUANTITY of one unit, the ceiling caps MONEY across all of
+    // them. Enforced on consultation summaries only until now, so a tenant that set a cap was
+    // unbounded on the two planes that can spend fastest. Opt-in and cheap: a tenant with no
+    // limit set returns without computing a draft. -> 402 when over.
+    await this.billing?.assertSpendLimit(tenantId);
 
     // TASK-890 §3.14 (OD-R) — how this call was screened, resolved ONCE here and stamped on
     // whichever row the call ends up producing (the stream path emits from three handlers).
@@ -419,6 +432,9 @@ export class AgentController {
     if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
 
     await this.entitlementsService?.assertMeterQuota(tenantId, 'monthlyNlpTextUnits');
+    // TASK-957 F-4 — the same ceiling. NER shares the invocations route, so a plane that checked
+    // only the TEXT_GENERATION branch would leave half of it unbounded.
+    await this.billing?.assertSpendLimit(tenantId);
     const result = await this.invocation.invokeNer(resolved, tenantId, body ?? {});
     this.emitInvocationUsage(this.buildNerUsage(tenantId, result), slug);
 
@@ -465,6 +481,13 @@ export class AgentController {
   @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed.' })
   @ApiResponse({ status: 400, description: 'Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
+  // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
+  // route here because an integrator meets it as an HTTP status long before it meets the
+  // billing plane, and 402 is a refusal no retry resolves.
+  @ApiResponse({
+    status: 402,
+    description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
+  })
   async speech(@Param('slug') slug: string, @Body() body: AgentSpeechBody, @Res() res: Response): Promise<void> {
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug });
@@ -494,6 +517,8 @@ export class AgentController {
     if (this.entitlementsService) {
       await this.entitlementsService.assertMeterQuota(tenantId, 'monthlyTtsCharacters', [...agentRequest.input].length);
     }
+    // TASK-957 F-4 — the ceiling, before the synthesis request leaves the gateway.
+    await this.billing?.assertSpendLimit(tenantId);
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream, text/event-stream' };
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
@@ -597,9 +622,20 @@ export class AgentController {
   @ApiResponse({ status: 400, description: 'Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent (or media).' })
   @ApiResponse({ status: 409, description: 'The agent cannot become a runnable ASR spec (no primary model), or a provider veto.' })
+  // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
+  // route here because an integrator meets it as an HTTP status long before it meets the
+  // billing plane, and 402 is a refusal no retry resolves.
+  @ApiResponse({
+    status: 402,
+    description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
+  })
   async transcribe(@Param('slug') slug: string, @Body() body: AgentTranscriptionBody): Promise<AgentTranscriptionResponse> {
     const tenantId = this.requireTenant();
     if (!body?.mediaId) throw new BadRequestException('`mediaId` is required.');
+    // TASK-957 F-4 — the ceiling, before a job row exists or a worker is dispatched. This route
+    // carries no meter quota of its own (batch minutes are metered on COMPLETION, when the audio
+    // length is known), so the ceiling is the only pre-flight money gate it has.
+    await this.billing?.assertSpendLimit(tenantId);
     if (!this.jobService || !this.realtimeService || !this.mediaService || !this.asrResolver) {
       throw new HttpException({ detail: 'Batch transcription is not configured on this gateway' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
