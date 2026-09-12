@@ -7,6 +7,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { EntitlementCapabilities, PlanEntitlement, TenantEntitlement } from '../../api/types';
 import { EntitlementsScreen } from '../entitlements-screen';
@@ -400,6 +401,32 @@ describe('EntitlementsScreen', () => {
       const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/admin/entitlements/tenants/t-1/downgrade'));
       expect(post?.body).toEqual({ plan: 'STARTER' });
     });
+  });
+
+  /*
+   * Frame 13 had no axe scan of its own. One per rendered surface: the grid,
+   * and the plan editor the three limit fields above landed in.
+   */
+  it('has no axe violations on the plans tab', async () => {
+    stubEntitlements();
+    const { container } = renderWithProviders(<EntitlementsScreen />);
+    await screen.findByText('Pro');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // Scoped to the dialog, as every other open-overlay scan in this app is:
+  // while a modal is open Radix marks the page behind it `aria-hidden` and
+  // traps focus in JS, which axe reads statically as hidden-but-focusable.
+  it('has no axe violations in the plan editor', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByLabelText('Max AI provider connections');
+
+    expect(await axe(dialog)).toHaveNoViolations();
   });
 
   it('runs the trial-expiry sweep from the header behind a confirm', async () => {
