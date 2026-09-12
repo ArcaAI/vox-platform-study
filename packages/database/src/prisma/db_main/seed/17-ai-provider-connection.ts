@@ -32,9 +32,16 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  * enough" below — without it the row is resolvable but never DELIVERED, and
  * `apps/text` answers 503 for every self-hosted engine.
  *
- * CREATE-ONLY: an existing (tenantId, service, provider) row is NEVER
- * overwritten — the connection is admin-tunable at runtime and a re-seed must
- * not clobber an admin's endpoint or key.
+ * CREATE-ONLY: an existing (tenantId, service, slug) row is NEVER overwritten —
+ * the connection is admin-tunable at runtime and a re-seed must not clobber an
+ * admin's endpoint or key.
+ *
+ * TASK-958 — every seeded row is a SYSTEM-tier DEFAULT: `slug = provider` and
+ * `defaultForProvider = provider`. The SYSTEM tier holds exactly one row per
+ * (service, provider) and never a named sibling, so the seed has no notion of
+ * one; multiplicity is a TENANT-tier property. Seeding `slug = provider` is
+ * also what the migration backfilled every pre-existing row to, so a seeded
+ * database and a migrated one are indistinguishable.
  *
  * UNIFIED PLANE: rows now carry a `service` discriminator. The `llm`
  * service seeds every canonical serving provider (AI_MODEL_PROVIDERS + the new
@@ -806,8 +813,12 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
   let skipped = 0;
   let backfilled = 0;
   for (const row of SYSTEM_AI_PROVIDER_CONNECTIONS) {
+    // Identity is (tenantId, service, SLUG) since TASK-958. For a SYSTEM row
+    // `slug === provider`, so this finds exactly what the provider lookup used
+    // to — but it now keys on the column the unique index actually covers, so a
+    // re-seed can never collide with a tenant-style sibling.
     const existing = await client.aiProviderConnection.findFirst({
-      where: { tenantId: row.tenantId, service: row.service, provider: row.provider },
+      where: { tenantId: row.tenantId, service: row.service, slug: row.provider },
     });
 
     if (existing) {
@@ -852,6 +863,9 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
         tenantId: row.tenantId,
         service: row.service,
         provider: row.provider,
+        // TASK-958 — a SYSTEM row IS its provider's platform default.
+        slug: row.provider,
+        defaultForProvider: row.provider,
         baseUrl: row.baseUrl,
         region: row.region,
         apiVersion: row.apiVersion,
