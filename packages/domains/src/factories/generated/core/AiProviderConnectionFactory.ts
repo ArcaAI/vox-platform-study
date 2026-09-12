@@ -15,6 +15,21 @@ export interface CreateAiProviderConnectionProps extends BaseEntityFactoryCreate
    */
   service?: IAiProviderConnectionEntity['service'];
   provider: IAiProviderConnectionEntity['provider'];
+  /**
+   * TASK-958 — connection identity within `(tenantId, service)`. Optional at the
+   * factory level and defaulting to `provider`, which is exactly the row a
+   * pre-TASK-958 caller meant: the tenant's DEFAULT connection for that
+   * provider. A named sibling passes its own slug and `defaultForProvider: null`.
+   */
+  slug?: IAiProviderConnectionEntity['slug'];
+  name?: IAiProviderConnectionEntity['name'];
+  /**
+   * `provider` on the default row, `null` on a sibling. Omitted defaults to
+   * `provider` — a connection created without an opinion IS the default, and on
+   * a tenant that already has one the database refuses the second, which is the
+   * intended failure rather than a silently non-default row.
+   */
+  defaultForProvider?: IAiProviderConnectionEntity['defaultForProvider'];
   baseUrl?: IAiProviderConnectionEntity['baseUrl'];
   region?: IAiProviderConnectionEntity['region'];
   apiVersion?: IAiProviderConnectionEntity['apiVersion'];
@@ -50,6 +65,9 @@ export class AiProviderConnectionFactory {
       tenantId: props.tenantId,
       service: props.service ?? 'llm',
       provider: props.provider,
+      slug: props.slug ?? props.provider,
+      name: props.name ?? null,
+      defaultForProvider: props.defaultForProvider === undefined ? props.provider : props.defaultForProvider,
       baseUrl: props.baseUrl ?? null,
       region: props.region ?? null,
       apiVersion: props.apiVersion ?? null,

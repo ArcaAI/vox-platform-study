@@ -67,19 +67,26 @@ model AiUsageEvent {
   recordedAt DateTime @default(now())
 
   // What was consumed.
-  capability AiCapability
+  capability   AiCapability
   // Bounded operation vocabulary (string rather than an enum so a new emitter
   // ships without a migration — the same call the codebase makes for
   // `AiRoutingPolicy.taskKey` and `AiProviderConnection.provider`):
   //   transcribe.stream · transcribe.batch · generate · generate.stream ·
   //   presummarize · guardrail.validate · ner.extract · tts.synthesize ·
   //   harness.step · embed
-  operation  String
-  provider   String
+  operation    String
+  provider     String
+  // TASK-958 — WHICH provider connection served this call, when one did. A
+  // tenant that brought two keys for the same vendor must be able to see which
+  // one a generation spent; `provider` alone cannot tell them apart. NULL for a
+  // platform-funded call, for a self-hosted engine, and for every pre-TASK-958
+  // row. Deliberately NOT a foreign key: the ledger is append-only evidence
+  // under 18-month retention and must survive the connection being deleted.
+  connectionId String?
   // Null for capabilities that do not select a model (e.g. a raw STT
   // audio-second row on a self-hosted pipeline).
-  model      String?
-  deployment AiDeploymentKind
+  model        String?
+  deployment   AiDeploymentKind
 
   // How much, in which unit. Decimal — never Float: audio/GPU seconds are
   // fractional and these values are multiplied by prices to produce money.
@@ -127,6 +134,9 @@ model AiUsageEvent {
   // one call. Not tenant-prefixed on purpose — `requestId` is already unique
   // enough to be selective, and the tenant-scope extension adds its filter.
   @@index([requestId], name: "AiUsageEvent_requestId_idx")
+  // TASK-958 — "what did connection #2 cost me": per-connection cost surfaces
+  // on the consumption screen.
+  @@index([connectionId], name: "AiUsageEvent_connectionId_idx")
   @@schema("core")
 }
 

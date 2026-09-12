@@ -40,6 +40,13 @@ export interface IAiUsageEventEntity extends IBaseTenantEntity {
   /** Bounded vocabulary — see the `operation` comment in `usage-ledger.prisma`. */
   operation: string;
   provider: string;
+  /**
+   * TASK-958 — WHICH provider connection served this call. `null` for a
+   * platform-funded call, a self-hosted engine, and every pre-TASK-958 row.
+   * Deliberately not a relation: the ledger is append-only evidence and must
+   * outlive the connection it names.
+   */
+  connectionId?: string | null;
   model?: string | null;
   deployment: Enums.AiDeploymentKind;
 
@@ -68,6 +75,7 @@ export class AiUsageEventEntity extends BaseTenantEntity {
   private _capability: IAiUsageEventEntity['capability'];
   private _operation: IAiUsageEventEntity['operation'];
   private _provider: IAiUsageEventEntity['provider'];
+  private _connectionId?: IAiUsageEventEntity['connectionId'];
   private _model?: IAiUsageEventEntity['model'];
   private _deployment: IAiUsageEventEntity['deployment'];
   private _unit: IAiUsageEventEntity['unit'];
@@ -91,6 +99,7 @@ export class AiUsageEventEntity extends BaseTenantEntity {
     this._capability = init.capability;
     this._operation = init.operation;
     this._provider = init.provider;
+    this._connectionId = init.connectionId;
     this._model = init.model;
     this._deployment = init.deployment;
     this._unit = init.unit;
@@ -153,6 +162,14 @@ export class AiUsageEventEntity extends BaseTenantEntity {
 
   set provider(value: IAiUsageEventEntity['provider']) {
     this.setProperty('provider', value);
+  }
+
+  get connectionId(): IAiUsageEventEntity['connectionId'] {
+    return this._connectionId;
+  }
+
+  set connectionId(value: IAiUsageEventEntity['connectionId']) {
+    this.setProperty('connectionId', value);
   }
 
   get model(): IAiUsageEventEntity['model'] {
