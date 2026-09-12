@@ -183,7 +183,6 @@ export function ProviderCredentialCard({
   const title = isSibling ? `${meta.label} · ${connectionName?.trim() || connectionSlug}` : meta.label;
   const query = useProviderConnection(service, connectionSlug, tenantId, queriesEnabled);
   const putMutation = usePutProviderConnection();
-  const deleteMutation = useDeleteProviderConnection();
   const testMutation = useTestProviderConnection();
   const resetMutation = useResetProviderConnection();
 
@@ -203,6 +202,23 @@ export function ProviderCredentialCard({
   // the remove refusal above — a toast would vanish before the admin reaches the
   // card that unblocks it.
   const [defaultRefusal, setDefaultRefusal] = useState<string | null>(null);
+
+  /**
+   * TASK-958 — the SUCCESS half of a remove lives on the MUTATION, not on the
+   * `mutate` call, because removing a SIBLING unmounts this very card and a
+   * per-call callback does not survive that (see `useDeleteProviderConnection`).
+   * The refusal half stays at the call site: a refused remove leaves the card
+   * standing by definition, and its guidance belongs on the row it refused.
+   */
+  const deleteMutation = useDeleteProviderConnection({
+    onRemoved: () => {
+      toast.success(isSibling ? `${title} connection removed` : `${meta.label} connection removed — the platform default serves this provider again`);
+      setConfirmingRemove(false);
+      setDraft(null);
+      setCeilingDraft(null);
+      setEnabledDraft(null);
+    },
+  });
 
   if (query.isPending) return <CardSkeleton />;
   if (query.error || !query.data) {
@@ -376,17 +392,6 @@ export function ProviderCredentialCard({
     deleteMutation.mutate(
       { service, slug: connectionSlug, tenantId },
       {
-        onSuccess: () => {
-          toast.success(
-            isSibling
-              ? `${title} connection removed`
-              : `${meta.label} connection removed — the platform default serves this provider again`,
-          );
-          setConfirmingRemove(false);
-          setDraft(null);
-          setCeilingDraft(null);
-          setEnabledDraft(null);
-        },
         onError: (error) => {
           // TASK-958 OQ-6 — the gateway REFUSES to delete a default that still
           // has siblings rather than auto-promoting one, because an automatic

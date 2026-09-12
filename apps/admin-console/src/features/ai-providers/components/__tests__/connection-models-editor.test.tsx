@@ -117,6 +117,45 @@ describe('ConnectionModelsEditor', () => {
     expect(capture.body).toEqual({ models: [] });
   });
 
+  /**
+   * TASK-958 — a tenant holds several accounts of one vendor, so two of these
+   * editors sit on one screen. "Add model" and "Derive from provider" were the
+   * only controls here NOT scoped to their connection (the save button and the
+   * row deletes already were), which left a screen-reader user two identically
+   * named buttons and no way to tell which account each belongs to.
+   */
+  it('names its two unscoped controls after the connection, so a second editor cannot shadow them', () => {
+    stubFetch();
+    renderWithProviders(
+      <>
+        <ConnectionModelsEditor service="llm" slug="openai" label="OpenAI" tenantId="t-1" models={[]} discoveredModels={['gpt-5.4-mini']} />
+        <ConnectionModelsEditor
+          service="llm"
+          slug="openai-research"
+          label="OpenAI · Research account"
+          tenantId="t-1"
+          models={[]}
+          discoveredModels={['gpt-5.4-mini']}
+        />
+      </>,
+    );
+
+    expect(screen.getAllByRole('button', { name: /^Add model to / }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Add model to OpenAI',
+      'Add model to OpenAI · Research account',
+    ]);
+    expect(screen.getAllByRole('button', { name: /^Derive from provider for / }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Derive from provider for OpenAI',
+      'Derive from provider for OpenAI · Research account',
+    ]);
+
+    // WCAG 2.5.3 Label in Name: the name EXTENDS the visible label, never
+    // replaces it — a speech-input user can still say what they see.
+    for (const button of screen.getAllByRole('button', { name: /^(Add model to|Derive from provider for) / })) {
+      expect(button.getAttribute('aria-label')!.startsWith(button.textContent!.trim())).toBe(true);
+    }
+  });
+
   it('has no axe violations', async () => {
     stubFetch();
     const { container } = renderWithProviders(
