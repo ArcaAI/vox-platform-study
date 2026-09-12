@@ -28,6 +28,7 @@ function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
     slug: (overrides.slug as string) ?? 'gemma4-e2b-it-qat',
     version: (overrides.version as number) ?? 3,
     checksum: (overrides.checksum as string | null) ?? null,
+    source: (overrides.source as string) ?? 'HUGGINGFACE',
     bucketPrefix: (overrides.bucketPrefix as string | null) ?? null,
     primaryObject: (overrides.primaryObject as string | null) ?? null,
     availability: (overrides.availability as string) ?? AiModelAvailability.UNKNOWN,
@@ -81,6 +82,17 @@ describe('AiModelDownloadService', () => {
       mockModelRepository.findById.mockResolvedValue(model);
       await expect(service.triggerDownload('model-id-1')).rejects.toThrow(ConflictException);
       expect(mockDownloadQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('refuses a LOCAL row with ConflictException (409) — nothing to fetch, no job enqueued, no bookkeeping written', async () => {
+      const model = createBehavioralModelEntity({ source: 'LOCAL' });
+      mockModelRepository.findById.mockResolvedValue(model);
+
+      await expect(service.triggerDownload('model-id-1')).rejects.toThrow(ConflictException);
+
+      expect(mockDownloadQueue.add).not.toHaveBeenCalled();
+      expect(mockModelRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(model.changes.metaData).toBeUndefined();
     });
 
     it('claims the row through updateWithVersion, enqueues the job, and returns the frozen 202 shape', async () => {
