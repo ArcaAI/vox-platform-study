@@ -23,6 +23,7 @@ import { WebhookService } from '../webhook/webhook.service';
 import { IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
 import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
+import { IBillingService } from '../billing/IBillingService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
@@ -134,6 +135,12 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // HAS a frozen binding, a machine caller and a supplied value and finds no resolver raises
     // 503 rather than dispatching with no acting clinician.
     @Optional() @Inject(IContextUserIdentityService) private readonly userIdentity?: IContextUserIdentityService,
+    // TASK-957 F-4 — the tenant's OPTIONAL monthly spend ceiling (D12). `monthlyWorkflowInvocations`
+    // above is a COUNT quota: a run under it is free however much it spends, and one run can fan
+    // out to dozens of LLM steps. The ceiling is the money control, and it reached consultation
+    // summaries only. `@Optional()` like every other cross-cutting dependency here; absent = not
+    // enforced, which is what a minimal fixture gets.
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -260,6 +267,11 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     if (this.entitlements?.isEnforcementEnabled()) {
       await this.entitlements.assertMeterQuota(tenantId, 'monthlyWorkflowInvocations');
     }
+    // TASK-957 F-4 — and the tenant's own spend ceiling, OUTSIDE that branch on purpose: the
+    // enforcement kill-switch governs the allowance plane, while the ceiling is a limit the
+    // tenant set for itself. Checked before the run row and the dispatcher, so a refusal leaves
+    // nothing half-started. -> 402 when over; a no-op (no draft computed) when unset.
+    await this.billing?.assertSpendLimit(tenantId);
 
     if (!definition.compiledConfig) {
       // Should be unreachable — `findPublishedBySlug` only returns PUBLISHED rows, and publish()

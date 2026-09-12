@@ -2,6 +2,8 @@ import {
   AgentServiceModule,
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
+  BillingServiceModule,
+  EffectiveSettingsModule,
   EntitlementsServiceModule,
   MediaServiceModule,
   TranscriptionJobServiceModule,
@@ -28,6 +30,13 @@ import { AgentController } from './agent.controller';
     AsrAgentResolverServiceModule,
     // TASK-879 — the TEXT_TO_SPEECH resolution behind `POST /agents/:slug/speech`.
     TtsAgentResolverServiceModule,
+    // TASK-957 F-4 — `IBillingService.assertSpendLimit`, the tenant's optional monthly ceiling
+    // (D12). Without this import the controller's `@Optional()` injection is always undefined and
+    // the three metered routes here stay unbounded, which is exactly the defect F-4 names.
+    BillingServiceModule,
+    // TASK-959 §3.1 — `TenantSettingsService`, for `metering.compute.deviceByProvider`. Same
+    // reason: an unwired cascade would silently take the fallback on every call.
+    EffectiveSettingsModule,
   ],
   controllers: [AgentController],
 })
