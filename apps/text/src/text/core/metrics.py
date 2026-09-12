@@ -115,6 +115,29 @@ CONCURRENT_REQUESTS = Gauge(
 )
 
 # ---------------------------------------------------------------------------
+# Network consumption per upstream (TASK-959 M-4)
+# ---------------------------------------------------------------------------
+# Counted at the ONE seam every pooled adapter already passes through — the
+# draining transport in `providers/pool.py` — so a new adapter on the pool is
+# metered by construction rather than by remembering to instrument it.
+#
+# `direction` uses the ledger's own vocabulary (`EGRESS_BYTE` / `INGRESS_BYTE`)
+# rather than request/response, because these counters and the ledger rows they
+# corroborate must be comparable without a translation table. `funding` is the
+# tier that paid for the call (`tenant` = BYOK, `platform` = the platform's own
+# credential), so a byte total can be split the same way spend already is.
+#
+# Bodies only: request and response BODY bytes, never headers or TLS framing.
+# Stated on the metric because a capacity plan built on it would otherwise
+# silently under-count by the header budget of every call.
+
+PROVIDER_BYTES = Counter(
+    "text_provider_bytes_total",
+    "Body bytes exchanged with an upstream provider, by direction and funding tier",
+    ["provider", "direction", "funding"],
+)
+
+# ---------------------------------------------------------------------------
 # Worker pool — async out-of-process task dispatch, separate from
 # the sync-path metrics above. `task_type` ("embedding" | "batch_generation")
 # is the label KEDA's Prometheus scaler (arca/hope-v2-deployment, not this

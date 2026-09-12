@@ -24,7 +24,12 @@ from text.models.stats import GenerationStats, stats_from_bedrock
 from text.models.stream import StreamChunk
 from text.providers.base import CredentialPosture, require_model
 from text.providers.clients import CLIENT_CACHE, client_key
-from text.providers.pool import bedrock_stream_executor, run_in_bedrock_executor
+from text.providers.pool import (
+    bedrock_stream_executor,
+    current_byte_counts,
+    run_in_bedrock_executor,
+    with_byte_counts,
+)
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -74,6 +79,77 @@ class _StaticBearerTokenProvider:
         return FrozenAuthToken(token=self._token)
 
 
+# ── Network bytes without a transport to hook (TASK-959 §4.1) ────────────────
+#
+# Every other adapter in this service reaches its vendor through
+# `pooled_http_client`, so `providers/pool.py`'s transport counts its bytes.
+# Bedrock is botocore, not httpx, and it never will be on that pool — so it gets
+# the equivalent from botocore's OWN event system, credited into the same
+# per-request record the pooled transport uses.
+#
+# `before-send` carries the prepared request, whose `body` is the serialized
+# JSON. `response-received` carries a response dict whose `body` is the response
+# BYTES for a normal operation — and, for an operation with a streaming output
+# shape (`converse_stream`), the UNREAD event stream. Reading that to size it
+# would consume the generation, so it is not read: the request is counted, the
+# response is not, and `usage_detail` answers `response_bytes: None` rather than
+# a zero that would read as "the vendor sent nothing". That is §4.2's documented
+# blind spot, stated where it is created.
+#
+# The hooks are registered on the CLIENT, which is cached and shared by every
+# request on the same (region, credential) — so registration happens once, in the
+# factory, and attribution comes from the contextvar, which `with_byte_counts`
+# carries into the Bedrock worker thread the SDK actually runs on.
+
+#: Botocore event prefixes, wildcard over every operation of the service: one
+#: registration covers `Converse` and `ConverseStream` and anything added later.
+_BEFORE_SEND_EVENT = "before-send.bedrock-runtime"
+_RESPONSE_RECEIVED_EVENT = "response-received.bedrock-runtime"
+
+
+def _count_request_bytes(request: Any = None, **_kwargs: Any) -> None:
+    """Count the prepared request's body. MUST return ``None``.
+
+    A `before-send` handler that returns anything else REPLACES the HTTP call
+    with its return value (that is how botocore's stubber works), so a metering
+    hook that accidentally returned a truthy value would silently stop every
+    Bedrock generation from reaching AWS.
+    """
+    counts = current_byte_counts()
+    if counts is None:
+        return
+    body = getattr(request, "body", None)
+    counts.add_request(len(body) if isinstance(body, (bytes, bytearray)) else 0)
+
+
+def _count_response_bytes(response_dict: Any = None, **_kwargs: Any) -> None:
+    """Count the response body when it is bytes; never consume a stream."""
+    counts = current_byte_counts()
+    if counts is None or not isinstance(response_dict, dict):
+        return
+    body = response_dict.get("body")
+    if isinstance(body, (bytes, bytearray)):
+        counts.add_response(len(body))
+        return
+    # A streaming body. `Content-Length` is absent on a chunked event stream, so
+    # this is the non-streaming-but-not-buffered case, not a second guess at the
+    # stream's size.
+    headers = response_dict.get("headers") or {}
+    declared = headers.get("content-length") if hasattr(headers, "get") else None
+    try:
+        if declared is not None:
+            counts.add_response(max(0, int(declared)))
+    except (TypeError, ValueError):
+        return
+
+
+def _register_byte_hooks(client: Any) -> Any:
+    """Attach the byte hooks to one freshly built client, and return it."""
+    client.meta.events.register(_BEFORE_SEND_EVENT, _count_request_bytes)
+    client.meta.events.register(_RESPONSE_RECEIVED_EVENT, _count_response_bytes)
+    return client
+
+
 def _bearer_client(
     service: Literal["bedrock-runtime", "bedrock"], *, token: str, region: str
 ) -> Any:
@@ -89,10 +165,12 @@ def _bearer_client(
     session._components.register_component(  # type: ignore[attr-defined]
         "token_provider", _StaticBearerTokenProvider(token)
     )
-    return boto3.Session(botocore_session=session).client(
-        service,
-        region_name=region,
-        config=BotocoreConfig(signature_version="bearer"),
+    return _register_byte_hooks(
+        boto3.Session(botocore_session=session).client(
+            service,
+            region_name=region,
+            config=BotocoreConfig(signature_version="bearer"),
+        )
     )
 
 
@@ -294,7 +372,12 @@ class BedrockProvider:
             # sized from the same control-plane `maxConcurrent` that bounds this
             # provider's semaphore, so it is never the binding constraint and
             # never anyone else's problem. See `providers/pool.py`.
-            thread_future = loop.run_in_executor(bedrock_stream_executor(), _iterate_stream)
+            thread_future = loop.run_in_executor(
+                bedrock_stream_executor(),
+                # TASK-959 — the botocore hooks fire on THIS thread, and
+                # `run_in_executor` carries no context into it.
+                with_byte_counts(_iterate_stream),
+            )
 
             # DRAIN to completion (AD-1): the ``messageStop`` (stopReason) event
             # arrives BEFORE the ``metadata`` (usage) event, so yielding ``done``

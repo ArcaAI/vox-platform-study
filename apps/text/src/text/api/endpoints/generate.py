@@ -85,6 +85,7 @@ from text.models.task import TaskStatus
 from text.models.usage import (
     UsageDetail,
     build_usage_detail,
+    engine_ms_from_stats,
     guardrail_usage_from_verdict,
     raw_usage_from_stats,
 )
@@ -142,6 +143,7 @@ from text.api.endpoints.stream import (  # noqa: E402
 from text.api.endpoints.stream import (  # noqa: E402
     stream_generation,
 )
+from text.providers.pool import count_provider_bytes  # noqa: E402
 from text.routing.hub import (  # noqa: E402
     get_generation_hub,
     resolve_generation_policy,
@@ -157,6 +159,7 @@ from text.routing.usage import (  # noqa: E402, F401
     _credential_attribution,
     _extract_stream_usage,
     _extract_usage,
+    funding_label,
 )
 
 
@@ -593,6 +596,17 @@ async def generate(
                     # The post-receive gate (TASK-871) runs inside the producer,
                     # on the assembled completion, before the terminal frame.
                     guardrail_client=guardrail_client,
+                    # TASK-959 — the INPUT gate already ran, above, and its tokens
+                    # are already spent. The blocking response carries them in its
+                    # own `guardrail_usage` slot; a streamed one had nowhere to put
+                    # them, so the safety plane's spend on every streamed
+                    # generation never reached the billing plane. The producer
+                    # forwards this onto the terminal frame verbatim.
+                    guardrail_usage=(
+                        guardrail_usage.model_dump(mode="json")
+                        if guardrail_usage is not None
+                        else None
+                    ),
                     app_state=app_state,
                 ),
                 provider=request_body.provider,
@@ -656,70 +670,86 @@ async def generate(
         last_exc: Exception | None = None
         error_type = "provider_error"
 
-        for attempt in range(max_retries + 1):
-            try:
-                content, reasoning, gen_result = await asyncio.wait_for(
-                    provider.generate(request_body),
-                    timeout=timeout_s,
-                )
-                if cb:
-                    cb.record_success()
-                    _update_cb_metric(request_body.provider, cb)
-                last_exc = None
-                break
-            except TimeoutError as exc:
-                error_type = "timeout"
-                last_exc = exc
+        # Which credential serves, derived ONCE and BEFORE the call: `byok`
+        # decides `cost_basis` on the usage block below AND the funding label on
+        # the byte counters, and the two must describe the same credential.
+        byok, connection_id = _credential_attribution(request_body)
+
+        # TASK-959 M-4 — count what this generation puts on the wire. Bound
+        # around the WHOLE retry loop, because a retried attempt really did send
+        # its body and really did read a response: what the platform paid for the
+        # call is the total it put on the wire, not the last attempt's share.
+        # The record is mutable and found through a contextvar, so the pooled
+        # transport credits it from inside `asyncio.wait_for`'s task (see
+        # `providers/pool.py`); an adapter that is off the pool touches nothing
+        # and the fields stay absent rather than claiming zero bytes.
+        with count_provider_bytes(
+            request_body.provider, funding=funding_label(byok)
+        ) as byte_counts:
+            for attempt in range(max_retries + 1):
+                try:
+                    content, reasoning, gen_result = await asyncio.wait_for(
+                        provider.generate(request_body),
+                        timeout=timeout_s,
+                    )
+                    if cb:
+                        cb.record_success()
+                        _update_cb_metric(request_body.provider, cb)
+                    last_exc = None
+                    break
+                except TimeoutError as exc:
+                    error_type = "timeout"
+                    last_exc = exc
+                    logger.warning(
+                        "generation.timeout",
+                        attempt=attempt + 1,
+                        timeout_s=timeout_s,
+                        task_id=task.task_id,
+                    )
+                except Exception as exc:
+                    # D5: a deterministic provider 4xx (malformed body, prompt too
+                    # large for the loaded context) can never succeed on a retry —
+                    # classify it so `should_retry` refuses it unconditionally,
+                    # instead of burning the retry budget on a fixed outcome.
+                    error_type = (
+                        INVALID_REQUEST_ERROR_TYPE
+                        if is_provider_invalid_request(exc)
+                        else "provider_error"
+                    )
+                    last_exc = exc
+
+                if not should_retry(error_type, retry_on, attempt, max_retries):
+                    break
+
+                # C-6: the wait the upstream itself asked for wins over the computed
+                # exponential delay — and is jittered either way, because an exact
+                # `Retry-After` hands every limited caller the SAME deadline.
+                asked_for = retry_after_from(last_exc) if last_exc is not None else None
+                backoff = calculate_backoff(attempt, retry_after=asked_for)
                 logger.warning(
-                    "generation.timeout",
+                    "generation.retry",
                     attempt=attempt + 1,
-                    timeout_s=timeout_s,
+                    max_retries=max_retries,
+                    backoff_s=round(backoff, 2),
+                    retry_after_s=asked_for,
+                    error_type=error_type,
                     task_id=task.task_id,
                 )
-            except Exception as exc:
-                # D5: a deterministic provider 4xx (malformed body, prompt too
-                # large for the loaded context) can never succeed on a retry —
-                # classify it so `should_retry` refuses it unconditionally,
-                # instead of burning the retry budget on a fixed outcome.
-                error_type = (
-                    INVALID_REQUEST_ERROR_TYPE
-                    if is_provider_invalid_request(exc)
-                    else "provider_error"
-                )
-                last_exc = exc
 
-            if not should_retry(error_type, retry_on, attempt, max_retries):
-                break
-
-            # C-6: the wait the upstream itself asked for wins over the computed
-            # exponential delay — and is jittered either way, because an exact
-            # `Retry-After` hands every limited caller the SAME deadline.
-            asked_for = retry_after_from(last_exc) if last_exc is not None else None
-            backoff = calculate_backoff(attempt, retry_after=asked_for)
-            logger.warning(
-                "generation.retry",
-                attempt=attempt + 1,
-                max_retries=max_retries,
-                backoff_s=round(backoff, 2),
-                retry_after_s=asked_for,
-                error_type=error_type,
-                task_id=task.task_id,
-            )
-
-            # C-5 (B-5): hand the provider's concurrency permit BACK for the
-            # duration of the backoff. Holding it across `sum(backoffs) +
-            # attempts x timeout` is how one degrading provider converts its own
-            # slowness into capacity starvation for every other request — and
-            # every other tenant — queued behind the same semaphore.
-            if holds_permit:
-                _drop_permit()
-                holds_permit = False
-            await asyncio.sleep(backoff)
-            # Re-entering the lane is admission control again, not a formality:
-            # if capacity is gone, this request waits its turn or is refused with
-            # the same typed 503 the first acquire would have raised.
-            await _take_permit()
-            holds_permit = semaphore is not None
+                # C-5 (B-5): hand the provider's concurrency permit BACK for the
+                # duration of the backoff. Holding it across `sum(backoffs) +
+                # attempts x timeout` is how one degrading provider converts its own
+                # slowness into capacity starvation for every other request — and
+                # every other tenant — queued behind the same semaphore.
+                if holds_permit:
+                    _drop_permit()
+                    holds_permit = False
+                await asyncio.sleep(backoff)
+                # Re-entering the lane is admission control again, not a formality:
+                # if capacity is gone, this request waits its turn or is refused with
+                # the same typed 503 the first acquire would have raised.
+                await _take_permit()
+                holds_permit = semaphore is not None
 
         if last_exc is not None:
             raise last_exc
@@ -780,7 +810,6 @@ async def generate(
         # so `GET /tasks/{id}` answers identically whichever way the generation ran. Built ONCE
         # here and reused on the response below, so the persisted block and the returned block
         # can never disagree about what this generation cost.
-        byok, connection_id = _credential_attribution(request_body)
         usage_detail = build_usage_detail(
             task_id=task.task_id,
             request_id=ctx.get("request_id"),
@@ -792,6 +821,14 @@ async def generate(
             raw=raw_usage_from_stats(stats),
             byok=byok,
             connection_id=connection_id,
+            # TASK-959 — occupancy (wall clock), the engine's OWN time when it
+            # reports one, and the bytes the call consumed. `total_ms` comes off
+            # `stats` rather than the local `latency_ms` so the block and the
+            # `stats` beside it can never disagree about how long this took.
+            total_ms=stats.total_ms,
+            engine_ms=engine_ms_from_stats(stats),
+            request_bytes=byte_counts.request_bytes if byte_counts.observed else None,
+            response_bytes=byte_counts.response_bytes if byte_counts.observed else None,
         )
         await task_manager.update_task(
             task.task_id,
