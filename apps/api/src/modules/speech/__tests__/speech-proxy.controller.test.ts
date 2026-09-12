@@ -745,7 +745,11 @@ describe('SpeechProxyController', () => {
       stream.emit('end');
 
       expect(usageLedger.recordUsage).toHaveBeenCalledTimes(2);
-      const [tokenBatch, platformBatch] = usageLedger.recordUsage.mock.calls.map((call: unknown[]) => call[0]);
+      type RecordedBatch = {
+        common: { deployment: string; costBasis?: string; idempotencyKey: string };
+        units: Array<{ unit: string; quantity: string; attributesJson?: Record<string, unknown> }>;
+      };
+      const [tokenBatch, platformBatch] = usageLedger.recordUsage.mock.calls.map((call: unknown[]) => call[0] as RecordedBatch);
       expect(tokenBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
       expect(tokenBatch.units.find((u: { unit: string }) => u.unit === 'CPU_SECOND' || u.unit === 'GPU_SECOND')).toBeUndefined();
       expect(platformBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'INTERNAL' });
