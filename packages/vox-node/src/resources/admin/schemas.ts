@@ -326,18 +326,24 @@ export interface AiProviderConnectionResponse {
   baseUrl: string | null;
   /** Deployment name (azure). */
   deploymentName: string | null;
-  /** Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". */
+  /** Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing. */
   enabled: boolean;
   /** Provider-specific extras. */
   extraJson: Record<string, unknown> | null;
   /** Whether key material is stored. The key itself is never returned by any endpoint. */
   hasKey: boolean;
+  /** Row id — what a declared model carries as `sourceConnectionId` and what the usage ledger attributes a generation to. EMPTY STRING on the `version: 0` placeholder, which is the shape of a connection that does not exist yet. */
+  id: string;
+  /** Whether this is the tenant's DEFAULT connection for `provider` — the one the provider-name cascade resolves, and therefore the one the three-state `enabled` rule is read on. Exactly one per (tenant, service, provider). */
+  isDefault: boolean;
   /** Vault-Transit key version backing the stored ciphertext. */
   keyVersion: number | null;
   /** Ceiling — simultaneous in-flight requests. Null = no opinion. */
   maxConcurrent: number | null;
   /** Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`. */
   models?: ConnectionModelResponse[];
+  /** Tenant-chosen display label. `null` = fall back to the slug. */
+  name: string | null;
   /** Capability-scoped serving provider identifier. */
   provider: string;
   /** Region identifier (bedrock). */
@@ -346,6 +352,8 @@ export interface AiProviderConnectionResponse {
   rpmLimit: number | null;
   /** Capability the connection serves. */
   service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
+  /** Connection identity within (tenant, service) — the `:slug` path segment, immutable after create. Equal to `provider` on the default connection of each provider (and on every platform row), so the pre-TASK-958 addressing is unchanged; a named sibling carries its own, e.g. `openai-research`. */
+  slug: string;
   /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
   tenantId: string;
   /** Ceiling — per-request timeout in seconds. Null = no opinion. */
@@ -3908,18 +3916,24 @@ export interface PlatformDefaultConnectionResponse {
   baseUrl: string | null;
   /** Deployment name (azure). */
   deploymentName: string | null;
-  /** Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". */
+  /** Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing. */
   enabled: boolean;
   /** Provider-specific extras. */
   extraJson: Record<string, unknown> | null;
   /** Whether key material is stored. The key itself is never returned by any endpoint. */
   hasKey: boolean;
+  /** Row id — what a declared model carries as `sourceConnectionId` and what the usage ledger attributes a generation to. EMPTY STRING on the `version: 0` placeholder, which is the shape of a connection that does not exist yet. */
+  id: string;
+  /** Whether this is the tenant's DEFAULT connection for `provider` — the one the provider-name cascade resolves, and therefore the one the three-state `enabled` rule is read on. Exactly one per (tenant, service, provider). */
+  isDefault: boolean;
   /** Vault-Transit key version backing the stored ciphertext. */
   keyVersion: number | null;
   /** Ceiling — simultaneous in-flight requests. Null = no opinion. */
   maxConcurrent: number | null;
   /** Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`. */
   models?: ConnectionModelResponse[];
+  /** Tenant-chosen display label. `null` = fall back to the slug. */
+  name: string | null;
   /** Capability-scoped serving provider identifier. */
   provider: string;
   /** Region identifier (bedrock). */
@@ -3930,6 +3944,8 @@ export interface PlatformDefaultConnectionResponse {
   rpmLimit: number | null;
   /** Capability the connection serves. */
   service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
+  /** Connection identity within (tenant, service) — the `:slug` path segment, immutable after create. Equal to `provider` on the default connection of each provider (and on every platform row), so the pre-TASK-958 addressing is unchanged; a named sibling carries its own, e.g. `openai-research`. */
+  slug: string;
   /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
   tenantId: string;
   /** Ceiling — per-request timeout in seconds. Null = no opinion. */
@@ -6504,14 +6520,20 @@ export interface UpsertAiProviderConnectionRequest {
   baseUrl?: string;
   /** Deployment name (azure). */
   deploymentName?: string;
-  /** Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". */
+  /** Whether this connection participates in resolution. Three states, per (service, provider), evaluated on your DEFAULT connection for that provider: NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". A NON-DEFAULT sibling connection is never read by the provider-name cascade: disabling one disables the models bound to THAT connection (their candidate fails closed and the chain walks on) and vetoes nothing. */
   enabled?: boolean;
   /** Version the client read (optimistic concurrency). The `If-Match` header overrides this when both are present. Use 0 to create. */
   expectedVersion?: number;
   /** Provider-specific extras, forwarded VERBATIM to the serving adapter as part of the per-request override entry. A FLAT object: values must be strings, numbers, booleans, or arrays of those — nested objects are rejected. At most 32 keys; strings up to 2048 characters. The keys the connection row itself supplies (`api_key`, `funding`, `base_url`, `region`, `api_version`, `deployment_name`) are reserved and rejected here. */
   extraJson?: Record<string, unknown>;
+  /** TASK-958 — make this the tenant's DEFAULT connection for its provider: the row the provider-name cascade resolves, and the one the three-state `enabled` rule is read on. `true` re-points the default atomically (the previous default becomes a sibling in the same transaction; both versions bump). The FIRST connection of a provider is its default whatever this says. `false` on the current default is refused (`400 CONNECTION_DEFAULT_REQUIRED`) — elect another row instead. */
+  isDefault?: boolean;
   /** Ceiling — simultaneous in-flight requests on this connection (TASK-862, moved from the retired runtime profiles). Null/omitted = no opinion; a positive integer is a hard cap. */
   maxConcurrent?: number | null;
+  /** Display label for this connection, shown wherever it is picked. `null` clears it (fall back to the slug). */
+  name?: string | null;
+  /** TASK-958 — which vendor this connection talks to. REQUIRED when the `:slug` path segment is not itself a provider id (a named sibling such as `openai-research`); OPTIONAL and inferred from the slug otherwise, which is why every pre-TASK-958 call is unchanged. IMMUTABLE: sending a different value for an existing slug is `409 CONNECTION_PROVIDER_IMMUTABLE` — a connection cannot change vendor under the models bound to it. */
+  provider?: string;
   /** Region identifier (bedrock). */
   region?: string;
   /** Ceiling — requests per minute. Null/omitted = no opinion. */
