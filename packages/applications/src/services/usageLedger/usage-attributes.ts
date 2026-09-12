@@ -63,6 +63,87 @@ export const GUARDRAIL_DISPOSITIONS = ['screened', 'opted_out', 'platform_off'] 
 export type GuardrailDisposition = (typeof GUARDRAIL_DISPOSITIONS)[number];
 
 /**
+ * `device` — WHICH DEVICE the request occupied (TASK-959 §3.1).
+ *
+ * This is the one attribute that DECIDES A UNIT rather than describing a row:
+ * `cuda`/`mps` make the occupancy seconds a `GPU_SECOND`, `cpu` makes them a
+ * `CPU_SECOND`, and the two are priced an order of magnitude apart. A fourth
+ * spelling would therefore not fork a dashboard facet — it would fork the
+ * price — which is why membership is ENFORCED below rather than merely shaped.
+ *
+ * Device is a DEPLOYMENT property, not a per-request discovery: STT and NLP
+ * report the device their loaded model sits on, TTS reports its settings value,
+ * and the LLM engines are answered by the `metering.compute.deviceByProvider`
+ * descriptor. `open-to-default` there resolves an unlisted provider to `cpu` —
+ * the cheaper unit, never nothing.
+ */
+export const COMPUTE_DEVICES = ['cuda', 'mps', 'cpu'] as const;
+
+export type ComputeDevice = (typeof COMPUTE_DEVICES)[number];
+
+/**
+ * `leg` — WHICH ATTEMPT of a fallback chain this row belongs to (TASK-959 §6.2).
+ *
+ * A chain that falls back spends money twice: the failed candidate cost the
+ * platform CPU time and network bytes, and the candidate that answered cost
+ * whatever it cost. Both are rows sharing a `requestId`, and without this
+ * dimension they are indistinguishable — a support answer to "why did this one
+ * summary cost twice" would have to be reconstructed from timestamps.
+ *
+ * `failed` is deliberately a LEG and not a status: a failed attempt produces a
+ * real `CPU_SECOND` row with zero tokens, so it is metered usage, not an error
+ * record.
+ */
+export const USAGE_LEGS = ['primary', 'fallback', 'failed'] as const;
+
+export type UsageLeg = (typeof USAGE_LEGS)[number];
+
+/**
+ * `storageClass` — WHICH POOL the snapshotted bytes were held in (TASK-959 §5.2).
+ *
+ * `media` = per-tenant MinIO objects (`SUM(Media.size)`); `text` = the encrypted
+ * Postgres columns (`SUM(pg_column_size(...))` over the nine tenant-scoped
+ * tables); `claim-check` = offloaded harness payloads (`payloadRef.size` +
+ * `resultRef.sizeBytes`). They are one unit (`STORAGE_BYTE_DAY`) on one
+ * operation, split by this dimension, because a tenant asking "what am I paying
+ * to store" needs the three answered separately while the invoice sums them.
+ */
+export const STORAGE_CLASSES = ['media', 'text', 'claim-check'] as const;
+
+export type StorageClass = (typeof STORAGE_CLASSES)[number];
+
+/**
+ * `byteSource` — HOW HONEST the byte count on this row is (TASK-959 §4.2).
+ *
+ * `wire` = counted at the HTTP transport, so it includes framing and is what
+ * the vendor saw. `app` = an application-level proxy (the PCM fed to the Azure
+ * Speech SDK, the audio chunks it returned) because that vendor's transport is
+ * its own websocket with no layer to hook. Recording WHICH is what lets a later,
+ * exact figure arrive without silently changing the meaning of the rows already
+ * written — the difference is a compression ratio, not a rounding error.
+ */
+export const BYTE_SOURCES = ['wire', 'app'] as const;
+
+export type ByteSource = (typeof BYTE_SOURCES)[number];
+
+/**
+ * The keys whose VALUE vocabulary is closed, not merely shaped.
+ *
+ * The shape check (`ENUM_ISH_VALUE`) is a PHI control — it stops prose. This is
+ * a different control: it stops a plausible-looking misspelling from becoming a
+ * silent rollup fork. It is applied to the four keys above and NOT to
+ * `activityType` (the Temporal activity set is open and owned by the worker),
+ * nor to `trigger`/`guardrail`, which predate this mechanism and are pinned by
+ * their own tests.
+ */
+const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
+  device: COMPUTE_DEVICES,
+  leg: USAGE_LEGS,
+  storageClass: STORAGE_CLASSES,
+  byteSource: BYTE_SOURCES,
+};
+
+/**
  * The declared keys and their types.
  *
  * | key | why it earns a slot |
@@ -79,6 +160,11 @@ export type GuardrailDisposition = (typeof GUARDRAIL_DISPOSITIONS)[number];
  * | `contextBand` | the price-book context band this row was rated against |
  * | `trigger` | WHICH product activity caused the call ({@link USAGE_TRIGGERS}) |
  * | `guardrail` | the screening disposition ({@link GUARDRAIL_DISPOSITIONS}) |
+ * | `device` | which device the request occupied — DECIDES the unit ({@link COMPUTE_DEVICES}) |
+ * | `leg` | which attempt of a fallback chain this row bills ({@link USAGE_LEGS}) |
+ * | `storageClass` | which storage pool a byte-day row snapshotted ({@link STORAGE_CLASSES}) |
+ * | `activityType` | which Temporal activity burned the worker CPU (open set, shape-checked) |
+ * | `byteSource` | whether a byte count is the wire or an app-level proxy ({@link BYTE_SOURCES}) |
  */
 export const USAGE_ATTRIBUTE_KEYS = {
   channelCount: 'number',
@@ -93,6 +179,12 @@ export const USAGE_ATTRIBUTE_KEYS = {
   contextBand: 'string',
   trigger: 'string',
   guardrail: 'string',
+  // TASK-959 §10.2 — compute, network and storage dimensions.
+  device: 'string',
+  leg: 'string',
+  storageClass: 'string',
+  activityType: 'string',
+  byteSource: 'string',
 } as const satisfies Record<string, UsageAttributeType>;
 
 /** The typed attribute bag emitters build. */
@@ -111,6 +203,16 @@ export interface UsageAttributes {
   trigger?: UsageTrigger | null;
   /** Closed vocabulary — see {@link GUARDRAIL_DISPOSITIONS}. */
   guardrail?: GuardrailDisposition | null;
+  /** Closed vocabulary, ENFORCED — see {@link COMPUTE_DEVICES}. Decides GPU_SECOND vs CPU_SECOND. */
+  device?: ComputeDevice | null;
+  /** Closed vocabulary, ENFORCED — see {@link USAGE_LEGS}. */
+  leg?: UsageLeg | null;
+  /** Closed vocabulary, ENFORCED — see {@link STORAGE_CLASSES}. */
+  storageClass?: StorageClass | null;
+  /** The Temporal activity name that burned this worker CPU. Open set, shape-checked only. */
+  activityType?: string | null;
+  /** Closed vocabulary, ENFORCED — see {@link BYTE_SOURCES}. */
+  byteSource?: ByteSource | null;
 }
 
 /**
@@ -157,6 +259,15 @@ export function validateUsageAttributes(attributes: unknown): string[] {
 
     if (expectedType === 'string' && !ENUM_ISH_VALUE.test(value as string)) {
       violations.push(`attributesJson key "${key}" must be an enum-ish value or opaque id (no free text, <= 64 chars)`);
+      continue;
+    }
+
+    // Closed-vocabulary membership. The message NAMES the permitted values,
+    // because the failure this catches is a near-miss (`gpu` for `cuda`) that a
+    // "not allowed" message alone would not resolve.
+    const vocabulary = CLOSED_VOCABULARIES[key];
+    if (vocabulary && !vocabulary.includes(value as string)) {
+      violations.push(`attributesJson key "${key}" must be one of: ${vocabulary.join(', ')} (received "${String(value)}")`);
       continue;
     }
 
