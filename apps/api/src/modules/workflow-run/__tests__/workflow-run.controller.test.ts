@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { WorkflowRunController } from '../workflow-run.controller';
+import { WorkflowRunModule } from '../workflow-run.module';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
 
@@ -25,9 +26,10 @@ function makeController(ctx: Ctx) {
     recordRunStarted: vi.fn(),
     recordRunFinished: vi.fn(),
   };
+  const usageAnalytics = { getWorkflowRunCpuSeconds: vi.fn().mockResolvedValue(null) };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
-  const controller = new WorkflowRunController(service as never, cls as never);
-  return { controller, service };
+  const controller = new WorkflowRunController(service as never, usageAnalytics as never, cls as never);
+  return { controller, service, usageAnalytics };
 }
 
 describe('WorkflowRunController', () => {
@@ -103,5 +105,62 @@ describe('WorkflowRunController', () => {
       await controller.getRunTrace('run-1');
       expect(service.getRunTrace).toHaveBeenCalledWith('t1', 'run-1');
     });
+  });
+});
+
+describe('GET admin/workflow-runs/:runId — cpuSeconds (TASK-959 §3.4)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('decorates the run row with the ledger sum for that run, tenant-scoped', async () => {
+    const { controller, service, usageAnalytics } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.getRun.mockResolvedValue({ id: 'run-row-1', runId: 'run-7', tenantId: 't1' });
+    usageAnalytics.getWorkflowRunCpuSeconds.mockResolvedValue(12.75);
+
+    const response = await controller.getRun('run-7');
+
+    expect(usageAnalytics.getWorkflowRunCpuSeconds).toHaveBeenCalledWith('t1', 'run-7');
+    expect(response.cpuSeconds).toBe(12.75);
+    // Purely additive — the run row the service returned is passed through whole.
+    expect(response.id).toBe('run-row-1');
+    expect(response.runId).toBe('run-7');
+  });
+
+  it('reports null when the run has no worker-CPU rows, never 0', async () => {
+    const { controller, usageAnalytics } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    usageAnalytics.getWorkflowRunCpuSeconds.mockResolvedValue(null);
+
+    // A run from before the metering interceptor shipped is not a run that
+    // burned no CPU, and the detail screen must be able to tell them apart.
+    expect((await controller.getRun('run-7')).cpuSeconds).toBeNull();
+  });
+
+  it('does not read the ledger at all when the run itself is not the caller\u2019s (404 first)', async () => {
+    const { controller, service, usageAnalytics } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.getRun.mockRejectedValue(new NotFoundException('Run not found'));
+
+    await expect(controller.getRun('run-7')).rejects.toBeInstanceOf(NotFoundException);
+    expect(usageAnalytics.getWorkflowRunCpuSeconds).not.toHaveBeenCalled();
+  });
+
+  it('leaves the list route undecorated — a per-run ledger sum per row would be N queries', async () => {
+    const { controller, usageAnalytics } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+
+    await controller.listRuns({} as never);
+
+    expect(usageAnalytics.getWorkflowRunCpuSeconds).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowRunModule wiring', () => {
+  it('imports a module that EXPORTS IUsageAnalyticsService, so the controller can inject it', async () => {
+    // The failure this catches only ever appears at BOOT: a controller that
+    // injects a token no imported module exports is a compile-clean,
+    // unit-test-clean Nest startup failure. Asserting the module graph is the
+    // cheapest place to catch it without a live database.
+    const { IUsageAnalyticsService, UsageAnalyticsServiceModule } = await import('@arcaai/applications');
+    const imports = (Reflect.getMetadata('imports', WorkflowRunModule) ?? []) as unknown[];
+
+    expect(imports).toContain(UsageAnalyticsServiceModule);
+    expect((Reflect.getMetadata('exports', UsageAnalyticsServiceModule) ?? []) as unknown[]).toContain(IUsageAnalyticsService);
   });
 });
