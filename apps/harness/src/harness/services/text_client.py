@@ -91,6 +91,82 @@ class TextGenerationResult(BaseModel):
     # None (never throws over missing stats). The generate activity returns this model, so the
     # field threads through to the activity result command-neutrally (no new workflow command).
     stats: dict[str, Any] | None = None
+    # TASK-957 F-6 / TASK-959 §10.2 — Text's normalized billing passthrough. It sits on the
+    # SAME response as `stats` and always has, but this model's `extra="ignore"` dropped it, so
+    # the cache/reasoning split and the timing/byte counts never reached the trajectory step and
+    # the gateway's mapper zeroed them (`cacheReadTokens: 0, reasoningTokens: 0`). Captured
+    # verbatim as a dict (the Text wire shape), like `stats`: the harness does not depend on the
+    # text model. Additive-optional default None ⇒ replay-safe, since the `generate` activity
+    # returns this model and an older activity result deserializes it to None.
+    usage_detail: dict[str, Any] | None = None
+
+
+def _int_or_none(source: Any, name: str) -> int | None:
+    """One integer count off a mapping, or ``None``.
+
+    Absent is NOT zero (the same distinction ``apps/text`` makes when it builds these): "the
+    provider reported no cache breakdown" and "the provider reported zero cached tokens" are
+    different facts, and only the second belongs in a billing row.
+    """
+    if not isinstance(source, dict):
+        return None
+    value = source.get(name)
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def usage_detail_counters(usage_detail: dict[str, Any] | None) -> dict[str, Any]:
+    """The seven `usage_detail` counts a trajectory `LLM_CALL` step carries (TASK-959 §10.2).
+
+    Read DEFENSIVELY, and only what is actually there — an absent key stays absent rather than
+    becoming a zero the rater would price. Two shapes are accepted for the token counts because
+    both are real:
+
+    * the FLAT spelling (``usage_detail.cache_read_tokens``, …) — where the P-TEXT lane is
+      normalising them, and where `total_ms`/`engine_ms`/the byte counts live;
+    * the provider's own ``raw`` object (``prompt_tokens_details.cached_tokens``,
+      ``completion_tokens_details.reasoning_tokens``) — which is where they live TODAY, and the
+      reason F-6 reported reasoning-model spend as structurally unbillable.
+
+    The flat spelling wins wherever both appear: it is `apps/text`'s own normalization, and the
+    raw object is whatever the vendor happened to send.
+    """
+    if not isinstance(usage_detail, dict):
+        return {}
+
+    raw = usage_detail.get("raw")
+    raw = raw if isinstance(raw, dict) else {}
+    prompt_details = raw.get("prompt_tokens_details")
+    completion_details = raw.get("completion_tokens_details")
+
+    counters: dict[str, Any] = {}
+    for key, fallbacks in (
+        ("cache_read_tokens", ((prompt_details, "cached_tokens"), (raw, "cache_read_tokens"))),
+        (
+            "cache_write_tokens",
+            ((prompt_details, "cache_write_tokens"), (raw, "cache_write_tokens")),
+        ),
+        (
+            "reasoning_tokens",
+            ((completion_details, "reasoning_tokens"), (raw, "reasoning_tokens")),
+        ),
+        ("total_ms", ()),
+        ("engine_ms", ()),
+        ("request_bytes", ()),
+        ("response_bytes", ()),
+    ):
+        value = _int_or_none(usage_detail, key)
+        for source, name in fallbacks:
+            if value is not None:
+                break
+            value = _int_or_none(source, name)
+        if value is not None:
+            counters[key] = value
+    return counters
 
 
 #: ``(provider, tenant_id) -> ProviderCredential``. NEVER raises — every fault is an
@@ -135,6 +211,7 @@ class TextClient:
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         guardrail_policy: dict[str, Any] | None = None,
+        provider_override: dict[str, Any] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -148,6 +225,11 @@ class TextClient:
         Genuinely tenant-less internal work declares itself with a
         ``tenantless:<reason>`` marker; a blank value is a CALLER defect and
         raises here rather than being papered over downstream.
+
+        ``provider_override`` is a gateway-RESOLVED connection entry
+        (``ResolvedAgent.providerOverride``) for the row the caller is bound to. When
+        present it is authoritative and the by-name credential resolver is skipped
+        entirely — see the fold below.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
@@ -190,7 +272,31 @@ class TextClient:
         # folds the gateway-resolved connection (tenant → SYSTEM, ``funding`` derived
         # gateway-side) in itself. A DENIED/UNAVAILABLE outcome fails CLOSED here, as the
         # error type every call site already degrades on, before anything is sent.
-        if provider and self._credential_resolver is not None:
+        #
+        # TASK-958 G3 — the caller's RESOLVED override wins, and the by-name fetch is then
+        # not consulted at all. `resolve_provider_credential(service, provider, tenant)`
+        # answers with the tenant's DEFAULT connection for that vendor, which since TASK-958
+        # is one of several: an agent bound to a SIBLING (`AiModel.sourceConnectionId`)
+        # spent — and was billed to — the default account instead. `ResolvedAgent`
+        # `providerOverride` is the credential of the bound row, already resolved gateway-side
+        # with `connection_id`/`connection_slug` and the DERIVED funding on it, so it is
+        # forwarded as-is. The `elif` is the fail-closed half: an override that carries no
+        # credential material must never be RESCUED by the name lookup, because the rescue
+        # spends an account the binding did not name.
+        if provider and provider_override:
+            # `provider` rides inside the entry (`{ provider, ...binding.override }`) and is
+            # stripped before it becomes the map's VALUE — the same strip the gateway's own
+            # realtime fold performs (`live-documentation.service.ts`). The map is keyed by
+            # the provider this request declares, because that is the key `apps/text` reads.
+            entry = {key: value for key, value in provider_override.items() if key != "provider"}
+            if not entry.get("api_key") and not entry.get("base_url"):
+                raise TextServiceError(
+                    f"text generate refused: the resolved connection for {provider!r} carries "
+                    "neither a key nor an endpoint; it cannot serve this call, and the "
+                    "tenant's default account for that provider is not a substitute for it"
+                )
+            body["provider_overrides"] = {provider: entry}
+        elif provider and self._credential_resolver is not None:
             credential = await self._credential_resolver(provider, tenant_id.strip())
             try:
                 credential.raise_if_unusable(service="llm", provider=provider)

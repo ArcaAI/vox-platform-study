@@ -47,7 +47,18 @@ def _accumulator(asr_format, clock, audio_seconds: float = 0.0):
 def _resolver(overrides):
     from stt.transcription.batch_service import resolve_usage_attribution
 
-    return lambda fmt: resolve_usage_attribution(fmt, overrides)
+    # TASK-958 G3 — `close` hands the resolver each span's OWN
+    # `(connection_key, connection_id)`. These spans record none, so the pair
+    # arrives as `None` and attribution is exactly what it was before the field
+    # existed; the forwarding is written out rather than swallowed so the test
+    # exercises the real call shape.
+    def _resolve(fmt, connection=None):
+        connection_key, connection_id = connection or (None, None)
+        return resolve_usage_attribution(
+            fmt, overrides, connection_key=connection_key, connection_id=connection_id
+        )
+
+    return _resolve
 
 
 class TestEngineUsageAccumulator:
@@ -187,7 +198,7 @@ class TestEngineUsageAccumulator:
             audio_seconds=42.5,
             total_audio_seconds=42.5,
             total_session_seconds=90.0,
-            resolve=lambda _fmt: None,
+            resolve=lambda _fmt, _connection=None: None,
         )
 
         assert segments == []
@@ -352,7 +363,7 @@ class TestSwitchAdvancesTheSegment:
             audio_seconds=80.0,
             total_audio_seconds=80.0,
             total_session_seconds=90.0,
-            resolve=lambda fmt: resolve_usage_attribution(
+            resolve=lambda fmt, _connection=None: resolve_usage_attribution(
                 fmt, mgr._provider_overrides.get(session_id)
             ),
         )

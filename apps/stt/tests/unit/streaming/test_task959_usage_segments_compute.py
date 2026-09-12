@@ -53,7 +53,16 @@ class _FakeClock:
 def _resolver(overrides=OVERRIDES):
     from stt.transcription.batch_service import resolve_usage_attribution
 
-    return lambda fmt: resolve_usage_attribution(fmt, overrides)
+    # TASK-958 G3 widened the resolver contract: `close` passes each span's own
+    # `(connection_key, connection_id)`. These spans record none, so the pair is
+    # `None` and every assertion below is unchanged.
+    def _resolve(fmt, connection=None):
+        connection_key, connection_id = connection or (None, None)
+        return resolve_usage_attribution(
+            fmt, overrides, connection_key=connection_key, connection_id=connection_id
+        )
+
+    return _resolve
 
 
 def _by_engine(segments):

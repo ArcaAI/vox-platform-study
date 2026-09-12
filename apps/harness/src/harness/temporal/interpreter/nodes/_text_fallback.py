@@ -77,6 +77,14 @@ class TextFallbackCandidate(BaseModel):
     instruction: dict[str, Any] | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     funding_tier: str | None = Field(default=None, alias="fundingTier")
+    #: TASK-958 G3 — THIS candidate's one-hop cloud credential
+    #: (`ResolvedTextCandidate.providerOverride`), resolved gateway-side from the model row's
+    #: `sourceConnectionId`. It is per CANDIDATE because a chain can name two accounts of one
+    #: vendor — or two vendors — and the primary's credential is not the fallback's. Dropping
+    #: it here sent the fallback down `TextClient`'s by-NAME lookup, which answers with the
+    #: tenant's DEFAULT connection for that provider: the wrong key and the wrong invoice.
+    #: Never persisted — it lives in an activity local, like every other credential here.
+    provider_override: dict[str, Any] | None = Field(default=None, alias="providerOverride")
 
 
 class TextFallbackBlock(BaseModel):
@@ -168,6 +176,14 @@ def candidate_as_resolved_agent(candidate: TextFallbackCandidate) -> ResolvedAge
                 "sourceUri": candidate.model,
             },
             "fundingTier": candidate.funding_tier,
+            # TASK-958 G3 — carried onto the projection so the ONE generation path spends the
+            # account THIS candidate is bound to. Omitted when the candidate names none, which
+            # leaves `TextClient`'s by-name resolution exactly as it was.
+            **(
+                {"providerOverride": candidate.provider_override}
+                if candidate.provider_override
+                else {}
+            ),
         }
     )
 
