@@ -20,6 +20,7 @@ from stt.core.exceptions import (
     CloudASRQuotaError,
     CloudASRTranscriptionError,
 )
+from stt.core.metering import BYTE_SOURCE_APP
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,13 @@ def azure_recognize_utterance(
         code_switching: If ``True``, use ``AutoDetectSourceLanguageConfig``.
 
     Returns:
-        ``{"text": str, "word_timestamps": list[dict]}``
+        ``{"text": str, "word_timestamps": list[dict]}`` plus the TASK-959
+        network counters. The Speech SDK talks over its OWN websocket and never
+        exposes an HTTP layer, so these are application-level PROXIES —
+        ``request_bytes`` is the PCM we pushed, ``response_bytes`` the result
+        JSON we got back, and ``byte_source`` is ``"app"`` so a later exact
+        figure cannot silently change the meaning of rows written today
+        (TASK-959 §4.2).
 
     Raises:
         CloudASRAuthError: Invalid credentials.
@@ -88,12 +95,21 @@ def azure_recognize_utterance(
     result = recognizer.recognize_once_async().get()
 
     # ---- Handle result -----------------------------------------------
+    # The PCM we handed the SDK is paid for whether or not anything came back,
+    # so it is reported on BOTH success and NoMatch.
+    result_json = getattr(result, "json", None)
+    proxy_bytes: dict[str, Any] = {
+        "request_bytes": len(pcm_bytes),
+        "response_bytes": len(result_json) if isinstance(result_json, str) else 0,
+        "byte_source": BYTE_SOURCE_APP,
+    }
+
     if result.reason == speechsdk.ResultReason.RecognizedSpeech:
         word_timestamps = _extract_word_timestamps(result)
-        return {"text": result.text, "word_timestamps": word_timestamps}
+        return {"text": result.text, "word_timestamps": word_timestamps, **proxy_bytes}
 
     if result.reason == speechsdk.ResultReason.NoMatch:
-        return {"text": "", "word_timestamps": []}
+        return {"text": "", "word_timestamps": [], **proxy_bytes}
 
     if result.reason == speechsdk.ResultReason.Canceled:
         cancellation = result.cancellation_details

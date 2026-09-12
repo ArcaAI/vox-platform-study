@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import numpy as np
 
+from stt.core.metering import BYTE_SOURCE_WIRE
 from stt.models.cloud_asr import (
     CloudRestConfig,
     raise_for_cloud_status,
@@ -73,7 +74,11 @@ async def sarvam_recognize_utterance(
 ) -> dict[str, Any]:
     """Transcribe ``samples`` via Sarvam speech-to-text REST.
 
-    Returns ``{"text": str, "word_timestamps": list[dict]}``.
+    Returns ``{"text": str, "word_timestamps": list[dict]}`` plus the TASK-959
+    network counters: ``request_bytes`` (the WAV we posted), ``response_bytes``
+    (the body we read) and ``byte_source: "wire"`` — real HTTP, not a proxy.
+    They ride the SUCCESS return only, so a failed attempt reports nothing
+    (TASK-959 §6.2, a stated blind spot).
 
     Args:
         code_switching: When ``True`` (a bilingual "X + English" mode), request
@@ -126,4 +131,11 @@ async def sarvam_recognize_utterance(
     # in ``language_code`` — surface it so the per-utterance detected language
     # flows to the transcript metadata instead of an echo of the requested mode.
     detected_language = payload.get("language_code") or None
-    return {"text": text, "word_timestamps": [], "language": detected_language}
+    return {
+        "text": text,
+        "word_timestamps": [],
+        "language": detected_language,
+        "request_bytes": len(wav),
+        "response_bytes": len(response.content),
+        "byte_source": BYTE_SOURCE_WIRE,
+    }

@@ -151,6 +151,15 @@ class RawTranscription:
     segments: list[dict[str, Any]] = field(default_factory=list)
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
     model_output: Any = None  # Raw model output for debugging
+    # TASK-959 §4.2 — bytes this inference actually moved over the network, set
+    # by the cloud adapters only. `None` on every self-hosted engine, which made
+    # no third-party call at all: the ABSENCE is the signal, and it is what keeps
+    # a self-hosted row out of the third-party egress sums.
+    request_bytes: int | None = None
+    response_bytes: int | None = None
+    #: `wire` (a real HTTP request/response) or `app` (an application-level proxy,
+    #: for the Azure Speech SDK whose socket traffic is opaque to us).
+    byte_source: str | None = None
 
 
 @dataclass
@@ -231,6 +240,16 @@ class TranscriptionResult:
     #: field that says which key was spent. Rides the gateway callback as a typed
     #: top-level field beside the other two; ``None`` when the sender stamped none.
     connection_id: str | None = None
+    #: TASK-959 §3.2 — the device this job OCCUPIED (`cuda` | `mps` | `cpu`,
+    #: normalised by `stt.core.metering.normalize_device`). It decides the compute
+    #: UNIT the gateway emits for `processing_time_seconds`: an accelerator bills
+    #: `GPU_SECOND`, a CPU (and every cloud engine, whose occupancy here is the
+    #: calling service waiting on the vendor) bills `CPU_SECOND`.
+    device: str | None = None
+    #: TASK-959 §4.2 — carried up from `RawTranscription`; see there.
+    request_bytes: int | None = None
+    response_bytes: int | None = None
+    byte_source: str | None = None
 
     def build_transcript_segments(self) -> list[dict[str, Any]]:
         """Build consumer-shaped transcript segments for the gateway.
