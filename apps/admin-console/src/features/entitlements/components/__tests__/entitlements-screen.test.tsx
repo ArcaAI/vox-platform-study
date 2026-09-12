@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { EntitlementCapabilities, PlanEntitlement, TenantEntitlement } from '../../api/types';
+import { LIMIT_FIELDS } from '../plan-meta';
 import { EntitlementsScreen } from '../entitlements-screen';
 
 vi.mock('sonner', () => ({
@@ -33,6 +34,11 @@ function planEntitlement(overrides: Partial<PlanEntitlement> = {}): PlanEntitlem
     monthlyTranscriptionMinutes: 1200,
     monthlySummaries: 400,
     monthlyWorkflowInvocations: 500,
+    monthlySttSessionSeconds: 36000,
+    monthlyLlmTokens: 2000000,
+    monthlyTtsCharacters: 150000,
+    monthlyNlpTextUnits: 8000,
+    monthlyEmbeddingTokens: 500000,
     modelTier: 'standard',
     rateLimitTier: 'basic',
     version: 3,
@@ -96,6 +102,11 @@ const OVERRIDE: TenantEntitlement = {
   monthlyTranscriptionMinutes: null,
   monthlySummaries: null,
   monthlyWorkflowInvocations: null,
+  monthlySttSessionSeconds: null,
+  monthlyLlmTokens: null,
+  monthlyTtsCharacters: null,
+  monthlyNlpTextUnits: null,
+  monthlyEmbeddingTokens: null,
   modelTier: null,
   rateLimitTier: null,
   rateLimitPerMinute: null,
@@ -296,6 +307,52 @@ describe('EntitlementsScreen', () => {
     });
   });
 
+  it('edits the five monthly service allowances', async () => {
+    const calls = stubEntitlements((call) => {
+      if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
+        return Response.json({ ...PLANS[1], version: 6 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+
+    const sttSeconds = (await within(dialog).findByLabelText('Monthly STT session seconds')) as HTMLInputElement;
+    const llmTokens = within(dialog).getByLabelText('Monthly LLM tokens') as HTMLInputElement;
+    const ttsCharacters = within(dialog).getByLabelText('Monthly TTS characters') as HTMLInputElement;
+    const nlpTextUnits = within(dialog).getByLabelText('Monthly NLP text units') as HTMLInputElement;
+    const embeddingTokens = within(dialog).getByLabelText('Monthly embedding tokens') as HTMLInputElement;
+    expect([sttSeconds.value, llmTokens.value, ttsCharacters.value, nlpTextUnits.value, embeddingTokens.value]).toEqual([
+      '36000',
+      '2000000',
+      '150000',
+      '8000',
+      '500000',
+    ]);
+
+    fireEvent.change(llmTokens, { target: { value: '9000000' } });
+    // These are bigint columns on the gateway; the form still sends a number.
+    fireEvent.change(sttSeconds, { target: { value: '72000' } });
+    fireEvent.change(embeddingTokens, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO'));
+      expect(patch?.body).toEqual(
+        expect.objectContaining({
+          monthlySttSessionSeconds: 72000,
+          monthlyLlmTokens: 9000000,
+          monthlyTtsCharacters: 150000,
+          monthlyNlpTextUnits: 8000,
+          monthlyEmbeddingTokens: null,
+          expectedVersion: 5,
+        }),
+      );
+    });
+  });
+
   it('surfaces the OCC conflict alert when the plan update returns 412', async () => {
     stubEntitlements((call) => {
       if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
@@ -326,15 +383,16 @@ describe('EntitlementsScreen', () => {
     expect(editor.value).toContain('"maxUsers": 60');
   });
 
-  it('offers the workflow and provider-connection ceilings in the override document', async () => {
+  // The two lists are maintained by hand and have drifted apart twice, so pin
+  // the invariant rather than the individual keys: every limit the plan form
+  // renders must also be settable per tenant.
+  it('exposes every plan limit as a key of the override document', async () => {
     stubEntitlements();
     renderWithProviders(<EntitlementsScreen />, { searchParams: '?tab=overrides&tenant=t-1' });
 
     const editor = (await screen.findByLabelText(/override json/i)) as HTMLTextAreaElement;
     const parsed = JSON.parse(editor.value) as Record<string, unknown>;
-    expect(parsed).toHaveProperty('maxWorkflowDefinitions', null);
-    expect(parsed).toHaveProperty('maxAiProviderConnections', null);
-    expect(parsed).toHaveProperty('monthlyWorkflowInvocations', null);
+    expect(Object.keys(parsed)).toEqual(expect.arrayContaining(LIMIT_FIELDS.map((field) => field.key)));
   });
 
   it('upserts the tenant override with the existing row version behind a confirm', async () => {
