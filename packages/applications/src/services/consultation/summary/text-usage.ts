@@ -328,6 +328,14 @@ interface BuildLlmUsageFromTokenCountsParams {
   provider: string;
   model?: string | null;
   deployment: AiDeploymentKind;
+  /**
+   * TASK-959 — stated by a BYOK caller, never derived from `deployment`
+   * (`usage-event.input.ts`). It belongs on the PARAMS rather than being stamped
+   * on the returned batch, because the basis is what decides whether the compute
+   * row splits onto a second `INTERNAL` batch (§6.3): a caller that sets it
+   * afterwards sets it after that decision was already made.
+   */
+  costBasis?: AiCostBasis;
   occurredAt: Date;
   inputTokens?: number | null;
   outputTokens?: number | null;
@@ -386,6 +394,7 @@ export function buildLlmUsageBatchesFromTokenCounts(params: BuildLlmUsageFromTok
       provider: params.provider,
       model: params.model ?? null,
       deployment: params.deployment,
+      ...(params.costBasis ? { costBasis: params.costBasis } : {}),
       consultationId: params.consultationId ?? null,
       doctorId: params.doctorId ?? null,
       departmentId: params.departmentId ?? null,

@@ -6,14 +6,10 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
-import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
-// TASK-959 T1-merge: the local compute/byte unit builder, replaced by T1's
-// `appendComputeAndByteUnits`. Reached across `stt/internal` because the two
-// STT emitters share the rule and nothing else does.
-import { computeAndByteUnits } from '../internal/compute-network-units';
 import { IStreamingSessionService } from './IStreamingSessionService';
 import {
   CreateStreamingSessionRequest,
@@ -497,20 +493,6 @@ export class StreamingSessionService implements IStreamingSessionService {
     try {
       for (const [index, segment] of segments.entries()) {
         const costBasis = segment.deployment === 'BYOK' ? AiCostBasis.BYOK_NOTIONAL : undefined;
-        // TASK-959 §3.2/§4.2 — this segment's OWN occupancy seconds and bytes.
-        // Per segment, not per session: a cloud leg occupied this service's CPU
-        // waiting on the vendor while a self-hosted leg of the same session held
-        // a real accelerator, so the two bill different units.
-        const extra = computeAndByteUnits(
-          {
-            processingSeconds: segment.processing_seconds,
-            device: segment.device,
-            requestBytes: segment.request_bytes,
-            responseBytes: segment.response_bytes,
-            byteSource: segment.byte_source,
-          },
-          costBasis,
-        );
         const common = {
           tenantId: summary.tenant_id,
           sessionId: summary.session_id,
@@ -545,22 +527,37 @@ export class StreamingSessionService implements IStreamingSessionService {
           },
         };
 
-        await this.usageLedgerService.recordUsage({
-          common,
-          units: [
-            { unit: AiUsageUnit.SESSION_SECOND, quantity: segment.session_seconds },
-            { unit: AiUsageUnit.AUDIO_SECOND, quantity: segment.audio_seconds },
-            ...extra.onCallBasis,
-          ],
-        });
+        // TASK-959 §3.2/§4.2 — this segment's OWN occupancy seconds and bytes, appended by the
+        // ONE shared helper (`usageLedger/compute-units.ts`) because this loop is what BUILDS
+        // the batch. Per segment, not per session: a cloud leg occupied this service's CPU
+        // waiting on the vendor while a self-hosted leg of the same session held a real
+        // accelerator, so the two bill different units.
+        const { batch, platformBatch } = appendComputeAndByteUnits(
+          {
+            common,
+            units: [
+              { unit: AiUsageUnit.SESSION_SECOND, quantity: segment.session_seconds },
+              { unit: AiUsageUnit.AUDIO_SECOND, quantity: segment.audio_seconds },
+            ],
+          },
+          {
+            seconds: segment.processing_seconds,
+            device: segment.device,
+            requestBytes: segment.request_bytes,
+            responseBytes: segment.response_bytes,
+            byteSource: segment.byte_source,
+          },
+        );
+
+        await this.usageLedgerService.recordUsage(batch);
 
         // The one sanctioned mixed-basis case: a BYOK leg's vendor minutes are
         // the tenant's, but the CPU this service burned CALLING the vendor is the
         // platform's. `costBasis` is a `common` field, so the second basis is a
         // second batch on the SAME per-segment key — `expandUsageBatch` appends
         // `:<UNIT>`, so the rows stay distinct without a new key.
-        if (extra.onInternalBasis.length > 0) {
-          await this.usageLedgerService.recordUsage({ common: { ...common, costBasis: AiCostBasis.INTERNAL }, units: extra.onInternalBasis });
+        if (platformBatch) {
+          await this.usageLedgerService.recordUsage(platformBatch);
         }
       }
     } catch (error) {
