@@ -2,9 +2,10 @@
 
 import { IconServerCog } from '@tabler/icons-react';
 import { EmptyState } from '@/shared/state/empty-state';
-import { usePlatformDefaults } from '../api/hooks';
-import type { ProviderService } from '../api/types';
+import { usePlatformDefaults, useProviderConnections } from '../api/hooks';
+import { declarableService, type ProviderService } from '../api/types';
 import { PlatformDefaultsPanel } from './platform-defaults-panel';
+import { ProviderConnectionGroup } from './provider-connection-group';
 import { ProviderCredentialCard } from './provider-credential-card';
 import { cloudProvidersFor } from './provider-meta';
 import type { ProviderTier } from './use-provider-scope';
@@ -49,6 +50,18 @@ export function ProviderCredentialsTab({
   // platform tier: the SYSTEM tenant is the top of the cascade (the route 400s).
   const tenantTier = tier === 'tenant';
   const platformDefaults = usePlatformDefaults(service, tenantId, enabled && tenantTier && providers.length > 0);
+  /**
+   * TASK-958 D-9 — multiplicity is for the capabilities a tenant can DECLARE
+   * MODELS on (`llm | stt | tts`). `embeddings` / `vector` keep exactly one card
+   * per provider: the gateway refuses a non-default row there
+   * (`CONNECTION_MULTIPLICITY_UNSUPPORTED`), and an "add another" button whose
+   * every use is a 400 is worse than no button. The SYSTEM tier is likewise
+   * one row per provider, so the platform tab is untouched.
+   */
+  const multiConnection = tenantTier && declarableService(service);
+  // One list read per TAB, shared by every group on it — a per-group read would
+  // be five identical requests for one array.
+  const connections = useProviderConnections(service, tenantId, enabled && multiConnection && providers.length > 0);
 
   if (providers.length === 0) {
     return (
@@ -63,22 +76,35 @@ export function ProviderCredentialsTab({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
-        {SERVICE_COPY[service]} <span className="font-mono text-xs">PUT /admin/providers/{service}/:provider</span> — write-only, masked on read, OCC
+        {SERVICE_COPY[service]} <span className="font-mono text-xs">PUT /admin/providers/{service}/:slug</span> — write-only, masked on read, OCC
         If-Match.
       </p>
       {tenantTier ? <PlatformDefaultsPanel service={service} query={platformDefaults} /> : null}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {providers.map((meta) => (
-          <ProviderCredentialCard
-            key={meta.id}
-            service={service}
-            meta={meta}
-            tenantId={tenantId}
-            tier={tier}
-            enabled={enabled}
-            platformDefault={tenantTier ? platformDefaults.data?.connections.find((connection) => connection.provider === meta.id) : undefined}
-          />
-        ))}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        {providers.map((meta) => {
+          const platformDefault = tenantTier ? platformDefaults.data?.connections.find((connection) => connection.provider === meta.id) : undefined;
+          return multiConnection ? (
+            <ProviderConnectionGroup
+              key={meta.id}
+              service={service}
+              meta={meta}
+              tenantId={tenantId}
+              enabled={enabled}
+              platformDefault={platformDefault}
+              connections={connections}
+            />
+          ) : (
+            <ProviderCredentialCard
+              key={meta.id}
+              service={service}
+              meta={meta}
+              tenantId={tenantId}
+              tier={tier}
+              enabled={enabled}
+              platformDefault={platformDefault}
+            />
+          );
+        })}
       </div>
     </div>
   );
