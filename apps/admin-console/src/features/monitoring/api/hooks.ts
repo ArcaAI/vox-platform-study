@@ -32,6 +32,7 @@ export function useSessions() {
   return useQuery({ queryKey: monitoringKeys.sessions(), queryFn: getSessions, refetchInterval: REFRESH_MS });
 }
 
-export function useRedisHealth() {
-  return useQuery({ queryKey: monitoringKeys.redis(), queryFn: getRedisHealth, refetchInterval: REFRESH_MS });
+/** Platform-ops only (`manage:all`); `enabled: false` keeps a tenant-scoped screen from issuing a read that can only 403. */
+export function useRedisHealth(enabled = true) {
+  return useQuery({ queryKey: monitoringKeys.redis(), queryFn: getRedisHealth, refetchInterval: REFRESH_MS, enabled });
 }

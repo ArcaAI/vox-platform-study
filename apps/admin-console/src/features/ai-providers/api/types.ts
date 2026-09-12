@@ -218,6 +218,40 @@ export function platformStateOf(row: Pick<ProviderConnection, 'version' | 'hasKe
 }
 
 /**
+ * ── The platform fallback a TENANT inherits (TASK-954) ──────────────────────
+ *
+ * `GET admin/providers/:service/platform-defaults` — the SYSTEM tier's cloud
+ * rows for one service, MASKED (`hasKey` only) and annotated with the cascade's
+ * verdict for the scoped tenant. Read-only by construction: no route writes it
+ * under a tenant scope. A hand-declared mirror of
+ * `PlatformDefaultConnectionsResponse` (@arcaai/applications).
+ *
+ * `resolution`, in the order the cascade decides it:
+ *   `overridden`     the tenant's own ENABLED, keyed row wins; the platform row is not consulted
+ *   `vetoed`         the tenant DISABLED its own row — fail closed, the platform key is blocked too
+ *   `not-entitled`   no `platformDefaultCredential` grant — no platform vendor account serves this tenant
+ *   `not-configured` the platform row is absent or keyless — nothing to inherit
+ *   `off`            the platform row is disabled — it serves nobody
+ *   `inherited`      an enabled, keyed platform row the tenant has no opinion on — THIS serves the tenant
+ */
+export const PLATFORM_DEFAULT_RESOLUTIONS = ['inherited', 'overridden', 'vetoed', 'not-entitled', 'not-configured', 'off'] as const;
+export type PlatformDefaultResolution = (typeof PLATFORM_DEFAULT_RESOLUTIONS)[number];
+
+export interface PlatformDefaultConnection extends ProviderConnection {
+  resolution: PlatformDefaultResolution;
+}
+
+export interface PlatformDefaults {
+  service: ProviderService;
+  /** The tenant the verdicts were computed for. */
+  tenantId: string;
+  /** Whether this tenant may draw on the platform's vendor accounts at all. */
+  entitled: boolean;
+  /** One entry per cloud BYO provider of the service, in the platform's order; a placeholder (`version: 0`) where the platform has no row. */
+  connections: PlatformDefaultConnection[];
+}
+
+/**
  * ── Inference readiness, narrowed to what an ENGINE CARD renders ────────────
  *
  * A hand-declared BFF mirror of `InferenceReadinessResponse`

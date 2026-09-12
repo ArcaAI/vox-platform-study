@@ -455,9 +455,11 @@ describe('GlobalSettingService', () => {
       });
 
       expect(result.data).toHaveLength(1);
+      // TASK-954 — the fixture's caller is non-elevated, so `locked` platform
+      // defaults are excluded from its list (see the list faceting suite).
       expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: 'tenant-1' },
+          where: { tenantId: 'tenant-1', locked: false },
         }),
       );
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -482,7 +484,7 @@ describe('GlobalSettingService', () => {
       expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(
         expect.objectContaining({
           search: 'test',
-          where: { tenantId: 'tenant-1' },
+          where: { tenantId: 'tenant-1', locked: false },
         }),
       );
     });
@@ -1205,17 +1207,19 @@ describe('GlobalSettingService', () => {
     it('pins the list to the caller own tenant, so the shared-read widening cannot serve SYSTEM rows', async () => {
       await service.fetchAll({ limit: 200, page: 1 });
 
-      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1' } }));
+      // TASK-954 — the pin also excludes `locked` platform defaults a
+      // non-elevated caller cannot change.
+      expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', locked: false } }));
       // The count must carry the SAME predicate, or the page disagrees with its
       // own total and the missing rows look like a paging bug.
-      expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1' } }));
+      expect(mockGlobalSettingRepository.count).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', locked: false } }));
     });
 
     it('keeps the secretsOnly facet AND the pin — a facet must never drop the tenant', async () => {
       await service.fetchAll({ limit: 10, page: 1, secretsOnly: true });
 
       expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { AND: [{ tenantId: 'tenant-1' }, buildSecretSettingFilter()] } }),
+        expect.objectContaining({ where: { AND: [{ tenantId: 'tenant-1', locked: false }, buildSecretSettingFilter()] } }),
       );
     });
 

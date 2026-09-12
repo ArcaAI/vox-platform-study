@@ -35,8 +35,13 @@ export interface SafeSession {
     departmentId: string | null;
   };
   effectiveIsElevated: boolean;
-  /** Tenant scope for the effective identity: the target's tenant while
-   * impersonating, else the operator's own working-tenant pick. */
+  /**
+   * Tenant scope for the effective identity: the target's tenant while
+   * impersonating; an elevated operator's working-tenant pick (null = the
+   * platform tier); a tenant-bound user's OWN tenant, always (TASK-954 — a
+   * tenant admin never has a working tenant, and `null` here made every
+   * tenant-scoped screen fall back to the SYSTEM tier it may not address).
+   */
   effectiveTenantId: string | null;
 }
 
@@ -64,6 +69,10 @@ export function toSafeSession(session: SessionPayload): SafeSession {
     impersonatingUsername: impersonation?.targetUsername ?? null,
     effectiveUser,
     effectiveIsElevated: isElevated({ roles: effectiveUser.roles }),
-    effectiveTenantId: impersonation ? (impersonation.targetTenantId ?? null) : (session.workingTenantId ?? null),
+    effectiveTenantId: impersonation
+      ? (impersonation.targetTenantId ?? null)
+      : isElevated(session.user)
+        ? (session.workingTenantId ?? null)
+        : (tenantId ?? null),
   };
 }

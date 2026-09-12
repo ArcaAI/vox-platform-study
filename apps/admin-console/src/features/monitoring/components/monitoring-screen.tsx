@@ -66,7 +66,8 @@ function StatStrip({
   health: ReturnType<typeof useServicesHealth>;
   uptime: ReturnType<typeof useUptime>;
   sessions: ReturnType<typeof useSessions>;
-  redis: ReturnType<typeof useRedisHealth>;
+  /** Absent on a tenant-scoped screen — the Redis read is platform-ops only (TASK-954). */
+  redis?: ReturnType<typeof useRedisHealth>;
 }) {
   const probes = Object.values(health.data?.services ?? {});
   const healthyCount = probes.filter((probe) => probe.status === 'healthy').length;
@@ -80,7 +81,7 @@ function StatStrip({
   const activeSessions = sessions.data ? Object.values(sessions.data.services).reduce((sum, service) => sum + service.active, 0) : null;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={`grid gap-4 sm:grid-cols-2 ${redis ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
       <StatCard
         label="Services healthy"
         value={health.data ? `${healthyCount}/${probes.length}` : null}
@@ -101,13 +102,15 @@ function StatStrip({
         isLoading={sessions.isPending}
         error={sessions.isError && !sessions.data ? sessions.error : undefined}
       />
-      <StatCard
-        label="Redis latency"
-        value={redis.data ? `${formatNumber(redis.data.latencyMs)} ms` : null}
-        hint={redis.data ? `${formatNumber(redis.data.connectedClients)} clients` : undefined}
-        isLoading={redis.isPending}
-        error={redis.isError && !redis.data ? redis.error : undefined}
-      />
+      {redis ? (
+        <StatCard
+          label="Redis latency"
+          value={redis.data ? `${formatNumber(redis.data.latencyMs)} ms` : null}
+          hint={redis.data ? `${formatNumber(redis.data.connectedClients)} clients` : undefined}
+          isLoading={redis.isPending}
+          error={redis.isError && !redis.data ? redis.error : undefined}
+        />
+      ) : null}
     </div>
   );
 }
@@ -316,23 +319,29 @@ function ActiveSessionsCard({ sessions, health }: { sessions: ReturnType<typeof 
 }
 
 /**
- * Frame 11 — Monitoring (tier 10). Service probes + uptime/heartbeats, latest
- * response times, Redis health and live session counts, all on the hooks'
- * 30s poll. Every region owns its loading / empty / error states; a failed
- * refetch keeps stale data behind an inline banner.
+ * Frame 11 — Monitoring (tier 20-29 since TASK-954). Service probes +
+ * uptime/heartbeats, latest response times, live session counts and — for a
+ * platform operator only — Redis health, all on the hooks' 30s poll. Every
+ * region owns its loading / empty / error states; a failed refetch keeps stale
+ * data behind an inline banner.
+ *
+ * `platformOps` is decided by the route from the effective identity: the Redis
+ * read (`admin/queues/health/redis`) is `manage:all`, and every other read on
+ * this screen is served to a tenant admin (`read:TenantTelemetry`). Rendering
+ * the Redis card for a tenant admin would be one card whose every request 403s.
  */
-export function MonitoringScreen() {
+export function MonitoringScreen({ platformOps = true }: { platformOps?: boolean } = {}) {
   const health = useServicesHealth();
   const uptime = useUptime();
   const sessions = useSessions();
-  const redis = useRedisHealth();
+  const redis = useRedisHealth(platformOps);
 
   return (
     <ScreenTemplate
       header={<PageHeader title="Monitoring" />}
       stats={
         <section aria-label="Key metrics">
-          <StatStrip health={health} uptime={uptime} sessions={sessions} redis={redis} />
+          <StatStrip health={health} uptime={uptime} sessions={sessions} redis={platformOps ? redis : undefined} />
         </section>
       }
       footer={
@@ -351,7 +360,7 @@ export function MonitoringScreen() {
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <ResponseTimeCard uptime={uptime} health={health} />
           <div className="flex flex-col gap-4">
-            <RedisHealthCard redis={redis} />
+            {platformOps ? <RedisHealthCard redis={redis} /> : null}
             <ActiveSessionsCard sessions={sessions} health={health} />
           </div>
         </div>

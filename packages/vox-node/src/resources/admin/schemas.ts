@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 428 component schemas the generated surface transitively
+ * Only the 430 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -3899,6 +3899,58 @@ export interface PlanEntitlementResponse {
   storageQuotaBytes?: number | null;
   /** OCC version token */
   version: number;
+}
+
+export interface PlatformDefaultConnectionResponse {
+  /** API version (azure). */
+  apiVersion: string | null;
+  /** Base URL of the serving endpoint. */
+  baseUrl: string | null;
+  /** Deployment name (azure). */
+  deploymentName: string | null;
+  /** Whether this connection participates in resolution. Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion". */
+  enabled: boolean;
+  /** Provider-specific extras. */
+  extraJson: Record<string, unknown> | null;
+  /** Whether key material is stored. The key itself is never returned by any endpoint. */
+  hasKey: boolean;
+  /** Vault-Transit key version backing the stored ciphertext. */
+  keyVersion: number | null;
+  /** Ceiling — simultaneous in-flight requests. Null = no opinion. */
+  maxConcurrent: number | null;
+  /** Models DECLARED on this connection (TASK-890 §3.7a). Present on the single-row read and on the declaration response; absent from the list read, which does not join the registry. A SYSTEM row never carries any: platform models are declared in `/admin/ai-models`. */
+  models?: ConnectionModelResponse[];
+  /** Capability-scoped serving provider identifier. */
+  provider: string;
+  /** Region identifier (bedrock). */
+  region: string | null;
+  /** What the cascade does with this platform row for the scoped tenant: overridden (tenant key wins) · vetoed (tenant row disabled) · not-entitled (no platform-default grant) · not-configured (absent or keyless) · off (platform row disabled) · inherited (this row serves the tenant). */
+  resolution: 'inherited' | 'overridden' | 'vetoed' | 'not-entitled' | 'not-configured' | 'off';
+  /** Ceiling — requests per minute. Null = no opinion. */
+  rpmLimit: number | null;
+  /** Capability the connection serves. */
+  service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
+  /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
+  tenantId: string;
+  /** Ceiling — per-request timeout in seconds. Null = no opinion. */
+  timeoutS: number | null;
+  /** Ceiling — tokens (LLM) / characters (TTS) per minute. Null = no opinion. */
+  tpmLimit: number | null;
+  /** Last update timestamp (ISO 8601). */
+  updatedAt?: string;
+  /** Row version for optimistic concurrency. 0 when no row exists yet. */
+  version: number;
+}
+
+export interface PlatformDefaultConnectionsResponse {
+  /** One entry per CLOUD BYO provider of the service, in the platform’s declared order — a provider the platform never configured is a `version: 0` placeholder, never an omission. Platform-managed engines and the model registry are platform infrastructure and never listed here. */
+  connections: PlatformDefaultConnectionResponse[];
+  /** Whether this tenant may draw on the platform’s VENDOR accounts at all (the `platformDefaultCredential` entitlement). When false every non-overridden, non-vetoed provider resolves `not-entitled`. */
+  entitled: boolean;
+  /** Capability the connections serve. */
+  service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
+  /** The tenant the verdicts are computed for (the caller’s own tenant unless a platform admin scoped another). */
+  tenantId: string;
 }
 
 export interface PlatformMetricsResponse {

@@ -53,3 +53,21 @@ export interface ConsumptionRollup {
   consultations: { total: number; today: number };
   refreshedAt: string;
 }
+
+/**
+ * GET /admin/tenants/:id/usage (TenantUsageStatsResponse) — the tenant
+ * dashboard's tiles (TASK-954). A tenant admin reads its OWN tenant's row; the
+ * platform-wide `admin/platform/*` reads above are `manage:PlatformMetrics`
+ * and never reach a tenant.
+ */
+export interface TenantUsage {
+  totalUsers: number;
+  totalDepartments: number;
+  totalPromptTemplates: number;
+  totalPipelines: number;
+  storageUsedBytes: number;
+  storageQuotaBytes: number | null;
+  transcriptionMinutes: number;
+  summaries24h: number;
+  totalConsultations: number;
+}

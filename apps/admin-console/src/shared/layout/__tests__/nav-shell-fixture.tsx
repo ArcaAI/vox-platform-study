@@ -67,6 +67,11 @@ export function stubNavSession({ rules = SUPER_ADMIN_RULES, roles = ['SUPER_ADMI
           workingTenantName: null,
           impersonatingUserId: null,
           impersonatingUsername: null,
+          // The shell judges tiers on the EFFECTIVE identity (TASK-954); not
+          // impersonating here, so it mirrors the operator.
+          effectiveUser: { id: 'u-1', username: 'root', email: 'root@example.com', roles, tenantId: isElevated ? null : 'tnt-1', departmentId: null },
+          effectiveIsElevated: isElevated,
+          effectiveTenantId: isElevated ? null : 'tnt-1',
         });
       }
       if (url.includes('features/effective')) {

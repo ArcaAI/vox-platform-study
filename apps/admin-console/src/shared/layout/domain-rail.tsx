@@ -33,8 +33,12 @@ export function DomainRail({ variant = 'rail' }: { variant?: 'rail' | 'inline' }
   const { gates } = useFeatureGates();
   const { isMobile, setOpenMobile } = useSidebar();
 
-  const entries = visibleNavEntries(rules, session?.user.roles, gates);
-  const domains = visibleNavDomains(rules, session?.user.roles, gates);
+  // The EFFECTIVE identity's roles (the impersonated target's while
+  // impersonating) — the same identity the route-group guards judge, so a tier
+  // the nav shows is a tier the route will actually render (TASK-954).
+  const roles = session?.effectiveUser.roles;
+  const entries = visibleNavEntries(rules, roles, gates);
+  const domains = visibleNavDomains(rules, roles, gates);
   const activeId = activeNavDomainId(pathname, entries);
 
   const isInline = variant === 'inline';

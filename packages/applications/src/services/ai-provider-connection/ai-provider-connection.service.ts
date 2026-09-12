@@ -53,11 +53,18 @@ import {
   suggestedByoModelSlug,
   taskTypesOfService,
 } from './byo-model-declaration';
-import { PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
+import { CLOUD_BYO_PROVIDERS, PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
 import { builtInDefaultFor } from './built-in-defaults';
 import { PLATFORM_STORAGE_CREDENTIAL_SOURCE, resolvePlatformStorageCredential } from './platform-storage-credential';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
-import { AiProviderConnectionResponse, DeclareConnectionModelsRequest, UpsertAiProviderConnectionRequest } from './dto';
+import {
+  AiProviderConnectionResponse,
+  DeclareConnectionModelsRequest,
+  PlatformDefaultConnectionResponse,
+  PlatformDefaultConnectionsResponse,
+  PlatformDefaultResolution,
+  UpsertAiProviderConnectionRequest,
+} from './dto';
 import { sanitizeProviderExtras } from './provider-extras';
 import { ConnectionRequirementSubject, validateProviderRequirements } from './provider-requirements';
 
@@ -158,6 +165,79 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // TASK-890 §3.7a — the single-row read carries the models declared on it, so
     // the console edits credential and model list from ONE payload.
     return AiProviderConnectionDtoMapper.toResponse(row, await this.declaredModels(row, scopedTenantId, tx));
+  }
+
+  /**
+   * TASK-954 — the platform fallback a TENANT inherits, projected READ-ONLY.
+   *
+   * WHY THIS EXISTS. A tenant admin may not address the SYSTEM tier
+   * (`?tenantId=SYSTEM` is a 403) and `list()` under a tenant scope returns
+   * the tenant's OWN rows only (R-12), so until now the console could not say
+   * whether "use platform default" on a tenant card would actually serve
+   * anything. The owner's rule is that a tenant admin sees and configures its
+   * own providers AND sees the platform fallback read-only — this is that read.
+   *
+   * WHY IT IS BUILT ON `cascadeRows`. The veto set and the entitlement gate are
+   * the two facts that decide whether the SYSTEM tier serves a tenant, and
+   * both live in exactly one place. Re-deriving them here would be a second
+   * `if` that could disagree with the fold; reading them from the cascade means
+   * a tenant is never told it inherits a credential a real request would refuse.
+   *
+   * WHAT A TENANT LEARNS. One MASKED entry per cloud BYO provider of the service
+   * — `hasKey`, never the key — plus a `resolution` per entry. Platform-managed
+   * engines and the model registry are platform infrastructure and are never
+   * listed (the same boundary `isVisibleToTier` draws on the direct read).
+   * Nothing is decrypted: this is a projection of row STATE, not of credentials.
+   */
+  async listPlatformDefaults(service: ProviderService, tenantId?: string): Promise<PlatformDefaultConnectionsResponse> {
+    const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    if (scopedTenantId === SYSTEM_TENANT_ID) {
+      throw new BadRequestException(
+        'The platform (SYSTEM) tier is the top of the cascade and inherits no platform default. ' +
+          'Read its own rows with `GET admin/providers/:service` instead.',
+      );
+    }
+
+    const { tenantRows, systemRows, vetoed, systemEntitled } = await this.cascadeRows(service, scopedTenantId);
+
+    const connections: PlatformDefaultConnectionResponse[] = CLOUD_BYO_PROVIDERS[service].map((provider) => {
+      const systemRow = systemRows.find((row) => row.provider === provider);
+      const tenantRow = tenantRows.find((row) => row.provider === provider);
+      const projected = systemRow
+        ? AiProviderConnectionDtoMapper.toResponse(systemRow)
+        : AiProviderConnectionDtoMapper.placeholder(service, SYSTEM_TENANT_ID, provider);
+      return {
+        ...projected,
+        resolution: AiProviderConnectionService.platformDefaultResolution({
+          tenantRow,
+          systemRow,
+          vetoed: vetoed.has(provider),
+          entitled: systemEntitled,
+        }),
+      };
+    });
+
+    return { service, tenantId: scopedTenantId, entitled: systemEntitled, connections };
+  }
+
+  /**
+   * The cascade's verdict for one platform cloud row, in the order the cascade
+   * itself decides: the tenant's own facts (override, veto) first, then the
+   * entitlement, then the platform row's own state.
+   */
+  private static platformDefaultResolution(facts: {
+    tenantRow: AiProviderConnectionEntity | undefined;
+    systemRow: AiProviderConnectionEntity | undefined;
+    vetoed: boolean;
+    entitled: boolean;
+  }): PlatformDefaultResolution {
+    const { tenantRow, systemRow, vetoed, entitled } = facts;
+    if (tenantRow?.enabled && tenantRow.hasKey) return 'overridden';
+    if (vetoed) return 'vetoed';
+    if (!entitled) return 'not-entitled';
+    if (!systemRow || !systemRow.hasKey) return 'not-configured';
+    if (!systemRow.enabled) return 'off';
+    return 'inherited';
   }
 
   /**

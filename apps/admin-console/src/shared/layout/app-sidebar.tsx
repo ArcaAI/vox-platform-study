@@ -52,8 +52,12 @@ export function AppSidebar() {
   const { isMobile } = useSidebar();
   const { containerRef, onKeyDown } = useRovingFocus<HTMLDivElement>('vertical');
 
-  const entries = visibleNavEntries(rules, session?.user.roles, gates);
-  const domains = visibleNavDomains(rules, session?.user.roles, gates);
+  // The EFFECTIVE identity's roles (the impersonated target's while
+  // impersonating) — the same identity the route-group guards judge, so a tier
+  // the nav shows is a tier the route will actually render (TASK-954).
+  const roles = session?.effectiveUser.roles;
+  const entries = visibleNavEntries(rules, roles, gates);
+  const domains = visibleNavDomains(rules, roles, gates);
   const activeEntry = matchNavEntry(pathname, entries);
   // A route no domain owns (`/account`, `/developer`, a 404) still gets a
   // frame: the first domain the caller can reach, with nothing selected.

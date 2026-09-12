@@ -5,6 +5,7 @@ import {
   IActiveUserContext,
   IProviderConnectionService,
   PROVIDER_SERVICES,
+  PlatformDefaultConnectionsResponse,
   ProviderConnectionProbe,
   ProviderService,
   TestProviderConnectionRequest,
@@ -37,6 +38,9 @@ function assertProviderService(value: string): ProviderService {
  * Speech under `stt`).
  *
  *  - `GET :service`             → every connection row for the scoped tenant (masked).
+ *  - `GET :service/platform-defaults` → the platform (SYSTEM) cloud rows the
+ *                                 scoped TENANT inherits, masked and annotated
+ *                                 with the cascade's verdict (TASK-954). Read-only.
  *  - `GET :service/:provider`   → ONE row (`version` drives the OCC token; a
  *                                 `version: 0` placeholder when none exists yet).
  *  - `PUT :service/:provider`   → create (`expectedVersion` 0) or CAS-update under
@@ -94,6 +98,33 @@ export class ProviderConnectionController {
   @ApiResponse({ status: 200, type: [AiProviderConnectionResponse] })
   async list(@Param('service') service: string, @Query('tenantId') tenantId?: string): Promise<AiProviderConnectionResponse[]> {
     return this.connectionService.list(assertProviderService(service), this.resolveTenantId(tenantId));
+  }
+
+  /**
+   * TASK-954 — declared BEFORE `:service/:provider`: Nest matches routes in
+   * declaration order, so a later declaration would be captured as a read of a
+   * provider literally named `platform-defaults` (and 404 as "no such row").
+   */
+  @Get(':service/platform-defaults')
+  @CanRead('GlobalSetting')
+  @ApiOperation({
+    summary: 'The platform defaults this tenant inherits for one service — read-only, masked.',
+    description:
+      'The platform (SYSTEM) tier’s cloud BYO rows for the service, one entry per cloud provider (a `version: 0` ' +
+      'placeholder where the platform has no row), each annotated with the cascade’s verdict for the scoped tenant: ' +
+      '`overridden` (the tenant’s own enabled key wins) · `vetoed` (the tenant disabled its own row) · `not-entitled` ' +
+      '(no platform-default grant) · `not-configured` · `off` · `inherited`. Keys are never returned (`hasKey` only) and ' +
+      'nothing here is writable under a tenant scope — a tenant configures its OWN rows on `PUT :service/:provider`. ' +
+      'Platform-managed engines and the model registry are never listed. The SYSTEM tier itself is refused (400): it ' +
+      'is the top of the cascade.',
+  })
+  @ApiParam({ name: 'service', description: 'Capability the connections serve.', enum: PROVIDER_SERVICES })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
+  @ApiResponse({ status: 200, type: PlatformDefaultConnectionsResponse })
+  @ApiResponse({ status: 400, description: 'Unknown service segment, or the platform (SYSTEM) tier itself.' })
+  @ApiResponse({ status: 403, description: 'A tenant admin scoping another tenant.' })
+  async listPlatformDefaults(@Param('service') service: string, @Query('tenantId') tenantId?: string): Promise<PlatformDefaultConnectionsResponse> {
+    return this.connectionService.listPlatformDefaults(assertProviderService(service), this.resolveTenantId(tenantId));
   }
 
   @Get(':service/:provider')

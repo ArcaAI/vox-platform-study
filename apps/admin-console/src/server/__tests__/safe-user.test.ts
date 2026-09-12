@@ -59,6 +59,17 @@ describe('toSafeSession — effective identity', () => {
       departmentId: null,
     });
     expect(safe.effectiveIsElevated).toBe(false);
+    // TASK-954 — a tenant-bound user's effective scope IS its own tenant. It
+    // never has a working tenant, and `null` here sent every tenant-scoped
+    // screen to the SYSTEM tier (403 on every provider card).
+    expect(safe.effectiveTenantId).toBe('50000000-0000-0000-0000-000000000000');
+  });
+
+  it('a tenant-bound user with a stale workingTenantId on the cookie still resolves to its own tenant', () => {
+    // Sealed by an elevated session that was later downgraded — the proxy never
+    // sends X-Tenant-Id for a non-elevated user, so the screens must not either.
+    const safe = toSafeSession({ ...tenantAdmin, workingTenantId: '60000000-0000-0000-0000-000000000000' });
+    expect(safe.effectiveTenantId).toBe('50000000-0000-0000-0000-000000000000');
   });
 
   it('while impersonating, effectiveUser/effectiveIsElevated/effectiveTenantId reflect the target, not the operator', () => {

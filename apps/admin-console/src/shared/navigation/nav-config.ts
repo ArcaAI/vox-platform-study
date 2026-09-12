@@ -175,15 +175,25 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 
 export const NAV_ENTRIES: readonly NavEntry[] = [
   // ---------------------------------------------------------------------
-  // Overview — tier 10-19 only.
+  // Overview — tier 20-29 (TASK-954; was 10-19).
   // ---------------------------------------------------------------------
+  // TASK-954 — the three Overview screens are tier 20-29 (shared): a super
+  // admin gets the cross-tenant platform view, a tenant admin the tenant-scoped
+  // one. The gateway already served Monitoring and Releases to a tenant admin
+  // (`read:TenantTelemetry`, the same gate as `/admin/health/services`); only
+  // the tier hid them behind the `(global)` 404. The dashboard route renders
+  // the platform dashboard for an elevated session and the TENANT dashboard
+  // (own usage, service health, own admin activity) for everyone else.
   {
     route: '/dashboard',
     domain: 'overview',
     label: 'Dashboard',
-    tier: '10-19',
+    tier: '20-29',
     icon: IconLayoutDashboard,
-    required: [['manage', 'PlatformMetrics']],
+    required: [
+      ['manage', 'PlatformMetrics'],
+      ['read', 'TenantTelemetry'],
+    ],
     implemented: true,
     order: 1,
   },
@@ -191,7 +201,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     route: '/monitoring',
     domain: 'overview',
     label: 'Monitoring',
-    tier: '10-19',
+    tier: '20-29',
     icon: IconActivity,
     required: [
       ['manage', 'all'],
@@ -207,7 +217,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     route: '/releases',
     domain: 'overview',
     label: 'Releases',
-    tier: '10-19',
+    tier: '20-29',
     icon: IconVersions,
     required: [
       ['manage', 'all'],
@@ -1000,16 +1010,29 @@ function isGateOpen(entry: NavEntry, gates: FeatureGateMap | undefined): boolean
   return entry.gate === undefined || gates?.[entry.gate] === true;
 }
 
-/**
- * Implemented entries the caller's ability grants, in declaration order.
- * Tier 50-59 additionally requires an admin role (`roles`), mirroring the
- * (console)/(tenant) tier guard — ability rules alone cannot express it.
- */
 /** Longest-prefix nav match — `/tenants/storage` beats `/tenants`. */
 export function matchNavEntry(pathname: string, entries: readonly NavRouteEntry[] = ALL_ROUTE_ENTRIES): NavRouteEntry | undefined {
   return entries.filter((e) => pathname === e.route || pathname.startsWith(`${e.route}/`)).sort((a, b) => b.route.length - a.route.length)[0];
 }
 
+/**
+ * Implemented entries the caller's ability grants, in declaration order.
+ *
+ * Two tiers carry a ROLE check the ability rules alone cannot express, and
+ * each mirrors the route-group guard that would otherwise 404 the click:
+ *
+ *  - tier 10-19 needs an ELEVATED role, exactly as `(console)/(global)/layout.tsx`
+ *    demands (TASK-954). Before this, a tier-10-19 entry was ability-gated
+ *    alone, and the seeded tenant-admin policy happens to satisfy several of
+ *    those gates (`update:Tenant` → Tenants, `manage:Storage` → Tenant storage,
+ *    `read:AuditLog` → Audit logs, `read:TenantTelemetry` → Monitoring and
+ *    Releases while they were 10-19) — so a tenant admin's rail listed platform
+ *    screens that every one 404'd.
+ *  - tier 50-59 needs an admin role, mirroring `(console)/(tenant)/layout.tsx`.
+ *
+ * `roles` must be the EFFECTIVE identity's roles (the impersonated target's
+ * while impersonating), the same identity the route groups judge.
+ */
 export function visibleNavEntries(
   rules: readonly PermissionRule[] | null | undefined,
   roles?: readonly string[] | null,
@@ -1017,6 +1040,7 @@ export function visibleNavEntries(
 ): NavEntry[] {
   return NAV_ENTRIES.filter((entry) => {
     if (!entry.implemented) return false;
+    if (entry.tier === '10-19' && !isElevated(roles)) return false;
     if (entry.tier === '50-59' && !isAdminTier(roles)) return false;
     if (!isGateOpen(entry, gates)) return false;
     return isGranted(rules, entry);
