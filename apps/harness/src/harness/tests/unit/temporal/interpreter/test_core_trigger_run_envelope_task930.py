@@ -64,7 +64,11 @@ def _trigger(run_payload: dict[str, Any]) -> NodeActivityInput:
         node_type="core.trigger",
         config={
             "kinds": ["consultation", "api"],
-            "contextSchema": {"contextSchemaId": "ctx-1", "versionNumber": 1, "resolved": _DERIVED_CONTEXT_SCHEMA},
+            "contextSchema": {
+                "contextSchemaId": "ctx-1",
+                "versionNumber": 1,
+                "resolved": _DERIVED_CONTEXT_SCHEMA,
+            },
             "guardrail": {"enabled": True},
         },
         tenant_id=_TENANT,

@@ -18,7 +18,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-PROFILES = [{"profile_id": "vp-1", "label": "Dr Who", "model_id": "wespeaker-voxceleb-resnet34", "embedding": [0.1, 0.2]}]
+PROFILES = [
+    {
+        "profile_id": "vp-1",
+        "label": "Dr Who",
+        "model_id": "wespeaker-voxceleb-resnet34",
+        "embedding": [0.1, 0.2],
+    }
+]
 
 
 def test_seed_wrapper_forwards_the_session_profiles_and_the_model_slug():
@@ -47,7 +54,9 @@ def test_seed_wrapper_passes_none_for_a_session_that_was_pushed_nothing():
     mgr._session_voice_profiles = {}
 
     with patch("stt.diarization.preseed.seed_voice_profiles") as mock_seed:
-        SessionManager._seed_voice_profiles(mgr, MagicMock(), "sess-1", "wespeaker-voxceleb-resnet34")
+        SessionManager._seed_voice_profiles(
+            mgr, MagicMock(), "sess-1", "wespeaker-voxceleb-resnet34"
+        )
 
     assert mock_seed.call_args.args[1] is None
 
@@ -57,10 +66,15 @@ def test_spec_embedding_slug_reads_the_reference_the_profiles_are_matched_agains
 
     from stt.streaming.session_manager import SessionManager
 
-    config = SimpleNamespace(models=SimpleNamespace(embedding=SimpleNamespace(slug="ecapa-tdnn-voxceleb")))
+    config = SimpleNamespace(
+        models=SimpleNamespace(embedding=SimpleNamespace(slug="ecapa-tdnn-voxceleb"))
+    )
     assert SessionManager._spec_embedding_slug(config) == "ecapa-tdnn-voxceleb"
 
-    assert SessionManager._spec_embedding_slug(SimpleNamespace(models=SimpleNamespace(embedding=None))) is None
+    assert (
+        SessionManager._spec_embedding_slug(SimpleNamespace(models=SimpleNamespace(embedding=None)))
+        is None
+    )
     assert SessionManager._spec_embedding_slug(None) is None
 
 
@@ -124,7 +138,9 @@ async def _create(mgr: MagicMock, **overrides) -> None:
         mgr._load_pipeline_config = AsyncMock(return_value=_pipeline_config())
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-        mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+        mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+            mgr, **kw
+        )
         mgr._load_gloss_pipeline = AsyncMock(return_value=None)
         mgr._spec_embedding_slug = MagicMock(return_value="wespeaker-voxceleb-resnet34")
         mgr._redis = AsyncMock()

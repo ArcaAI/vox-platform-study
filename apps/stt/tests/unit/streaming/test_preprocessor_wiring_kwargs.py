@@ -111,7 +111,9 @@ class TestBuildPreprocessorVadKwargs:
         `StreamingConfig.partial_window_s`."""
         mgr = _make_mgr()
         config = _make_pipeline_config(vad_enabled=True)
-        config.streaming = MagicMock(spec=["partial_window_s", "partial_interval_s", "max_utterance_sec"])
+        config.streaming = MagicMock(
+            spec=["partial_window_s", "partial_interval_s", "max_utterance_sec"]
+        )
         config.streaming.partial_window_s = 6.0
         config.streaming.partial_interval_s = None
         config.streaming.max_utterance_sec = None

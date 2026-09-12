@@ -165,7 +165,9 @@ class McpToolClient:
         already in the resolver cache by the time the transport dials. The transport
         performs the authoritative, off-loop check per request.
         """
-        decision = evaluate_egress(base_url, self._allowed_hosts, self._resolver or default_resolver)
+        decision = evaluate_egress(
+            base_url, self._allowed_hosts, self._resolver or default_resolver
+        )
         if decision.allowed:
             return
         # Host + reason only — a connector URL can carry a token in its query string.

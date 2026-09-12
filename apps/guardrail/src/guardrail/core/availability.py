@@ -168,4 +168,6 @@ _PLATFORM_DEFAULT_POLICIES: Final[dict[str, Any]] = {
     policy_id: {"enabled": True} for policy_id in DECLARED_POLICY_IDS
 }
 
-PLATFORM_DEFAULT_AVAILABILITY: Final = GuardrailAvailability(policies=dict(_PLATFORM_DEFAULT_POLICIES))
+PLATFORM_DEFAULT_AVAILABILITY: Final = GuardrailAvailability(
+    policies=dict(_PLATFORM_DEFAULT_POLICIES)
+)

@@ -172,7 +172,14 @@ describe('TextAgentResolverService — selectorTags forwarding and cache identit
 
   it('a call with NO tags is byte-identical to today`s — the key is absent, not empty', async () => {
     await textResolver().resolve({ tenantId: TENANT, departmentId: 'dept-1' });
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.TEXT_GENERATION, agentSlug: null, departmentId: 'dept-1' });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.TEXT_GENERATION,
+      agentSlug: null,
+      departmentId: 'dept-1',
+      // TASK-958 F11 — a chain plane marks an unusable primary binding and walks on.
+      primaryBinding: 'mark',
+    });
   });
 
   it('DIFFERENT phases do not share a cache entry — the live spec must never serve the finalize call', async () => {

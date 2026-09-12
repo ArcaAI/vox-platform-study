@@ -13,9 +13,7 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 # Same pin as local/test Compose (`HOPE_POSTGRES_IMAGE`, default pg18-all).
 # Official postgres:*-alpine lacks pgvector/vectorscale.
-_HOPE_POSTGRES_IMAGE = os.environ.get(
-    "HOPE_POSTGRES_IMAGE", "timescale/timescaledb-ha:pg18-all"
-)
+_HOPE_POSTGRES_IMAGE = os.environ.get("HOPE_POSTGRES_IMAGE", "timescale/timescaledb-ha:pg18-all")
 
 
 def _service_auth_headers(app) -> dict[str, str]:

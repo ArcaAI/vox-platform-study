@@ -42,8 +42,14 @@ def test_model_path_resolves_config_checkpoint_and_voices(tmp_path):
 
 
 def test_model_path_without_the_files_fails_closed(tmp_path):
+    # TASK-961: the behaviour under test — failing CLOSED rather than falling
+    # back to a Hub download — is unchanged. Only the message moved: it used to
+    # name `TTS_KOKORO_MODEL_PATH`, which `moved_to_row_alias` has since made a
+    # DEAD alias, so it pointed operators at a knob they cannot set. The match
+    # now anchors on the real supplier (`bucketPrefix`), which is also the thing
+    # that cannot silently go stale the way an env-var name did.
     cfg = KokoroConfig().model_copy(update={"model_path": str(tmp_path)})
-    with pytest.raises(FileNotFoundError, match="TTS_KOKORO_MODEL_PATH"):
+    with pytest.raises(FileNotFoundError, match="bucketPrefix"):
         resolve_kokoro_paths(cfg)
     with pytest.raises(FileNotFoundError):
         KokoroProvider(cfg)
@@ -66,7 +72,9 @@ def test_pipeline_is_built_from_kmodel_with_explicit_paths(tmp_path):
     with patch.dict(sys.modules, {"kokoro": fake}):
         pipeline = asyncio.run(provider._load_pipeline("kokoro"))
 
-    fake.KModel.assert_called_once_with(config=str(tmp_path / "config.json"), model=str(tmp_path / "kokoro-v1_0.pth"))
+    fake.KModel.assert_called_once_with(
+        config=str(tmp_path / "config.json"), model=str(tmp_path / "kokoro-v1_0.pth")
+    )
     fake.KPipeline.assert_called_once_with(lang_code="a", model=fake.KModel.return_value)
     assert pipeline is fake.KPipeline.return_value
 

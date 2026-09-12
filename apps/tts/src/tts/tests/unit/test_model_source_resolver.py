@@ -272,9 +272,7 @@ async def test_hf_offline_cached_is_served_from_cache(
     HF_HUB_OFFLINE=1 alongside the read-only `s3://hope-models` mount.
     """
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    cached = (
-        Path(config.hf_cache_dir) / "models--ai4bharat--indic-parler-tts" / "snapshots" / "abc"
-    )
+    cached = Path(config.hf_cache_dir) / "models--ai4bharat--indic-parler-tts" / "snapshots" / "abc"
     cached.mkdir(parents=True, exist_ok=True)
 
     def _snapshot(**kwargs):

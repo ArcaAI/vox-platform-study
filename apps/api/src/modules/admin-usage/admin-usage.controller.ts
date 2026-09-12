@@ -47,14 +47,22 @@ export class AdminUsageController {
   ) {}
 
   @Get('summary')
-  @ApiOperation({ summary: 'Units + rated cost per capability x provider x model for a billing period. BYOK notional split out.' })
+  @ApiOperation({
+    summary: 'Units + rated cost per capability x provider x model for a billing period. BYOK notional split out.',
+    description:
+      'Also carries four figures the per-model breakdown cannot answer on its own (TASK-959): `computeSeconds` (GPU vs CPU occupancy across the inference capabilities), `workflowCpuSeconds` (the durable worker, kept separate so it is not billed twice), `thirdPartyBytes` (CLOUD/BYOK only — self-hosted LAN traffic is excluded) and `storage`, which is the LATEST nightly snapshot in the period split by class, not the period\u2019s GB-day sum. `storage` is null when no snapshot exists for the period.',
+  })
   @ApiResponse({ status: 200, type: UsageSummaryResponse })
   summary(@Query() query: UsageSummaryQuery): Promise<UsageSummaryResponse> {
     return this.usageAnalytics.getUsageSummary(this.scopedTenantId(query.tenantId), query.period ?? periodOf(new Date()).label);
   }
 
   @Get('timeseries')
-  @ApiOperation({ summary: 'Bounded-range rollup timeseries for one capability x unit (max 92 days daily / 72h hourly).' })
+  @ApiOperation({
+    summary: 'Bounded-range rollup timeseries for one capability x unit (max 92 days daily / 72h hourly).',
+    description:
+      "Each point carries the selected series (`quantity`/`costMicros`) plus that bucket's compute, workflow CPU, third-party bytes and storage GB across EVERY capability — so one request draws a series against the platform cost that moved with it. A bucket holding only those companion figures still yields a point, with a zeroed selected series.",
+  })
   @ApiResponse({ status: 200, type: UsageTimeseriesResponse })
   timeseries(@Query() query: UsageTimeseriesQueryDto): Promise<UsageTimeseriesResponse> {
     return this.usageAnalytics.getUsageTimeseries(this.scopedTenantId(query.tenantId), {

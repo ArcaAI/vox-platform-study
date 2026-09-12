@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import Decimal from 'decimal.js';
 import { DataNotFoundException } from '@arcaai/exceptions';
@@ -6,6 +6,8 @@ import {
   AiCapability,
   AiUsageRollupDailyRepository,
   AiUsageRollupHourlyRepository,
+  AiUsageUnit,
+  CoreDatabaseService,
   PlanEntitlementRepository,
   TenantEntitlementRepository,
   TenantRepository,
@@ -18,6 +20,9 @@ import { resolveBillingAllowances } from '../billing/allowances';
 import { parseBillingPeriod } from '../billing/billing-period';
 import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryResponse } from './dto';
 import { BudgetBurndownResponse, CostPerEncounterResponse, TopTenantsResponse, UsageTimeseriesResponse } from './dto';
+import { UsageStorageSnapshotSummary } from './dto';
+import { STORAGE_CLASSES, type StorageClass } from '../usageLedger/usage-attributes';
+import { MeasurableRollup, QUANTITY_DECIMAL_PLACES, summariseMeasures } from './usage-measures';
 import { IUsageAnalyticsService, TopTenantsQuery, UsageTimeseriesQuery } from './IUsageAnalyticsService';
 import { projectCapabilityBurndown } from './budget-burndown';
 import { computeCostDistribution } from './percentile';
@@ -52,6 +57,18 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     private readonly planEntitlementRepository: PlanEntitlementRepository,
     private readonly tenantEntitlementRepository: TenantEntitlementRepository,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-959. Two reads the ROLLUP grain structurally cannot answer, both
+    // bounded and both carrying an explicit `tenantId` predicate:
+    //   - the storage snapshot's per-CLASS split, which lives on
+    //     `attributesJson.storageClass` and is therefore absent from the rollup
+    //     dimension tuple (media and claim-check are BOTH provider `minio`);
+    //   - Σ worker CPU for ONE run, keyed on `requestId`, which is likewise not
+    //     a rollup dimension.
+    // Same escape hatch, and the same justification, as
+    // `MeteringService.countGuardrailCalls` — the base client is used because
+    // this read must not depend on a CLS tenant, and the tenant is passed
+    // explicitly instead.
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
   ) {}
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -87,7 +104,10 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     );
     const totalCostMicros = lines.reduce((sum, line) => sum + BigInt(line.costMicros), 0n);
 
-    const byokRows = await this.aggregateRepository.sumByokNotionalByCapability(tenantId, billingPeriod.start, billingPeriod.end);
+    const [byokRows, storage] = await Promise.all([
+      this.aggregateRepository.sumByokNotionalByCapability(tenantId, billingPeriod.start, billingPeriod.end),
+      this.readLatestStorageSnapshot(tenantId, billingPeriod.start, billingPeriod.end),
+    ]);
     const byokNotionalCostMicrosByCapability = Object.fromEntries(byokRows.map((row) => [row.capability, row.costMicros.toString()]));
 
     const response = new UsageSummaryResponse();
@@ -97,7 +117,90 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     response.lines = lines;
     response.totalCostMicros = totalCostMicros.toString();
     response.byokNotionalCostMicrosByCapability = byokNotionalCostMicrosByCapability;
+    // TASK-959 — derived from the SAME rollups already read above.
+    const measures = summariseMeasures(rollups);
+    response.computeSeconds = measures.computeSeconds;
+    response.workflowCpuSeconds = measures.workflowCpuSeconds;
+    response.thirdPartyBytes = measures.thirdPartyBytes;
+    response.storage = storage;
     return response;
+  }
+
+  /**
+   * The latest nightly storage snapshot WITHIN the period, split by class.
+   *
+   * Two bounded reads rather than one: find the most recent snapshot instant,
+   * then read that instant's rows. Every class of one snapshot shares an
+   * `occurredAt` (the measured day's last millisecond) by construction, so the
+   * second read returns at most three rows — while a single `orderBy … take: 3`
+   * could straddle two days whenever a class was skipped for holding nothing.
+   *
+   * Reads the RAW ledger, not the rollup, because the class lives on
+   * `attributesJson.storageClass`, which the rollup dimension tuple does not
+   * carry — and `provider` cannot substitute for it: media and claim-check are
+   * both `minio`. This is the same exception, for the same structural reason, as
+   * `MeteringService.countGuardrailCalls`.
+   */
+  private async readLatestStorageSnapshot(tenantId: string, from: Date, to: Date): Promise<UsageStorageSnapshotSummary | null> {
+    const scope = {
+      tenantId,
+      capability: AiCapability.STORAGE,
+      unit: AiUsageUnit.STORAGE_GB_DAY,
+    };
+    const latest = await this.databaseService.baseClient.aiUsageEvent.findFirst({
+      where: { ...scope, occurredAt: { gte: from, lt: to } },
+      orderBy: { occurredAt: 'desc' },
+      select: { occurredAt: true },
+    });
+    if (!latest) return null;
+
+    const rows = await this.databaseService.baseClient.aiUsageEvent.findMany({
+      where: { ...scope, occurredAt: latest.occurredAt },
+      select: { quantity: true, attributesJson: true },
+    });
+
+    const byClass = new Map<StorageClass, Decimal>(STORAGE_CLASSES.map((storageClass) => [storageClass, new Decimal(0)]));
+    for (const row of rows) {
+      const storageClass = (row.attributesJson as { storageClass?: StorageClass } | null)?.storageClass;
+      if (!storageClass || !byClass.has(storageClass)) continue;
+      byClass.set(storageClass, byClass.get(storageClass)!.plus(new Decimal(String(row.quantity))));
+    }
+
+    const media = byClass.get('media')!;
+    const text = byClass.get('text')!;
+    const claimCheck = byClass.get('claim-check')!;
+
+    const summary = new UsageStorageSnapshotSummary();
+    summary.mediaGb = media.toFixed(QUANTITY_DECIMAL_PLACES);
+    summary.textGb = text.toFixed(QUANTITY_DECIMAL_PLACES);
+    summary.claimCheckGb = claimCheck.toFixed(QUANTITY_DECIMAL_PLACES);
+    summary.totalGb = media.plus(text).plus(claimCheck).toFixed(QUANTITY_DECIMAL_PLACES);
+    summary.asOf = latest.occurredAt.toISOString();
+    return summary;
+  }
+
+  /**
+   * Σ `CPU_SECOND` under capability `WORKFLOW` for ONE run (TASK-959 §3.4).
+   *
+   * `requestId` IS the run id on those rows, which is why this is answerable at
+   * all: the metering interceptor stamps it per activity, so a run's worker CPU
+   * is the sum over its own request id. Not a rollup read — `requestId` is not
+   * a rollup dimension, and a per-run figure is exactly what a rollup discards.
+   *
+   * `null`, never 0, when there are no rows: a run that predates the interceptor
+   * and a run that burned no measurable CPU are different facts, and only the
+   * first is a reason to stop looking for the number.
+   */
+  async getWorkflowRunCpuSeconds(tenantId: string, runId: string): Promise<number | null> {
+    const result = await this.databaseService.baseClient.aiUsageEvent.aggregate({
+      _sum: { quantity: true },
+      where: { tenantId, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, requestId: runId },
+    });
+    const sum = result._sum?.quantity ?? null;
+    if (sum === null || sum === undefined) return null;
+    return typeof sum === 'object' && typeof (sum as { toNumber?: unknown }).toNumber === 'function'
+      ? (sum as { toNumber: () => number }).toNumber()
+      : Number(sum);
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -112,25 +215,38 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
         ? await this.rollupDailyRepository.findByPeriod(tenantId, query.from, query.to)
         : await this.rollupHourlyRepository.findByPeriod(tenantId, query.from, query.to);
 
-    const filtered = buckets.filter((bucket) => bucket.capability === query.capability && bucket.unit === query.unit);
-
-    const byBucket = new Map<number, { quantity: Decimal; costMicros: bigint }>();
-    for (const bucket of filtered) {
+    // Every bucket in range gets a point, keyed by its start; the SELECTED
+    // (capability, unit) series is filtered per bucket while the TASK-959
+    // companion figures are reduced from the bucket's full row set. A bucket
+    // that carries only companion rows therefore still appears — with a zeroed
+    // selected series — which is the honest answer: the platform spent compute
+    // in that hour even though the series being charted did not move.
+    const byBucket = new Map<number, { quantity: Decimal; costMicros: bigint; all: MeasurableRollup[] }>();
+    for (const bucket of buckets) {
       const key = bucket.bucketStart.getTime();
-      const existing = byBucket.get(key);
+      const existing = byBucket.get(key) ?? { quantity: new Decimal(0), costMicros: 0n, all: [] };
+      const selected = bucket.capability === query.capability && bucket.unit === query.unit;
       byBucket.set(key, {
-        quantity: (existing?.quantity ?? new Decimal(0)).plus(new Decimal(String(bucket.quantitySum))),
-        costMicros: (existing?.costMicros ?? 0n) + bucket.costMicrosSum,
+        quantity: selected ? existing.quantity.plus(new Decimal(String(bucket.quantitySum))) : existing.quantity,
+        costMicros: selected ? existing.costMicros + bucket.costMicrosSum : existing.costMicros,
+        all: [...existing.all, bucket],
       });
     }
 
     const points = [...byBucket.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([bucketStartMs, sums]) => ({
-        bucketStart: new Date(bucketStartMs).toISOString(),
-        quantity: sums.quantity.toFixed(6),
-        costMicros: sums.costMicros.toString(),
-      }));
+      .map(([bucketStartMs, sums]) => {
+        const measures = summariseMeasures(sums.all);
+        return {
+          bucketStart: new Date(bucketStartMs).toISOString(),
+          quantity: sums.quantity.toFixed(QUANTITY_DECIMAL_PLACES),
+          costMicros: sums.costMicros.toString(),
+          computeSeconds: measures.computeSeconds,
+          workflowCpuSeconds: measures.workflowCpuSeconds,
+          thirdPartyBytes: measures.thirdPartyBytes,
+          storageGb: measures.storageGb,
+        };
+      });
 
     const response = new UsageTimeseriesResponse();
     response.capability = query.capability;

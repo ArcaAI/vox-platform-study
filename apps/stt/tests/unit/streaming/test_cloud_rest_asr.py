@@ -73,7 +73,13 @@ class TestSarvamRecognize:
         with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
             result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, language)
         # No `language_code` in the payload → detected language is absent (None).
-        assert result == {"text": "hello", "word_timestamps": [], "language": None}
+        # TASK-959 added the three network counters beside the transcript, so the
+        # transcript half is asserted by KEY — a whole-dict equality here would
+        # have to be rewritten by every future additive wire field.
+        assert result["text"] == "hello"
+        assert result["word_timestamps"] == []
+        assert result["language"] is None
+        assert result["byte_source"] == "wire"
         _, kwargs = client.post.call_args
         assert kwargs["data"]["language_code"] == expected
         assert kwargs["headers"]["api-subscription-key"] == "secret-key"
@@ -152,7 +158,11 @@ class TestOpenAIRecognize:
         with patch("stt.streaming.openai_asr.httpx.AsyncClient", return_value=client):
             result = await openai_recognize_utterance(_config("openai"), SAMPLES, SR, "en-US")
         # Default json response carries no `language` → detected language is None.
-        assert result == {"text": "world", "word_timestamps": [], "language": None}
+        # (TASK-959 network counters asserted in test_task959_adapter_bytes.py.)
+        assert result["text"] == "world"
+        assert result["word_timestamps"] == []
+        assert result["language"] is None
+        assert result["byte_source"] == "wire"
         _, kwargs = client.post.call_args
         # BCP-47 reduced to ISO-639-1 primary, bearer auth
         assert kwargs["data"]["language"] == "en"

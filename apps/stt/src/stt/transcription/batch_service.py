@@ -40,6 +40,7 @@ from ..core.exceptions import (
     TranscriptionError,
 )
 from ..core.initial_prompt import compose_prompt, get_initial_prompt
+from ..core.metering import BYTE_SOURCE_APP, BYTE_SOURCE_WIRE, normalize_device
 from ..core.metrics import (
     record_transcription,
     record_transcription_error,
@@ -728,6 +729,17 @@ class BatchTranscriptionService:
                 connection_key=getattr(_asr_model_config, "connection_key", None),
                 connection_id=getattr(_asr_model_config, "connection_id", None),
             )
+            # TASK-959 §3.2 — the device this job OCCUPIED decides which compute
+            # unit the gateway emits for `processing_time_seconds`, which it has
+            # stored since TASK-874 and until now could not price. A cloud engine's
+            # loader stamps "cloud", which normalises to `cpu`: what was occupied
+            # HERE is the calling service waiting on the vendor.
+            result.device = normalize_device(asr_model.device)
+            # TASK-959 §4.2 — bytes the cloud adapters measured; `None` throughout
+            # on a self-hosted engine, which made no third-party call.
+            result.request_bytes = raw_result.request_bytes
+            result.response_bytes = raw_result.response_bytes
+            result.byte_source = raw_result.byte_source
             result.metadata["job_id"] = job_id
             result.metadata["pipeline"] = pipeline_config.slug
             result.metadata["timing"] = timing
@@ -1937,6 +1949,11 @@ class BatchTranscriptionService:
             wf.writeframes(pcm_int16.tobytes())
         wav_buffer.seek(0)
         wav_bytes = wav_buffer.read()
+        # TASK-959 §4.2 — the ConversationTranscriber talks over the SDK's own
+        # socket, so the WAV we hand it and the result JSON it emits are
+        # application-level PROXIES for the wire, labelled `app` on the row.
+        # A list, not a `nonlocal`: the callbacks below fire on SDK threads.
+        response_json_bytes = [0]
 
         # ---- Write WAV to a temp file (Azure SDK requires a path) ---
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -1978,6 +1995,9 @@ class BatchTranscriptionService:
             error_holder: list[str] = []
 
             def _on_transcribed(evt: Any) -> None:
+                payload = getattr(evt.result, "json", None)
+                if isinstance(payload, str):
+                    response_json_bytes[0] += len(payload)
                 if evt.result.reason == ResultReason.RecognizedSpeech and evt.result.text.strip():
                     offset_ms = getattr(evt.result, "offset", 0) / 10_000  # ticks → ms
                     duration_ms = getattr(evt.result, "duration", 0) / 10_000
@@ -2068,6 +2088,9 @@ class BatchTranscriptionService:
                 language_probability=avg_confidence,
                 segments=segments,
                 word_timestamps=word_timestamps,
+                request_bytes=len(wav_bytes),
+                response_bytes=response_json_bytes[0],
+                byte_source=BYTE_SOURCE_APP,
             )
 
         finally:
@@ -2096,6 +2119,11 @@ class BatchTranscriptionService:
             text=result.get("text", ""),
             language=language,
             word_timestamps=result.get("word_timestamps", []),
+            # TASK-959 §4.2 — the adapter measured the real request/response; carry
+            # them up so the completion callback can report them per job.
+            request_bytes=result.get("request_bytes"),
+            response_bytes=result.get("response_bytes"),
+            byte_source=result.get("byte_source"),
         )
 
     async def _run_openai_inference(
@@ -2120,6 +2148,10 @@ class BatchTranscriptionService:
             text=result.get("text", ""),
             language=language,
             word_timestamps=result.get("word_timestamps", []),
+            # TASK-959 §4.2 — see `_run_sarvam_inference`.
+            request_bytes=result.get("request_bytes"),
+            response_bytes=result.get("response_bytes"),
+            byte_source=result.get("byte_source"),
         )
 
     async def _run_transformers_inference(
@@ -2981,6 +3013,10 @@ class BatchTranscriptionService:
         wav_buf = io.BytesIO()
         sf.write(wav_buf, samples, sample_rate, format="WAV", subtype="PCM_16")
         wav_buf.seek(0)
+        # TASK-959 §4.2 — measured BEFORE httpx consumes the buffer; afterwards
+        # `getbuffer()` still reports the full length, but reading it back would
+        # depend on the stream position the client left behind.
+        request_bytes = wav_buf.getbuffer().nbytes
 
         definition: dict[str, Any] = {
             "enhancedMode": {"enabled": True, "model": mai_model},
@@ -3054,6 +3090,9 @@ class BatchTranscriptionService:
             ),
             word_timestamps=word_timestamps,
             segments=segments,
+            request_bytes=request_bytes,
+            response_bytes=len(response.content),
+            byte_source=BYTE_SOURCE_WIRE,
         )
 
     def _postprocess(

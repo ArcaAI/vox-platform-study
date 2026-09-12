@@ -49,7 +49,12 @@ def _config(**overrides) -> ClaimCheckConfig:
 
 def _ref(store: str) -> ClaimCheckRef:
     return ClaimCheckRef(
-        store=store, bucket=_BUCKET, key="a" * 64, size=3, sha256="b" * 64, content_type="text/plain"
+        store=store,
+        bucket=_BUCKET,
+        key="a" * 64,
+        size=3,
+        sha256="b" * 64,
+        content_type="text/plain",
     )
 
 

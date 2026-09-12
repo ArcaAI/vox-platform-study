@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ProviderConnectionProbe } from '../provider-connection-probe';
+import { CONNECTION_ERROR_CODES } from '../constants';
 
 const TENANT = 'tenant-abc';
 
@@ -203,5 +204,98 @@ describe('ProviderConnectionProbe — stored-row fallback', () => {
     const [, init] = fetchSpy.mock.calls[0] as unknown as [URL, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer fresh-key');
     expect(secrets.decrypt).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-958/G1 F3 (correctness #4) — "Test connection" on an UNSAVED sibling.
+ *
+ * The reviewer's scenario: `POST admin/providers/llm/openai-research/test`
+ * before the row is saved. `resolveTarget` passed the SLUG into the platform
+ * lookup and fell back to `row?.provider ?? slug`, so the probe selected a
+ * vendor literally named `openai-research` — no stored row, no matching case
+ * in the switch, and a "reachability" smoke test that proves nothing about the
+ * key the operator just typed. The body now says which vendor it is.
+ */
+describe('ProviderConnectionProbe — the vendor of an UNSAVED sibling (TASK-958/G1 F3)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A stub whose rows are keyed by SLUG for the tenant tier and by PROVIDER for the platform tier. */
+  function connectionsBySlug(tenantRows: Record<string, any> = {}, systemRows: Record<string, any> = {}) {
+    return {
+      assertResolvable: vi.fn(),
+      findRow: vi.fn(async (_svc: string, slug: string, tenantId: string) => (tenantId === TENANT ? (tenantRows[slug] ?? null) : null)),
+      findDefaultRow: vi.fn(async (_svc: string, provider: string, tenantId: string) =>
+        tenantId === SYSTEM_TENANT_ID ? (systemRows[provider] ?? null) : null,
+      ),
+    };
+  }
+
+  it('reviewer #4: an unsaved sibling with `provider` in the body probes THAT vendor, not a vendor named after the slug', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const probe = new ProviderConnectionProbe(connectionsBySlug() as any, secrets as any);
+
+    const res = await probe.test('llm', 'openai-research', TENANT, {
+      provider: 'openai',
+      apiKey: 'sk-new',
+      baseUrl: 'https://api.openai.com/v1',
+    });
+
+    expect(res.probe, 'an unknown vendor falls through to the reachability smoke test').toBe('auth');
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.toString()).toBe('https://api.openai.com/v1/models');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-new');
+  });
+
+  it('an unsaved sibling with NO `provider` is a named 400 — the server does not guess the vendor', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const probe = new ProviderConnectionProbe(connectionsBySlug() as any, secrets as any);
+
+    await expect(probe.test('llm', 'openai-research', TENANT, { apiKey: 'sk-new', baseUrl: 'https://api.openai.com/v1' })).rejects.toMatchObject({
+      response: { code: CONNECTION_ERROR_CODES.PROVIDER_REQUIRED, slug: 'openai-research' },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('the platform fallback is read by the resolved VENDOR, never by the connection slug', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200 })),
+    );
+    const conns = connectionsBySlug({}, { openai: storedRow(SYSTEM_TENANT_ID, { baseUrl: 'https://api.openai.com/v1' }) });
+    const probe = new ProviderConnectionProbe(conns as any, secrets as any);
+
+    const res = await probe.test('llm', 'openai-research', TENANT, { provider: 'openai' });
+
+    expect(conns.findDefaultRow).toHaveBeenCalledWith('llm', 'openai', SYSTEM_TENANT_ID);
+    expect(res.source).toBe('platform');
+  });
+
+  it('a SAVED connection refuses a body `provider` that contradicts the stored one (409, the write path’s rule)', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const saved = storedRow(TENANT, { baseUrl: 'https://api.openai.com/v1' });
+    const probe = new ProviderConnectionProbe(connectionsBySlug({ 'openai-research': saved }) as any, secrets as any);
+
+    await expect(probe.test('llm', 'openai-research', TENANT, { provider: 'anthropic' })).rejects.toMatchObject({
+      response: { code: CONNECTION_ERROR_CODES.PROVIDER_IMMUTABLE },
+    });
+    expect(fetchSpy, 'a contradicting body must never send the stored key to the wrong vendor').not.toHaveBeenCalled();
+  });
+
+  it('a saved connection needs no `provider` at all — the row still answers it', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const saved = storedRow(TENANT, { baseUrl: 'https://api.openai.com/v1' });
+    const probe = new ProviderConnectionProbe(connectionsBySlug({ 'openai-research': saved }) as any, secrets as any);
+
+    const res = await probe.test('llm', 'openai-research', TENANT, {});
+
+    expect(res.source).toBe('tenant');
+    expect(res.probe).toBe('auth');
+    expect((fetchSpy.mock.calls[0] as unknown as [URL, RequestInit])[0].toString()).toBe('https://api.openai.com/v1/models');
   });
 });

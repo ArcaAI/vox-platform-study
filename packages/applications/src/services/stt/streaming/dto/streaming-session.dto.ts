@@ -166,6 +166,34 @@ export interface StreamingUsageSegment {
   deployment: string;
   audio_seconds: number;
   session_seconds: number;
+  /**
+   * TASK-958 D-7 — the `AiProviderConnection` this stretch authenticated as.
+   *
+   * A tenant may hold two accounts of one vendor, so `engine` no longer identifies
+   * the credential that was spent, and `apps/stt` aggregates segments by
+   * `(engine, deployment, connection_id)` for that reason. Absent/`null` from a
+   * platform engine and from a worker that predates the field.
+   */
+  connection_id?: string | null;
+
+  // TASK-959 §3.2/§4.2 — the compute and network halves, PER SEGMENT.
+  //
+  // `UsageSegment.to_dict()` dumps every one of these, so on the wire they are
+  // present-and-null rather than absent on a leg they do not apply to; only an
+  // STT that predates the fields sends none. NOTE this shape reaches the emitter
+  // by TWO paths and only one of them is validated: the reaper push-back goes
+  // through `SttStreamingUsagePushbackRequest`, but the DELETE-teardown response
+  // is read straight off the HTTP body. So `device` is re-checked against the
+  // ledger's own vocabulary at emission, not trusted because it is typed here.
+  /** ASR-only seconds on THIS engine — a `GPU_SECOND` or `CPU_SECOND` row, per `device`. */
+  processing_seconds?: number;
+  /** `cuda` | `mps` | `cpu`, resolved per segment: a cloud leg occupied THIS service's CPU. */
+  device?: string;
+  /** Bytes moved to/from a third party. `null` — never `0` — on a self-hosted engine. */
+  request_bytes?: number | null;
+  response_bytes?: number | null;
+  /** `wire` (real HTTP) or `app` (an application-level proxy). `null` alongside null counts. */
+  byte_source?: string | null;
 }
 
 /**
@@ -190,6 +218,12 @@ export interface StreamingSessionTeardownSummary {
   engine: string | null;
   /** `SELF_HOSTED` | `CLOUD` | `BYOK`; `null` alongside a `null` engine. */
   deployment: string | null;
+  /**
+   * TASK-958 D-7 — the connection the LAST-loaded engine authenticated as, beside
+   * the `engine`/`deployment` scalars it belongs with. The per-segment field above
+   * is the exact answer; this one stands in for a sender that reports no segments.
+   */
+  connection_id?: string | null;
   /**
    * TASK-874 — the per-engine breakdown, one ledger row each. ADDITIVE to the
    * scalars above (which stay the LAST-loaded engine), so an STT that predates

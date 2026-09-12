@@ -36,6 +36,8 @@ export interface SerializedUsageEvent {
   /** Decimal as a string — never a JSON number. */
   quantity: string;
   costBasis: AiCostBasis;
+  /** TASK-958 D-7 — the `AiProviderConnection` that was spent; `null` when none was named. */
+  connectionId: string | null;
   consultationId: string | null;
   doctorId: string | null;
   departmentId: string | null;

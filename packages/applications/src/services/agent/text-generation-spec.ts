@@ -202,7 +202,19 @@ export function effectiveAutoSwitch(toggle: boolean, primaryFunding: AgentFundin
  */
 function candidateEndpointKey(candidate: ResolvedTextCandidate): string {
   const override = candidate.providerOverride;
-  return [candidate.provider, candidate.model, candidate.fundingTier, override?.base_url ?? '', override?.deployment_name ?? ''].join('::');
+  return [
+    candidate.provider,
+    candidate.model,
+    candidate.fundingTier,
+    override?.base_url ?? '',
+    override?.deployment_name ?? '',
+    // TASK-958 — WHICH account. Two connections of one vendor may name the same
+    // endpoint and the same model id and still be different accounts with separate
+    // keys and separate quotas, so falling back from one to the other is real HA.
+    // Without this the chain would de-dupe them into a retry against the account
+    // that just failed. Empty for every pre-958 candidate, so the key is unchanged.
+    override?.connection_id ?? '',
+  ].join('::');
 }
 
 /**

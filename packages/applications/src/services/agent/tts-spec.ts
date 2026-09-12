@@ -138,6 +138,12 @@ export interface TtsCandidateSource {
   /** The `AiProviderConnection` row that serves it; `null` when no enabled row answered at either tier. */
   connection?: TtsSpecConnection | null;
   fundingTier: AgentFundingTier;
+  /**
+   * TASK-958 D-4 — the key this candidate's credential arrives under in
+   * `provider_overrides`: the connection's `slug` for a tenant row, the engine name
+   * for a platform row (which is why every pre-958 payload is unchanged).
+   */
+  connectionKey?: string;
 }
 
 function toSpecAgent(agent: ResolvedAgent): TtsSpecAgent {
@@ -181,6 +187,9 @@ export function toTtsCandidate(source: TtsCandidateSource): ResolvedTtsCandidate
     voice: selectTtsVoice(specModel.voices, parameters.voice),
     connection: source.connection ?? null,
     fundingTier: source.fundingTier,
+    // OMITTED rather than nulled — `tts.spec.ResolvedTtsCandidate` is `extra='forbid'`
+    // and lists `connection_key` in its `OPTIONAL_FIELDS`.
+    ...(source.connectionKey ? { connectionKey: source.connectionKey } : {}),
   };
 }
 
@@ -197,9 +206,18 @@ export function toTtsCandidate(source: TtsCandidateSource): ResolvedTtsCandidate
  */
 function candidateEndpointKey(candidate: ResolvedTtsCandidate): string {
   const connection = candidate.connection;
-  return [candidate.model.provider ?? '', candidate.model.sourceUri, candidate.fundingTier, connection?.baseUrl ?? '', connection?.region ?? ''].join(
-    '::',
-  );
+  return [
+    candidate.model.provider ?? '',
+    candidate.model.sourceUri,
+    candidate.fundingTier,
+    connection?.baseUrl ?? '',
+    connection?.region ?? '',
+    // TASK-958 — WHICH account. Two connections of one vendor can share an endpoint
+    // and a region and still be separate accounts with separate keys and quotas, so
+    // failing over between them is real HA rather than a retry against the account
+    // that just failed. Empty for every pre-958 candidate, so the key is unchanged.
+    connection?.connectionId ?? '',
+  ].join('::');
 }
 
 export function sameTtsCandidate(a: ResolvedTtsCandidate, b: ResolvedTtsCandidate): boolean {

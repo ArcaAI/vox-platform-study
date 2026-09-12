@@ -148,9 +148,7 @@ async def check_pipeline_exists():
 
         async with get_session() as session:
             result = await session.execute(
-                select(AsrPipelineRead).where(
-                    AsrPipelineRead.resource_status == "ENABLED"
-                ).limit(5)
+                select(AsrPipelineRead).where(AsrPipelineRead.resource_status == "ENABLED").limit(5)
             )
             pipelines = result.scalars().all()
 
@@ -167,34 +165,18 @@ async def check_pipeline_exists():
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Test STT worker directly without API Gateway"
+    parser = argparse.ArgumentParser(description="Test STT worker directly without API Gateway")
+    parser.add_argument("--list", "-l", action="store_true", help="List registered Dramatiq actors")
+    parser.add_argument(
+        "--mock", "-m", action="store_true", help="Send a mock job to test worker connectivity"
     )
     parser.add_argument(
-        "--list", "-l",
-        action="store_true",
-        help="List registered Dramatiq actors"
+        "--check-db", action="store_true", help="Check database for available pipelines"
     )
     parser.add_argument(
-        "--mock", "-m",
-        action="store_true",
-        help="Send a mock job to test worker connectivity"
+        "--file", "-f", type=str, help="Path to audio file for real transcription test"
     )
-    parser.add_argument(
-        "--check-db",
-        action="store_true",
-        help="Check database for available pipelines"
-    )
-    parser.add_argument(
-        "--file", "-f",
-        type=str,
-        help="Path to audio file for real transcription test"
-    )
-    parser.add_argument(
-        "--pipeline", "-p",
-        type=str,
-        help="Pipeline ID to use for transcription"
-    )
+    parser.add_argument("--pipeline", "-p", type=str, help="Pipeline ID to use for transcription")
 
     args = parser.parse_args()
 

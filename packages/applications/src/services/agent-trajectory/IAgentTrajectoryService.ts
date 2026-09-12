@@ -2,6 +2,7 @@ import { AgentSessionKind } from '@arcaai/domains';
 import {
   AgentTrajectorySessionsListResponse,
   AgentTrajectoryStepsPageResponse,
+  ComputeSampleInput,
   CreateAgentTrajectoryStepInput,
   GenerationMetricsAggregateResponse,
 } from './dto';
@@ -60,6 +61,17 @@ export interface IAgentTrajectoryService {
    * `consultation:trajectory:{consultationId}` for the live view.
    */
   recordSteps(steps: CreateAgentTrajectoryStepInput[]): Promise<void>;
+
+  /**
+   * Record the durable worker's OWN CPU, one `CPU_SECOND` row per Temporal
+   * activity execution (TASK-959 §3.4).
+   *
+   * Idempotent at the ledger on `(sessionId, runId, activityId, attempt)`, so a
+   * re-flushed batch bills once; a real retry (attempt + 1) is a second
+   * execution and bills separately. Best-effort per sample and never throws:
+   * one unattributable sample is skipped, the rest of the batch still bills.
+   */
+  recordComputeSamples(samples: ComputeSampleInput[]): Promise<void>;
 
   /** Distinct sessions (grouped by kind+sessionId+runId) with counts + first/last timestamps. */
   listSessions(

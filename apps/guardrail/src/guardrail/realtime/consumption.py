@@ -90,10 +90,7 @@ class CapabilityPolicy:
                 "row. C-3 cannot be checked against an undeclared capability model",
             )
         return cls(
-            sets={
-                str(name): frozenset(str(c) for c in caps)
-                for name, caps in declaration.items()
-            }
+            sets={str(name): frozenset(str(c) for c in caps) for name, caps in declaration.items()}
         )
 
     def knows(self, capability_set_id: str) -> bool:

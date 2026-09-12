@@ -29,15 +29,23 @@ interface TtsUsageFrame {
   audioSeconds: number | null;
   interrupted: boolean;
   provider: string | null;
+  /**
+   * TASK-958 D-7 — the `AiProviderConnection` the winning candidate authenticated as.
+   * OPTIONAL: an `apps/tts` that predates the field sends none, and the ledger row is
+   * then unattributed rather than attributed to a guess.
+   */
+  connectionId?: string | null;
 }
 
 function isTtsUsageFrame(value: unknown): value is TtsUsageFrame {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Record<string, unknown>).type === 'usage' &&
-    typeof (value as Record<string, unknown>).characters === 'number'
-  );
+  if (typeof value !== 'object' || value === null) return false;
+  const frame = value as Record<string, unknown>;
+  // TASK-958 F10 — `connectionId` is written to the ledger, so it is TYPE-CHECKED here
+  // rather than trusted: absent is the ordinary answer from a service that predates the
+  // field, and anything that is not a string is a malformed frame, not an attribution.
+  const connectionId = frame.connectionId;
+  if (connectionId !== undefined && connectionId !== null && typeof connectionId !== 'string') return false;
+  return frame.type === 'usage' && typeof frame.characters === 'number';
 }
 
 /**
@@ -481,8 +489,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (this.usageLedger && bridge.tenantId) {
+      // TASK-958 F9 — the served connection selects the override entry; the map is keyed
+      // by connection key, and a sibling's entry is not under `provider`.
+      const connectionId = parsed.connectionId || null;
       const { deployment, costBasis } = parsed.provider
-        ? classifyTtsProvider(parsed.provider, bridge.providerOverrides)
+        ? classifyTtsProvider(parsed.provider, bridge.providerOverrides, connectionId)
         : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
       this.usageLedger
         .recordUsage({
@@ -496,6 +507,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
             model: null,
             deployment,
             ...(costBasis ? { costBasis } : {}),
+            connectionId,
             requestId: bridge.sessionId,
             sessionId: bridge.sessionId,
             attributesJson: { interrupted: parsed.interrupted },

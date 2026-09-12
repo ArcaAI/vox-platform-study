@@ -358,9 +358,7 @@ async def test_repeated_checkpoints_over_a_benign_encounter_never_fire() -> None
     for turn in range(20):
         utterance = f"turn {turn}: the patient describes their symptoms calmly. "
         transcript += utterance
-        await validator.validate_segment(
-            session_id="s1", segment_id=f"seg-{turn}", text=utterance
-        )
+        await validator.validate_segment(session_id="s1", segment_id=f"seg-{turn}", text=utterance)
         verdict = await validator.validate_cumulative(
             session_id="s1",
             text=transcript,
@@ -399,9 +397,7 @@ async def test_the_cumulative_verdict_names_which_view_fired() -> None:
     validator = _validator(
         DensityAnalyzer(), _policy(window_chars=200, overlap_chars=20), InMemoryRealtimeStore()
     )
-    text = " ".join(
-        f"and then the patient said {f} about their medication" for f in FRAGMENTS
-    )
+    text = " ".join(f"and then the patient said {f} about their medication" for f in FRAGMENTS)
     verdict = await validator.validate_cumulative(
         session_id="s1",
         text=text,

@@ -51,7 +51,15 @@ def _payload(node_type: str, **overrides) -> NodeActivityInput:
 class _FakeApi:
     """Resolves a selection and a prompt template; records what was asked for."""
 
-    def __init__(self, *, provider="lm-studio", model="a-model", found=True, approved=True, content="TENANT INSTRUCTION"):
+    def __init__(
+        self,
+        *,
+        provider="lm-studio",
+        model="a-model",
+        found=True,
+        approved=True,
+        content="TENANT INSTRUCTION",
+    ):
         self.provider = provider
         self.model = model
         self.found = found
@@ -100,13 +108,17 @@ def _no_record(monkeypatch):
         return None
 
     monkeypatch.setattr(cat, "record_and_flush", _noop)
-    monkeypatch.setattr("harness.temporal.interpreter.nodes.guards.interpreter_consultation_sensors", _sensors_ok)
+    monkeypatch.setattr(
+        "harness.temporal.interpreter.nodes.guards.interpreter_consultation_sensors", _sensors_ok
+    )
 
 
 async def _sensors_ok(payload):  # noqa: ANN001
     from harness.temporal.interpreter.models import NodeActivityResult
 
-    return NodeActivityResult(status="SUCCEEDED", output={"text": "the note", "verdict": {"scores": {}}})
+    return NodeActivityResult(
+        status="SUCCEEDED", output={"text": "the note", "verdict": {"scores": {}}}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +149,9 @@ class TestImportantFindings:
         assert text.calls[0]["system_prompt"] == "Pick out what THIS tenant considers important."
 
     @pytest.mark.asyncio
-    async def test_an_unbound_instruction_DEGRADES_and_never_falls_back_to_a_default(self, monkeypatch):
+    async def test_an_unbound_instruction_DEGRADES_and_never_falls_back_to_a_default(
+        self, monkeypatch
+    ):
         """The load-bearing test of this whole capability.
 
         A default instruction here would be the platform deciding what is clinically important for
@@ -147,7 +161,9 @@ class TestImportantFindings:
         api = _FakeApi()
         monkeypatch.setattr(llm, "_api_client", lambda s: api)
         monkeypatch.setattr(
-            llm, "_text_client", lambda s: pytest.fail("must not generate without a tenant instruction")
+            llm,
+            "_text_client",
+            lambda s: pytest.fail("must not generate without a tenant instruction"),
         )
 
         result = await cat.interpreter_agent_important_findings(
@@ -160,7 +176,9 @@ class TestImportantFindings:
     async def test_an_unapproved_instruction_DEGRADES(self, monkeypatch):
         api = _FakeApi(approved=False)
         monkeypatch.setattr(llm, "_api_client", lambda s: api)
-        monkeypatch.setattr(llm, "_text_client", lambda s: pytest.fail("must not generate on an unapproved prompt"))
+        monkeypatch.setattr(
+            llm, "_text_client", lambda s: pytest.fail("must not generate on an unapproved prompt")
+        )
 
         result = await cat.interpreter_agent_important_findings(
             _payload(
@@ -176,7 +194,9 @@ class TestImportantFindings:
     async def test_selection_fails_CLOSED(self, monkeypatch):
         api = _FakeApi(provider="", model="")
         monkeypatch.setattr(llm, "_api_client", lambda s: api)
-        monkeypatch.setattr(llm, "_text_client", lambda s: pytest.fail("must not generate without a selection"))
+        monkeypatch.setattr(
+            llm, "_text_client", lambda s: pytest.fail("must not generate without a selection")
+        )
 
         result = await cat.interpreter_agent_important_findings(
             _payload(
@@ -191,7 +211,9 @@ class TestImportantFindings:
     @pytest.mark.asyncio
     async def test_no_bound_transcript_degrades_before_any_call(self, monkeypatch):
         monkeypatch.setattr(llm, "_api_client", lambda s: pytest.fail("must not resolve anything"))
-        result = await cat.interpreter_agent_important_findings(_payload("agent.important_findings"))
+        result = await cat.interpreter_agent_important_findings(
+            _payload("agent.important_findings")
+        )
         assert result.status == "DEGRADED"
         assert "no transcript bound" in result.reason
 
@@ -218,7 +240,9 @@ class TestImportantFindings:
     @pytest.mark.asyncio
     async def test_an_unparseable_reply_degrades_rather_than_fabricating(self, monkeypatch):
         monkeypatch.setattr(llm, "_api_client", lambda s: _FakeApi())
-        monkeypatch.setattr(llm, "_text_client", lambda s: _FakeText("I could not find anything, sorry!"))
+        monkeypatch.setattr(
+            llm, "_text_client", lambda s: _FakeText("I could not find anything, sorry!")
+        )
 
         result = await cat.interpreter_agent_important_findings(
             _payload(
@@ -246,7 +270,7 @@ class TestImportantFindings:
 
     @pytest.mark.asyncio
     async def test_context_items_travel_alongside_the_transcript(self, monkeypatch):
-        """"...from consultation context (transcription, consultation context items, etc...)"."""
+        """ "...from consultation context (transcription, consultation context items, etc...)"."""
         api = _FakeApi()
         text = _FakeText('{"findings":[]}')
         monkeypatch.setattr(llm, "_api_client", lambda s: api)
@@ -298,7 +322,9 @@ class TestGroundingPolicies:
         assert "policyVerdicts" not in (result.output or {})
 
     @pytest.mark.asyncio
-    async def test_evaluates_each_declared_policy_against_the_input_it_is_scoped_to(self, monkeypatch):
+    async def test_evaluates_each_declared_policy_against_the_input_it_is_scoped_to(
+        self, monkeypatch
+    ):
         api = _FakeApi(content="THE TENANT'S GROUNDING RUBRIC")
         text = _FakeText('{"ok":true,"notes":"looks grounded"}')
         monkeypatch.setattr(llm, "_api_client", lambda s: api)
@@ -307,7 +333,12 @@ class TestGroundingPolicies:
         result = await gd.interpreter_guard_groundedness(
             _payload(
                 "guard.groundedness",
-                config={"policies": [_policy("summary-check", "summary"), _policy("transcript-check", "transcript")]},
+                config={
+                    "policies": [
+                        _policy("summary-check", "summary"),
+                        _policy("transcript-check", "transcript"),
+                    ]
+                },
                 bound_inputs={"in": {"text": "the note"}, "transcript": "what was said"},
             )
         )
@@ -320,7 +351,9 @@ class TestGroundingPolicies:
         assert text.calls[0]["system_prompt"] == "THE TENANT'S GROUNDING RUBRIC"
 
     @pytest.mark.asyncio
-    async def test_a_policy_whose_input_is_UNWIRED_is_reported_never_silently_skipped(self, monkeypatch):
+    async def test_a_policy_whose_input_is_UNWIRED_is_reported_never_silently_skipped(
+        self, monkeypatch
+    ):
         """A tenant that declared a findings policy and wired no findings has a graph problem. An
         empty verdict list would hide it; an "EVALUATED" one would be a lie."""
         monkeypatch.setattr(llm, "_api_client", lambda s: _FakeApi())
@@ -338,9 +371,13 @@ class TestGroundingPolicies:
         assert result.output["policyVerdicts"][0]["errorCode"] == "policy_input_unbound"
 
     @pytest.mark.asyncio
-    async def test_an_unresolvable_policy_instruction_is_UNEVALUATED_never_passed(self, monkeypatch):
+    async def test_an_unresolvable_policy_instruction_is_UNEVALUATED_never_passed(
+        self, monkeypatch
+    ):
         monkeypatch.setattr(llm, "_api_client", lambda s: _FakeApi(approved=False))
-        monkeypatch.setattr(llm, "_text_client", lambda s: pytest.fail("must not evaluate an unapproved policy"))
+        monkeypatch.setattr(
+            llm, "_text_client", lambda s: pytest.fail("must not evaluate an unapproved policy")
+        )
 
         result = await gd.interpreter_guard_groundedness(
             _payload(
@@ -355,7 +392,9 @@ class TestGroundingPolicies:
     @pytest.mark.asyncio
     async def test_selection_failure_leaves_every_policy_UNEVALUATED(self, monkeypatch):
         monkeypatch.setattr(llm, "_api_client", lambda s: _FakeApi(provider="", model=""))
-        monkeypatch.setattr(llm, "_text_client", lambda s: pytest.fail("must not evaluate without a selection"))
+        monkeypatch.setattr(
+            llm, "_text_client", lambda s: pytest.fail("must not evaluate without a selection")
+        )
 
         result = await gd.interpreter_guard_groundedness(
             _payload(
@@ -365,11 +404,16 @@ class TestGroundingPolicies:
             )
         )
         assert result.status == "DEGRADED"
-        assert [v["status"] for v in result.output["policyVerdicts"]] == ["UNEVALUATED", "UNEVALUATED"]
+        assert [v["status"] for v in result.output["policyVerdicts"]] == [
+            "UNEVALUATED",
+            "UNEVALUATED",
+        ]
 
     @pytest.mark.asyncio
     async def test_a_disabled_policy_is_not_evaluated(self, monkeypatch):
-        monkeypatch.setattr(llm, "_api_client", lambda s: pytest.fail("must not resolve a disabled policy"))
+        monkeypatch.setattr(
+            llm, "_api_client", lambda s: pytest.fail("must not resolve a disabled policy")
+        )
         result = await gd.interpreter_guard_groundedness(
             _payload(
                 "guard.groundedness",

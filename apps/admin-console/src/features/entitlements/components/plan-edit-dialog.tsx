@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
+import { FieldLegend, FieldSet } from '@arcaai/ui/components/shadcn/field';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -14,7 +15,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { usePlanEntitlement, useUpdatePlanEntitlement } from '../api/hooks';
 import type { PlanEntitlement, UpdatePlanEntitlementRequest } from '../api/types';
-import { LIMIT_FIELDS, PLAN_LABELS } from './plan-meta';
+import { LIMIT_FIELDS, LIMIT_GROUPS, PLAN_LABELS } from './plan-meta';
 
 /**
  * TASK-883 retired the three display-only plan booleans, and every surviving
@@ -109,38 +110,50 @@ function PlanEditForm({
 
   return (
     <div className="flex min-h-0 flex-col gap-4">
-      <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 content-start gap-4 overflow-y-auto sm:grid-cols-2">
-        {LIMIT_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col gap-2">
-            <Label htmlFor={`plan-edit-${field.key}`}>{field.label}</Label>
-            <Input
-              id={`plan-edit-${field.key}`}
-              type="number"
-              min={0}
-              placeholder="Unlimited"
-              value={values.limits[field.key]}
-              onChange={(event) => setLimit(field.key, event.target.value)}
-            />
-          </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
+        {LIMIT_GROUPS.map((group) => (
+          <FieldSet key={group.id} className="gap-0">
+            <FieldLegend variant="label">{group.title}</FieldLegend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {group.fields.map((field) => (
+                <div key={field.key} className="flex flex-col gap-2">
+                  <Label htmlFor={`plan-edit-${field.key}`}>{field.label}</Label>
+                  <Input
+                    id={`plan-edit-${field.key}`}
+                    type="number"
+                    min={0}
+                    placeholder="Unlimited"
+                    value={values.limits[field.key]}
+                    onChange={(event) => setLimit(field.key, event.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </FieldSet>
         ))}
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="plan-edit-modelTier">Model tier</Label>
-          <Input
-            id="plan-edit-modelTier"
-            value={values.modelTier}
-            onChange={(event) => setValues((current) => ({ ...current, modelTier: event.target.value }))}
-            className="font-mono"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="plan-edit-rateLimitTier">Rate limit tier</Label>
-          <Input
-            id="plan-edit-rateLimitTier"
-            value={values.rateLimitTier}
-            onChange={(event) => setValues((current) => ({ ...current, rateLimitTier: event.target.value }))}
-            className="font-mono"
-          />
-        </div>
+        <FieldSet className="gap-0">
+          <FieldLegend variant="label">Tiers</FieldLegend>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="plan-edit-modelTier">Model tier</Label>
+              <Input
+                id="plan-edit-modelTier"
+                value={values.modelTier}
+                onChange={(event) => setValues((current) => ({ ...current, modelTier: event.target.value }))}
+                className="font-mono"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="plan-edit-rateLimitTier">Rate limit tier</Label>
+              <Input
+                id="plan-edit-rateLimitTier"
+                value={values.rateLimitTier}
+                onChange={(event) => setValues((current) => ({ ...current, rateLimitTier: event.target.value }))}
+                className="font-mono"
+              />
+            </div>
+          </div>
+        </FieldSet>
       </div>
       {fieldError ? (
         <p role="alert" className="text-destructive text-sm">
@@ -164,7 +177,8 @@ function PlanEditForm({
 function PlanEditSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {Array.from({ length: 8 }, (_, index) => (
+      {/* One row per rendered field: the limits plus the two tier inputs. */}
+      {Array.from({ length: LIMIT_FIELDS.length + 2 }, (_, index) => (
         <div key={index} className="flex flex-col gap-2">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="h-9 w-full" />

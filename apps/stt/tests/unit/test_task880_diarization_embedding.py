@@ -32,7 +32,9 @@ def _mgr(bundle_models: dict[str, object] | None = None) -> MagicMock:
 
 def _config(*, slug: str | None = None, inline_id: str | None = None) -> SimpleNamespace:
     if inline_id is not None:
-        ref = SimpleNamespace(is_inline=True, inline=SimpleNamespace(hf_model_id=inline_id), slug=None)
+        ref = SimpleNamespace(
+            is_inline=True, inline=SimpleNamespace(hf_model_id=inline_id), slug=None
+        )
     elif slug is not None:
         ref = SimpleNamespace(is_inline=False, inline=None, slug=slug)
     else:
@@ -43,7 +45,13 @@ def _config(*, slug: str | None = None, inline_id: str | None = None) -> SimpleN
 class TestEmbeddingRefResolution:
     def test_a_slug_ref_resolves_from_the_session_spec_bundle(self) -> None:
         """The regression TASK-877 recorded: this returned None for every agent."""
-        mgr = _mgr({"wespeaker-voxceleb-resnet34": SimpleNamespace(source_uri="pyannote/wespeaker-voxceleb-resnet34-LM")})
+        mgr = _mgr(
+            {
+                "wespeaker-voxceleb-resnet34": SimpleNamespace(
+                    source_uri="pyannote/wespeaker-voxceleb-resnet34-LM"
+                )
+            }
+        )
         resolved = SessionManager._spec_embedding_model_id(
             mgr, "s1", _config(slug="wespeaker-voxceleb-resnet34")
         )
@@ -52,7 +60,9 @@ class TestEmbeddingRefResolution:
     def test_an_inline_ref_still_wins(self) -> None:
         mgr = _mgr({})
         assert (
-            SessionManager._spec_embedding_model_id(mgr, "s1", _config(inline_id="speechbrain/spkrec-ecapa-voxceleb"))
+            SessionManager._spec_embedding_model_id(
+                mgr, "s1", _config(inline_id="speechbrain/spkrec-ecapa-voxceleb")
+            )
             == "speechbrain/spkrec-ecapa-voxceleb"
         )
 

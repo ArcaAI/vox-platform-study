@@ -71,13 +71,21 @@ class ParakeetCppLoader(BaseModelLoader):
         # 2) Resolve the runtime binding (lazy — never at module import).
         handle = await asyncio.to_thread(self._resolve_binding, model_path)
 
+        # TASK-959 — a concrete device, never the literal "auto": this is what the
+        # gateway maps to a compute unit (cuda/mps -> GPU_SECOND, cpu ->
+        # CPU_SECOND), and "auto" normalises to `cpu`, so a GPU run billed CPU
+        # seconds. `_get_device` resolves through `get_device_string` (cuda | mps
+        # | cpu, degrading to cpu without torch) and passes an explicitly
+        # requested device through once it has checked it is available.
+        device = self._get_device(model_config.device or "auto")
+
         return LoadedModel(
             model_id=model_config.id,
             model_slug=model_config.slug,
             model=handle,
             format=AiModelFormat.PARAKEET_CPP,
             memory_mb=model_config.memory_size_mb or 800,
-            device=model_config.device or "auto",
+            device=device,
             loaded_at=datetime.now(UTC),
             extra={
                 "provider": "parakeet_cpp",

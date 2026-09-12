@@ -265,7 +265,9 @@ describe('TASK-930 G-1 — the seeded consultation graph dispatches on the AGENT
     expect(caps.definitionSlug).toBe(CONSULTATION_SLUG);
     for (const node of REALTIME_AGENT_NODES) {
       expect(byNode[node.nodeId], `${node.nodeId} runs the ${node.slug} agent (${node.task})`).toBe(node.capability);
-      expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: node.slug });
+      // TASK-958 F11 — a read-out spends nothing, so an unusable credential binding must
+      // not hide the agent: `mark` returns it without a `providerOverride`.
+      expect(agentResolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: node.slug, primaryBinding: 'mark' });
     }
   });
 

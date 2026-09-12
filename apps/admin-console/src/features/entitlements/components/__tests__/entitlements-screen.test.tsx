@@ -7,8 +7,10 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { EntitlementCapabilities, PlanEntitlement, TenantEntitlement } from '../../api/types';
+import { LIMIT_FIELDS } from '../plan-meta';
 import { EntitlementsScreen } from '../entitlements-screen';
 
 vi.mock('sonner', () => ({
@@ -24,11 +26,19 @@ function planEntitlement(overrides: Partial<PlanEntitlement> = {}): PlanEntitlem
     maxPromptTemplates: 10,
     maxAsrPipelines: 1,
     maxApiKeys: 2,
+    maxWorkflowDefinitions: 3,
+    maxAiProviderConnections: 4,
     storageQuotaBytes: 107374182400,
     maxConcurrentSessions: 2,
     monthlyConsultations: 200,
     monthlyTranscriptionMinutes: 1200,
     monthlySummaries: 400,
+    monthlyWorkflowInvocations: 500,
+    monthlySttSessionSeconds: 36000,
+    monthlyLlmTokens: 2000000,
+    monthlyTtsCharacters: 150000,
+    monthlyNlpTextUnits: 8000,
+    monthlyEmbeddingTokens: 500000,
     modelTier: 'standard',
     rateLimitTier: 'basic',
     version: 3,
@@ -84,11 +94,19 @@ const OVERRIDE: TenantEntitlement = {
   maxPromptTemplates: null,
   maxAsrPipelines: null,
   maxApiKeys: null,
+  maxWorkflowDefinitions: null,
+  maxAiProviderConnections: null,
   storageQuotaBytes: null,
   maxConcurrentSessions: null,
   monthlyConsultations: null,
   monthlyTranscriptionMinutes: null,
   monthlySummaries: null,
+  monthlyWorkflowInvocations: null,
+  monthlySttSessionSeconds: null,
+  monthlyLlmTokens: null,
+  monthlyTtsCharacters: null,
+  monthlyNlpTextUnits: null,
+  monthlyEmbeddingTokens: null,
   modelTier: null,
   rateLimitTier: null,
   rateLimitPerMinute: null,
@@ -253,6 +271,110 @@ describe('EntitlementsScreen', () => {
     });
   });
 
+  it('edits the workflow and provider-connection ceilings alongside the older plan limits', async () => {
+    const calls = stubEntitlements((call) => {
+      if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
+        return Response.json({ ...PLANS[1], version: 6 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+
+    const workflowDefinitions = (await within(dialog).findByLabelText('Max published workflow definitions')) as HTMLInputElement;
+    const providerConnections = within(dialog).getByLabelText('Max AI provider connections') as HTMLInputElement;
+    const workflowInvocations = within(dialog).getByLabelText('Monthly workflow invocations') as HTMLInputElement;
+    expect([workflowDefinitions.value, providerConnections.value, workflowInvocations.value]).toEqual(['3', '4', '500']);
+
+    fireEvent.change(workflowDefinitions, { target: { value: '12' } });
+    fireEvent.change(providerConnections, { target: { value: '6' } });
+    // Empty is the unlimited sentinel the other limits already use.
+    fireEvent.change(workflowInvocations, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO'));
+      expect(patch?.body).toEqual(
+        expect.objectContaining({
+          maxWorkflowDefinitions: 12,
+          maxAiProviderConnections: 6,
+          monthlyWorkflowInvocations: null,
+          expectedVersion: 5,
+        }),
+      );
+    });
+  });
+
+  it('edits the five monthly service allowances', async () => {
+    const calls = stubEntitlements((call) => {
+      if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
+        return Response.json({ ...PLANS[1], version: 6 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+
+    const sttSeconds = (await within(dialog).findByLabelText('Monthly STT session seconds')) as HTMLInputElement;
+    const llmTokens = within(dialog).getByLabelText('Monthly LLM tokens') as HTMLInputElement;
+    const ttsCharacters = within(dialog).getByLabelText('Monthly TTS characters') as HTMLInputElement;
+    const nlpTextUnits = within(dialog).getByLabelText('Monthly NLP text units') as HTMLInputElement;
+    const embeddingTokens = within(dialog).getByLabelText('Monthly embedding tokens') as HTMLInputElement;
+    expect([sttSeconds.value, llmTokens.value, ttsCharacters.value, nlpTextUnits.value, embeddingTokens.value]).toEqual([
+      '36000',
+      '2000000',
+      '150000',
+      '8000',
+      '500000',
+    ]);
+
+    fireEvent.change(llmTokens, { target: { value: '9000000' } });
+    // These are bigint columns on the gateway; the form still sends a number.
+    fireEvent.change(sttSeconds, { target: { value: '72000' } });
+    fireEvent.change(embeddingTokens, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO'));
+      expect(patch?.body).toEqual(
+        expect.objectContaining({
+          monthlySttSessionSeconds: 72000,
+          monthlyLlmTokens: 9000000,
+          monthlyTtsCharacters: 150000,
+          monthlyNlpTextUnits: 8000,
+          monthlyEmbeddingTokens: null,
+          expectedVersion: 5,
+        }),
+      );
+    });
+  });
+
+  it('files each limit under its own section, as a labelled group', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByLabelText('Max users');
+
+    // <fieldset> is an ARIA group named by its <legend>, so the sections are
+    // reachable by assistive tech rather than being visual headings only.
+    const quantities = within(dialog).getByRole('group', { name: 'Quantity ceilings' });
+    const meters = within(dialog).getByRole('group', { name: 'Monthly meters' });
+    const tiers = within(dialog).getByRole('group', { name: 'Tiers' });
+
+    expect(within(quantities).getByLabelText('Max users')).toBeDefined();
+    expect(within(quantities).getByLabelText('Storage quota (bytes)')).toBeDefined();
+    expect(within(meters).getByLabelText('Monthly LLM tokens')).toBeDefined();
+    expect(within(tiers).getByLabelText('Model tier')).toBeDefined();
+    // A meter must not also appear among the ceilings.
+    expect(within(quantities).queryByLabelText('Monthly LLM tokens')).toBeNull();
+  });
+
   it('surfaces the OCC conflict alert when the plan update returns 412', async () => {
     stubEntitlements((call) => {
       if (call.method === 'PATCH' && call.url.endsWith('/admin/entitlements/plans/PRO')) {
@@ -281,6 +403,18 @@ describe('EntitlementsScreen', () => {
     expect(screen.getByText(/exceeded/i)).toBeDefined();
     const editor = (await screen.findByLabelText(/override json/i)) as HTMLTextAreaElement;
     expect(editor.value).toContain('"maxUsers": 60');
+  });
+
+  // The two lists are maintained by hand and have drifted apart twice, so pin
+  // the invariant rather than the individual keys: every limit the plan form
+  // renders must also be settable per tenant.
+  it('exposes every plan limit as a key of the override document', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />, { searchParams: '?tab=overrides&tenant=t-1' });
+
+    const editor = (await screen.findByLabelText(/override json/i)) as HTMLTextAreaElement;
+    const parsed = JSON.parse(editor.value) as Record<string, unknown>;
+    expect(Object.keys(parsed)).toEqual(expect.arrayContaining(LIMIT_FIELDS.map((field) => field.key)));
   });
 
   it('upserts the tenant override with the existing row version behind a confirm', async () => {
@@ -347,6 +481,32 @@ describe('EntitlementsScreen', () => {
       const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/admin/entitlements/tenants/t-1/downgrade'));
       expect(post?.body).toEqual({ plan: 'STARTER' });
     });
+  });
+
+  /*
+   * Frame 13 had no axe scan of its own. One per rendered surface: the grid,
+   * and the plan editor the three limit fields above landed in.
+   */
+  it('has no axe violations on the plans tab', async () => {
+    stubEntitlements();
+    const { container } = renderWithProviders(<EntitlementsScreen />);
+    await screen.findByText('Pro');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // Scoped to the dialog, as every other open-overlay scan in this app is:
+  // while a modal is open Radix marks the page behind it `aria-hidden` and
+  // traps focus in JS, which axe reads statically as hidden-but-focusable.
+  it('has no axe violations in the plan editor', async () => {
+    stubEntitlements();
+    renderWithProviders(<EntitlementsScreen />);
+
+    fireEvent.click(await screen.findByText('Pro'));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByLabelText('Max AI provider connections');
+
+    expect(await axe(dialog)).toHaveNoViolations();
   });
 
   it('runs the trial-expiry sweep from the header behind a confirm', async () => {

@@ -42,6 +42,9 @@ describe('AsrAgentResolverService.resolve — selection', () => {
       task: AgentTask.SPEECH_TO_TEXT,
       agentSlug: 'platform-transcription',
       departmentId: null,
+      // TASK-958 F11 — this plane walks its own chain, so an unusable credential binding
+      // on the primary marks that chain rather than failing the whole resolve.
+      primaryBinding: 'mark',
     });
     expect(spec.runtimeKey).toBe(platformAgent.agentVersionId);
     expect(spec.agent.source).toBe('explicit');
@@ -51,7 +54,13 @@ describe('AsrAgentResolverService.resolve — selection', () => {
   it('no slug → the assignment cascade (department → tenant → SYSTEM) through the ONE agent resolver', async () => {
     agents.resolve.mockResolvedValueOnce(platformAgent);
     const { spec } = await make().resolve({ tenantId: TENANT, departmentId: 'dept-1' });
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: null, departmentId: 'dept-1' });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: null,
+      departmentId: 'dept-1',
+      primaryBinding: 'mark',
+    });
     expect(spec.agent.source).toBe('platform-default');
   });
 
@@ -75,6 +84,7 @@ describe('AsrAgentResolverService.resolve — fallback', () => {
       task: AgentTask.SPEECH_TO_TEXT,
       agentSlug: 'platform-transcription',
       departmentId: null,
+      primaryBinding: 'mark',
     });
     expect(spec.fallback.kind).toBe('agent');
     expect(spec.fallback.spec?.runtimeKey).toBe(cloudFallbackAgent.agentVersionId);

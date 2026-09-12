@@ -124,9 +124,7 @@ def injection_risk_cache_key(
             "an injection-risk verdict is scoped to (assembly x capability); both must "
             "be declared, because an undeclared scope is an unbounded one"
         )
-    return _key(
-        "gr:rt:inj", (*scope.components(), assembly_template_id, capability_set_id)
-    )
+    return _key("gr:rt:inj", (*scope.components(), assembly_template_id, capability_set_id))
 
 
 @dataclass(frozen=True)

@@ -137,7 +137,9 @@ def _doc_input(consultation_id: str) -> HarnessDocWorkflowInput:
 def _real_persist_activities(recorder: StubRecorder) -> list:
     """Stubs for everything EXCEPT persist_draft, which runs for real."""
     stubs = list(make_stub_activities(StubConfig(verdicts=["PASS"]), recorder))
-    kept = [a for a in stubs if getattr(a, "__temporal_activity_definition").name != "persist_draft"]
+    kept = [
+        a for a in stubs if getattr(a, "__temporal_activity_definition").name != "persist_draft"
+    ]
     return [*kept, activities.persist_draft]
 
 

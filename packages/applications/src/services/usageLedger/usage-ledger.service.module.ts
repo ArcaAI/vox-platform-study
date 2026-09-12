@@ -4,6 +4,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 
 import { CommonServiceModule } from '../baseServices';
 import { PriceBookServiceModule } from '../priceBook/price-book.service.module';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import { ComputeDeviceResolver, IComputeDeviceResolver } from './compute-device.resolver';
 import { IUsageLedgerService } from './IUsageLedgerService';
 import { UsageLedgerService } from './usage-ledger.service';
 import { UsageOutboxDrainer } from './usage-outbox.drainer';
@@ -31,8 +33,16 @@ import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
  * `AiUsageOutbox` rows, same shape as `AuditRetentionService`. It needs
  * nothing this module doesn't already import.
  *
- * EXPORTS only `IUsageLedgerService`: emitters record usage, and nothing outside
- * this module has any business reaching into the drainer or the pruner.
+ * EXPORTS `IUsageLedgerService` and `IComputeDeviceResolver`: emitters record
+ * usage and — for the LLM engines only — ask which device a self-hosted
+ * provider runs on. Nothing outside this module has any business reaching into
+ * the drainer or the pruner.
+ *
+ * `TenantSettingsService` is provided LOCALLY rather than by importing
+ * `EffectiveSettingsModule`, exactly as `RateLimitServiceModule` does: that
+ * module also pulls the pipeline resolver and the AI task-default service,
+ * none of which metering needs, and this service's only dependency is
+ * `IAppSettingsService` — already exported by `CommonServiceModule` above.
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, PriceBookServiceModule, BullModule.registerQueue({ name: USAGE_OUTBOX_QUEUE })],
@@ -41,11 +51,17 @@ import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
       provide: IUsageLedgerService,
       useClass: UsageLedgerService,
     },
+    // The `global-kv` cascade behind `metering.compute.deviceByProvider`.
+    TenantSettingsService,
+    {
+      provide: IComputeDeviceResolver,
+      useClass: ComputeDeviceResolver,
+    },
     UsageOutboxDrainer,
     UsageOutboxProcessor,
     UsageOutboxScheduler,
     UsageOutboxPrunerService,
   ],
-  exports: [IUsageLedgerService],
+  exports: [IUsageLedgerService, IComputeDeviceResolver],
 })
 export class UsageLedgerServiceModule {}

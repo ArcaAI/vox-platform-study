@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
-import { AiCapability, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IMeteringService, MeterUsage } from './IMeteringService';
 import { currentMonthWindow } from './metering-window';
@@ -31,6 +31,34 @@ const HARNESS_OPERATION = 'harness.step';
  * ; before the dimension existed the meter over-counted by these.
  */
 const NON_BILLABLE_LLM_OPERATIONS: string[] = [GUARDRAIL_OPERATION, HARNESS_OPERATION];
+
+/**
+ * The capabilities whose occupancy seconds are a tenant's INFERENCE compute
+ * (TASK-959 §3).
+ *
+ * `WORKFLOW` is deliberately absent: the durable worker's own CPU is reported
+ * separately as `workflowCpuSeconds`, and naming it here too would count a
+ * workflow run's orchestration twice. `STORAGE` has no seconds at all.
+ */
+const COMPUTE_CAPABILITIES: AiCapability[] = [AiCapability.STT, AiCapability.LLM, AiCapability.NLP, AiCapability.TTS, AiCapability.EMBEDDING];
+
+/** Both occupancy units — `device` decided which one the emitter wrote. */
+const COMPUTE_UNITS: AiUsageUnit[] = [AiUsageUnit.GPU_SECOND, AiUsageUnit.CPU_SECOND];
+
+/**
+ * Compute metered for COGS but never counted as a tenant's own occupancy.
+ *
+ * Guardrail only — NOT the pair `llmTokens` excludes. After TASK-957 F-1,
+ * `harness.step` means the CONSULTATION lane, whose compute is the tenant's own
+ * clinical work; the workflow lane moved to `workflow.step`, which is billable.
+ */
+const NON_TENANT_COMPUTE_OPERATIONS: string[] = [GUARDRAIL_OPERATION];
+
+/** Both directions of third-party network consumption. */
+const BYTE_UNITS: AiUsageUnit[] = [AiUsageUnit.EGRESS_BYTE, AiUsageUnit.INGRESS_BYTE];
+
+/** A byte count per gigabyte — SI, matching how every storage vendor prices. */
+const BYTES_PER_GB = 1_000_000_000;
 
 /**
  * `Prisma.Decimal` (decimal.js) out of `aggregate({_sum})`, a plain number in
@@ -116,6 +144,12 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       this.upsertMeter(tenantId, UsageMeterMetric.NLP_TEXT_UNITS, periodStart, periodEnd, usage.nlpTextUnits, now),
       this.upsertMeter(tenantId, UsageMeterMetric.GUARDRAIL_CALLS, periodStart, periodEnd, usage.guardrailCalls, now),
       this.upsertMeter(tenantId, UsageMeterMetric.EMBEDDING_TOKENS, periodStart, periodEnd, usage.embeddingTokens, now),
+      // TASK-959 — the three new snapshots. STORAGE_BYTES is derived from the
+      // GB level rather than stored as GB: `usedCount` is a BigInt, and a
+      // fractional gigabyte would truncate to nothing for most tenants.
+      this.upsertMeter(tenantId, UsageMeterMetric.COMPUTE_SECONDS, periodStart, periodEnd, usage.computeSeconds, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.WORKFLOW_CPU_SECONDS, periodStart, periodEnd, usage.workflowCpuSeconds, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.STORAGE_BYTES, periodStart, periodEnd, Math.round(usage.storageGb * BYTES_PER_GB), now),
     ]);
 
     return usage;
@@ -217,6 +251,10 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       nlpTextUnits,
       embeddingTokens,
       guardrailCalls,
+      computeSeconds,
+      workflowCpuSeconds,
+      storageGb,
+      thirdPartyBytes,
     ] = await Promise.all([
       client.consultation.count({ where: { tenantId, createdAt: window } }),
       client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
@@ -232,6 +270,12 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
       this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
       this.countGuardrailCalls(tenantId, window),
+      // TASK-959 — occupancy seconds, the worker's own CPU, the storage level
+      // and third-party bytes.
+      this.sumRollupQuantity(tenantId, window, COMPUTE_CAPABILITIES, COMPUTE_UNITS, NON_TENANT_COMPUTE_OPERATIONS),
+      this.sumRollupQuantity(tenantId, window, AiCapability.WORKFLOW, [AiUsageUnit.CPU_SECOND]),
+      this.sumLatestStorageSnapshot(tenantId, window),
+      this.sumThirdPartyBytes(tenantId, window),
     ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
@@ -247,7 +291,63 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       nlpTextUnits,
       guardrailCalls,
       embeddingTokens,
+      computeSeconds,
+      workflowCpuSeconds,
+      storageGb,
+      thirdPartyBytes,
     };
+  }
+
+  /**
+   * The gigabytes held at the LATEST snapshot in the window — a LEVEL, not a
+   * sum (TASK-959 §5).
+   *
+   * Two queries rather than one: find the most recent snapshot day, then sum
+   * that day's storage classes. Summing the whole window would answer
+   * "GB-days consumed", which is the INVOICE's question and roughly thirty
+   * times this one's answer.
+   *
+   * Deliberately UNROUNDED. Every other figure on `MeterUsage` is a whole unit
+   * because the allowance columns are integers; this one has no allowance
+   * column (D-1 — visibility first) and rounding it would report `0` for every
+   * tenant holding less than a gigabyte.
+   */
+  private async sumLatestStorageSnapshot(tenantId: EntityId, window: { gte: Date; lt: Date }): Promise<number> {
+    const client = this.databaseService.baseClient;
+    const latest = await client.aiUsageRollupDaily.findFirst({
+      where: { tenantId, capability: AiCapability.STORAGE, unit: AiUsageUnit.STORAGE_GB_DAY, bucketStart: window },
+      orderBy: { bucketStart: 'desc' },
+      select: { bucketStart: true },
+    });
+    // No snapshot in this window — the job has not run yet, or this tenant
+    // holds nothing. Zero, and no second query.
+    if (!latest) return 0;
+
+    const result = await client.aiUsageRollupDaily.aggregate({
+      _sum: { quantitySum: true },
+      where: { tenantId, capability: AiCapability.STORAGE, unit: AiUsageUnit.STORAGE_GB_DAY, bucketStart: latest.bucketStart },
+    });
+    return toNumberSafe(result._sum.quantitySum);
+  }
+
+  /**
+   * Bytes that actually left the platform (TASK-959 §4).
+   *
+   * Filtered on DEPLOYMENT, not capability: the same transport counts bytes to
+   * HOPE's own LM Studio over the LAN, and billing those as third-party
+   * consumption would inflate the one figure this exists to answer.
+   */
+  private async sumThirdPartyBytes(tenantId: EntityId, window: { gte: Date; lt: Date }): Promise<number> {
+    const result = await this.databaseService.baseClient.aiUsageRollupDaily.aggregate({
+      _sum: { quantitySum: true },
+      where: {
+        tenantId,
+        unit: { in: BYTE_UNITS },
+        deployment: { in: [AiDeploymentKind.CLOUD, AiDeploymentKind.BYOK] },
+        bucketStart: window,
+      },
+    });
+    return Math.round(toNumberSafe(result._sum.quantitySum));
   }
 
   /**
@@ -259,7 +359,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
   private async sumRollupQuantity(
     tenantId: EntityId,
     window: { gte: Date; lt: Date },
-    capability: AiCapability,
+    capability: AiCapability | AiCapability[],
     units: AiUsageUnit[],
     excludeOperations?: string[],
   ): Promise<number> {
@@ -267,7 +367,10 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       _sum: { quantitySum: true },
       where: {
         tenantId,
-        capability,
+        // A single capability stays a scalar equality so every pre-TASK-959
+        // metric's query plan is byte-identical; the compute meter spans five,
+        // which is the only reason the array form exists.
+        capability: Array.isArray(capability) ? { in: capability } : capability,
         unit: { in: units },
         bucketStart: window,
         // Drop COGS-only operations (guardrail/harness) from a

@@ -122,9 +122,7 @@ class SafetyAnalyzer:
         results: dict[str, Any] = await self._safety_client.classify(wanted, text)
         return results
 
-    async def classify_tasks_scored(
-        self, task_names: Sequence[str], text: str
-    ) -> ClassifiedTasks:
+    async def classify_tasks_scored(self, task_names: Sequence[str], text: str) -> ClassifiedTasks:
         """`classify_tasks`, with the per-label confidences kept.
 
         The realtime plane's session aggregate needs a GRADED per-window score;

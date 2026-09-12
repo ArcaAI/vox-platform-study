@@ -61,15 +61,15 @@ PROMQL_5XX_RATE = (
     ' / clamp_min(sum(rate(http_requests_total{service="harness"}[5m])), 0.001)'
 )
 PROMQL_LATENCY_P50 = (
-    'histogram_quantile(0.50, sum(rate('
+    "histogram_quantile(0.50, sum(rate("
     'http_request_duration_seconds_bucket{service="harness"}[5m])) by (le))'
 )
 PROMQL_LATENCY_P95 = (
-    'histogram_quantile(0.95, sum(rate('
+    "histogram_quantile(0.95, sum(rate("
     'http_request_duration_seconds_bucket{service="harness"}[5m])) by (le))'
 )
 PROMQL_LATENCY_P99 = (
-    'histogram_quantile(0.99, sum(rate('
+    "histogram_quantile(0.99, sum(rate("
     'http_request_duration_seconds_bucket{service="harness"}[5m])) by (le))'
 )
 
@@ -207,7 +207,9 @@ def main() -> int:
 
     print(f"Generated: {report['generated_at']}")
     print(f"Temporal:  {report['temporal_address']} / namespace {report['temporal_namespace']}")
-    print(f"Window:    {'last ' + str(report['since_days']) + ' days' if report['since_days'] else 'all history'}")
+    print(
+        f"Window:    {'last ' + str(report['since_days']) + ' days' if report['since_days'] else 'all history'}"
+    )
     print()
     print(f"Total executions seen:               {report['total_executions_seen']}")
     print(f"Distinct consultation workflow ids:  {report['distinct_consultation_workflow_ids']}")

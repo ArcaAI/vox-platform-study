@@ -191,9 +191,7 @@ def test_sync_single_flight_concurrent_gets_one_load() -> None:
     """
     clock, factory = FakeClock(), SyncRecordingFactory()
     factory.gate = threading.Event()
-    cache = SyncModelCache(
-        factory=factory, ttl_seconds=600, max_size=2, time_func=clock
-    )
+    cache = SyncModelCache(factory=factory, ttl_seconds=600, max_size=2, time_func=clock)
 
     entered = threading.Event()
     results: list[str] = []
@@ -254,9 +252,7 @@ async def test_load_failure_is_not_cached(kind: str) -> None:
 
     factory = flaky_async if kind == "async" else _flaky_body
     cls = ModelCache if kind == "async" else SyncModelCache
-    cache = CacheUnderTest(
-        cls(factory=factory, ttl_seconds=600, max_size=2, time_func=clock)
-    )
+    cache = CacheUnderTest(cls(factory=factory, ttl_seconds=600, max_size=2, time_func=clock))
 
     with pytest.raises(RuntimeError):
         await cache.get("a")
@@ -762,9 +758,7 @@ async def test_metrics_sink_receives_load_and_eviction_events(kind: str) -> None
         def on_resident(self, name: str, count: int, bytes_estimate: int) -> None:
             pass
 
-    cache = build_cache(
-        kind, factory, clock=clock, ttl_seconds=600, max_size=1, metrics=Sink()
-    )
+    cache = build_cache(kind, factory, clock=clock, ttl_seconds=600, max_size=1, metrics=Sink())
     await cache.get("a")
     clock.advance(1)
     await cache.get("b")

@@ -74,8 +74,10 @@ async def _run(label: str, claims: list[tuple[str, str]], premise: str, judge) -
     for c in _map(claims)["claims"]:
         kind = next(k for t, k in claims if t == c["text"])
         print(f"  [{kind:11}] {c['text'][:78]}")
-    print(f"  -> score={round(r.score, 4)} passed={r.passed} degraded={r.degraded} "
-          f"threshold={SensorThresholds().citation_verify_threshold}")
+    print(
+        f"  -> score={round(r.score, 4)} passed={r.passed} degraded={r.degraded} "
+        f"threshold={SensorThresholds().citation_verify_threshold}"
+    )
     print(f"  -> details={json.dumps(r.details, ensure_ascii=False)}")
 
 

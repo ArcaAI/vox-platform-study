@@ -48,9 +48,7 @@ class AsyncProducerUnderTest(Protocol):
 
     resumable: bool
 
-    async def produce(
-        self, event_type: str, payload: object, correlation_id: str
-    ) -> object:
+    async def produce(self, event_type: str, payload: object, correlation_id: str) -> object:
         """Produce one envelope for a given logical event."""
         ...
 
@@ -80,13 +78,9 @@ async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str
             else:
                 correlation_id, payload = f"conformance-{i}", {"n": i}
             produced.append(
-                await producer.produce(
-                    "conformance.test.event", payload, correlation_id
-                )
+                await producer.produce("conformance.test.event", payload, correlation_id)
             )
-    except (
-        Exception
-    ) as exc:  # noqa: BLE001 — surfaced as a problem string, never raised
+    except Exception as exc:  # noqa: BLE001 — surfaced as a problem string, never raised
         problems.append(f"produce() threw: {exc}")
         return problems
 
@@ -123,9 +117,7 @@ async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str
     # 5. occurredAt does not change across a redelivery of the same logical event
     if first is not None and second is not None:
         if first.get("occurredAt") != second.get("occurredAt"):
-            problems.append(
-                "occurredAt changed across two productions of the same logical event"
-            )
+            problems.append("occurredAt changed across two productions of the same logical event")
 
     # 6. idempotencyKey stable across repeats of the same event, differs across distinct events
     if first is not None and second is not None:
@@ -166,9 +158,7 @@ async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str
         unknown_version: Envelope = dict(first)
         unknown_version["schemaVersion"] = 999
         if parse_async_envelope(unknown_version) is not None:
-            problems.append(
-                "parse_async_envelope did not refuse an unknown schemaVersion"
-            )
+            problems.append("parse_async_envelope did not refuse an unknown schemaVersion")
 
     # 11 & 12. resume tokens
     resumable = getattr(producer, "resumable", False)
@@ -178,20 +168,14 @@ async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str
         if replay is None:
             problems.append("resumable producer must implement replay()")
         elif resume_token_of is not None:
-            mid_envelope = (
-                produced[MID_STREAM_INDEX] if len(produced) > MID_STREAM_INDEX else None
-            )
+            mid_envelope = produced[MID_STREAM_INDEX] if len(produced) > MID_STREAM_INDEX else None
             token = resume_token_of(mid_envelope)
             if not token:
-                problems.append(
-                    "resume_token_of did not return a token for a resumable producer"
-                )
+                problems.append("resume_token_of did not return a token for a resumable producer")
             else:
                 try:
                     suffix = await replay(token)
-                    expected_ids = [
-                        e.get("id") for e in envelopes[MID_STREAM_INDEX + 1 :]
-                    ]
+                    expected_ids = [e.get("id") for e in envelopes[MID_STREAM_INDEX + 1 :]]
                     actual_ids = [e.get("id") for e in _as_envelopes(suffix)]
                     if actual_ids != expected_ids:
                         problems.append(

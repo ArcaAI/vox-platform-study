@@ -148,9 +148,22 @@ class LlamaCppMiniCheckScorer:
     tests), which keeps this class hermetically testable without llama.cpp.
     """
 
-    def __init__(self, logit_fn: LogitFn, calibration: EntailmentCalibration) -> None:
+    def __init__(
+        self,
+        logit_fn: LogitFn,
+        calibration: EntailmentCalibration,
+        device: str = "cpu",
+    ) -> None:
         self._logit_fn = logit_fn
         self._calibration = calibration
+        # WHERE llama.cpp placed this model — resolved by the caller from
+        # `n_gpu_layers` (TASK-959 metering: reported on every entailment
+        # response), never guessed here.
+        self._device = device
+
+    @property
+    def device(self) -> str:
+        return self._device
 
     @staticmethod
     def build_prompt(source: str, claim: str) -> str:
@@ -323,7 +336,12 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
             f"{type(exc).__name__} — fail-closed to 'unverified'."
         ) from exc
 
-    scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama), calibration)
+    # TASK-959: `n_gpu_layers` IS the placement decision for a llama.cpp model —
+    # 0 means every layer stays on CPU, >0 means some are offloaded to the
+    # accelerator. No separate "mps" case: llama.cpp's GPU offload is the same
+    # knob on Metal as on CUDA, and this spec never distinguishes them.
+    device = "cuda" if config.n_gpu_layers > 0 else "cpu"
+    scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama), calibration, device=device)
     try:
         scorer.verify_calibration()  # raises NliModelUnavailableError if mis-wired / too-lossy
     except NliModelUnavailableError:

@@ -129,9 +129,7 @@ def test_endpointing_model_role_supplies_the_eou_model(platform_default) -> None
         "provider": None,
         "tenantId": "00000000-0000-0000-0000-000000000000",
     }
-    spec, configs = pipeline_spec_from_resolved(
-        ResolvedAsrSpec.model_validate(platform_default)
-    )
+    spec, configs = pipeline_spec_from_resolved(ResolvedAsrSpec.model_validate(platform_default))
     assert spec.preprocessing.endpoint.model_id == "smart-turn-v3"
     # Referenced by slug only — the endpointer loads it lazily, the model cache does not.
     assert "smart-turn-v3" not in configs
@@ -193,9 +191,7 @@ def test_new_optional_fields_are_omitted_when_unset(platform_default) -> None:
     free to omit these until TASK-876's schema names them. Emitting `null` instead of
     omitting would break the byte-for-byte parity the contract fixture locks.
     """
-    dumped = ResolvedAsrSpec.model_validate(platform_default).model_dump(
-        by_alias=True, mode="json"
-    )
+    dumped = ResolvedAsrSpec.model_validate(platform_default).model_dump(by_alias=True, mode="json")
     assert "chunkLengthSec" not in dumped["decoding"]
     assert "strideLengthSec" not in dumped["decoding"]
     assert "semantic" not in dumped["streaming"]
@@ -212,7 +208,5 @@ def test_new_optional_fields_round_trip_when_present(platform_default) -> None:
         "confidenceThreshold": 0.9,
         "minWords": 5,
     }
-    dumped = ResolvedAsrSpec.model_validate(platform_default).model_dump(
-        by_alias=True, mode="json"
-    )
+    dumped = ResolvedAsrSpec.model_validate(platform_default).model_dump(by_alias=True, mode="json")
     assert dumped == platform_default

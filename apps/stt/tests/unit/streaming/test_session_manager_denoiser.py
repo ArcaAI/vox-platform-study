@@ -430,7 +430,14 @@ class TestSessionManagerDenoiserWiring:
             mgr.remove_session = AsyncMock()
             mgr._spec_embedding_slug = MagicMock(return_value="wespeaker-voxceleb-resnet34")
 
-            profiles = [{"profile_id": "vp-1", "label": "Dr Who", "model_id": "wespeaker-voxceleb-resnet34", "embedding": [0.1]}]
+            profiles = [
+                {
+                    "profile_id": "vp-1",
+                    "label": "Dr Who",
+                    "model_id": "wespeaker-voxceleb-resnet34",
+                    "embedding": [0.1],
+                }
+            ]
             await SessionManager.create_session(
                 mgr,
                 session_id="s1",

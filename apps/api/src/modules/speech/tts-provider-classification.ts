@@ -62,12 +62,44 @@ export function readOverrideFunding(entry: unknown): ProviderFunding {
 }
 
 /**
- * `(provider, injected overrides) → (deployment, costBasis)`.
+ * The override entry that actually SERVED, out of a map that may hold several
+ * for one provider (TASK-958).
+ *
+ * `provider_overrides` is keyed by CONNECTION KEY: the provider id for the
+ * tenant's default connection and for the platform's, `provider:slug` for a
+ * named sibling. Reading `map[provider]` therefore MISSED a tenant that had
+ * bound its agent to a second account of the same vendor — its own BYOK spend
+ * was then classified as platform `CLOUD` and landed in platform COGS.
+ *
+ * Lookup order, most specific first:
+ *   1. the entry whose `connection_id` is the one the service reported serving;
+ *   2. the exact `provider` key (every pre-958 payload, and every default row);
+ *   3. EXACTLY ONE `provider:`-prefixed entry — unambiguous, so the tenant that
+ *      brought one named account is still credited when the service predates
+ *      the header;
+ *   4. nothing. Two siblings and no id is genuinely ambiguous, and a guessed
+ *      funding label mis-bills silently in whichever direction it guessed.
+ */
+function servingEntry(provider: string, providerOverrides: ProviderOverrideMapLike, connectionId?: string | null): unknown {
+  if (!providerOverrides) return undefined;
+  if (connectionId) {
+    const matched = Object.values(providerOverrides).find((entry) => (entry as { connection_id?: unknown } | null)?.connection_id === connectionId);
+    if (matched) return matched;
+  }
+  const exact = providerOverrides[provider];
+  if (exact) return exact;
+  const prefixed = Object.keys(providerOverrides).filter((key) => key.startsWith(`${provider}:`));
+  return prefixed.length === 1 ? providerOverrides[prefixed[0]] : undefined;
+}
+
+/**
+ * `(provider, injected overrides, served connection) → (deployment, costBasis)`.
  *
  * Precedence, unchanged from the two copies this replaces: a tenant credential
  * for THIS provider outranks the self-hosted set, which outranks platform-funded
- * cloud. What R3 changes is only the first test — from "is there an entry" to
- * "is there an entry the TENANT is paying for".
+ * cloud. What R3 changed is only the first test — from "is there an entry" to
+ * "is there an entry the TENANT is paying for"; TASK-958 changes only HOW that
+ * entry is found (see {@link servingEntry}).
  *
  * Key-specific throughout: an override for a different provider says nothing
  * about who paid for this one.
@@ -75,8 +107,9 @@ export function readOverrideFunding(entry: unknown): ProviderFunding {
 export function classifyTtsProvider(
   provider: string,
   providerOverrides: ProviderOverrideMapLike,
+  connectionId?: string | null,
 ): { deployment: AiDeploymentKind; costBasis?: AiCostBasis } {
-  const entry = providerOverrides ? providerOverrides[provider] : undefined;
+  const entry = servingEntry(provider, providerOverrides, connectionId);
   if (entry && readOverrideFunding(entry) === 'tenant') {
     return { deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL };
   }

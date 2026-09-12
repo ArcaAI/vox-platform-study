@@ -74,13 +74,13 @@ def _get_headers(exc: TextError) -> dict[str, str] | None:
 #: numbers are in the note above `router` in `api/endpoints/generate.py`. Two
 #: facts settle it:
 #:
-#* The win is microseconds. An error body is `{"detail", "error_code"}`; even
-#On a full 770-byte `GenerateResponse` the stdlib-vs-orjson difference was
-#0.0033 ms vs 0.0003 ms, against a ~8 ms/request CPU budget. `orjson` does
-#Not avoid `jsonable_encoder`, which is 87% of the render cost.
-#* FastAPI 0.141 DEPRECATES `ORJSONResponse` — including when constructed
-#Directly in an exception handler, which is exactly what this is. It emits
-#A `FastAPIDeprecationWarning` on every error response.
+# * The win is microseconds. An error body is `{"detail", "error_code"}`; even
+# On a full 770-byte `GenerateResponse` the stdlib-vs-orjson difference was
+# 0.0033 ms vs 0.0003 ms, against a ~8 ms/request CPU budget. `orjson` does
+# Not avoid `jsonable_encoder`, which is 87% of the render cost.
+# * FastAPI 0.141 DEPRECATES `ORJSONResponse` — including when constructed
+# Directly in an exception handler, which is exactly what this is. It emits
+# A `FastAPIDeprecationWarning` on every error response.
 #:
 #: Named rather than inlined so the decision is assertable and the next reader
 #: does not re-litigate it. The real request-path win was elsewhere entirely:
