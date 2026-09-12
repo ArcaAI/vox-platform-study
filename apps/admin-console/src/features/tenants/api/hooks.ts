@@ -14,6 +14,7 @@ import {
   deleteTenant,
   getFrontendConfig,
   getTenant,
+  getTenantStorageBreakdown,
   getTenantTags,
   getTenantUsage,
   listTenantConfigs,
@@ -47,6 +48,22 @@ export function useTenant(id: string) {
 
 export function useTenantUsage(id: string) {
   return useQuery({ queryKey: tenantKeys.usage(id), queryFn: () => getTenantUsage(id), enabled: !!id });
+}
+
+/**
+ * TASK-959 — the nightly snapshot's per-class storage split, beside the live
+ * `Media.size` figure `useTenantUsage` already carries. A separate, silently
+ * degrading read: a caller without `manage:UsageAnalytics` (or any other
+ * failure) leaves the breakdown row absent rather than blocking the primary
+ * usage tiles this tab exists to show.
+ */
+export function useTenantStorageBreakdown(id: string) {
+  return useQuery({
+    queryKey: tenantKeys.storageBreakdown(id),
+    queryFn: () => getTenantStorageBreakdown(id),
+    enabled: !!id,
+    retry: false,
+  });
 }
 
 export function useTenantTags(id: string) {

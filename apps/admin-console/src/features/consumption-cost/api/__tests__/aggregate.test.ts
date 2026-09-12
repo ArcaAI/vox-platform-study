@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { aggregateCostByCapability, sumMicrosMap } from '../aggregate';
+import { aggregateCostByCapability, pickDefaultSeries, sumMicrosMap } from '../aggregate';
 import type { UsageSummaryLine } from '../types';
 
 function line(capability: string, costMicros: string, over: Partial<UsageSummaryLine> = {}): UsageSummaryLine {
@@ -47,5 +47,20 @@ describe('sumMicrosMap', () => {
     expect(sumMicrosMap(null)).toBe('0');
     expect(sumMicrosMap(undefined)).toBe('0');
     expect(sumMicrosMap({})).toBe('0');
+  });
+});
+
+describe('pickDefaultSeries', () => {
+  it('picks the highest-cost capability, and within it the line with the largest quantity', () => {
+    const lines = [
+      line('LLM', '100', { unit: 'INPUT_TOKEN', quantity: '10' }),
+      line('STT', '400', { unit: 'AUDIO_SECOND', quantity: '9000' }),
+      line('STT', '400', { unit: 'GPU_SECOND', quantity: '30' }),
+    ];
+    expect(pickDefaultSeries(lines)).toEqual({ capability: 'STT', unit: 'AUDIO_SECOND' });
+  });
+
+  it('null in, null out', () => {
+    expect(pickDefaultSeries([])).toBeNull();
   });
 });

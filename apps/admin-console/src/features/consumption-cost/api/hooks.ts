@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getCostPerEncounter, getTopTenants, getUsageConnections, getUsagePlatformDefaults, getUsageSummary } from './client';
+import { getCostPerEncounter, getTopTenants, getUsageConnections, getUsagePlatformDefaults, getUsageSummary, getUsageTimeseries } from './client';
 import { consumptionKeys } from './keys';
 import type {
   CostPerEncounterResponse,
@@ -12,6 +12,8 @@ import type {
   UsagePeriodParams,
   UsagePlatformDefaults,
   UsageSummaryResponse,
+  UsageTimeseriesParams,
+  UsageTimeseriesResponse,
 } from './types';
 
 /**
@@ -75,6 +77,32 @@ export function useTopTenants(enabled: boolean, params?: UsagePeriodParams): Top
     queryKey: consumptionKeys.topTenants(params),
     queryFn: () => getTopTenants(params),
     enabled,
+  });
+  return {
+    isPending: query.isPending,
+    error: (query.error as Error | null) ?? null,
+    refetch: () => void query.refetch(),
+    data: query.data ?? null,
+  };
+}
+
+export interface UsageTimeseriesView {
+  isPending: boolean;
+  error: Error | null;
+  refetch: () => void;
+  data: UsageTimeseriesResponse | null;
+}
+
+/**
+ * TASK-959 — the usage-over-time chart's series. `enabled` is gated on a
+ * resolved (capability, unit) default (`pickDefaultSeries`) — there is
+ * nothing to chart before the summary itself has loaded at least one line.
+ */
+export function useUsageTimeseries(enabled: boolean, params?: UsageTimeseriesParams): UsageTimeseriesView {
+  const query = useQuery({
+    queryKey: consumptionKeys.timeseries(params),
+    queryFn: () => getUsageTimeseries(params as UsageTimeseriesParams),
+    enabled: enabled && !!params,
   });
   return {
     isPending: query.isPending,

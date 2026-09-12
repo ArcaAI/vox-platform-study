@@ -13,7 +13,7 @@ import type {
   RunGateState,
   RunTrace,
   WorkflowDefinitionSlice,
-  WorkflowRun,
+  WorkflowRunDetail,
   WorkflowRunsPage,
 } from './types';
 
@@ -24,7 +24,8 @@ export function listWorkflowRuns(params?: ListWorkflowRunsParams): Promise<Workf
   return getJson(WORKFLOW_RUNS, params);
 }
 
-export function getWorkflowRun(runId: string): Promise<WorkflowRun> {
+/** TASK-959 — the detail route carries `cpuSeconds` beside the run row (`WorkflowRunDetailResponse`); the list route does not. */
+export function getWorkflowRun(runId: string): Promise<WorkflowRunDetail> {
   return getJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}`);
 }
 

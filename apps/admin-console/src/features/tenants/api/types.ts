@@ -61,6 +61,22 @@ export interface TenantUsage {
   totalConsultations: number;
 }
 
+/**
+ * TASK-959 — the per-class storage split, read off `GET admin/usage/summary`
+ * (`UsageSummaryResponse.storage`). A LOCAL, narrower mirror (rule 13 —
+ * features never import one another; `features/consumption-cost` declares
+ * the same shape for its own screen) since this tab reads only the storage
+ * block and nothing else off that response.
+ */
+export interface TenantStorageSnapshot {
+  mediaGb: string;
+  textGb: string;
+  claimCheckGb: string;
+  totalGb: string;
+  /** When the snapshot was taken (end of the UTC day it measured), ISO-8601. */
+  asOf: string;
+}
+
 /** GET /admin/tenants/configs/:identifier rows (TenantConfigResponse). */
 export interface TenantConfig extends BaseResource {
   name: string;
