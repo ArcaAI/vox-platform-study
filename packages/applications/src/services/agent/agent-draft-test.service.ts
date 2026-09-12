@@ -108,7 +108,7 @@ export interface DraftTestSubmitInput {
  * plan. The record is `generate.stream` with `trigger: 'AGENT_TEST'`, built from TEXT's OWN usage
  * block on finalize. It shares `UsageIdempotencyKey.llmRequest(taskId)` with the gateway's SSE
  * relay, so a stream that both paths observe converges on ONE billed event rather than two.
- * Funding is DERIVED (`buildLlmUsageInput` reads `byok` off the usage block); nothing here
+ * Funding is DERIVED (`buildLlmUsageBatches` reads `byok` off the usage block); nothing here
  * stamps a funding tier, and there is no `funding: 'test'`.
  */
 @Injectable()

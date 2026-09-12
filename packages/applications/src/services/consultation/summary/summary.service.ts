@@ -51,7 +51,14 @@ import {
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
-import { buildGuardrailUsageBatches, buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
+import {
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
 import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
