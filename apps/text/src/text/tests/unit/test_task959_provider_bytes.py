@@ -275,3 +275,86 @@ class TestPrometheusCounter:
             counts.add_response(250)
         assert _value("egress", "tenant") == before_out + 100
         assert _value("ingress", "tenant") == before_in + 250
+
+
+class _EchoEngine:
+    """A loopback HTTP/1.1 server that answers one OpenAI-wire completion.
+
+    Borrowed from `test_task818_stream_close_reuse.py` for the same reason it
+    exists there: the claim under test is about what happens between a vendor SDK
+    and a socket, and everything mocked in between is where the bug would live.
+    """
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self.request_bodies: list[bytes] = []
+        self._server: object | None = None
+
+    @property
+    def base_url(self) -> str:
+        host, port = self._server.sockets[0].getsockname()[:2]  # type: ignore[attr-defined]
+        return f"http://{host}:{port}/v1"
+
+    async def __aenter__(self) -> _EchoEngine:
+        import asyncio
+
+        self._server = await asyncio.start_server(self._serve, "127.0.0.1", 0)
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        self._server.close()  # type: ignore[attr-defined]
+        await self._server.wait_closed()  # type: ignore[attr-defined]
+
+    async def _serve(self, reader, writer) -> None:  # type: ignore[no-untyped-def]
+        import asyncio
+
+        try:
+            while True:
+                headers = await reader.readuntil(b"\r\n\r\n")
+                length = 0
+                for line in headers.split(b"\r\n"):
+                    if line.lower().startswith(b"content-length:"):
+                        length = int(line.split(b":", 1)[1])
+                if length:
+                    self.request_bodies.append(await reader.readexactly(length))
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    b"Content-Length: %d\r\nConnection: keep-alive\r\n\r\n%s"
+                    % (len(self._body), self._body)
+                )
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            writer.close()
+
+
+class TestEndToEndThroughAVendorSdk:
+    """The whole chain, unmocked: `AsyncOpenAI` → pooled client → record."""
+
+    @pytest.mark.asyncio
+    async def test_a_real_sdk_call_credits_the_caller_s_record(self) -> None:
+        from openai import AsyncOpenAI
+
+        from text.providers.pool import TransportFamily, pooled_http_client, reset_pooled_clients
+
+        payload = (
+            b'{"id":"c","object":"chat.completion","created":0,"model":"m",'
+            b'"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},'
+            b'"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,'
+            b'"total_tokens":4}}'
+        )
+        reset_pooled_clients()
+        async with _EchoEngine(payload) as engine:
+            pooled = pooled_http_client("byte-probe", timeout_s=30, family=TransportFamily.HTTPX2)
+            client = AsyncOpenAI(api_key="x", base_url=engine.base_url, http_client=pooled)
+
+            with count_provider_bytes("byte-probe", funding="platform") as counts:
+                await client.chat.completions.create(
+                    model="m", messages=[{"role": "user", "content": "hi"}]
+                )
+
+        assert engine.request_bodies, "the engine saw no request body"
+        assert counts.request_bytes == len(engine.request_bodies[0])
+        assert counts.response_bytes == len(payload)
+        reset_pooled_clients()
