@@ -5837,7 +5837,7 @@
             "type": "string"
           },
           "bucketPrefix": {
-            "description": "Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket (\"In bucket, not registered → Register\"). Normally written by the publish job. `localPath` is derived from it and never accepted directly.",
+            "description": "Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`) when registering weights ALREADY in the bucket (\"In bucket, not registered → Register\"). Normally written by the publish job. `localPath` is derived from it and never accepted directly.",
             "example": "medical-ner/0123456789ab/",
             "type": "string"
           },
@@ -21093,7 +21093,8 @@
           "layout": {
             "enum": [
               "flat",
-              "hf-cache"
+              "hf-cache",
+              "staged"
             ],
             "type": "string"
           },
@@ -21999,7 +22000,7 @@
             "type": "string"
           },
           "bucketPrefix": {
-            "description": "Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for \"register from bucket\". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both.",
+            "description": "Key prefix relative to the `hope-models` bucket ROOT (never bucket-qualified, never an `s3://` URI — the bucket is already mounted at `/mnt/models-bucket`). Normally written by the publish job; accepted here for \"register from bucket\". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both.",
             "type": "string"
           },
           "category": {
