@@ -66,7 +66,7 @@ export class SttStreamingUsageSegmentRequest {
   @ApiPropertyOptional({
     description:
       'Which device THIS segment occupied. DECIDES THE UNIT (cuda/mps -> GPU_SECOND, cpu -> CPU_SECOND), which is why it is resolved per segment: a ' +
-      'cloud leg occupied this service\'s CPU waiting on the vendor even when the self-hosted leg of the same session held a real accelerator.',
+      "cloud leg occupied this service's CPU waiting on the vendor even when the self-hosted leg of the same session held a real accelerator.",
     enum: COMPUTE_DEVICES,
   })
   @IsString()
@@ -94,7 +94,7 @@ export class SttStreamingUsageSegmentRequest {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'How honest this segment\'s byte counts are: `wire` (counted at the HTTP transport) or `app` (an application-level proxy, because the vendor ' +
+      "How honest this segment's byte counts are: `wire` (counted at the HTTP transport) or `app` (an application-level proxy, because the vendor " +
       'SDK owns its own websocket). Null alongside null byte counts.',
     enum: BYTE_SOURCES,
   })
