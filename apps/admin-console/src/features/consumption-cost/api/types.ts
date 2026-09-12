@@ -87,3 +87,20 @@ export interface UsageConnection {
   slug?: string;
   name?: string | null;
 }
+
+/**
+ * TASK-958 (wire review #6) — `GET admin/providers/:service/platform-defaults`,
+ * narrowed to the same three fields.
+ *
+ * The OTHER half of the cascade this column describes. A platform-funded
+ * generation carries the SYSTEM row's `connectionId` — only a self-hosted engine
+ * yields `null` — so without this list every platform-funded line resolved to
+ * nothing and rendered 8 characters of a UUID, which reads as "one of your
+ * connections, unnamed" for a row the tenant does not own.
+ *
+ * A row with no `id` is a PLACEHOLDER (`version: 0`): the platform has no row for
+ * that provider, so it names nothing and is skipped.
+ */
+export interface UsagePlatformDefaults {
+  connections?: UsageConnection[];
+}
