@@ -215,6 +215,55 @@ class TestBytesFollowTheEngineThatMovedThem:
         assert segments["whisper_cpp"].response_bytes is None
         assert segments["whisper_cpp"].byte_source is None
 
+    def test_a_self_hosted_leg_AFTER_a_cloud_leg_does_not_inherit_its_byte_source(self):
+        """The ordering trap. `last_byte_source` is a single slot, so a session
+        that starts on a cloud engine and switches BACK to self-hosted would hand
+        the self-hosted span a stale `wire` label with zero bytes — which reads as
+        "a third-party call that moved nothing" instead of "no such call". Two
+        things prevent it: the worker clears the label when an engine that reports
+        no bytes runs, and a zero-delta span is attributed no bytes at all.
+        """
+        from stt.pipeline.dto import AiModelFormat
+
+        clock = _FakeClock()
+        acc = EngineUsageAccumulator(AiModelFormat.SARVAM, clock=clock)
+        clock.advance(60.0)
+        acc.switch_to(
+            AiModelFormat.WHISPER_CPP,
+            audio_seconds=55.0,
+            counters=EngineUsageCounters(
+                processing_seconds=4.0,
+                request_bytes=1000,
+                response_bytes=100,
+                byte_source=BYTE_SOURCE_WIRE,
+            ),
+        )
+        clock.advance(60.0)
+
+        segments = _by_engine(
+            acc.close(
+                audio_seconds=115.0,
+                total_audio_seconds=115.0,
+                total_session_seconds=120.0,
+                total_processing_seconds=9.0,
+                # The self-hosted engine moved nothing, so the counters are
+                # unchanged from the switch — but a STALE label would still be here
+                # if the worker had not cleared it.
+                counters=EngineUsageCounters(
+                    processing_seconds=9.0,
+                    request_bytes=1000,
+                    response_bytes=100,
+                    byte_source=BYTE_SOURCE_WIRE,
+                ),
+                resolve=_resolver(),
+            )
+        )
+
+        assert segments["sarvam"].request_bytes == 1000
+        assert segments["whisper_cpp"].request_bytes is None
+        assert segments["whisper_cpp"].response_bytes is None
+        assert segments["whisper_cpp"].byte_source is None
+
     def test_each_span_keeps_the_byte_source_of_the_engine_that_served_it(self):
         """Sarvam counts real HTTP (`wire`); the Azure Speech SDK can only offer an
         application-level proxy (`app`). One session, two meanings."""
@@ -498,6 +547,49 @@ class TestTheInferenceWorkerAccumulatesTheAdaptersByteCounts:
         assert worker.cumulative_response_bytes == 20
         assert worker.last_byte_source == BYTE_SOURCE_WIRE
         assert worker.cumulative_processing_seconds >= 0.0
+
+    @pytest.mark.asyncio
+    async def test_a_self_hosted_engine_CLEARS_the_byte_source_after_a_cloud_one(self):
+        """`last_byte_source` names the LIVE engine's reporting, so an engine that
+        reports none must clear it — otherwise its span inherits the previous
+        engine's label at the next boundary snapshot."""
+        import numpy as np
+
+        from stt.streaming.inference import StreamingInferenceWorker
+        from stt.streaming.preprocessor import AudioUtterance
+
+        async def cloud_asr(samples, sample_rate, **kwargs):
+            return {
+                "text": "hi",
+                "request_bytes": 100,
+                "response_bytes": 10,
+                "byte_source": BYTE_SOURCE_WIRE,
+            }
+
+        async def self_hosted_asr(samples, sample_rate, **kwargs):
+            return {"text": "hi"}
+
+        utterance = AudioUtterance(
+            samples=np.zeros(160, dtype=np.float32),
+            sample_rate=16000,
+            start_time=0.0,
+            end_time=0.01,
+            utterance_index=0,
+            is_final=True,
+        )
+        worker = StreamingInferenceWorker()
+
+        worker._asr_pipeline = cloud_asr
+        await worker._run_inference(utterance)
+        assert worker.last_byte_source == BYTE_SOURCE_WIRE
+
+        worker._asr_pipeline = self_hosted_asr
+        await worker._run_inference(utterance)
+
+        assert worker.last_byte_source is None
+        # The totals are cumulative and never rewound — only the LABEL moves.
+        assert worker.cumulative_request_bytes == 100
+        assert worker.cumulative_response_bytes == 10
 
     @pytest.mark.asyncio
     async def test_a_self_hosted_adapter_leaves_the_byte_counters_untouched(self):

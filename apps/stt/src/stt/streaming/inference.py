@@ -922,12 +922,17 @@ class StreamingInferenceWorker:
         """Fold one utterance's reported byte counts into the session counters.
 
         A result with no ``byte_source`` moved nothing over a third-party link
-        (every self-hosted engine), and the counters are left alone so the
-        absence stays legible downstream. A malformed count is ignored rather
-        than allowed to poison a billing counter.
+        (every self-hosted engine). The cumulative totals are left alone — they
+        are never rewound — but the LABEL is CLEARED, because it names what the
+        LIVE engine reports: a session that switches cloud -> self-hosted would
+        otherwise hand the self-hosted span a stale ``wire`` at the next boundary
+        snapshot, which reads as "a third-party call that moved nothing" instead
+        of "no such call". A malformed count is ignored rather than allowed to
+        poison a billing counter.
         """
         byte_source = result.get("byte_source")
         if not isinstance(byte_source, str):
+            self.last_byte_source = None
             return
         request_bytes = result.get("request_bytes")
         response_bytes = result.get("response_bytes")

@@ -192,8 +192,13 @@ class _Totals:
         link — a self-hosted engine — and must leave the counters ``None``: the
         gateway reads a null as "no such call", and a zero as "a call that moved
         no bytes", which is a different (and, for a REST engine, impossible) fact.
+
+        A span with no byte MOVEMENT is treated the same way, and that is the
+        belt to the worker's braces: an HTTP request that transferred literally
+        zero bytes does not exist, so a zero delta means this span made no call
+        and any label reaching it is a leftover from an earlier engine.
         """
-        if byte_source is None:
+        if byte_source is None or (request <= 0 and response <= 0):
             return
         self.request_bytes = (self.request_bytes or 0) + max(0, request)
         self.response_bytes = (self.response_bytes or 0) + max(0, response)
