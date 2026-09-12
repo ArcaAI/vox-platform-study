@@ -375,7 +375,16 @@ describe('SpeechProxyController', () => {
       stream.emit('end');
 
       const call = usageLedger.recordUsage.mock.calls[0][0];
-      expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 3 }]);
+      // AUDIO_SECOND stays absent (not derivable from a byte count for mp3) — but the raw byte
+      // count the gateway relayed IS still a real observation (TASK-959 §4.2), recorded as an
+      // app-level proxy since no `X-Tts-Response-Bytes` header was sent (streaming mode). No
+      // device header + SELF_HOSTED (kokoro, no override) ⇒ still no compute row. `byteSource`
+      // rides the BYTE UNIT's own attributesJson (SWAP), never `common`; quantities are strings.
+      expect(call.units).toEqual([
+        { unit: 'CHARACTER', quantity: 3 },
+        { unit: 'INGRESS_BYTE', quantity: '9600', attributesJson: { byteSource: 'app' } },
+      ]);
+      expect(call.common.attributesJson).toEqual({ interrupted: false });
     });
 
     it('classifies a BYOK-served provider: deployment BYOK, costBasis BYOK_NOTIONAL', async () => {
@@ -502,7 +511,13 @@ describe('SpeechProxyController', () => {
 
       expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
       const call = usageLedger.recordUsage.mock.calls[0][0];
+      // 100 relayed bytes is a real observation even on an aborted stream (TASK-959 §4.2) — no
+      // `X-Tts-Device` header here and SELF_HOSTED (kokoro, no override), so no compute row.
+      // `byteSource` rides the byte UNIT's own attributesJson (SWAP), never `common`.
       expect(call.common.attributesJson).toEqual({ interrupted: true });
+      expect(call.units).toEqual(
+        expect.arrayContaining([{ unit: 'INGRESS_BYTE', quantity: '100', attributesJson: { byteSource: 'app' } }]),
+      );
     });
 
     it('never double-emits when both an error/close teardown occurs', async () => {
@@ -551,6 +566,196 @@ describe('SpeechProxyController', () => {
       await ctrl.synthesize({ input: 'x'.repeat(5000), voice: 'en-female-1' } as any, res);
 
       expect(usageLedger.recordUsage).not.toHaveBeenCalled();
+    });
+  });
+
+  // TASK-959 T2b — the four new headers `apps/tts` sends beside `X-Tts-Audio-Seconds`, and the
+  // gateway's own stream fallbacks for the two that are batch-only.
+  describe('POST /speech/synthesize — compute + byte units (TASK-959)', () => {
+    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, cls as any, usageLedger as any);
+
+    it('a batch response with all four headers yields the compute + byte rows with the right units and attributes', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '6',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          'x-tts-audio-seconds': '0.2',
+          'x-tts-synthesis-ms': '150',
+          'x-tts-device': 'cuda',
+          'x-tts-response-bytes': '9600',
+          'x-tts-byte-source': 'wire',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hello.', voice: 'en-female-1' } as any, res);
+      stream.emit('data', Buffer.alloc(9600));
+      stream.emit('end');
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      // `device`/`byteSource` ride each UNIT row's own attributesJson (SWAP), never `common`;
+      // every quantity the helper emits is a string.
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 6 },
+          { unit: 'AUDIO_SECOND', quantity: 0.2 },
+          { unit: 'GPU_SECOND', quantity: '0.150', attributesJson: { device: 'cuda' } },
+          { unit: 'INGRESS_BYTE', quantity: '9600', attributesJson: { byteSource: 'wire' } },
+        ]),
+      );
+      expect(call.common.attributesJson).toEqual({ interrupted: false });
+    });
+
+    it('a stream (no X-Tts-Synthesis-Ms) yields the gateway wall-clock compute row and its own relay bytes', async () => {
+      vi.useFakeTimers();
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          'x-tts-device': 'cpu', // self-hosted stream: X-Tts-Device rides EVERY mode; no synthesis-ms/bytes/byte-source (streaming).
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', stream_format: 'audio' } as any, res);
+      stream.emit('data', Buffer.alloc(9600)); // first byte — starts the gateway's own clock
+      vi.advanceTimersByTime(80);
+      stream.emit('end'); // teardown — stops it
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CPU_SECOND', quantity: '0.080', attributesJson: { device: 'cpu' } },
+          { unit: 'INGRESS_BYTE', quantity: '9600', attributesJson: { byteSource: 'app' } },
+        ]),
+      );
+      expect(call.common.attributesJson).toEqual({ interrupted: false });
+      vi.useRealTimers();
+    });
+
+    it('a cloud response with no X-Tts-Device still bills the platform calling CPU (a non-SELF_HOSTED deployment is always cpu)', async () => {
+      // The compute RULE belongs to the shared helper, not this reader: `deployment` decides,
+      // not the (here absent) device header — a CLOUD call bills `CPU_SECOND` at `costBasis:
+      // INTERNAL` on the SAME batch (no BYOK split; `costBasis` here is undefined, which the
+      // ledger's own default already treats as INTERNAL) whenever a timing reading exists.
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          'x-tts-audio-seconds': '0.2',
+          'x-tts-synthesis-ms': '220', // present — no device header, but CLOUD forces the unit to cpu anyway.
+          'x-tts-response-bytes': '9600',
+          'x-tts-byte-source': 'app',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('data', Buffer.alloc(9600));
+      stream.emit('end');
+
+      // No split: `costBasis` is undefined (a platform-funded CLOUD call), never BYOK_NOTIONAL.
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 3 },
+          { unit: 'AUDIO_SECOND', quantity: 0.2 },
+          { unit: 'CPU_SECOND', quantity: '0.220', attributesJson: { device: 'cpu' } },
+          { unit: 'INGRESS_BYTE', quantity: '9600', attributesJson: { byteSource: 'app' } },
+        ]),
+      );
+      expect(call.common.attributesJson).toEqual({ interrupted: false });
+    });
+
+    it('a SELF_HOSTED stream with no reported timing and no X-Tts-Device gets no compute row at all', async () => {
+      // The one case the helper still refuses to guess: a SELF_HOSTED call whose device nobody
+      // resolved. Distinct from the CLOUD case above — there is no vendor to bill CPU on behalf
+      // of, and no device to bill GPU/CPU on behalf of either.
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          // No X-Tts-Device, no X-Tts-Synthesis-Ms, and no data ever relayed — nothing measured.
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 3 }]);
+      expect(call.common.attributesJson).toEqual({ interrupted: false });
+    });
+
+    it("splits a BYOK call's platform CPU leg into its own INTERNAL batch, disjoint from the BYOK_NOTIONAL token/byte batch", async () => {
+      // `classifyTtsProvider` tests the override FIRST, so a tenant credential for a normally
+      // self-hosted engine still classifies BYOK — a synthetic but real code path, and the only
+      // one where a compute row (this reader needs `X-Tts-Device`, which only a self-hosted
+      // engine ever sends) meets a BYOK batch (TASK-959 §6.3's sanctioned mixed-basis case).
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          'x-tts-synthesis-ms': '90',
+          'x-tts-device': 'cuda',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { kokoro: { api_key: 'k', funding: 'tenant' } } } as any, res);
+      stream.emit('end');
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(2);
+      const [tokenBatch, platformBatch] = usageLedger.recordUsage.mock.calls.map((call: unknown[]) => call[0]);
+      expect(tokenBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
+      expect(tokenBatch.units.find((u: { unit: string }) => u.unit === 'CPU_SECOND' || u.unit === 'GPU_SECOND')).toBeUndefined();
+      expect(platformBatch.common).toMatchObject({ deployment: 'BYOK', costBasis: 'INTERNAL' });
+      // `appendComputeAndByteUnits` rule 2 — a non-SELF_HOSTED deployment is metered on the
+      // PLATFORM's CPU regardless of the resolved device (a BYOK/CLOUD leg is never billed as
+      // occupying hardware that is not the platform's own), so `x-tts-device: cuda` here still
+      // bills CPU_SECOND rather than GPU_SECOND, and `device` rides the unit's own attributesJson.
+      expect(platformBatch.units).toEqual([{ unit: 'CPU_SECOND', quantity: '0.090', attributesJson: { device: 'cpu' } }]);
+      // Both batches derive from the SAME base idempotency key — a redelivery still converges.
+      expect(platformBatch.common.idempotencyKey).toBe(tokenBatch.common.idempotencyKey);
     });
   });
 });

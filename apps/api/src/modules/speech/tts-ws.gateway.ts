@@ -7,8 +7,9 @@ import {
   SecretsService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
+  appendComputeAndByteUnits,
 } from '@arcaai/applications';
-import type { ResolvedTtsSpec } from '@arcaai/applications';
+import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
@@ -109,6 +110,28 @@ interface Bridge {
   // event without threading extra params through the message callback.
   sessionId: string;
   tenantId: string | null;
+  /**
+   * TASK-959 §4.2 — bytes of upstream BINARY audio relayed to the browser so far. `stream_ws.py`'s
+   * own `"usage"` control frame carries no device, timing, or byte count of its own (unlike the
+   * REST `/audio/speech` headers) — this is the only observation this bridge can make, and it is
+   * an APPLICATION-level proxy for what the client received, never the wire.
+   */
+  relayedBytes: number;
+  /**
+   * TASK-959 §3.2 — wall-clock start, set at the FIRST relayed binary frame. `stream_ws.py`
+   * reports no device/timing of its own, but the compute RULE lives in `appendComputeAndByteUnits`
+   * — this gateway still owes it a `totalMs` so a non-SELF_HOSTED (cloud/BYOK) session bills the
+   * platform's own calling CPU exactly like the REST readers do.
+   */
+  firstAudioAtMs: number | null;
+}
+
+/** Byte length of a relayed WS frame, across every shape `ws` may hand back a binary message in. */
+function relayedByteLength(data: WebSocket.RawData): number {
+  if (Buffer.isBuffer(data)) return data.length;
+  if (Array.isArray(data)) return data.reduce((sum, buf) => sum + buf.length, 0);
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  return 0;
 }
 
 @WebSocketGateway({ path: '/ws/tts/stream' })
@@ -367,6 +390,8 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       initEnriched: false,
       sessionId,
       tenantId,
+      relayedBytes: 0,
+      firstAudioAtMs: null,
     };
     this.bridges.set(client, bridge);
 
@@ -387,6 +412,13 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     upstream.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
       if (!isBinary && this.maybeConsumeUsageFrame(bridge, data)) {
         return;
+      }
+      // TASK-959 §3.2/§4.2 — every binary frame relayed IS the audio the client receives;
+      // accumulate bytes and set the wall-clock start here, since `stream_ws.py`'s usage frame
+      // reports neither a byte count nor a timing of its own.
+      if (isBinary) {
+        if (bridge.firstAudioAtMs === null) bridge.firstAudioAtMs = Date.now();
+        bridge.relayedBytes += relayedByteLength(data);
       }
       this.safeSend(client, data, isBinary);
       this.applyBackpressure(bridge);
@@ -495,37 +527,58 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { deployment, costBasis } = parsed.provider
         ? classifyTtsProvider(parsed.provider, bridge.providerOverrides, connectionId)
         : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
-      this.usageLedger
-        .recordUsage({
-          common: {
-            tenantId: bridge.tenantId,
-            idempotencyKey: UsageIdempotencyKey.ttsRequest(bridge.sessionId),
-            occurredAt: new Date(),
-            capability: AiCapability.TTS,
-            operation: 'tts.synthesize',
-            provider: parsed.provider ?? 'none',
-            model: null,
-            deployment,
-            ...(costBasis ? { costBasis } : {}),
-            connectionId,
-            requestId: bridge.sessionId,
-            sessionId: bridge.sessionId,
-            attributesJson: { interrupted: parsed.interrupted },
-          },
-          units: [
-            { unit: AiUsageUnit.CHARACTER, quantity: parsed.characters },
-            ...(parsed.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: parsed.audioSeconds }] : []),
-          ],
-        })
-        .catch((err: unknown) => {
-          // Never let a metering failure disrupt the bridge — synthesis
-          // already happened; this is a side effect of work already done.
-          this.logger.warn({
-            message: 'TTS usage emission failed',
-            sessionId: bridge.sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+      const batch: UsageEventBatchInput = {
+        common: {
+          tenantId: bridge.tenantId,
+          idempotencyKey: UsageIdempotencyKey.ttsRequest(bridge.sessionId),
+          occurredAt: new Date(),
+          capability: AiCapability.TTS,
+          operation: 'tts.synthesize',
+          provider: parsed.provider ?? 'none',
+          model: null,
+          deployment,
+          ...(costBasis ? { costBasis } : {}),
+          connectionId,
+          requestId: bridge.sessionId,
+          sessionId: bridge.sessionId,
+          attributesJson: { interrupted: parsed.interrupted },
+        },
+        units: [
+          { unit: AiUsageUnit.CHARACTER, quantity: parsed.characters },
+          ...(parsed.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: parsed.audioSeconds }] : []),
+        ],
+      };
+
+      const onUsageError = (err: unknown): void => {
+        // Never let a metering failure disrupt the bridge — synthesis
+        // already happened; this is a side effect of work already done.
+        this.logger.warn({
+          message: 'TTS usage emission failed',
+          sessionId: bridge.sessionId,
+          error: err instanceof Error ? err.message : String(err),
         });
+      };
+
+      // TASK-959 §3.2/§4.2 — `stream_ws.py`'s `"usage"` frame carries no device, synthesis
+      // timing, or byte count of its own (confirmed against the Python source: `_SessionUsage`
+      // tracks only characters/audio_bytes/provider/connection_id), so this bridge never has a
+      // device to report and `device: null` always. `totalMs` (this bridge's own wall-clock,
+      // first relayed audio frame → teardown) is still passed ALWAYS — the compute RULE is
+      // `appendComputeAndByteUnits`'s: a non-SELF_HOSTED (cloud/BYOK) session still bills the
+      // platform's calling CPU on that wall-clock; only a SELF_HOSTED session (no device
+      // resolved) gets no compute row. The relayed byte count stands in as an application-level
+      // proxy for what the client received.
+      const wallClockMs = bridge.firstAudioAtMs !== null ? Date.now() - bridge.firstAudioAtMs : null;
+      const { batch: augmented, platformBatch } = appendComputeAndByteUnits(batch, {
+        device: null,
+        totalMs: wallClockMs,
+        responseBytes: bridge.relayedBytes > 0 ? bridge.relayedBytes : null,
+        byteSource: bridge.relayedBytes > 0 ? 'app' : null,
+      });
+      this.usageLedger.recordUsage(augmented).catch(onUsageError);
+      if (platformBatch) {
+        this.usageLedger.recordUsage(platformBatch).catch(onUsageError);
+      }
     }
     return true;
   }
