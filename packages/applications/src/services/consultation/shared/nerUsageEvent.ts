@@ -110,10 +110,6 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
       doctorId: doctorId ?? null,
       requestId,
     },
-    units: [
-      { unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 },
-      { unit: AiUsageUnit.REQUEST, quantity: 1 },
-      ...computeUnits,
-    ],
+    units: [{ unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 }, { unit: AiUsageUnit.REQUEST, quantity: 1 }, ...computeUnits],
   };
 }
