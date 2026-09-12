@@ -315,6 +315,45 @@ class _ComputeMeteringActivityInbound(ActivityInboundInterceptor):
             )
 
 
+async def _deliver_samples(samples: Sequence[ComputeSample]) -> bool:
+    """Post one batch of samples on the existing trajectory route, retried and spooled.
+
+    Deliberately NO ``Idempotency-Key``. The header dedupes a whole POST, and this batch is a
+    non-deterministic slice of whatever happened to be buffered when the flusher woke — two
+    different slices could share a worker-side counter and one would be suppressed. The
+    idempotency that matters is PER SAMPLE and already exists at the gateway
+    (``harness:cpu:<sessionId>:<runId>:<activityId>:<attempt>``), which is exactly why a
+    retried or re-drained batch converges instead of double-billing.
+    """
+    from harness.core.config import get_settings  # noqa: PLC0415 — avoids an import cycle
+    from harness.temporal.trajectory_delivery import (  # noqa: PLC0415
+        deliver_trajectory,
+        trajectory_api_client,
+    )
+
+    settings = get_settings()
+    return await deliver_trajectory(
+        trajectory_api_client(settings), compute_samples=samples
+    )
+
+
+_BUFFER: ComputeSampleBuffer | None = None
+
+
+def get_compute_sample_buffer() -> ComputeSampleBuffer:
+    """The process-wide sample buffer. One per worker, by design."""
+    global _BUFFER  # noqa: PLW0603 — a worker has exactly one meter
+    if _BUFFER is None:
+        _BUFFER = ComputeSampleBuffer(deliver=_deliver_samples)
+    return _BUFFER
+
+
+def reset_compute_sample_buffer() -> None:
+    """Drop the process-wide buffer. For tests, which must not inherit another's samples."""
+    global _BUFFER  # noqa: PLW0603
+    _BUFFER = None
+
+
 def _field(args: Sequence[Any], *names: str) -> Any:
     """Read the first present ``names`` off the activity's FIRST argument, or ``None``.
 

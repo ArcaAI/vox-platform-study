@@ -24,11 +24,17 @@ import asyncio
 import dataclasses
 import logging
 import time
+import uuid
+from datetime import timedelta
 from typing import Any
 
 import pytest
+from temporalio import activity as temporal_activity
+from temporalio import workflow as temporal_workflow
+from temporalio.common import RetryPolicy
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import ActivityEnvironment
-from temporalio.worker import ExecuteActivityInput
+from temporalio.worker import ExecuteActivityInput, Worker
 
 from harness.temporal.compute_metering import (
     ComputeMeteringInterceptor,
@@ -37,6 +43,7 @@ from harness.temporal.compute_metering import (
     _ThreadCpuLedger,
     reset_cpu_ledgers,
 )
+from harness.tests.unit.temporal._temporal_sync import start_time_skipping
 
 
 class _Terminal:
@@ -500,3 +507,64 @@ def _sample(**overrides: Any) -> ComputeSample:
     }
     base.update(overrides)
     return ComputeSample(**base)
+
+
+# ---------------------------------------------------------------------------
+# The seam itself: a REAL Temporal worker, with the interceptor installed.
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class _WorkInput:
+    tenant_id: str
+
+
+@temporal_activity.defn(name="task959_metered_activity")
+async def _metered_activity(payload: _WorkInput) -> str:
+    _burn_cpu(10.0)
+    return payload.tenant_id
+
+
+@temporal_workflow.defn(name="Task959MeteringWorkflow")
+class _MeteringWorkflow:
+    @temporal_workflow.run
+    async def run(self, tenant_id: str) -> str:
+        return await temporal_workflow.execute_activity(
+            _metered_activity,
+            _WorkInput(tenant_id=tenant_id),
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+
+
+class TestTheWorkerSeam:
+    """`Worker(interceptors=[...])` is the whole mechanism — prove it against the real SDK."""
+
+    @pytest.mark.asyncio
+    async def test_a_real_worker_meters_every_activity_it_runs(self):
+        collector = _Collector()
+        env = await start_time_skipping(data_converter=pydantic_data_converter)
+        async with env:
+            task_queue = f"task959-metering-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[_MeteringWorkflow],
+                activities=[_metered_activity],
+                interceptors=[ComputeMeteringInterceptor(collector)],
+            ):
+                result = await env.client.execute_workflow(
+                    _MeteringWorkflow.run,
+                    "t-42",
+                    id=f"task959-{uuid.uuid4()}",
+                    task_queue=task_queue,
+                )
+
+        assert result == "t-42"
+        [sample] = collector.samples
+        assert sample.tenant_id == "t-42"
+        assert sample.activity_type == "task959_metered_activity"
+        assert sample.attempt == 1
+        assert sample.session_id and sample.run_id and sample.activity_id
+        assert sample.cpu_ms > 0
+        assert sample.wall_ms >= sample.cpu_ms - 1e-6
