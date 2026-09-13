@@ -17879,18 +17879,6 @@
             "description": "Character offset start within THIS SECTION's `content` (never a concatenated document)",
             "type": "number"
           },
-          "transcriptEnd": {
-            "description": "A2 — character offset end within THAT SEGMENT's text",
-            "type": "number"
-          },
-          "transcriptSegmentId": {
-            "description": "A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from",
-            "type": "string"
-          },
-          "transcriptStart": {
-            "description": "A2 — character offset start within THAT SEGMENT's text",
-            "type": "number"
-          },
           "type": {
             "description": "For `entity`: the entity class (MEDICATION, CONDITION, …). For `finding`: the label the TENANT`s own instruction told the model to assign — the platform supplies no importance vocabulary.",
             "type": "string"
@@ -26354,7 +26342,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible department-aware pre-summary (stateless shim over TEXT /generate)",
@@ -26387,7 +26378,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible synchronous medical summary (stateless shim over TEXT /generate)",
@@ -26427,7 +26421,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT session start",
@@ -26467,7 +26464,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT session stop",
@@ -26506,7 +26506,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT mid-session engine switch",
@@ -26554,7 +26557,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant’s agent assignments (plus SYSTEM’s platform defaults), optionally by task",
@@ -26609,7 +26612,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Re-assign one tier (If-Match OCC)",
@@ -26653,7 +26656,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create the assignment for one (scope, scopeId, task) tier",
@@ -26716,7 +26719,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove one assignment — the tier reverts to inheriting (WORM change row appended)",
@@ -26756,7 +26759,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one agent assignment",
@@ -26859,7 +26862,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List promotions INTO the working tenant",
@@ -26907,7 +26910,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Promote a workflow definition version from one tenant to another",
@@ -26950,7 +26953,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one promotion record",
@@ -27017,7 +27020,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Aggregate GenerationStats across LLM_CALL trajectory steps (TTFT median/p95, tok/s avg, stop-reason histogram). Bounded window (default last 7d) + hard row cap.",
@@ -27120,7 +27123,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List distinct agentic working sessions (grouped by kind + sessionId + runId) with step counts + first/last timestamps",
@@ -27201,7 +27204,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the ordered steps for a session (seq asc), keyset-paginated. Cross-tenant / nonexistent → 404 (never 403).",
@@ -27259,10 +27262,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "The effective agentic instruction set for a tenant (prompt tier, judge pin, thresholds, safety criteria)",
@@ -27310,7 +27310,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant’s agent versions",
@@ -27351,7 +27351,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a new DRAFT agent version for the caller tenant",
@@ -27398,7 +27398,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Import an exported agent bundle as a DRAFT in the caller tenant",
@@ -27448,7 +27448,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Promote an agent from the Global build tenant into the SYSTEM reference set",
@@ -27493,7 +27493,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete an agent version (refused for the ACTIVE published version — deprecate it first)",
@@ -27533,7 +27533,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one agent version (own or SYSTEM template)",
@@ -27600,7 +27600,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a DRAFT/VALIDATED agent version (If-Match OCC)",
@@ -27645,7 +27645,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable",
@@ -27701,7 +27701,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Publish an agent version (fails closed)",
@@ -27763,7 +27763,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assemble (and optionally run) a DRAFT agent without publishing it",
@@ -27819,7 +27819,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read a finished draft-test generation back from TEXT and record its usage",
@@ -27864,7 +27864,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Run every publish-time check; stores the report and advances to VALIDATED when nothing blocks",
@@ -27909,7 +27909,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Every version of this agent’s lineage, newest first",
@@ -27959,7 +27959,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Branch a new DRAFT version from ANY version (own lineage), or a new tenant lineage from a SYSTEM template",
@@ -28022,7 +28022,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clone a SYSTEM template or any visible agent into a NEW lineage",
@@ -28078,7 +28078,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export one agent version as a portable JSON bundle",
@@ -28138,7 +28138,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Push one of the caller’s own agents into other tenants the caller manages",
@@ -28182,7 +28182,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ModelResponses",
@@ -28223,7 +28223,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a ModelResponse",
@@ -28339,7 +28339,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "The model catalogue this tenant may bind, in picker order",
@@ -28380,7 +28380,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Merge the AI model registry with the live engine listings",
@@ -28415,7 +28415,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "DEPRECATED (TASK-860, removed in R3) — register a discovered model",
@@ -28449,7 +28449,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read the last model-bucket inventory report",
@@ -28484,7 +28484,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Run the model-bucket inventory",
@@ -28533,7 +28533,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PaginatedModelResponse",
@@ -28576,7 +28576,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ModelResponse by slug",
@@ -28619,7 +28619,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a ModelResponse by id",
@@ -28660,7 +28660,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ModelResponse by id",
@@ -28731,7 +28731,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a ModelResponse by id",
@@ -28774,7 +28774,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Poll the status of the most recent download job for this model.",
@@ -28819,7 +28819,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Publish this model's weights into the hope-models bucket (async).",
@@ -28882,7 +28882,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Elect this row as the platform default for one or more tasks",
@@ -28905,7 +28905,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Guardrail read-only configuration: medical-validation engine settings + supported analysis types.",
@@ -28928,7 +28928,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Guardrail service health (proxied /api/health): LLM engine, GLiNER, and Redis component checks.",
@@ -29000,7 +29000,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Search MLflow experiments",
@@ -29072,7 +29072,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Search MLflow model versions",
@@ -29144,7 +29144,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Search the MLflow model registry",
@@ -29178,7 +29178,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "MLflow tracking-server reachability, version and framing posture",
@@ -29201,7 +29201,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "NLP service health (proxied /api/v1/health): per-model component checks with load status.",
@@ -29235,7 +29235,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Inference readiness — the platform’s last observation of every engine, service and model",
@@ -29272,7 +29272,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Take one readiness observation now",
@@ -29305,7 +29305,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant's allowed-origin rows",
@@ -29353,7 +29353,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Register a new allowed origin",
@@ -29383,7 +29383,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Report whether origin enforcement is currently ON, platform-wide (FR-4).",
@@ -29426,7 +29426,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete an allowed-origin row",
@@ -29467,7 +29467,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one allowed-origin row by id",
@@ -29541,7 +29541,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update an allowed-origin row under optimistic concurrency",
@@ -29656,10 +29656,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ApiKeyResponses",
@@ -29710,10 +29707,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "AUTH-NOTE: `@CanCreate('ApiKey')` UNDERSTATES the real gate. `ApiKeyService`\nadditionally enforces a privilege CEILING on the requested `scopes`\n(`assertScopeCeiling`): every scope's implied CASL ability must be one the\nCALLING principal already holds, so a tenant admin cannot mint a key\ncarrying `admin:*` or the bare `'*'`. It fails CLOSED when the caller's\ncompiled ability is unavailable — notably on the API-key-authenticated\nminting path, where `UnifiedAuthGuard` deliberately never publishes the\nability to CLS. A refusal is a 403 (privilege boundary), NOT the\ncross-tenant 404-over-403 posture this controller's by-id routes use.",
@@ -29736,10 +29730,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List available API key scopes",
@@ -29782,10 +29773,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a ApiKeyResponse by id",
@@ -29826,10 +29814,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ApiKeyResponse by id",
@@ -29880,10 +29865,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "AUTH-NOTE: `@CanUpdate('ApiKey')` UNDERSTATES the real gate — the same\nscope ceiling as `create` above, applied to the WIDENING DELTA only. A\nPATCH is refused (403) when it ADDS a scope whose implied ability the\ncaller does not hold; renames and narrowing PATCHes are not gated, and a\nPATCH that omits `scopes` is not checked at all.",
@@ -29926,10 +29908,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a ApiKeyResponse by id",
@@ -29982,10 +29961,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a ApiKeyResponse by id",
@@ -30028,10 +30004,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ApiKeyResponse by id",
@@ -30075,7 +30048,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple PipelineResponses",
@@ -30118,7 +30091,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PipelineResponse",
@@ -30167,7 +30140,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PaginatedPipelineResponse",
@@ -30210,7 +30183,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PipelineResponse by slug",
@@ -30252,7 +30225,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PipelineResponse",
@@ -30300,7 +30273,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a PipelineResponse by id",
@@ -30341,7 +30314,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PipelineResponse by id",
@@ -30416,7 +30389,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a PipelineResponse by id",
@@ -30468,7 +30441,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assign an ASR pipeline within its tenant",
@@ -30529,7 +30502,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clone a pipeline into a new editable copy",
@@ -30574,7 +30547,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Set a pipeline as the tenant default",
@@ -30645,7 +30618,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Enable/disable a pipeline",
@@ -30688,7 +30661,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List config-version snapshots for a pipeline",
@@ -30740,7 +30713,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one config-version snapshot by version number",
@@ -30787,10 +30760,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List ALL transcription jobs in the tenant (paginated)",
@@ -30820,10 +30790,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get tenant-wide transcription job status counts",
@@ -30866,10 +30833,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get tenant-wide transcription jobs by status",
@@ -31136,10 +31100,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Fetch all audit logs",
@@ -31343,10 +31304,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Fetch audit logs (cursor pagination)",
@@ -31586,10 +31544,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export audit logs (csv | xlsx | pdf)",
@@ -31715,10 +31670,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Fetch audit logs by resource",
@@ -31835,10 +31787,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Fetch audit logs by user",
@@ -31882,10 +31831,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Fetch audit log by ID",
@@ -31940,7 +31886,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "One tenant's invoices, newest period first.",
@@ -31981,7 +31927,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Compute — or idempotently recompute — the DRAFT invoice for one tenant-month. SUPER_ADMIN only.",
@@ -32030,7 +31976,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Month-to-date SELL-rated overage spend vs the tenant's spend limit (D12).",
@@ -32077,7 +32023,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Invoice read model: lines, memos against it, BYOK notional spend. Cross-tenant id → 404.",
@@ -32135,7 +32081,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Issue a credit/debit memo against a FINALIZED invoice — the only correction path for a closed period. SUPER_ADMIN only.",
@@ -32183,7 +32129,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "DRAFT → FINALIZED under If-Match OCC. Immutable after; only once the period has ended. SUPER_ADMIN only.",
@@ -32230,7 +32176,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "DRAFT → VOID under If-Match OCC (one-way; a voided period stays void). SUPER_ADMIN only.",
@@ -32340,7 +32286,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List SELL-plane rate rows (platform card by default; ?tenantId= for a negotiated tenant card). Includes superseded history rows.",
@@ -32378,7 +32324,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a new open-ended SELL rate row (overage rate or PLAN_FEE). SUPER_ADMIN only.",
@@ -32428,7 +32374,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Supersede a rate row: close it at the successor's effectiveFrom and insert the successor — atomic, If-Match OCC on the close. SUPER_ADMIN only.",
@@ -32472,7 +32418,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a release note (always DRAFT)",
@@ -32519,7 +32465,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read a release note for editing (DRAFT included)",
@@ -32587,7 +32533,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Edit a release note (If-Match OCC)",
@@ -32650,7 +32596,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Publish a release note",
@@ -32786,12 +32732,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "List consent grants for the caller tenant",
@@ -32828,9 +32768,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -32900,9 +32837,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Revoke a consent grant (If-Match OCC)",
@@ -32935,7 +32869,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant's consultation context schemas",
@@ -32980,7 +32914,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a DRAFT context schema",
@@ -33023,7 +32957,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a context schema",
@@ -33063,7 +32997,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one context schema by id",
@@ -33129,7 +33063,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update schema metadata under optimistic concurrency",
@@ -33182,7 +33116,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Move the pin to an already-published version",
@@ -33238,7 +33172,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Validate a definition, publish it as a new immutable version, and pin it",
@@ -33284,7 +33218,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the immutable published versions of a context schema, newest first",
@@ -33392,7 +33326,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses",
@@ -33454,7 +33388,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Server-side, zero-filled new/revisit aggregation over a\ndate range. Scope follows the same model as `list`: a SUPER_ADMIN with\nno working tenant aggregates cross-tenant; everyone else is pinned to their\nCLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not\ncaptured by the `:id` param matcher.",
@@ -33497,7 +33431,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ConsultationResponse by id",
@@ -33551,7 +33485,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DepartmentResponses",
@@ -33592,7 +33526,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a DepartmentResponse",
@@ -33635,7 +33569,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single DepartmentResponse by code",
@@ -33679,7 +33613,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DepartmentResponses",
@@ -33725,7 +33659,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a DepartmentResponse by id",
@@ -33766,7 +33700,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single DepartmentResponse by id",
@@ -33834,7 +33768,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a DepartmentResponse by id",
@@ -33888,7 +33822,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DepartmentResponses by id",
@@ -33957,10 +33891,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a DepartmentResponse by id (prompt config)",
@@ -34073,7 +34004,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a department's members (users)",
@@ -34161,7 +34092,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DnaReportResponses",
@@ -34201,7 +34132,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "DNA aggregate dashboard (users with a style, avg versions, recent usage activity)",
@@ -34245,7 +34176,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Erase a doctor's entire learned DNA writing-style profile (admin)",
@@ -34286,7 +34217,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Latest DNA writing-style report for a doctor (admin cross-user, tenant-scoped PHI-gated)",
@@ -34339,7 +34270,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a DnaJobResponseDto by doctorId",
@@ -34382,7 +34313,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get DNA generation job status",
@@ -34416,7 +34347,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Stream DNA generation job status via SSE",
@@ -34486,7 +34417,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a DnaReportResponse by reportId",
@@ -34543,7 +34474,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DnaVersionResponses by reportId",
@@ -34580,7 +34511,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant's document templates",
@@ -34622,7 +34553,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a DRAFT document template",
@@ -34665,7 +34596,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a document template",
@@ -34706,7 +34637,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one document template by id",
@@ -34772,7 +34703,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update template metadata under optimistic concurrency",
@@ -34825,7 +34756,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Move the pin to an already-published version",
@@ -34881,7 +34812,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Validate a shape, compile it, publish both as a new immutable version, and pin it",
@@ -34927,7 +34858,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the immutable published versions of a template, newest first",
@@ -34957,7 +34888,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read the global entitlements enforcement kill-switch (Q9).",
@@ -34995,7 +34926,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Flip the global entitlements enforcement kill-switch (Q9).",
@@ -35028,7 +34959,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the per-plan default entitlement matrix.",
@@ -35068,7 +34999,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get a single plan default row.",
@@ -35133,7 +35064,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Edit a plan default row.",
@@ -35172,7 +35103,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Capability/usage snapshot for ANY tenant (super-admin view).",
@@ -35221,7 +35152,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Downgrade a tenant plan (Q10). Plan change always applies; newest-first soft-disable of overflow rows runs only when enforcement is ON.",
@@ -35253,7 +35184,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clear a tenant override back to plan inheritance (nulls the row; reversible — never deleted).",
@@ -35290,7 +35221,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get a tenant's entitlement override (null = inherits the plan default).",
@@ -35357,7 +35288,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create-or-update a tenant override (\"increase on demand\", Q7).",
@@ -35387,7 +35318,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Manually run the trial-expiry sweep (Q4): downgrade every expired TRIAL tenant to STARTER, plan-only.",
@@ -35422,12 +35353,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "List every tenant guardrail-availability row — SUPER_ADMIN only",
@@ -35460,12 +35385,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -35507,12 +35426,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -35581,12 +35494,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -35672,10 +35579,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the WORM audit trail (newest-first) + the chain-integrity verdict",
@@ -35729,10 +35633,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Derived clinician edit-burden telemetry for one consultation (edit distance, deferral rate, time-to-sign)",
@@ -35793,10 +35694,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List eval runs (newest-first)",
@@ -35846,10 +35744,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one eval run with its per-case scores",
@@ -35911,10 +35806,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export gate-edit exemplar candidates for eval regression-corpus review",
@@ -35972,10 +35864,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export the curator-APPROVED gate-edit corpus as a JSONL fine-tuning dataset",
@@ -36032,10 +35921,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Record the human curation verdict on one mined gate-edit exemplar",
@@ -36092,10 +35978,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Promote a curator-APPROVED gate-edit exemplar into a golden case",
@@ -36133,10 +36016,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List consultations awaiting clinician review with SLA/escalation from the effective policy",
@@ -36190,10 +36070,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List golden sets (newest-first)",
@@ -36242,10 +36119,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a golden set for the caller tenant",
@@ -36295,10 +36169,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one golden set",
@@ -36365,10 +36236,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a golden set's cases — PHI-safe metadata only",
@@ -36427,10 +36295,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Add a case to a golden set (PHI encrypted at rest, write-only)",
@@ -36481,10 +36346,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Run an eval over a golden set now (synchronous)",
@@ -36543,10 +36405,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)",
@@ -36579,10 +36438,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read the live-documentation engine kill-switch (super-admin / global scope)",
@@ -36624,10 +36480,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Toggle the live-documentation engine kill-switch (super-admin / global scope)",
@@ -36665,10 +36518,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the active live-documentation sessions (PHI-safe stats) for the caller tenant",
@@ -36718,10 +36568,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one live-documentation session's latest PHI-safe stats",
@@ -36754,10 +36601,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the caller tenant's effective harness policy (tenant row over global default over code default)",
@@ -36813,10 +36657,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update the caller tenant's harness policy (created on first edit)",
@@ -36849,10 +36690,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the platform GLOBAL-DEFAULT harness policy (super-admin only)",
@@ -36911,10 +36749,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update the platform GLOBAL-DEFAULT harness policy (super-admin only)",
@@ -36979,10 +36814,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List harness Temporal document workflows (tenant-filtered)",
@@ -37033,10 +36865,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Describe one harness workflow (add ?phase=true for the loop phase)",
@@ -37089,10 +36918,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Cancel a harness workflow (graceful). Tenant admins limited to their own tenant.",
@@ -37145,10 +36971,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Send a signal to a harness workflow. Tenant admins limited to their own tenant.",
@@ -37201,10 +37024,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Terminate a harness workflow (forceful). Tenant admins limited to their own tenant.",
@@ -37226,9 +37046,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -37273,9 +37090,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -37370,7 +37184,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Paginated list of the caller tenant's institutional-knowledge documents",
@@ -37416,7 +37230,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a document and remove its vectors from Qdrant",
@@ -37456,7 +37270,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one knowledge document by id",
@@ -37499,7 +37313,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Archive a document (status -> ARCHIVED)",
@@ -37604,10 +37418,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Paginated, decrypted chunk content for one document, ordered by chunkIndex",
@@ -37648,10 +37459,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List registered MCP external-tools servers (registry read — backs the console \"Tools & MCP\" screen)",
@@ -37703,10 +37511,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Register a new MCP server (own tenant; the SYSTEM registry is GLOBAL-ADMIN only)",
@@ -37778,10 +37583,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)",
@@ -37831,10 +37633,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one registered MCP server (registry read)",
@@ -37914,10 +37713,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)",
@@ -37965,9 +37761,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Get heartbeat history for a service",
@@ -37995,9 +37788,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Get active session counts per service",
@@ -38023,9 +37813,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -38073,9 +37860,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -38133,7 +37917,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the raw, editable TenantNlpTaskInstructions row for a (tenant, taskKey)",
@@ -38213,7 +37997,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update the (tenant, taskKey) instructions row under optimistic concurrency",
@@ -38267,7 +38051,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List notifications (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)",
@@ -38310,7 +38094,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a notification",
@@ -38351,7 +38135,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one notification",
@@ -38402,7 +38186,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a notification (sparse patch, e.g. mark read)",
@@ -38442,7 +38226,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Consumption / usage roll-up (transcription minutes, summaries-24h, storage, consultations)",
@@ -38472,7 +38256,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Platform runtime metrics (requests/min, error rate, P95, sockets, models, series)",
@@ -38502,7 +38286,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Open WebSocket count (live, multi-instance aggregate)",
@@ -38641,7 +38425,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple PromptTemplateResponses",
@@ -38682,10 +38466,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PromptTemplateResponse",
@@ -38725,7 +38506,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Usage analytics grouped by department / doctor / day",
@@ -38771,10 +38552,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assign prompt templates to a department",
@@ -38832,7 +38610,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Paginated prompt run history (PromptUsageRecord rows), newest first",
@@ -38875,10 +38653,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a PromptTemplateResponse by id",
@@ -38919,7 +38694,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PromptTemplateResponse by id",
@@ -38987,10 +38762,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a PromptTemplateResponse by id",
@@ -39063,7 +38835,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Approve a prompt template for clinical use",
@@ -39123,10 +38895,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PromptTestAckResponse by id",
@@ -39199,10 +38968,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PromptTestResultResponse by id",
@@ -39242,7 +39008,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get usage statistics for a prompt template",
@@ -39296,7 +39062,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple PromptVersionResponses by id",
@@ -39358,7 +39124,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Diff two versions of a prompt template (server-side)",
@@ -39410,7 +39176,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single PromptVersionResponse by id and versionNumber",
@@ -39462,10 +39228,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a PromptTemplateResponse by id and versionNumber",
@@ -39526,7 +39289,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List provider connections for one service and the scoped tenant (keys never returned).",
@@ -39591,7 +39354,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "The platform defaults this tenant inherits for one service — read-only, masked.",
@@ -39661,7 +39424,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete one provider connection.",
@@ -39729,7 +39492,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read one provider connection (key never returned; placeholder when absent).",
@@ -39830,7 +39593,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update one provider connection.",
@@ -39920,7 +39683,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Declare the models this tenant's connection serves.",
@@ -39998,7 +39761,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Reset one built-in provider connection to its platform default (super admin only).",
@@ -40079,7 +39842,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Test a provider connection against the live vendor (ephemeral — never persisted).",
@@ -40109,7 +39872,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Report whether the Prisma Studio shell is enabled in this environment.",
@@ -40142,7 +39905,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List every registered queue with its stats (counts, paused flag, worker count).",
@@ -40172,7 +39935,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Redis connection health for the queue infrastructure (PING latency + INFO stats). Never errors.",
@@ -40212,7 +39975,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get stats for a single queue.",
@@ -40262,7 +40025,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clean finished (completed/failed) jobs older than a grace period.",
@@ -40350,7 +40113,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List jobs in a queue (paginated, optionally status/name filtered).",
@@ -40400,7 +40163,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Apply a bulk retry/remove action to a set of job ids.",
@@ -40449,7 +40212,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove a job from the queue.",
@@ -40496,7 +40259,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get a single job with PII-redacted data, options, stacktrace.",
@@ -40545,7 +40308,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Promote a delayed job so it runs immediately.",
@@ -40594,7 +40357,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retry a failed job (re-uses the original payload).",
@@ -40634,7 +40397,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Pause a queue (stops processing new jobs).",
@@ -40674,7 +40437,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resume a paused queue.",
@@ -40704,7 +40467,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the effective rate-limit policy (global flag, tier baselines, known-route overrides).",
@@ -40744,7 +40507,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Flip the global rate-limit kill-switch.",
@@ -40805,7 +40568,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Explain how a rate limit resolves for one tenant + route.",
@@ -40842,7 +40605,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List each subscription plan’s rate limit.",
@@ -40904,7 +40667,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Set a subscription plan’s rate limit.",
@@ -40941,7 +40704,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List every gateway route, for picking a rule target.",
@@ -40996,7 +40759,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a per-endpoint override for a known throttled route (e.g. auth.login).",
@@ -41054,7 +40817,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List rate-limit rules.",
@@ -41102,7 +40865,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a rate-limit rule.",
@@ -41141,7 +40904,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a rate-limit rule.",
@@ -41182,7 +40945,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one rate-limit rule.",
@@ -41236,7 +40999,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a rate-limit rule.",
@@ -41291,7 +41054,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a tier baseline (default | strict | heavy | relaxed).",
@@ -41354,10 +41117,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List all policies",
@@ -41398,10 +41158,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a new policy",
@@ -41441,10 +41198,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Validate policy rules",
@@ -41501,10 +41255,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a policy (requires break-glass confirmation)",
@@ -41544,10 +41295,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get policy by ID",
@@ -41597,10 +41345,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Partially update a policy",
@@ -41650,10 +41395,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a policy",
@@ -41708,10 +41450,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List all roles",
@@ -41752,10 +41491,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a new role",
@@ -41809,10 +41545,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a role (requires break-glass confirmation)",
@@ -41852,10 +41585,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get role by ID",
@@ -41905,10 +41635,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Partially update a role",
@@ -41958,10 +41685,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a role",
@@ -42013,10 +41737,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role, copying its policies",
@@ -42074,10 +41795,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List users assigned this role (paginated, tenant-scoped)",
@@ -42142,10 +41860,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove a policy from a role (requires break-glass confirmation)",
@@ -42203,10 +41918,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assign a policy to a role",
@@ -42299,7 +42011,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List resource subscriptions (tenant-scoped)",
@@ -42340,7 +42052,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a resource subscription",
@@ -42383,7 +42095,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a resource subscription",
@@ -42424,7 +42136,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one resource subscription",
@@ -42475,7 +42187,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a resource subscription (sparse patch)",
@@ -42518,7 +42230,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Toggle a subscription ENABLED↔DISABLED",
@@ -42589,9 +42301,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "List every routing-policy revision owned by one tenant",
@@ -42642,9 +42351,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -42749,9 +42455,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Resolve what actually serves a (tenant, task) right now",
@@ -42798,9 +42501,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Export provider configurations as portable JSON",
@@ -42836,9 +42536,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -42894,9 +42591,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Soft-delete a routing-policy revision",
@@ -42946,9 +42640,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43031,9 +42722,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Update a routing-policy revision under optimistic concurrency",
@@ -43104,9 +42792,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43181,9 +42866,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Elect this configuration as the default for its task",
@@ -43249,9 +42931,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Copy a configuration to another tenant",
@@ -43284,7 +42963,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List all schedulers (static @Cron + dynamic) with cron/interval/run metadata.",
@@ -43334,7 +43013,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a dynamic scheduler cron expression (static schedulers are rejected).",
@@ -43374,7 +43053,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Pause (stop) a running cron scheduler.",
@@ -43414,7 +43093,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resume (start) a paused cron scheduler.",
@@ -43464,7 +43143,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Enable/disable a dynamic scheduler (static schedulers are rejected).",
@@ -43498,7 +43177,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read the platform credential policy.",
@@ -43543,7 +43222,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update the platform credential policy (partial).",
@@ -43572,12 +43251,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43612,9 +43285,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Issue a service account (SUPER_ADMIN only)",
@@ -43646,12 +43316,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "List available svc:* service-account scopes",
@@ -43680,9 +43344,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43720,12 +43381,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43789,9 +43444,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Update a service account (SUPER_ADMIN only)",
@@ -43820,9 +43472,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -43941,7 +43590,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Release history across all services, newest build first",
@@ -43988,7 +43637,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "What is running right now, one row per service",
@@ -44033,7 +43682,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Release timeline for one service, newest first",
@@ -44150,10 +43799,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple GlobalSettingResponses",
@@ -44204,10 +43850,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a GlobalSettingResponse",
@@ -44237,7 +43880,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the capability/settings catalog (RBAC-filtered metadata).",
@@ -44322,7 +43965,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resolve the effective value of one non-secret setting for a context (with cascade trace).",
@@ -44356,7 +43999,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resolve every feature-availability gate for the calling context.",
@@ -44390,7 +44033,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "The cross-tenant feature matrix: the platform default beside every tenant’s override.",
@@ -44435,7 +44078,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Apply a batch of feature-matrix edits.",
@@ -44497,7 +44140,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Reset one TENANT override so the key resumes inheriting the platform default.",
@@ -44577,7 +44220,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read one registry setting: its descriptor metadata plus the effective value and cascade trace.",
@@ -44638,7 +44281,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Write one registry setting through the single descriptor-driven enforcement point.",
@@ -44740,10 +44383,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List global settings for a specific tenant",
@@ -44786,10 +44426,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a GlobalSettingResponse by id",
@@ -44830,10 +44467,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single GlobalSettingResponse by id",
@@ -44904,10 +44538,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a GlobalSettingResponse by id",
@@ -44963,12 +44594,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -45047,12 +44672,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Rotate a secret setting (super-admin, step-up re-auth, OCC, audited)",
@@ -45094,10 +44713,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resolve the effective STT fallback spec for a tenant (tenant row over the SYSTEM default)",
@@ -45142,10 +44758,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the enabled, cloud-engine-backed pipelines a tenant may set as its fallback",
@@ -45187,10 +44800,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the raw, editable STT config row for a tenant",
@@ -45256,10 +44866,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update the tenant STT fallback row under optimistic concurrency",
@@ -45292,7 +44899,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the tenant's frontend pipeline config (null when not yet configured)",
@@ -45350,7 +44957,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update the tenant frontend pipeline config",
@@ -45393,10 +45000,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a tenant's configured external identity providers",
@@ -45448,10 +45052,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Configure a new external OIDC identity provider (starts DRAFT — D7, no self-lockout)",
@@ -45492,10 +45093,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove an identity provider config",
@@ -45544,10 +45142,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one identity provider config",
@@ -45609,10 +45204,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update an identity provider config under optimistic concurrency",
@@ -45690,10 +45282,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Seal a directory-API credential bundle for admin-triggered sync (P3)",
@@ -45745,10 +45334,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Bulk-pull the provider's directory (MS Graph / Google) and pre-provision users (P3)",
@@ -45797,10 +45383,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Test connection — OIDC discovery + client construction (D7)",
@@ -45915,10 +45498,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple TenantResponses",
@@ -45959,10 +45539,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a TenantResponse",
@@ -46005,10 +45582,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single TenantResponse by code-name",
@@ -46124,10 +45698,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple PaginatedTenantConfigResponses by identifier",
@@ -46181,7 +45752,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a PaginatedTenantConfigResponse by identifier",
@@ -46224,7 +45795,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a TenantProvisionResponse",
@@ -46247,10 +45818,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List all storage buckets for current tenant",
@@ -46281,10 +45849,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a custom storage bucket",
@@ -46307,10 +45872,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get the default bucket for each purpose (audio / attachments / misc)",
@@ -46341,10 +45903,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Configure the default bucket for audio / attachments / misc",
@@ -46377,10 +45936,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Provision system buckets for a tenant (admin only)",
@@ -46423,10 +45979,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Adopt an existing physical bucket into a tenant",
@@ -46459,10 +46012,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a custom storage bucket (system buckets cannot be deleted)",
@@ -46493,10 +46043,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get bucket by ID",
@@ -46545,10 +46092,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a single object from a tenant bucket (storage-provider operation)",
@@ -46598,10 +46142,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List objects in a tenant bucket (storage-provider operation)",
@@ -46648,10 +46189,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Upload a single object into a tenant bucket (storage-provider operation)",
@@ -46693,10 +46231,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get presigned download URL for a file in a tenant bucket",
@@ -46738,10 +46273,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get bucket folder/file tree for UI tree view",
@@ -46774,10 +46306,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List storage configs for the current tenant (default + per-bucket overrides)",
@@ -46808,10 +46337,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update a storage config (keyed by bucketId; omit for the tenant default)",
@@ -46844,10 +46370,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resolve the effective config for a bucket (per-bucket override → tenant default → SYSTEM default)",
@@ -46881,10 +46404,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read the platform-default storage config (SYSTEM row) — SUPER_ADMIN only",
@@ -46943,10 +46463,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update the platform-default storage config under optimistic concurrency — SUPER_ADMIN only",
@@ -46979,10 +46496,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Delete a storage config (reverts that scope to the next-broader config / global)",
@@ -47005,10 +46519,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List all storage access keys for current tenant",
@@ -47039,10 +46550,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Generate a new storage access key",
@@ -47075,10 +46583,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Revoke a storage access key",
@@ -47194,10 +46699,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple TenantResponses by createdByUserId",
@@ -47240,10 +46742,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a TenantResponse by id",
@@ -47284,10 +46783,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single TenantResponse by id",
@@ -47355,7 +46851,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a TenantResponse by id",
@@ -47401,10 +46897,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Archive a tenant (recoverable cold state)",
@@ -47441,7 +46934,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Resync a tenant's ASR pipeline catalog against the SYSTEM templates",
@@ -47498,7 +46991,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Re-provision a tenant from the platform's SYSTEM reference set",
@@ -47541,10 +47034,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Restore a suspended/archived tenant to ENABLED",
@@ -47590,10 +47080,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Suspend a tenant (reversible operator hold)",
@@ -47629,10 +47116,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Read a tenant's tags",
@@ -47700,7 +47184,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Replace a tenant's full tag set (idempotent set-semantics)",
@@ -47743,10 +47227,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get tenant usage statistics",
@@ -47796,7 +47277,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "p50/p90/p99 + count of the Σ INTERNAL-basis cost per consultation over a billing period.",
@@ -47847,7 +47328,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Units + rated cost per capability x provider x model for a billing period. BYOK notional split out.",
@@ -47960,7 +47441,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Bounded-range rollup timeseries for one capability x unit (max 92 days daily / 72h hourly).",
@@ -48043,7 +47524,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "SUPER_ADMIN-only cross-tenant top-N by rollup cost. Every other route on this controller is tenant-scoped; this one is not.",
@@ -48158,10 +47639,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple UserResponses",
@@ -48202,7 +47680,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a UserResponse",
@@ -48242,7 +47720,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Bulk delete users with partial-failure semantics: per-id catch (not a\n`throw` on the first failure), returning the structured\n`BulkDeleteUsersResponse` so admin tooling can report exact partial\nprogress and retry only the failed ids idempotently.\n\nWhy per-id catch (not a Prisma `$transaction`):\n  - `IUserService.deleteById` doesn't accept a transaction client; the\n    `applications` layer would need a new overload to thread one\n    through. That's a cross-package surface change and out of scope\n    for an apps/api hygiene sweep.\n  - Admin UX wants visibility into _which_ id failed; transactional\n    roll-back collapses that into a single error message.\n\nIf a future requirement demands all-or-nothing semantics, callers can\ninspect `failed.length > 0` and trigger their own compensating\nworkflow against the `succeeded` set.",
@@ -48283,7 +47761,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Apply a bulk action (enable/disable/delete/assign-departments/assign-role) to many users",
@@ -48396,10 +47874,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export users (csv | xlsx | pdf)",
@@ -48515,10 +47990,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple UserResponses by tenantId",
@@ -48561,7 +48033,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Deleting a UserResponse by id",
@@ -48602,10 +48074,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single UserResponse by id",
@@ -48656,7 +48125,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a UserResponse by id",
@@ -48780,10 +48249,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple PaginatedApiKeyResponses by userId",
@@ -48829,7 +48295,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a user's department assignments (tenant-scoped)",
@@ -48880,7 +48346,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Set a user's department memberships (bulk reconcile)",
@@ -48931,7 +48397,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assign a user to a department",
@@ -48976,7 +48442,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Unassign a user from a department (soft delete)",
@@ -49053,7 +48519,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a user-department assignment (e.g. toggle primary)",
@@ -49114,9 +48580,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Impersonate a user (super-admin only, time-boxed, audited)",
@@ -49156,10 +48619,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get a user's profile (admin)",
@@ -49207,7 +48667,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create or update a user's profile, incl. preferred prompt template (admin)",
@@ -49261,7 +48721,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Reset a user password (admin): set a temporary password OR mint an emailed reset link",
@@ -49385,10 +48845,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple UserRoleAssignmentResponses by userId",
@@ -49439,10 +48896,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Assign a role to a user",
@@ -49487,7 +48941,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove a role assignment from a user",
@@ -49533,10 +48987,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get all settings for a specific user (admin)",
@@ -49607,7 +49058,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Upsert a setting for a specific user (admin)",
@@ -49660,7 +49111,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Updating a UserResponse by id (enable/disable)",
@@ -49703,10 +49154,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a user's enrolled voice profiles (admin, read-only)",
@@ -49760,7 +49208,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List webhooks (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)",
@@ -49801,7 +49249,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a webhook for the caller tenant. The signing secret is server-generated and returned only once.",
@@ -49844,7 +49292,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a webhook",
@@ -49885,7 +49333,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one webhook",
@@ -49953,7 +49401,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a webhook (If-Match OCC)",
@@ -50059,10 +49507,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List a webhook's delivery log (newest-first)",
@@ -50132,7 +49577,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Rotate a webhook signing secret (If-Match OCC)",
@@ -50174,7 +49619,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant’s workflow assignments for one palette",
@@ -50230,7 +49675,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Re-assign one tier",
@@ -50275,7 +49720,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create the assignment for one (scope, scopeId, palette) tier",
@@ -50339,7 +49784,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Remove one assignment — the tier reverts to inheriting",
@@ -50379,7 +49824,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one workflow assignment",
@@ -50483,7 +49928,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant’s workflow definition versions",
@@ -50527,7 +49972,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a new DRAFT workflow definition version for the caller tenant",
@@ -50574,7 +50019,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Import a workflow bundle as a new DRAFT workflow",
@@ -50624,7 +50069,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Promote a workflow from the Global build tenant into the SYSTEM template library",
@@ -50687,7 +50132,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Sync one workflow version into other tenants you manage",
@@ -50731,7 +50176,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Issue or rotate the inbound webhook secret for a workflow lineage (returned exactly once)",
@@ -50765,7 +50210,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the platform workflow template library a tenant can clone from",
@@ -50820,7 +50265,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Start a sandbox run of the CURRENT graph of :definitionId — DRAFT or published, never writes external artifacts.",
@@ -50870,7 +50315,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Live run status + stages (queried from the interpreter dispatcher).",
@@ -50920,7 +50365,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Cancel a sandbox run — the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",
@@ -50961,7 +50406,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).",
@@ -51004,7 +50449,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a workflow definition version",
@@ -51045,7 +50490,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one workflow definition version",
@@ -51113,7 +50558,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a DRAFT workflow definition version (If-Match OCC)",
@@ -51173,7 +50618,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Clone an existing workflow (or a platform template) into a NEW draft workflow",
@@ -51220,7 +50665,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Export one workflow version as a portable JSON bundle",
@@ -51301,7 +50746,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin",
@@ -51348,7 +50793,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Which prompt version each node is pinned to, and whether a newer one exists",
@@ -51405,7 +50850,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Compile the graph and publish this version",
@@ -51452,7 +50897,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Re-run shape + engine + DRAFT rule-catalogue validation and persist the report",
@@ -51498,7 +50943,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List every version row in this definition’s (tenantId, slug) lineage, most recent first",
@@ -51593,9 +51038,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "List the caller tenant's own rules UNION the SYSTEM platform register",
@@ -51633,9 +51075,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -51682,9 +51121,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Soft-delete a rule",
@@ -51722,9 +51158,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -51795,9 +51228,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Update a rule (If-Match OCC)",
@@ -51827,7 +51257,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the code-owned workflow node-type registry (the Studio’s node palette source)",
@@ -51951,7 +51381,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Tenant-scoped, keyset-paginated, filterable list of workflow-substrate runs. Sandbox runs excluded by default.",
@@ -51995,7 +51425,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "A single run, with the worker CPU it consumed. Cross-tenant / nonexistent id → 404 (never 403).",
@@ -52042,7 +51472,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Live state of the run's human-approval gate, read from the gate child workflow. Cross-tenant / nonexistent id → 404.",
@@ -52097,12 +51527,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Release the run's human-approval gate with a clinician decision.",
@@ -52145,7 +51569,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "The CQRS-lite read shape: the run row plus its per-node rollup, assembled from ONE bounded trajectory read. Cross-tenant / nonexistent id → 404.",
@@ -52238,7 +51662,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "List the caller tenant’s saved fixtures",
@@ -52279,7 +51703,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Create a synthetic Workbench test fixture for the caller tenant",
@@ -52322,7 +51746,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Soft-delete a fixture",
@@ -52363,7 +51787,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Get one fixture",
@@ -52431,7 +51855,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Update a fixture (If-Match OCC)",
@@ -52476,7 +51900,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List the published agents visible to the tenant (own agents shadow the platform defaults)",
@@ -52518,7 +51945,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Describe one published agent: its task, version, I/O schemas and protocols",
@@ -52553,6 +51983,39 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "example": {
+                  "text": "Summarise the consultation note below."
+                },
+                "properties": {
+                  "context": {
+                    "additionalProperties": true,
+                    "description": "The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.",
+                    "type": "object"
+                  },
+                  "text": {
+                    "description": "The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.",
+                    "type": "string"
+                  },
+                  "variables": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Values substituted into the agent’s prompt template.",
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.",
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The generated output (JSON) or the SSE stream."
@@ -52581,7 +52044,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)",
@@ -52604,6 +52070,30 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "example": {
+                  "text": "Your appointment is confirmed for Tuesday at ten."
+                },
+                "properties": {
+                  "ssml": {
+                    "description": "An SSML document to synthesise. Only for agents that declare SSML support.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "description": "Plain text to synthesise.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "Provide `text` OR `ssml` — exactly one is expected. Sending neither is a 400; if both are sent, `ssml` is used. `ssml` is accepted only by an agent whose parameters declare `ssml: true`, otherwise it is a 400. Everything else about the synthesis — voice, format, speed, model, engine chain — is the AGENT’s, not the caller’s.",
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "audio/pcm | audio/wav | audio/mpeg, streamed."
@@ -52623,7 +52113,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Synthesize speech with a TEXT_TO_SPEECH agent (streamed audio, the existing speech proxy contract)",
@@ -52646,6 +52139,37 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "example": {
+                  "mediaId": "019a1f1e-2c3d-7e4f-8a90-1b2c3d4e5f60"
+                },
+                "properties": {
+                  "consultationId": {
+                    "description": "Optional consultation to attach the resulting transcript to.",
+                    "type": "string"
+                  },
+                  "language": {
+                    "description": "Optional language hint forwarded to the ASR worker; omit to use the agent’s own resolved spec.",
+                    "type": "string"
+                  },
+                  "mediaId": {
+                    "description": "Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mediaId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Batch transcription of media ALREADY uploaded through the media plane — this route takes an id, never audio bytes. The answer is a 201 carrying the job and an `sseUrl` to watch it on; the transcript is not in the response.",
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "The transcription job."
@@ -52668,7 +52192,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)",
@@ -52712,7 +52239,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple PipelineResponses",
@@ -52755,7 +52282,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Non-admin read-by-slug (tenant-scoped via `getBySlug`).",
@@ -52798,7 +52325,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Non-admin read-by-id (tenant-scoped via `getById`).\n\nCross-tenant lookups return 404 (not 403) to avoid existence leaks.",
@@ -52845,7 +52372,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List transcription jobs (paginated, caller-owned jobs)",
@@ -52883,7 +52413,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a transcription job",
@@ -52923,7 +52456,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a batch transcription job",
@@ -52966,7 +52502,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription jobs by consultation (caller-owned jobs)",
@@ -52999,7 +52538,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The fallback engine of the tenant’s assigned (or the named) ASR agent, for the live provider toggle",
@@ -53022,7 +52564,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List selectable STT language modes + per-mode supported engines ",
@@ -53045,7 +52590,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Batch upload ceilings (recordings per batch, minutes per recording, size, in-flight jobs)",
@@ -53075,7 +52623,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription job status counts (caller-owned jobs)",
@@ -53118,7 +52669,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription jobs by status (caller-owned jobs)",
@@ -53164,7 +52718,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a WebSocket streaming session",
@@ -53197,7 +52754,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Close a WebSocket streaming session",
@@ -53230,7 +52790,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Refresh the stream ticket for a live streaming session",
@@ -53266,7 +52829,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Switch a live streaming session to the tenant fallback pipeline",
@@ -53302,7 +52868,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Switch a live streaming session back to its primary pipeline",
@@ -53342,7 +52911,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a streaming transcription job",
@@ -53388,7 +52960,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Upload audio file for batch transcription via worker",
@@ -53428,7 +53003,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription job by ID",
@@ -53468,7 +53046,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a transcription job",
@@ -53508,7 +53089,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retry a failed transcription job",
@@ -53549,7 +53133,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream transcription job events via SSE",
@@ -53629,9 +53216,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Impersonate another user (admin only)",
@@ -53700,9 +53284,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "User logout",
@@ -53731,9 +53312,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -53859,9 +53437,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -54122,9 +53697,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Issue a single-use, 30-second ticket for authenticating SSE streams",
@@ -54240,7 +53812,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the release notes visible to the caller",
@@ -54274,7 +53846,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Mark entries as seen for the current user",
@@ -54308,7 +53880,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Entries driving the one-time What's New dialog",
@@ -54377,7 +53949,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses",
@@ -54420,7 +53992,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get the current status of an async consultation job",
@@ -54456,7 +54031,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Cancel a pending or running async consultation job",
@@ -54497,7 +54072,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream real-time status updates for an async consultation job via SSE",
@@ -54549,10 +54127,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a ConsultationResponse",
@@ -54615,7 +54193,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by patientId and date",
@@ -54731,7 +54309,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by patientId",
@@ -54768,10 +54346,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The workflows this caller may select when opening a consultation.",
@@ -54817,7 +54392,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The published workflows runnable AGAINST a consultation.",
@@ -54923,7 +54501,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Run a published workflow against THIS consultation.",
@@ -54966,7 +54547,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ConsultationResponse by id",
@@ -55034,7 +54618,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a ConsultationResponse by id",
@@ -55088,7 +54672,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by id",
@@ -55150,7 +54737,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -55204,7 +54791,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -55269,7 +54859,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a ContextItemResponse by id",
@@ -55323,7 +54916,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -55377,7 +54973,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -55431,7 +55027,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -55485,7 +55084,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and contextId",
@@ -55559,7 +55158,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a ContextItemResponse by id and contextId",
@@ -55622,7 +55221,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemVersionResponses by id and contextId",
@@ -55680,7 +55279,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single ContextItemVersionResponse by id and contextId and versionNumber",
@@ -55738,7 +55337,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DocumentSectionResponses by id",
@@ -55805,7 +55407,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DocumentSectionResponses by id and documentKey",
@@ -55867,7 +55472,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single DocumentSectionResponse by id and documentKey and sectionKey",
@@ -55956,7 +55564,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a DocumentSectionResponse by id and documentKey and sectionKey",
@@ -55997,7 +55605,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Stream live harness assurance (per-claim verdicts) for a consultation via SSE",
@@ -56038,7 +55646,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream live harness draft-generation progress for a consultation via SSE",
@@ -56092,7 +55703,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple HighlightResponses by id",
@@ -56140,7 +55751,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a HighlightResponse by id",
@@ -56194,7 +55805,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and highlightId",
@@ -56238,7 +55849,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream interpreter suggestions and proposed corrections for a consultation via SSE",
@@ -56279,7 +55893,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream the running live summary for an in-progress consultation via SSE",
@@ -56320,7 +55937,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream consultation-loop workflow events for a consultation via SSE",
@@ -56372,7 +55992,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single AggregateNerResponse by id",
@@ -56434,7 +56057,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -56487,7 +56110,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a RecordingStateResponse by id",
@@ -56540,7 +56166,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a RecordingStateResponse by id",
@@ -56594,7 +56223,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple AudioRecordingResponses by id",
@@ -56642,7 +56271,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ContextItemResponse by id",
@@ -56704,7 +56333,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -56758,7 +56387,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple SummaryResponses by id",
@@ -56806,7 +56438,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a SummaryResponse by id",
@@ -56856,7 +56488,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",
@@ -56906,7 +56538,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ComprehensiveSummaryResponse by id",
@@ -56956,7 +56588,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ComprehensiveSummaryResponse by id",
@@ -56999,7 +56631,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single SummaryResponse by id",
@@ -57049,7 +56684,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a SummaryResponse by id",
@@ -57099,7 +56737,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",
@@ -57142,7 +56783,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single SummaryResponse by id",
@@ -57218,7 +56862,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a SummaryApprovalResponseDto by id and contextItemId",
@@ -57285,7 +56929,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single VersionDiffResponse by id and contextItemId",
@@ -57339,7 +56983,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a OkResponseDto by id and contextItemId",
@@ -57388,7 +57032,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single SummaryProvenanceResponse by id and contextItemId",
@@ -57451,7 +57095,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple TagResponses by id and contextItemId",
@@ -57508,7 +57152,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a TagResponse by id and contextItemId",
@@ -57571,7 +57215,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and contextItemId and tagId",
@@ -57634,7 +57278,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemVersionResponses by id and contextItemId",
@@ -57710,7 +57354,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a SummaryResponse by id and summaryId",
@@ -57762,7 +57406,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ConsultationTimelineResponse by id",
@@ -57803,7 +57450,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Stream the ordered agentic-session trajectory for a consultation via SSE",
@@ -57850,7 +57497,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.",
@@ -57894,9 +57544,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving a single DnaReportResponse by doctorId",
@@ -57935,9 +57582,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -57980,9 +57624,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Get current user DNA generation job status",
@@ -58011,9 +57652,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -58057,9 +57695,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving multiple DnaReportResponses",
@@ -58091,9 +57726,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Erase the caller doctor's entire learned DNA writing-style profile",
@@ -58122,9 +57754,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving a single DnaReportResponse",
@@ -58144,9 +57773,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -58174,9 +57800,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -58235,9 +57858,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Set the caller doctor's DNA writing-style on/off toggle",
@@ -58280,9 +57900,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -58350,9 +57967,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Updating a DnaReportResponse by reportId",
@@ -58413,9 +58027,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Updating a DnaReportResponse by reportId",
@@ -58471,9 +58082,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -58647,7 +58255,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Create a personal prompt template owned by the calling clinician",
@@ -58691,7 +58299,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the prompt templates the calling clinician may use",
@@ -58735,7 +58343,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Set or clear the calling clinician's preferred prompt template",
@@ -58782,7 +58390,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Soft-delete a personal prompt template the caller owns",
@@ -58853,7 +58461,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update a personal prompt template the caller owns",
@@ -58886,7 +58494,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Run a content-safety / PII / prompt-injection check on the supplied text (proxied to the Guardrail service).",
@@ -58909,7 +58517,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Synthesize speech via TTS (batch audio, streamed audio, or SSE)",
@@ -58939,7 +58547,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List available TTS voices (stable internal ids + providers)",
@@ -58985,7 +58593,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List all storage buckets",
@@ -59023,7 +58631,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Create a new storage bucket",
@@ -59063,7 +58671,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Delete a storage bucket",
@@ -59101,7 +58709,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get bucket info",
@@ -59149,7 +58757,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update bucket metadata",
@@ -59191,7 +58799,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List files in bucket",
@@ -59237,7 +58845,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Upload file to bucket",
@@ -59286,7 +58894,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Delete file from bucket",
@@ -59333,7 +58941,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get file info with presigned download URL",
@@ -59356,7 +58964,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check storage service health (detailed)",
@@ -59390,7 +58998,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current tenant information",
@@ -59424,7 +59032,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current tenant configuration",
@@ -59486,10 +59094,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update current tenant configuration",
@@ -59538,7 +59143,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Discover the caller tenant's pinned consultation context schema",
@@ -59587,7 +59195,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Discover the caller tenant's pinned document template",
@@ -59621,7 +59229,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Capability/usage snapshot for the caller's own tenant (limits, usage, meters, features, trial clock).",
@@ -59655,7 +59263,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The caller's own tenant's invoices, newest period first.",
@@ -59695,7 +59303,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "One of my invoices (lines, memos, BYOK notional spend). A foreign id → 404.",
@@ -59736,7 +59344,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Month-to-date usage-and-spend snapshot vs my spend limit. Defaults to the current period.",
@@ -59778,7 +59386,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.",
@@ -59820,7 +59428,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month.",
@@ -59853,7 +59461,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint).",
@@ -59886,7 +59494,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Extract medical entities (NER) from the supplied text (proxied to the NLP token-classification endpoint).",
@@ -59920,7 +59528,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Classify text into one of the caller tenant configured intents (open-taxonomy, delegated by NLP to text).",
@@ -59954,7 +59562,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Classify text into one of the caller tenant configured topics (open-taxonomy, delegated by NLP to text).",
@@ -59984,7 +59592,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Generate text with server-side prompt assembly (debug mode)",
@@ -60026,7 +59637,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List Guardrail LLM providers/models from the AiModel registry (ENABLED GUARDRAIL rows), the effective guardrail.validate default marked. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",
@@ -60068,7 +59682,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live TEXT probe fallback when the registry is empty. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",
@@ -60108,7 +59725,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get task status from TEXT",
@@ -60148,7 +59768,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a running TEXT task",
@@ -60190,7 +59813,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream task chunks via SSE from TEXT",
@@ -60227,7 +59853,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the caller's own department assignments (tenant-scoped)",
@@ -60257,7 +59883,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current user's effective permissions",
@@ -60291,7 +59917,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current user preferences",
@@ -60336,7 +59962,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update current user preferences (partial)",
@@ -60373,7 +59999,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get all settings for current user",
@@ -60439,7 +60065,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update a specific setting by namespace and key",
@@ -60524,7 +60150,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check if a user has a specific permission",
@@ -60574,7 +60200,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check multiple permissions at once",
@@ -60688,7 +60314,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List roles assigned to the current user (self-only)",
@@ -60717,9 +60343,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -60757,9 +60380,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -60805,9 +60425,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "The embedding model a new enrollment would use",
@@ -60845,9 +60462,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Delete a voice profile",
@@ -60876,9 +60490,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -60911,9 +60522,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Deactivate a voice profile",
@@ -60943,7 +60551,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The tenant's published + active, invokable workflows (slug + identity — no per-definition input schema exists yet).",
@@ -61013,7 +60624,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.",
@@ -61117,7 +60731,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Start a run of the tenant's active published version of :slug. The canonical invocation entry point.",
@@ -61167,7 +60784,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Live run status + result (queried from the interpreter dispatcher).",
@@ -61217,7 +60837,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",
@@ -61283,7 +60906,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.",
@@ -61362,7 +60988,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.",
@@ -61424,7 +61053,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).",
@@ -61474,7 +61106,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Mint a single-use, 30-second ticket for this run’s WebSocket stream.",
@@ -61509,7 +61144,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).",
