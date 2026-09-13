@@ -186,6 +186,25 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
+  // TASK-965 WS-1 (AG-1) — local state is per ROW. The drawer stays mounted across a version
+  // switch (a Versions-tab click, "New version"), so an edit form seeded from v1 would otherwise
+  // save its values onto v2, and a publish result or confirm would outlive the row it belonged
+  // to. Everything transient resets the moment `agentId` changes — adjusted during render (the
+  // pattern React prescribes for prop-derived state; the compiler lint forbids it in an effect).
+  const [seenAgentId, setSeenAgentId] = useState(agentId);
+  if (agentId !== seenAgentId) {
+    setSeenAgentId(agentId);
+    setEditing(false);
+    setDraft(null);
+    setPublishing(false);
+    setPublished(null);
+    setConfirm(null);
+    setSelectorInput('');
+    setTestInput('');
+    setTestOutput(null);
+    setTesting(false);
+  }
+
   // TASK-890 OD-M — `GET admin/agents` answers only rows this tenant owns (its own clones
   // included), so a row here is mutable by STATUS alone; "platform" is provenance, not a lock.
   const mutable = !!agent && (agent.status === 'DRAFT' || agent.status === 'VALIDATED');
@@ -452,9 +471,19 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                       <span className="font-medium">
                         {selectorTags.length ? `Assignment for ${selectorTags.join(' + ')}` : `Tenant default for ${AGENT_TASK_LABEL[agent.task].toLowerCase()}`}
                       </span>
-                      <span className="text-muted-foreground text-xs">
-                        {tenantDefault ? `Currently ${tenantDefault.agentSlug}` : selectorTags.length ? 'Not assigned — requests fall back to the unqualified assignment' : 'Currently the platform default'}
-                      </span>
+                      {/* TASK-965 WS-1 (AG-3) — resolution is department → tenant and then a fail-closed
+                          503 AGENT_NOT_ASSIGNED: there is no platform tier for content (TASK-890 OD-M),
+                          so "unassigned" is a warning, never "the platform has it covered". */}
+                      {tenantDefault ? (
+                        <span className="text-muted-foreground text-xs">Currently {tenantDefault.agentSlug}</span>
+                      ) : selectorTags.length ? (
+                        <span className="text-muted-foreground text-xs">Not assigned — requests carrying these tags fall back to the unqualified assignment</span>
+                      ) : (
+                        <span className="text-warning-strong flex items-center gap-1 text-xs">
+                          <IconAlertTriangle aria-hidden className="size-3.5 shrink-0" />
+                          No tenant default — requests for {AGENT_TASK_LABEL[agent.task].toLowerCase()} fail with AGENT_NOT_ASSIGNED until an agent is assigned (department → tenant; there is no platform fallback)
+                        </span>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -675,7 +704,13 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
         open={confirm === 'deprecate'}
         onOpenChange={(open) => !open && setConfirm(null)}
         title="Deprecate this version?"
-        description="It stops being served for new calls and stays immutable. Publish another version to serve the slug again."
+        description={
+          // TASK-965 WS-1 (AG-4) — deprecating the ACTIVE version of the tenant-default slug leaves the
+          // assignment pointing at nothing; the confirm names that consequence instead of hiding it.
+          agent && isTenantDefault && agent.isActive
+            ? `This slug is the tenant default for ${AGENT_TASK_LABEL[agent.task].toLowerCase()}. Deprecating its active version leaves that assignment pointing at nothing — requests fail with AGENT_NOT_ASSIGNED until another version is published or a different agent is assigned.`
+            : 'It stops being served for new calls and stays immutable. Publish another version to serve the slug again.'
+        }
         confirmLabel="Deprecate"
         destructive
         isPending={deprecate.isPending}

@@ -220,7 +220,15 @@ function DnaWritingStylesBody() {
         cell: ({ row }) => (
           <span className="flex items-center gap-2">
             <span className="tabular-nums">v{row.original.currentVersionNumber}</span>
-            {row.original.isLatest ? <Badge variant="secondary">Latest</Badge> : null}
+            {row.original.isLatest ? (
+              <Badge variant="secondary">Latest</Badge>
+            ) : (
+              // TASK-965 WS-1 (HV-9) — the admin list carries every report a doctor ever had, but the
+              // drawer can only read the LATEST one; a superseded row has to say so.
+              <Badge variant="outline" title="Superseded by a newer report for this doctor">
+                Superseded
+              </Badge>
+            )}
           </span>
         ),
       },
@@ -331,7 +339,15 @@ function DnaWritingStylesBody() {
             facetedFilters: true,
             sorting: false,
           }}
-          onRowClick={(row) => void setSelected(row.doctorId)}
+          onRowClick={(row) => {
+            // TASK-965 WS-1 (HV-9) — the drawer reads the doctor's LATEST report, so opening it from a
+            // superseded row would silently show a different record than the one clicked.
+            if (!row.isLatest) {
+              toast.info(`Report ${row.id} was superseded by this doctor's latest report — open the row marked Latest.`);
+              return;
+            }
+            void setSelected(row.doctorId);
+          }}
           isLoading={reports.isLoading}
           isBusy={reports.isFetching && !reports.isLoading}
           error={rows.length > 0 ? null : (reports.error ?? null)}

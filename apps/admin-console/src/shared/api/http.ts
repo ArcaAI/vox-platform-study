@@ -177,6 +177,13 @@ export async function postJson<T>(path: string, body?: unknown, params?: QueryPa
   return (await request<T>(path, { method: 'POST', body, params })).data;
 }
 
+/** POST keeping the ETag — for lifecycle routes (validate, publish) whose response IS the updated
+ *  row: the gateway's `ETagInterceptor` stamps every versioned body, not only GETs, and a caller
+ *  that drops it sends the NEXT If-Match against a version that has already moved (TASK-965). */
+export async function postWithEtag<T>(path: string, body?: unknown, params?: QueryParams): Promise<WithEtag<T>> {
+  return request<T>(path, { method: 'POST', body, params });
+}
+
 export async function putJson<T>(path: string, body?: unknown, params?: QueryParams): Promise<T> {
   return (await request<T>(path, { method: 'PUT', body, params })).data;
 }

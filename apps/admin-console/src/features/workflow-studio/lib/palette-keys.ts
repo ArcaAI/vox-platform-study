@@ -12,8 +12,10 @@
  */
 import type { WorkflowNodeDescriptor } from '../api/types';
 
-/** The one authoring vocabulary — always first, whatever the registry order (mirrors the rail). */
-const CORE_PALETTE_KEY = 'core';
+/** The one authoring vocabulary — always first, whatever the registry order (mirrors the rail).
+ *  Also the ONLY palette the public invoke surface exposes (`EXPOSURE_ALLOWED_PALETTES`,
+ *  `exposure-palette-policy.ts`), which is why `PublishDialog` reads it (TASK-965). */
+export const CORE_PALETTE_KEY = 'core';
 
 export interface PaletteKeyOption {
   key: string;

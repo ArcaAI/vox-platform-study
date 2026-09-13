@@ -34,6 +34,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Badge,
@@ -63,9 +64,14 @@ import {
   useCreateWorkflowDefinition,
   useExportWorkflowDefinition,
   useImportWorkflowDefinition,
+  usePublishWorkflowDefinition,
+  useValidateWorkflowDefinition,
   useWorkflowTemplates,
 } from '../api';
-import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
+import { getWorkflowDefinition } from '../api/client';
+import { workflowStudioKeys } from '../api/keys';
+import { confirmLeave } from '../hooks/use-unsaved-changes-guard';
+import { CORE_PALETTE_KEY } from '../lib/palette-keys';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { layoutClusteredGraph } from '../lib/ensure-canvas-layout';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
@@ -161,6 +167,23 @@ export interface WorkflowStudioEditorProps {
   registryNodes: WorkflowNodeDescriptor[];
 }
 
+/** The strong ETag a versioned row implies, for a response that arrived without the header. */
+function etagOf(row: { version?: number | null }): string | null {
+  return typeof row.version === 'number' && row.version > 0 ? `"${row.version}"` : null;
+}
+
+/**
+ * TASK-965 WS-1 (WF-6) — a refused publish is the gateway's most actionable answer (the publish
+ * gate, a capability refusal, "is PUBLISHED and can no longer be edited"); it is shown verbatim,
+ * with the first finding when the body carries one, never reduced to "Publish failed."
+ */
+function lifecycleFailureMessage(cause: unknown, fallback: string): string {
+  if (!(cause instanceof GatewayError)) return fallback;
+  const findings = (cause.details as { findings?: { message?: string }[] } | undefined)?.findings;
+  const first = findings?.find((finding) => typeof finding?.message === 'string')?.message;
+  return first ? `${cause.message} ${first}` : cause.message;
+}
+
 function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorProps) {
   const router = useRouter();
   const storeApi = useGraphStoreApi();
@@ -183,7 +206,26 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
    * nothing about the workflow and must never mark it dirty.
    */
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  // TASK-965 WS-1 — the ETag FOLLOWS the prop (an out-of-band refetch — a node prompt edit, the
+  // publish invalidation — must never leave a stale If-Match behind, WF-11) and is ALSO adopted
+  // from the validate/publish/save responses (WF-2, WF-10). Adjusted during render, not in an
+  // effect: the compiler lint forbids `setState` in an effect body, and a render-time adjustment
+  // is what React itself prescribes for "state that derives from a prop change".
   const [currentEtag, setCurrentEtag] = useState(etag);
+  const [seenEtag, setSeenEtag] = useState(etag);
+  if (etag !== seenEtag) {
+    setSeenEtag(etag);
+    setCurrentEtag(etag);
+  }
+  // Lifecycle status follows the prop the same way, and is adopted from the validate/publish
+  // responses so the editor locks the moment the gateway says PUBLISHED — not after the next
+  // refetch (WF-1).
+  const [status, setStatus] = useState(definition.status);
+  const [seenStatus, setSeenStatus] = useState(definition.status);
+  if (definition.status !== seenStatus) {
+    setSeenStatus(definition.status);
+    setStatus(definition.status);
+  }
   const [report, setReport] = useState<WorkflowValidationReport | null>(definition.validationReport);
   const [validating, setValidating] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -212,8 +254,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [runId, setRunId] = useState<string | null>(null);
   const nodeRunStates = useSandboxNodeStates(runId);
 
-  const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
+  const readOnly = status === 'PUBLISHED' || status === 'DEPRECATED';
   const createNewVersion = useCreateWorkflowDefinition();
+  // TASK-965 WS-1 (WF-1, WF-26) — validate and publish go through the studio's TanStack mutations,
+  // whose `onSuccess` invalidates the whole namespace (rule 13: mutations, never raw client calls).
+  const validateMutation = useValidateWorkflowDefinition();
+  const publishMutation = usePublishWorkflowDefinition();
+  const queryClient = useQueryClient();
+  /** Whether the last publish ACTIVATED the version — drives the dialog's published step (O-3). */
+  const [publishedActive, setPublishedActive] = useState(true);
   // TASK-885 — the portable-bundle export of the SERVER's stored version (see handleExportBundle).
   const exportBundle = useExportWorkflowDefinition();
 
@@ -311,13 +360,26 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     definitionId: definition.id,
     getEtag: () => currentEtag,
     onSaved: (saved, nextEtag) => {
-      setCurrentEtag(nextEtag);
+      setCurrentEtag(nextEtag ?? etagOf(saved));
+      // TASK-965 WS-1 (WF-10) — a graph PATCH rewrites status and report server-side (a VALIDATED
+      // row drops back to DRAFT); the header and the publish gate follow the response, not the load.
+      if (saved.status) setStatus(saved.status);
+      if (saved.validationReport !== undefined) setReport(saved.validationReport);
       storeApi.getState().markSaved(saved.version);
       setMetadataDirty(false);
     },
     onStateChange: (state) => storeApi.getState().setSaveState(state),
     onMissingPrecondition: () => toast.error('Stale tab — the request went out without If-Match. Refresh the page.'),
   });
+
+  // TASK-965 WS-1 (WF-6) — a Save refused for any reason other than a precondition (a 400 on a
+  // frozen row, a 409, a 5xx) used to be a badge and nothing else; the gateway's message is the
+  // useful part. Conflicts and 428s keep their own alert.
+  useEffect(() => {
+    const failure = save.lastError;
+    if (!failure || failure.isVersionConflict || failure.isMissingPrecondition) return;
+    toast.error(failure.message);
+  }, [save.lastError]);
 
   /**
    * Seeded graphs omit `position`, so hydrate piles every node at the origin. Spread them once
@@ -338,23 +400,20 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     let cancelled = false;
     void layoutClusteredGraph(current, currentEdges).then((positions) => {
       if (cancelled || !positions) return;
-      if (readOnly) {
-        storeApi.getState().hydrate(
-          current.map((node) => ({ ...node, position: positions[node.id] ?? node.position })),
-          currentEdges,
-        );
-      } else {
-        for (const node of current) {
-          const position = positions[node.id];
-          if (position) storeApi.getState().moveNode(node.id, position);
-        }
-      }
+      // TASK-965 WS-1 (WF-8) — display bookkeeping on BOTH branches. The spread is not an authored
+      // edit, so it goes through `hydrate` (which re-baselines and stays clean), never `moveNode`,
+      // which marked every positionless template, clone and import "Unsaved" before a single
+      // gesture. The positions are persisted by whichever Save the admin makes next.
+      storeApi.getState().hydrate(
+        current.map((node) => ({ ...node, position: positions[node.id] ?? node.position })),
+        currentEdges,
+      );
       setFitViewKey((key) => key + 1);
     });
     return () => {
       cancelled = true;
     };
-  }, [definition.id, storeApi, readOnly]);
+  }, [definition.id, storeApi]);
 
   // Metadata edits join the SAME explicit save the graph uses — they are staged in local state
   // and written by the next `Save`, never by a timer.
@@ -370,7 +429,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // Unsaved-changes guard — combines the store's graph-shape `dirty` with the local metadata-form
   // flag; a read-only (published) row is never dirty. With no autosave behind it this is the only
   // thing standing between an admin and a closed tab full of lost edits.
-  useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty));
+  const leaveBlocked = !readOnly && (dirty || metadataDirty);
+  useUnsavedChangesGuard(leaveBlocked);
+  // TASK-965 WS-1 (WF-7) — every programmatic navigation this editor issues ("New", "Edit as new
+  // draft", clone, import, the workflow switcher) asks the same question the anchor guard asks.
+  const navigate = useCallback(
+    (href: string) => {
+      if (confirmLeave(leaveBlocked)) router.push(href);
+    },
+    [leaveBlocked, router],
+  );
 
   // `!save.paused` is load-bearing, not defensive. `useSaveModel.save()` is deliberately a NO-OP
   // while paused, so that a 412 is never retried without an explicit decision — which means a Save
@@ -380,15 +448,22 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const canSave = !readOnly && !save.paused && (storeCanSave || (metadataDirty && saveState !== 'saving'));
   const canDiscard = !readOnly && (storeCanDiscard || metadataDirty);
 
-  const handleSave = useCallback(() => {
-    const { nodes: current, edges: currentEdges } = storeApi.getState();
-    const patch: SaveDefinitionPatch = { graph: toWorkflowGraph(current, currentEdges) };
+  /** What one explicit Save writes, read from the store at click time (never a stale closure). */
+  const buildPatch = useCallback((): SaveDefinitionPatch => {
+    const { nodes: current, edges: currentEdges, dirty: graphDirty } = storeApi.getState();
+    // TASK-965 WS-1 (WF-9) — the graph rides the PATCH only when the STORE is dirty: a graph
+    // patch resets VALIDATED → DRAFT server-side, so a rename must not carry one.
+    const patch: SaveDefinitionPatch = graphDirty ? { graph: toWorkflowGraph(current, currentEdges) } : {};
     if (metadataDirty) {
       patch.name = name;
       patch.description = description;
     }
-    void save.save(patch);
-  }, [save, storeApi, metadataDirty, name, description]);
+    return patch;
+  }, [storeApi, metadataDirty, name, description]);
+
+  const handleSave = useCallback(() => {
+    void save.save(buildPatch());
+  }, [save, buildPatch]);
 
   const handleDiscard = useCallback(() => {
     storeApi.getState().discard();
@@ -412,7 +487,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         parentVersionId: definition.id,
       });
       toast.success('New draft version created.');
-      router.push(`/workflow-studio/${created.id}`);
+      navigate(`/workflow-studio/${created.id}`);
     } catch {
       toast.error('Could not create a new version.');
     }
@@ -430,7 +505,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       const created = await cloneMutation.mutateAsync({ sourceId, body: { targetSlug, name: cloneName } });
       setCloneOpen(false);
       toast.success(`Cloned into “${created.name}”.`);
-      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+      navigate(`/workflow-studio/${encodeURIComponent(created.id)}`);
     } catch (cause) {
       // The gateway's own message is the useful one here — it names the colliding slug, the
       // exceeded quota, or the nodes whose bindings block a template clone.
@@ -446,7 +521,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       const created = await importMutation.mutateAsync({ targetSlug, name: importName, bundle });
       setImportOpen(false);
       toast.success(`Imported “${created.name}” as a draft — validate it before publishing.`);
-      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+      navigate(`/workflow-studio/${encodeURIComponent(created.id)}`);
     } catch (cause) {
       // Surfaced VERBATIM: the gateway's 409 names the references this tenant is missing, and a
       // paraphrase would drop exactly the part that makes it actionable.
@@ -751,15 +826,19 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   async function handleValidate() {
     setValidating(true);
     try {
-      const updated = await validateWorkflowDefinition(definition.id);
+      // TASK-965 WS-1 (WF-2) — validate COMMITS server-side (the row version moves); adopt the
+      // response's ETag and status or the next Save asserts a precondition that is already stale.
+      const { data: updated, etag: nextEtag } = await validateMutation.mutateAsync(definition.id);
+      setCurrentEtag(nextEtag ?? etagOf(updated));
+      setStatus(updated.status);
       setReport(updated.validationReport);
       setInspectorTab('problems');
       setRailPinned(true);
       toast[updated.validationReport?.ok ? 'success' : 'error'](
         updated.validationReport?.ok ? 'Validation passed.' : 'Validation found problems — see the Problems tab.',
       );
-    } catch {
-      toast.error('Validate failed.');
+    } catch (cause) {
+      toast.error(lifecycleFailureMessage(cause, 'Validate failed.'));
     } finally {
       setValidating(false);
     }
@@ -768,14 +847,67 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   async function handlePublish(activate: boolean) {
     setPublishing(true);
     try {
-      await publishWorkflowDefinition(definition.id, { activate });
-      toast.success('Published.');
+      // TASK-965 WS-1 (WF-1) — through the mutation, whose success invalidates the studio
+      // namespace (definition, versions, switcher); the editor ALSO adopts the response so it locks
+      // in the same tick rather than after the refetch lands.
+      const { data: published, etag: nextEtag } = await publishMutation.mutateAsync({ id: definition.id, body: { activate } });
+      setCurrentEtag(nextEtag ?? etagOf(published));
+      setStatus(published.status);
+      if (published.validationReport !== undefined) setReport(published.validationReport);
+      setPublishedActive(published.isActive);
+      toast.success(published.isActive ? 'Published and active.' : 'Published — not active.');
       setJustPublished(true);
-      router.refresh();
-    } catch {
-      toast.error('Publish failed.');
+    } catch (cause) {
+      toast.error(lifecycleFailureMessage(cause, 'Publish failed.'));
     } finally {
       setPublishing(false);
+    }
+  }
+
+  /**
+   * TASK-965 WS-1 (WF-3) — the two `OccConflictAlert` escapes, each now a real path out.
+   *
+   * Reload latest: the other admin's row REPLACES the buffer (graph, name, description, status,
+   * report, ETag) — asked first, because it discards local edits. Overwrite anyway: the buffer
+   * WINS — take the fresh ETag, resume, and re-send exactly what is on the canvas. Both read the
+   * row through the studio's own detail query (`fetchQuery`, stale by definition) so the cache and
+   * the editor agree on what "latest" is.
+   */
+  async function fetchLatestRow() {
+    return queryClient.fetchQuery({ queryKey: workflowStudioKeys.detail(definition.id), queryFn: () => getWorkflowDefinition(definition.id), staleTime: 0 });
+  }
+  async function handleReloadLatest() {
+    if (!window.confirm('Reload the latest version and discard your unsaved edits?')) return;
+    try {
+      const fresh = await fetchLatestRow();
+      const { nodes: loadedNodes, edges: loadedEdges } = fromWorkflowGraph(fresh.data.graph);
+      storeApi.getState().hydrate(
+        loadedNodes.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
+        loadedEdges,
+      );
+      setName(fresh.data.name);
+      setDescription(fresh.data.description ?? '');
+      setMetadataDirty(false);
+      setStatus(fresh.data.status);
+      setReport(fresh.data.validationReport);
+      setCurrentEtag(fresh.etag ?? etagOf(fresh.data));
+      save.resume();
+      setFitViewKey((key) => key + 1);
+      toast.success('Reloaded the latest version.');
+    } catch (cause) {
+      toast.error(cause instanceof GatewayError ? cause.message : 'Could not reload the latest version.');
+    }
+  }
+  async function handleOverwriteAnyway() {
+    try {
+      const fresh = await fetchLatestRow();
+      const latestEtag = fresh.etag ?? etagOf(fresh.data);
+      setCurrentEtag(latestEtag);
+      save.resume();
+      // Same tick as the resume: the override carries the ETag React has not rendered yet.
+      void save.save(buildPatch(), { etag: latestEtag });
+    } catch (cause) {
+      toast.error(cause instanceof GatewayError ? cause.message : 'Could not read the latest version to overwrite it.');
     }
   }
 
@@ -934,7 +1066,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               <span className="font-mono text-xs">
                 {definition.slug} · v{definition.versionNumber}
               </span>
-              <Badge variant={STATUS_VARIANT[definition.status]}>{definition.status}</Badge>
+              <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
               {readOnly ? (
                 <Badge variant="outline" className="gap-1">
                   <IconLock aria-hidden="true" className="size-3" />
@@ -950,14 +1082,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           }
           actions={
             <>
-              <WorkflowSwitcher current={definition} />
+              <WorkflowSwitcher current={definition} onNavigate={navigate} />
               {readOnly ? (
                 <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
                   <IconPlus aria-hidden="true" />
                   {createNewVersion.isPending ? 'Creating…' : 'Edit as new draft'}
                 </Button>
               ) : null}
-              <Button type="button" variant="outline" size="sm" onClick={() => router.push('/workflow-studio/new')}>
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate('/workflow-studio/new')}>
                 <IconPlus aria-hidden="true" />
                 New
               </Button>
@@ -990,12 +1122,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       }
       statusBanner={
         <>
-          {save.paused ? <OccConflictAlert error={save.lastError} onReload={() => router.refresh()} onOverwrite={() => save.resume()} /> : null}
+          {save.paused ? <OccConflictAlert error={save.lastError} onReload={() => void handleReloadLatest()} onOverwrite={() => void handleOverwriteAnyway()} /> : null}
           {readOnly ? (
             <div role="status" className="border-warning/40 bg-warning/10 text-warning-strong flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
               <IconLock aria-hidden="true" className="size-4 shrink-0" />
               <span>
-                This version is {definition.status.toLowerCase()}, so the canvas and palette are locked. Create a new draft to keep editing — the
+                This version is {status.toLowerCase()}, so the canvas and palette are locked. Create a new draft to keep editing — the
                 graph, its bindings and its history come with it.
               </span>
             </div>
@@ -1012,7 +1144,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           onValidate={() => void handleValidate()}
           validating={validating}
           onPublish={() => setPublishOpen(true)}
-          publishDisabledReason={readOnly ? 'This version is already published.' : publishBlockedReason(report)}
+          publishDisabledReason={
+            readOnly
+              ? 'This version is already published.'
+              : // TASK-965 WS-1 (WF-5) — publish freezes the SAVED definition, so a dirty buffer is a
+                // stated reason to withhold it (the sandbox Run panel says the same thing).
+                dirty || metadataDirty
+                ? 'Save your changes first — publishing freezes the saved definition.'
+                : publishBlockedReason(report)
+          }
           publishing={publishing}
           readOnly={readOnly}
           canUndo={canUndo}
@@ -1081,7 +1221,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               {readOnly ? (
                 <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
                   <IconLock aria-hidden="true" className="size-3.5 shrink-0" />
-                  Palette locked on a {definition.status.toLowerCase()} version.
+                  Palette locked on a {status.toLowerCase()} version.
                 </p>
               ) : null}
               {/* `inert` (React 19) takes the whole rail out of the tab order and the accessibility
@@ -1216,6 +1356,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         confirming={publishing}
         published={justPublished}
         slug={definition.slug}
+        activated={publishedActive}
+        exposable={definition.paletteKey === CORE_PALETTE_KEY}
+        paletteKey={definition.paletteKey}
       />
       <DefinitionMetadataForm
         open={metadataOpen}

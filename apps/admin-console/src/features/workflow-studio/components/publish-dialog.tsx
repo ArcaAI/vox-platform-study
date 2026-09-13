@@ -13,9 +13,14 @@
  * doc), a copyable `@arcaai/vox-node` snippet, and a link to `/api-keys` to mint a key that can
  * actually reach it. This is the moment a tenant admin needs that information — right after the
  * thing they just made became reachable — so it rides the SAME dialog rather than a second one.
+ *
+ * TASK-965 WS-1 (O-3) — the schema route answers 404 for THREE legitimate outcomes, and the
+ * panel used to collapse all of them into "reopen this dialog to retry", a retry that could never
+ * succeed. Each is now explained on its own terms, and the two the client already knows about
+ * (published WITHOUT activation; a palette that is not exposable) never hit the network at all.
  */
 import Link from 'next/link';
-import { IconAlertTriangle, IconExternalLink } from '@tabler/icons-react';
+import { IconAlertTriangle, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
 import {
   Alert,
   AlertDescription,
@@ -36,9 +41,11 @@ import {
   Switch,
 } from '@arcaai/ui';
 import { useState } from 'react';
+import { GatewayError } from '@/shared/api';
 import { CopyButton } from '@/shared/copy-button';
 import { workflowVoxNodeSnippet } from '@/shared/docs/sdk-snippets';
 import { useWorkflowSchema } from '../api/hooks';
+import { CORE_PALETTE_KEY } from '../lib/palette-keys';
 
 const API_KEYS_HREF = '/api-keys';
 const SOCKET_MODE = 'socket';
@@ -52,10 +59,45 @@ export interface PublishDialogProps {
   published?: boolean;
   /** The definition's slug — required to fetch `GET workflows/{slug}/schema` once published. */
   slug?: string;
+  /** TASK-965 — whether the publish ACTIVATED this version (the response's `isActive`). Default `true`. */
+  activated?: boolean;
+  /** TASK-965 — whether the definition's palette is exposable on the public invoke surface
+   *  (only `core` is — `EXPOSURE_ALLOWED_PALETTES` server-side). Default `true`. */
+  exposable?: boolean;
+  /** The palette named in the not-exposable explanation. */
+  paletteKey?: string;
 }
 
-function EndpointsPanel({ slug }: { slug: string }) {
-  const schema = useWorkflowSchema(slug, true);
+function EndpointsPanel({ slug, activated, exposable, paletteKey }: { slug: string; activated: boolean; exposable: boolean; paletteKey?: string }) {
+  // The two outcomes the client already knows about never fire the request that would 404.
+  const schema = useWorkflowSchema(slug, activated && exposable);
+
+  if (!activated) {
+    return (
+      <Alert role="status">
+        <IconInfoCircle aria-hidden />
+        <AlertTitle>Published, not active</AlertTitle>
+        <AlertDescription>
+          This version is frozen, but the public endpoint keeps resolving the ACTIVE version of <code className="font-mono">{slug}</code>. Activate it from the
+          version list when it should serve; the endpoint details appear here once it does.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (!exposable) {
+    return (
+      <Alert role="status">
+        <IconInfoCircle aria-hidden />
+        <AlertTitle>Published — not exposable on the public invoke surface</AlertTitle>
+        <AlertDescription>
+          Only the <code className="font-mono">{CORE_PALETTE_KEY}</code> palette is exposable; this workflow&apos;s palette is{' '}
+          <code className="font-mono">{paletteKey ?? 'not core'}</code>, so there is no <code className="font-mono">POST /workflows/{slug}/runs</code> to offer. It
+          runs through consultations and assignments instead.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (schema.isPending) {
     return (
@@ -68,11 +110,27 @@ function EndpointsPanel({ slug }: { slug: string }) {
   }
 
   if (schema.isError) {
+    const notExposed = schema.error instanceof GatewayError && schema.error.isNotFound;
+    if (notExposed) {
+      return (
+        <Alert role="status">
+          <IconInfoCircle aria-hidden />
+          <AlertTitle>Published, but not exposed to the public plane</AlertTitle>
+          <AlertDescription>
+            The gateway answers 404 for this slug on the public invoke surface. Either the tenant&apos;s <strong>Workflow exposure plane</strong> feature is off
+            (Feature availability) or the published version is not visible there yet. Once it is on, the endpoint details appear here.
+          </AlertDescription>
+        </Alert>
+      );
+    }
     return (
       <Alert variant="destructive">
         <IconAlertTriangle aria-hidden />
         <AlertTitle>Couldn&apos;t resolve this workflow&apos;s endpoints</AlertTitle>
-        <AlertDescription>The definition published, but its run contract could not be read back. Reopen this dialog to retry.</AlertDescription>
+        <AlertDescription>
+          The definition published, but its run contract could not be read back{schema.error instanceof GatewayError ? `: ${schema.error.message}` : ''}. Reopen this
+          dialog to retry.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -118,7 +176,7 @@ function EndpointsPanel({ slug }: { slug: string }) {
   );
 }
 
-export function PublishDialog({ open, onOpenChange, onConfirm, confirming, published, slug }: PublishDialogProps) {
+export function PublishDialog({ open, onOpenChange, onConfirm, confirming, published, slug, activated = true, exposable = true, paletteKey }: PublishDialogProps) {
   const [activate, setActivate] = useState(true);
 
   if (published && slug) {
@@ -127,9 +185,9 @@ export function PublishDialog({ open, onOpenChange, onConfirm, confirming, publi
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Published</DialogTitle>
-            <DialogDescription>This version is live. Here is how your developers reach it.</DialogDescription>
+            <DialogDescription>{activated ? 'This version is live. Here is how your developers reach it.' : 'This version is frozen and can be activated later.'}</DialogDescription>
           </DialogHeader>
-          <EndpointsPanel slug={slug} />
+          <EndpointsPanel slug={slug} activated={activated} exposable={exposable} paletteKey={paletteKey} />
           <DialogFooter>
             <Button type="button" onClick={() => onOpenChange(false)}>
               Done

@@ -29,6 +29,13 @@ export interface SaveDefinitionPatch {
   description?: string;
 }
 
+export interface SaveOptions {
+  /** TASK-965 WF-3 — an ETag that overrides `getEtag()` for THIS save only: the "Overwrite anyway"
+   *  path has just read the latest row and must re-send against that version in the same tick,
+   *  before React has re-rendered the state `getEtag` closes over. */
+  etag?: string | null;
+}
+
 export interface UseSaveModelOptions {
   definitionId: string;
   /** The ETag captured at the last successful read/save — read lazily so the hook always PATCHes
@@ -52,7 +59,7 @@ export interface SaveModel {
    * the caller has reloaded or chosen to overwrite — exactly the rule autosave enforced, now
    * driven by a button instead of a timer.
    */
-  save: (patch: SaveDefinitionPatch) => Promise<void>;
+  save: (patch: SaveDefinitionPatch, options?: SaveOptions) => Promise<void>;
   saving: boolean;
   /** True after a 412 until `resume()`. */
   paused: boolean;
@@ -74,9 +81,9 @@ export function useSaveModel({ definitionId, getEtag, onSaved, onStateChange, on
   const savingRef = useRef(false);
 
   const save = useCallback(
-    async (patch: SaveDefinitionPatch) => {
+    async (patch: SaveDefinitionPatch, options?: SaveOptions) => {
       if (pausedRef.current || savingRef.current) return;
-      const etag = getEtag();
+      const etag = options?.etag ?? getEtag();
       if (!etag) {
         // No ETag captured yet — a client bug (a save issued before the initial GET completed),
         // not a server precondition failure; surfaced the same way as a 428, and NOT reported as

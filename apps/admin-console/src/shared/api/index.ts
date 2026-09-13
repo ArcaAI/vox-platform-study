@@ -9,6 +9,7 @@ export {
   patchJson,
   patchWithEtag,
   postJson,
+  postWithEtag,
   putJson,
   putWithEtag,
   request,
