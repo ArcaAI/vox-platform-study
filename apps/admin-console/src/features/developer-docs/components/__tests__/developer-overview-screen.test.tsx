@@ -102,6 +102,50 @@ describe('SdkScreen', () => {
     expect(screen.getByText(/Do not import it from server code/i)).toBeDefined();
   });
 
+  /**
+   * TASK-971 F-E1 — the `@arcaai/vox` card used to carry an install line and a
+   * warning and no example at all. OD-3: a session JWT leads, an API-key
+   * variant follows with its exposure tradeoff stated (never the other way
+   * round), and `baseUrl` must include `/api/v1` — the one detail that
+   * differs from the server SDK card right above it on this same screen.
+   */
+  it('leads the browser card with a session-JWT AgenticProvider + useAgentInvocation example', () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getAllByText(/AgenticProvider/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/useAgentInvocation/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/accessToken/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/@arcaai\/vox\/core/).length).toBeGreaterThan(0);
+  });
+
+  it("states that baseUrl must include the gateway's /api/v1 prefix, unlike the server SDK", () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getAllByText('baseUrl').length).toBeGreaterThan(0);
+    expect(screen.getByText(/MUST include the gateway/i)).toBeDefined();
+  });
+
+  it('shows the API-key variant second and states the exposure tradeoff (OD-3)', () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getAllByText(/apiKey/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/readable by anyone/i)).toBeDefined();
+    expect(screen.getByText(/agent:invocation:write/)).toBeDefined();
+  });
+
+  it('shows a useWorkflowRun example that starts async and never passes ?mode=', () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getAllByText(/useWorkflowRun/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/never passes \?mode=/i)).toBeDefined();
+  });
+
+  it('still states there is no browser path by slug for TTS or batch STT', () => {
+    renderWithProviders(<SdkScreen />);
+
+    expect(screen.getByText(/No browser path by slug exists for TEXT_TO_SPEECH or batch SPEECH_TO_TEXT/i)).toBeDefined();
+  });
+
   it('has no axe violations', async () => {
     const { container } = renderWithProviders(<SdkScreen />);
 

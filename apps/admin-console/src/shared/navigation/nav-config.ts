@@ -65,6 +65,7 @@ import {
   IconUserScan,
   IconUserShield,
   IconVersions,
+  IconWebhook,
   IconWorld,
   type TablerIcon,
 } from '@tabler/icons-react';
@@ -958,8 +959,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
 
 /**
  * Personal chrome, reached from the topbar user menu rather than the rail.
- * Both entries carry the tier and ability gate they had as nav entries — the
- * move is a placement change only.
+ * `/developer` and `/account` carry the tier and ability gate they had as nav
+ * entries — that move was a placement change only. `/developer/invoke`
+ * (TASK-971 lane E) is a fresh addition to the same family: of the developer
+ * portal's three screens it is the one a developer reaches for FIRST — how to
+ * call something already published — so unlike its siblings
+ * `/developer/reference` and `/developer/sdk` (reachable only via in-page
+ * links from `/developer`), it earns its own entry beside `/developer`.
  */
 export const USER_MENU_ENTRIES: readonly UserMenuEntry[] = [
   {
@@ -977,6 +983,17 @@ export const USER_MENU_ENTRIES: readonly UserMenuEntry[] = [
     label: 'Developer',
     tier: '20-29',
     icon: IconApi,
+    required: [['read', 'ApiDocumentation']],
+    implemented: true,
+  },
+  {
+    // "Call a published agent or workflow" — the direct-HTTP contract,
+    // credential matrix and Postman walkthrough (TASK-971 lane E). Same gate
+    // as `/developer`: it is part of the same portal and not tenant-scoped.
+    route: '/developer/invoke',
+    label: 'Call an agent or workflow',
+    tier: '20-29',
+    icon: IconWebhook,
     required: [['read', 'ApiDocumentation']],
     implemented: true,
   },
