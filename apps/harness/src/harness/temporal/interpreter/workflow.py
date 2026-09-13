@@ -201,6 +201,21 @@ def _opt_str(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _run_doctor_id(inp: InterpreterInput) -> str | None:
+    """TASK-957 F-8 — the clinician this run acts FOR, for the trajectory context.
+
+    Read from ``subject`` and NOWHERE else. ``RunSubject`` exists because ``payload`` cannot be
+    trusted to carry identity — the exposure plane forwards a caller's ``input`` into ``payload``
+    verbatim — so reaching into ``payload["userId"]`` here would let a caller stamp an arbitrary
+    clinician onto a billing record. ``None`` is a real answer (an unbound exposure-plane run has
+    no clinical subject, and a bound one need not name a user), and it is the answer: a guessed
+    identity on a ledger row is worse than an absent one.
+
+    Pure and deterministic — a read of the workflow's own input, safe in the workflow body.
+    """
+    return inp.subject.user_id if inp.subject is not None else None
+
+
 def _configured_realtime(node: CompiledNode) -> bool:
     """TASK-864 — lane is per INSTANCE on `core.agent`/`core.action` (`execution.lane`), no
     longer only per type. Pure read of the compiled config."""
@@ -838,6 +853,7 @@ class WorkflowInterpreter:
             stage_id=str(stage_index),
             node_id=node.node_id,
             node_type=node.type,
+            doctor_id=_run_doctor_id(inp),
         )
         activity_input = NodeActivityInput(
             node_id=node.node_id,
@@ -1040,6 +1056,7 @@ class WorkflowInterpreter:
                 stage_id="review",
                 node_id=node.node_id,
                 node_type=node.type,
+                doctor_id=_run_doctor_id(inp),
             ),
         )
         try:
@@ -1227,6 +1244,7 @@ class WorkflowInterpreter:
                 stage_id="gate",
                 node_id=gate.node_id,
                 node_type=node_type,
+                doctor_id=_run_doctor_id(inp),
             ),
         )
 

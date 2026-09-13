@@ -212,6 +212,14 @@ class TrajectoryStepInput(BaseModel):
     payload_ref: dict[str, Any] | None = None
     error_code: str | None = None
     correlation_id: str | None = None
+    # TASK-957 F-8 — clinician + node identity, all ADDITIVE-OPTIONAL and all pruned from the
+    # wire when absent. Pruning is what makes the two repos deployable in either order: the
+    # gateway DTO runs under `forbidNonWhitelisted`, so an unknown key 400s the WHOLE batch —
+    # steps included — and the harness POST is fire-and-forget, which would swallow it.
+    doctor_id: str | None = None
+    node_id: str | None = None
+    workflow_version_id: str | None = None
+    node_type: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
         """camelCase wire object with ``None`` optionals pruned (strict apps/api DTO)."""
@@ -233,6 +241,10 @@ class TrajectoryStepInput(BaseModel):
                 "payloadRef": self.payload_ref,
                 "errorCode": self.error_code,
                 "correlationId": self.correlation_id,
+                "doctorId": self.doctor_id,
+                "nodeId": self.node_id,
+                "workflowVersionId": self.workflow_version_id,
+                "nodeType": self.node_type,
             }
         )
 
