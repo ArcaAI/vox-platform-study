@@ -3,6 +3,7 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { EntitlementsService } from '../entitlements.service';
+import type { EntitlementLimitKey } from '../enforcement';
 import { GIB, ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT, ENTITLEMENTS_TENANT_ID } from '../entitlements.constants';
 
 /*
@@ -21,6 +22,8 @@ const tenantRepository = { findById: vi.fn() };
 const planEntitlementRepository = { findByPlan: vi.fn(), findAll: vi.fn(), updateWithVersion: vi.fn() };
 const tenantEntitlementRepository = { findByTenant: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 const apiKeyRepository = { count: vi.fn() };
+const workflowDefinitionRepository = { count: vi.fn() };
+const aiProviderConnectionRepository = { count: vi.fn() };
 const tenantService = { getUsageStats: vi.fn() };
 const metering = {
   getCurrentUsage: vi.fn().mockResolvedValue({
@@ -33,6 +36,7 @@ const metering = {
     nlpTextUnits: 0,
     guardrailCalls: 0,
     embeddingTokens: 0,
+    workflowInvocations: 0,
   }),
 };
 
@@ -66,6 +70,8 @@ const makeService = () =>
     planEntitlementRepository as any,
     tenantEntitlementRepository as any,
     apiKeyRepository as any,
+    workflowDefinitionRepository as any,
+    aiProviderConnectionRepository as any,
     tenantService as any,
     metering as any,
     appSettings as any,
@@ -373,6 +379,112 @@ describe('EntitlementsService', () => {
       expect(caps.trial.isTrial).toBe(true);
       expect(caps.trial.expired).toBe(false);
       expect(caps.trial.daysRemaining).toBe(3);
+    });
+
+    /*
+     * TASK-962 — three enforced limits had no capability row at all, so their
+     * usage was unobservable while the gate still refused at the cap. What has
+     * to hold is not just "a row exists" but that its `used` is the number the
+     * matching precheck counts; the second and third tests pin the two counts
+     * that are easy to get wrong.
+     */
+    it('exposes the workflow-definition, provider-connection and workflow-invocation rows', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantService.getUsageStats.mockResolvedValue(usageStats());
+      apiKeyRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.count.mockResolvedValue(7);
+      aiProviderConnectionRepository.count.mockResolvedValue(2);
+      metering.getCurrentUsage.mockResolvedValue({ consultations: 0, transcriptionMinutes: 0, summaries: 0, workflowInvocations: 41 });
+
+      const caps = await makeService().getCapabilities('tenant-1');
+
+      expect(caps.quantities.find((q) => q.key === 'workflowDefinitions')).toMatchObject({ used: 7 });
+      expect(caps.quantities.find((q) => q.key === 'aiProviderConnections')).toMatchObject({ used: 2 });
+      expect(caps.meters.find((m) => m.key === 'monthlyWorkflowInvocations')).toMatchObject({ used: 41 });
+    });
+
+    it('counts workflow definitions the way the precheck does — every version row for the tenant', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantService.getUsageStats.mockResolvedValue(usageStats());
+      apiKeyRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.count.mockResolvedValue(3);
+      aiProviderConnectionRepository.count.mockResolvedValue(0);
+
+      await makeService().getCapabilities('tenant-1');
+
+      // `WorkflowDefinitionService` runs exactly this before assertQuantityQuota.
+      expect(workflowDefinitionRepository.count).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
+    });
+
+    it('counts only ENABLED provider connections, because a DISABLED row is a veto and not a consumed slot', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantService.getUsageStats.mockResolvedValue(usageStats());
+      apiKeyRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.count.mockResolvedValue(0);
+      aiProviderConnectionRepository.count.mockResolvedValue(1);
+
+      await makeService().getCapabilities('tenant-1');
+
+      // `countTenantConnections` sums `findByTenantIdAndService`, which filters
+      // `resourceStatus: ENABLED`. Counting every row would invent usage the
+      // gate never sees.
+      expect(aiProviderConnectionRepository.count).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', resourceStatus: 'ENABLED' },
+      });
+    });
+
+    /*
+     * The guard for the whole class of bug TASK-962 records: an enforced limit
+     * that no row reports, so a tenant is refused at a cap it could not see.
+     *
+     * `Record<EntitlementLimitKey, string>` is what does the work — a limit
+     * added to `ResolvedLimits` will not COMPILE until someone decides which
+     * row reports it. If a future limit genuinely warrants no row, widening
+     * this to `| null` is the deliberate act that records that decision.
+     */
+    const ROW_KEY_BY_LIMIT: Record<EntitlementLimitKey, string> = {
+      maxUsers: 'users',
+      maxDepartments: 'departments',
+      maxPromptTemplates: 'promptTemplates',
+      maxAsrPipelines: 'asrPipelines',
+      maxApiKeys: 'apiKeys',
+      maxWorkflowDefinitions: 'workflowDefinitions',
+      maxAiProviderConnections: 'aiProviderConnections',
+      storageQuotaBytes: 'storageBytes',
+      maxConcurrentSessions: 'concurrentSessions',
+      monthlyConsultations: 'monthlyConsultations',
+      monthlyTranscriptionMinutes: 'monthlyTranscriptionMinutes',
+      monthlySummaries: 'monthlySummaries',
+      monthlyWorkflowInvocations: 'monthlyWorkflowInvocations',
+      monthlySttSessionSeconds: 'monthlySttSessionSeconds',
+      monthlyLlmTokens: 'monthlyLlmTokens',
+      monthlyTtsCharacters: 'monthlyTtsCharacters',
+      monthlyNlpTextUnits: 'monthlyNlpTextUnits',
+      monthlyEmbeddingTokens: 'monthlyEmbeddingTokens',
+    };
+
+    it('reports every resolved limit as a capability row', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantService.getUsageStats.mockResolvedValue(usageStats());
+      apiKeyRepository.count.mockResolvedValue(0);
+      workflowDefinitionRepository.count.mockResolvedValue(0);
+      aiProviderConnectionRepository.count.mockResolvedValue(0);
+
+      const caps = await makeService().getCapabilities('tenant-1');
+      const reported = new Set([...caps.quantities, ...caps.meters].map((row) => row.key));
+
+      const unreported = Object.entries(ROW_KEY_BY_LIMIT)
+        .filter(([, rowKey]) => !reported.has(rowKey))
+        .map(([limitKey]) => limitKey);
+      expect(unreported).toEqual([]);
     });
 
     it('Exposes the six new unit meters (allowance ceiling + live usage) alongside M1–M3', async () => {
@@ -882,6 +994,8 @@ describe('EntitlementsService', () => {
           planEntitlementRepository as any,
           tenantEntitlementRepository as any,
           apiKeyRepository as any,
+          workflowDefinitionRepository as any,
+          aiProviderConnectionRepository as any,
           tenantService as any,
           metering as any,
           appSettings as any,
