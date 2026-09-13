@@ -63,7 +63,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
@@ -264,6 +264,43 @@ export class AgentController {
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiQuery({ name: 'mode', required: false, enum: ['blocking', 'stream'] })
+  // TASK-971 (F-F1) — DOCUMENTED, not validated here. `AgentInvocationBody` is a plain
+  // interface rather than a class-validator DTO precisely so the global pipe's
+  // `forbidNonWhitelisted` does NOT run on it: the agent's own `inputSchema` is the
+  // validator (TIER 3), and it may declare fields this gateway has never heard of. Turning
+  // it into a DTO to make the Swagger plugin emit a body would break every such agent — so
+  // the shape is described here instead, with the agent's schema named as the authority.
+  @ApiBody({
+    required: true,
+    description:
+      'FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) ' +
+      'The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — ' +
+      'which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. ' +
+      'A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.',
+    schema: {
+      type: 'object',
+      additionalProperties: true,
+      properties: {
+        text: {
+          type: 'string',
+          description:
+            'The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.',
+        },
+        variables: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+          description: 'Values substituted into the agent’s prompt template.',
+        },
+        context: {
+          type: 'object',
+          additionalProperties: true,
+          description:
+            'The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.',
+        },
+      },
+      example: { text: 'Summarise the consultation note below.' },
+    },
+  })
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
   @ApiResponse({
     status: 400,
@@ -502,6 +539,23 @@ export class AgentController {
       'Body `{ text }` or `{ ssml }` (SSML only when the agent enables it). The agent’s voice/format/speed/model are applied over the tenant’s TTS configuration and BYO credentials.',
   })
   @ApiParam({ name: 'slug', type: String })
+  // TASK-971 (F-F1) — see the note on `invocations`: `AgentSpeechBody` stays a plain
+  // interface, so the shape is documented rather than derived from a DTO.
+  @ApiBody({
+    required: true,
+    description:
+      'Provide `text` OR `ssml` — exactly one is expected. Sending neither is a 400; if both are sent, `ssml` is used. ' +
+      '`ssml` is accepted only by an agent whose parameters declare `ssml: true`, otherwise it is a 400. ' +
+      'Everything else about the synthesis — voice, format, speed, model, engine chain — is the AGENT’s, not the caller’s.',
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Plain text to synthesise.' },
+        ssml: { type: 'string', description: 'An SSML document to synthesise. Only for agents that declare SSML support.' },
+      },
+      example: { text: 'Your appointment is confirmed for Tuesday at ten.' },
+    },
+  })
   @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed.' })
   @ApiResponse({ status: 400, description: 'Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
@@ -706,6 +760,24 @@ export class AgentController {
       '(TASK-861) the job is keyed to and reproducible from; no pipeline row is involved. Progress streams from the returned `sseUrl`.',
   })
   @ApiParam({ name: 'slug', type: String })
+  // TASK-971 (F-F1) — see the note on `invocations`: `AgentTranscriptionBody` stays a plain
+  // interface, so the shape is documented rather than derived from a DTO.
+  @ApiBody({
+    required: true,
+    description:
+      'Batch transcription of media ALREADY uploaded through the media plane — this route takes an id, never audio bytes. ' +
+      'The answer is a 201 carrying the job and an `sseUrl` to watch it on; the transcript is not in the response.',
+    schema: {
+      type: 'object',
+      required: ['mediaId'],
+      properties: {
+        mediaId: { type: 'string', description: 'Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.' },
+        consultationId: { type: 'string', description: 'Optional consultation to attach the resulting transcript to.' },
+        language: { type: 'string', description: 'Optional language hint forwarded to the ASR worker; omit to use the agent’s own resolved spec.' },
+      },
+      example: { mediaId: '019a1f1e-2c3d-7e4f-8a90-1b2c3d4e5f60' },
+    },
+  })
   @ApiResponse({ status: 201, description: 'The transcription job.' })
   @ApiResponse({ status: 400, description: 'Missing mediaId, or the agent is not a SPEECH_TO_TEXT agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent (or media).' })
