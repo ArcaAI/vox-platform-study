@@ -134,7 +134,11 @@ export class EntitlementsAdminController {
       'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override ' +
       'echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so ' +
       'send the create-intent validator `If-Match: "0"`. Version drift is `412 Precondition Failed`; a missing ' +
-      'header is `428 Precondition Required`.',
+      'header is `428 Precondition Required`. ' +
+      'This is also the write path for `monthlySpendLimitMicros`, the ceiling a tenant sets on its OWN monthly spend ' +
+      '(exhausting it answers 402 on the consultation, agent and workflow planes). The SYSTEM tenant ' +
+      '(`00000000-…`) is refused with 403: it is a configuration tier, carries no plan, and no request runs as it, ' +
+      'so an override written there would never be read.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -144,6 +148,7 @@ export class EntitlementsAdminController {
   })
   @ApiParam({ name: 'tenantId' })
   @ApiOkResponse({ type: TenantEntitlementResponse })
+  @ApiResponse({ status: 403, description: 'The SYSTEM tenant is a configuration tier and carries no entitlement override.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   upsertOverride(
