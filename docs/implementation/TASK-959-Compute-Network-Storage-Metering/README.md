@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review — every lane merged on `dev-2.2` (not pushed); gates green; owner follow-ups in §4.2 |
+| Status | Completed — every lane merged on `dev-2.2` (not pushed); follow-ups closed or handed to the owner in §11 |
 | Type | `feature` (ledger units + emitters + price rows + storage snapshot job) |
 | Branch | `dev-2.2` |
 | Requested | 2026-09-12 — the owner's measurement model (§1) |
@@ -108,6 +108,8 @@ The pattern is the same everywhere: the number exists, one field or header carri
 **Not measured in R1, stated.** Orchestration CPU (sandboxed workflow bodies and their replay) — reading a CPU clock inside the sandbox is a determinism hazard, and it is small next to activity CPU; the SDK's Rust core; and any activity that carries no `tenant_id`. All three land in the pod's `container_cpu_usage_seconds_total`, so the monthly reconciliation `Σ cpu_ms ÷ pod CPU seconds` reports the unattributed share explicitly rather than hiding it. If it is material, the second step is proportional allocation of the residual across the month's runs by their attributed CPU.
 
 **Pricing.** COST row `CPU_SECOND` / provider `harness` at the amortised vCPU-hour of the worker's node; SELL, when D-1 lands, as a `WORKFLOW` capability allowance `monthlyWorkflowCpuSeconds` beside the run-count quota that already exists.
+
+**Identity on the CPU rows (settled 2026-09-13, TASK-957 wave 2):** the ledger `requestId` on a `WORKFLOW` / `CPU_SECOND` row is Temporal's execution-attempt id — the same value the trajectory dedupe tuple `(tenantId, sessionId, runId, seq)` carries, so a run's inference and its orchestration key identically — and a run's worker CPU is summed by `sessionId` (`"workflow-interpreter-" + runId`), the join `WorkflowRun` already uses for its steps and the one that survives a continue-as-new. `trigger` on those rows is derived by the worker from the workflow-id prefix (`temporal/workflow_ids.py`).
 
 ### 3.5 What stays unmeasurable in R1, stated
 
@@ -345,6 +347,29 @@ Every lane runs in its own worktree `../hope-v2-t959-<lane>` on branch `task-959
 
 | Date | Change |
 |---|---|
+| 2026-09-13 | TASK-957 completion wave: FU-1, FU-2, FU-3, FU-11 closed, FU-4 five of eight proofs; FU-12 / FU-13 recorded; §11 written; the §3.4 identity paragraph (`requestId` is the execution id, a run sums by `sessionId`); status Completed. Final head `bcda6552b`. |
 | 2026-09-13 | **Lane SWAP** (`task-959/swap`, 2 commits off `6a9398ac6`, UNMERGED): the three "append compute and byte units" implementations wave B shipped — T1's `usageLedger/compute-units.ts`, T2's `apps/api/src/modules/agent/compute-units.ts`, T3's `stt/internal/compute-network-units.ts` — reconciled into ONE. T2's and T3's copies, T2's `terminal-usage-tail.ts` and the inline copy in `nerUsageEvent.ts` are deleted; `apps/api` no longer appends to a batch a builder already appended to, which is what made every compute and byte row on the blocking agent path a DOUBLE row (the two red tests in `agent.controller.usage-detail.task957.test.ts` were reading the first of each pair). Conventions settled, with the deviations they imply listed in §10.4's SWAP row. The rule the helper's header now states: whoever BUILDS the batch appends — never append to a batch someone else built. |
 | 2026-09-13 | Close-out: all lanes merged (W0, P-TTS, P-NLP, P-TEXT, P-STT, T3, T1, T2, T4, P-HARNESS, SWAP, T2b, T6, T5, E2E), artifacts regenerated once, final gates green, e2e 18/0/8; §4 written; status Review. |
 | 2026-09-12 | Ticket opened from the owner's measurement model. §1–§2 and the gates from verified code; §3–§7 from a four-lane read-only discovery sweep (compute telemetry, egress seams, storage sources, served-by attribution), each lane's deciding lines re-verified by hand. Status `Pending` — awaiting D-1..D-4. 2026-09-12 later: M-6 added on the owner's instruction — CPU time per workflow run on the durable-function server (§3.4, plan 1.7b, D-5), grounded in the worker construction, the installed SDK's interceptor seam, and the cAdvisor keep-list. Cross-lane note for TASK-958: its Python wire (`8b5fed939`) sends `connectionId` on the STT completion callback and `connection_id` in streaming segments, and neither gateway DTO declares the field under a `forbidNonWhitelisted` pipe. |
+
+## 11. Implementation summary and follow-ups
+
+The ledger gained four units, two capabilities, two operations and the `harness` provider (W0, one `ADD VALUE` migration); every self-hosted service reports wall-clock on the model and its device (P-TTS, P-STT, P-NLP, P-TEXT, P-HARNESS); the gateway appends compute and byte rows through ONE helper (`usageLedger/compute-units.ts`, SWAP) on every emitter (T1, T2, T2b, T3, T6); the Temporal worker apportions its thread CPU per activity and the gateway lands it as `WORKFLOW` / `CPU_SECOND` rows (§3.4, P-HARNESS + T1); a nightly snapshot writes `STORAGE_GB_DAY` per class (T4); the consumption screens and the run detail show the figures (T4, T5); COST rows exist for every new unit, SELL rows for none (D-1). Evidence per lane: §10.4. The TASK-957 completion wave (its §4, wave 2) then closed the follow-ups below that were code, and re-diagnosed one.
+
+### 11.1 Follow-ups — state on 2026-09-13
+
+| Id | Item | State |
+|---|---|---|
+| FU-1 | The spend ceiling had no write route (`monthlySpendLimitMicros` was not on `UpsertTenantEntitlementRequest`) | **Closed** (TASK-957 wave 2, L-C `429f3506a`); the super-admin-only route is unchanged → TASK-957 O-1 |
+| FU-2 | `task-890-metering.spec.ts` read `payload.common`; the outbox stores `{version, events[]}` | **Closed** (L-D `79c0c83ec`): reads through `helpers/usage-ledger.helper.ts`; the old projection matched 0 rows, the real one 111 |
+| FU-3 | Workflow start with the harness down answered a bare 500 | **Re-diagnosed and closed**: the 500 was `NoSuchBucket` from the gateway's claim-check upload — the TEST MinIO never had `harness-claim-check` (`cc7c1cc55`); with the bucket present the route answers the typed 503 `GATEWAY.DOWNSTREAM_UNAVAILABLE` when the harness is absent. Residual: a storage failure on the upload itself is still an unmapped 500 (low; both composes create the bucket now) |
+| FU-4 | Five e2e specs skipped for want of services; a drain-wait flake | **Mostly closed**: NER, TTS speech, the run-detail `cpuSeconds`, the real workflow run and the usage surface execute against live test services (`RESET_DB=false npx dotenv -e .env.test -- npx playwright test task-959 task-890-metering` → **23 passed, 0 failed, 7 skipped** (34.9 s) on gateway `0.0.0-dev-2-2.8b65ddcc`; the seven skips are the LLM-dependent proofs (the text service answers 502 with no LLM backend on this machine) and the BYOK vendor path (no vendor credential). Three test-side defects were fixed on the way (`3221946b2`): a tenant-wide `monthlyLlmTokens = 0` held across a whole spec file 429'd sibling files under Playwright's parallelism (narrowed to the test body with `try/finally`; a seeded ARCAAI doctor is the real fix), a float wait that compared `29.799 − 25.542` to `4.257` exactly, and a run-detail read that raced the outbox drainer.). Still skipped, honestly: the LLM blocking / stream / two-key and the 890 generation tests — no LLM backend on this machine (LM Studio down; not started by an agent). The flake was the drain wait; the helper widens the window on the event's own `occurredAt` |
+| FU-5 | The WS TTS usage frame lacks device/timing | Open (P-TTS scope; stream headers carry only `X-Tts-Ttfa-Ms`) |
+| FU-6 | The STT streaming GPU divisor needs an operation dimension | Open (price-book design) |
+| FU-7 | SELL wave | Open — owner price decision D-1 |
+| FU-8 | `Media.bucketId` never populated; `harness-claim-check` has no lifecycle; `resultRef` doc drift | Open; the bucket now exists in BOTH composes (the test one had none) |
+| FU-9 | Duplicated 5-line flatten helper in six emitters | Open (cosmetic) |
+| FU-10 | Dev gateway / stack restart | Owner (TASK-957 O-8) |
+| FU-11 | TASK-957 F-7..F-10 | **Closed** — TASK-957 §4 wave 2 |
+| FU-12 (new) | The harness worker exposes no `prometheus_client` registry, so its half of `hope_usage_emission_failed_total` is unscrapeable | Owner — TASK-957 O-2 |
+| FU-13 (new) | `.env.test` needs `HARNESS_API_BASE_URL`, `HARNESS_CLAIM_CHECK_STORE=s3`, `HARNESS_CLAIM_CHECK_ENDPOINT_URL` besides `TEMPORAL_ADDRESS` for the harness + worker to run in the test env; only `TEMPORAL_ADDRESS` is pinned by the generator (`c63e8d91d`) | Owner — TASK-957 O-7 |
