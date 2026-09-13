@@ -8529,6 +8529,14 @@
           "key": {
             "type": "string"
           },
+          "pair": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SettingPlatformTierPairResponse"
+              }
+            ],
+            "description": "Present iff this key is the TENANT half of a pair. Lets one response render both halves as a single row."
+          },
           "sourceScope": {
             "description": "Which cascade tier supplied the value.",
             "example": "department",
@@ -17871,6 +17879,18 @@
             "description": "Character offset start within THIS SECTION's `content` (never a concatenated document)",
             "type": "number"
           },
+          "transcriptEnd": {
+            "description": "A2 — character offset end within THAT SEGMENT's text",
+            "type": "number"
+          },
+          "transcriptSegmentId": {
+            "description": "A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from",
+            "type": "string"
+          },
+          "transcriptStart": {
+            "description": "A2 — character offset start within THAT SEGMENT's text",
+            "type": "number"
+          },
           "type": {
             "description": "For `entity`: the entity class (MEDICATION, CONDITION, …). For `finding`: the label the TENANT`s own instruction told the model to assign — the platform supplies no importance vocabulary.",
             "type": "string"
@@ -18799,6 +18819,11 @@
             "example": "tenant",
             "type": "string"
           },
+          "platformTierKey": {
+            "description": "Present iff this key is the TENANT half of a pair: the PLATFORM-tier key it pairs with. The two render as ONE row — the split into two keys is a transport decision (per-request push vs platform pull snapshot), not an audience one. Omitted for every key that stands alone.",
+            "example": "text.externalGuardrail.requireMedical",
+            "type": "string"
+          },
           "sensitivity": {
             "enum": [
               "public",
@@ -18849,6 +18874,41 @@
         "required": [
           "items",
           "categories"
+        ],
+        "type": "object"
+      },
+      "SettingPlatformTierPairResponse": {
+        "properties": {
+          "inForce": {
+            "description": "Which half actually governs this tenant right now. `tenant` iff a row exists under the tenant — mirroring the runtime predicate, which pushes the override only when the cascade reports `sourceScope: \"tenant\"`. Anything else (a SYSTEM row on the tenant half included) is `platform`.",
+            "enum": [
+              "tenant",
+              "platform"
+            ],
+            "example": "tenant",
+            "type": "string"
+          },
+          "platformTierKey": {
+            "description": "The PLATFORM-tier key this one pairs with. Write that key at `system` scope; writing THIS key there is refused 400.",
+            "example": "text.externalGuardrail.requireMedical",
+            "type": "string"
+          },
+          "platformValue": {
+            "description": "The platform key’s effective value — what a tenant with no opinion of its own inherits.",
+            "example": true,
+            "type": "object"
+          },
+          "platformVersion": {
+            "description": "Backing row version of the platform key’s SYSTEM row (0 = still a code default). Echo as `If-Match` when writing THAT key.",
+            "example": 2,
+            "type": "number"
+          }
+        },
+        "required": [
+          "platformTierKey",
+          "platformValue",
+          "platformVersion",
+          "inForce"
         ],
         "type": "object"
       },
@@ -49177,7 +49237,7 @@
         ]
       },
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "For a key that is the TENANT half of a pair (its descriptor declares `platformTierKey`) the response also carries a `pair` block: the platform twin’s key, effective value and SYSTEM-row version, plus which half is `inForce`. That is what lets one console row represent both halves — the split into two keys is a TRANSPORT decision (pull snapshot vs per-request push), not an audience one. `pair` is absent for every key that declares no twin.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:settings:manage`).\n\n**Abilities** — `read:GlobalSetting`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "SettingsRegistryWriteController_getSetting",
         "parameters": [
           {

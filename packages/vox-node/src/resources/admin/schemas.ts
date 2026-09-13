@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 437 component schemas the generated surface transitively
+ * Only the 438 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2266,6 +2266,8 @@ export interface EffectiveFeaturesResponse {
 
 export interface EffectiveSettingResponse {
   key: string;
+  /** Present iff this key is the TENANT half of a pair. Lets one response render both halves as a single row. */
+  pair?: SettingPlatformTierPairResponse;
   /** Which cascade tier supplied the value. */
   sourceScope: string;
   tier: string;
@@ -5146,6 +5148,8 @@ export interface SettingCatalogItemResponse {
   locked?: boolean;
   /** Deepest scope a tenant admin may set this at. */
   maxScope: string;
+  /** Present iff this key is the TENANT half of a pair: the PLATFORM-tier key it pairs with. The two render as ONE row — the split into two keys is a transport decision (per-request push vs platform pull snapshot), not an audience one. Omitted for every key that stands alone. */
+  platformTierKey?: string;
   sensitivity: 'public' | 'internal' | 'secret';
   /** Recorded eventual home when `tier` is not where the key ends up. */
   targetTier?: string;
@@ -5157,6 +5161,17 @@ export interface SettingCatalogResponse {
   /** Distinct categories present in items, sorted. */
   categories: string[];
   items: SettingCatalogItemResponse[];
+}
+
+export interface SettingPlatformTierPairResponse {
+  /** Which half actually governs this tenant right now. `tenant` iff a row exists under the tenant — mirroring the runtime predicate, which pushes the override only when the cascade reports `sourceScope: "tenant"`. Anything else (a SYSTEM row on the tenant half included) is `platform`. */
+  inForce: 'tenant' | 'platform';
+  /** The PLATFORM-tier key this one pairs with. Write that key at `system` scope; writing THIS key there is refused 400. */
+  platformTierKey: string;
+  /** The platform key’s effective value — what a tenant with no opinion of its own inherits. */
+  platformValue: Record<string, unknown>;
+  /** Backing row version of the platform key’s SYSTEM row (0 = still a code default). Echo as `If-Match` when writing THAT key. */
+  platformVersion: number;
 }
 
 export interface SignalWorkflowRequest {

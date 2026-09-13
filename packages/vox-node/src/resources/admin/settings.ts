@@ -267,6 +267,8 @@ export class AdminSettingsResource extends AdminResource {
   /**
    * Read one registry setting: its descriptor metadata plus the effective value and cascade trace.
    *
+   * For a key that is the TENANT half of a pair (its descriptor declares `platformTierKey`) the response also carries a `pair` block: the platform twin’s key, effective value and SYSTEM-row version, plus which half is `inForce`. That is what lets one console row represent both halves — the split into two keys is a TRANSPORT decision (pull snapshot vs per-request push), not an audience one. `pair` is absent for every key that declares no twin.
+   *
    * `GET /api/v1/admin/settings/registry/{key}` — `SettingsRegistryWriteController.getSetting`.
    */
   getSetting(
