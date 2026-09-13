@@ -90,6 +90,23 @@ describe('EntitlementsAdminController — delegation', () => {
     expect(services.entitlements.upsertTenantEntitlement).toHaveBeenCalledWith('tenant-9', body);
   });
 
+  /**
+   * TASK-959 FU-1 — the spend ceiling's only write path runs through this route.
+   *
+   * The seam worth pinning is the `If-Match` merge: the controller rebuilds the
+   * body to fold the header's `expectedVersion` in, and a rebuild that enumerated
+   * fields instead of spreading would silently drop the newest one — which is the
+   * shape of the gap FU-1 exists to close (a ceiling that is enforced and cannot
+   * be set).
+   */
+  it('carries monthlySpendLimitMicros through the If-Match merge', async () => {
+    await controller.upsertOverride('tenant-9', { monthlySpendLimitMicros: 250_000_000 } as never, 4);
+    expect(services.entitlements.upsertTenantEntitlement).toHaveBeenCalledWith('tenant-9', {
+      monthlySpendLimitMicros: 250_000_000,
+      expectedVersion: 4,
+    });
+  });
+
   it('clears a tenant override and reports cleared', async () => {
     const result = await controller.clearOverride('tenant-9');
     expect(services.entitlements.clearTenantEntitlement).toHaveBeenCalledWith('tenant-9');
