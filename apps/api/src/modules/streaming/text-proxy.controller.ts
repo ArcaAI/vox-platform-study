@@ -168,6 +168,27 @@ const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENO
 // started a billable generation, so the non-idempotent `/generate` POSTs must
 // never retry on them (duplicate billing + divergent drafts).
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
+
+/**
+ * TASK-969 WS-3 — the closed, non-PHI `error_code` vocabulary that may cross
+ * the gateway boundary AS A CODE ONLY. The upstream `detail`/`message` is
+ * NEVER forwarded (it can quote the prompt); this map supplies the gateway's
+ * OWN fixed phrase per code, so the client can render the real cause without
+ * TEXT's response body ever reaching it. A code absent from this map is
+ * treated exactly like a missing one — the generic, redacted body below.
+ */
+const RELAYABLE_ERROR_PHRASES: Readonly<Record<string, string>> = {
+  CONTENT_BLOCKED_NOT_MEDICAL:
+    'The prompt was not classified as clinical content and was blocked by the guardrail.',
+  CONTENT_BLOCKED: 'Content was blocked by the safety guardrail.',
+  GUARDRAIL_UNAVAILABLE: 'The safety guardrail is temporarily unavailable. Please retry shortly.',
+  MODEL_NOT_SELECTED: 'No model is configured for this request.',
+  PROVIDER_CREDENTIALS_MISSING: 'The AI provider is not configured with valid credentials.',
+  VISION_NOT_SUPPORTED: 'The selected model does not support image input.',
+  VALIDATION_ERROR: 'The request was invalid.',
+  POOL_UNHEALTHY: 'The AI provider pool is temporarily unavailable.',
+};
+
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // Read budget for an OPEN SSE hop (both the relayed subscription and the
 // single-call `POST /generate` that now answers with the stream itself). A
@@ -457,7 +478,19 @@ export class TextProxyController {
       });
     }
 
+    // TASK-969 WS-3: an `error_code` on the closed allow-list may cross AS A
+    // CODE — never the upstream `detail`/`message` alongside it, which is why
+    // this reads ONLY `error_code` off `payload` and looks up the gateway's own
+    // phrase rather than ever touching `payload.detail`/`payload.message`.
+    const errorCode =
+      typeof payload === 'object' && payload !== null ? payload.error_code : undefined;
+    const relayedMessage =
+      typeof errorCode === 'string' ? RELAYABLE_ERROR_PHRASES[errorCode] : undefined;
+
     if (typeof status === 'number') {
+      if (relayedMessage !== undefined) {
+        return new HttpException({ detail: relayedMessage, error_code: errorCode }, status);
+      }
       return new HttpException({ detail: fallbackMessage }, status);
     }
 

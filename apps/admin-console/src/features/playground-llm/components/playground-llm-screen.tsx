@@ -155,13 +155,28 @@ function RequestSummaryStrip({
   );
 }
 
+/** Short footer summary per relayed `error_code` (TASK-969 WS-3) — mirrors the
+ * `FailClosedPanel` branches in `output-pane.tsx` without duplicating their copy. */
+function failClosedSummary(code: string | undefined): string {
+  switch (code) {
+    case 'MODEL_NOT_SELECTED':
+      return 'no effective model for this tenant';
+    case 'CONTENT_BLOCKED_NOT_MEDICAL':
+      return 'prompt not classified as clinical content';
+    case 'CONTENT_BLOCKED':
+      return 'blocked by the safety guardrail';
+    default:
+      return 'see output panel for details';
+  }
+}
+
 function footerStatus(run: RunState, stream: TaskStreamState, isPending: boolean, recovered: boolean): string {
   if (isPending) return 'Generating…';
   switch (run.kind) {
     case 'idle':
       return 'Idle — no generation yet';
     case 'fail-closed':
-      return 'Generation failed closed (422) — no effective model for this tenant';
+      return `Generation failed closed (422) — ${failClosedSummary(run.code)}`;
     case 'sync':
       return `Run complete — ${run.result.provider} / ${run.result.model}`;
     case 'stream':
@@ -247,7 +262,13 @@ function PlaygroundLlmBody() {
     };
     const handleError = (error: unknown) => {
       if (error instanceof GatewayError && error.status === 422) {
-        setRun({ kind: 'fail-closed', message: error.message });
+        // TASK-969 WS-3: the gateway relays a closed-vocabulary `error_code`
+        // (never the upstream `detail`, which can quote the prompt) inside the
+        // parsed body — `GatewayError.details` — alongside its own fixed
+        // `detail` phrase. Prefer that phrase for the message line and fall
+        // back to `error.message` for a body shaped like a generic Nest error.
+        const details = error.details as { detail?: string; error_code?: string } | undefined;
+        setRun({ kind: 'fail-closed', message: details?.detail ?? error.message, code: details?.error_code });
         return;
       }
       toast.error(error instanceof Error ? error.message : 'Generation failed');

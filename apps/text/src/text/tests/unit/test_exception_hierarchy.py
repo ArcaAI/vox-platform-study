@@ -19,6 +19,7 @@ from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
     ContentBlockedError,
+    GuardrailUnavailableError,
     InputValidationError,
     ModelNotSelectedError,
     PoolUnhealthyError,
@@ -53,6 +54,7 @@ _ALL_EXCEPTIONS: list[tuple[type[TextError], str]] = [
     (ProviderNotFoundError, "PROVIDER_NOT_FOUND"),
     (ModelNotSelectedError, "MODEL_NOT_SELECTED"),
     (PoolUnhealthyError, "POOL_UNHEALTHY"),
+    (GuardrailUnavailableError, "GUARDRAIL_UNAVAILABLE"),
 ]
 
 
@@ -177,6 +179,22 @@ class TestExceptionAttributes:
     def test_content_blocked_error_default_message(self):
         exc = ContentBlockedError()
         assert exc.message == "Content blocked by safety filter"
+        assert exc.error_code == "CONTENT_BLOCKED"
+
+    def test_content_blocked_error_accepts_error_code_override(self):
+        """TASK-969 WS-3: the medical-relevance gate raises this with a more
+        specific, still-FIXED code — never the free-text guardrail reason."""
+        exc = ContentBlockedError(
+            "The prompt was not classified as clinical content.",
+            error_code="CONTENT_BLOCKED_NOT_MEDICAL",
+        )
+        assert exc.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
+        assert exc.message == "The prompt was not classified as clinical content."
+
+    def test_guardrail_unavailable_error_default_message(self):
+        exc = GuardrailUnavailableError()
+        assert exc.error_code == "GUARDRAIL_UNAVAILABLE"
+        assert exc.message == "The safety guardrail is temporarily unavailable."
 
 
 # ===========================================================================
@@ -273,6 +291,14 @@ class TestExceptionHandlerStatusCodes:
         from text.core.exception_handlers import text_exception_handler
 
         exc = ConcurrencyLimitError(provider="bedrock")
+        resp = await text_exception_handler(MagicMock(), exc)
+        assert resp.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_handler_returns_correct_status_for_guardrail_unavailable(self):
+        from text.core.exception_handlers import text_exception_handler
+
+        exc = GuardrailUnavailableError()
         resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 503
 

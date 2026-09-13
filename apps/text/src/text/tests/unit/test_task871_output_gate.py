@@ -409,8 +409,16 @@ class TestNonStreamingPath:
         )
 
         assert resp.status_code == 422, resp.text
-        assert "guardrail" in resp.json()["detail"].lower()
-        assert "response_safety" in resp.json()["detail"]
+        body = resp.json()
+        assert "guardrail" in body["detail"].lower()
+        # TASK-969 WS-3: the OUTPUT gate mirrors the input gate — `detail` is a
+        # FIXED sentence and `error_code` a closed-vocabulary token. The block
+        # reason ("response_safety") is a check LABEL here, not free text, but
+        # it must still never be interpolated into the HTTP body: the contract
+        # is PHI-safe by construction, not because this particular label happens
+        # to be safe today.
+        assert "response_safety" not in body["detail"]
+        assert body["error_code"] == "CONTENT_BLOCKED"
         # Post-receive: the provider WAS called — this is the output gate, not the input one.
         mock_provider.generate.assert_awaited_once()
         # Nothing persisted as a success, nothing cached, breaker untouched.
@@ -434,6 +442,7 @@ class TestNonStreamingPath:
         resp = await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
 
         assert resp.status_code == 503
+        assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
         mock_provider.generate.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -443,6 +452,26 @@ class TestNonStreamingPath:
         resp = await client.post("/api/v1/generate", json={"prompt": "note", "model": "m"})
 
         assert resp.status_code == 422
+        assert resp.json()["error_code"] == "CONTENT_BLOCKED"
+
+    @pytest.mark.asyncio
+    async def test_rejected_completion_never_leaks_the_block_reason_text(
+        self, client_factory
+    ) -> None:
+        # Defense in depth (TASK-969 WS-3): even though the outbound screen's
+        # `reason` is documented as a check label rather than free text, the
+        # HTTP body must never echo it — a PHI-shaped label must not leak either.
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        phi_shaped_reason = "contains patient name John Smith and dob 1990-01-01"
+        client = await client_factory(_guardrail(screen=_block(reason=phi_shaped_reason)), redis=redis)
+
+        resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+
+        assert resp.status_code == 422
+        assert resp.json()["error_code"] == "CONTENT_BLOCKED"
+        assert "John Smith" not in resp.text
+        assert "1990-01-01" not in resp.text
 
     @pytest.mark.asyncio
     async def test_allowed_completion_is_returned_and_the_gate_saw_the_content(
