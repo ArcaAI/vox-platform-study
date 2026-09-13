@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review — F-1..F-6 and F-11 closed by TASK-959's lanes on `dev-2.2`; F-7..F-10 still open (TASK-959 FU-11) |
+| Status | In Progress — completion wave 2026-09-13: L-A (F-7, F-10), L-B (F-8, F-9 mapper), L-C (F-9 text-usage, F-5 harness counter, F-4 write route), L-D (test-env services + the skipped e2e proofs, FU-2) in `../hope-v2-t957-c{7,8,9,e}`; moves to Completed only when every finding is closed with evidence |
 | Type | `review` → `bugfix` (owner decisions gate two of the fixes) |
 | Branch | `dev-2.2` |
 | Requested | 2026-09-12 — "review the implementation of agents and workflows, ensure the usage counter is implemented properly for billing and invoicing" |
@@ -153,5 +153,6 @@ Closed under TASK-959 (see its §4 and §10.4 for evidence): **F-1** `workflow.s
 
 | Date | Change |
 |---|---|
-| 2026-09-13 | F-1..F-6, F-11 closed by TASK-959; status Review; F-7..F-10 remain (TASK-959 FU-11). |
+| 2026-09-13 | Completion wave opened on the owner's instruction: four lanes for F-7, F-8, F-9, F-10, the harness half of F-5, the spend ceiling's write route (F-4), and the skipped e2e proofs (F-11). |
+| 2026-09-13 | F-1..F-6, F-11 (wire half) closed by TASK-959; status Review; F-7..F-10 remained. |
 | 2026-09-12 | Review performed on `dev-2.2` @ `47b568beb` (+ uncommitted TASK-955/956 console work, unrelated). Findings F-1..F-11, decisions D-1..D-4. Status `Pending`. |
