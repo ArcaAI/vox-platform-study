@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from nlp.api.v1 import rest_api_router_v1
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.dependencies import get_external_text_client, get_inference_bound, get_peer_call_bound
-from nlp.services.external_text_client import ExternalTextUnavailableError
+from nlp.services.external_text_client import ExternalTextUnavailableError, GeneratedLabel
 
 
 class _FakeExternalTextClient:
@@ -25,15 +25,17 @@ class _FakeExternalTextClient:
         self.calls: list[dict] = []
         self.raise_error = False
 
-    async def generate_label(
+    async def generate_label_with_usage(
         self, prompt: str, system_prompt: str | None = None, tenant_id: str | None = None
-    ) -> str:
+    ) -> GeneratedLabel:
+        # TASK-957 F-7b — the routes now read the label AND what the delegated
+        # generation cost off one call.
         self.calls.append(
             {"prompt": prompt, "system_prompt": system_prompt, "tenant_id": tenant_id}
         )
         if self.raise_error:
             raise ExternalTextUnavailableError("text unreachable")
-        return self.label
+        return GeneratedLabel(label=self.label)
 
 
 @pytest.fixture()

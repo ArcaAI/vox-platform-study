@@ -93,6 +93,36 @@ function servingEntry(provider: string, providerOverrides: ProviderOverrideMapLi
 }
 
 /**
+ * The sentinel `apps/tts` sends when it cannot name the engine that served
+ * (`tts/core/usage.py:23`, stamped on the response at
+ * `tts/api/endpoints/speech.py:184`).
+ *
+ * Copied, not invented — and the reason it is a CONSTANT here is that all four
+ * gateway readers must recognise the same spelling. A reader that missed it
+ * would write the row the other three skip.
+ */
+export const TTS_UNKNOWN_PROVIDER = 'none';
+
+/**
+ * Can this synthesis be attributed to a provider at all? (TASK-957 F-10)
+ *
+ * `false` for an absent/empty header AND for {@link TTS_UNKNOWN_PROVIDER} —
+ * the service declining to name an engine is the same fact as a header that
+ * never arrived, and the gateway has no third source to consult.
+ *
+ * A caller that writes a row anyway asserts two things the evidence does not
+ * support: `provider: 'none'` (a provider id in no price book, so the row rates
+ * at zero COGS while still draining the tenant's CHARACTER allowance first) and
+ * `deployment: SELF_HOSTED` (the platform's own hardware ran it — the one claim
+ * the missing header directly contradicts). Skipping is the correctable
+ * direction: the synthesis is reconstructible from the service's own logs, a
+ * wrong deployment on an invoice is not.
+ */
+export function isAttributableTtsProvider(provider: string | null | undefined): provider is string {
+  return typeof provider === 'string' && provider.length > 0 && provider !== TTS_UNKNOWN_PROVIDER;
+}
+
+/**
  * `(provider, injected overrides, served connection) → (deployment, costBasis)`.
  *
  * Precedence, unchanged from the two copies this replaces: a tenant credential
