@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 436 component schemas the generated surface transitively
+ * Only the 437 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -27,6 +27,15 @@ export interface AddAdjustmentRequest {
   amountMicros: string;
   /** Bounded reason CODE, not prose (aggregatable, PHI-free). e.g. "goodwill_credit", "metering_correction", "sla_credit". */
   reason: string;
+}
+
+export interface AdoptTenantBucketRequest {
+  /** Bucket description */
+  description?: string;
+  /** Existing physical bucket name, exactly as the provider reports it */
+  name: string;
+  /** Tenant that will own the bucket */
+  tenantId: string;
 }
 
 export interface AgentAssignmentResponse {
