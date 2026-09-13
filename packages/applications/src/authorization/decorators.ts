@@ -1,5 +1,4 @@
 import { SetMetadata, applyDecorators, createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { ConsentPurpose } from '@arcaai/domains';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
 import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN, SERVICE_ACCOUNT_REQUIRED_SCOPES, SERVICE_ACCOUNT_FORBIDDEN } from './unified-auth.guard';
@@ -41,11 +40,23 @@ export const SetPermissionMode = (mode: PermissionMode) => SetMetadata(PERMISSIO
 /**
  * Require specific permissions for a route (AND logic - all required)
  *
- * Metadata-only: sets `REQUIRED_PERMISSIONS_KEY` + `PERMISSION_MODE_KEY`
- * and tags Swagger with `@ApiBearerAuth()`. Enforcement is handled by the global
- * `UnifiedAuthGuard` (`APP_GUARD`) reading this metadata — this decorator no
- * longer re-applies `@UseGuards(UnifiedAuthGuard)`, which previously caused the
- * guard (and its CASL + Redis work) to run twice per request.
+ * Metadata-only: sets `REQUIRED_PERMISSIONS_KEY` + `PERMISSION_MODE_KEY`.
+ * Enforcement is handled by the global `UnifiedAuthGuard` (`APP_GUARD`) reading
+ * this metadata — this decorator no longer re-applies
+ * `@UseGuards(UnifiedAuthGuard)`, which previously caused the guard (and its
+ * CASL + Redis work) to run twice per request.
+ *
+ * It no longer applies `ApiBearerAuth()` either (TASK-971, finding F-F2). It
+ * used to, and because 117 controllers ALSO carry a class-level
+ * `@ApiBearerAuth()` — and `@nestjs/swagger` concatenates class-level and
+ * method-level security metadata rather than merging it — every business
+ * operation published `bearer` two or three times while the registered
+ * `api-key` and `service-account` schemes were referenced by none. A route's
+ * accepted credential classes cannot be expressed by accumulation anyway: two of
+ * the three answers are subtractive (`@ForbidApiKey()` / `@ForbidServiceAccount()`
+ * refuse a class outright, ahead of any scope check). The document's
+ * per-operation `security` is therefore DERIVED from this metadata, once, in
+ * `apps/api/src/openapi/operation-security.ts`.
  *
  * @param permissions - Array of [action, subject] tuples
  *
@@ -64,7 +75,7 @@ export function Authorize(...permissions: [string, string][]) {
     subject,
   }));
 
-  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'AND' as PermissionMode), ApiBearerAuth());
+  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'AND' as PermissionMode));
 }
 
 /**
@@ -72,7 +83,8 @@ export function Authorize(...permissions: [string, string][]) {
  * At least one permission must be satisfied
  *
  * Metadata-only: like {@link Authorize}, enforcement is delegated to
- * the global `UnifiedAuthGuard` (`APP_GUARD`); no route-level guard is attached.
+ * the global `UnifiedAuthGuard` (`APP_GUARD`); no route-level guard is attached,
+ * and no Swagger security tag is applied — see {@link Authorize}.
  *
  * @param permissions - Array of [action, subject] tuples
  *
@@ -89,7 +101,7 @@ export function AuthorizeAny(...permissions: [string, string][]) {
     subject,
   }));
 
-  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode), ApiBearerAuth());
+  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode));
 }
 
 /**
