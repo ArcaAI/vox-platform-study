@@ -234,3 +234,15 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // there is no per-key allow-list anywhere else.
   ...AI_READINESS_SETTINGS,
 ]);
+
+// TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog
+// exists. `register()` sees a single descriptor at a time, so it cannot check
+// that `text.guardrailPolicy.requireMedical`'s declared platform tier
+// (`text.externalGuardrail.requireMedical`) exists and agrees with it on
+// maxScope / dataType / globalOnly. Run HERE it throws at MODULE LOAD, so a
+// mispaired declaration can never reach a request — it cannot even boot the
+// gateway. A separate STATEMENT rather than a chained call deliberately: the
+// registry is already exported as this const, and chaining would re-indent the
+// whole two-hundred-line array for no gain.
+// See `SettingsRegistry.assertPlatformTierPairs`.
+HOPE_SETTINGS_REGISTRY.assertPlatformTierPairs();

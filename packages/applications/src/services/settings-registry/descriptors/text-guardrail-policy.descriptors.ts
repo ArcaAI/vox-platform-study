@@ -65,6 +65,7 @@
 // never revive it (`apps/text/core/guardrail_posture.resolve_posture`).
 
 import { SettingDescriptor } from '../registry.types';
+import type { TextGuardrailPostureKey } from './text-provider-connections.descriptors';
 
 /**
  * Registry key → the floor the platform half documents for the same concept.
@@ -91,6 +92,26 @@ export const TEXT_GUARDRAIL_POLICY_PUSH_FIELDS: ReadonlyArray<readonly [TextGuar
   ['text.guardrailPolicy.requireMedical', 'require_medical'],
   ['text.guardrailPolicy.includeReasoning', 'include_reasoning'],
 ];
+
+/**
+ * TASK-969 WS-1 — each tenant-half key → its PLATFORM twin.
+ *
+ * Typed against `TextGuardrailPostureKey` (the other file's key union) so a
+ * typo is a COMPILE error rather than something only the assembly assertion in
+ * `SettingsRegistry.assertPlatformTierPairs` would catch; that assertion still
+ * runs and covers what a type cannot — that the twin is `maxScope: 'system'`
+ * and agrees on `dataType` and `globalOnly`.
+ *
+ * Why the pairing has to be DECLARED rather than derived from the key's leaf
+ * name: a leaf-name rule would silently pair any future `text.guardrailPolicy.x`
+ * with a `text.externalGuardrail.x` that may not exist or may mean something
+ * else, and the whole reason this field exists is that an unstated relationship
+ * between two keys is what let a write succeed with no reader.
+ */
+export const TEXT_GUARDRAIL_POLICY_PLATFORM_TIER: Record<TextGuardrailPolicyKey, TextGuardrailPostureKey> = {
+  'text.guardrailPolicy.requireMedical': 'text.externalGuardrail.requireMedical',
+  'text.guardrailPolicy.includeReasoning': 'text.externalGuardrail.includeReasoning',
+};
 
 const META: Record<TextGuardrailPolicyKey, { label: string; description: string }> = {
   'text.guardrailPolicy.requireMedical': {
@@ -132,6 +153,10 @@ export const TEXT_GUARDRAIL_POLICY_SETTINGS: SettingDescriptor[] = (
   // NO `consumedBy` — see the header. A tenant-varying value never travels the
   // platform-scope pull snapshot.
   failMode: 'open-to-default',
+  // TASK-969 WS-1 — the PLATFORM half of this same concept. Declaring it is what
+  // makes a `scope: 'system'` write to THIS key a 400 naming the twin (that row
+  // had no reader), and what lets one GET render both halves as one console row.
+  platformTierKey: TEXT_GUARDRAIL_POLICY_PLATFORM_TIER[key],
   category: 'Guardrail Policy',
   label: META[key].label,
   description: META[key].description,

@@ -100,6 +100,50 @@ export class SettingCatalogResponse {
 }
 
 /**
+ * TASK-969 WS-1 — the PLATFORM half of a paired key, returned beside the tenant
+ * half so ONE call renders ONE console row.
+ *
+ * Two keys exist for two CHANNELS (`text.guardrailPolicy.*` is pushed per
+ * request, `text.externalGuardrail.*` rides the platform-scope pull snapshot),
+ * and the registry forbids collapsing them (`consumedBy` may not appear on a
+ * `maxScope: 'tenant'` descriptor). Since owner decision OD-2 both halves are
+ * platform-admin-only — ONE audience — so the split has no business surfacing as
+ * two rows an admin must know how to tell apart. Without this block the console
+ * would have to know there are two keys and issue a second request to find out
+ * what the tenant is actually inheriting.
+ *
+ * Present iff the descriptor declares `platformTierKey`, which is true of two of
+ * the registry's keys and absent for every other.
+ */
+export class SettingPlatformTierPairResponse {
+  @ApiProperty({
+    description: 'The PLATFORM-tier key this one pairs with. Write that key at `system` scope; writing THIS key there is refused 400.',
+    example: 'text.externalGuardrail.requireMedical',
+  })
+  platformTierKey!: string;
+
+  @ApiProperty({
+    description: 'The platform key’s effective value — what a tenant with no opinion of its own inherits.',
+    example: true,
+  })
+  platformValue!: unknown;
+
+  @ApiProperty({
+    description: 'Backing row version of the platform key’s SYSTEM row (0 = still a code default). Echo as `If-Match` when writing THAT key.',
+    example: 2,
+  })
+  platformVersion!: number;
+
+  @ApiProperty({
+    description:
+      'Which half actually governs this tenant right now. `tenant` iff a row exists under the tenant — mirroring the runtime predicate, which pushes the override only when the cascade reports `sourceScope: "tenant"`. Anything else (a SYSTEM row on the tenant half included) is `platform`.',
+    enum: ['tenant', 'platform'],
+    example: 'tenant',
+  })
+  inForce!: 'tenant' | 'platform';
+}
+
+/**
  * Resolved effective value of one non-secret setting for a context,
  * with the winning cascade tier. Secret settings are refused (never resolved).
  */
@@ -128,4 +172,16 @@ export class EffectiveSettingResponse {
    */
   @ApiPropertyOptional({ description: 'Backing row version (0 = no stored row yet). Registry route only.', example: 3 })
   version?: number;
+
+  /**
+   * The paired PLATFORM half, for the two keys whose descriptor declares
+   * `platformTierKey`. OMITTED — not null — for every other key, so a client
+   * renders the pair UI on presence alone and never has to special-case a key
+   * list of its own.
+   */
+  @ApiPropertyOptional({
+    type: SettingPlatformTierPairResponse,
+    description: 'Present iff this key is the TENANT half of a pair. Lets one response render both halves as a single row.',
+  })
+  pair?: SettingPlatformTierPairResponse;
 }
