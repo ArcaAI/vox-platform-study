@@ -40,7 +40,7 @@ import {
   SYSTEM_USER_ID,
 } from './00-constants';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from './04-department';
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS, approvedVersionFor } from './07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
 import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
 import {
@@ -159,13 +159,13 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
     tenantId: ARCAAI,
     slug: arcaaiAgentSlug(row, visit),
     name: `${row.name} summary (${visit})`,
-    description: `The per-turn ${row.name} running note for a ${visit} encounter, bound to the department's approved v${approvedVersionFor(row.templates[visit])} clinical template; guardrail screening ON.`,
+    description: `The per-turn ${row.name} running note for a ${visit} encounter, bound to the department's approved v${ARCAAI_CLINICAL_APPROVED_VERSION} clinical template; guardrail screening ON.`,
     task: 'TEXT_GENERATION',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
     fallbackModelSlugs: [],
     // The agent's pin outranks the template's `approvedVersionNumber` in the resolver, so it must
     // be the template's OWN approved version (v4 for Breast & Endocrine, v3 elsewhere).
-    instruction: { promptTemplateId: row.templates[visit], promptVersionNumber: approvedVersionFor(row.templates[visit]) },
+    instruction: { promptTemplateId: row.templates[visit], promptVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION },
     parameters: SUMMARIZATION_PARAMETERS,
     outputSchema: null,
     status: 'PUBLISHED',

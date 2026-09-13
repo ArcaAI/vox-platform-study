@@ -225,9 +225,19 @@ export const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a
  * "guardrail enabled with GLiNER2 on the summarization agent" is an owner commitment (D-2).
  * Reasoning OFF: the live flush is a 20 s budget and reasoning tokens were measured at 92% of
  * the completion on this model (TASK-891).
+ *
+ * TEMPERATURE 0 (owner directive 2026-09-14). Platform-wide for every seeded agent that runs an
+ * LLM: a clinical note is an extraction task, not a generative one, and any sampling entropy at
+ * all is entropy spent inventing text the transcript does not support. It is the decoding-side
+ * partner of the corpus's own NEVER INVENT rule — that rule tells the model not to fabricate,
+ * this setting removes the randomness that makes fabrication cheap. `0` is stated rather than
+ * omitted for the reason the reasoning posture is: an absent value is the ENGINE's default
+ * (commonly 0.7-1.0), so leaving it out would be choosing the engine's opinion over ours.
+ * `agent-schemas.ts` types it `minimum: 0`, and `agent-invocation.service.ts` forwards on
+ * `typeof === 'number'`, so 0 travels rather than being swallowed as falsy.
  */
 export const SUMMARIZATION_PARAMETERS = {
-  generation: { temperature: 0.2, maxTokens: 2048, reasoning: { enabled: false } },
+  generation: { temperature: 0, maxTokens: 2048, reasoning: { enabled: false } },
   responseFormat: 'text',
   guards: { enabled: true },
 };
@@ -300,10 +310,11 @@ export function preSummaryPromptVariables(): Record<string, { path: string }> {
  * completion budget, because the pre-summary reproduces a whole prior record under five headings
  * while a per-turn note extends one that already exists. Reasoning stays off for the reason
  * TASK-891 measured: 92% of the completion went to reasoning tokens on this model, and the
- * warm start races the capture session it runs beside.
+ * warm start races the capture session it runs beside. Temperature 0 for the reason stated on
+ * {@link SUMMARIZATION_PARAMETERS} — it applies to every seeded LLM agent, not to a tier.
  */
 export const PRE_SUMMARY_PARAMETERS = {
-  generation: { temperature: 0.2, maxTokens: 3072, reasoning: { enabled: false } },
+  generation: { temperature: 0, maxTokens: 3072, reasoning: { enabled: false } },
   responseFormat: 'text',
   guards: { enabled: true },
 };
@@ -324,7 +335,7 @@ export const PRE_SUMMARY_PARAMETERS = {
  * finalize rather than live (TASK-891 F-1 / D-10): the clinician reads the note before signing it.
  */
 export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code.\n\n' +
+  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. THE FINALIZED NOTE IS ENTIRELY IN ENGLISH: the partials reach you already translated, so should any Malayalam script or romanised Malayalam have survived into them, translate it into the standard English clinical term here rather than copying it forward — translating carries the meaning across and adds nothing, and drug names, doses, numbers, units, dates, values and proper names are reproduced, never translated.\n\n' +
   '=== WRITING STYLE ===\n' +
   'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
   'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +
@@ -449,7 +460,10 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       // its own engine's off-switch (TASK-970); on an effort-only engine it is approximated
       // (`agent-reasoning.ts`), and `lms-gemma-4-e2b-it-qat` DECLARES `reasoning` in
       // `supportedGenerationParams`, so the publish gate accepts it.
-      parameters: { generation: { temperature: 0.1, maxTokens: 4096, reasoning: { enabled: false } }, guards: { enabled: true } },
+      //
+      // Temperature 0, same owner directive as {@link SUMMARIZATION_PARAMETERS}. This agent signs
+      // the note the clinician puts their name to, so it is the last place sampling entropy belongs.
+      parameters: { generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } }, guards: { enabled: true } },
       outputSchema: CASENOTE_OUTPUT_SCHEMA,
       status: 'PUBLISHED',
       isActive: true,

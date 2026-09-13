@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
+import * as CORPUS from '../07b-arcaai-clinical-content-v3';
 import { ARCAAI_ALL_CLINICAL_DEPARTMENTS } from '../04-department';
 import {
   ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES,
@@ -38,6 +39,54 @@ const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 const DEPARTMENTS = ARCAAI_ALL_CLINICAL_DEPARTMENTS;
 
 const bySlug = new Map(ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES.map((entry) => [entry.slug, entry]));
+
+/** Slug → the v3 corpus body whose headings that shape must reproduce. */
+const PROMPT_BODIES: Readonly<Record<string, string>> = {
+  'arcaai-gen-soap-new-visit': CORPUS.MEDICINE_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-gen-soap-revisit': CORPUS.MEDICINE_FOLLOWUP_CONTENT_V3,
+  'arcaai-surg-soap-new-visit': CORPUS.SURGERY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-surg-soap-revisit': CORPUS.SURGERY_FOLLOWUP_CONTENT_V3,
+  'arcaai-rheum-soap-new-visit': CORPUS.RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-rheum-soap-revisit': CORPUS.RHEUMATOLOGY_FOLLOWUP_CONTENT_V3,
+  'arcaai-neur-soap-new-visit': CORPUS.NEUROLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-neur-soap-revisit': CORPUS.NEUROLOGY_FOLLOWUP_CONTENT_V3,
+  'arcaai-orth-soap-new-visit': CORPUS.ORTHOPEDICS_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-orth-soap-revisit': CORPUS.ORTHOPEDICS_REVIEW_CONTENT_V3,
+  'arcaai-heme-soap-new-visit': CORPUS.HEMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-heme-soap-revisit': CORPUS.HEMATOLOGY_REVISIT_CONTENT_V3,
+  'arcaai-bren-soap-new-visit': CORPUS.BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-bren-soap-revisit': CORPUS.BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3,
+  'arcaai-derm-soap-new-visit': CORPUS.DERMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-derm-soap-revisit': CORPUS.DERMATOLOGY_FOLLOWUP_CONTENT_V3,
+  'arcaai-diet-soap-new-visit': CORPUS.DIETETICS_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-diet-soap-revisit': CORPUS.DIETETICS_FOLLOWUP_CONTENT_V3,
+  'arcaai-neph-soap-new-visit': CORPUS.NEPHROLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-neph-soap-revisit': CORPUS.NEPHROLOGY_FOLLOWUP_CONTENT_V3,
+  'arcaai-sonc-soap-new-visit': CORPUS.SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V3,
+  'arcaai-sonc-soap-revisit': CORPUS.SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V3,
+};
+
+/**
+ * The headings of one corpus body — an INDEPENDENT reader, deliberately not the seed's.
+ *
+ * The seed walks the block line by line and carries state; this matches the whole block at once
+ * with one multiline regex. Two readers that disagree mean one of them is wrong, which is the
+ * only way this test can catch a parser bug rather than inherit it.
+ */
+function headingsOf(body: string): string[] {
+  const start = body.indexOf('END SOURCE-OF-TRUTH PROTOCOL');
+  let block = start === -1 ? body : body.slice(start);
+  const stop = block.indexOf('BEFORE YOU EMIT');
+  if (stop !== -1) block = block.slice(0, stop);
+
+  // Column-0 lines only: `**Title**`, `1. **Title**`, `1. Title`.
+  // A PLAIN heading must carry its number: unnumbered prose at column 0 (the marker line, the
+  // "produce a structured clinical summary..." sentence) is not a heading. Bold may go either way.
+  return [...block.matchAll(/^(?:(?:\d+\.[ \t]*)?\*\*(?<bold>[^*\n]+?)\*\*|\d+\.[ \t]+(?<plain>[^*\n]+?))[ \t]*:?$/gm)]
+    .map((match) => (match.groups?.bold ?? match.groups?.plain ?? '').trim())
+    .filter((title) => title.length > 0);
+}
+
 
 /** The node config of one workflow target's node. */
 function nodeConfig(workflowSlug: string, nodeId: string): Record<string, unknown> {
@@ -67,44 +116,80 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
     for (const entry of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) expect(platformIds.has(entry.id)).toBe(false);
   });
 
-  it('inherits the platform shape verbatim and only ADDS to it — order, titles, forms and instructions unchanged', () => {
+  it('IS its department prompt: title-for-title, position-for-position, all 22', () => {
+    // The assertion this file exists for. Parsed here by a SECOND, independent reader of the
+    // corpus (one regex over the whole heading block, where the seed walks line by line), so a
+    // bug in the seed's parser cannot satisfy this test by also being present in it.
     for (const department of DEPARTMENTS) {
       for (const visit of ARCAAI_DEPARTMENT_VISIT_TYPES) {
-        const base = visit === 'new-visit' ? NEW_VISIT_NOTE_SHAPE : REVISIT_NOTE_SHAPE;
-        const shape = bySlug.get(arcaaiDocumentTemplateSlug(department.code.toLowerCase(), visit))!.shape;
+        const slug = arcaaiDocumentTemplateSlug(department.code.toLowerCase(), visit);
+        const shape = bySlug.get(slug)!.shape;
+        const body = PROMPT_BODIES[slug];
+        expect(body, `${slug}: no corpus body mapped`).toBeTruthy();
+        const expected = headingsOf(body!);
 
-        // Every inherited section survives, byte-identical, and in the base's relative order.
-        const keys = shape.sections.map((section) => section.key);
-        const inheritedOrder = keys.filter((key) => base.sections.some((section) => section.key === key));
-        expect(inheritedOrder).toEqual(base.sections.map((section) => section.key));
-        for (const section of base.sections) {
-          expect(shape.sections.find((candidate) => candidate.key === section.key)).toEqual(section);
-        }
-
-        // The protocol is the platform's, not a per-department rewrite.
-        expect(shape.globalInstruction).toBe(REALTIME_NOTE_PROTOCOL);
-        expect(shape.schemaVersion).toBe('1.0');
-        // No duplicate keys — `spliceSections` throws on one, so reaching here means none.
-        expect(new Set(keys).size).toBe(keys.length);
+        expect(expected.length, `${slug}: the corpus body must yield headings`).toBeGreaterThan(1);
+        expect(shape.sections.map((section) => section.title), slug).toEqual(expected);
       }
     }
   });
 
-  it('the department axis is REAL — the ten non-General shapes each add at least one heading, and General adds none', () => {
-    for (const department of DEPARTMENTS) {
-      const slugPart = department.code.toLowerCase();
-      const added = ARCAAI_DEPARTMENT_VISIT_TYPES.map((visit) => {
-        const base = visit === 'new-visit' ? NEW_VISIT_NOTE_SHAPE : REVISIT_NOTE_SHAPE;
-        const shape = bySlug.get(arcaaiDocumentTemplateSlug(slugPart, visit))!.shape;
-        return shape.sections.length - base.sections.length;
-      });
-      if (department.code === 'GEN') {
-        // The platform shapes WERE ported from the General Medicine corpus; splicing anything in
-        // would be authoring, not reuse.
-        expect(added).toEqual([0, 0]);
-      } else {
-        expect(added.reduce((sum, count) => sum + count, 0)).toBeGreaterThan(0);
+  it('carries the prompt`s own guidance as each section`s instruction — nothing authored', () => {
+    // Every instruction must be a subsequence of the lines the prompt writes under that heading.
+    // This is what stops a future editor "improving" a section's wording: the text belongs to
+    // the clinical corpus, and the only sanctioned way to change it is to change the prompt.
+    for (const entry of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) {
+      const body = PROMPT_BODIES[entry.slug];
+      expect(body, `${entry.slug}: no corpus body mapped`).toBeTruthy();
+      for (const section of entry.shape.sections) {
+        expect(section.instruction, `${entry.slug}/${section.key}`).toBeTruthy();
+        for (const line of section.instruction!.split('\n')) {
+          expect(body!, `${entry.slug}/${section.key}: "${line.slice(0, 60)}" is not in the prompt`).toContain(line);
+        }
       }
+    }
+  });
+
+  it('keeps the platform protocol and the platform key for any heading the platform also declares', () => {
+    const inheritedKeyByTitle = new Map(
+      [...NEW_VISIT_NOTE_SHAPE.sections, ...REVISIT_NOTE_SHAPE.sections].map((section) => [section.title.toLowerCase(), section.key]),
+    );
+    for (const entry of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) {
+      expect(entry.shape.globalInstruction, entry.slug).toBe(REALTIME_NOTE_PROTOCOL);
+      expect(entry.shape.schemaVersion).toBe('1.0');
+
+      const keys = entry.shape.sections.map((section) => section.key);
+      expect(new Set(keys).size, `${entry.slug}: duplicate section key`).toBe(keys.length);
+      for (const key of keys) expect(key, `${entry.slug}: ${key}`).toMatch(/^[a-z0-9_]{2,48}$/);
+
+      for (const section of entry.shape.sections) {
+        const inherited = inheritedKeyByTitle.get(section.title.toLowerCase());
+        if (inherited) expect(section.key, `${entry.slug}: "${section.title}"`).toBe(inherited);
+      }
+    }
+  });
+
+  it('General Medicine`s shapes are the platform pair`s section list — the platform shapes were ported from that body', () => {
+    // The one department whose headings the platform axis already carries. If this drifts, either
+    // the corpus body or the platform shape moved, and the two are supposed to be the same list.
+    expect(bySlug.get('arcaai-gen-soap-new-visit')!.shape.sections.map((s) => s.title)).toEqual(
+      NEW_VISIT_NOTE_SHAPE.sections.map((s) => s.title),
+    );
+    expect(bySlug.get('arcaai-gen-soap-revisit')!.shape.sections.map((s) => s.title)).toEqual(
+      REVISIT_NOTE_SHAPE.sections.map((s) => s.title),
+    );
+  });
+
+  it('the department axis is REAL — the ten non-General shapes differ from the platform pair', () => {
+    for (const department of DEPARTMENTS) {
+      const differs = ARCAAI_DEPARTMENT_VISIT_TYPES.map((visit) => {
+        const base = visit === 'new-visit' ? NEW_VISIT_NOTE_SHAPE : REVISIT_NOTE_SHAPE;
+        const shape = bySlug.get(arcaaiDocumentTemplateSlug(department.code.toLowerCase(), visit))!.shape;
+        const titles = shape.sections.map((section) => section.title);
+        return JSON.stringify(titles) !== JSON.stringify(base.sections.map((section) => section.title));
+      });
+      if (department.code === 'GEN') expect(differs).toEqual([false, false]);
+      else expect(differs.some(Boolean), `${department.code} must carry its own heading list`).toBe(true);
     }
   });
 

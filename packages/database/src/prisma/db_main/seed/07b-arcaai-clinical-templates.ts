@@ -109,9 +109,7 @@ import {
 } from './07b-arcaai-clinical-content-v2';
 import {
   BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3,
-  BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V4,
   BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3,
-  BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V4,
   DERMATOLOGY_FOLLOWUP_CONTENT_V3,
   DERMATOLOGY_NEW_REFERRAL_CONTENT_V3,
   DIETETICS_FOLLOWUP_CONTENT_V3,
@@ -581,27 +579,10 @@ export const ARCAAI_CLINICAL_APPROVED_VERSION = 3;
  * → SYSTEM_DEFAULTS.preSummaryPromptId → 503 fail-closed. This seed's PRE_SUMMARY_SPEC
  * is exactly the tenant-tier row that convention matches.
  */
-/**
- * v4 — the department prompt's headings ARE the case-note document template's section titles,
- * in template order (Breast & Endocrine: 13 sections). Measured 2026-09-13 on the dev stack: the
- * per-turn summarizer and the finalizer keep exactly the headings of the prompt body they are
- * given, so a v3 body (12 headings of its own) could fill none of the template's sections live
- * and finalized under the wrong headings. Only the two Breast & Endocrine bodies exist at v4 so
- * far; every other template stays approved at v3 until its v4 body is authored.
- */
-const V4_CONTENT_BY_TEMPLATE_ID: Record<string, string> = {
-  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL]: BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V4,
-  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP]: BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V4,
-};
-
 const CONTENT_BY_VERSION: Record<number, Record<string, string>> = {
   2: V2_CONTENT_BY_TEMPLATE_ID,
   3: V3_CONTENT_BY_TEMPLATE_ID,
-  4: V4_CONTENT_BY_TEMPLATE_ID,
 };
-
-const hasContentFor = (spec: ClinicalTemplateSpec, versionNumber: number): boolean =>
-  versionNumber === 1 || typeof CONTENT_BY_VERSION[versionNumber]?.[spec.id] === 'string';
 
 /**
  * Body of `templateId` at `versionNumber`. Version 1 comes from the spec itself
@@ -619,22 +600,12 @@ const contentFor = (spec: ClinicalTemplateSpec, versionNumber: number): string =
 };
 
 /** Every version seeded, oldest first. v1 and v2 are retained, not replaced. */
-/**
- * The approved (served) version of ONE template: v4 where a v4 body exists, else the corpus
- * default. The per-turn agents pin THIS number (`29-arcaai-agents-and-workflows.ts`): the resolver
- * reads the agent's pin ahead of the template's `approvedVersionNumber`, so a template approved
- * at 4 behind an agent pinned at 3 still serves v3.
- */
-export const approvedVersionFor = (templateId: string): number =>
-  typeof V4_CONTENT_BY_TEMPLATE_ID[templateId] === 'string' ? 4 : ARCAAI_CLINICAL_APPROVED_VERSION;
-
-const ARCAAI_CLINICAL_SEEDED_VERSIONS = [1, 2, 3, 4] as const;
+const ARCAAI_CLINICAL_SEEDED_VERSIONS = [1, 2, 3] as const;
 
 const VERSION_CHANGE_REASON: Record<(typeof ARCAAI_CLINICAL_SEEDED_VERSIONS)[number], string> = {
   1: 'Initial version (ported from HOPE v1 TEXT prompt library)',
   2: 'v2 hardened prompt corpus — source-of-truth protocol, per-heading SOURCE lines, dated borrowed facts, gated ASR terminology repair (names only)',
   3: 'v3 corpus — pre-summary rebuilt (provenance vs event dates, deduplicated diagnoses, status-post interventions, dose-change visibility, English-only), RULE 6 ASR name repair required and annotated, Hematology re-worked against the department templates',
-  4: 'v4 — headings aligned to the case-note document template (its section titles, in template order); the v3 protocol carried verbatim. Breast & Endocrine only.',
 };
 
 /**
@@ -650,16 +621,16 @@ export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
   tenantId: ARCAAI_TENANT_ID,
   name: spec.name,
   description: spec.description,
-  content: contentFor(spec, approvedVersionFor(spec.id)),
+  content: contentFor(spec, ARCAAI_CLINICAL_APPROVED_VERSION),
   category: 'SUMMARY' as PromptTemplateCategory,
   status: 'APPROVED' as PromptTemplateStatus,
   scope: spec.scope,
   variables: (spec.variables ?? null) as Prisma.InputJsonValue | null,
-  currentVersionNumber: approvedVersionFor(spec.id),
+  currentVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
   // Pin the approval to a concrete version so the resolver serves the
   // PromptVersion snapshot (never the mutable content row) — avoids the F-02
   // unpinned-latest caveat.
-  approvedVersionNumber: approvedVersionFor(spec.id),
+  approvedVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
   departmentId: spec.departmentId,
   tags: spec.tags,
 }));
@@ -671,7 +642,7 @@ export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
  * the seeder writes them in version order.
  */
 export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap((versionNumber) =>
-  ALL_SPECS.filter((spec) => hasContentFor(spec, versionNumber)).map((spec) => ({
+  ALL_SPECS.map((spec) => ({
     id: versionId(spec.id, versionNumber),
     tenantId: ARCAAI_TENANT_ID,
     promptTemplateId: spec.id,
