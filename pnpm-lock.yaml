@@ -200,6 +200,9 @@ importers:
       '@arcaai/config-ts':
         specifier: workspace:*
         version: link:../../packages/config-ts
+      '@arcaai/vox-node':
+        specifier: workspace:*
+        version: link:../../packages/vox-node
       '@arcaai/workflow-contract':
         specifier: workspace:*
         version: link:../../packages/workflow-contract

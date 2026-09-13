@@ -39,6 +39,7 @@
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
         "@arcaai/config-ts": "workspace:*",
+        "@arcaai/vox-node": "workspace:*",
         "@arcaai/workflow-contract": "workspace:*",
         "@axe-core/playwright": "^4.13.0",
         "@playwright/test": "^1.63.0",
