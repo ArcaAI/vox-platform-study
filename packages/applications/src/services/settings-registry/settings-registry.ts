@@ -102,6 +102,66 @@ export class SettingsRegistry {
   }
 
   /**
+   * ASSEMBLY-time check for every descriptor declaring `platformTierKey`: the
+   * named twin must exist, be the PLATFORM tier (`maxScope: 'system'`), agree on
+   * `dataType` and `globalOnly`, and not itself declare one.
+   *
+   * It lives here and NOT in `register()` for one reason: it is the only
+   * CROSS-descriptor invariant in this container. `register()` sees one
+   * descriptor at a time, so a forward reference — the tenant half registered
+   * before its platform twin — would fail there for a registry that is perfectly
+   * well formed. `registry.ts` calls this once, chained after `registerAll`, so
+   * a mismatched pair still throws at module load and a violating registry
+   * remains impossible to construct.
+   *
+   * Why each clause earns its place:
+   *  - EXISTS: the write lane's refusal message names this key as the one to
+   *    write instead, and the read lane resolves it. A name for a key that is
+   *    not there turns a fix into a dead end.
+   *  - `maxScope: 'system'`: the whole point of the twin is that it is the
+   *    platform row the pull route serves. A `tenant`-scope "platform tier"
+   *    would reintroduce the dead write one level up.
+   *  - same `dataType`: the console renders ONE control for both halves.
+   *  - same `globalOnly`: one row cannot have two audiences. The pair collapses
+   *    into a single row precisely because OD-2 confirmed both halves are
+   *    platform-admin-only; if that ever diverges the collapse is wrong and the
+   *    registry must say so rather than render a control half its viewers may
+   *    not use.
+   *  - no CHAIN: a platform tier is the top of the pair, so a tier with a tier
+   *    has no top — and the read lane, which follows exactly one hop, would
+   *    silently report the wrong half.
+   */
+  assertPlatformTierPairs(): this {
+    for (const descriptor of this.byKey.values()) {
+      const twinKey = descriptor.platformTierKey;
+      if (twinKey === undefined) continue;
+
+      const problem = ((): string | undefined => {
+        const twin = this.byKey.get(twinKey);
+        if (!twin) return `names platform tier '${twinKey}', which is not a registered setting`;
+        if (twin.maxScope !== 'system') {
+          return `names platform tier '${twinKey}', whose maxScope is '${twin.maxScope}' — a platform tier must be 'system'`;
+        }
+        if (twin.dataType !== descriptor.dataType) {
+          return `names platform tier '${twinKey}', whose dataType '${twin.dataType}' differs from its own '${descriptor.dataType}' — the pair renders as one control`;
+        }
+        if ((twin.globalOnly ?? false) !== (descriptor.globalOnly ?? false)) {
+          return `names platform tier '${twinKey}', whose globalOnly '${twin.globalOnly ?? false}' differs from its own '${descriptor.globalOnly ?? false}' — one row cannot have two audiences`;
+        }
+        if (twin.platformTierKey !== undefined) {
+          return `names platform tier '${twinKey}', which itself declares platformTierKey '${twin.platformTierKey}' — a platform tier is the top of the pair, so a chain has no top`;
+        }
+        return undefined;
+      })();
+
+      if (problem) {
+        throw new Error(`SettingsRegistry: setting '${descriptor.key}' ${problem}.`);
+      }
+    }
+    return this;
+  }
+
+  /**
    * Enforce the max-scope clamp for a write: the requested scope may not be
    * DEEPER (more specific) than the setting's `maxScope`. E.g. a setting capped
    * at `department` cannot be set per-`doctor`. Throws `ArgumentInvalidException`

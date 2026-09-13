@@ -214,6 +214,44 @@ export interface SettingDescriptor {
    */
   consumedBy?: readonly ConsumingDeployable[];
   /**
+   * This key is the TENANT half of a pair whose PLATFORM half is `<value>`; the
+   * two render as ONE console row.
+   *
+   * Declared only where the same concept exists as two keys because the two
+   * CHANNELS need two keys — `consumedBy` above forbids a `maxScope: 'tenant'`
+   * descriptor from riding the platform-scope pull snapshot, so the platform
+   * default has to be a separate `maxScope: 'system'` key. That split is
+   * correct and stays; what it must not do is leak upwards as two settings an
+   * admin has to know how to tell apart.
+   *
+   * The field exists because the defect it closes could not be stated anywhere
+   * else. A SYSTEM-scope write to the tenant half was ACCEPTED, persisted,
+   * versioned and read back faithfully — while nothing read it: the push is
+   * emitted only when the cascade reports `sourceScope === 'tenant'`
+   * (`TextRequestEnrichmentService.applyTenantGuardrailPolicy`), so a platform
+   * admin set the value, re-read it, and the runtime kept enforcing the old one.
+   * Every layer reported something true and none reported the cause. No
+   * descriptor field could say "my SYSTEM row has no reader; my platform tier is
+   * `<other key>`", so neither the write lane nor the console could refuse it.
+   *
+   * What declaring it buys, all descriptor-driven and with no key list anywhere:
+   *  - the write lane refuses `scope: 'system'` on this key, naming the twin;
+   *  - the read lane returns the twin's value + version alongside this key's, so
+   *    one call renders one row;
+   *  - {@link SettingsRegistry.assertPlatformTierPairs} refuses at ASSEMBLY to
+   *    build a registry whose pair is mismatched, so a mispaired declaration is
+   *    impossible to construct rather than merely detectable at runtime.
+   *
+   * The named key must EXIST, be `maxScope: 'system'`, agree on `dataType` and
+   * on `globalOnly` (one row cannot have two audiences), and must not itself
+   * declare one — a platform tier is the top, so a chain would have no top.
+   *
+   * Absent ⇒ this key stands alone, which is true of all but two of the
+   * registry's keys. It is an exception, not a pattern to reach for: prefer one
+   * key at the scope it belongs to.
+   */
+  platformTierKey?: string;
+  /**
    * Declares that a tenant override may only TIGHTEN this key relative to the
    * platform value, and in which direction. Enforced ONCE, generically, in the
    * settings write lane: a loosening write is REJECTED (403) rather than
