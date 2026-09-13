@@ -119,7 +119,7 @@ describe('TASK-891 — ChainSummaryService (comprehensive finalize) carries the 
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });
   });
 
   it('an agent that named an effort sends that effort', async () => {
@@ -127,10 +127,10 @@ describe('TASK-891 — ChainSummaryService (comprehensive finalize) carries the 
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'low' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: true, effort: 'low' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` key at all', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` key at all', async () => {
     const { service, httpService } = buildService({ temperature: 0.1 });
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });

@@ -24,16 +24,26 @@
  * 78% of the realtime budget went to reasoning for a JSON-shaped note, against a 20 s
  * timeout. Reasoning is not free and it is not always worth buying.
  *
- * ## The wire
+ * ## The wire — TASK-970: the posture travels AS a posture
  *
- * `GenerateRequest.extra` is ALREADY declared on `apps/text` and ALREADY forwarded as
- * `extra_body` to the OpenAI-compatible family, and its own field comment names
- * `reasoning_effort` as the example. So this file adds NO transport: it maps an authored
- * block onto the ride-along that already exists.
+ * TASK-891 pre-rendered the block here into `extra.reasoning_effort`, mapping
+ * `enabled: false` onto `'minimal'`. That was right for the OpenAI-compatible family and
+ * WRONG as a wire format, because it is LOSSY: once `'minimal'` is on the wire, "the admin
+ * turned reasoning OFF" is indistinguishable from "the admin asked for minimal EFFORT". An
+ * engine whose off-switch is a different parameter entirely — Ollama's `think: false`,
+ * Anthropic's `thinking: {type: 'disabled'}` — cannot be driven correctly from a value that
+ * already collapsed the distinction, and seven of ten adapters simply dropped it.
  *
- * `enabled: false` means *instruct the engine not to reason* — `reasoning_effort: 'minimal'`,
- * the engine's own off switch — never "drop the field and hope". An absent field is the
- * engine's default, which is precisely the state the measurements above were taken in.
+ * So this file no longer renders. It emits the ONE neutral posture that
+ * `GenerateRequest.reasoning` carries, and each adapter renders it into its own engine's
+ * vocabulary (`tests/contracts/reasoning-posture.fixture.json` is the written contract; the
+ * adapters and their per-engine `support` table are `apps/text`'s half of it). This is the
+ * `ResolvedAsrSpec` pattern of TASK-861 applied to generation: the gateway resolves, the
+ * service renders.
+ *
+ * Three states and nothing else — `{enabled: false}`, `{enabled: true[, effort]}`, and
+ * ABSENT. Absent means the engine decides and NOTHING is synthesized; it is precisely the
+ * state the measurements above were taken in.
  */
 
 /** The efforts an engine may be asked for, in ascending cost. */
@@ -47,7 +57,19 @@ export interface AgentReasoning {
   effort?: AgentReasoningEffort;
 }
 
-/** The `extra` key the OpenAI-compatible family forwards as `extra_body.reasoning_effort`. */
+/** The body field the posture travels in — `GenerateRequest.reasoning` on `apps/text`. */
+export const REASONING_WIRE_FIELD = 'reasoning';
+
+/**
+ * The RAW OpenAI-shaped ride-along, kept for exactly one job: recognising a CALL SITE that
+ * pinned it.
+ *
+ * It is no longer how this package states a posture (see the header). It stays supported
+ * because the contract says so (`wire.caller_override`) — a caller that pinned
+ * `extra.reasoning_effort` has decided about that one request and is not second-guessed —
+ * and because on an `effort-only` adapter the pin and a rendered posture land on the SAME
+ * key, so the two must never travel together.
+ */
 export const REASONING_EFFORT_EXTRA_KEY = 'reasoning_effort';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -76,19 +98,27 @@ export function readAgentReasoning(generation: unknown): AgentReasoning | null {
 }
 
 /**
- * The `extra` ride-along for an authored reasoning block, or `undefined` when there is
- * nothing to say.
+ * The value of `GenerateRequest.reasoning` for a resolved posture, or `undefined` when there
+ * is nothing to say.
  *
- *  - `enabled: false` → `minimal`: OD-4's "instruct the engine not to reason". Silence would
- *    leave the engine on its own default, which is the state being turned off.
- *  - `enabled: true` with an effort → that effort.
- *  - `enabled: true` with none → nothing. The agent asked for reasoning without naming a
- *    budget, and inventing one here would be this file deciding a tenant's spend.
+ * Near-identity by design — the whole point of TASK-970 is that this function STOPS
+ * translating — with one normalisation and one refusal:
+ *
+ *  - `null` → `undefined`. No tier had an opinion, so the field is omitted and the engine
+ *    decides. Never a synthesized default: absence is a statement of its own on this wire.
+ *  - `enabled: false` → `{enabled: false}`, and any authored `effort` is DROPPED.
+ *    {@link agentReasoningProblems} accepts `{enabled: false, effort: 'high'}` because both
+ *    keys are individually valid, but a budget for reasoning that will not happen is a
+ *    second, contradictory instruction on a wire that must carry exactly one.
+ *  - `enabled: true` with no effort → `{enabled: true}`, which is a REAL case now rather
+ *    than the silence TASK-891 emitted: the agent asked to reason without naming a budget,
+ *    and an adapter can render that ("on, engine's own budget") without this file inventing
+ *    a tenant's spend.
  */
-export function reasoningExtra(reasoning: AgentReasoning | null): Record<string, unknown> | undefined {
+export function reasoningWire(reasoning: AgentReasoning | null): AgentReasoning | undefined {
   if (!reasoning) return undefined;
-  if (!reasoning.enabled) return { [REASONING_EFFORT_EXTRA_KEY]: 'minimal' };
-  return reasoning.effort ? { [REASONING_EFFORT_EXTRA_KEY]: reasoning.effort } : undefined;
+  if (!reasoning.enabled) return { enabled: false };
+  return reasoning.effort ? { enabled: true, effort: reasoning.effort } : { enabled: true };
 }
 
 /**

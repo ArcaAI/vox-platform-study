@@ -8,12 +8,14 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
 import type { TextGuardrailPostureKey } from '../settings-registry/descriptors/text-provider-connections.descriptors';
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
-import { REASONING_EFFORT_EXTRA_KEY, readAgentReasoning, reasoningExtra } from '../agent/agent-reasoning';
+import { REASONING_EFFORT_EXTRA_KEY, REASONING_WIRE_FIELD, readAgentReasoning, reasoningWire } from '../agent/agent-reasoning';
+import type { AgentReasoning } from '../agent/agent-reasoning';
 import {
   TEXT_REASONING_DEFAULT_EFFORTS,
   TEXT_REASONING_DEFAULT_EFFORT_KEY,
-  TEXT_REASONING_ENGINE_DEFAULT,
+  textReasoningPlatformPosture,
 } from '../settings-registry/descriptors/text-reasoning.descriptors';
+import type { TextReasoningDefaultEffort } from '../settings-registry/descriptors/text-reasoning.descriptors';
 
 /**
  * The ONE implementation of the enrichments every outgoing TEXT
@@ -292,54 +294,73 @@ export class TextRequestEnrichmentService {
   }
 
   /**
-   * Layer the ENGINE RIDE-ALONGS a resolved agent authored onto an outbound
-   * `/api/v1/generate` body, as `extra`.
+   * State this call's REASONING POSTURE on an outbound `/api/v1/generate` body, as
+   * `GenerateRequest.reasoning`.
    *
-   * ## What changed, and what did not
+   * ## What changed in TASK-970, and what did not
    *
-   * TASK-862 retired `AiRuntimeProfile` and left this method a NO-OP, with the note that
-   * ride-alongs "are supplied by the Agent's parameters (TASK-863)". TASK-891 C2 is that
-   * sentence made true for the first ride-along anyone actually needs: the reasoning
-   * posture of `parameters.generation.reasoning` (OD-4).
+   * TASK-891 C2 put the agent's `parameters.generation.reasoning` on the wire by
+   * PRE-RENDERING it into `extra.reasoning_effort` — OpenAI's parameter, sent to every
+   * engine. That was lossy (`enabled: false` became `'minimal'`, which an engine cannot
+   * distinguish from a request for minimal EFFORT) and, worse, unreachable: seven of the ten
+   * adapters never read `extra` at all, so an admin who turned reasoning off on an Ollama- or
+   * Anthropic-bound agent got a silent no-op and a bill for reasoning tokens.
    *
-   * It adds NO transport. `GenerateRequest.extra` is already declared on `apps/text` and
-   * already forwarded as `extra_body` to the OpenAI-compatible family — its own field
-   * comment names `reasoning_effort` as the example. A caller that passes no `generation`
-   * (every caller but the realtime agent path today) gets the previous no-op exactly.
+   * The posture therefore travels AS a posture and each adapter renders it into its own
+   * engine's vocabulary — the `ResolvedAsrSpec` split of TASK-861 applied to generation. The
+   * written contract is `tests/contracts/reasoning-posture.fixture.json`; both halves are
+   * pinned to it (`tests/contracts/reasoning-posture-parity.contract.test.ts` here).
    *
-   * ## Merge rules
+   * What did NOT change is the CASCADE. Both tiers, in the same order, with the same
+   * widening rule.
    *
-   * The CALLER WINS, per key. A call site that already set `extra.reasoning_effort` has
-   * made a decision about this specific request, and an agent-level default must not
-   * silently overwrite it — the same precedence `applyTenantProviderOverrides` gives a
-   * caller-supplied `provider_overrides`.
-   *
-   * ## The cascade (TASK-968)
-   *
-   * TASK-891 gave the posture ONE tier — the agent — so an agent that authored nothing
-   * resolved to the ENGINE's default, which on `gemma-4-e2b-it-qat` measured 5168 ms /
-   * 184 reasoning tokens against 1237 ms / 30 at `minimal`. The platform default
-   * (`text.reasoning.defaultEffort`) is the second tier, so this now reads the way every
-   * other cascade in the platform does:
+   * ## The cascade (TASK-968, unchanged)
    *
    *     the agent's authored block  →  the platform default  →  nothing
    *
-   * It fills ABSENCE ONLY. An agent that authored `{ enabled: true }` with no effort still
-   * sends nothing: `reasoningExtra` refuses to invent a budget for an agent that asked to
-   * reason without naming one, and the platform tier must not answer over an opinion — it
-   * answers where there is none. That is the `AiProviderConnection` rule verbatim.
+   * It fills ABSENCE ONLY. An agent that authored `{ enabled: true }` with no effort is an
+   * OPINION: the platform tier is not consulted for it, exactly as before. The one visible
+   * difference is that the opinion now REACHES the wire as `{ enabled: true }` instead of
+   * being flattened to silence — TASK-891 had no way to say "on, budget unnamed", so it said
+   * nothing, which on the wire was indistinguishable from an agent that had no view at all.
+   * Which tier wins is untouched; what the winner can express is not.
+   *
+   * ## Merge rules — the CALLER still WINS
+   *
+   * A call site that pinned `extra.reasoning_effort` has decided about this specific request
+   * and is not second-guessed (the contract's `wire.caller_override`), nor is one that stated
+   * `reasoning` itself. Note the shape of that deference changed with the field: where this
+   * used to merge per key, it now emits NOTHING at all when the caller pinned the ride-along.
+   * It has to. On an `effort-only` adapter a rendered posture and the raw pin land on the
+   * SAME engine parameter, so shipping both would make an ordering accident decide whether
+   * the caller's pin survived — which is the opposite of deferring to it.
    */
-  async applyTextRuntimeProfile<T extends { provider?: string; model?: string; extra?: Record<string, unknown> }>(
+  async applyTextRuntimeProfile<T extends { provider?: string; model?: string; extra?: Record<string, unknown>; reasoning?: AgentReasoning }>(
     target: T,
     generation?: unknown,
   ): Promise<T> {
-    const authored = readAgentReasoning(generation);
-    const extra = authored ? reasoningExtra(authored) : await this.platformReasoningExtra();
-    if (!extra) return target;
+    if (this.callerPinnedReasoning(target)) return target;
 
-    const existing = isPlainObject(target.extra) ? target.extra : undefined;
-    (target as { extra?: Record<string, unknown> }).extra = { ...extra, ...existing };
+    const authored = readAgentReasoning(generation);
+    const posture = authored ?? (await this.platformReasoningPosture());
+    const wire = reasoningWire(posture);
+    if (!wire) return target;
+
+    (target as Record<string, unknown>)[REASONING_WIRE_FIELD] = wire;
     return target;
+  }
+
+  /**
+   * Has this call site already spoken for itself about reasoning?
+   *
+   * Two ways it can have: the posture field, or the raw `extra.reasoning_effort` ride-along
+   * that TASK-891 used and that the contract keeps supported for exactly this reason. Either
+   * one ends the enrichment — see the merge-rules note above for why the ride-along cannot
+   * merely be merged around.
+   */
+  private callerPinnedReasoning(target: { extra?: Record<string, unknown>; reasoning?: AgentReasoning }): boolean {
+    if (target.reasoning !== undefined) return true;
+    return isPlainObject(target.extra) && target.extra[REASONING_EFFORT_EXTRA_KEY] !== undefined;
   }
 
   /**
@@ -362,8 +383,8 @@ export class TextRequestEnrichmentService {
    * `resolve` under `resolveEffective` is a synchronous in-memory cache read, so this costs
    * nothing on the live flush path.
    */
-  private async platformReasoningExtra(): Promise<Record<string, unknown> | undefined> {
-    if (!this.effectiveSettings) return undefined;
+  private async platformReasoningPosture(): Promise<AgentReasoning | null> {
+    if (!this.effectiveSettings) return null;
     try {
       const resolved = await this.effectiveSettings.resolveEffective(TEXT_REASONING_DEFAULT_EFFORT_KEY, {
         tenantId: this.clsService.get('tenantId') ?? null,
@@ -377,16 +398,17 @@ export class TextRequestEnrichmentService {
           key: TEXT_REASONING_DEFAULT_EFFORT_KEY,
           received: typeof effort === 'string' ? effort : typeof effort,
         });
-        return undefined;
+        return null;
       }
-      if (effort === TEXT_REASONING_ENGINE_DEFAULT) return undefined;
-      return { [REASONING_EFFORT_EXTRA_KEY]: effort };
+      // The enum → posture mapping lives beside the descriptor that declares the enum, so the
+      // two vocabularies meet in exactly one place (`textReasoningPlatformPosture`).
+      return textReasoningPlatformPosture(effort as TextReasoningDefaultEffort);
     } catch (error) {
       this.logger.warn({
         message: 'Platform default reasoning effort could not be resolved; forwarding without a posture',
         error: error instanceof Error ? error.message : String(error),
       });
-      return undefined;
+      return null;
     }
   }
 }
