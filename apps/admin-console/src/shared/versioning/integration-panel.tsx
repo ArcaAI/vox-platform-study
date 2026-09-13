@@ -270,6 +270,10 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
     kind: 'agent',
     slug,
     task: snippetTask,
+    // `snippetTask` has already folded NER into TEXT_GENERATION — they share the route — so the
+    // builder cannot tell them apart on `task` alone and would emit the `?mode=stream` request
+    // that NER answers with a 400. Say which one this is.
+    isNamedEntityRecognition: task === 'NAMED_ENTITY_RECOGNITION',
     // The per-task routes (`/speech`, `/transcriptions`) are the builder's to select — lane D.
     exampleBody: invocable ? exampleBody : null,
     baseUrl: publicEnv.apiHost,
