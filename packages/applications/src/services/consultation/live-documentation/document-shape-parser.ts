@@ -207,3 +207,88 @@ export function buildRunningSummary(sections: LiveSummarySectionDto[]): string {
     .filter((content) => content.length > 0)
     .join('\n\n');
 }
+
+/**
+ * Render the sections as a HEADED, template-shaped note.
+ *
+ * ## Why this exists beside {@link buildRunningSummary} rather than inside it
+ *
+ * `buildRunningSummary` is an OFFSET BASE, not a rendering: NER entity offsets index it, the
+ * SSE/SDK invariant "a section's `content` is a contiguous substring of `runningSummary`" is
+ * stated against it, and five call sites plus six test files pin that headings-free shape. Adding
+ * a `## ` line to it would move every entity offset in the live feed by the width of the heading.
+ *
+ * But the durable finalizer reads the `LIVE_SOAP_SNAPSHOT` content as its `preSummaryText`, and
+ * that row was being written with the offset base — an unlabelled `\n\n` join of the section
+ * bodies. The finalizer was therefore asked to produce a 13-section document from prose whose
+ * partition had been thrown away, and answered with a narrative paragraph. This is the same
+ * sections, WITH their titles, for exactly that hand-off.
+ *
+ * EMPTY SECTIONS ARE OMITTED. `renderPriorNote` lists them as `(nothing recorded yet)` because a
+ * PROMPT must tell the model the section exists and has not been reached. A finalizer input is a
+ * document, not a prompt: a heading over nothing is an invitation to invent a body for it.
+ *
+ * `compiled` is optional and only ORDERS the output: when given, sections are emitted in the
+ * template's checklist order (matched by title, case- and whitespace-insensitively) and any
+ * section the template does not name — the parser's `Running Summary` fallback, for one — is
+ * appended after them rather than dropped. Without it the input order is served as-is, which is
+ * already template order on every path that builds sections from a compiled checklist.
+ */
+export function buildStructuredSummary(sections: readonly LiveSummarySectionDto[], compiled?: CompiledDocumentTemplate): string {
+  // THE PARSER'S FALLBACK IS NOT A SECTION, so it gets no heading.
+  //
+  // `parseDocumentSections` returns exactly `[{ title: RUNNING_SUMMARY_TITLE, content: <all of
+  // it> }]` when no header matched — a note whose partition is UNKNOWN, not a note with one
+  // section called "Running Summary". Heading it would put a title the template does not declare
+  // into the finalizer's input, right beside the instruction to use the template's titles and no
+  // others. Degrading to the flat text is what this snapshot already carried before A1, so an
+  // unparseable note loses nothing and gains no invented structure.
+  if (sections.length === 1 && sections[0].title.trim() === RUNNING_SUMMARY_TITLE) return (sections[0].content ?? '').trim();
+
+  // WITH a template, EVERY template section is rendered, in template order — an
+  // untouched one under its heading with the explicit marker below. The finalizer is
+  // told to keep the headings "exactly as they appear in the partial summaries", so a
+  // heading absent here is a heading absent from the finished note; the clinician
+  // reviews the note against the template, and a missing "Investigations" reads as
+  // an omission, not as "nothing was said". The marker is a statement of fact the
+  // finalizer is instructed to carry, never a blank line it might be tempted to fill.
+  // Sections the template does not name stay, non-empty only, after the template's.
+  if (compiled) {
+    const remaining = [...sections];
+    const rendered: string[] = [];
+    for (const entry of compiled.checklist) {
+      const at = remaining.findIndex((section) => section.title.trim().toLowerCase() === entry.title.trim().toLowerCase());
+      const section = at >= 0 ? remaining.splice(at, 1)[0] : undefined;
+      const body = (section?.content ?? '').trim();
+      rendered.push(`## ${entry.title.trim()}\n${body.length > 0 ? body : NOT_DOCUMENTED_MARKER}`);
+    }
+    for (const section of remaining) {
+      const body = (section.content ?? '').trim();
+      if (body.length > 0) rendered.push(`## ${section.title.trim()}\n${body}`);
+    }
+    return rendered.join('\n\n');
+  }
+
+  return sections
+    .filter((section) => (section.content ?? '').trim().length > 0)
+    .map((section) => `## ${section.title.trim()}\n${section.content.trim()}`)
+    .join('\n\n');
+}
+
+/**
+ * What an untouched template section says under its heading in the finalizer's input.
+ * A statement of fact in the note's own voice: the finalizer keeps it as it keeps every
+ * other heading, and a reader of the finished note sees the template complete.
+ */
+export const NOT_DOCUMENTED_MARKER = 'Not documented in this consultation.';
+
+/** Template order for {@link buildStructuredSummary}; sections the template does not name keep their relative order, last. */
+function orderByTemplate(sections: readonly LiveSummarySectionDto[], compiled: CompiledDocumentTemplate): LiveSummarySectionDto[] {
+  const remaining = [...sections];
+  const ordered: LiveSummarySectionDto[] = [];
+  for (const entry of compiled.checklist) {
+    const at = remaining.findIndex((section) => section.title.trim().toLowerCase() === entry.title.trim().toLowerCase());
+    if (at >= 0) ordered.push(...remaining.splice(at, 1));
+  }
+  return [...ordered, ...remaining];
+}

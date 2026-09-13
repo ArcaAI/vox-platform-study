@@ -268,6 +268,19 @@ export interface PromptResolutionParams {
   promptType?: PromptTypeSelector;
 
   /**
+   * The consultation's visit type KEY (`'new-visit'` / `'revisit'`, the catalogue's spelling),
+   * read by the LIVE chain's per-turn agent tier only.
+   *
+   * Measured 2026-09-13: the tier walked the graph's per-turn agent nodes in AUTHORED order and
+   * served the first that resolved, so every BREN consultation — revisit included — ran the
+   * New Referral prompt, the branch guard on `n_summary_revisit` notwithstanding. With the key
+   * given, a node reached through a `core.condition` branch that names THIS visit type is served
+   * first, one reached only through a branch naming ANOTHER visit type is skipped, and a node
+   * with no branch constraint (or an `else` port) stays a fallback. Absent, the walk is unchanged.
+   */
+  visitType?: string | null;
+
+  /**
    * Which PRE-SUMMARY template FAMILY the caller wants.
    *
    * NOT a compat/native flag (RF-5 forbids that for agent eligibility, which
@@ -561,6 +574,61 @@ function realtimePerTurnAgentNodes(graph: WorkflowGraph | null | undefined): { n
     if (typeof slug === 'string' && slug.length > 0) out.push({ node, agentSlug: slug });
   }
   return out;
+}
+
+/** `trigger.context.visit_type == 'revisit'` -> `'revisit'`; anything else -> `null`. */
+const VISIT_TYPE_BRANCH_CONDITION = /visit_type\s*===?\s*['"]([^'"]+)['"]/;
+
+/**
+ * The visit types the `core.condition` branches feeding a node name, and whether the node is
+ * also reachable without one (an `else` port, or an edge from anything that is not a condition).
+ *
+ * Read from the AUTHORED graph: an edge `{ from: <condition>, fromPort: <branch key> }` names the
+ * branch, and the branch's `when` names the visit type. A graph authored without edges or
+ * branches (every test fixture before this landed) reads as unconstrained.
+ */
+function branchVisitTypesOf(graph: WorkflowGraph | null | undefined, nodeId: string): { named: string[]; unconstrained: boolean } {
+  const named: string[] = [];
+  let unconstrained = false;
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  for (const edge of edges) {
+    if (!edge || edge.to !== nodeId) continue;
+    const source = nodes.find((node) => node?.id === edge.from);
+    if (!source || source.type !== 'core.condition') continue;
+    const branches = nodeConfig(source).branches;
+    const branch = Array.isArray(branches)
+      ? (branches as Record<string, unknown>[]).find((entry) => entry && entry.key === edge.fromPort)
+      : undefined;
+    const when = typeof branch?.when === 'string' ? (branch.when as string) : null;
+    const match = when ? VISIT_TYPE_BRANCH_CONDITION.exec(when) : null;
+    if (match) named.push(match[1]);
+    else unconstrained = true;
+  }
+  if (named.length === 0) unconstrained = true;
+  return { named, unconstrained };
+}
+
+/**
+ * Order the per-turn candidates for ONE visit type: nodes whose branch names it first, then the
+ * unconstrained ones; a node reachable ONLY through a branch naming another visit type is dropped.
+ * Without a visit type the authored order is returned untouched — the pre-2026-09-13 behaviour.
+ */
+function perTurnCandidatesForVisit<T extends { node: WorkflowGraphNode }>(
+  graph: WorkflowGraph | null | undefined,
+  candidates: T[],
+  visitType: string | null,
+): T[] {
+  if (!visitType) return candidates;
+  const preferred: T[] = [];
+  const fallback: T[] = [];
+  for (const candidate of candidates) {
+    const branches = branchVisitTypesOf(graph, candidate.node.id);
+    if (branches.named.includes(visitType)) preferred.push(candidate);
+    else if (branches.unconstrained) fallback.push(candidate);
+    // else: guarded by a branch that names a different visit type — never this consultation's prompt.
+  }
+  return [...preferred, ...fallback];
 }
 
 // ============================================================================
@@ -1098,7 +1166,7 @@ export class PromptResolutionService {
       // keeps resolving exactly as it did. `agentId` is the AGENT's id here rather than the node
       // id — that is what this source resolved, and it is the identity the live console names —
       // matching the other agent-binding tier (`resolveTagSelectedPrompt`).
-      const agentResolution = await this.resolveAgentNodePrompt(tenantId, params.departmentId);
+      const agentResolution = await this.resolveAgentNodePrompt(tenantId, params.departmentId, params.visitType ?? null);
       if (agentResolution) {
         trace.agentId = agentResolution.agentId;
         trace.agentVersionNumber = agentResolution.versionNumber;
@@ -1388,11 +1456,13 @@ export class PromptResolutionService {
   private async resolveAgentNodePrompt(
     tenantId: string,
     departmentId: string,
+    visitType: string | null = null,
   ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string; agentId: string } | null> {
     if (!this.agentRepository) return null;
 
     try {
-      const candidates = realtimePerTurnAgentNodes(await this.governingConsultationGraph(tenantId, departmentId));
+      const graph = await this.governingConsultationGraph(tenantId, departmentId);
+      const candidates = perTurnCandidatesForVisit(graph, realtimePerTurnAgentNodes(graph), visitType);
 
       for (const { node, agentSlug } of candidates) {
         const agent = await this.agentRepository.findPublishedActiveBySlug(tenantId, agentSlug);

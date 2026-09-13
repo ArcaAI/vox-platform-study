@@ -45,6 +45,7 @@ export type {
 export type {
   AcceptedCorrectionProposal,
   ConsultationOpenResponse,
+  DocumentSection,
   HarnessProgressEvent,
   HarnessProgressStage,
   LiveAssistEvent,

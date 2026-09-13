@@ -66,6 +66,23 @@ export class SectionAnnotationDto {
 
   @ApiPropertyOptional({ description: 'Model/NLI confidence, when the producer reported one' })
   score?: number;
+
+  /**
+   * A2 — the TRANSCRIPT anchor for an `entity` / `finding`, mirroring
+   * {@link LiveSummaryEntityDto}'s. `start`/`end` above address this SECTION's rendered content;
+   * these address the utterance the annotation was extracted FROM, which is a different question
+   * and the one a "jump to transcript" control asks. The three fields are one anchor: all present
+   * or all absent, never fabricated. Always absent on `groundedness` and `flagged`, which are
+   * claims about the note and have no transcript span of their own.
+   */
+  @ApiPropertyOptional({ description: 'A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from' })
+  transcriptSegmentId?: string;
+
+  @ApiPropertyOptional({ description: "A2 — character offset start within THAT SEGMENT's text" })
+  transcriptStart?: number;
+
+  @ApiPropertyOptional({ description: "A2 — character offset end within THAT SEGMENT's text" })
+  transcriptEnd?: number;
 }
 
 /**

@@ -41,7 +41,8 @@ import {
   type PersistedLiveAgentLineage,
 } from '../live-documentation/live-agent.port';
 import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation/live-documentation.service';
-import { VisitTypeService } from '../visit-type/visit-type.service';
+import { readRecordedVisitType } from '../consultation/open-markers';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PromptResolutionService } from './prompt-resolution.service';
 
 @Injectable()
@@ -60,14 +61,28 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
     @Optional() private readonly visitTypes?: VisitTypeService,
   ) {}
 
-  async resolveForSession(input: { consultationId: string; tenantId: string }): Promise<FrozenLiveAgentSnapshot> {
+  async resolveForSession(input: { consultationId: string; tenantId: string; visitType?: string | null }): Promise<FrozenLiveAgentSnapshot> {
     try {
       const consultation = await this.readConsultation(input.consultationId, input.tenantId);
+
+      // The visit type the governing graph branches on (`trigger.context.visit_type`), derived
+      // exactly as the live session derives its own: the RECORDED value first, the parent link
+      // second. Without it the per-turn agent tier served the graph's FIRST per-turn node to
+      // every consultation (measured 2026-09-13: revisits ran the New Referral prompt).
+      const visitType =
+        input.visitType ??
+        (consultation
+          ? (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(input.tenantId, {
+              isFollowUp: Boolean(consultation.parentConsultationId),
+              recorded: readRecordedVisitType(consultation.metadata),
+            }).key
+          : null);
 
       const resolved = await this.promptResolutionService.resolve({
         promptType: 'live',
         tenantId: input.tenantId,
         ...(consultation?.departmentId ? { departmentId: consultation.departmentId } : {}),
+        ...(visitType ? { visitType } : {}),
       });
 
       // Tier 3 (`code-default`) carries no content by design — the absence IS
@@ -178,13 +193,14 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
   private async readConsultation(
     consultationId: string,
     tenantId: string,
-  ): Promise<{ departmentId: string | null; parentConsultationId: string | null } | null> {
+  ): Promise<{ departmentId: string | null; parentConsultationId: string | null; metadata: unknown } | null> {
     try {
       const consultation = await this.consultationRepository.findById(consultationId);
       if (!consultation || consultation.tenantId !== tenantId) return null;
       return {
         departmentId: consultation.departmentId ?? null,
         parentConsultationId: consultation.parentConsultationId ?? null,
+        metadata: (consultation as { metadata?: unknown }).metadata ?? null,
       };
     } catch (error) {
       this.logger.warn({

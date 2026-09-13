@@ -166,6 +166,7 @@ export type {
   AsyncJobResponse,
   ConsultationOpenResponse,
   CreateStreamSessionRequest,
+  DocumentSection,
   HarnessProgressEvent,
   HarnessProgressStage,
   LiveAssistEvent,
