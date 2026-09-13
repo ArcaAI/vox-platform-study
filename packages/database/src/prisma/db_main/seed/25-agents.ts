@@ -194,7 +194,10 @@ export const ASR_PARAMETERS = {
   // one (`_WORD_SPLIT_SAFE_LANGUAGES`), so an unpinned or Malayalam session silently keeps the
   // clean sentence-level decode and only a declared `en`/`vi` session pays for word splitting.
   decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
-  postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' }, disfluency: true, stabilizer: true },
+  // TASK-966 — `cadence-fast` is the EXACT name `stt.punctuation.service` routes to its direct
+  // transformers loader; the previous `cadence-punctuation` binding selected the legacy wrapper
+  // path that cannot load under transformers 5.x, so the seeded agents ran unpunctuated.
+  postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-fast' }, disfluency: true, stabilizer: true },
   streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };

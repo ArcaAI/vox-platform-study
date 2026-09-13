@@ -122,6 +122,14 @@ export const seedAiModels = async (client: CorePrismaClient) => {
  * `config_reader._to_model_config` slug resolution. The decision itself is the
  * pure helper `shouldRetireAiModelSlug` (seed/ai-models/retired.ts). The guard
  * retires with the pipeline surface (TASK-861).
+ *
+ * TASK-966 — the same guard also reads every non-deleted `Agent`'s `parameters`
+ * and `compiledConfig`: a PUBLISHED agent version is immutable (DB trigger), so a
+ * slug it binds (e.g. `postProcessing.punctuation.modelSlug`) cannot be migrated
+ * by this seed, and retiring the row would turn every resolution of that agent
+ * into `AgentResolverService`'s 409 ("references … model, which is not visible").
+ * Such a slug stays active until an admin publishes a version that no longer
+ * names it; a fresh database never creates the row in the first place.
  */
 export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ retired: number; skipped: string[] }> => {
   console.log('Retiring legacy AI models (catalogue ledger)...');
@@ -132,15 +140,27 @@ export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ 
     select: { configYaml: true },
   });
   const activeYamls = activePipelines.map((p) => p.configYaml);
+  // Guard input: every non-deleted agent version's bound configuration, ANY tenant (TASK-966).
+  // Serialised JSON is a valid input for the slug-boundary regex: a bound slug sits between
+  // quotes, which are outside `SLUG_BOUNDARY_CHARSET`.
+  const activeAgents = await client.agent.findMany({
+    where: { resourceStatus: { not: ResourceStatusType.DELETED } },
+    select: { parameters: true, compiledConfig: true },
+  });
+  const activeAgentConfigs = activeAgents
+    .flatMap((agent) => [agent.parameters, agent.compiledConfig])
+    .filter((value) => value != null)
+    .map((value) => JSON.stringify(value));
+  const activeReferences = [...activeYamls, ...activeAgentConfigs];
 
   let retired = 0;
   const skipped: string[] = [];
   for (const slug of RETIRED_AI_MODEL_SLUGS) {
-    if (!shouldRetireAiModelSlug(slug, activeYamls)) {
+    if (!shouldRetireAiModelSlug(slug, activeReferences)) {
       console.warn(
         `  ⚠️  RETIREMENT SKIPPED: AiModel "${slug}" is still referenced by a ` +
-          'non-deleted AsrPipeline configYaml — leaving it active. Migrate the ' +
-          'pipeline off this model, then re-run db:seed.',
+          'non-deleted AsrPipeline configYaml or a non-deleted Agent version — leaving it active. ' +
+          'Migrate the pipeline / publish an agent version off this model, then re-run db:seed.',
       );
       skipped.push(slug);
       continue;
