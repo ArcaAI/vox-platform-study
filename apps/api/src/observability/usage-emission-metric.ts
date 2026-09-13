@@ -17,22 +17,24 @@
  * after boot) finds the registered instance instead; only when nothing registered it does this
  * create it, and then with the identical label set so the two can never disagree.
  *
- * `reason` is deliberately NOT a label: the counter ships with `['operation', 'trigger']`, and
- * prom-client THROWS on a label outside the initial set, so adding one here would turn an
- * observability call into the failure it is reporting.
+ * `reason` IS a label, and it is the one shared with the harness half of this counter
+ * (`apps/harness/src/harness/core/metrics.py`): the worker answers `rejected` | `spooled` |
+ * `dropped`, the gateway `dropped` (an emission that threw and had no spool to fall into) |
+ * `unattributable` (a row the gateway refused to guess — TASK-957 F-10). prom-client THROWS on
+ * a label outside the initial set, which is why the set below must match the service's exactly.
  */
 import { USAGE_EMISSION_FAILED_METRIC } from '@arcaai/applications';
 import { Counter, register } from 'prom-client';
 
 /** Label set — must match `AgentTrajectoryService.registerEmissionFailedCounter` exactly. */
-const LABEL_NAMES = ['operation', 'trigger'] as const;
+const LABEL_NAMES = ['operation', 'trigger', 'reason'] as const;
 
 function resolveCounter(): Counter<string> | null {
   const existing = register.getSingleMetric(USAGE_EMISSION_FAILED_METRIC);
   if (existing) return existing instanceof Counter ? existing : null;
   return new Counter({
     name: USAGE_EMISSION_FAILED_METRIC,
-    help: 'Usage-ledger emissions that exhausted their retry budget. Non-zero means metered work was NOT billed.',
+    help: 'Usage-ledger emissions that never reached the ledger. Non-zero means metered work was NOT billed.',
     labelNames: [...LABEL_NAMES],
     registers: [register],
   });
@@ -48,9 +50,13 @@ function resolveCounter(): Counter<string> | null {
  *
  * Never throws: a metric that breaks the request it is observing is worse than a missing sample.
  */
-export function recordUsageEmissionFailure(operation: string, trigger?: string): void {
+export type UsageEmissionFailureReason = 'dropped' | 'unattributable';
+
+export function recordUsageEmissionFailure(operation: string, reason: UsageEmissionFailureReason, trigger?: string): void {
   try {
-    resolveCounter()?.inc(trigger ? { operation, trigger } : { operation });
+    // `none` rather than an absent label, as the service half does: a blank facet is
+    // unfilterable, and an absent trigger is a real answer.
+    resolveCounter()?.inc({ operation, trigger: trigger ?? 'none', reason });
   } catch {
     // A registry conflict or a label mismatch must not reach the caller — the `warn` line beside
     // every call site is the fallback record.

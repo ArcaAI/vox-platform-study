@@ -27,12 +27,15 @@
  * with `quantity` already a decimal STRING on every row. So a reader looks for
  * `payload.events[]`, and a reader that looks for `payload.common` or
  * `payload.units` matches nothing at all, on any row, ever. That is not
- * hypothetical: `task-890-metering.spec.ts`'s private `outboxSince` reads
- * `payload?.common ?? payload`, which resolves to the envelope, whose
- * `tenantId` is `undefined`, so its own tenant filter drops every row — the
- * bug is invisible today only because that spec skips before it reads anything
- * whenever `apps/text` is unreachable. Recorded as a finding rather than fixed
- * here: `task-890-metering.spec.ts` is not this lane's file.
+ * hypothetical: `task-890-metering.spec.ts`'s private `outboxSince` read
+ * `payload?.common ?? payload`, which resolved to the envelope, whose
+ * `tenantId` is `undefined`, so its own tenant filter dropped every row. FIXED
+ * (TASK-959 FU-2): that spec now reads through `ledgerRowsSince` below, so the
+ * payload shape is asserted in ONE place and a future change to
+ * `expandUsageBatch` breaks one reader rather than silently emptying another.
+ * The bug survived as long as it did because that spec skips before it reads
+ * anything whenever `apps/text` is unreachable — a reader that matches nothing
+ * and a reader that never runs are indistinguishable from the report.
  *
  * ============================================================================
  * MATCH ON AN IDENTITY YOU MINTED, NOT ON A TIMESTAMP

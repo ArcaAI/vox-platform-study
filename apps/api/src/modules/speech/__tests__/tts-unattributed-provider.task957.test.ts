@@ -36,7 +36,7 @@ async function emissionFailures(): Promise<number> {
   const metric = register.getSingleMetric(USAGE_EMISSION_FAILED_METRIC);
   if (!metric) return 0;
   const { values } = (await metric.get()) as { values: { labels: Record<string, string>; value: number }[] };
-  return values.filter((v) => v.labels.operation === 'tts.synthesize').reduce((sum, v) => sum + v.value, 0);
+  return values.filter((v) => v.labels.operation === 'tts.synthesize' && v.labels.reason === 'unattributable').reduce((sum, v) => sum + v.value, 0);
 }
 
 beforeEach(() => {
@@ -216,7 +216,13 @@ async function runWs(provider: string | null) {
   const gateway = new TtsWsGateway(
     {
       issueTicket: vi.fn(),
-      consumeTicket: vi.fn(async () => ({ userId: 'u1', tenantId: 't1', scope: 'tts_session:sess-1', exp: Date.now() + 30_000, impersonatedBy: null })),
+      consumeTicket: vi.fn(async () => ({
+        userId: 'u1',
+        tenantId: 't1',
+        scope: 'tts_session:sess-1',
+        exp: Date.now() + 30_000,
+        impersonatedBy: null,
+      })),
     } as never,
     { getConfigValue: vi.fn(() => 'http://tts') } as never,
     { getSecretSync: vi.fn(() => 'svc') } as never,
