@@ -690,3 +690,59 @@ describe('deserializeFilterString — range merge + wrapper integration', () => 
     expect(withFormattedCountProps(props, 'User').filters).toEqual(expected);
   });
 });
+
+describe('deserializeFilterString — malformed tokens are rejected, not dropped', () => {
+  // A token that matched no grammar used to `return`, so it VANISHED: the request
+  // answered 200 with the UNFILTERED set and a caller asking for one slice silently
+  // received everything, with nothing in the response distinguishing the two. That is
+  // the same class this module already rejects for empty list items, bad JSON paths
+  // and invalid enum members — the drop was the outlier, not the policy.
+
+  it.each([
+    ['paletteKey:core', 'operator omitted — the live example'],
+    ['status:ACTIVE', 'operator omitted'],
+    ['name[contains', 'opening bracket, no "]:"'],
+    ['name]:x', 'closing bracket, no "["'],
+    ['nonsense', 'no punctuation at all'],
+  ])('rejects %p (%s)', (token) => {
+    expect(() => deserializeFilterString(token)).toThrow(BadRequestException);
+  });
+
+  it('rejects a token whose field name is empty', () => {
+    // '' would reach Prisma as the key '' and fail server-side — caught here instead.
+    expect(() => deserializeFilterString('[equals]:x')).toThrow(BadRequestException);
+  });
+
+  it('rejects a malformed token even when a well-formed one sits beside it', () => {
+    // The dangerous shape: the good token makes the response look filtered, while the
+    // dropped one quietly widened it.
+    expect(() => deserializeFilterString('status[equals]:ACTIVE;paletteKey:core')).toThrow(BadRequestException);
+  });
+
+  it('rejects a malformed token inside an AND[…] group', () => {
+    expect(() => deserializeFilterString('AND[status[equals]:A,paletteKey:core]')).toThrow(BadRequestException);
+  });
+
+  // EMPTY tokens stay tolerated — they are separator noise, not a filter that failed to
+  // parse. A client ending its join with ';' is asking for nothing, and 400ing it would
+  // break callers for no safety gain.
+  it('tolerates a trailing separator', () => {
+    expect(deserializeFilterString('status[equals]:ACTIVE;')).toEqual({ status: { equals: 'ACTIVE' } });
+  });
+
+  it('tolerates a doubled separator', () => {
+    expect(deserializeFilterString('status[equals]:ACTIVE;;name[contains]:Jo')).toEqual({
+      status: { equals: 'ACTIVE' },
+      name: { contains: 'Jo' },
+    });
+  });
+
+  it('tolerates a whitespace-only token', () => {
+    expect(deserializeFilterString('status[equals]:ACTIVE; ')).toEqual({ status: { equals: 'ACTIVE' } });
+  });
+
+  it('still accepts an empty VALUE, which is a real predicate', () => {
+    // `field[equals]:` is well-formed and means "equals the empty string" — untouched.
+    expect(deserializeFilterString('name[equals]:')).toEqual({ name: { equals: '' } });
+  });
+});
