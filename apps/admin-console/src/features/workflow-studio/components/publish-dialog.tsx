@@ -43,14 +43,19 @@ export function PublishDialog({ open, onOpenChange, onConfirm, confirming, publi
 
   if (published && slug) {
     return (
+      // TASK-971 lane C — the published step hosts a four-tab panel now, so it takes rule 11 §3's
+      // "Large dialog (multi-tab, editor)" shape: a fixed 70vh/70vw flex column whose BODY is the
+      // only thing that scrolls. The confirm step below stays a short dialog.
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Published</DialogTitle>
             <DialogDescription>{activated ? 'This version is live. Here is how your developers reach it.' : 'This version is frozen and can be activated later.'}</DialogDescription>
           </DialogHeader>
-          <IntegrationPanel kind="workflow" slug={slug} isActive={activated} exposable={exposable} paletteKey={paletteKey} />
-          <DialogFooter>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <IntegrationPanel kind="workflow" slug={slug} isActive={activated} exposable={exposable} paletteKey={paletteKey} />
+          </div>
+          <DialogFooter className="shrink-0">
             <Button type="button" onClick={() => onOpenChange(false)}>
               Done
             </Button>

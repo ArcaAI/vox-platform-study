@@ -1375,14 +1375,18 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         exposable={definition.paletteKey === CORE_PALETTE_KEY}
         paletteKey={definition.paletteKey}
       />
-      {/* TASK-965 — the same panel the publish dialog shows, reachable at any later time. */}
+      {/* TASK-965 — the same panel the publish dialog shows, reachable at any later time.
+          TASK-971 lane C — sized as rule 11 §3's "Large dialog (multi-tab, editor)": a fixed
+          70vh/70vw flex column whose body is the only scroll container. */}
       <Dialog open={integrationOpen} onOpenChange={setIntegrationOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Integration — {definition.slug}</DialogTitle>
             <DialogDescription>How developers reach this workflow. The endpoint always resolves the active version.</DialogDescription>
           </DialogHeader>
-          <IntegrationPanel kind="workflow" slug={definition.slug} isActive={definition.isActive} exposable={definition.paletteKey === CORE_PALETTE_KEY} paletteKey={definition.paletteKey} />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <IntegrationPanel kind="workflow" slug={definition.slug} isActive={definition.isActive} exposable={definition.paletteKey === CORE_PALETTE_KEY} paletteKey={definition.paletteKey} />
+          </div>
         </DialogContent>
       </Dialog>
       <DefinitionMetadataForm
