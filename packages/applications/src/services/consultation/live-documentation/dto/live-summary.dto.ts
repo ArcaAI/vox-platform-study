@@ -34,6 +34,31 @@ export class LiveSummaryEntityDto {
 
   @ApiPropertyOptional({ description: 'Character offset end within `runningSummary`' })
   end?: number;
+
+  /**
+   * A2 — the TRANSCRIPT anchor, which `start`/`end` deliberately are not.
+   *
+   * `start`/`end` address the rendered NOTE, because that is what the highlight overlay paints.
+   * A clinician asking "where was this said?" needs the other address, and until this ticket the
+   * payload had none: `groundEntitiesToNote` overwrote the raw NER offsets on its way past.
+   *
+   * The three fields are ONE anchor and travel together. All three absent means the entity could
+   * not be tied to a timed utterance — an untimed ingest, or a span crossing an utterance
+   * boundary. Nothing is ever guessed to fill them in.
+   */
+  @ApiPropertyOptional({
+    description:
+      'A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) the entity was extracted from. Absent when the mention landed in an untimed part; never fabricated. Present only together with `transcriptStart`/`transcriptEnd`.',
+  })
+  transcriptSegmentId?: string;
+
+  @ApiPropertyOptional({
+    description: "A2 — character offset start within THAT SEGMENT's text (never the session transcript and never the per-flush delta).",
+  })
+  transcriptStart?: number;
+
+  @ApiPropertyOptional({ description: "A2 — character offset end within THAT SEGMENT's text." })
+  transcriptEnd?: number;
 }
 
 /**
@@ -233,6 +258,12 @@ export class LiveSummaryAgentDto {
 
   @ApiPropertyOptional({ description: 'DepartmentAgent name, or null when a non-agent tier resolved', nullable: true })
   name: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'A3 — the lineage SLUG of the agent that actually served this turn, when a bound `core.agent` node produced the note. Equal to `metadata.stats.agent_slug` BY CONSTRUCTION: both are read off the candidate the call ran, so the two halves of this envelope can no longer name different agents. Absent when the session-frozen identity is what ran (no `core.agent` binding, or the legacy flush path).',
+  })
+  slug?: string;
 
   @ApiPropertyOptional({ description: 'The governed PromptTemplate serving this session', nullable: true })
   promptTemplateId: string | null;

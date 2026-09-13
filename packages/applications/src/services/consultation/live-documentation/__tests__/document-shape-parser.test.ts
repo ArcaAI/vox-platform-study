@@ -9,7 +9,14 @@
  * if a custom shape parses, custom shapes are no longer structurally excluded.
  */
 import { describe, it, expect } from 'vitest';
-import { buildRunningSummary, parseDocumentJson, parseDocumentSections, RUNNING_SUMMARY_TITLE } from '../document-shape-parser';
+import {
+  buildRunningSummary,
+  buildStructuredSummary,
+  NOT_DOCUMENTED_MARKER,
+  parseDocumentJson,
+  parseDocumentSections,
+  RUNNING_SUMMARY_TITLE,
+} from '../document-shape-parser';
 import { compileDocumentTemplate } from '../../../document-template/document-template-compiler';
 import { SOAP_NOTE_SHAPE } from '../../../document-template/platform-document-shapes';
 
@@ -189,5 +196,95 @@ describe('buildRunningSummary', () => {
   it('returns an empty string when there is nothing to render', () => {
     expect(buildRunningSummary([])).toBe('');
     expect(buildRunningSummary([{ title: 'Subjective', content: '' }])).toBe('');
+  });
+});
+
+/**
+ * A1 — the HEADED render the durable finalizer is handed.
+ *
+ * `buildRunningSummary` is the offset base and stays headings-free; this is the same sections with
+ * their titles, written only to the `LIVE_SOAP_SNAPSHOT` row `harness.finalize` reads as
+ * `preSummaryText`. The two must never converge — the first assertion below is what says so.
+ */
+describe('buildStructuredSummary', () => {
+  it('renders `## <title>` + body for every NON-EMPTY section, in order', () => {
+    const sections = [
+      { title: 'Subjective', content: 'Chest pain.' },
+      { title: 'Objective', content: 'BP 150/95.' },
+      { title: 'Assessment', content: 'HTN.' },
+      { title: 'Plan', content: 'Amlodipine.' },
+    ];
+
+    expect(buildStructuredSummary(sections)).toBe(
+      ['## Subjective', 'Chest pain.', '', '## Objective', 'BP 150/95.', '', '## Assessment', 'HTN.', '', '## Plan', 'Amlodipine.'].join('\n'),
+    );
+  });
+
+  it('OMITS an empty section rather than writing a heading over nothing', () => {
+    const sections = [
+      { title: 'Subjective', content: 'Cough.' },
+      { title: 'Objective', content: '   ' },
+      { title: 'Assessment', content: '' },
+      { title: 'Plan', content: 'Rest.' },
+    ];
+
+    const rendered = buildStructuredSummary(sections);
+    expect(rendered).toBe('## Subjective\nCough.\n\n## Plan\nRest.');
+    expect(rendered).not.toContain('Objective');
+  });
+
+  it('is NOT `buildRunningSummary` — the offset base keeps its headings-free shape', () => {
+    const sections = parseDocumentSections('Subjective: A.\nObjective: B.\nAssessment: C.\nPlan: D.', SOAP);
+
+    expect(buildRunningSummary(sections)).toBe('A.\n\nB.\n\nC.\n\nD.');
+    expect(buildStructuredSummary(sections)).toBe('## Subjective\nA.\n\n## Objective\nB.\n\n## Assessment\nC.\n\n## Plan\nD.');
+  });
+
+  it('orders by the compiled template when one is given, and never DROPS an unnamed section', () => {
+    const sections = [
+      { title: 'Follow-up', content: 'Clinic in two weeks.' },
+      { title: 'Reason for Admission', content: 'Chest pain.' },
+      { title: 'Hospital Course', content: 'Uneventful.' },
+    ];
+
+    expect(buildStructuredSummary(sections, DISCHARGE)).toBe(
+      ['## Reason for Admission', 'Chest pain.', '', '## Hospital Course', 'Uneventful.', '', '## Follow-up', 'Clinic in two weeks.'].join('\n'),
+    );
+  });
+
+  it("does NOT head the parser's unstructured fallback — an unparsed note degrades to exactly the flat text", () => {
+    const unparsed = parseDocumentSections('Patient reports a cough. Advised rest and fluids.', SOAP);
+
+    expect(unparsed).toEqual([{ title: RUNNING_SUMMARY_TITLE, content: 'Patient reports a cough. Advised rest and fluids.' }]);
+    expect(buildStructuredSummary(unparsed, SOAP)).toBe('Patient reports a cough. Advised rest and fluids.');
+    expect(buildStructuredSummary(unparsed, SOAP)).toBe(buildRunningSummary(unparsed));
+  });
+
+  it('returns an empty string when there is nothing to render and no template to complete', () => {
+    expect(buildStructuredSummary([])).toBe('');
+  });
+
+  it('WITH a template, renders every template section — an untouched one under its heading with the marker', () => {
+    // Reviewed 2026-09-13: the finalizer keeps the headings exactly as they appear in its
+    // input, so a template section absent from the input is absent from the finished note.
+    // The clinician reviews the note against the template; every heading must be there.
+    const rendered = buildStructuredSummary([{ title: 'Subjective', content: 'Cough.' }], SOAP);
+    expect(rendered).toBe(
+      [
+        '## Subjective',
+        'Cough.',
+        '',
+        '## Objective',
+        NOT_DOCUMENTED_MARKER,
+        '',
+        '## Assessment',
+        NOT_DOCUMENTED_MARKER,
+        '',
+        '## Plan',
+        NOT_DOCUMENTED_MARKER,
+      ].join('\n'),
+    );
+    // Nothing at all, but a template: the template, complete, every section unrecorded.
+    expect(buildStructuredSummary([{ title: 'Subjective', content: '' }], SOAP)).toContain(`## Subjective\n${NOT_DOCUMENTED_MARKER}`);
   });
 });

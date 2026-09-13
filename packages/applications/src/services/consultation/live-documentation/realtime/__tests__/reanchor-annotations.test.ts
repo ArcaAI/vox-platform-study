@@ -101,6 +101,57 @@ describe('§2b — annotations are re-anchored to section-local offsets', () => 
     expect(reanchorAnnotations(parsed, doc, [{ text: 'Cough', type: 'CONDITION', start: 0, end: 5 }])[1]).toEqual([]);
   });
 
+  it('A2: the TRANSCRIPT anchor rides through VERBATIM — it is not a note offset and must not be re-anchored', () => {
+    const parsed = sections('Cough for three days.');
+    const doc = buildRunningSummary(parsed);
+    const at = doc.indexOf('aspirin');
+
+    const [annotation] = reanchorAnnotations(parsed, doc, [
+      {
+        text: 'aspirin',
+        type: 'MEDICATION',
+        start: at,
+        end: at + 7,
+        // Already section-INDEPENDENT: it addresses an utterance, not the note. Re-deriving it
+        // per section could only make the whole-document payload and the per-section one disagree
+        // about where a finding was said.
+        transcriptSegmentId: 'utt-4',
+        transcriptStart: 11,
+        transcriptEnd: 18,
+      },
+    ])[2];
+
+    expect(annotation).toEqual({
+      kind: 'entity',
+      start: 27,
+      end: 34,
+      type: 'MEDICATION',
+      transcriptSegmentId: 'utt-4',
+      transcriptStart: 11,
+      transcriptEnd: 18,
+    });
+  });
+
+  it('A2: a PARTIAL anchor is dropped entirely, and groundedness/flagged never carry one', () => {
+    const parsed = sections('Cough for three days.');
+    const doc = buildRunningSummary(parsed);
+    const at = doc.indexOf('aspirin');
+
+    // A segment id with no offsets is not a weaker citation, it is an unusable one.
+    const [entity] = reanchorAnnotations(parsed, doc, [
+      { text: 'aspirin', type: 'MEDICATION', start: at, end: at + 7, transcriptSegmentId: 'utt-4' },
+    ])[2];
+    expect(entity).toEqual({ kind: 'entity', start: 27, end: 34, type: 'MEDICATION' });
+
+    // A groundedness verdict is a claim about the NOTE; it has no transcript span of its own.
+    const grounded = reanchorAnnotations(parsed, doc, [], {
+      verdict: 'grounded',
+      checkedAt: '2026-09-13T00:00:00.000Z',
+      segments: [{ text: 'BP 120/80.', verdict: 'grounded', start: doc.indexOf('BP 120/80.'), end: doc.indexOf('BP 120/80.') + 10 }],
+    })[1];
+    expect(grounded).toEqual([{ kind: 'groundedness', start: 0, end: 10, verdict: 'grounded' }]);
+  });
+
   it('two sections with IDENTICAL content resolve to their own occurrences, not both to the first', () => {
     const parsed: LiveSummarySectionDto[] = [
       { title: 'A', content: 'None.' },

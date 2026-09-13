@@ -247,8 +247,27 @@ export interface LiveSummaryEntity {
   type: string;
   confidence?: number;
   icd10?: string;
+  /** Character offset into `runningSummary` — the NOTE address, which is what the highlight overlay paints. */
   start?: number;
   end?: number;
+  /**
+   * The TRANSCRIPT address, which `start`/`end` are not.
+   *
+   * NER runs over the transcript and the server then RE-LOCATES every entity inside the rendered
+   * note, overwriting `start`/`end`. These three fields survive that pass so a client can answer
+   * "where was this said?" without matching the entity text against the transcript itself and
+   * hoping the first hit is the right one.
+   *
+   * They are ONE anchor and travel together: all three present, or all three absent. Absent means
+   * the mention could not be tied to a single timed utterance (an untimed segment, or a span
+   * crossing an utterance boundary) — the server never guesses one.
+   *
+   * `transcriptSegmentId` is `utt-<utteranceIndex>`, matching the `utteranceIndex` on the STT
+   * transcript frames; the offsets index THAT SEGMENT's own `text`, never the whole transcript.
+   */
+  transcriptSegmentId?: string;
+  transcriptStart?: number;
+  transcriptEnd?: number;
 }
 
 /** A logical section of the running summary. */
@@ -324,6 +343,15 @@ export interface SectionAnnotation {
   verdict?: 'grounded' | 'ungrounded' | 'unverified';
   icd10?: string;
   score?: number;
+  /**
+   * The transcript anchor for an `entity` / `finding`, mirroring {@link LiveSummaryEntity}'s.
+   * `start`/`end` above address this section's rendered content; these address the utterance the
+   * annotation was extracted FROM. All three together or none. Never present on `groundedness` or
+   * `flagged`, which are claims about the note and have no transcript span of their own.
+   */
+  transcriptSegmentId?: string;
+  transcriptStart?: number;
+  transcriptEnd?: number;
 }
 
 /** Where a section's content came from, anchored to transcript segments. */
@@ -363,6 +391,54 @@ export interface SectionPatchEvent {
    * both render as `state: 'empty'`.
    */
   degradeReason?: string;
+  updatedAt: string;
+}
+
+/**
+ * One PERSISTED section of a clinical document, as `GET :id/documents/sections` returns it.
+ *
+ * ## Why this is not {@link SectionPatchEvent}
+ *
+ * They describe the same row and are deliberately different shapes. `SectionPatchEvent` is the SSE
+ * wire event and carries `revision`, the monotonic token a streaming client uses to discard an
+ * out-of-order patch. This is the REST representation and additionally carries `version` — the
+ * row's `_version`, the OPTIMISTIC CONCURRENCY token an edit must echo back as `If-Match`.
+ *
+ * The two numbers are not interchangeable. `revision` counts accepted writes and is what makes the
+ * stream orderable; `version` is the compare-and-set operand the database owns. A flush and a
+ * clinician edit both advance both, but only `version` is a precondition.
+ */
+export interface DocumentSection {
+  id: string;
+  consultationId: string;
+  /** The tenant's `DocumentTemplate.slug` — WHICH document (`soap_note`, `discharge_summary`, …). */
+  documentKey: string;
+  /** The compiled template section key — WHICH section within that document. */
+  sectionKey: string;
+  /** Human-readable heading, so a reader needs no template join to render it. */
+  title: string;
+  /** 0-based render ordinal within the document. */
+  idx: number;
+  /**
+   * `empty` renders as a SKELETON, not an error. `provisional` is model-written and freely
+   * replaceable by the next flush. `confirmed` is clinician-touched and never overwritten by a
+   * flush. `locked` is finalized at the endpoint and rejects EVERY writer.
+   */
+  state: 'empty' | 'provisional' | 'confirmed' | 'locked';
+  /** Monotonic per-section revision. Orders the SSE stream; NOT the concurrency token — see `version`. */
+  revision: number;
+  /** The row's `_version`, and the only value valid as this section's `If-Match`. Also the response `ETag`. */
+  version: number;
+  /** The section body. Offsets in `annotations` index THIS string. */
+  content: string;
+  annotations?: SectionAnnotation[];
+  provenance?: SectionProvenance[];
+  /** The IMMUTABLE `DocumentTemplateVersion` this section was compiled from, pinned at write time. */
+  documentTemplateVersionId?: string | null;
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
+  lockedAt?: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
