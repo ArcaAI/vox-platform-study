@@ -44,7 +44,7 @@ const REASONING_SUPPORT_BY_ADAPTER: Record<string, ReasoningSupportClass> = {
   openai: 'native-off',
   azure_openai: 'native-off',
   openai_compat: 'effort-only',
-  lmstudio: 'effort-only',
+  lmstudio: 'native-off',
   vllm: 'native-off',
   ollama: 'native-off',
   anthropic: 'native-off',

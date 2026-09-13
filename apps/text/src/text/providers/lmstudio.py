@@ -76,11 +76,20 @@ class LMStudioProvider(OpenAICompatProvider):
     """LM Studio self-hosted provider (OpenAI-wire, engine-native identity)."""
 
     # TASK-970 — restated rather than inherited, because this subclass knows its
-    # engine and the evidence is its own: LM Studio documents `reasoning_effort`
-    # with the rungs low|medium|high (gpt-oss) and NO off value on
-    # /v1/chat/completions. The base class reaches EFFORT_ONLY by not knowing what
-    # server it is talking to; this one reaches it by knowing.
-    reasoning_support = ReasoningSupport.EFFORT_ONLY
+    # engine and the evidence is its own. The DOCS list `reasoning_effort` rungs
+    # low|medium|high (gpt-oss) with no off value, and this was first classified
+    # EFFORT_ONLY on that basis. MEASURING the deployed server overturned it:
+    # `'minimal'` does not stop thinking and is WORSE than sending nothing
+    # (gemma-4-e2b-it-qat 84 completion tokens / 289ch reasoning at 'minimal' vs
+    # 70 / 231 at baseline), while `'none'` genuinely stops it (9 tokens / 0ch;
+    # gemma-4-e4b 61.7s -> 0.9s; granite-guardian-4.1-8b 17.7s -> 1.3s). A
+    # non-reasoning model accepts 'none' without rejecting it.
+    #
+    # This is why the fixture demands verification against the DEPLOYED engine
+    # rather than its documentation: shipping the documented answer here left
+    # every agent, every guardrail medical validation and every judge call
+    # thinking, with the platform believing it had turned reasoning off.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
     reasoning_parameter = "reasoning_effort"
     reasoning_effort_parameter = "reasoning_effort"
 

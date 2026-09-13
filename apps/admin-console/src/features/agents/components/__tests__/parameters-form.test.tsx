@@ -39,6 +39,7 @@ const CATALOGUE_MODELS = [
   },
   // TASK-970 — TEXT_GENERATION rows spanning all three reasoning-enforcement classes
   // (`reasoning-support.ts`), plus one provider id the table does not recognise.
+  { id: 'm-llm-compat', slug: 'some-byo-openai-wire', name: 'BYO OpenAI-wire', taskType: 'TEXT_GENERATION', providerId: 'byo:llm:compat', provider: 'openai-compat', providerClass: 'cloud-byo', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-llm-lmstudio', slug: 'lms-gemma-4-e2b-it-qat', name: 'Gemma 4 E2B', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'lm-studio', providerClass: 'engine-served', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-llm-azure', slug: 'azure-gpt-5.4-mini', name: 'GPT-5.4 mini', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'azure', providerClass: 'cloud-platform', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-llm-ollama', slug: 'llama3.1-8b', name: 'Llama 3.1 8B', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'ollama', providerClass: 'engine-served', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
@@ -304,12 +305,22 @@ describe('ParametersForm', () => {
       expect(screen.queryByRole('status')).toBeNull();
     });
 
-    it('effort-only (LM Studio): a quiet note that "off" is only approximated', async () => {
-      // LM Studio is the effort-only case: its documented vocabulary is low|medium|high with no
-      // off value, so `enabled: false` can only be approximated by the lowest rung.
-      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-lmstudio" />);
-      await waitFor(() => expect(screen.getByText(/LM Studio has no true off-switch/)).toBeTruthy());
+    it('effort-only (a generic OpenAI-wire engine): a quiet note that "off" is only approximated', async () => {
+      // After LM Studio was MEASURED and reclassified `native-off`, the generic OpenAI-compatible
+      // class is the only `effort-only` one left — and it is effort-only precisely because it is
+      // unverifiable: an unknown server may reject an enum it has never heard of, and a rejected
+      // enum is a 400. So OFF is recorded there rather than guessed.
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-compat" />);
+      await waitFor(() => expect(screen.getByText(/has no true off-switch/)).toBeTruthy());
       expect(screen.getByText(/lowest reasoning effort/)).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('native-off (LM Studio): MEASURED to honour a real off-switch, overturning its docs', async () => {
+      // The docs list low|medium|high with no off value; the deployed server honours `'none'`
+      // (gemma-4-e4b 61.7s -> 0.9s). Measurement beat documentation; this pins the correction.
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-lmstudio" />);
+      await waitFor(() => expect(screen.getByText(/LM Studio has a genuine off-switch/)).toBeTruthy());
       expect(screen.queryByRole('status')).toBeNull();
     });
 
