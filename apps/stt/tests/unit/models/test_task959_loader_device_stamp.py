@@ -87,7 +87,9 @@ def _whisper_env(tmp_path):
     with (
         patch("stt.models.whisper_cpp_loader.get_settings", return_value=settings),
         patch("stt.models.whisper_cpp_loader.resolve_for_model_config", side_effect=_resolve),
-        patch.dict(sys.modules, _fake_pywhispercpp(MagicMock(return_value=MagicMock(_ctx=object())))),
+        patch.dict(
+            sys.modules, _fake_pywhispercpp(MagicMock(return_value=MagicMock(_ctx=object())))
+        ),
     ):
         yield
 

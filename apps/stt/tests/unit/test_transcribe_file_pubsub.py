@@ -423,9 +423,7 @@ class TestWorkerWithConsultation:
     # the SAME typed channel. Without `device` the gateway holds occupancy seconds
     # it cannot map to a unit, so the seconds stay unpriced.
     @pytest.mark.asyncio
-    async def test_completes_job_with_the_task959_compute_and_network_fields(
-        self, pubsub_capture
-    ):
+    async def test_completes_job_with_the_task959_compute_and_network_fields(self, pubsub_capture):
         api = AsyncMock()
         api.start_job = AsyncMock()
         api.update_job_progress = AsyncMock()
@@ -460,9 +458,7 @@ class TestWorkerWithConsultation:
         assert complete_kwargs["byte_source"] == "wire"
 
     @pytest.mark.asyncio
-    async def test_a_self_hosted_job_forwards_a_device_but_no_byte_counters(
-        self, pubsub_capture
-    ):
+    async def test_a_self_hosted_job_forwards_a_device_but_no_byte_counters(self, pubsub_capture):
         """No third-party call was made, so the byte counters stay `None` and
         `complete_job` omits them from the body entirely."""
         api = AsyncMock()

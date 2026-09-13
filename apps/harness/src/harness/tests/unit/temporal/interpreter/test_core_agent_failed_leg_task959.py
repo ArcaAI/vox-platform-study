@@ -165,7 +165,9 @@ def run(monkeypatch: pytest.MonkeyPatch):
             return None
 
     monkeypatch.setattr(core, "_phi_redactor", lambda: None)
-    monkeypatch.setattr("harness.temporal.interpreter.nodes._shared.TrajectoryBatch", _CapturingBatch)
+    monkeypatch.setattr(
+        "harness.temporal.interpreter.nodes._shared.TrajectoryBatch", _CapturingBatch
+    )
 
     async def _go(
         chain: list[dict[str, Any]],

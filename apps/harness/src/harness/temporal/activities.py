@@ -1762,7 +1762,9 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 # of the fix on top of the in-process retry narrowing. A FALLBACK attempt is a
                 # DIFFERENT generation inside the same activity, so it takes its own suffix —
                 # sharing the key would make Text replay the primary`s (failed) result.
-                idempotency_key=_idempotency_key() if index == 0 else _idempotency_key(f"fallback:{index}"),
+                idempotency_key=(
+                    _idempotency_key() if index == 0 else _idempotency_key(f"fallback:{index}")
+                ),
             )
             break
         except TextServiceError as exc:

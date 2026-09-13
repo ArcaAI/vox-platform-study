@@ -195,6 +195,7 @@ class TestFairShareThroughTheInterceptor:
             return "ok"
 
         before = time.thread_time()
+
         async def _one(index: int) -> Any:
             return await _drive(
                 interceptor,
@@ -282,13 +283,9 @@ class TestIdentityAndIdempotency:
             return "ok"
 
         for attempt in (1, 1, 2):
-            await _drive(
-                interceptor, _env(activity_id="7", attempt=attempt), _body
-            )
+            await _drive(interceptor, _env(activity_id="7", attempt=attempt), _body)
 
-        keys = [
-            (s.session_id, s.run_id, s.activity_id, s.attempt) for s in collector.samples
-        ]
+        keys = [(s.session_id, s.run_id, s.activity_id, s.attempt) for s in collector.samples]
         assert keys[0] == keys[1]  # a redelivery of attempt 1 dedupes at the gateway
         assert keys[2] != keys[0]  # a real retry is a second execution that burned CPU
 
@@ -299,9 +296,7 @@ class TestIdentityAndIdempotency:
         async def _body(_input: ExecuteActivityInput) -> str:
             return "ok"
 
-        await _drive(
-            ComputeMeteringInterceptor(collector), _env(), _body, {"tenantId": "t-9"}
-        )
+        await _drive(ComputeMeteringInterceptor(collector), _env(), _body, {"tenantId": "t-9"})
 
         [sample] = collector.samples
         assert sample.tenant_id == "t-9"

@@ -278,9 +278,7 @@ class ComputeMeteringInterceptor(Interceptor):
     def __init__(self, sink: _SampleSink) -> None:
         self._sink = sink
 
-    def intercept_activity(
-        self, next: ActivityInboundInterceptor
-    ) -> ActivityInboundInterceptor:
+    def intercept_activity(self, next: ActivityInboundInterceptor) -> ActivityInboundInterceptor:
         return _ComputeMeteringActivityInbound(next, self._sink)
 
 
@@ -332,9 +330,7 @@ async def _deliver_samples(samples: Sequence[ComputeSample]) -> bool:
     )
 
     settings = get_settings()
-    return await deliver_trajectory(
-        trajectory_api_client(settings), compute_samples=samples
-    )
+    return await deliver_trajectory(trajectory_api_client(settings), compute_samples=samples)
 
 
 _BUFFER: ComputeSampleBuffer | None = None
