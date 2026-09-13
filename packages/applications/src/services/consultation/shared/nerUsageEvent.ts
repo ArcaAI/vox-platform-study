@@ -2,7 +2,7 @@ import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { appendComputeAndByteUnits } from '../../usageLedger/compute-units';
 import { UsageEventBatchInput } from '../../usageLedger/dto';
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
-import type { ComputeDevice } from '../../usageLedger/usage-attributes';
+import type { ComputeDevice, UsageTrigger } from '../../usageLedger/usage-attributes';
 
 export interface NerUsageEventParams {
   tenantId: string;
@@ -49,6 +49,18 @@ export interface NerUsageEventParams {
    * reports its own device, so nothing here consults the settings cascade.
    */
   device?: ComputeDevice | null;
+  /**
+   * TASK-957 F-8 — WHICH PRODUCT ACTIVITY caused this extraction (OD-E's closed
+   * vocabulary).
+   *
+   * Three call sites share this builder and they are three different
+   * activities: the agent NER route, the playground `/ai/nlp/entities` bench,
+   * and the clinical `extractEntities` hop. Only the CALLER knows which, so it
+   * is passed in rather than derived — and it is OPTIONAL rather than
+   * defaulted, because a default would put a guess on a rollup dimension whose
+   * whole point is that a wrong value forks silently instead of failing.
+   */
+  trigger?: UsageTrigger | null;
 }
 
 /**
@@ -79,7 +91,7 @@ export interface NerUsageEventParams {
  * consultation, never collapsed into one.
  */
 export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatchInput {
-  const { tenantId, requestId, consultationId, doctorId, charCount, model } = params;
+  const { tenantId, requestId, consultationId, doctorId, charCount, model, trigger } = params;
   // TASK-959 — the compute row is appended by the ONE shared helper, here, because this function
   // is what BUILDS the batch (see `usageLedger/compute-units.ts`). A NER row can only ever be
   // SELF_HOSTED + INTERNAL (apps/nlp runs the platform's own weights, and there is no
@@ -102,6 +114,9 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
       consultationId: consultationId ?? null,
       doctorId: doctorId ?? null,
       requestId,
+      // Spread only when the caller declared one, so a row from a call site that
+      // has not adopted it stays byte-identical to what it always emitted.
+      ...(trigger ? { attributesJson: { trigger } } : {}),
     },
     units: [
       { unit: AiUsageUnit.TEXT_UNIT, quantity: charCount / 100 },

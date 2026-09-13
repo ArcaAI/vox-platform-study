@@ -1614,6 +1614,10 @@ export class SummaryService extends BaseService implements ISummaryService {
             consultationId: contextItem.consultationId,
             charCount: [...contextItem.content].length,
             model: nerResponse.modelUsed,
+            // TASK-957 F-8 — this hop is reached from exactly one place: a
+            // consultation's context item. The agent NER route and the
+            // playground bench declare their own.
+            trigger: 'CONSULTATION',
           }),
         );
       } catch (error) {

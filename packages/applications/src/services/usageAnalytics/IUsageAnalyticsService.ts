@@ -46,12 +46,16 @@ export interface IUsageAnalyticsService {
    * TASK-959 §3.4 — Σ `CPU_SECOND` under capability `WORKFLOW` for ONE workflow
    * run, tenant-scoped. `null` when the run has no worker-CPU rows at all.
    *
+   * Takes the run's **`sessionId`**, not its run id (corrected under TASK-957):
+   * the ledger's `requestId` on a WORKFLOW row is Temporal's execution-attempt
+   * id, and `sessionId` is the key `WorkflowRun` already joins its own steps by.
+   * See the implementation for the full reasoning.
+   *
    * On this interface rather than the workflow-run service because it is a
-   * LEDGER question, not a run question: the sum lives on `AiUsageEvent` keyed
-   * by `requestId`, and the workflow-run read plane has no business learning
-   * the metering schema to answer it.
+   * LEDGER question, not a run question: the workflow-run read plane has no
+   * business learning the metering schema to answer it.
    */
-  getWorkflowRunCpuSeconds(tenantId: string, runId: string): Promise<number | null>;
+  getWorkflowRunCpuSeconds(tenantId: string, sessionId: string): Promise<number | null>;
 }
 
 export const IUsageAnalyticsService = Symbol('IUsageAnalyticsService');

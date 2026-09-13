@@ -48,4 +48,17 @@ export interface ComputeSampleInput {
    * worse than none.
    */
   trigger?: UsageTrigger;
+  // ── TASK-957 F-8 ──────────────────────────────────────────────────────────
+  // The same node + clinician identity the trajectory steps carry, for the
+  // worker-CPU rows. Declared HERE and on the gateway DTO ahead of a sender:
+  // the ingest runs under `forbidNonWhitelisted`, so an undeclared key 400s the
+  // WHOLE flush — which means the accepting side must land first, not second.
+  // The harness half reads them off the activity input in
+  // `temporal/compute_metering.py`, which is not this lane's file.
+  /** The interpreter node whose activity burned this CPU. */
+  nodeId?: string;
+  /** The published definition version that node belongs to. */
+  workflowVersionId?: string;
+  /** The clinician the run acts for. */
+  doctorId?: string;
 }

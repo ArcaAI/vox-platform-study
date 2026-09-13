@@ -56,6 +56,8 @@ function createBehavioralJobEntity(
     workerId?: string | null;
     createdBy?: string | null;
     version?: number;
+    /** TASK-861 — set by the AGENT transcriptions route only; absent on the consultation lane. */
+    agentVersionId?: string | null;
   } = {},
 ) {
   // Internal mutable state
@@ -78,6 +80,7 @@ function createBehavioralJobEntity(
     jobType: overrides.jobType ?? TranscriptionJobType.BATCH,
     consultationId: 'consultationId' in overrides ? overrides.consultationId : 'consultation-1',
     pipelineId: overrides.pipelineId ?? 'pipeline-1',
+    agentVersionId: 'agentVersionId' in overrides ? overrides.agentVersionId : null,
     createdBy: overrides.createdBy ?? 'user-123',
     version: overrides.version ?? 1,
 
@@ -777,6 +780,47 @@ describe('SttInternalService', () => {
         expect(mockJobRepository.update).toHaveBeenCalledWith('job-bare', job);
       });
     });
+
+    // =========================================================================
+    // TASK-957 F-8 — `trigger`, the one attribution hole on this path
+    //
+    // Every other column answers what ran and what it cost; none answered WHY.
+    // A batch job reaches this callback from exactly two routes, and the job row
+    // already distinguishes them: the agent transcriptions route resolves an ASR
+    // Agent and writes `agentVersionId` + `resolvedSpec` (TASK-861), while the
+    // consultation lane (`createBatchJob` from the realtime service and the
+    // harness batch trigger) writes a `pipelineId` and no agent. So the trigger
+    // is READ off the row that was already written, never threaded through the
+    // worker callback — which is what keeps it true for a job completed after a
+    // redeploy, and what stops a worker from being able to assert its own
+    // billing dimension.
+    // =========================================================================
+    describe('trigger attribution (TASK-957 F-8)', () => {
+      it('stamps AGENT_INVOCATION when the job was keyed to an ASR agent version', async () => {
+        const job = createBehavioralJobEntity({
+          id: 'job-agent',
+          agentVersionId: 'agent-version-7',
+          status: TranscriptionJobStatus.PROCESSING,
+        });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-agent', { resultText: 'text', durationSeconds: 10, engine: 'whisper_cpp' });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.common.attributesJson.trigger).toBe('AGENT_INVOCATION');
+      });
+
+      it('stamps CONSULTATION when the job carries no agent version', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-consult', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-consult', { resultText: 'text', durationSeconds: 10, engine: 'whisper_cpp' });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.common.attributesJson.trigger).toBe('CONSULTATION');
+      });
+    });
+
 
     // =========================================================================
     // TASK-959 §3.2/§4.2 — compute and network rows on the SAME batch
