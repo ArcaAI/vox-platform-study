@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Pending` — raised from a TASK-958 console follow-up; not started |
+| **Status** | `Completed` — all three rows land; OQ-1 stays open as a separate wording/behaviour question that no longer blocks them |
 | **Type** | `bugfix` (application services; no schema, no console) |
 | **Branch** | `dev-2.2` |
 | **Found while** | surfacing `maxWorkflowDefinitions`, `maxAiProviderConnections` and `monthlyWorkflowInvocations` in the admin console (`98d6e2a2c`, `1a3078923`). The console can now SET all three; nothing can show usage AGAINST them. |
@@ -78,10 +78,47 @@ Sequenced so the free win is not blocked by the open question.
 
 ## 5. Implementation Summary
 
-_Not started._
+All three rows ship. **OQ-1 did not block them** — the row's contract (R-2) is to report what the
+GATE counts, so each `used` is derived from the identical query its precheck runs. However the
+published-vs-every-version question later resolves, the row stays truthful, and the enforcement and
+the row move together.
+
+| Change | File |
+|---|---|
+| `workflowDefinitions` + `aiProviderConnections` quantity rows, `monthlyWorkflowInvocations` meter row | `entitlements.service.ts` (`quantities` / `meters`) |
+| `WorkflowDefinitionRepository` + `AiProviderConnectionRepository` injected beside the existing repositories | `entitlements.service.ts` constructor |
+| Four tests: the three rows; the workflow count's query shape; the connection count's ENABLED filter; the exhaustive coverage guard | `__tests__/entitlements.service.test.ts` |
+
+**The counts are not interchangeable, and getting either wrong would have shipped a lying row:**
+
+- **Workflow definitions** — `count({ where: { tenantId } })`, every version row, exactly what
+  `WorkflowDefinitionService` counts before `assertQuantityQuota`.
+- **Provider connections** — `count({ where: { tenantId, resourceStatus: ENABLED } })`. The naive
+  count is wrong: `countTenantConnections` sums `findByTenantIdAndService`, which filters
+  `resourceStatus: ENABLED` (`AiProviderConnectionRepository:183`). A DISABLED row is a per-provider
+  veto, not a consumed slot, so counting it would invent usage the gate never sees. Pinned by its
+  own test.
+
+**The coverage guard is the durable part.** `ROW_KEY_BY_LIMIT` is typed
+`Record<EntitlementLimitKey, string>`, so a limit added to `ResolvedLimits` will not COMPILE until
+someone decides which row reports it — this class of bug cannot recur silently. A future limit that
+genuinely warrants no row needs the type widened to `| null`, which is the deliberate act that
+records the decision.
+
+No console change was needed, as predicted (R-3): `CapabilityUsageRow` is rendered key-driven, so
+the three rows appear in the tenant card's Quantities / Meters lists on their own.
+
+### Evidence
+
+Isolated RED (constructor change kept, only the three row lines removed, so the signal is the rows
+and not an arg shift): `Tests 2 failed | 70 passed (72)` — the row test and the coverage guard.
+The two count-shape tests are red only against the true baseline, where the counts do not exist.
+
+GREEN: `Tests 72 passed (72)` on the file; `@arcaai/applications` build 0, lint 0.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-13 | Ticket created. Found while surfacing the three limits in the admin console (TASK-958 console follow-ups `98d6e2a2c` / `1a3078923`): the console can now set them and the gateway enforces them, but no capability row exists for any of the three, so usage against them is unobservable. Verified enforcement is complete (every `MeterCapabilityKey` has a live call site) and that the three split into one free fix (`monthlyWorkflowInvocations` — usage field already mapped) and two that need a count `getUsageStats` does not return. Recorded OQ-1: the DTO says the workflow-definition cap counts PUBLISHED definitions while the precheck counts every version row — the capability row cannot be written until that is settled. Status `Pending`. |
+| 2026-09-13 | **Implemented.** All three rows added; OQ-1 unblocked rather than waited on — each `used` is derived from the identical query its precheck runs, so the row is truthful however that question resolves. The provider-connection count needed the `resourceStatus: ENABLED` filter to match `countTenantConnections`; the naive count would have reported DISABLED veto rows as consumed slots. Added an exhaustive `Record<EntitlementLimitKey, string>` coverage guard so a new limit cannot compile without a row decision. Gates: isolated RED 2 failed / 70 passed, GREEN 72/72, applications build + lint clean. OQ-1 and OQ-2 remain open and are now purely about enforcement wording and request cost, not about whether the rows exist. |
