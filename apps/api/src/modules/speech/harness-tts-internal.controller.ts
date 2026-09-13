@@ -20,7 +20,8 @@ import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.guard';
-import { classifyTtsProvider } from './tts-provider-classification';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
+import { classifyTtsProvider, isAttributableTtsProvider } from './tts-provider-classification';
 import { resolveTtsRequestConfig } from './tts-tenant-config';
 
 // Raw s16le mono PCM: 2 bytes/sample; WAV carries the same payload behind a fixed 44-byte
@@ -308,12 +309,21 @@ export class HarnessTtsInternalController {
     proxiedBytes: number;
   }): void {
     if (!this.usageLedger) return;
+    const requestId = generateId();
+    // TASK-957 F-10 — no provider, no row. See `isAttributableTtsProvider`.
+    if (!isAttributableTtsProvider(args.provider)) {
+      recordUsageEmissionFailure('tts.synthesize');
+      this.logger.warn({
+        message: 'TTS synthesis reported no provider; recording no usage row for it',
+        requestId,
+      });
+      return;
+    }
     const { deployment, costBasis } = args.provider
       ? // TASK-958 F9 — `connectionId` (the `X-Tts-Connection-Id` echo) selects the entry
         // out of a map that may hold two accounts of this vendor.
         classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1], args.connectionId)
       : { deployment: undefined, costBasis: undefined };
-    const requestId = generateId();
 
     const batch: UsageEventBatchInput = {
       common: {

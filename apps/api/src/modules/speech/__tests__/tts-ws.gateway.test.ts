@@ -332,7 +332,9 @@ describe('TtsWsGateway', () => {
 
       upstream.emit(
         'message',
-        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: null })),
+        // TASK-957 F-10 — a NAMED self-hosted provider, because a frame that names none now
+        // records no row at all and this test is about the AUDIO_SECOND / byte rows, not that.
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: 'kokoro' })),
         false,
       );
 
@@ -562,7 +564,9 @@ describe('TtsWsGateway', () => {
 
         upstream.emit(
           'message',
-          Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: null })),
+          // TASK-957 F-10 — a NAMED self-hosted provider, because a frame that names none now
+        // records no row at all and this test is about the AUDIO_SECOND / byte rows, not that.
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: 'kokoro' })),
           false,
         );
 

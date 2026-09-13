@@ -10,7 +10,7 @@ import {
   appendComputeAndByteUnits,
 } from '@arcaai/applications';
 import type { ResolvedTtsSpec, UsageEventBatchInput } from '@arcaai/applications';
-import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
+import { AiCapability, AiUsageUnit } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
@@ -20,7 +20,8 @@ import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 // The classifier + self-hosted allow-list used to exist as a
 // verbatim copy here AND in SpeechProxyController. One definition now.
-import { classifyTtsProvider } from './tts-provider-classification';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
+import { classifyTtsProvider, isAttributableTtsProvider } from './tts-provider-classification';
 import { resolveTtsRequestConfig } from './tts-tenant-config';
 
 /** Shape of the `{"type":"usage",...}` control frame stream_ws.py sends at teardown. */
@@ -520,13 +521,24 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return false;
     }
 
+    // TASK-957 F-10 — no provider, no row. See `isAttributableTtsProvider`. Checked BEFORE the
+    // ledger/tenant guard so the counter fires for the case it is about, and OUTSIDE the row
+    // building entirely: this `return true` still consumes the frame, which is TTS's own control
+    // framing and must never reach the client whether or not it produced a ledger row.
+    if (!isAttributableTtsProvider(parsed.provider)) {
+      recordUsageEmissionFailure('tts.synthesize');
+      this.logger.warn({
+        message: 'TTS session reported no provider; recording no usage row for it',
+        sessionId: bridge.sessionId,
+      });
+      return true;
+    }
+
     if (this.usageLedger && bridge.tenantId) {
       // TASK-958 F9 — the served connection selects the override entry; the map is keyed
       // by connection key, and a sibling's entry is not under `provider`.
       const connectionId = parsed.connectionId || null;
-      const { deployment, costBasis } = parsed.provider
-        ? classifyTtsProvider(parsed.provider, bridge.providerOverrides, connectionId)
-        : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
+      const { deployment, costBasis } = classifyTtsProvider(parsed.provider, bridge.providerOverrides, connectionId);
       const batch: UsageEventBatchInput = {
         common: {
           tenantId: bridge.tenantId,
@@ -534,7 +546,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           occurredAt: new Date(),
           capability: AiCapability.TTS,
           operation: 'tts.synthesize',
-          provider: parsed.provider ?? 'none',
+          provider: parsed.provider,
           model: null,
           deployment,
           ...(costBasis ? { costBasis } : {}),
