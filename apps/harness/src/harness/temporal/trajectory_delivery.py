@@ -17,11 +17,13 @@ redelivery SAFE. The retry simply did not exist. Three decisions shape the one a
   what keeps a wedged gateway from costing a phase boundary three full HTTP timeouts — the
   reason `_TRAJECTORY_HTTP_TIMEOUT_S` was deliberately short in the first place. A cheap
   failure (connection refused) still gets all three attempts, because it costs milliseconds.
-* **A terminal 4xx is neither retried nor spooled.** `ApiClientError` means apps/api REFUSED
-  the body — a contract or state error that the identical body cannot fix. Spooling it would
-  poison the spool: every future drain would re-attempt a body that can only be rejected.
-  (`408`/`429` are not in that class and stay on the retry path, exactly as the client
-  classifies them.)
+* **A terminal 4xx is neither retried nor spooled — and, on the drain, not re-queued either.**
+  `ApiClientError` means apps/api REFUSED the body: a contract or state error the identical
+  body cannot fix. Spooling it would poison the spool, and for a while the DRAIN did exactly
+  that by another route — it re-queued a refusal at the FRONT, like any other failure, where
+  one dead body blocked every later batch this worker spooled. That is why a delivery answers
+  with a three-valued {@link DeliveryOutcome} rather than a bool. (`408`/`429` are not in that
+  class and stay on the retry path, exactly as the client classifies them.)
 * **The spool is a shared, bounded, expiring Redis list.** One key for the whole deployment, so
   a batch a since-replaced pod could not deliver is still drained by its successor; worker
   identity and the spool timestamp ride IN each entry, where they diagnose the outage. Entries
@@ -43,6 +45,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any, Protocol
 
 import structlog
@@ -125,7 +128,35 @@ class _TrajectoryPoster(Protocol):
     ) -> Any: ...
 
 
-BodyDeliverer = Callable[[dict[str, Any]], Awaitable[bool]]
+class DeliveryOutcome(Enum):
+    """How one delivery ENDED — three answers, because two of them are not the same failure.
+
+    A bare `bool` conflated them, and the drain is where that cost something: it re-queued a
+    REFUSED body at the front exactly as it re-queues a FAILED one, so a batch apps/api will
+    refuse forever blocked every later batch that worker spooled.
+
+    * `DELIVERED` — apps/api accepted it.
+    * `REFUSED`   — apps/api REJECTED it (terminal 4xx). The identical body can never land, so
+      retrying or holding it is pure loss; it is dropped, loudly, and counted.
+    * `FAILED`    — transport, 5xx, 408/429, a timeout. Worth another attempt later, so it is
+      spooled (first delivery) or put back at the front (drain), and NOT counted as lost.
+    """
+
+    DELIVERED = "delivered"
+    REFUSED = "refused"
+    FAILED = "failed"
+
+
+#: A drain deliverer may answer with an outcome or, for the several suites that predate it, a
+#: bare bool. A bool cannot distinguish refusal from failure, so it degrades to the SAFE one:
+#: `False` means "try again later", which is the behaviour those callers already had.
+BodyDeliverer = Callable[[dict[str, Any]], Awaitable[DeliveryOutcome | bool]]
+
+
+def _as_outcome(value: DeliveryOutcome | bool) -> DeliveryOutcome:
+    if isinstance(value, DeliveryOutcome):
+        return value
+    return DeliveryOutcome.DELIVERED if value else DeliveryOutcome.FAILED
 
 
 def trajectory_api_client(settings: Settings) -> ApiClient:
@@ -220,8 +251,20 @@ class TrajectorySpool:
     async def drain(self, deliver: BodyDeliverer, *, max_entries: int) -> int:
         """Post up to ``max_entries`` spooled bodies; returns how many LANDED.
 
-        Stops at the first failure and puts that entry BACK at the FRONT, so the spool keeps
-        its order and a still-down gateway is not hammered once per entry. NEVER raises.
+        THREE outcomes, and the middle one is why {@link DeliveryOutcome} exists:
+
+        * ``DELIVERED`` — counted, and the drain moves on.
+        * ``REFUSED`` — apps/api rejected the body and always will, so the entry is DROPPED
+          here and the drain CONTINUES. Putting it back would park a body that can never leave
+          at the front of the queue, where it blocks every later batch this worker spooled —
+          unbounded billing loss from one bad body. It is already counted on
+          ``hope_usage_emission_failed_total{reason="rejected"}`` by the delivery itself; a
+          second increment here would charge one dead batch twice.
+        * ``FAILED`` — transient. The entry goes BACK at the FRONT and the drain STOPS, so the
+          spool keeps its order and a still-down gateway is not hammered once per entry.
+
+        NEVER raises: a deliverer that throws is treated as ``FAILED``, which is the safe
+        reading of an answer nobody got.
         """
         delivered = 0
         for _ in range(max(0, max_entries)):
@@ -234,11 +277,20 @@ class TrajectorySpool:
                 logger.warning("harness.trajectory_spool.entry_unreadable")
                 continue
             try:
-                landed = await deliver(body)
+                outcome = _as_outcome(await deliver(body))
             except Exception as exc:  # noqa: BLE001 — a drain never breaks its caller
                 logger.warning("harness.trajectory_spool.drain_failed", error=str(exc))
-                landed = False
-            if not landed:
+                outcome = DeliveryOutcome.FAILED
+            if outcome is DeliveryOutcome.REFUSED:
+                logger.warning(
+                    "harness.trajectory_spool.entry_dropped_rejected",
+                    worker=entry.get("worker"),
+                    spooled_at=entry.get("spooledAt"),
+                    steps=len(body.get("steps") or ()),
+                    compute_samples=len(body.get("computeSamples") or ()),
+                )
+                continue
+            if outcome is not DeliveryOutcome.DELIVERED:
                 await self._push_front(entry)
                 return delivered
             delivered += 1
@@ -329,9 +381,10 @@ async def deliver_trajectory(
         else:
             await client.report_trajectory(steps, idempotency_key=idempotency_key)
 
-    return await _deliver(
+    outcome = await _deliver(
         _post, trajectory_body(steps, compute_samples), spool=spool, allow_spool=True
     )
+    return outcome is DeliveryOutcome.DELIVERED
 
 
 async def deliver_trajectory_body(
@@ -341,11 +394,14 @@ async def deliver_trajectory_body(
     idempotency_key: str | None = None,
     spool: TrajectorySpool | None = None,
     allow_spool: bool = True,
-) -> bool:
+) -> DeliveryOutcome:
     """Deliver an ALREADY-BUILT wire body — the spool's re-delivery path.
 
     ``allow_spool=False`` is for the DRAIN: an entry that fails there is re-queued by the
     spool itself, and spooling it again from here would duplicate it.
+
+    Returns the OUTCOME rather than a bool, because the drain's two failure cases end
+    differently — see {@link DeliveryOutcome} and {@link TrajectorySpool.drain}.
     """
 
     async def _post() -> None:
@@ -360,8 +416,12 @@ async def _deliver(
     *,
     spool: TrajectorySpool | None,
     allow_spool: bool,
-) -> bool:
-    """The retry loop. NEVER raises — every caller is on a path that must not fail."""
+) -> DeliveryOutcome:
+    """The retry loop. NEVER raises — every caller is on a path that must not fail.
+
+    The retry and spool behaviour is byte-identical to the bool version; only the RETURN got
+    more specific, so the drain can tell a refusal from an outage.
+    """
     started = _now_s()
     last_error: Exception | None = None
     attempts = 0
@@ -371,7 +431,7 @@ async def _deliver(
             await post()
             if attempt > 1:
                 logger.info("harness.report_trajectory.recovered", attempts=attempt)
-            return True
+            return DeliveryOutcome.DELIVERED
         except ApiClientError as exc:
             # apps/api REFUSED this body. Retrying or spooling it would only repeat the
             # refusal, so it is dropped LOUDLY — the one case where metering is lost on
@@ -384,7 +444,7 @@ async def _deliver(
                 error=str(exc),
             )
             _count_emission_failure(body, "rejected")
-            return False
+            return DeliveryOutcome.REFUSED
         except Exception as exc:  # noqa: BLE001 — transport/5xx/anything: retry, then spool
             last_error = exc
             if attempt == DELIVERY_ATTEMPTS:
@@ -407,7 +467,7 @@ async def _deliver(
         # forever, and a counter only rises.
         _count_emission_failure(body, "spooled")
         await (spool or get_trajectory_spool()).offer(body)
-    return False
+    return DeliveryOutcome.FAILED
 
 
 async def _sleep(seconds: float) -> None:
@@ -432,7 +492,7 @@ async def drain_trajectory_spool(
         return 0
     client = trajectory_api_client(settings or get_settings())
 
-    async def _deliver(body: dict[str, Any]) -> bool:
+    async def _deliver(body: dict[str, Any]) -> DeliveryOutcome:
         return await deliver_trajectory_body(client, body, spool=spool, allow_spool=False)
 
     return await spool.drain(_deliver, max_entries=max_entries)

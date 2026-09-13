@@ -22,6 +22,7 @@ counting it would charge one outage once per tick forever.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -32,6 +33,7 @@ from harness.services.api_client import ApiClient, TrajectoryStepInput, trajecto
 from harness.temporal import trajectory_delivery
 from harness.temporal.compute_metering import ComputeSample, ComputeSampleBuffer
 from harness.temporal.trajectory_delivery import (
+    DeliveryOutcome,
     TrajectorySpool,
     deliver_trajectory,
     deliver_trajectory_body,
@@ -147,11 +149,11 @@ class TestSpooled:
         before_spooled = _reading("trajectory", "spooled")
         before_dropped = _reading("trajectory", "dropped")
 
-        landed = await deliver_trajectory_body(
+        outcome = await deliver_trajectory_body(
             _client(_unreachable), body, spool=spool, allow_spool=False
         )
 
-        assert landed is False
+        assert outcome is DeliveryOutcome.FAILED
         assert _reading("trajectory", "spooled") == pytest.approx(before_spooled)
         assert _reading("trajectory", "dropped") == pytest.approx(before_dropped)
 
@@ -182,6 +184,77 @@ class TestDropped:
 
         assert len(buffer) == 1
         assert _reading("workflow.step", "dropped") - before == pytest.approx(1.0)
+
+
+class TestTheDrainDistinguishesRefusalFromFailure:
+    """A permanently-refusable entry must not sit at the front of the spool forever.
+
+    `_deliver` answered a bare `True`/`False`, so the drain could not tell "apps/api refused
+    this body and always will" from "the gateway is down right now". It re-queued BOTH at the
+    front — and the refusal is the one that can never leave, so one poisoned entry blocked
+    every later batch that worker spooled. Unbounded billing loss behind a `warn` line, which
+    is the exact shape of the finding F-5 opened with.
+
+    The refusal is counted exactly ONCE, by `_deliver` itself, on whichever path met it. The
+    drain drops the entry and says nothing further: a second increment here would charge one
+    dead body twice.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_refused_entry_is_dropped_and_the_next_one_gets_through(self, spool):
+        await spool.offer(trajectory_body([_step(1)], ()))
+        await spool.offer(trajectory_body([_step(2)], ()))
+
+        posted: list[dict[str, Any]] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            if body["steps"][0]["seq"] == 1:
+                return httpx.Response(422, json={"message": "unprocessable"})
+            posted.append(body)
+            return httpx.Response(202, json={"accepted": 1})
+
+        client = _client(_handler)
+        before = _reading("trajectory", "rejected")
+
+        delivered = await spool.drain(
+            lambda body: deliver_trajectory_body(client, body, spool=spool, allow_spool=False),
+            max_entries=5,
+        )
+
+        assert delivered == 1
+        assert spool.pending() == 0  # the poison entry is GONE, not back at the front
+        assert [b["steps"][0]["seq"] for b in posted] == [2]
+        assert _reading("trajectory", "rejected") - before == pytest.approx(1.0)
+
+    @pytest.mark.asyncio
+    async def test_a_transient_failure_still_requeues_at_the_front_and_is_not_counted(self, spool):
+        await spool.offer(trajectory_body([_step(1)], ()))
+        await spool.offer(trajectory_body([_step(2)], ()))
+
+        before_rejected = _reading("trajectory", "rejected")
+        before_spooled = _reading("trajectory", "spooled")
+
+        client = _client(_unreachable)
+        delivered = await spool.drain(
+            lambda body: deliver_trajectory_body(client, body, spool=spool, allow_spool=False),
+            max_entries=5,
+        )
+
+        assert delivered == 0
+        assert spool.pending() == 2
+        assert _reading("trajectory", "rejected") == pytest.approx(before_rejected)
+        assert _reading("trajectory", "spooled") == pytest.approx(before_spooled)
+
+        # …and the re-queued entry kept its place at the FRONT.
+        seen: list[int] = []
+
+        async def _ok(body: dict[str, Any]) -> bool:
+            seen.append(body["steps"][0]["seq"])
+            return True
+
+        assert await spool.drain(_ok, max_entries=5) == 2
+        assert seen == [1, 2]
 
 
 class TestSuccess:
