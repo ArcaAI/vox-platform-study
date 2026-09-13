@@ -7,6 +7,9 @@ import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/n
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
+import { IconAlertTriangle } from '@tabler/icons-react';
+import { reasoningSupportFor } from '@/shared/reasoning/reasoning-support';
 import type { AssembledGenerationType, AssembledVisitType, TextProvider } from '../api/types';
 import { TemplatePicker } from './template-picker';
 
@@ -27,6 +30,13 @@ export interface LlmFormState {
   templateId: string;
   dnaStyleId: string;
   debug: boolean;
+  /**
+   * TASK-970 — reasoning posture for this run. `'inherit'` sends NOTHING, so the
+   * platform tier decides; it is not the same as `'off'` and must not collapse into it.
+   */
+  reasoningMode: 'inherit' | 'off' | 'on';
+  /** Only meaningful while `reasoningMode === 'on'`; '' = let the engine pick the budget. */
+  reasoningEffort: '' | 'minimal' | 'low' | 'medium' | 'high';
 }
 
 interface PromptEditorCardProps {
@@ -184,6 +194,8 @@ export function PromptEditorCard({
           </div>
         </div>
 
+        <ReasoningControl form={form} onPatch={onPatch} provider={selectedProvider} />
+
         <SwitchRow
           id="llm-streaming"
           label="Streaming mode"
@@ -275,5 +287,87 @@ export function PromptEditorCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * TASK-970 — per-run reasoning/thinking control.
+ *
+ * THREE states, not a toggle, because the cascade genuinely has three: a run that
+ * says nothing inherits the platform tier (`text.reasoning.defaultEffort`), and
+ * collapsing that into "off" would pin every playground run to an opinion the
+ * admin never expressed. `'inherit'` therefore sends NO `reasoning` field at all.
+ *
+ * The support note is the same honesty the agent editor carries: whether the
+ * bound engine can actually be instructed depends on the provider, and an engine
+ * that cannot be is recorded rather than enforced (owner decision: log and
+ * proceed). Reused from `@/shared/reasoning` rather than imported across
+ * features, which rule 13 forbids.
+ */
+function ReasoningControl({
+  form,
+  onPatch,
+  provider,
+}: {
+  form: LlmFormState;
+  onPatch: (partial: Partial<LlmFormState>) => void;
+  provider: string;
+}) {
+  const support = provider ? reasoningSupportFor(provider) : null;
+  const showSupport = support && form.reasoningMode !== 'inherit';
+  return (
+    <div className="flex flex-col gap-3 border-t pt-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="llm-reasoning-mode">Reasoning / thinking</Label>
+          <NativeSelect
+            id="llm-reasoning-mode"
+            value={form.reasoningMode}
+            onChange={(event) => onPatch({ reasoningMode: event.target.value as LlmFormState['reasoningMode'] })}
+          >
+            <NativeSelectOption value="inherit">Platform default</NativeSelectOption>
+            <NativeSelectOption value="off">Off</NativeSelectOption>
+            <NativeSelectOption value="on">On</NativeSelectOption>
+          </NativeSelect>
+        </div>
+        {form.reasoningMode === 'on' ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="llm-reasoning-effort">Effort</Label>
+            <NativeSelect
+              id="llm-reasoning-effort"
+              value={form.reasoningEffort}
+              onChange={(event) => onPatch({ reasoningEffort: event.target.value as LlmFormState['reasoningEffort'] })}
+            >
+              <NativeSelectOption value="">Engine picks</NativeSelectOption>
+              <NativeSelectOption value="minimal">Minimal</NativeSelectOption>
+              <NativeSelectOption value="low">Low</NativeSelectOption>
+              <NativeSelectOption value="medium">Medium</NativeSelectOption>
+              <NativeSelectOption value="high">High</NativeSelectOption>
+            </NativeSelect>
+          </div>
+        ) : null}
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {form.reasoningMode === 'inherit'
+          ? 'This run sends no posture, so the platform default decides.'
+          : 'This run pins its own posture, which wins over the platform default.'}
+      </p>
+      {showSupport && support.class === 'unsupported' ? (
+        <Alert role="status">
+          <IconAlertTriangle aria-hidden className="text-warning size-4" />
+          <AlertTitle>Not enforceable on {support.providerLabel}</AlertTitle>
+          <AlertDescription>
+            {support.providerLabel} has no way to receive this instruction. The run proceeds and the engine decides on
+            its own — it may still reason, and bill for it.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {showSupport && support.class === 'effort-only' ? (
+        <p className="text-muted-foreground text-xs">
+          {support.providerLabel} has no true off-switch — &ldquo;off&rdquo; is approximated by its lowest reasoning
+          effort, not a full stop.
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -689,4 +689,70 @@ describe('PlaygroundLlmScreen', () => {
     await screen.findByLabelText('Provider');
     expect(screen.queryByRole('switch', { name: /__GLOBAL__/ })).toBeNull();
   });
+
+  /**
+   * TASK-970 — per-run reasoning control.
+   *
+   * The case that matters most is `inherit`: it must send NO `reasoning` key at all,
+   * so the gateway applies the platform tier. Sending `{enabled:true}` to mean
+   * "inherit" would silently pin every playground run to reasoning ON — which is the
+   * class of bug this whole ticket exists to remove.
+   */
+  describe('reasoning posture (TASK-970)', () => {
+    async function bodyForReasoning(prepare: () => void): Promise<Record<string, unknown>> {
+      let generateBody: Record<string, unknown> = {};
+      stubLlm((call, parsed) => {
+        if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+          generateBody = call.body as Record<string, unknown>;
+          return Response.json(SYNC_RESULT);
+        }
+        return undefined;
+      });
+      renderWithProviders(<PlaygroundLlmScreen />);
+      await screen.findByLabelText('Provider');
+      fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
+      prepare();
+      await generateWithPrompt('hello');
+      return generateBody;
+    }
+
+    it('defaults to the platform default and sends NO reasoning field', async () => {
+      const body = await bodyForReasoning(() => undefined);
+      expect('reasoning' in body).toBe(false);
+    });
+
+    it('sends an explicit off when the admin pins it', async () => {
+      const body = await bodyForReasoning(() => {
+        fireEvent.change(screen.getByLabelText('Reasoning / thinking'), { target: { value: 'off' } });
+      });
+      expect(body.reasoning).toEqual({ enabled: false });
+    });
+
+    it('sends on with no effort when the engine should pick the budget', async () => {
+      const body = await bodyForReasoning(() => {
+        fireEvent.change(screen.getByLabelText('Reasoning / thinking'), { target: { value: 'on' } });
+      });
+      expect(body.reasoning).toEqual({ enabled: true });
+    });
+
+    it('sends on with a named effort', async () => {
+      const body = await bodyForReasoning(() => {
+        fireEvent.change(screen.getByLabelText('Reasoning / thinking'), { target: { value: 'on' } });
+        fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'high' } });
+      });
+      expect(body.reasoning).toEqual({ enabled: true, effort: 'high' });
+    });
+
+    it('hides the effort picker unless reasoning is on', async () => {
+      stubLlm(() => undefined);
+      renderWithProviders(<PlaygroundLlmScreen />);
+      await screen.findByLabelText('Provider');
+      expect(screen.queryByLabelText('Effort')).toBeNull();
+      fireEvent.change(screen.getByLabelText('Reasoning / thinking'), { target: { value: 'on' } });
+      expect(screen.getByLabelText('Effort')).toBeDefined();
+      fireEvent.change(screen.getByLabelText('Reasoning / thinking'), { target: { value: 'off' } });
+      expect(screen.queryByLabelText('Effort')).toBeNull();
+    });
+  });
+
 });
