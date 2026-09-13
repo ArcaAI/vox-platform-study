@@ -53,12 +53,11 @@
  * therefore reaches NO network service at all.
  */
 import { NestFactory } from '@nestjs/core';
-import { SwaggerModule } from '@nestjs/swagger';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppModule } from '../app.module';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from '../global-prefix.config';
-import { buildSwaggerConfig } from '../swagger.config';
+import { createHopeOpenApiDocument } from '../swagger.config';
 import { silenceBullQueueConnectionErrors } from './offline-infrastructure';
 
 const OUTPUT_PATH = resolve(__dirname, '..', '..', 'openapi.json');
@@ -95,8 +94,10 @@ async function main(): Promise<void> {
   try {
     app.setGlobalPrefix(API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS);
 
-    const config = buildSwaggerConfig().build();
-    const document = SwaggerModule.createDocument(app, config);
+    // Not `SwaggerModule.createDocument` directly: the explorer cannot see the
+    // authorization decorators, so per-operation `security` is derived from
+    // them inside this helper. See `swagger.config.ts`.
+    const document = createHopeOpenApiDocument(app);
 
     writeFileSync(OUTPUT_PATH, JSON.stringify(sortKeysDeep(document), null, 2) + '\n', 'utf8');
 

@@ -1,5 +1,8 @@
-import { DocumentBuilder } from '@nestjs/swagger';
+import type { INestApplication } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { OpenAPIObject } from '@nestjs/swagger';
 
+import { applyOperationSecurity } from './openapi/operation-security';
 import { API_TAGS } from './openapi/tags';
 
 /**
@@ -45,6 +48,10 @@ import { API_TAGS } from './openapi/tags';
  * | `bearer` | `Authorization: Bearer <jwt>` | user JWT (`@nestjs/passport` flow) |
  * | `api-key` | `x-api-key` | tenant API key — the business plane only; every `/admin/*` route carries `@ForbidApiKey()` |
  * | `service-account` | `x-service-account-token` | platform machine identity — the ONLY path to the administration plane |
+ *
+ * WHICH of the three a given operation advertises is not decided here and is
+ * not decided by `@Api*` decorators either — see
+ * `createHopeOpenApiDocument()` below and `openapi/operation-security.ts`.
  *
  * Header names are pinned to the live readers: `x-api-key` to
  * `ApiKeyService.extractApiKeyFromRequest()`, and `x-service-account-token` to
@@ -123,4 +130,30 @@ export function buildSwaggerConfig(): DocumentBuilder {
   }
 
   return builder;
+}
+
+/**
+ * Build the gateway's OpenAPI document — the ONE place it is produced.
+ *
+ * `SwaggerModule.createDocument` alone is not enough, because the explorer can
+ * only see `@Api*` decorators: it cannot see `@ForbidApiKey()`,
+ * `@RequiredScopes(...)` or `@Public()`, which is what actually decides who may
+ * call a route. `applyOperationSecurity` closes that by deriving each
+ * operation's `security` from the same authorization metadata
+ * `UnifiedAuthGuard` enforces and `route-manifest.json` records. See
+ * `openapi/operation-security.ts`.
+ *
+ * Both consumers call THIS, not `createDocument` directly:
+ *
+ *   - `main.ts` -> the dev-only Swagger UI at `/api/v1/docs`
+ *   - `scripts/emit-openapi.ts` -> the committed `apps/api/openapi.json`
+ *
+ * A consumer that skipped it would publish a document whose lock icons name the
+ * wrong credentials, which is the defect this function exists to end — so the
+ * composition lives here rather than being repeated at each call site.
+ */
+export function createHopeOpenApiDocument(app: INestApplication): OpenAPIObject {
+  const document = SwaggerModule.createDocument(app, buildSwaggerConfig().build());
+  applyOperationSecurity(document, app);
+  return document;
 }
