@@ -320,22 +320,38 @@ POST /agents/medical-ner/invocations   {"text":"Patient with hypertension starte
 
 The flat body the panel renders works end to end; the enveloped one fails exactly as the callout says.
 
-### FU-1 — the derived example is incomplete for agents with instruction placeholders
+### FU-1 — FIXED (`a3f5cbe40`): the example now carries the context the instruction binds
 
-`general-medicine-summarization` rejects the panel's own example with a DIFFERENT 400:
+The runtime pass caught the panel's own example being refused: `general-medicine-summarization`
+answered 400 with *"instruction references `trigger.context.language`, which this invocation does
+not supply"*.
 
-> Agent … instruction references `trigger.context.language`, which this invocation does not supply.
+**Where the missing half lives.** Not in a context schema — this agent has none
+(`contextSchemaId: null`, `compiledConfig.contextSchema: null`). It is declared on
+`compiledConfig.instruction.variables`, stamped at publish: `{ path: 'trigger.context.language' }`
+is the caller's to supply, `{ value: … }` is already bound and must NOT be sent. So the fix needs
+no template parsing — the required paths are declared. (The prompt text itself uses bare
+`{{language}}`; the paths are the BINDINGS behind those names.)
 
-The example body is derived from `inputSchema`, but an agent's INSTRUCTION may reference
-`trigger.context.*` placeholders — a separate declaration (the bound context schema), which is
-exactly the distinction `AgentInvocationBody` documents: `inputSchema` says what the agent is
-called WITH, the context schema says what it is called ABOUT. So for such agents the rendered
-example is valid against the schema it was derived from and still insufficient to succeed.
+**Why `trigger.` becomes `context.`.** The invocation lane binds `trigger` to the request's
+`context` object (`AgentInvocationService.contextScopeFor`), while the live-doc lane passes
+`trigger` and `context` as two separate roots. So on this lane a `trigger.context.language`
+binding is satisfied by `context: { context: { language } }` — the context FIELD holding a map of
+context KINDS, one of which is itself named `context`, which is the same kinds map the workflow
+plane renders as its trigger payload. Confusing to read, consistent to send. `context` is a
+SIBLING of `text`; the body stays flat.
 
-Worth noting: supplying `{"context":{"language":"en"}}` did **not** satisfy it either, so the
-placeholder resolver on the direct-invocation path needs its own look — one shape tested, not a
-diagnosis. Follow-up: merge the agent's bound context schema into the derived example (the agent
-carries `contextSchemaId`), and confirm what `context` shape the resolver actually accepts.
+A bound context schema still wins where one exists (its enums and defaults beat the generic
+placeholder); only the paths it leaves uncovered are filled in.
+
+**Proven end to end**: the body the panel now renders, sent verbatim with its `…` placeholders,
+returns **200** from `general-medicine-summarization` — the same request that was a 400 before.
+
+```
+{"text":"…","context":{"context":{"language":"…","safe_age":"…", … }}}   → 200
+  output.text: "Please provide the transcript of the consultation to begin documenting…"
+  provider: lm-studio · model: gemma-4-e2b-it-qat · promptTokens: 718
+```
 
 ### Two failures deliberately left alone
 
@@ -360,3 +376,4 @@ now that they committed, `05078144b`).
 | 2026-09-13 | Owner approved the plan. Lane A landed in the primary checkout; lanes B–F ran in four parallel worktrees (tiered opus/sonnet per rule 14 §1) and were merged in order postman → panel → openapi → portal, with gates re-run after each. Three integration defects found and fixed (§4). Status → Review; the runtime pass is the one criterion outstanding. |
 | 2026-09-13 | Follow-up fixed in `79224fcf2`: the `@arcaai/ui` `"use client"` banner never reached `dist/` because `treeshake: true` sends every chunk back through rollup, which drops the directive. `scripts/ensure-use-client.mjs` restores it post-build (source maps realigned). 24/24 bundles verified; a Server Component importing the barrel now compiles. |
 | 2026-09-13 | Runtime pass done (owner authorised the seeded dev credentials): all six seeded agents + the published workflow walked in a real browser; the NER Postman fix and both "no browser path" absences confirmed live; the flat-vs-enveloped contract proven against the gateway (enveloped → 400, flat → 200 with real NER entities). **FU-1 found**: the derived example is insufficient for agents whose instruction references `trigger.context.*`. Status → Completed. |
+| 2026-09-13 | **FU-1 fixed** (`a3f5cbe40`). The missing half of the agent example is `compiledConfig.instruction.variables` — declared `{ path: 'trigger.…' }` bindings, not a context schema (this agent has none). Verified end to end: the panel's rendered body, sent verbatim, now returns 200 where it was a 400. 3212 console tests green. |
