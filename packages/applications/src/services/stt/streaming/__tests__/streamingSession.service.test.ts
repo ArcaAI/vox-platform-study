@@ -497,6 +497,49 @@ describe('StreamingSessionService', () => {
       expect(input.common.costBasis).toBeUndefined();
     });
 
+    /**
+     * TASK-957 F-8 — every streaming row is a CONSULTATION row.
+     *
+     * Not a value read off the teardown summary: the streaming plane has ONE
+     * entrance (the consultation SDK's live socket) and no agent route streams
+     * at all — `POST /agents/:slug/transcriptions` is the batch job path, which
+     * carries its own `AGENT_INVOCATION`. Making the worker declare it would
+     * invite a second answer to a question that structurally has one.
+     */
+    it('stamps trigger CONSULTATION — the streaming plane has no other entrance', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.attributesJson.trigger).toBe('CONSULTATION');
+    });
+
+    it('stamps trigger CONSULTATION on EVERY segment of a failed-over session', async () => {
+      httpService.delete.mockReturnValue(
+        of({
+          status: 200,
+          data: teardownSummary({
+            segments: [
+              { engine: 'azure-speech', deployment: 'BYOK', audio_seconds: 20, session_seconds: 40 },
+              { engine: 'sarvam', deployment: 'CLOUD', audio_seconds: 22.5, session_seconds: 50 },
+            ],
+          }),
+        }),
+      );
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage.mock.calls.length).toBeGreaterThanOrEqual(2);
+      for (const [input] of usageLedgerService.recordUsage.mock.calls) {
+        expect(input.common.attributesJson.trigger).toBe('CONSULTATION');
+      }
+    });
+
     it('stamps interrupted:true on the abort path — SAME idempotency key as completion', async () => {
       httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
       const usageLedgerService = mockUsageLedgerService();

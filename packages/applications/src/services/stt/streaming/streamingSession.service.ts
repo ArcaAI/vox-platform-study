@@ -6,7 +6,7 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
-import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { IVoiceProfileService, RuntimeVoiceProfile } from '../../user/voiceProfile/IVoiceProfileService';
 import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { STT_GATEWAY_DEFAULTS, STT_SESSION_CREATE_TIMEOUT_MS_KEY } from '../../settings-registry/descriptors/stt-gateway.descriptors';
@@ -519,6 +519,13 @@ export class StreamingSessionService implements IStreamingSessionService {
             channelCount: summary.channel_count ?? 1,
             streamKind: 'ws',
             interrupted,
+            // TASK-957 F-8 — WHY. Not read from the teardown summary: the
+            // streaming plane has ONE entrance, the consultation SDK's live
+            // socket, and no agent route streams (`POST /agents/:slug/
+            // transcriptions` is the batch job path and carries its own
+            // AGENT_INVOCATION). Letting the worker declare it would invite a
+            // second answer to a question that structurally has one.
+            trigger: 'CONSULTATION' as UsageTrigger,
             // NOT a segment index/count: `attributesJson` is a closed PHI
             // allow-list (`usageLedger/usage-attributes.ts`) and a key that is
             // not declared there is REJECTED at emission, not dropped. A
