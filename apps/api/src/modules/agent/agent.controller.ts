@@ -486,6 +486,12 @@ export class AgentController {
   }
 
   @Post(':slug/speech')
+  // The handler takes `@Res()`, which decides who WRITES the body — not who sets the status
+  // line. Nest's `RouterExecutionContext` calls `setStatus(res, httpStatusCode)` before the
+  // handler runs either way, so with no `@HttpCode` this route sent the POST default 201 while
+  // its own `@ApiResponse` and `openapi.json` published 200. A synthesis is not a created
+  // resource; it is the audio, streamed.
+  @HttpCode(HttpStatus.OK)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
   @RequiredSvcScopes('svc:agent:invocation:write')
