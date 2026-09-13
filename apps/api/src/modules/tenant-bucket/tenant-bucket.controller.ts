@@ -69,7 +69,7 @@ export class TenantBucketController {
   }
 
   @Get(':id')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Get bucket by ID' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiResponse({ status: 200, description: 'Bucket details' })
@@ -79,7 +79,7 @@ export class TenantBucketController {
   }
 
   @Get(':id/tree')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Get bucket folder/file tree for UI tree view' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({
@@ -108,30 +108,35 @@ export class TenantBucketController {
   @ApiOperation({
     summary: 'Adopt an existing physical bucket into a tenant',
     description:
-      'Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.',
+      'Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. A platform bucket (model weights, MLflow artifacts, backups, the workflow claim check) may be registered ONLY to the System tenant, and only by a platform administrator.',
   })
   @ApiResponse({ status: 201, description: 'Bucket registered to the tenant' })
-  @ApiResponse({ status: 400, description: 'Platform bucket, or a name already registered to another tenant' })
+  @ApiResponse({ status: 400, description: 'A platform bucket aimed at a customer tenant, or a name already registered to another tenant' })
+  @ApiResponse({ status: 403, description: 'A platform bucket registered by a caller who is not a platform administrator' })
   @ApiResponse({ status: 404, description: 'Tenant not found, or no physical bucket with that name' })
   @CanCreate('Storage')
   async adoptBucket(@Body() request: AdoptTenantBucketRequest): Promise<TenantBucketResponse> {
     return this.tenantBucketService.adoptPhysicalBucket(request.name, request.tenantId, request.description);
   }
 
-  // DEFAULT scope on purpose — do NOT widen this to `scope: 'super-admin'`.
-  // An unscoped platform admin may LIST every tenant's buckets and browse their
-  // objects (`listObjects` is the single route widened for that, TASK-932), but
-  // the unscoped view is browse-only: `uploadObject`, `deleteObject`,
-  // `getBucketTree` and `getPresignedUrl` are all tenant-bound too, and this one
-  // destroys the physical bucket. A platform admin deletes by selecting the
-  // owning tenant, which also puts the "Acting on: «Tenant»" banner on the act.
-  // The console disables the row's Delete when unscoped rather than offering a
-  // call that would 404 (`BucketsTab`'s `deleteBlockedReason`).
+  // scope: 'super-admin' (TASK-967) — a platform admin must be able to manage
+  // ANY bucket, and a PLATFORM bucket is owned by the SYSTEM tenant, which no
+  // one can select as a working tenant. Without the bypass the interceptor 404s
+  // before the service runs and platform buckets are unmanageable by anyone.
   //
-  // Routes that name their tenant EXPLICITLY are the platform-level exception
-  // and carry no annotation at all: `provision/:tenantId` and `register`.
+  // The decorator grants reach, NOT permission. The boundary moved into
+  // `TenantBucketService.assertUnscopedWriteAllowed`, which states it once for
+  // every widened route: an UNSCOPED platform admin may write only to
+  // SYSTEM-tenant rows. A customer tenant's bucket still requires selecting
+  // that tenant — which is what preserves the "Acting on: «Tenant»" guarantee
+  // the earlier narrowing of this route was protecting. That reasoning holds
+  // for a customer row and is kept; it does not hold for a SYSTEM row, which
+  // has no customer to name.
+  //
+  // Routes that name their tenant EXPLICITLY remain unannotated:
+  // `provision/:tenantId` and `register`.
   @Delete(':id')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Delete a custom storage bucket (system buckets cannot be deleted)' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiResponse({ status: 200, description: 'Bucket deleted' })
@@ -152,7 +157,7 @@ export class TenantBucketController {
   }
 
   @Post(':id/objects')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Upload a single object into a tenant bucket (storage-provider operation)' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({ name: 'key', required: false, description: 'Target object key/path (defaults to the uploaded file name)' })
@@ -178,7 +183,7 @@ export class TenantBucketController {
   }
 
   @Delete(':id/objects')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Delete a single object from a tenant bucket (storage-provider operation)' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({ name: 'key', description: 'Object key/path to delete (e.g. 2026/04/08/streaming/file.wav)', required: true })
@@ -198,7 +203,7 @@ export class TenantBucketController {
   }
 
   @Get(':id/presigned-url')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'Get presigned download URL for a file in a tenant bucket' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({ name: 'key', description: 'File key/path (e.g. 2026/04/08/streaming/file.wav)', required: true })

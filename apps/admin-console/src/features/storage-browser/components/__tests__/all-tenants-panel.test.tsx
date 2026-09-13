@@ -213,10 +213,11 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
     expect(registerLink.getAttribute('href')).toBe('/tenants/storage?register=orphan-bucket');
   });
 
-  // `hope-models` is an object-locked weights bucket with its own MinIO
-  // identities. Offering "Register" advertised an adoption the gateway
-  // rejects, and pointed at a screen that could not perform it.
-  it('gives a platform bucket neither Browse nor Register, and badges it Platform', async () => {
+  // TASK-967 — a platform admin MUST be able to manage platform buckets.
+  // The row previously offered NOTHING, which made `hope-models` unreachable
+  // from the console even though the gateway already served
+  // `GET storage/buckets/hope-models/files` to an unscoped platform admin.
+  it('badges a platform bucket Platform and offers BOTH Browse and Register', async () => {
     stubAllTenants();
     renderAllTenantsScreen();
 
@@ -226,8 +227,27 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
 
     expect(within(platformRow).getByText('Platform')).toBeDefined();
     expect(within(platformRow).queryByText('Unregistered')).toBeNull();
-    expect(within(platformRow).queryByRole('button', { name: 'Browse' })).toBeNull();
-    expect(within(platformRow).queryByRole('link', { name: /register/i })).toBeNull();
+    expect(within(platformRow).getByRole('button', { name: 'Browse' })).toBeDefined();
+    // `&platform=1` tells the adopt dialog to lock the owner to System.
+    expect(within(platformRow).getByRole('link', { name: /register/i }).getAttribute('href')).toBe(
+      '/tenants/storage?register=hope-models&platform=1',
+    );
+  });
+
+  // Browsing keys off the bucket NAME, not off `registered` — a platform
+  // bucket is never registered, so the old predicate silently ignored even a
+  // hand-typed `?bucket=hope-models`.
+  it('browses an unregistered platform bucket and lists its objects', async () => {
+    const calls = stubAllTenants();
+    renderAllTenantsScreen();
+
+    const grid = await screen.findByRole('grid', { name: 'Storage buckets across all tenants' });
+    const platformRow = (await within(grid).findByText('hope-models')).closest('[role="row"]') as HTMLElement;
+
+    fireEvent.click(within(platformRow).getByRole('button', { name: 'Browse' }));
+
+    expect(await screen.findByRole('button', { name: 'All buckets' })).toBeDefined();
+    expect(calls.some((call) => call.url.includes('/storage/buckets/hope-models/files'))).toBe(true);
   });
 
   it('m6 — the "Register" link carries a persistent underline, not a hover-only one', async () => {

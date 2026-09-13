@@ -24,7 +24,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
-import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
+import { SYSTEM_TENANT_ID, useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
@@ -108,19 +108,33 @@ function BucketRowActions({
 /**
  * Why this row's Delete cannot succeed, or `undefined` when it can.
  *
- * Both branches mirror a refusal the gateway ALREADY makes, so the menu never
+ * Every branch mirrors a refusal the gateway ALREADY makes, so the menu never
  * offers a call that is guaranteed to fail:
+ *   - a PLATFORM bucket is deletable, but only by a platform administrator
+ *     (TASK-967 OD-2) — checked FIRST, because such a row is stamped SYSTEM
+ *     and the next branch would otherwise refuse it;
  *   - a SYSTEM bucket is refused by `TenantBucketService.deleteBucket` itself
- *     (403 "System buckets cannot be deleted") — checked first, because it is
- *     the more fundamental blocker: switching tenant would not help;
- *   - an unscoped elevated session is refused by the `@TenantOwnedResource`
- *     guard on `DELETE .../buckets/:id` (404) before the service runs.
+ *     (403 "System buckets cannot be deleted") — the more fundamental blocker,
+ *     since switching tenant would not help;
+ *   - an unscoped session is refused for a CUSTOMER row by
+ *     `assertUnscopedWriteAllowed` (404). A SYSTEM-tenant row is exempt: it has
+ *     no customer to name, which is the whole reason the unscoped delete was
+ *     narrowed in the first place.
  */
-function deleteBlockedReason(bucket: TenantBucket, scoped: boolean, tenantNames: Map<string, string>): string | undefined {
+function deleteBlockedReason(
+  bucket: TenantBucket,
+  scoped: boolean,
+  tenantNames: Map<string, string>,
+  elevated: boolean,
+): string | undefined {
+  if (bucket.platform) {
+    return elevated ? undefined : 'Platform buckets can only be deleted by a platform administrator.';
+  }
   if (bucket.isSystemBucket) {
     return 'System buckets are provisioned with the tenant and cannot be deleted.';
   }
   if (!scoped) {
+    if (bucket.tenantId === SYSTEM_TENANT_ID) return undefined;
     return `Deleting a bucket is tenant-scoped. Switch your working tenant to ${tenantNames.get(bucket.tenantId) ?? 'its owner'} to delete this one.`;
   }
   return undefined;
@@ -131,16 +145,15 @@ function deleteBlockedReason(bucket: TenantBucket, scoped: boolean, tenantNames:
  * Spans all tenants for an unscoped elevated session, so the grid
  * carries a Tenant column and tenant/purpose/type filters.
  *
- * `scoped` is false for an unscoped elevated session (no working tenant). That
- * session can LIST every tenant's buckets and browse their objects, but it
- * cannot delete one: `DELETE .../buckets/:id` carries the default
- * `@TenantOwnedResource` scope, so the gateway answers 404 before the service
- * runs. Only `listObjects` was widened to `scope: 'super-admin'` (TASK-932) —
- * the unscoped view is deliberately browse-only, and bucket deletion destroys
- * the physical bucket, so the row's Delete is disabled here rather than
- * offering an action that always fails.
+ * `scoped` is false for an unscoped elevated session (no working tenant). Such
+ * a session can LIST every tenant's buckets and browse their objects; since
+ * TASK-967 it can also DELETE a SYSTEM-tenant row (which includes every
+ * platform bucket), because the id-addressed routes carry
+ * `scope: 'super-admin'` and `assertUnscopedWriteAllowed` allows exactly that.
+ * A CUSTOMER tenant's bucket still needs the working tenant selected, so its
+ * Delete stays disabled with the reason naming the owner to switch to.
  */
-function BucketsTab({ onProvision, scoped }: { onProvision: () => void; scoped: boolean }) {
+function BucketsTab({ onProvision, scoped, elevated }: { onProvision: () => void; scoped: boolean; elevated: boolean }) {
   const { data, isLoading, error, refetch } = useBuckets();
   const deleteBucket = useDeleteBucket();
   const [browsing, setBrowsing] = useState<TenantBucket | null>(null);
@@ -229,7 +242,7 @@ function BucketsTab({ onProvision, scoped }: { onProvision: () => void; scoped: 
             bucket={row.original}
             onBrowse={() => setBrowsing(row.original)}
             onDelete={() => setDeleting(row.original)}
-            deleteBlockedReason={deleteBlockedReason(row.original, scoped, tenantNames)}
+            deleteBlockedReason={deleteBlockedReason(row.original, scoped, tenantNames, elevated)}
           />
         </div>
       ),
@@ -393,23 +406,29 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 function RegisterBucketDialog({
   open,
   initialName,
+  platform,
   onOpenChange,
 }: {
   open: boolean;
   initialName: string;
+  /** The deep link named a PLATFORM bucket — the owner is forced to System. */
+  platform: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const adopt = useAdoptBucket();
   const tenantCatalog = useTenantCatalog();
   const [name, setName] = useState(initialName);
-  const [tenantId, setTenantId] = useState('');
+  // TASK-967 — a platform bucket is owned by the SYSTEM tenant and by nothing
+  // else, so the owner is preselected AND the control is locked rather than
+  // left as a choice whose only other answers the gateway will refuse.
+  const [tenantId, setTenantId] = useState(platform ? SYSTEM_TENANT_ID : '');
   const [description, setDescription] = useState('');
 
   const tenants = tenantCatalog.data ?? [];
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      setTenantId('');
+      setTenantId(platform ? SYSTEM_TENANT_ID : '');
       setDescription('');
       adopt.reset();
     }
@@ -436,8 +455,9 @@ function RegisterBucketDialog({
         <DialogHeader>
           <DialogTitle>Register existing bucket</DialogTitle>
           <DialogDescription>
-            Registers a bucket that already exists in storage so a tenant owns it. The bucket and its contents are left untouched. Platform buckets
-            (model weights, MLflow artifacts, backups, the workflow claim check) cannot be registered.
+            {platform
+              ? 'Registers a platform bucket so it can be managed from this console. It is owned by the platform, never by a customer tenant, so the owner is fixed to System. The bucket and its contents are left untouched.'
+              : 'Registers a bucket that already exists in storage so a tenant owns it. The bucket and its contents are left untouched.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -464,7 +484,7 @@ function RegisterBucketDialog({
                 *
               </span>
             </Label>
-            <Select value={tenantId} onValueChange={setTenantId}>
+            <Select value={tenantId} onValueChange={setTenantId} disabled={platform}>
               <SelectTrigger id="register-bucket-tenant" className="w-full">
                 <SelectValue placeholder={tenantCatalog.isPending ? 'Loading tenants…' : 'Select a tenant'} />
               </SelectTrigger>
@@ -476,6 +496,13 @@ function RegisterBucketDialog({
                 ))}
               </SelectContent>
             </Select>
+            {/* A disabled control needs a visible reason (UX principles §5) —
+                adjacent text, not a tooltip, which a disabled trigger never fires. */}
+            {platform ? (
+              <p className="text-muted-foreground text-sm">
+                This is a platform bucket (model weights, MLflow artifacts, backups, the workflow claim check), so the System tenant owns it.
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="register-bucket-description">Description</Label>
@@ -523,7 +550,10 @@ export function TenantStorageScreen() {
   }
 
   const scoped = !session.data.isElevated || Boolean(session.data.workingTenantId);
-  return <StorageScreenBody scoped={scoped} />;
+  // TASK-967 — platform-bucket deletion is a platform-admin act, independent of
+  // whether a working tenant happens to be selected, so it needs the elevation
+  // bit in its own right rather than inferring it from `scoped`.
+  return <StorageScreenBody scoped={scoped} elevated={session.data.isElevated} />;
 }
 
 /** Per-tenant tabs (defaults / configs / keys) still need a working tenant. */
@@ -537,7 +567,7 @@ function PickTenantState() {
   );
 }
 
-function StorageScreenBody({ scoped }: { scoped: boolean }) {
+function StorageScreenBody({ scoped, elevated }: { scoped: boolean; elevated: boolean }) {
   const bucketsQuery = useBuckets();
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('buckets'));
   const [provisionOpen, setProvisionOpen] = useState(false);
@@ -546,6 +576,14 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
   // it, so the URL stays the single source of truth and a browser Back
   // dismisses the dialog rather than stranding it.
   const [registerParam, setRegisterParam] = useQueryState('register', parseAsString.withDefault(''));
+  // TASK-967 — `&platform=1` rides along when the deep link names a PLATFORM
+  // bucket. The console cannot classify a bucket name itself (`isPlatformBucket`
+  // lives in `@arcaai/domains`, a backend package the console does not depend
+  // on), so the flag carries the GATEWAY's own classification from the storage
+  // browser's listing rather than being re-derived here, where it could drift.
+  // It only changes what the dialog offers — the gateway enforces regardless,
+  // so a hand-typed URL without it is still refused.
+  const [registerPlatformParam, setRegisterPlatformParam] = useQueryState('platform', parseAsString.withDefault(''));
   const [manualRegisterOpen, setManualRegisterOpen] = useState(false);
 
   const registerOpen = Boolean(registerParam) || manualRegisterOpen;
@@ -553,6 +591,7 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
   function setRegisterOpen(next: boolean) {
     if (!next) {
       setManualRegisterOpen(false);
+      if (registerPlatformParam) void setRegisterPlatformParam(null);
       if (registerParam) void setRegisterParam(null);
       return;
     }
@@ -615,7 +654,7 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
         }
       >
         <TabsContent value="buckets" className="flex min-h-0 flex-col">
-          <BucketsTab onProvision={() => setProvisionOpen(true)} scoped={scoped} />
+          <BucketsTab onProvision={() => setProvisionOpen(true)} scoped={scoped} elevated={elevated} />
         </TabsContent>
         <TabsContent value="defaults" className="overflow-y-auto">
           {scoped ? <BucketDefaultsTab /> : <PickTenantState />}
@@ -634,7 +673,13 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
         without an effect syncing prop → state (react-hooks/set-state-in-effect).
         It also clears tenant/description between opens for free.
       */}
-      <RegisterBucketDialog key={registerParam} open={registerOpen} initialName={registerParam} onOpenChange={setRegisterOpen} />
+      <RegisterBucketDialog
+        key={registerParam}
+        open={registerOpen}
+        initialName={registerParam}
+        platform={Boolean(registerParam) && registerPlatformParam === '1'}
+        onOpenChange={setRegisterOpen}
+      />
     </Tabs>
   );
 }

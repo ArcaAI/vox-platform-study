@@ -244,38 +244,25 @@ describe('TenantBucketController', () => {
     const meta = (m: keyof TenantBucketController): TenantOwnedResourceOptions | undefined =>
       Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, TenantBucketController.prototype[m] as object) as TenantOwnedResourceOptions | undefined;
 
-    it('getBucket is annotated with modelName TenantBucket + paramName id', () => {
-      expect(meta('getBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-    });
-
-    it('getBucketTree is annotated with modelName TenantBucket + paramName id', () => {
-      expect(meta('getBucketTree')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-    });
-
-    it('getPresignedUrl is annotated with modelName TenantBucket + paramName id', () => {
-      expect(meta('getPresignedUrl')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-    });
-
-    // DEFAULT scope, deliberately — the assertion doubles as the guard against a
-    // future widening. An unscoped platform admin is browse-only here; bucket
-    // deletion destroys the physical bucket and stays tenant-bound, so a
-    // `scope: 'super-admin'` added to this route must fail this test.
-    it('deleteBucket is annotated with modelName TenantBucket + paramName id and NO super-admin scope', () => {
-      expect(meta('deleteBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-      expect(meta('deleteBucket')?.scope).toBeUndefined();
-    });
-
-    it('deleteObject is annotated with modelName TenantBucket + paramName id', () => {
-      expect(meta('deleteObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-    });
-
-    it('listObjects is annotated with modelName TenantBucket + paramName id and super-admin scope', () => {
-      expect(meta('listObjects')).toEqual({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' });
-    });
-
-    it('uploadObject is annotated with modelName TenantBucket + paramName id', () => {
-      expect(meta('uploadObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
-    });
+    // TASK-967 — every id-addressed handler carries `scope: 'super-admin'`.
+    //
+    // A PLATFORM bucket is owned by the SYSTEM tenant, and no one can select
+    // SYSTEM as a working tenant, so without the bypass the interceptor 404s
+    // before the service runs and platform buckets are unmanageable by anyone.
+    //
+    // This is NOT a blanket widening, and the assertion is not weaker than the
+    // one it replaces — it moved. The decorator grants REACH; the permission
+    // boundary is `TenantBucketService.assertUnscopedWriteAllowed`, asserted in
+    // `tenant-bucket.service.platform.task967.test.ts`: an unscoped platform
+    // admin may write only to SYSTEM rows, and a CUSTOMER row still 404s on
+    // deleteBucket / uploadObject / deleteObject / getPresignedUrl. Removing
+    // that service guard must fail those tests.
+    it.each(['getBucket', 'getBucketTree', 'getPresignedUrl', 'deleteBucket', 'deleteObject', 'listObjects', 'uploadObject'] as const)(
+      '%s is annotated with modelName TenantBucket + paramName id and super-admin scope',
+      (method) => {
+        expect(meta(method)).toEqual({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' });
+      },
+    );
 
     it('listBuckets and createBucket and provisionSystemBuckets are NOT annotated (no :id route param)', () => {
       expect(meta('listBuckets')).toBeUndefined();

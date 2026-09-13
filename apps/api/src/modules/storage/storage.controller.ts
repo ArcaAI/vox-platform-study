@@ -118,11 +118,15 @@ export class StorageController {
     if (/[.]{2}|[/\\]/.test(body.name)) {
       throw new BadRequestException('Invalid bucket name');
     }
-    // Rejected BEFORE `createBucket`, not just inside `registerBucket`:
-    // creating first would leave an untracked physical bucket behind when the
-    // registration that follows throws.
+    // A platform NAME cannot be CREATED here — the bucket already exists, so
+    // this would be a no-op at best. TASK-967 made platform buckets manageable,
+    // and the route for that is adoption, which is registry-only and leaves the
+    // bucket untouched. Rejected BEFORE `createBucket`: creating first would
+    // leave an untracked physical bucket behind if registration then threw.
     if (isPlatformBucket(body.name)) {
-      throw new BadRequestException(`'${body.name.trim()}' is a platform bucket name and is reserved`);
+      throw new BadRequestException(
+        `'${body.name.trim()}' is a platform bucket that already exists. Register it instead: POST admin/tenants/storage/buckets/register.`,
+      );
     }
     await this.blobStorage.createBucket(body.name);
     // Register the TenantBucket row so the bucket is owned by the caller's
