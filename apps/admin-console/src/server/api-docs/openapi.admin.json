@@ -19994,6 +19994,11 @@
             "nullable": true,
             "type": "number"
           },
+          "monthlySpendLimitMicros": {
+            "description": "The tenant's OWN monthly spend ceiling in integer micros (D12); null = no self-imposed limit, which is the default. Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429.",
+            "nullable": true,
+            "type": "number"
+          },
           "monthlySttSessionSeconds": {
             "description": "Override monthly STT session-seconds allowance (D11); null = inherit",
             "nullable": true,
@@ -23607,6 +23612,12 @@
           },
           "monthlyNlpTextUnits": {
             "description": "Override monthly NLP text-units allowance (D11); null = inherit",
+            "nullable": true,
+            "type": "number"
+          },
+          "monthlySpendLimitMicros": {
+            "description": "The tenant's OWN monthly spend ceiling in integer micros (D12); null = clear it (no self-imposed limit, the default). Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429. `0` is a real setting, not \"unlimited\".",
+            "example": 250000000,
             "nullable": true,
             "type": "number"
           },
@@ -37532,7 +37543,7 @@
         ]
       },
       "put": {
-        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: \"0\"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:entitlement:manage`).\n\n**Abilities** — `manage:all`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: \"0\"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`. This is also the write path for `monthlySpendLimitMicros`, the ceiling a tenant sets on its OWN monthly spend (exhausting it answers 402 on the consultation, agent and workflow planes). The SYSTEM tenant (`00000000-…`) is refused with 403: it is a configuration tier, carries no plan, and no request runs as it, so an override written there would never be read.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:entitlement:manage`).\n\n**Abilities** — `manage:all`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "EntitlementsAdminController_upsertOverride",
         "parameters": [
           {
@@ -37574,6 +37585,9 @@
               }
             },
             "description": ""
+          },
+          "403": {
+            "description": "The SYSTEM tenant is a configuration tier and carries no entitlement override."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."

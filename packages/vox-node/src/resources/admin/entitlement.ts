@@ -178,7 +178,7 @@ export class AdminEntitlementResource extends AdminResource {
   /**
    * Create-or-update a tenant override ("increase on demand", Q7).
    *
-   * Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: "0"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.
+   * Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: "0"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`. This is also the write path for `monthlySpendLimitMicros`, the ceiling a tenant sets on its OWN monthly spend (exhausting it answers 402 on the consultation, agent and workflow planes). The SYSTEM tenant (`00000000-…`) is refused with 403: it is a configuration tier, carries no plan, and no request runs as it, so an override written there would never be read.
    *
    * `PUT /api/v1/admin/entitlements/tenants/{tenantId}/override` — `EntitlementsAdminController.upsertOverride`.
    *
