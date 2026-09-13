@@ -38,6 +38,7 @@ from harness.api.endpoints.internal import (
     require_service_token,
 )
 from harness.core.logging import get_logger
+from harness.temporal.workflow_ids import DOC_WORKFLOW_ID_PREFIX
 
 logger = get_logger(__name__)
 
@@ -45,7 +46,8 @@ router = APIRouter(tags=["admin"])
 
 # The deterministic workflow-id scheme (``harness-doc-{consultationId}``) — used to
 # recover the consultation id from a workflow id and to target a single workflow.
-_WORKFLOW_ID_PREFIX = "harness-doc-"
+# Read from the leaf module that now owns the three prefixes (TASK-957).
+_WORKFLOW_ID_PREFIX = DOC_WORKFLOW_ID_PREFIX
 
 # Memo key (fallback when the ``HarnessTenantId`` search attribute is unavailable).
 # The search-attribute name/key are shared with ``internal.start_document``.

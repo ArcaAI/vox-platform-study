@@ -21,6 +21,10 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
 
+from harness.temporal.workflow_ids import (
+    INTERPRETER_WORKFLOW_ID_PREFIX as _INTERPRETER_WORKFLOW_ID_PREFIX,
+)
+
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.activities import (
@@ -111,8 +115,11 @@ _CONFIG_LOAD_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(
 _SEQ_STRIDE = 16
 
 # Deterministic, idempotent-on-start workflow id — mirrors
-# `consultation_loop_workflow_id` (workflows.py:1623-1625).
-INTERPRETER_WORKFLOW_ID_PREFIX = "workflow-interpreter-"
+# `consultation_loop_workflow_id` (workflows.py:1623-1625). DEFINED in the leaf module
+# `temporal/workflow_ids.py` and re-exported here, so the compute meter can read the
+# prefix off the ACTIVITY path without importing this workflow module (TASK-957);
+# every existing importer of this name is unaffected.
+INTERPRETER_WORKFLOW_ID_PREFIX = _INTERPRETER_WORKFLOW_ID_PREFIX
 
 # The patch marker for the HITL-gate command. Required by
 # contracts/versioning.md rule 3: executing a gate adds a NEW command to the workflow body, which

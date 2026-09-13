@@ -11,7 +11,7 @@ import {
   toUsageUnitQuantities,
 } from '../../usageLedger/normalizer/llm-usage-normalizer';
 import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-attributes';
-import type { UsageOperation } from '../../usageLedger/vocabulary';
+import { classifyLlmDeployment, type UsageOperation } from '../../usageLedger/vocabulary';
 
 /**
  * Turning an TEXT `/generate` response into ledger rows.
@@ -99,9 +99,6 @@ const LEDGER_PROVIDER_BY_TEXT_KEY: Readonly<Record<string, string>> = Object.fre
   aws_bedrock: 'bedrock',
 });
 
-/** Providers the platform runs on its OWN hardware — the economics differ. */
-const SELF_HOSTED_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp', 'built-in']);
-
 /**
  * The ledger's deployment dimension for a CANONICAL provider slug (i.e. one that has already
  * been through {@link toLedgerProvider}).
@@ -113,8 +110,13 @@ const SELF_HOSTED_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lm-studio
  * silently under-reported.
  */
 export function resolveDeployment(provider: string, byok: boolean): AiDeploymentKind {
-  if (byok) return AiDeploymentKind.BYOK;
-  return SELF_HOSTED_PROVIDERS.has(provider) ? AiDeploymentKind.SELF_HOSTED : AiDeploymentKind.CLOUD;
+  // TASK-957 F-9 — DELEGATED, not restated. This file used to carry its own
+  // copy of the self-hosted id set, and it had already drifted: TASK-959 added
+  // `harness` to `SELF_HOSTED_PROVIDER_IDS` and not here, so one provider id
+  // classified two ways. `classifyLlmDeployment` returns the enum's own member
+  // names, which is what makes the lookup below total rather than a mapping
+  // table that could drift in its turn.
+  return AiDeploymentKind[classifyLlmDeployment(provider, byok)];
 }
 
 /**

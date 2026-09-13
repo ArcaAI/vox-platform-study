@@ -70,6 +70,15 @@ export class TenantEntitlementResponse {
 
   @ApiPropertyOptional({
     description:
+      "The tenant's OWN monthly spend ceiling in integer micros (D12); null = no self-imposed limit, which is the default. " +
+      'Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it ' +
+      'answers 402 rather than 409/429.',
+    nullable: true,
+  })
+  monthlySpendLimitMicros?: number | null;
+
+  @ApiPropertyOptional({
+    description:
       "Override the PLATFORM-DEFAULT (SYSTEM-tenant) provider-credential grant; null = inherit the plan (false on every plan), true = grant, false = explicit deny. A tenant's own DISABLED provider row is a stronger per-provider veto this grant never overrides.",
     nullable: true,
   })
@@ -203,6 +212,32 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlyEmbeddingTokens?: number | null;
+
+  /**
+   * TASK-959 FU-1 (TASK-957 F-4) — the WRITE path for the ceiling `assertSpendLimit`
+   * has been enforcing since F-4 and nobody could set.
+   *
+   * Carried as a `number`, like the five sibling `BigInt?` allowance columns above;
+   * the service converts. `0` is a real, enforceable setting ("spend nothing more
+   * this month") and is NOT the absent value — `null` clears the ceiling back to
+   * unlimited, which is every tenant's default.
+   *
+   * Setting it on the SYSTEM tenant (`00000000-…`) is refused: that id is a
+   * configuration TIER, no request runs as it, so a ceiling written there would
+   * never be read.
+   */
+  @ApiPropertyOptional({
+    description:
+      "The tenant's OWN monthly spend ceiling in integer micros (D12); null = clear it (no self-imposed limit, the default). " +
+      'Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it ' +
+      'answers 402 rather than 409/429. `0` is a real setting, not "unlimited".',
+    nullable: true,
+    example: 250000000,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlySpendLimitMicros?: number | null;
 
   @ApiPropertyOptional({
     description:

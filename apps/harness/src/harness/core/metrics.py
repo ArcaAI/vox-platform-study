@@ -58,6 +58,39 @@ GATE_DECISION_TOTAL = Counter(
 )
 
 
+# TASK-957 F-5 (harness half) — usage-ledger emissions this service GAVE UP on.
+#
+# FIXED CONTRACT with the gateway: the NAME is shared with
+# `USAGE_EMISSION_FAILED_METRIC` in `agent-trajectory.service.ts`, so one Grafana
+# query covers both sides of the harness → gateway hop. It has to be shared,
+# because the two sides see disjoint failures: the gateway's counter can only
+# count a batch that REACHED it, and this one exists precisely for the batches
+# that did not.
+#
+# `operation` is the batch HALF, not a ledger operation, and the asymmetry is
+# deliberate. A `computeSamples[]` batch becomes exactly one ledger operation
+# (`workflow.step`), so it is named. A `steps[]` batch becomes `harness.step` or
+# `workflow.step` per STEP, decided by the gateway's mapper from data this
+# process does not interpret — so it is labelled `trajectory`, after the POST
+# that carried it, rather than guessing one of the two.
+#
+# `reason` says how the batch was lost:
+#   rejected — apps/api refused the body (terminal 4xx); dropped on purpose.
+#   spooled  — the retry budget is spent; held for a later drain, not billed yet.
+#   dropped  — a bounded buffer evicted it; permanently lost.
+USAGE_EMISSION_FAILED_TOTAL = Counter(
+    "hope_usage_emission_failed_total",
+    "Usage-ledger emissions this service could not deliver. Non-zero means metered work "
+    "was not (or not yet) billed.",
+    ["operation", "reason"],
+)
+
+
+def inc_usage_emission_failed(operation: str, reason: str) -> None:
+    """Count one batch this service gave up on. NEVER raises — see the module header."""
+    USAGE_EMISSION_FAILED_TOTAL.labels(operation=operation, reason=reason).inc()
+
+
 def observe_step_duration(step_type: str, name: str, seconds: float) -> None:
     """Observe one trajectory step's wall-clock duration (seconds)."""
     STEP_DURATION_SECONDS.labels(step_type=step_type, name=name).observe(max(0.0, seconds))
