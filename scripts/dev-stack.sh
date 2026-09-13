@@ -164,7 +164,7 @@ echo -e "${CYAN}Ensuring Docker infra...${NC}"
 # ----------------------------------------------------------------------------
 : "${LM_STUDIO_MODEL:=gemma-4-e2b-it-qat}"
 : "${LM_STUDIO_CONTEXT_LENGTH:=16384}"
-: "${LM_STUDIO_PARALLEL:=4}"
+: "${LM_STUDIO_PARALLEL:=10}"
 : "${LM_STUDIO_TTL_S:=3600}"
 ensure_lmstudio_model() {
     local lms="${LMS_BIN:-$HOME/.lmstudio/bin/lms}"
