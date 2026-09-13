@@ -167,6 +167,40 @@ test.describe('TASK-890 — an agent invocation is metered', () => {
   });
 });
 
+/**
+ * THE ZERO ALLOWANCE IS TENANT-WIDE, SO IT IS HELD FOR AS FEW LINES AS POSSIBLE.
+ *
+ * `monthlyLlmTokens = 0`, the entitlements kill-switch and the stamped plan are
+ * all per-TENANT state on `__GLOBAL__`, which every other spec also bills
+ * against — and Playwright runs spec FILES in parallel (`fullyParallel: true`),
+ * which `test.describe.configure({ mode: 'serial' })` does not change: it
+ * orders tests WITHIN this file and nothing outside it.
+ *
+ * Held in `beforeAll`/`afterAll`, the window spanned this whole describe, and a
+ * sibling spec that invoked an LLM inside it was refused 429 for a ceiling it
+ * never set. Observed 2026-09-13: `task-959-compute.spec.ts`'s stream
+ * invocation failed with `Plan limit reached for 'monthlyLlmTokens' (0/0)` the
+ * first time both files ran in ONE invocation. So the manipulation now lives in
+ * the test BODY, set immediately before the refused call and restored in a
+ * `finally`.
+ *
+ * A RESIDUAL WINDOW REMAINS, and it is deliberate. It is the duration of one
+ * request plus the 2s settle below — seconds rather than the length of a
+ * describe — but a sibling that invokes an LLM inside it will still see a 429.
+ * Two things it is NOT worth trading for:
+ *
+ *   * a cross-file lock, which couples every spec in the suite to this one and
+ *     turns a parallel run serial to protect a few seconds;
+ *   * a second tenant. `50000000-…-0001` ("ARCAAI") exists and DOES carry the
+ *     cloned `general-medicine-summarization` agent, but `tests/helpers`
+ *     ships no credential that can reach it — measured 2026-09-13, all six
+ *     seeded non-super-admin users answer "User does not have access to the
+ *     specified tenant" against `tenantKey: 'ARCAAI'`. Moving this describe
+ *     there means seeding a user first, which is not an e2e-spec change.
+ *
+ * If a sibling ever fails with `monthlyLlmTokens (0/0)`, this is the cause and
+ * a seeded ARCAAI doctor is the fix — not a looser assertion over there.
+ */
 test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs', () => {
   let previousEnforcement: boolean | undefined;
   let previousPlan: string | null = null;
@@ -183,7 +217,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
   }
 
   /**
-   * Stamp a plan on the caller's tenant for the length of this describe.
+   * Stamp a plan on the caller's tenant for the length of the refused call.
    *
    * `__GLOBAL__` is in `RESERVED_UNGATED_TENANT_IDS` (`entitlements.constants.ts`),
    * so with no plan it resolves `UNGATED_ENTITLEMENTS` and Q3 IGNORES the
@@ -222,8 +256,8 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     return ((await response.json()) as { plan?: string | null }).plan ?? null;
   }
 
-  test.beforeAll(async ({ playwright }) => {
-    const request = await playwright.request.newContext();
+  /** Zero the allowance, remembering what to put back. Paired with `restore` in a `finally`. */
+  async function exhaustAllowance(request: APIRequestContext): Promise<void> {
     const read = await request.get('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken) });
     previousEnforcement = ((await read.json()) as { enabled?: boolean }).enabled;
     const tenant = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
@@ -231,43 +265,60 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: true } });
     await setPlan(request, 'ENTERPRISE');
     await setLlmAllowance(request, 0);
-    await request.dispose();
-  });
+  }
 
-  test.afterAll(async ({ playwright }) => {
-    const request = await playwright.request.newContext();
-    // Restore BOTH knobs: leaving a zero allowance behind would fail every
-    // later LLM spec in this suite with a 429 that looks unrelated.
-    await setLlmAllowance(request, null);
-    await setPlan(request, previousPlan);
-    if (previousEnforcement !== undefined) {
-      await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: previousEnforcement } });
+  /**
+   * Put all three knobs back. Best-effort on purpose: this runs in a `finally`,
+   * so a throw here would REPLACE the assertion failure that sent us into it
+   * and the report would name the cleanup instead of the defect.
+   */
+  async function restoreAllowance(request: APIRequestContext): Promise<void> {
+    try {
+      await setLlmAllowance(request, null);
+      await setPlan(request, previousPlan);
+      if (previousEnforcement !== undefined) {
+        await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: previousEnforcement } });
+      }
+    } catch {
+      // swallowed deliberately — see above
     }
-    await request.dispose();
-  });
+  }
 
   test('the invocation is 429 and NOTHING is billed — the refusal precedes the TEXT call', async ({ request }) => {
-    const since = new Date();
-    const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations`, {
-      headers: bearer(doctorToken),
-      data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
-    });
+    // The zero allowance exists ONLY for the lines between these two calls —
+    // see the describe's header. `test.skip` and the assertions stay lexically
+    // in the test body: Playwright resolves them against the running test, and
+    // hoisting them into a helper is how a skip silently stops skipping.
+    let ungated = false;
+    await exhaustAllowance(request);
+    try {
+      const since = new Date();
+      const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations`, {
+        headers: bearer(doctorToken),
+        data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
+      });
 
-    // If the tenant still resolves ungated the precheck cannot fire, and a
-    // 503 here would mean "TEXT answered", not "the quota was honoured" —
-    // say so rather than assert something the fixture cannot produce.
-    test.skip(!(await stampedPlan(request)), 'the caller tenant resolves ungated — the meter allowance cannot be enforced against it');
+      // If the tenant still resolves ungated the precheck cannot fire, and a
+      // 503 here would mean "TEXT answered", not "the quota was honoured" —
+      // say so rather than assert something the fixture cannot produce.
+      ungated = !(await stampedPlan(request));
+      if (!ungated) {
+        expect(response.status()).toBe(429);
+        const body = (await response.json()) as { code?: string; metadata?: { capability?: string } };
+        expect(body.code).toBe('DOMAIN.QUOTA_EXCEEDED');
+        expect(body.metadata?.capability).toBe('monthlyLlmTokens');
 
-    expect(response.status()).toBe(429);
-    const body = (await response.json()) as { code?: string; metadata?: { capability?: string } };
-    expect(body.code).toBe('DOMAIN.QUOTA_EXCEEDED');
-    expect(body.metadata?.capability).toBe('monthlyLlmTokens');
-
-    // The absence of a row is the real assertion: a 429 raised AFTER the model
-    // ran would still have produced one.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const rows = await outboxSince(since);
-    expect(rows.filter((row) => row.operation.startsWith('generate'))).toHaveLength(0);
+        // The absence of a row is the real assertion: a 429 raised AFTER the model
+        // ran would still have produced one.
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const rows = await outboxSince(since);
+        expect(rows.filter((row) => row.operation.startsWith('generate'))).toHaveLength(0);
+      }
+    } finally {
+      await restoreAllowance(request);
+    }
+    // AFTER the restore, so a skip cannot leave the tenant at a zero allowance.
+    test.skip(ungated, 'the caller tenant resolves ungated — the meter allowance cannot be enforced against it');
   });
 });
 
