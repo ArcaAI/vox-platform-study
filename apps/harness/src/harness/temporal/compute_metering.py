@@ -233,6 +233,19 @@ class ComputeSampleBuffer:
         self._samples.append(sample)
         if full:
             self._dropped += 1
+            # TASK-957 F-5 — a sample evicted HERE never reaches the delivery layer, so
+            # the trajectory POST's own counter can never see it. Same metric, same
+            # `dropped` reason: from the ledger's side this loss is indistinguishable
+            # from a spool overflow, and one query should find both.
+            #
+            # Imported INSIDE the function, like `_deliver_samples` below and for the
+            # same reason: this module is imported while the Temporal workflow sandbox
+            # validates a workflow, and `harness.core.metrics` pulls in
+            # `prometheus_client`, whose transitive `urllib.request` the sandbox
+            # restricts. A module-scope import fails workflow validation outright.
+            from harness.core.metrics import inc_usage_emission_failed  # noqa: PLC0415
+
+            inc_usage_emission_failed("workflow.step", "dropped")
             activity.logger.warning(
                 "harness.compute_metering.buffer_overflow",
                 extra={"dropped_total": self._dropped, "capacity": self._samples.maxlen},

@@ -48,6 +48,7 @@ from typing import Any, Protocol
 import structlog
 
 from harness.core.config import Settings, get_settings
+from harness.core.metrics import inc_usage_emission_failed
 from harness.core.redis_client import build_trajectory_spool_redis
 from harness.services.api_client import ApiClient, ApiClientError, trajectory_body
 
@@ -83,6 +84,29 @@ SPOOL_TTL_S = 86_400
 #: How many spooled batches one drain attempts. Bounded so the drain cannot monopolise the
 #: flusher's tick, and re-entered on the next tick until the spool is empty.
 SPOOL_DRAIN_PER_TICK = 5
+
+
+#: The `operation` label for the two halves a trajectory body can carry
+#: (`harness/core/metrics.py` explains why a steps batch is not named after a ledger
+#: operation: the gateway decides `harness.step` vs `workflow.step` per STEP).
+STEP_BATCH_OPERATION = "trajectory"
+COMPUTE_BATCH_OPERATION = "workflow.step"
+
+
+def _count_emission_failure(body: dict[str, Any], reason: str) -> None:
+    """Count one lost batch, once per half it carried. NEVER raises.
+
+    A body may carry `steps`, `computeSamples`, or both, and the two halves become
+    different ledger rows — so a mixed body that is lost loses BOTH, and says so. A
+    body carrying neither is not a batch and is not counted.
+    """
+    try:
+        if body.get("steps"):
+            inc_usage_emission_failed(STEP_BATCH_OPERATION, reason)
+        if body.get("computeSamples"):
+            inc_usage_emission_failed(COMPUTE_BATCH_OPERATION, reason)
+    except Exception as exc:  # noqa: BLE001 — a meter must never break a delivery
+        logger.warning("harness.usage_emission_metric.failed", error=str(exc))
 
 
 def _now_s() -> float:
@@ -174,8 +198,16 @@ class TrajectorySpool:
             except Exception as exc:  # noqa: BLE001 — fall through to the memory spool
                 logger.warning("harness.trajectory_spool.redis_write_failed", error=str(exc))
 
+        # The deque evicts its OLDEST entry on append, so the batch that is LOST is the
+        # one already at the front — never the one being offered. Read it before the
+        # append or the counter names the wrong lane.
         dropped = len(self._memory) == self._memory.maxlen
+        evicted = self._memory[0] if dropped else None
         self._memory.append(entry)
+        if evicted is not None:
+            lost = evicted.get("body")
+            if isinstance(lost, dict):
+                _count_emission_failure(lost, "dropped")
         logger.warning(
             "harness.trajectory_spool.spooled",
             store="memory",
@@ -351,6 +383,7 @@ async def _deliver(
                 compute_samples=len(body.get("computeSamples") or ()),
                 error=str(exc),
             )
+            _count_emission_failure(body, "rejected")
             return False
         except Exception as exc:  # noqa: BLE001 — transport/5xx/anything: retry, then spool
             last_error = exc
@@ -368,6 +401,11 @@ async def _deliver(
         error=str(last_error),
     )
     if allow_spool:
+        # Counted HERE rather than on every exhausted budget: with `allow_spool=False`
+        # this is the DRAIN re-delivering an already-spooled batch, which the spool
+        # re-queues itself. Counting that would charge one outage once per drain tick,
+        # forever, and a counter only rises.
+        _count_emission_failure(body, "spooled")
         await (spool or get_trajectory_spool()).offer(body)
     return False
 
