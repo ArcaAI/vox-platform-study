@@ -235,12 +235,33 @@ in dependency order. All worktrees merged and removed; no branch left behind.
    from `ff0c74291` (TASK-969 L3): three prettier errors in `text-proxy.controller.ts`. Verified
    pre-existing on a checkout lane F never touched. Formatting only.
 
-### A latent `packages/ui` defect, filed but NOT fixed here
+### The latent `packages/ui` defect behind defect 2 — since FIXED (`79224fcf2`)
 
-`packages/ui/tsup.config.ts` sets an esbuild `banner` of `"use client"` that never reaches the
-emitted `js`/`mjs` — it survives only in the `.map` files (0 of 18 dist bundles carry it). So the
-`@arcaai/ui` barrel cannot safely be imported from any Server Component by anyone. Real, separate,
-and out of scope; it is what made defect 2 possible rather than merely wrong.
+`packages/ui/tsup.config.ts` sets an esbuild `banner` of `"use client"` that never reached the
+emitted `js`/`mjs`, so the `@arcaai/ui` barrel could not safely be imported from any Server
+Component by anyone. That is what made defect 2 possible rather than merely wrong.
+
+**Cause — not what it looked like.** esbuild honours the banner; `treeshake: true` then discards
+it. tsup's tree-shaking plugin runs every emitted chunk back through rollup, whose
+`bundle.generate()` carries no banner, and rollup drops a top-level string-literal statement as
+side-effect-free — announcing it in the build log ("Module level directives cause errors when
+bundled, `use client` … was ignored"). Measured on tsup 8.5.1: treeshake on → 0 of the emitted
+bundles kept the directive; treeshake off → `index.mjs` began with it. Neither an esbuild version
+mismatch nor a `splitting` interaction, which were the two standing hypotheses.
+
+**Fix.** tsup runs user `plugins` BEFORE its own tree-shaking plugin, so a plugin cannot restore
+it. `packages/ui/scripts/ensure-use-client.mjs` runs after tsup in the `build` script, prepends the
+directive to every bundle, and prepends a `;` to each sibling map's `mappings` so source maps stay
+aligned. It exits non-zero if it finds no bundles — a silent no-op is how this would regress.
+
+**Verified**: 24/24 bundles carry the directive; `grep -c "use client"` on `dist/index.mjs` and
+`dist/index.js` returns 1 each; a Server Component importing the barrel now reaches
+"✓ Compiled successfully" under `next build`, which it could not before; 756 `packages/ui` tests
+pass.
+
+With this fixed, the `'use client'` added to `invoke-guide-screen.tsx` in `104ada30c` is no longer
+load-bearing — but it is kept, because every sibling developer-docs screen carries it and a screen
+that renders `CodeBlock` (a client component) belongs on that side of the boundary anyway.
 
 ### Gates (post-merge, on `dev-2.2`)
 
@@ -286,3 +307,4 @@ operations repeating a scheme: 0                               (was 179)
 |---|---|
 | 2026-09-13 | Ticket opened. Two read-only explorations (public invoke contract; browser SDK surface) + direct verification of every P1. Owner decided OD-1…OD-4. Plan written; awaiting approval. |
 | 2026-09-13 | Owner approved the plan. Lane A landed in the primary checkout; lanes B–F ran in four parallel worktrees (tiered opus/sonnet per rule 14 §1) and were merged in order postman → panel → openapi → portal, with gates re-run after each. Three integration defects found and fixed (§4). Status → Review; the runtime pass is the one criterion outstanding. |
+| 2026-09-13 | Follow-up fixed in `79224fcf2`: the `@arcaai/ui` `"use client"` banner never reached `dist/` because `treeshake: true` sends every chunk back through rollup, which drops the directive. `scripts/ensure-use-client.mjs` restores it post-build (source maps realigned). 24/24 bundles verified; a Server Component importing the barrel now compiles. |
