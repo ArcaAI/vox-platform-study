@@ -4,6 +4,7 @@ import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import {
+  AiProviderConnectionRepository,
   ApiKeyRepository,
   EntityId,
   PlanEntitlementEntity,
@@ -13,9 +14,11 @@ import {
   TenantEntitlementEntity,
   TenantEntitlementFactory,
   TenantEntitlementRepository,
+  ResourceStatusType,
   TenantPlan,
   TenantRepository,
   ValueType,
+  WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -112,6 +115,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     private readonly planEntitlementRepository: PlanEntitlementRepository,
     private readonly tenantEntitlementRepository: TenantEntitlementRepository,
     private readonly apiKeyRepository: ApiKeyRepository,
+    private readonly workflowDefinitionRepository: WorkflowDefinitionRepository,
+    private readonly aiProviderConnectionRepository: AiProviderConnectionRepository,
     @Inject(ITenantService)
     private readonly tenantService: ITenantService,
     @Inject(IMeteringService)
@@ -203,6 +208,20 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     // (concurrency) — live simultaneous active STT sessions for this
     // tenant across all instances (best-effort; 0 if the registry is absent).
     const activeConcurrent = await this.getActiveConcurrency(tenantId);
+    // Both counts MUST be the query the matching precheck runs, or the row
+    // contradicts the gate: a tenant shown "3 / 5" would still be refused at 3.
+    // Workflow definitions: `workflowDefinitionRepository.count({ tenantId })`,
+    // every version row, exactly as `WorkflowDefinitionService` counts before
+    // `assertQuantityQuota`.
+    const workflowDefinitionCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+    // Provider connections: ENABLED rows only, across every service —
+    // `AiProviderConnectionService.countTenantConnections` sums
+    // `findByTenantIdAndService`, which filters `resourceStatus: ENABLED`. A
+    // DISABLED row is a per-provider veto, not a consumed slot, so counting it
+    // here would invent usage the gate does not see.
+    const aiProviderConnectionCount = await this.aiProviderConnectionRepository.count({
+      where: { tenantId, resourceStatus: ResourceStatusType.ENABLED },
+    });
 
     const quantities = [
       buildCapabilityRow('users', resolved.limits.maxUsers, usage.totalUsers),
@@ -211,6 +230,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       // @deprecated TASK-861 — removed in R4 with `AsrPipeline` (the agent ceiling replaces it, TASK-863).
       buildCapabilityRow('asrPipelines', resolved.limits.maxAsrPipelines, usage.totalPipelines),
       buildCapabilityRow('apiKeys', resolved.limits.maxApiKeys, apiKeyCount),
+      buildCapabilityRow('workflowDefinitions', resolved.limits.maxWorkflowDefinitions, workflowDefinitionCount),
+      buildCapabilityRow('aiProviderConnections', resolved.limits.maxAiProviderConnections, aiProviderConnectionCount),
       buildCapabilityRow('storageBytes', resolved.limits.storageQuotaBytes, usage.storageUsedBytes),
       // Concurrency is a point-in-time quantity (live sessions vs. cap), not a
       // rolling meter — surfaced alongside the other quantity capabilities.
@@ -221,6 +242,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       buildCapabilityRow('monthlyConsultations', resolved.limits.monthlyConsultations, meterUsage.consultations),
       buildCapabilityRow('monthlyTranscriptionMinutes', resolved.limits.monthlyTranscriptionMinutes, meterUsage.transcriptionMinutes),
       buildCapabilityRow('monthlySummaries', resolved.limits.monthlySummaries, meterUsage.summaries),
+      buildCapabilityRow('monthlyWorkflowInvocations', resolved.limits.monthlyWorkflowInvocations, meterUsage.workflowInvocations),
       // The five ledger-derived unit-allowance meters.
       buildCapabilityRow('monthlySttSessionSeconds', resolved.limits.monthlySttSessionSeconds, meterUsage.sttSessionSeconds),
       buildCapabilityRow('monthlyLlmTokens', resolved.limits.monthlyLlmTokens, meterUsage.llmTokens),
