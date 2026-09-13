@@ -41,16 +41,29 @@ export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, 
 
   if (published) {
     return (
+      // TASK-971 lane C — the published step now hosts a four-tab panel, so it takes rule 11 §3's
+      // "Large dialog (multi-tab, editor)" shape: a fixed 70vh/70vw flex column whose BODY is the
+      // only thing that scrolls. The confirm step below stays a short dialog, because it still is
+      // one.
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{published.name} is published</DialogTitle>
             <DialogDescription>
               {published.isActive ? 'This version is active. Here is how your developers reach it.' : 'This version is frozen and can be activated later.'}
             </DialogDescription>
           </DialogHeader>
-          <IntegrationPanel kind="agent" slug={published.slug} task={published.task} versionNumber={published.versionNumber} isActive={published.isActive} />
-          <DialogFooter>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <IntegrationPanel
+              kind="agent"
+              slug={published.slug}
+              task={published.task}
+              versionNumber={published.versionNumber}
+              isActive={published.isActive}
+              inputSchema={published.inputSchema}
+            />
+          </div>
+          <DialogFooter className="shrink-0">
             <Button type="button" onClick={() => onOpenChange(false)}>
               Done
             </Button>
