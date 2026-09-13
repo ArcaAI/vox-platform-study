@@ -30,6 +30,7 @@ import {
 } from '../prisma/db_main/seed/04-department';
 import {
   ARCAAI_CLINICAL_APPROVED_VERSION,
+  approvedVersionFor,
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
   ARCAAI_CLINICAL_TEMPLATE_IDS,
@@ -825,8 +826,9 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => {
       expect(t.status).toBe('APPROVED');
       expect(t.category).toBe('SUMMARY');
-      expect(t.currentVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
-      expect(t.approvedVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+      // v4 for the two Breast & Endocrine templates (2026-09-13), the corpus default elsewhere.
+      expect(t.currentVersionNumber, t.id).toBe(approvedVersionFor(t.id));
+      expect(t.approvedVersionNumber, t.id).toBe(approvedVersionFor(t.id));
     });
   });
 
@@ -856,17 +858,19 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     });
   });
 
-  it('should keep every version per template — v1 and v2 retained, v3 approved', () => {
+  it('should keep every version per template — v1 and v2 retained, v3 approved, v4 where authored', () => {
     // Older versions are not replaced by newer ones; they stay seeded so the
     // approved pin is a one-field rollback with no content to restore.
     const SEEDED_VERSIONS = [1, 2, 3];
     expect(ARCAAI_CLINICAL_APPROVED_VERSION).toBe(3);
-    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length * SEEDED_VERSIONS.length);
+    const withV4 = ARCAAI_CLINICAL_TEMPLATES.filter((t) => approvedVersionFor(t.id) === 4);
+    expect(withV4.length).toBe(2); // Breast & Endocrine new referral + follow-up
+    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length * SEEDED_VERSIONS.length + withV4.length);
 
     const byTemplate = new Map<string, number[]>();
     ARCAAI_CLINICAL_VERSIONS.forEach((v) => byTemplate.set(v.promptTemplateId, [...(byTemplate.get(v.promptTemplateId) ?? []), v.versionNumber]));
     expect(byTemplate.size).toBe(ARCAAI_CLINICAL_TEMPLATES.length);
-    byTemplate.forEach((versions) => expect([...versions].sort()).toEqual(SEEDED_VERSIONS));
+    byTemplate.forEach((versions, id) => expect([...versions].sort(), id).toEqual(approvedVersionFor(id) === 4 ? [...SEEDED_VERSIONS, 4] : SEEDED_VERSIONS));
 
     // Version ids are unique, and carry the version number in the third UUID
     // group (v1 keeps its original `…-0000-0001-…` mirror slot).
@@ -903,7 +907,7 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
 
     // The template's mutable `content` column mirrors the APPROVED version.
     const approvedById = new Map(
-      ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION).map((v) => [v.promptTemplateId, v.content]),
+      ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === approvedVersionFor(v.promptTemplateId)).map((v) => [v.promptTemplateId, v.content]),
     );
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => expect(t.content).toBe(approvedById.get(t.id)));
 
