@@ -317,7 +317,7 @@ test.describe('TASK-959 §3.4 — a run detail carries the worker CPU it consume
     const run = listed.data?.[0];
     test.skip(
       !run,
-      'no workflow run exists in this database to read — starting one needs the harness service and a Temporal worker on the TEST stack, neither of which is running here',
+      'no workflow run exists in this database to read. Measured 2026-09-13 with apps/harness serving on the test port AND a Temporal worker attached to the test broker (7333), so the missing piece is no longer the services: `POST /workflows/:slug/runs` answers 500 for every published workflow (see task-959-workflow.spec.ts), so no run row can be created to read back',
     );
 
     const runId = run!.runId ?? run!.id;

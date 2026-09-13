@@ -276,6 +276,19 @@ test.describe('TASK-959 §3.2 — NER and TTS record theirs on the batch they al
       timeout: 90_000,
     });
     test.skip(DOWNSTREAM_DOWN.includes(response.status()), `apps/tts unreachable from the gateway (${response.status()})`);
+    // FAILS TODAY, AND THE ASSERTION IS THE CORRECT ONE (measured 2026-09-13, the
+    // first run with an `apps/tts` up to answer it; gateway `0.0.0-dev-2-2.aca4944e`).
+    // The synthesis SUCCEEDS — a real WAV comes back and the `tts.synthesize`
+    // ledger rows below do land — but the route answers 201, not 200:
+    // `agent.controller.ts`'s `@Post(':slug/speech')` writes the response through
+    // `@Res()` and never calls `res.status(200)` before `res.flushHeaders()`, and
+    // it carries no `@HttpCode(200)`, so Nest's `@Post` default 201 goes on the
+    // wire. Its own `@ApiResponse({ status: 200 })` and `openapi.json` both publish
+    // 200 (the sibling `/speech/synthesize` honestly publishes 201). So the
+    // PUBLISHED CONTRACT and the served status disagree, and the fix is one
+    // decorator in the controller — not a looser number here. Do not "fix" this by
+    // asserting 201: that would cement an undocumented status against the contract
+    // the SDK and every integrator generate from.
     expect(response.status(), await response.text()).toBe(200);
     await response.body();
 

@@ -18,18 +18,25 @@
  *
  * Hop 2 is the gateway's, and this file proves it over HTTP by POSTing the
  * frozen §10.2 sample shape, exactly as the worker's flush does. Hop 1 is the
- * worker's own, and it is NOT provable on this stack: proving it means starting
- * a real run, which needs `apps/harness` serving the gateway AND a Temporal
- * worker on the TEST Temporal. Measured on this box: no service listens on the
- * harness port, the test Temporal (`hope-temporal-test`, host port 7333) has no
- * worker attached, and the one `python -m harness.temporal.worker` process
- * running belongs to the DEV stack — its cwd is the primary checkout and it
- * carries no `TEMPORAL_ADDRESS`, so it connects to `localhost:7233`, the dev
- * broker. A run started here would be accepted and never executed.
+ * worker's own, and proving it means starting a real run.
  *
- * So the run-triggered test SKIPS with that reason rather than asserting
- * something this environment cannot produce, and it is written so it runs
- * unchanged the day a worker is attached.
+ * WHAT CHANGED (TASK-957 lane D, 2026-09-13). The stack this file was written
+ * against no longer describes the blocker. `apps/harness` now serves the
+ * gateway on the test port, and a `python -m harness.temporal.worker` is
+ * attached to the TEST Temporal (`hope-temporal-test`, host port 7333) rather
+ * than only the DEV broker on 7233 — both had to be launched with an explicit
+ * `TEMPORAL_ADDRESS=localhost:7333`, because `.env.test` declares no
+ * `TEMPORAL_ADDRESS` at all and the launchers therefore default to the DEV
+ * broker.
+ *
+ * With both of those up, `POST /workflows/:slug/runs` answers HTTP 500 — for
+ * EVERY published workflow (`platform-default-summarization` and
+ * `general-medicine-consultation` alike), and `apps/harness` logs no inbound
+ * request, so the throw is upstream of the dispatch. Measured against gateway
+ * build `0.0.0-dev-2-2.aca4944e`. That is a gateway defect, not an absent
+ * service, so hop 1 stays unproven and the run-triggered test still SKIPS —
+ * now naming the 500. The skip CONDITION is unchanged (`status >= 500`), so
+ * the test runs unaltered the day that route answers 202.
  */
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'crypto';
@@ -197,7 +204,7 @@ test.describe('TASK-959 §3.4 — an API-triggered run bills its own worker CPU'
     // proves nothing about metering. Both are the same skip.
     test.skip(
       start.status() >= 500,
-      `the harness dispatcher is unreachable from the gateway (${start.status()}) — no apps/harness on this stack, and the only Temporal worker running is the DEV stack's (cwd = the primary checkout, no TEMPORAL_ADDRESS, so it serves localhost:7233 and not the test broker on 7333)`,
+      `the gateway could not start the run (${start.status()}) — measured 2026-09-13 with apps/harness serving on the test port AND a Temporal worker attached to the test broker (7333): this route answers 500 for every published workflow and apps/harness logs no inbound request, so the throw is the gateway's, upstream of the dispatch`,
     );
     expect(start.status(), await start.text()).toBe(202);
     const { runId } = (await start.json()) as { runId: string };
