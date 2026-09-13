@@ -145,23 +145,29 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * List the caller tenant’s workflow definition versions
    *
+   * Filter to one palette with `paletteKey` (validated — an unknown key is a 400 naming the known palettes). The inherited `filters` grammar still composes on top: it is `field[op]:value`, `;`-separated (`paletteKey[equals]:core`), and the two predicates are AND-ed.
+   *
    * `GET /api/v1/admin/workflow-definitions` — `WorkflowDefinitionController.fetchAll`.
    *
    * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link workflowDefinitionFetchAllIterate} to walk every page.
    */
-  workflowDefinitionFetchAll(options: AdminListOptions & { query?: AdminListQuery } = {}): Promise<PaginatedPage<WorkflowDefinitionResponse>> {
+  workflowDefinitionFetchAll(
+    options: AdminListOptions & { query?: AdminListQuery & { paletteKey?: string } } = {},
+  ): Promise<PaginatedPage<WorkflowDefinitionResponse>> {
     return this.listPage<WorkflowDefinitionResponse>('admin/workflow-definitions', options);
   }
 
   /**
    * List the caller tenant’s workflow definition versions
    *
+   * Filter to one palette with `paletteKey` (validated — an unknown key is a 400 naming the known palettes). The inherited `filters` grammar still composes on top: it is `field[op]:value`, `;`-separated (`paletteKey[equals]:core`), and the two predicates are AND-ed.
+   *
    * `GET /api/v1/admin/workflow-definitions` — `WorkflowDefinitionController.fetchAll`.
    *
    * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
    */
   workflowDefinitionFetchAllIterate(
-    options: AdminListOptions & { query?: AdminListQuery } = {},
+    options: AdminListOptions & { query?: AdminListQuery & { paletteKey?: string } } = {},
   ): AsyncGenerator<WorkflowDefinitionResponse, void, undefined> {
     return this.listAll<WorkflowDefinitionResponse>('admin/workflow-definitions', options);
   }

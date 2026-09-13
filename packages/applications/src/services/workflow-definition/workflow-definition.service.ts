@@ -49,15 +49,7 @@ import type {
   WorkflowValidationReport,
 } from '@arcaai/workflow-contract';
 import { createHash } from 'node:crypto';
-import {
-  assertEqualTenants,
-  BaseService,
-  FetchResponse,
-  isSuperAdmin,
-  PaginatedQuery,
-  withFormattedCountProps,
-  withFormattedPaginatedProps,
-} from '../../common';
+import { assertEqualTenants, BaseService, FetchResponse, isSuperAdmin, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { PolicyEngine } from '../../authorization/policy.engine';
 // TASK-885 — CONSUMED, never modified: `agentPromotion/**` is lane F's (TASK-884). The
 // Global -> SYSTEM path is the existing cross-tenant promotion plus a publish, not a second
@@ -91,6 +83,7 @@ import {
   SyncWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
+  ListWorkflowDefinitionsQuery,
   WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
@@ -335,13 +328,26 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   // CRUD
   // ============================================================
 
-  async list(query: PaginatedQuery): Promise<PaginatedWorkflowDefinitionResponse> {
+  async list(query: ListWorkflowDefinitionsQuery): Promise<PaginatedWorkflowDefinitionResponse> {
     const { limit, page } = query;
     const paginatedProps = withFormattedPaginatedProps(query, WORKFLOW_DEFINITION_FILTER_MODEL);
     const countProps = withFormattedCountProps(query, WORKFLOW_DEFINITION_FILTER_MODEL);
 
-    const rows = await this.workflowDefinitionRepository.findAll(paginatedProps);
-    const count = await this.workflowDefinitionRepository.count(countProps);
+    // The typed `paletteKey` filter. Validated with the SAME assertion create/clone use, so an
+    // unknown key answers a 400 naming the known palettes rather than an empty page — this
+    // register is where an admin goes to find out what exists, and "none" and "you asked for a
+    // palette that has never existed" must not look identical.
+    //
+    // Merged as `where` rather than folded into `filters`: `formatFindAllProps` AND-merges the
+    // two, so a caller combining `?paletteKey=` with the generic `filters` grammar gets both
+    // predicates, and neither can clobber the other.
+    if (query.paletteKey) {
+      this.assertKnownPaletteKey(query.paletteKey);
+    }
+    const where = query.paletteKey ? { paletteKey: query.paletteKey } : undefined;
+
+    const rows = await this.workflowDefinitionRepository.findAll({ ...paginatedProps, where: { ...paginatedProps.where, ...where } });
+    const count = await this.workflowDefinitionRepository.count({ ...countProps, where: { ...countProps.where, ...where } });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { items: rows.map((row) => row.id) } });
 

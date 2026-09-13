@@ -3,9 +3,9 @@ import {
   CreateWorkflowDefinitionRequest,
   ImportWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
+  ListWorkflowDefinitionsQuery,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
-  PaginatedQuery,
   PaginatedWorkflowDefinitionResponse,
   PromoteWorkflowToSystemRequest,
   PromoteWorkflowToSystemResponse,
@@ -78,11 +78,18 @@ export class WorkflowDefinitionController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List the caller tenant’s workflow definition versions' })
+  @ApiOperation({
+    summary: 'List the caller tenant’s workflow definition versions',
+    description:
+      'Filter to one palette with `paletteKey` (validated — an unknown key is a 400 naming the known palettes). ' +
+      'The inherited `filters` grammar still composes on top: it is `field[op]:value`, `;`-separated ' +
+      '(`paletteKey[equals]:core`), and the two predicates are AND-ed.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'paletteKey', required: false, type: String, description: 'Filter to one palette, e.g. `core`.' })
   @ApiResponse({ status: 200, type: PaginatedWorkflowDefinitionResponse })
-  async fetchAll(@Query() query: PaginatedQuery): Promise<PaginatedWorkflowDefinitionResponse> {
+  async fetchAll(@Query() query: ListWorkflowDefinitionsQuery): Promise<PaginatedWorkflowDefinitionResponse> {
     return this.workflowDefinitionService.list(query);
   }
 

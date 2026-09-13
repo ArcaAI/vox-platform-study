@@ -59,7 +59,12 @@ export class PaginatedQuery {
 
   @IsOptional()
   @ApiProperty({
-    description: 'Filters (comma separated: name:John,phoneNumber:123456)',
+    description:
+      "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. " +
+      'The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which ' +
+      'returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/' +
+      'startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ' +
+      "('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
     required: false,
     default: '',
   })

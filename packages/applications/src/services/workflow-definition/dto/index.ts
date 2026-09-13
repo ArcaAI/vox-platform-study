@@ -10,3 +10,4 @@ export * from './node-prompt-binding.dto';
 export * from './workflow-definition-bundle';
 export * from './sync-workflow-definition.dto';
 export * from './promote-to-system.dto';
+export * from './list-workflow-definitions.query';
