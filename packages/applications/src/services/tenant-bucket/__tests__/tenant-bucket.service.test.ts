@@ -407,15 +407,18 @@ describe('TenantBucketService', () => {
   });
 
   describe('registerBucket', () => {
-    it('refuses a platform bucket BEFORE the no-tenant-context skip, so a platform admin gets an error not a silent no-op', async () => {
+    // TASK-967 reversed this: a platform bucket IS registerable, to SYSTEM,
+    // by a platform admin. A NON-platform-admin is still refused, now with a
+    // 403 (privilege) rather than the old flat 400.
+    it('refuses a platform bucket for a caller who is not a platform admin', async () => {
       mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
 
-      await expect(service.registerBucket('hope-models')).rejects.toThrow(BadRequestException);
+      await expect(service.registerBucket('hope-models')).rejects.toThrow(ForbiddenException);
       expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
     });
 
-    it('refuses a platform bucket regardless of casing or surrounding whitespace', async () => {
-      await expect(service.registerBucket('  Hope-Models  ')).rejects.toThrow(BadRequestException);
+    it('recognises a platform bucket regardless of casing or surrounding whitespace', async () => {
+      await expect(service.registerBucket('  Hope-Models  ')).rejects.toThrow(ForbiddenException);
       expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
     });
 
@@ -455,7 +458,17 @@ describe('TenantBucketService', () => {
       expect(result.tenantId).toBe('tenant-2');
     });
 
-    it('rejects a platform bucket', async () => {
+    // TASK-967: a platform bucket is adoptable into SYSTEM by a platform
+    // admin. `tenant-2` is a CUSTOMER tenant, so this stays a 400 — with a
+    // message that now names SYSTEM as the remedy. The super-admin branch and
+    // the SYSTEM-owned happy path live in
+    // `tenant-bucket.service.platform.task967.test.ts`.
+    it('rejects a platform bucket adopted into a CUSTOMER tenant', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'tenantId') return null;
+        return null;
+      });
       mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'hope-models', creationDate: '2026-01-01T00:00:00.000Z' }]);
 
       await expect(service.adoptPhysicalBucket('hope-models', 'tenant-2')).rejects.toThrow(BadRequestException);
@@ -705,9 +718,11 @@ describe('TenantBucketService', () => {
       expect(mockTenantBucketRepository.softDelete).toHaveBeenCalledWith('custom-1');
     });
 
-    // `CreateNamedBucket` stamps CUSTOM, so an adopted platform bucket would
-    // otherwise pass the isSystemBucket check and reach the provider delete.
-    it('refuses to delete a platform bucket even though its row is CUSTOM', async () => {
+    // TASK-967 OD-2 reversed the refusal: a PLATFORM ADMIN may delete a
+    // platform bucket. Everyone else still cannot — now a 403 (privilege)
+    // rather than the old flat 400. The caller here is the default
+    // tenant-scoped non-super-admin from the outer beforeEach.
+    it('refuses to delete a platform bucket for a caller who is not a platform admin', async () => {
       const adoptedPlatform = createMockBucketEntity({
         id: 'platform-1',
         name: 'hope-models',
@@ -716,7 +731,7 @@ describe('TenantBucketService', () => {
       });
       mockTenantBucketRepository.findById.mockResolvedValue(adoptedPlatform);
 
-      await expect(service.deleteBucket('platform-1')).rejects.toThrow(BadRequestException);
+      await expect(service.deleteBucket('platform-1')).rejects.toThrow(ForbiddenException);
       expect(mockBlobStorage.deleteBucket).not.toHaveBeenCalled();
       expect(mockTenantBucketRepository.softDelete).not.toHaveBeenCalled();
     });

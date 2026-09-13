@@ -29,6 +29,12 @@ export class TenantBucketResponse {
   @ApiProperty({ description: 'Whether this is a system bucket' })
   isSystemBucket: boolean;
 
+  @ApiProperty({
+    description:
+      "TASK-967 — a PLATFORM bucket (model weights, MLflow artifacts, backups, the workflow claim check, the global STT audio pair, the legacy media buckets). Owned by the SYSTEM tenant and deletable only by a platform administrator. Derived from the bucket name, so the console never has to classify one itself — and can tell it apart from the SYSTEM tenant's own provisioned buckets, which look identical otherwise.",
+  })
+  platform: boolean;
+
   // Surface the quota column so the tenant-detail Stores
   // surface can render per-bucket quota. BigInt → number (bucket quotas stay
   // far below Number.MAX_SAFE_INTEGER); null = unlimited.

@@ -1,6 +1,7 @@
 import {
   isPlatformBucket,
   ResourceType,
+  SYSTEM_TENANT_ID,
   SysEventType,
   TenantBucketFactory,
   TenantBucketPurpose,
@@ -113,10 +114,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new BadRequestException('includePhysical is only available to a platform admin with no tenant context');
     }
 
-    const [registeredRows, physicalBuckets] = await Promise.all([
-      this.tenantBucketRepository.findAllCrossTenant(),
-      this.s3Service.listAllBuckets(),
-    ]);
+    const [registeredRows, physicalBuckets] = await Promise.all([this.tenantBucketRepository.findAllCrossTenant(), this.s3Service.listAllBuckets()]);
 
     const uniqueTenantIds = [...new Set(registeredRows.map((bucket) => bucket.tenantId))];
     const tenants = uniqueTenantIds.length ? await this.tenantRepository.findAll({ filters: { id: { in: uniqueTenantIds } } }) : [];
@@ -436,7 +434,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     // `audio` lands exactly on the global `hope-audio-chunks`. Without this
     // the create would adopt STT's streaming-chunk bucket as a tenant bucket
     // and hand that tenant a delete button for it.
-    this.assertNotPlatformBucket(bucket.name, 'used as a tenant bucket name');
+    this.assertDerivedNameNotPlatform(bucket.name);
 
     try {
       await this.blobStorage.createBucket(bucket.name);
@@ -475,28 +473,45 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
    * tenant-owned management routes stay 404 for non-tenant callers.
    */
   async registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null> {
-    // A platform bucket is never tenant-ownable. Rejected BEFORE the
-    // no-tenant-context early return: a platform admin creating
-    // `hope-models` through `POST /storage/buckets` must get an error, not a
-    // silent skip that leaves an untracked physical bucket behind.
-    this.assertNotPlatformBucket(name, 'registered to a tenant');
-
+    const trimmed = name.trim();
     const tenantId = this.tenantId;
+
+    // TASK-967 OD-1 — a PLATFORM bucket is owned by SYSTEM, never by the
+    // caller's tenant. Handled before the no-tenant-context branch below so a
+    // platform admin gets the row rather than the silent skip.
+    if (isPlatformBucket(trimmed)) {
+      // Lowercased on the way in: `isPlatformBucket` matches case-insensitively
+      // so a caller may send `Hope-Models`, but the PHYSICAL bucket is
+      // `hope-models` and the row must name it exactly.
+      const canonical = trimmed.toLowerCase();
+      this.assertPlatformBucketAdmin(canonical, 'registered');
+      return this.createPlatformOwnedRow(canonical, description, true);
+    }
+
     if (!tenantId) {
-      this.logger.debug(`registerBucket skipped for '${name}': no tenant context (platform-level caller)`);
+      // TASK-967 G-3 — an unscoped platform admin creating a bucket through
+      // `POST /storage/buckets` used to get `null` here: the physical bucket
+      // existed with NO row, so every id- and name-addressed management route
+      // 404'd on the thing they had just made. Own it at the platform tier
+      // instead. Stamped CUSTOM, not SYSTEM — it is an ordinary bucket that
+      // happens to be platform-owned, and SYSTEM would make it undeletable.
+      if (isSuperAdmin(this.clsService.get('user'))) {
+        return this.createPlatformOwnedRow(trimmed, description, false);
+      }
+      this.logger.debug(`registerBucket skipped for '${trimmed}': no tenant context (platform-level caller)`);
       return null;
     }
 
-    const existing = await this.tenantBucketRepository.findByName(name);
+    const existing = await this.tenantBucketRepository.findByName(trimmed);
     if (existing) {
       if (existing.tenantId !== tenantId) {
-        throw new BadRequestException(`Bucket '${name}' already exists`);
+        throw new BadRequestException(`Bucket '${trimmed}' already exists`);
       }
       return TenantBucketDtoMapper.toResponse(existing);
     }
 
     const userId = this.requestUserId;
-    const bucket = TenantBucketFactory.CreateNamedBucket(tenantId, name, description, userId ?? undefined);
+    const bucket = TenantBucketFactory.CreateNamedBucket(tenantId, trimmed, description, userId ?? undefined);
     const saved = await this.tenantBucketRepository.create(bucket);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -509,15 +524,103 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   /**
-   * Refuse any write that would make a PLATFORM bucket tenant-owned (or
-   * destroy it). Shared by `registerBucket`, `adoptPhysicalBucket` and
-   * `deleteBucket` so the three entry points cannot drift apart.
+   * A tenant bucket whose DERIVED name collides with a platform bucket is
+   * refused for EVERY caller, platform admin included — this is a name
+   * collision, not a privilege question, and TASK-967 deliberately does not
+   * relax it.
+   *
+   * `buildBucketName` produces `hope-<slug>-<tenantKey>`, so a tenant keyed
+   * `chunks` asking for slug `audio` lands exactly on the global
+   * `hope-audio-chunks`. Without this the create would hand that tenant STT's
+   * streaming-chunk bucket.
    */
-  private assertNotPlatformBucket(name: string, action: string): void {
+  private assertDerivedNameNotPlatform(name: string): void {
     if (!isPlatformBucket(name)) return;
-    throw new BadRequestException(
-      `'${name}' is a platform bucket and cannot be ${action}. It is owned by the platform (model weights, MLflow artifacts, backups or the workflow claim check), not by any tenant.`,
+    throw new BadRequestException(`'${name}' is a platform bucket name and cannot be used as a tenant bucket name. Choose a different slug.`);
+  }
+
+  /**
+   * TASK-967 — only a PLATFORM ADMIN may register or destroy a platform
+   * bucket.
+   *
+   * AUTH-NOTE: imperative on purpose. There is no "super admin" CASL subject,
+   * so `@CanCreate('Storage')` / `@CanDelete('Storage')` cannot express this —
+   * tenant admins legitimately hold those abilities for every other bucket.
+   * Shared by `registerBucket`, `adoptPhysicalBucket` and `deleteBucket` so
+   * the three entry points cannot drift apart. A 403 privilege boundary, not
+   * the 404-over-403 cross-tenant posture: the nine platform names are public
+   * knowledge (they are in the provider listing every admin can already see),
+   * so there is no existence to hide.
+   */
+  private assertPlatformBucketAdmin(name: string, action: string): void {
+    if (isSuperAdmin(this.clsService.get('user'))) return;
+    throw new ForbiddenException(
+      `'${name}' is a platform bucket and can only be ${action} by a platform administrator. It is owned by the platform (model weights, MLflow artifacts, backups or the workflow claim check), not by any tenant.`,
     );
+  }
+
+  /**
+   * TASK-967 — the boundary the widened `scope: 'super-admin'` decorators on
+   * `TenantBucketController` lean on.
+   *
+   * Those decorators stop the interceptor asserting ownership for an UNSCOPED
+   * platform admin, which is what makes platform buckets manageable at all.
+   * The policy then lives here, in one place:
+   *
+   *   an unscoped platform admin may WRITE only to SYSTEM-tenant rows.
+   *
+   * A customer tenant's bucket still requires selecting that tenant — which is
+   * exactly the "Acting on: «Tenant»" guarantee `79bdd4a6d` declined to widen
+   * delete for. That reasoning holds for a customer row and is preserved; it
+   * does not hold for a SYSTEM row, which has no customer to name.
+   *
+   * READS are deliberately NOT routed through this: the "All tenants" storage
+   * browser (TASK-932) is browse-only across every tenant and stays that way.
+   * Only writes and downloads narrow to SYSTEM.
+   *
+   * 404, not 403 — a customer's bucket must look identical to one that does
+   * not exist, the house posture for cross-tenant reach.
+   */
+  private assertUnscopedWriteAllowed(bucket: { tenantId?: string | null; name: string }): void {
+    // A tenant-bound caller was already checked by the interceptor and by each
+    // method's own `bucket.tenantId !== tenantId` guard.
+    if (this.tenantId) return;
+    if (isSuperAdmin(this.clsService.get('user')) && bucket.tenantId === SYSTEM_TENANT_ID) return;
+    throw new NotFoundException(`Bucket ${bucket.name} not found`);
+  }
+
+  /**
+   * TASK-967 — persist a SYSTEM-tenant row for a bucket the PLATFORM owns.
+   *
+   * `platformName` picks the stamping: a bucket whose name is one of the nine
+   * platform names is stamped `SYSTEM` so the row is self-describing, while an
+   * ordinary bucket a platform admin happened to create is stamped `CUSTOM`
+   * (see `registerBucket`). Idempotent on the name, like its tenant sibling.
+   */
+  private async createPlatformOwnedRow(name: string, description: string | undefined, platformName: boolean): Promise<TenantBucketResponse> {
+    const existing = await this.tenantBucketRepository.findByName(name);
+    if (existing) {
+      if (existing.tenantId !== SYSTEM_TENANT_ID) {
+        throw new BadRequestException(`Bucket '${name}' is already registered to another tenant`);
+      }
+      return TenantBucketDtoMapper.toResponse(existing);
+    }
+
+    const userId = this.requestUserId ?? undefined;
+    const bucket = platformName
+      ? TenantBucketFactory.CreatePlatformBucket(name, description, userId)
+      : TenantBucketFactory.CreateNamedBucket(SYSTEM_TENANT_ID, name, description, userId);
+    const saved = await this.tenantBucketRepository.create(bucket);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { slug: saved.slug, name: saved.name, tenantId: SYSTEM_TENANT_ID, platform: platformName },
+    });
+
+    this.logger.log({ message: 'Registered a platform-owned bucket', bucketName: saved.name, platform: platformName });
+
+    return TenantBucketDtoMapper.toResponse(saved);
   }
 
   /**
@@ -535,11 +638,27 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
    * exactly as it is. Nothing is created, moved or rewritten.
    */
   async adoptPhysicalBucket(name: string, tenantId: string, description?: string): Promise<TenantBucketResponse> {
-    const trimmed = name.trim();
+    let trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Bucket name is required');
     }
-    this.assertNotPlatformBucket(trimmed, 'registered to a tenant');
+
+    // TASK-967 OD-1 — a platform bucket IS adoptable, but only into the SYSTEM
+    // tenant and only by a platform admin. Both checks run before the tenant
+    // read: neither answer depends on which row is being named, so there is no
+    // existence oracle to protect (`05-nestjs-api.md` §Imperative Privilege
+    // Checks — "a gate that is row-INDEPENDENT may run first").
+    const platform = isPlatformBucket(trimmed);
+    if (platform) {
+      // See `registerBucket`: the row must name the physical bucket exactly.
+      trimmed = trimmed.toLowerCase();
+      this.assertPlatformBucketAdmin(trimmed, 'registered');
+      if (tenantId !== SYSTEM_TENANT_ID) {
+        throw new BadRequestException(
+          `'${trimmed}' is a platform bucket and cannot be owned by a customer tenant. Register it to the System tenant (${SYSTEM_TENANT_ID}) instead.`,
+        );
+      }
+    }
 
     const tenant = await this.tenantRepository.findById(tenantId);
     if (!tenant) {
@@ -565,13 +684,17 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new NotFoundException(`No physical bucket named '${trimmed}' exists in the storage provider`);
     }
 
-    const bucket = TenantBucketFactory.CreateNamedBucket(tenantId, trimmed, description, this.requestUserId ?? undefined);
+    // A platform bucket is stamped SYSTEM so the row says what it is; every
+    // other adoption keeps the CUSTOM stamping it has always had.
+    const bucket = platform
+      ? TenantBucketFactory.CreatePlatformBucket(trimmed, description, this.requestUserId ?? undefined)
+      : TenantBucketFactory.CreateNamedBucket(tenantId, trimmed, description, this.requestUserId ?? undefined);
     const saved = await this.tenantBucketRepository.create(bucket);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
-      data: { slug: saved.slug, name: saved.name, tenantId, adopted: true },
+      data: { slug: saved.slug, name: saved.name, tenantId, adopted: true, platform },
     });
 
     this.logger.log({ message: 'Adopted an existing physical bucket', bucketName: saved.name, tenantId });
@@ -585,14 +708,21 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new NotFoundException(`Bucket ${id} not found`);
     }
 
-    if (bucket.isSystemBucket) {
+    // TASK-967 OD-2 — a platform admin MAY destroy a platform bucket, so the
+    // platform NAME is checked BEFORE `isSystemBucket` (a platform row is
+    // stamped SYSTEM and would otherwise be refused by it). The provider still
+    // has the last word: object lock on `hope-models` makes MinIO refuse, and
+    // the catch below re-raises that verbatim rather than soft-deleting.
+    //
+    // A TENANT's own system buckets (`hope-attachments-*`, `hope-recordings-*`)
+    // stay undeletable by anyone — only a platform name opens this door.
+    if (isPlatformBucket(bucket.name)) {
+      this.assertPlatformBucketAdmin(bucket.name, 'deleted');
+    } else if (bucket.isSystemBucket) {
       throw new ForbiddenException('System buckets cannot be deleted');
     }
 
-    // `CreateNamedBucket` stamps CUSTOM, so an adopted platform bucket (one
-    // registered before the guard above existed) would otherwise pass the
-    // system-bucket check and reach `blobStorage.deleteBucket`.
-    this.assertNotPlatformBucket(bucket.name, 'deleted');
+    this.assertUnscopedWriteAllowed(bucket);
 
     // Remove the physical bucket/container via the tenant-resolved provider
     // (S3/MinIO/Azure). A bucket that is ALREADY GONE is the one tolerable
@@ -672,6 +802,10 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new ForbiddenException('You do not have access to this bucket');
     }
 
+    // TASK-967 — writes and downloads narrow to SYSTEM rows for an UNSCOPED
+    // platform admin; reads deliberately do not. See `assertUnscopedWriteAllowed`.
+    this.assertUnscopedWriteAllowed(bucket);
+
     // Reject `..` traversal but allow `/` so nested folder keys (e.g.
     // `patients/2026/file.wav`) upload correctly — mirrors deleteObject.
     if (/[.]{2}/.test(fileKey)) {
@@ -701,6 +835,10 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new ForbiddenException('You do not have access to this bucket');
     }
 
+    // TASK-967 — writes and downloads narrow to SYSTEM rows for an UNSCOPED
+    // platform admin; reads deliberately do not. See `assertUnscopedWriteAllowed`.
+    this.assertUnscopedWriteAllowed(bucket);
+
     if (/[.]{2}/.test(fileKey)) {
       throw new BadRequestException('Invalid file key: path traversal not allowed');
     }
@@ -727,6 +865,10 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     if (tenantId && bucket.tenantId !== tenantId) {
       throw new ForbiddenException('You do not have access to this bucket');
     }
+
+    // TASK-967 — writes and downloads narrow to SYSTEM rows for an UNSCOPED
+    // platform admin; reads deliberately do not. See `assertUnscopedWriteAllowed`.
+    this.assertUnscopedWriteAllowed(bucket);
 
     if (/[.]{2}/.test(fileKey)) {
       throw new BadRequestException('Invalid file key: path traversal not allowed');

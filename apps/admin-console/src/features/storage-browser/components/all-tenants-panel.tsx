@@ -45,9 +45,9 @@ function AllTenantsBanner() {
 }
 
 /**
- * A platform bucket is checked FIRST: it is never registered, so the plain
- * `!registered` test below would otherwise label it "Unregistered" and
- * advertise an adoption the gateway rejects.
+ * A platform bucket is checked FIRST: it is never registered until a platform
+ * admin adopts it into System, so the plain `!registered` test below would
+ * otherwise label it "Unregistered" and lose the fact that it is platform-owned.
  */
 function statusBadge(bucket: StorageBucketWithScope) {
   if (bucket.platform) return <Badge variant="secondary">Platform</Badge>;
@@ -66,15 +66,20 @@ function statusBadge(bucket: StorageBucketWithScope) {
  * read-only row with a plain-href link that carries the bucket name to the
  * tier-14 admin screen (`/tenants/storage?register=<name>`), which opens its
  * adopt dialog prefilled — no cross-feature import. A PLATFORM bucket
- * (`hope-models`, `mlflow`, the claim check, backups) is neither registered
- * nor adoptable and shows no action.
+ * (`hope-models`, `mlflow`, the claim check, backups) is browsable AND
+ * registerable to the System tenant (TASK-967); its adopt dialog locks the
+ * owner to System, because a platform bucket is never owned by a customer.
  */
 export function AllTenantsBody() {
   const bucketsQuery = useBucketsAllTenants(true);
   const [{ bucket: bucketParam, prefix, search }, setParams] = useQueryStates(QUERY_PARSERS);
 
   const buckets = bucketsQuery.data ?? [];
-  const browsingBucket = bucketParam ? (buckets.find((candidate) => candidate.name === bucketParam && candidate.registered) ?? null) : null;
+  // TASK-967 — keyed on the NAME alone. A platform bucket is never registered,
+  // so requiring `registered` here silently ignored even a hand-typed
+  // `?bucket=hope-models`, and the gateway has always served it
+  // (`GET storage/buckets/:name/files` carries `scope: 'super-admin'`).
+  const browsingBucket = bucketParam ? (buckets.find((candidate) => candidate.name === bucketParam) ?? null) : null;
 
   const objectsQuery = useObjects(browsingBucket?.name ?? '', prefix || undefined);
   const objects = objectsQuery.data ?? [];
@@ -139,32 +144,44 @@ export function AllTenantsBody() {
         meta: { label: 'Actions' },
         cell: ({ row }) => {
           const bucket = row.original;
-          if (bucket.registered) {
-            return (
-              <Button variant="ghost" size="sm" onClick={() => openBucket(bucket.name)}>
-                Browse
-              </Button>
-            );
-          }
-          // Platform buckets belong to the platform and can never be adopted,
-          // so they get no action at all rather than a link that dead-ends.
-          if (bucket.platform) {
-            return <span className="text-muted-foreground text-sm">{'\u2014'}</span>;
-          }
           // The bucket name rides along in the query string so the tier-14
           // screen can open its register dialog already filled in — without it
           // the operator lands on a list that does not contain this bucket.
-          return (
+          // `&platform=1` carries the GATEWAY's classification to the adopt
+          // dialog, which locks the owner to System. The console never
+          // re-derives it: `isPlatformBucket` lives in `@arcaai/domains`, a
+          // backend package, and a second copy of the nine names would drift.
+          const registerLink = (
             <Link
-              href={`/tenants/storage?register=${encodeURIComponent(bucket.name)}`}
+              href={`/tenants/storage?register=${encodeURIComponent(bucket.name)}${bucket.platform ? '&platform=1' : ''}`}
               className="text-foreground inline-flex items-center gap-1 text-sm underline underline-offset-4"
             >
               Register
               <IconExternalLink aria-hidden className="size-3.5" />
             </Link>
           );
+          const browseButton = (
+            <Button variant="ghost" size="sm" onClick={() => openBucket(bucket.name)}>
+              Browse
+            </Button>
+          );
+
+          // TASK-967 — a PLATFORM bucket gets BOTH. It is browsable (the
+          // gateway already served it) and registerable, to the System tenant,
+          // which is what makes it manageable on the tier-14 screen. It used to
+          // get no action at all, which left `hope-models` unreachable.
+          if (bucket.platform) {
+            return (
+              <div className="flex items-center gap-1">
+                {browseButton}
+                {!bucket.registered && registerLink}
+              </div>
+            );
+          }
+          if (bucket.registered) return browseButton;
+          return registerLink;
         },
-        size: 120,
+        size: 190,
       },
     ],
     [openBucket],

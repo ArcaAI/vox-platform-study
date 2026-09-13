@@ -215,7 +215,7 @@ export class AdminTenantStorageResource extends AdminResource {
   /**
    * Adopt an existing physical bucket into a tenant
    *
-   * Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.
+   * Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. A platform bucket (model weights, MLflow artifacts, backups, the workflow claim check) may be registered ONLY to the System tenant, and only by a platform administrator.
    *
    * `POST /api/v1/admin/tenants/storage/buckets/register` — `TenantBucketController.adoptBucket`.
    */

@@ -1,5 +1,6 @@
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
+import { isPlatformBucket } from '../../../utils';
 
 export interface ITenantBucketEntity extends IBaseTenantEntity {
   name: string;
@@ -89,6 +90,24 @@ export class TenantBucketEntity extends BaseTenantEntity {
 
   get isSystemBucket(): boolean {
     return this._bucketType === TenantBucketType.SYSTEM;
+  }
+
+  /**
+   * TASK-967 — a PLATFORM bucket (model weights, MLflow artifacts, backups,
+   * the workflow claim check, …): owned by the SYSTEM tenant and deletable
+   * only by a platform administrator.
+   *
+   * Derived here rather than in the DTO mapper on purpose. `isPlatformBucket`
+   * is a VALUE, and the mapper imported `@arcaai/domains` type-only — so the
+   * import was elided at runtime and the mapper stayed a leaf module. Pulling
+   * the barrel in for this one predicate dragged the whole domain graph
+   * (Prisma included) into every module that imports the mapper, which hung
+   * `audit-correlation.test.ts` on a 30s import timeout. Whether a bucket is
+   * platform-owned is a property of the bucket anyway — the same shape as
+   * `isSystemBucket` directly above.
+   */
+  get isPlatformBucket(): boolean {
+    return isPlatformBucket(this._name);
   }
 
   public override validate(): void {

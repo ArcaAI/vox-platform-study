@@ -47,6 +47,20 @@ const BUCKETS: TenantBucket[] = [
     isSystemBucket: false,
     quotaBytes: 536870912000,
   }),
+  // TASK-967 — a PLATFORM bucket: a SYSTEM-tenant row stamped SYSTEM, marked
+  // `platform` by the gateway. Indistinguishable from the System tenant's own
+  // provisioned buckets without that flag, which is exactly why it exists.
+  bucket({
+    id: 'b-3',
+    tenantId: '00000000-0000-0000-0000-000000000000',
+    name: 'hope-models',
+    slug: 'hope-models',
+    bucketType: 'SYSTEM',
+    purpose: 'CUSTOM',
+    isSystemBucket: true,
+    platform: true,
+    quotaBytes: null,
+  }),
 ];
 
 const OBJECTS: BucketObject[] = [
@@ -271,9 +285,10 @@ describe('TenantStorageScreen', () => {
     expect(screen.getByText('consult-audio')).toBeDefined();
     expect(screen.getByText('1 TB')).toBeDefined();
     expect(screen.getByText('500 GB')).toBeDefined();
-    expect(screen.getAllByText('Active').length).toBe(2);
+    // Three fixtures since TASK-967 added the platform bucket.
+    expect(screen.getAllByText('Active').length).toBe(3);
     expect(screen.getByText('Audio')).toBeDefined();
-    expect(screen.getByText(/2 buckets/)).toBeDefined();
+    expect(screen.getByText(/3 buckets/)).toBeDefined();
   });
 
   it('keeps the layout skeleton while the queries are in flight', () => {
@@ -314,6 +329,23 @@ describe('TenantStorageScreen', () => {
       expect(del.getAttribute('data-disabled')).not.toBeNull();
       // The reason names the owning tenant, so the fix is one switch away.
       expect(screen.getByText(/switch your working tenant to sunrise medical group/i)).toBeDefined();
+    });
+
+    // TASK-967 reversed this half. A platform bucket is owned by the SYSTEM
+    // tenant, which nobody can select as a working tenant — so if the unscoped
+    // Delete stayed disabled here it would be disabled for everyone, forever.
+    // A CUSTOMER row (above) is unchanged: it still names the tenant to switch
+    // to, because destroying a customer's bucket should carry the "Acting on"
+    // banner.
+    it('ENABLES Delete for a platform bucket, with no reason text', async () => {
+      stubStorage(unscopedSession);
+      renderWithProviders(<TenantStorageScreen />);
+
+      const del = await openMenu('hope-models');
+
+      expect(del.getAttribute('data-disabled')).toBeNull();
+      expect(screen.queryByText(/switch your working tenant/i)).toBeNull();
+      expect(screen.queryByText(/provisioned with the tenant and cannot be deleted/i)).toBeNull();
     });
 
     it('selecting the disabled Delete opens no confirm dialog and issues no request', async () => {
@@ -413,6 +445,44 @@ describe('TenantStorageScreen', () => {
       await waitFor(() => {
         const post = calls.find((call) => call.method === 'POST' && call.url.includes('/buckets/register'));
         expect(post?.body).toEqual({ name: 'legacy-exports', tenantId: 't-2' });
+      });
+    });
+
+    // TASK-967 — a PLATFORM bucket is registerable, but only into the System
+    // tenant: it is owned by the platform, never by a customer. The console
+    // cannot classify a bucket name itself (`isPlatformBucket` lives in
+    // `@arcaai/domains`, a backend package), so the flag rides in on the deep
+    // link from the storage browser, which got it from the gateway's own
+    // listing. A hand-typed URL without it is still refused by the gateway.
+    it('locks the owner to System and preselects it for a platform bucket', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?register=hope-models&platform=1' });
+
+      const dialog = await screen.findByRole('dialog');
+      const tenantSelect = within(dialog).getByRole('combobox', { name: /owning tenant/i });
+
+      expect(tenantSelect.getAttribute('data-disabled')).not.toBeNull();
+      // The disabled control carries its reason in adjacent text (UX principles §5).
+      expect(within(dialog).getByText(/so the System tenant owns it/i)).toBeDefined();
+      // Preselected, so Register is reachable without touching a locked control.
+      expect((within(dialog).getByRole('button', { name: /^register$/i }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('posts a platform adoption against the System tenant', async () => {
+      const calls = stubStorage((call) => {
+        if (call.method === 'POST' && new URL(call.url, 'http://test.local').pathname.endsWith('/buckets/register')) {
+          return Response.json(bucket({ id: 'b-9', name: 'hope-models', slug: 'hope-models' }));
+        }
+        return undefined;
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?register=hope-models&platform=1' });
+
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /^register$/i }));
+
+      await waitFor(() => {
+        const post = calls.find((call) => call.method === 'POST' && call.url.includes('/buckets/register'));
+        expect(post?.body).toEqual({ name: 'hope-models', tenantId: '00000000-0000-0000-0000-000000000000' });
       });
     });
 

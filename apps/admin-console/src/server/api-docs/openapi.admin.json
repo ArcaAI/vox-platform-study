@@ -51553,7 +51553,7 @@
     },
     "/api/v1/admin/tenants/storage/buckets/register": {
       "post": {
-        "description": "Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-storage:manage`).\n\n**Abilities** — `create:Storage`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. A platform bucket (model weights, MLflow artifacts, backups, the workflow claim check) may be registered ONLY to the System tenant, and only by a platform administrator.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-storage:manage`).\n\n**Abilities** — `create:Storage`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TenantBucketController_adoptBucket",
         "parameters": [],
         "requestBody": {
@@ -51571,7 +51571,10 @@
             "description": "Bucket registered to the tenant"
           },
           "400": {
-            "description": "Platform bucket, or a name already registered to another tenant"
+            "description": "A platform bucket aimed at a customer tenant, or a name already registered to another tenant"
+          },
+          "403": {
+            "description": "A platform bucket registered by a caller who is not a platform administrator"
           },
           "404": {
             "description": "Tenant not found, or no physical bucket with that name"

@@ -1,3 +1,4 @@
+import { SYSTEM_TENANT_ID } from '@arcaai/database';
 import { TenantBucketEntity } from '../../../entities/generated/core/TenantBucketEntity';
 import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
 import { generateId } from '../../../utils';
@@ -112,6 +113,44 @@ export class TenantBucketFactory {
       bucketType: TenantBucketType.CUSTOM,
       purpose: TenantBucketPurpose.CUSTOM,
       pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: createdBy ?? null,
+      updatedBy: null,
+    });
+  }
+
+  /**
+   * TASK-967 — a PLATFORM bucket (`hope-models`, `mlflow`, `backups`, the
+   * workflow claim check, the global STT audio pair, the legacy media
+   * buckets) registered so a platform admin can manage it.
+   *
+   * Two stampings carry the whole rule:
+   *
+   * - `tenantId = SYSTEM_TENANT_ID`. A platform bucket is never owned by a
+   *   customer tenant, and `NULL = global` is banned by the schema
+   *   (`02-database-prisma.md`), so SYSTEM is the owner — the same tenant
+   *   that already owns `hope-attachments-system`.
+   * - `bucketType = SYSTEM`. `CreateNamedBucket` stamps CUSTOM, and that is
+   *   precisely what let an adopted platform bucket sail past the
+   *   `isSystemBucket` guard on delete. SYSTEM makes the row self-describing;
+   *   `TenantBucketService.deleteBucket` keys off the platform NAME for the
+   *   privilege check, so a platform admin can still remove one deliberately.
+   *
+   * `name` is used verbatim: it is the physical S3 name, not something to
+   * derive — `buildBucketName` would turn `hope-models` into
+   * `hope-hope-models-system`, which names no bucket that exists.
+   */
+  static CreatePlatformBucket(name: string, description?: string, createdBy?: string): TenantBucketEntity {
+    return new TenantBucketEntity({
+      id: generateId(),
+      tenantId: SYSTEM_TENANT_ID,
+      name,
+      slug: sanitizeBucketName(name),
+      description: description ?? null,
+      bucketType: TenantBucketType.SYSTEM,
+      purpose: TenantBucketPurpose.CUSTOM,
+      pathPattern: '{yyyy}/{MM}/{dd}',
       createdAt: new Date(),
       updatedAt: new Date(),
       createdBy: createdBy ?? null,

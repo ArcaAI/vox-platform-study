@@ -16,6 +16,15 @@ export interface TenantBucket {
   purpose: TenantBucketPurpose;
   pathPattern: string;
   isSystemBucket: boolean;
+  /**
+   * TASK-967 — a PLATFORM bucket (model weights, MLflow artifacts, backups,
+   * the workflow claim check, …). Owned by the SYSTEM tenant and deletable
+   * only by a platform administrator. Derived on the gateway from the bucket
+   * name, because the console must tell one apart from the SYSTEM tenant's own
+   * provisioned buckets — both are SYSTEM-tenant rows stamped SYSTEM.
+   * Optional on the wire so an older gateway degrades to "not platform".
+   */
+  platform?: boolean;
   quotaBytes?: number | null;
   resourceStatus?: ResourceStatus;
   createdAt: string;
