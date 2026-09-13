@@ -35,13 +35,22 @@ export function useRegistrySetting(key: string | null, scope: SettingScope, enab
 export function usePutRegistrySetting() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ key, value, scope, etag }: { key: string; value: unknown; scope: SettingScope; etag: string | null }) =>
+    mutationFn: ({ key, value, scope, etag }: { key: string; value: unknown; scope: SettingScope; etag: string | null; twinKey?: string | null }) =>
       putRegistrySetting(key, value, scope, etag),
     // Both scopes of the written key: a `system` write changes what every
-    // tenant without an override resolves to, so the `tenant`-scope read of the
-    // same key is now stale even though its own row did not move.
-    onSuccess: (_result, variables) =>
-      queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.key] }),
+    // tenant without an override of its own resolves to, so the `tenant`-scope
+    // read of the same key is now stale even though its own row did not move.
+    //
+    // `twinKey` extends that across a TASK-969 pair. The two halves are
+    // separate keys with separate caches, but one read carries BOTH values (the
+    // tenant half's `pair` block), so writing either half stales the other's
+    // entry — and `inForce` can flip on a write to either one.
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.key] });
+      if (variables.twinKey) {
+        void queryClient.invalidateQueries({ queryKey: [...settingsRegistryKeys.root, 'setting', variables.twinKey] });
+      }
+    },
   });
 }
 
