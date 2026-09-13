@@ -259,20 +259,79 @@ export function buildStructuredSummary(sections: readonly LiveSummarySectionDto[
     for (const entry of compiled.checklist) {
       const at = remaining.findIndex((section) => section.title.trim().toLowerCase() === entry.title.trim().toLowerCase());
       const section = at >= 0 ? remaining.splice(at, 1)[0] : undefined;
-      const body = (section?.content ?? '').trim();
+      const body = cleanSectionBody(section?.content ?? '', entry.instruction);
       rendered.push(`## ${entry.title.trim()}\n${body.length > 0 ? body : NOT_DOCUMENTED_MARKER}`);
     }
     for (const section of remaining) {
-      const body = (section.content ?? '').trim();
+      const body = cleanSectionBody(section.content ?? '');
       if (body.length > 0) rendered.push(`## ${section.title.trim()}\n${body}`);
     }
     return rendered.join('\n\n');
   }
 
   return sections
-    .filter((section) => (section.content ?? '').trim().length > 0)
-    .map((section) => `## ${section.title.trim()}\n${section.content.trim()}`)
+    .map((section) => ({ title: section.title, body: cleanSectionBody(section.content ?? '') }))
+    .filter((section) => section.body.length > 0)
+    .map((section) => `## ${section.title.trim()}\n${section.body}`)
     .join('\n\n');
+}
+
+/**
+ * The live draft, cleaned for the finalizer (measured 2026-09-13, gemma-4-e2b):
+ *
+ *  - a small model restates a section each turn and adds one sentence, and the turn contract's
+ *    whole-addition substring check lets every superset through, so a section reads the same
+ *    sentence three times over. Each sentence is kept ONCE, at its first occurrence;
+ *  - the same model copies a heading's own guidance line ("Examination findings and vital signs
+ *    measured at this visit — …") into the section as content. Any sentence of the section's
+ *    compiled `instruction` is dropped from the body.
+ *
+ * Line structure (bullets, numbering) survives; a line left with no sentence is dropped. This is
+ * the finalizer's INPUT only: `buildRunningSummary` — the offset base the live feed and the
+ * entity spans index — is never cleaned.
+ */
+export function cleanSectionBody(body: string, guidance?: string | null): string {
+  const text = (body ?? '').trim();
+  if (text.length === 0) return '';
+  const guidanceKeys = new Set(sentencesOf(guidance ?? '').map(sentenceKey).filter((key) => key.length > 0));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (line.trim().length === 0) {
+      if (out.length > 0 && out[out.length - 1] !== '') out.push('');
+      continue;
+    }
+    const marker = /^(\s*(?:[-*•]|\d+[.)])\s+)(.*)$/.exec(line);
+    const prefix = marker ? marker[1] : '';
+    const content = marker ? marker[2] : line.trim();
+    const kept = sentencesOf(content).filter((sentence) => {
+      const key = sentenceKey(sentence);
+      if (key.length === 0 || guidanceKeys.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (kept.length > 0) out.push(`${prefix}${kept.join(' ')}`);
+  }
+  while (out.length > 0 && out[out.length - 1] === '') out.pop();
+  return out.join('\n');
+}
+
+/** Sentence boundaries for {@link cleanSectionBody}: a terminal mark followed by whitespace and a capital, digit or quote. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=["'(\[A-Z0-9])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** Comparison key: case, whitespace and terminal punctuation are not differences. */
+function sentenceKey(sentence: string): string {
+  return sentence
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[\s.!?;:,]+$/g, '')
+    .trim();
 }
 
 /**
