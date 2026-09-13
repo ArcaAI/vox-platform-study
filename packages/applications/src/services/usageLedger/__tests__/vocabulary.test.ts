@@ -21,7 +21,7 @@ import {
 import { UsageIdempotencyKey, validateIdempotencyKey } from '../idempotency-keys';
 
 describe('operation vocabulary', () => {
-  it('freezes exactly the twelve operations the emitters may use', () => {
+  it('freezes exactly the thirteen operations the emitters may use', () => {
     expect([...USAGE_OPERATIONS].sort()).toEqual(
       [
         'transcribe.stream',
@@ -40,8 +40,22 @@ describe('operation vocabulary', () => {
         // could be written.
         'workflow.step',
         'storage.snapshot',
+        // TASK-957 F-7b — the NLP plane's SECOND operation. `ner.extract` is
+        // entity extraction; the diagnosis/topic/intent benches are
+        // classification, and they were emitting nothing at all. Kept apart
+        // from `ner.extract` because they are different work at different
+        // prices and "spend by activity" cannot separate them afterwards.
+        'nlp.classify',
       ].sort(),
     );
+  });
+
+  it('carries `nlp.classify` under its exact spelling (TASK-957 F-7b)', () => {
+    // A typo does not fail — it silently forks a rollup dimension, and the
+    // classification benches would land under an operation no invoice sums.
+    expect(isUsageOperation('nlp.classify')).toBe(true);
+    expect(isUsageOperation('nlp_classify')).toBe(false);
+    expect(isUsageOperation('nlp.Classify')).toBe(false);
   });
 
   it('carries the two TASK-959 operations under their exact spellings', () => {
@@ -76,9 +90,20 @@ describe('provider vocabulary', () => {
       'lm-studio',
       'vllm',
       'llama-cpp',
+      // TASK-957 F-9 — TASK-952/E minted this provider id for the platform
+      // embeddings tier and registered it nowhere here, so the next self-hosted
+      // emitter to name it would have classified it CLOUD.
+      'tei-embed',
     ]) {
       expect(isKnownProvider(provider)).toBe(true);
     }
+  });
+
+  it('carries `tei-embed` AND derives it self-hosted (TASK-957 F-9)', () => {
+    expect(isKnownProvider('tei-embed')).toBe(true);
+    // The platform runs the TEI server on its own hardware; classified CLOUD it
+    // would bill an embeddings tier against a vendor nobody called.
+    expect(SELF_HOSTED_PROVIDER_IDS.has('tei-embed')).toBe(true);
   });
 
   it('carries the self-hosted engine ids the Python services report', () => {

@@ -10,8 +10,8 @@
  *
  * The two halves are governed DIFFERENTLY, and the asymmetry is deliberate:
  *
- *   - **Operations are CLOSED.** Twelve values, listed below. `recordUsage`
- *     rejects anything else. Adding a thirteenth is a one-line change here plus
+ *   - **Operations are CLOSED.** Thirteen values, listed below. `recordUsage`
+ *     rejects anything else. Adding a fourteenth is a one-line change here plus
  *     a contract-doc line — cheap, reviewed, and visible to every lane.
  *
  *   - **Providers are OPEN but SHAPED.** A tenant admin can create an
@@ -23,7 +23,7 @@
  */
 
 /**
- * The twelve operations. One per (capability, call shape) that an emitter can
+ * The thirteen operations. One per (capability, call shape) that an emitter can
  * produce.
  *
  * | operation            | emitted by                                   |
@@ -40,6 +40,7 @@
  * | `embed` | / — retrieval + diarization embeddings |
  * | `workflow.step` | — one durable/realtime workflow node, and the durable worker's own CPU for it |
  * | `storage.snapshot` | — the nightly per-(tenant, storage class) GB-day snapshot |
+ * | `nlp.classify` | — NLP classification (diagnosis suggestions, topic, intent) |
  *
  * TASK-959 added the last two, and they are the first two that are NOT "an
  * inference call landed". `workflow.step` carries BOTH the inference a node
@@ -62,6 +63,7 @@ export const USAGE_OPERATIONS = [
   'embed',
   'workflow.step',
   'storage.snapshot',
+  'nlp.classify',
 ] as const;
 
 export type UsageOperation = (typeof USAGE_OPERATIONS)[number];
@@ -103,6 +105,13 @@ export const KNOWN_PROVIDERS = [
   'vllm',
   'llama-cpp',
   'built-in',
+  // TASK-957 F-9 — TASK-952/E minted `tei-embed` as the platform embeddings
+  // tier's own provider id and registered it in NEITHER this list nor
+  // `SELF_HOSTED_PROVIDER_IDS`. Nothing was wrong yet only because the embed
+  // emitter hard-codes `SELF_HOSTED`; the first caller to DERIVE a deployment
+  // from this id would have classified the platform's own TEI server as a
+  // cloud vendor and billed its seconds as somebody else's COGS.
+  'tei-embed',
   // --- platform workers -----------------------------------------------------
   // `harness` is the durable-function server (`hope-harness-worker`), and it is
   // a provider in exactly the sense the other self-hosted ids are: it runs on
@@ -146,7 +155,16 @@ export function isKnownProvider(value: unknown): value is KnownProvider {
  * — and should converge here when either is next touched; they are not this
  * lane's files.)
  */
-export const SELF_HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp', 'built-in', 'harness']);
+export const SELF_HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  'ollama',
+  'lm-studio',
+  'vllm',
+  'llama-cpp',
+  'built-in',
+  'harness',
+  // TASK-957 F-9 — the platform's own TEI embeddings server (TASK-952/E).
+  'tei-embed',
+]);
 
 /**
  * Derive the deployment kind of an LLM call from its provider and its FUNDING.

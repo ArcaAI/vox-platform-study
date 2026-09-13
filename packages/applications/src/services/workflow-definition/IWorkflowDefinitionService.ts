@@ -1,8 +1,8 @@
-import { PaginatedQuery } from '../../common';
 import {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   ImportWorkflowDefinitionRequest,
+  ListWorkflowDefinitionsQuery,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
@@ -31,7 +31,7 @@ import {
  * a NEW row is only created by a later `create` that branches from it via `parentVersionId`.
  */
 export interface IWorkflowDefinitionService {
-  list(query: PaginatedQuery): Promise<PaginatedWorkflowDefinitionResponse>;
+  list(query: ListWorkflowDefinitionsQuery): Promise<PaginatedWorkflowDefinitionResponse>;
 
   /** Cross-tenant id throws `NotFoundException` (404-over-403). */
   getById(id: string): Promise<WorkflowDefinitionResponse>;

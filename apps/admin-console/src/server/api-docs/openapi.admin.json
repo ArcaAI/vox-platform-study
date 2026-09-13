@@ -26810,7 +26810,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -30378,7 +30378,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -32092,7 +32092,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -32597,7 +32597,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -32872,7 +32872,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -33006,7 +33006,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -34159,7 +34159,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -35805,7 +35805,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -40025,7 +40025,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -40313,7 +40313,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -46277,7 +46277,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -48288,7 +48288,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -48545,7 +48545,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -49302,7 +49302,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -50743,7 +50743,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -51011,7 +51011,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -52397,7 +52397,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -53601,7 +53601,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -53902,7 +53902,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -54043,7 +54043,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -54364,7 +54364,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -55117,7 +55117,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -55994,7 +55994,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -56466,7 +56466,7 @@
     },
     "/api/v1/admin/workflow-definitions": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Filter to one palette with `paletteKey` (validated — an unknown key is a 400 naming the known palettes). The inherited `filters` grammar still composes on top: it is `field[op]:value`, `;`-separated (`paletteKey[equals]:core`), and the two predicates are AND-ed.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowDefinitionController_fetchAll",
         "parameters": [
           {
@@ -56512,7 +56512,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -56528,6 +56528,16 @@
             "required": false,
             "schema": {
               "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to one palette, e.g. `core`.",
+            "in": "query",
+            "name": "paletteKey",
+            "required": false,
+            "schema": {
+              "example": "core",
               "type": "string"
             }
           }
@@ -57922,7 +57932,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -58710,7 +58720,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -61355,7 +61365,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -61979,7 +61989,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,
@@ -69587,7 +69597,7 @@
             }
           },
           {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` does not match the grammar and is dropped, which returns the UNFILTERED set rather than an error. Operators include equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, the list in/notIn ('|'-separated values), and AND[…]/OR[…] groups. See `deserializeFilterString`.",
             "in": "query",
             "name": "filters",
             "required": false,

@@ -216,7 +216,11 @@ def _build_intent_prompt(text: str, intents: list[str]) -> str:
     )
 
 
-@router.post("/topic", response_model=TopicClassificationResponse)
+# TASK-957 F-7b — `response_model_exclude_none` so `llm_usage` /
+# `llm_guardrail_usage` are OMITTED rather than sent as `null` when text reported none
+# (the TASK-959 §10.2 wire convention). Safe on these two responses specifically: no other
+# field on either of them is nullable, so nothing else changes shape.
+@router.post("/topic", response_model=TopicClassificationResponse, response_model_exclude_none=True)
 async def classify_topic(
     request: TopicClassificationRequest,
     http_request: Request,
@@ -252,11 +256,17 @@ async def classify_topic(
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
-            label = await external_text_client.generate_label(
+            # TASK-957 F-7b — the delegated generation's OWN cost rides back with its label.
+            # This route runs no local model, so that one LLM call (plus the guardrail call it
+            # triggered) IS the cost of a topic classification, and it reached nobody before.
+            generated = await external_text_client.generate_label_with_usage(
                 prompt, tenant_id=str(request.tenant_id)
             )
         return TopicClassificationResponse(
-            predicted_topic=label, available_topics=request.instructions
+            predicted_topic=generated.label,
+            available_topics=request.instructions,
+            llm_usage=generated.usage_detail,
+            llm_guardrail_usage=generated.guardrail_usage,
         )
     except ExternalTextUnavailableError as e:
         logger.error(f"Topic classification upstream (text) unavailable: {str(e)}")
@@ -268,7 +278,10 @@ async def classify_topic(
         raise HTTPException(status_code=500, detail="Topic classification failed") from e
 
 
-@router.post("/intent", response_model=IntentClassificationResponse)
+# See /topic above for why `response_model_exclude_none` is set.
+@router.post(
+    "/intent", response_model=IntentClassificationResponse, response_model_exclude_none=True
+)
 async def classify_intent(
     request: IntentClassificationRequest,
     http_request: Request,
@@ -296,11 +309,15 @@ async def classify_intent(
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
-            label = await external_text_client.generate_label(
+            # See /topic above — the delegated generation's own cost rides back with its label.
+            generated = await external_text_client.generate_label_with_usage(
                 prompt, tenant_id=str(request.tenant_id)
             )
         return IntentClassificationResponse(
-            predicted_intent=label, available_intents=request.instructions
+            predicted_intent=generated.label,
+            available_intents=request.instructions,
+            llm_usage=generated.usage_detail,
+            llm_guardrail_usage=generated.guardrail_usage,
         )
     except ExternalTextUnavailableError as e:
         logger.error(f"Intent classification upstream (text) unavailable: {str(e)}")

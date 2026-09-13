@@ -62,7 +62,7 @@
  *      `pnpm test:e2e -- task-635-live-agent-lineage.spec.ts`
  *
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
@@ -125,6 +125,23 @@ function listOf<T>(body: unknown): T[] {
   if (Array.isArray(body)) return body as T[];
   const data = (body as { data?: unknown } | null)?.data;
   return Array.isArray(data) ? (data as T[]) : [];
+}
+
+/** A workflow-definition detail body, whichever envelope the admin surface returns. */
+interface GraphCarrier {
+  graph?: { nodes?: { id: string; type?: string; config?: Record<string, unknown> }[] };
+}
+
+/**
+ * Mirrors the resolver's `template.status !== 'APPROVED'` guard: a node binding an
+ * unapproved template does NOT make tier-1a's node source reachable — the resolver
+ * skips it and falls through.
+ */
+async function isApprovedTemplate(request: APIRequestContext, token: string, templateId: string): Promise<boolean> {
+  const response = await request.get(`/api/v1/admin/prompt-templates/${templateId}`, { headers: bearer(token) });
+  if (!response.ok()) return false;
+  const body = (await response.json()) as { data?: { status?: string }; status?: string };
+  return (body.data?.status ?? body.status) === 'APPROVED';
 }
 
 interface SummaryMetaRow {
@@ -253,10 +270,17 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
   let liveGenerated = false;
   /** The STT session id whose result stream this spec feeds (see xaddFinalSegments). */
   let sttSessionId: string | null = null;
-  /** The department's default agent (seeded or created here). */
+  /**
+   * WHAT tier-1a is expected to report, and the identity it must carry.
+   *
+   * `null` id = tier-1a is not reachable at all and the governed SYSTEM live
+   * default (`'default'`) is the correct answer.
+   */
   let agentId: string | null = null;
-  /** True once `livePromptTemplateId` is bound, so the live chain can reach tier-1a. */
+  /** True once a tier-1a SOURCE was discovered, so `resolvedFrom` must be `'agent'`. */
   let liveBindingApplied = false;
+  /** Which tier-1a source answered — for the failure message only. */
+  let liveBindingSource: 'node' | 'per-turn-agent' | null = null;
 
   test.beforeAll(async ({ request, playwright }, testInfo) => {
     void playwright;
@@ -275,41 +299,104 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect(deptList.length, 'the tenant must have at least one seeded department').toBeGreaterThan(0);
     departmentId = deptList[0].id;
 
-    // The live tier's source is a WORKFLOW NODE, not a
-    // `DepartmentAgent`. This block used to CREATE a dedicated default agent
-    // carrying a `livePromptTemplateId`, because the seeded agents bound
-    // summary templates only and the Global tenant's were `templateLocked`
-    // clones that refused a PATCH. Neither problem — nor the row — exists any
-    // more: the binding lives on the tenant's governing `consultation`
-    // definition, which an admin authors in Workflow Studio.
+    // DISCOVER which tier the live chain will report — never provision. Authoring a
+    // published definition from an e2e fixture would be a second implementation of the
+    // publish path, and a wrong one.
     //
-    // So this DISCOVERS rather than provisions. Authoring a whole published
-    // definition from an e2e fixture would be a second implementation of the
-    // publish path, and a wrong one; what the spec needs is to know which
-    // branch of its own two-branch assertion applies. If the tenant's active
-    // published graph carries a prompt-bound node whose effective `taskKey` is
-    // `text.live`, tier-1a is reachable and `resolvedFrom` must be `'agent'`
-    // (the tier keeps its wire name — it is a frozen v1-compat contract, see
-    // `PromptResolutionService`). If it does not, the governed SYSTEM live
-    // default is the correct answer and the spec asserts THAT.
-    const definitions = await request.get('/api/v1/admin/workflow-definitions?paletteKey=consultation&limit=50', { headers: bearer(token) });
-    const definitionList = definitions.ok() ? listOf<{ id: string; status?: string; isActive?: boolean }>(await definitions.json()) : [];
-    const active = definitionList.find((definition) => definition.status === 'PUBLISHED' && definition.isActive);
-    if (active) {
-      const detail = await request.get(`/api/v1/admin/workflow-definitions/${active.id}`, { headers: bearer(token) });
-      if (detail.ok()) {
-        const graph = ((await detail.json()) as { graph?: { nodes?: { id: string; config?: Record<string, unknown> }[] } }).graph;
-        const liveNode = (graph?.nodes ?? []).find(
-          (node) => typeof node.config?.promptTemplateId === 'string' && node.config?.taskKey === 'text.live',
-        );
-        if (liveNode) {
-          agentId = liveNode.id;
-          liveBindingApplied = true;
+    // This mirrors `PromptResolutionService.resolveLivePromptId`, which is the ONLY
+    // authority on the answer. Tier-1a has TWO sources and BOTH report `'agent'` (the
+    // tier keeps its wire name — frozen v1-compat contract):
+    //
+    //   1. node  — a prompt-bearing node of the governing graph whose effective
+    //              `taskKey` is `text.live`; `agentId` is then the NODE id.
+    //   2. agent — TASK-946 OD-5: consulted only when no node carried its own
+    //              `promptTemplateId`. The first per-turn realtime `core.agent` node
+    //              (`execution.lane === 'realtime'`, cadence ≠ `onStart`) whose AGENT is
+    //              PUBLISHED + active + TEXT_GENERATION. `agentId` is then the AGENT id.
+    //
+    // Only when NEITHER resolves is the governed SYSTEM live default (`'default'`) correct.
+    //
+    // The two things this block used to get wrong, both from TASK-930:
+    //   - it listed `?paletteKey=consultation`. The governing palette is CORE (`'core'` —
+    //     `CONSULTATION_PALETTE_KEY = CORE_PALETTE_KEY`), and the list route has no
+    //     `paletteKey` filter in its query DTO at all, so the param was inert and the
+    //     lookup silently answered "no definitions" for every tenant.
+    //   - it took the first PUBLISHED+active definition. The runtime resolves the
+    //     governing one through the ASSIGNMENT cascade (department → tenant), then
+    //     `findPublishedBySlug`. Picking a different published graph reads the wrong nodes.
+    const assignments = await request.get('/api/v1/admin/workflow-assignments?limit=100', { headers: bearer(token) });
+    const assignmentList = assignments.ok()
+      ? listOf<{ paletteKey?: string; workflowDefinitionSlug?: string; departmentId?: string | null }>(await assignments.json())
+      : [];
+    const corePalette = assignmentList.filter((a) => a.paletteKey === 'core' && !!a.workflowDefinitionSlug);
+    // department-scoped wins over the tenant-wide row, exactly as the cascade does.
+    const assignment = corePalette.find((a) => a.departmentId === departmentId) ?? corePalette.find((a) => !a.departmentId);
+
+    if (assignment?.workflowDefinitionSlug) {
+      const definitions = await request.get('/api/v1/admin/workflow-definitions?limit=100', { headers: bearer(token) });
+      const definitionList = definitions.ok()
+        ? listOf<{ id: string; slug?: string; status?: string; isActive?: boolean }>(await definitions.json())
+        : [];
+      const governing = definitionList.find((d) => d.slug === assignment.workflowDefinitionSlug && d.status === 'PUBLISHED' && d.isActive);
+
+      if (governing) {
+        const detail = await request.get(`/api/v1/admin/workflow-definitions/${governing.id}`, { headers: bearer(token) });
+        if (detail.ok()) {
+          const body = (await detail.json()) as { data?: GraphCarrier } & GraphCarrier;
+          const nodes = (body.data ?? body).graph?.nodes ?? [];
+
+          // Source 1 — a prompt-bearing live node. `taskKey` may be ABSENT and defaulted by
+          // the node registry (`consultation.realtimeSummary` declares `default: 'text.live'`),
+          // which is why an authored-only match is not enough. The registry is not importable
+          // from an e2e spec (these are black-box over HTTP), so the one defaulting type is
+          // named here; a new one must be added in the same commit that declares it.
+          const liveNode = nodes.find((node) => {
+            if (typeof node.config?.promptTemplateId !== 'string' || node.config.promptTemplateId.length === 0) return false;
+            const authored = node.config?.taskKey;
+            if (typeof authored === 'string' && authored.length > 0) return authored === 'text.live';
+            return node.type === 'consultation.realtimeSummary';
+          });
+
+          // The resolver drops a node whose template is not APPROVED and falls through to
+          // source 2, so an unapproved binding is NOT a tier-1a node source here either.
+          if (liveNode && (await isApprovedTemplate(request, token, liveNode.config!.promptTemplateId as string))) {
+            agentId = liveNode.id;
+            liveBindingApplied = true;
+            liveBindingSource = 'node';
+          }
+
+          // Source 2 — the per-turn realtime agent (TASK-946 OD-5), in AUTHORED ORDER:
+          // the resolver returns the first candidate that qualifies, so order is load-bearing.
+          if (!liveBindingApplied) {
+            const perTurn = nodes.filter((node) => {
+              if (node.type !== 'core.agent' || node.config?.disabled === true) return false;
+              const execution = node.config?.execution as { lane?: unknown; cadence?: unknown } | undefined;
+              return !!execution && execution.lane === 'realtime' && execution.cadence !== 'onStart';
+            });
+            if (perTurn.length > 0) {
+              const agents = await request.get('/api/v1/admin/agents?limit=100', { headers: bearer(token) });
+              const agentList = agents.ok()
+                ? listOf<{ id: string; slug?: string; task?: string; status?: string; isActive?: boolean }>(await agents.json())
+                : [];
+              for (const node of perTurn) {
+                const slug = (node.config?.agentRef as { slug?: unknown } | undefined)?.slug;
+                if (typeof slug !== 'string' || slug.length === 0) continue;
+                const agent = agentList.find((a) => a.slug === slug && a.task === 'TEXT_GENERATION' && a.status === 'PUBLISHED' && a.isActive);
+                if (agent) {
+                  agentId = agent.id;
+                  liveBindingApplied = true;
+                  liveBindingSource = 'per-turn-agent';
+                  break;
+                }
+              }
+            }
+          }
         }
       }
     }
+
     if (!liveBindingApplied) {
-      console.warn('[ C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.');
+      console.warn('[ C6] no tier-1a source on the tenant’s governing CORE graph — R-N1 will assert the SYSTEM-default tier instead.');
     }
 
     const patientId = `task-635-c6-${Date.now()}`;
@@ -320,16 +407,32 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect([200, 201], 'POST /consultations/open').toContain(opened.status());
     consultationId = ((await opened.json()) as { id: string }).id;
 
-    // (consent-abac): `POST :id/recording/start()` below is now gated
-    // by `@RequiresConsent(AI_DOCUMENTATION)` — a fresh consultation carries
-    // no legacy-backfilled grant (the backfill only covers consultations
-    // that existed before the migration), so this test must record one
-    // itself or recording/start() 403s.
-    const granted = await request.post('/api/v1/admin/consent-grants', {
-      headers: bearer(token),
-      data: { externalPatientId: patientId, purpose: 'AI_DOCUMENTATION', grantMethod: 'VERBAL_ATTESTED' },
-    });
-    expect([200, 201], 'POST /admin/consent-grants (AI_DOCUMENTATION)').toContain(granted.status());
+    // (consent-abac): `POST :id/recording/start()` below is gated by
+    // `@RequiresConsent(AI_DOCUMENTATION)`. This spec used to record that grant
+    // itself; since TASK-805 (b17007a60, "a doctor opening a consultation IS
+    // the consent event") the `open` above ALREADY recorded it —
+    // `ConsultationService.open` calls `ensureConsultationConsent(patientId)`
+    // fail-closed, granting every `ConsentPurpose` as VERBAL_ATTESTED.
+    //
+    // So the explicit POST is now a SECOND active grant for the same
+    // (tenant, patient, purpose) triple and 409s on the partial unique index
+    // `ConsentGrant_tenant_patient_purpose_active_key` — by design:
+    // `ConsentGrantService.create` is the strict primitive (a duplicate active
+    // grant is a real conflict, and swallowing it would silently discard a
+    // differing grantMethod/evidenceRef and skip the CONSENT_GIVEN WORM
+    // append), while `ensureConsultationConsent` is the idempotent wrapper.
+    //
+    // Assert the auto-grant instead of re-recording it: that keeps the
+    // precondition recording/start() needs AND pins TASK-805's behaviour, which
+    // creating our own grant would have masked.
+    const grants = await request.get(
+      `/api/v1/admin/consent-grants?externalPatientId=${encodeURIComponent(patientId)}&purpose=AI_DOCUMENTATION&state=ACTIVE`,
+      { headers: bearer(token) },
+    );
+    expect(grants.status(), 'GET /admin/consent-grants (AI_DOCUMENTATION)').toBe(200);
+    const autoGranted = listOf<{ purpose: string; grantMethod: string; revokedAt?: string }>(await grants.json());
+    expect(autoGranted, 'consultation open must auto-record the AI_DOCUMENTATION grant (TASK-805)').toHaveLength(1);
+    expect(autoGranted[0].grantMethod, 'auto-grant is the clinician’s in-person attestation').toBe('VERBAL_ATTESTED');
   });
 
   test.afterAll(async ({ request }) => {
@@ -403,24 +506,25 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       return;
     }
 
-    // With a live-bound node present the loop MUST resolve tier-1a. Without one,
-    // the governed SYSTEM live-default is the correct answer — assert that
-    // instead of pretending the node tier ran. `code-default` is never
-    // acceptable here: it would mean no governed template resolved.
+    // With a tier-1a source present the loop MUST resolve it (either source reports
+    // `'agent'`). Without one, the governed SYSTEM live-default is the correct answer.
+    // `code-default` is never acceptable here: it would mean NO governed template
+    // resolved and the live loop fell open to the in-code constants.
     expect(
       sseAgent.resolvedFrom,
       liveBindingApplied
-        ? 'a live-bound node must resolve the tier-1a (reported as `agent`)'
-        : 'without a live binding, the governed SYSTEM live default must resolve',
+        ? `a tier-1a source (${liveBindingSource}) must resolve, reported as \`agent\``
+        : 'without a tier-1a source, the governed SYSTEM live default must resolve',
     ).toBe(liveBindingApplied ? 'agent' : 'default');
 
-    // `id` identifies whatever supplied tier-1a — the workflow NODE id since
-    // so it exists only on that tier; on the SYSTEM-default tier it
-    // is legitimately null. The governed template and its pinned version must be
-    // present either way — that is what makes the live prompt version-pinned
-    // rather than "whatever the row says today".
+    // `id` identifies WHAT supplied tier-1a, and which of the two sources answered
+    // decides the identity: the workflow NODE id for the node source, the AGENT id for
+    // the per-turn agent source (TASK-946 OD-5). It exists only on tier-1a; on the
+    // SYSTEM-default tier it is legitimately null. The governed template and its pinned
+    // version must be present either way — that is what makes the live prompt
+    // version-pinned rather than "whatever the row says today".
     if (liveBindingApplied) {
-      expect(sseAgent.id, 'agent id').toBe(agentId);
+      expect(sseAgent.id, `tier-1a identity (${liveBindingSource})`).toBe(agentId);
     }
     expect(sseAgent.promptTemplateId, 'the governed live PromptTemplate').toBeTruthy();
     expect(typeof sseAgent.promptVersionNumber, 'the pinned immutable PromptVersion number').toBe('number');

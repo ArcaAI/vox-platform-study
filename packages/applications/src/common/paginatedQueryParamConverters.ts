@@ -168,6 +168,13 @@ function coerceJsonPathValue(op: string, value: string): unknown {
  * are unaffected. Coercion only ever applies to KNOWN columns of the target
  * model, so a genuine String column whose value is literally `"true"`/`"123"`
  * is never mangled.
+ *
+ * MALFORMED TOKENS ARE A 400, NOT A NO-OP. A token that does not match
+ * `field[op]:value` (most often the operator omitted — `status:ACTIVE`) used to
+ * be dropped, so the request answered 200 with the UNFILTERED set and a caller
+ * asking for one slice silently received everything. The only tolerated shape
+ * is an EMPTY token: a trailing `;` or `a;;b` carries no filter intent and is
+ * skipped.
  */
 export function deserializeFilterString<T = DefaultDbFieldType>(filtersString: string, fieldTypes?: FilterFieldTypeSource): DbFilters {
   return deserializeFilterStringWithMap<T>(filtersString, resolveFilterFieldTypes(fieldTypes));
@@ -199,12 +206,37 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
       // For all previously-valid tokens this is byte-identical to the old
       // `split('[')` / `split(']:')` destructuring (which silently dropped the
       // extra pieces).
+      //
+      // An EMPTY token is separator noise — a trailing ';', or 'a;;b' — and
+      // carries no filter intent, so it is skipped. It is the ONE tolerated
+      // shape: a client that ends its join with a separator is not asking for
+      // anything, and 400ing it would break callers for no safety gain.
+      if (field.trim().length === 0) return;
+
+      // Anything else that does not match `field[op]:value` is REJECTED, the
+      // same posture this module already takes for empty list items, bad JSON
+      // paths and invalid enum members ("they always indicate a client
+      // serializer bug"). These two checks used to `return`, which made a
+      // malformed token VANISH and the request answer 200 with the UNFILTERED
+      // set — a caller asking for one slice silently received everything, with
+      // nothing in the response to tell the two apart. `paletteKey:core`
+      // (operator omitted) was the live example: it read as a filter, parsed as
+      // nothing, and returned every palette.
       const bracketIdx = field.indexOf('[');
-      if (bracketIdx === -1) return;
+      const rest = bracketIdx === -1 ? '' : field.slice(bracketIdx + 1);
+      const closeIdx = bracketIdx === -1 ? -1 : rest.indexOf(']:');
+      if (bracketIdx === -1 || closeIdx === -1) {
+        throw new BadRequestException(
+          `Invalid filter token '${field}': expected 'field[op]:value' (e.g. 'status[equals]:ACTIVE'), with ';' between tokens. The [operator] is required.`,
+        );
+      }
       const key = field.slice(0, bracketIdx);
-      const rest = field.slice(bracketIdx + 1);
-      const closeIdx = rest.indexOf(']:');
-      if (closeIdx === -1) return;
+      // A token with no FIELD ('[equals]:x') would reach Prisma as the key '',
+      // which it rejects server-side — caught here instead, for the reason the
+      // JSON-path operator guard states.
+      if (key.length === 0) {
+        throw new BadRequestException(`Invalid filter token '${field}': the field name before '[' is empty.`);
+      }
       const op = rest.slice(0, closeIdx);
       const value = rest.slice(closeIdx + 2);
 

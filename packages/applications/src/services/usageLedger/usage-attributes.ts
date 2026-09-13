@@ -165,6 +165,8 @@ const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
  * | `storageClass` | which storage pool a GB-day row snapshotted ({@link STORAGE_CLASSES}) |
  * | `activityType` | which Temporal activity burned the worker CPU (open set, shape-checked) |
  * | `byteSource` | whether a byte count is the wire or an app-level proxy ({@link BYTE_SOURCES}) |
+ * | `nodeId` | WHICH NODE of a workflow graph spent this (open — the author names it) |
+ * | `workflowVersionId` | WHICH PUBLISHED VERSION of the definition that node belongs to |
  */
 export const USAGE_ATTRIBUTE_KEYS = {
   channelCount: 'number',
@@ -185,6 +187,9 @@ export const USAGE_ATTRIBUTE_KEYS = {
   storageClass: 'string',
   activityType: 'string',
   byteSource: 'string',
+  // TASK-957 F-8 — node identity on the workflow lane.
+  nodeId: 'string',
+  workflowVersionId: 'string',
 } as const satisfies Record<string, UsageAttributeType>;
 
 /** The typed attribute bag emitters build. */
@@ -213,6 +218,24 @@ export interface UsageAttributes {
   activityType?: string | null;
   /** Closed vocabulary, ENFORCED — see {@link BYTE_SOURCES}. */
   byteSource?: ByteSource | null;
+  /**
+   * WHICH NODE of a workflow graph this row bills (TASK-957 F-8).
+   *
+   * The interpreter's own `node_id` — an author-chosen key, unique within its
+   * definition. Deliberately an OPEN vocabulary: closing it would reject a
+   * legitimate graph, and the shape check already keeps prose out.
+   */
+  nodeId?: string | null;
+  /**
+   * WHICH PUBLISHED VERSION of the workflow definition that node belongs to
+   * (TASK-957 F-8).
+   *
+   * Without it `nodeId` is ambiguous the moment a definition is republished
+   * with the node renamed or re-wired, so the two travel together — and
+   * "did version 4 cost more than version 3" becomes a group-by rather than a
+   * reconstruction from timestamps.
+   */
+  workflowVersionId?: string | null;
 }
 
 /**
