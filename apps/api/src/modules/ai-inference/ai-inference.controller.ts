@@ -1,20 +1,31 @@
 import {
   AiModelService,
   COMPUTE_DEVICES,
+  IComputeDeviceResolver,
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
   buildNerUsageEvent,
   derivedLocalPath,
   IActiveUserContext,
   IAiRoutingPolicyService,
   ITenantNlpTaskInstructionsService,
   IUsageLedgerService,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type ComputeAugmentedBatch,
+  type TextUsageDetail,
+  type UsageEventBatchInput,
 } from '@arcaai/applications';
 import type { ComputeDevice } from '@arcaai/applications';
-import { generateId, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { AiDeploymentKind, generateId, ModelTaskType, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, RequiredScopes } from '../../decorators';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { AiInferenceClient } from './ai-inference.client';
+import { buildNlpClassifyUsage } from './nlp-classify-usage';
 import { ClassifyIntentRequest } from './dto/classify-intent.request';
 import { ClassifyTopicRequest } from './dto/classify-topic.request';
 import { ExtractEntitiesRequest } from './dto/extract-entities.request';
@@ -126,6 +137,12 @@ export class AiInferenceController {
     @Optional()
     @Inject(ITenantNlpTaskInstructionsService)
     private readonly tenantNlpTaskInstructionsService?: ITenantNlpTaskInstructionsService,
+    // TASK-957 F-7b — which device a SELF-HOSTED LLM server ran on, for the `generate` rows the
+    // DELEGATED topic/intent routes now write. The shared resolver, not a local read of the same
+    // descriptor: it already owns the tenant → SYSTEM cascade, the membership check and the
+    // warn-once, and it never raises. @Optional + trailing so every existing positional fixture
+    // keeps its arity; absent ⇒ no compute row on a self-hosted leg, never a guessed one.
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
   ) {}
 
   @Post('entities')
@@ -250,7 +267,7 @@ export class AiInferenceController {
     const selection = await this.resolveDefaultModelSelection('nlp.diagnosis');
     const nerSelection = await this.resolveDefaultModelSelection('nlp.ner');
 
-    return this.client.suggestDiagnosis({
+    const result = await this.client.suggestDiagnosis({
       text: body.text,
       ...(body.minConfidence !== undefined ? { min_confidence: body.minConfidence } : {}),
       ...(body.language ? { language: body.language } : {}),
@@ -260,6 +277,146 @@ export class AiInferenceController {
       ...(nerSelection.sourceUri ? { ner_model_name: nerSelection.sourceUri } : {}),
       ...(nerSelection.localPath ? { ner_model_path: nerSelection.localPath } : {}),
     });
+
+    // TASK-957 F-7b — this route runs TWO local models and recorded nothing. Its text units and
+    // the seconds `apps/nlp` reports for them are billed under `nlp.classify`, a fresh key per
+    // invocation (two diagnoses must be two rows, never one row and one silent replay).
+    await this.emitNlpClassifyUsage({ charCount: [...body.text].length, model: selection.sourceUri || null, upstream: result });
+
+    return result;
+  }
+
+  /**
+   * Emit the `nlp.classify` row for a classification bench.
+   *
+   * Fail-open throughout, exactly like {@link emitNerUsage}: no tenant, no ledger wired, or a
+   * ledger rejection all degrade to "not metered" — the analysis already happened and metering
+   * must never fail a request that succeeded. The counter is what makes the loss alertable
+   * rather than a warn line nobody reads (TASK-957 F-5).
+   */
+  private async emitNlpClassifyUsage(params: { charCount?: number | null; model: string | null; upstream?: Record<string, unknown> }): Promise<void> {
+    const tenantId = this.cls?.get('tenantId');
+    if (!this.usageLedgerService || !tenantId) return;
+    const batch = buildNlpClassifyUsage({
+      tenantId,
+      requestId: generateId(),
+      doctorId: this.resolveDoctorId(),
+      charCount: params.charCount,
+      model: params.model,
+      // `apps/nlp` reports its own device and inference time. Neither is guessed: an absent or
+      // unrecognised value records the text units and no compute.
+      inferenceMs: nerInferenceMs(params.upstream?.inference_ms),
+      device: nerDevice(params.upstream?.device),
+    });
+    if (!batch) return;
+    try {
+      await this.usageLedgerService.recordUsage(batch);
+    } catch (error) {
+      recordUsageEmissionFailure('nlp.classify');
+      this.logger.warn({
+        message: 'NLP classification usage emission failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Emit what a DELEGATED classification (`/topic`, `/intent`) actually consumed.
+   *
+   * Neither route runs a local model: `apps/nlp` builds a prompt and hands it to `apps/text`, so
+   * the cost of one classification IS that LLM call plus the guardrail call it triggered. Since
+   * TASK-957's nlp half, both blocks ride back verbatim as `llm_usage` / `llm_guardrail_usage`,
+   * and this bills them as the SAME `generate` + `guardrail.validate` rows the playground's own
+   * text proxy would have written — same builders, same keys (TEXT's task id), same compute and
+   * byte rows. It is the same generation; it must not be a different row shape.
+   *
+   * NOTE the asymmetry with `/diagnosis`: no `TEXT_UNIT` row here. Charging text units on top of
+   * the tokens would bill one activity twice, on two capabilities. An `nlp.classify` COMPUTE row
+   * is still written if `apps/nlp` ever reports seconds of its own — its seconds are its own,
+   * whoever ran the tokens.
+   */
+  private async emitDelegatedClassifyUsage(upstream?: Record<string, unknown>): Promise<void> {
+    const tenantId = this.cls?.get('tenantId');
+    if (!this.usageLedgerService || !tenantId) return;
+    const ledger = this.usageLedgerService;
+    const doctorId = this.resolveDoctorId();
+
+    const generation = parseTextUsageDetail(upstream?.llm_usage);
+    const screening = parseTextUsageDetail(upstream?.llm_guardrail_usage);
+
+    try {
+      const inputs: UsageEventBatchInput[] = [];
+      if (generation) {
+        inputs.push(
+          ...halves(
+            buildLlmUsageBatches({
+              usage: generation,
+              tenantId,
+              operation: 'generate',
+              doctorId,
+              device: await this.llmDevice(tenantId, generation),
+            }),
+          ),
+        );
+      }
+      if (screening) {
+        // Its OWN provider call — own operation, own key, own device (a tenant may screen on one
+        // engine and generate on another).
+        inputs.push(
+          ...halves(
+            buildGuardrailUsageBatches({
+              usage: screening,
+              tenantId,
+              doctorId,
+              fallbackRequestId: generation?.taskId ?? null,
+              device: await this.llmDevice(tenantId, screening),
+            }),
+          ),
+        );
+      }
+      const computeOnly = buildNlpClassifyUsage({
+        tenantId,
+        requestId: generateId(),
+        doctorId,
+        model: null,
+        inferenceMs: nerInferenceMs(upstream?.inference_ms),
+        device: nerDevice(upstream?.device),
+      });
+      if (computeOnly) inputs.push(computeOnly);
+
+      for (const input of inputs) {
+        await ledger.recordUsage(input);
+      }
+    } catch (error) {
+      recordUsageEmissionFailure('generate');
+      this.logger.warn({
+        message: 'Delegated NLP classification usage emission failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * The device a parsed usage block's OWN provider ran on, or `null`.
+   *
+   * A CLOUD or BYOK leg is not the vendor's hardware — those seconds are the platform's own CPU
+   * spent calling the vendor, which the shared appender meters as `cpu` whatever is passed — so
+   * nothing is resolved for them and the cascade is not read at all. `null` also when the
+   * resolver is unwired or raises despite its contract: no compute row, never a guessed one.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this classification without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   @Post('topic')
@@ -274,12 +431,15 @@ export class AiInferenceController {
   async classifyTopic(@Body() body: ClassifyTopicRequest): Promise<Record<string, unknown>> {
     const tenantId = this.resolveTenantIdOrThrow();
     const instructions = await this.resolveNlpInstructions('nlp.topic', tenantId);
-    return this.client.classifyTopic({
+    const result = await this.client.classifyTopic({
       text: body.text,
       ...(body.language ? { language: body.language } : {}),
       ...(instructions ? { instructions } : {}),
       tenant_id: tenantId,
     });
+    // TASK-957 F-7b — the delegated LLM call is what this classification cost.
+    await this.emitDelegatedClassifyUsage(result);
+    return result;
   }
 
   @Post('intent')
@@ -294,12 +454,15 @@ export class AiInferenceController {
   async classifyIntent(@Body() body: ClassifyIntentRequest): Promise<Record<string, unknown>> {
     const tenantId = this.resolveTenantIdOrThrow();
     const instructions = await this.resolveNlpInstructions('nlp.intent', tenantId);
-    return this.client.classifyIntent({
+    const result = await this.client.classifyIntent({
       text: body.text,
       ...(body.language ? { language: body.language } : {}),
       ...(instructions ? { instructions } : {}),
       tenant_id: tenantId,
     });
+    // See `/topic` above.
+    await this.emitDelegatedClassifyUsage(result);
+    return result;
   }
 
   /** The caller's CLS tenant, or 503 — these two routes need a tenant to resolve instructions for. */
@@ -431,4 +594,17 @@ export class AiInferenceController {
       throw new ServiceUnavailableException(`SYSTEM routing election for '${taskKey}' could not be resolved.`);
     }
   }
+}
+
+/**
+ * Both halves of an augmented pair (TASK-959 §6.3).
+ *
+ * A BYOK call's platform CPU leg carries `costBasis: INTERNAL` while its token rows stay
+ * `BYOK_NOTIONAL`, and `costBasis` lives on `common` — so saying both takes two batches. A
+ * caller that records only the first loses that one row. A non-BYOK pair flattens to the one
+ * batch it always was.
+ */
+function halves(pair: ComputeAugmentedBatch | null): UsageEventBatchInput[] {
+  if (!pair) return [];
+  return pair.platformBatch ? [pair.batch, pair.platformBatch] : [pair.batch];
 }

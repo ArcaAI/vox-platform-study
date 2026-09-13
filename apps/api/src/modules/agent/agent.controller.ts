@@ -70,7 +70,8 @@ import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
-import { classifyTtsProvider } from '../speech/tts-provider-classification';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
+import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
@@ -485,6 +486,12 @@ export class AgentController {
   }
 
   @Post(':slug/speech')
+  // The handler takes `@Res()`, which decides who WRITES the body — not who sets the status
+  // line. Nest's `RouterExecutionContext` calls `setStatus(res, httpStatusCode)` before the
+  // handler runs either way, so with no `@HttpCode` this route sent the POST default 201 while
+  // its own `@ApiResponse` and `openapi.json` published 200. A synthesis is not a created
+  // resource; it is the audio, streamed.
+  @HttpCode(HttpStatus.OK)
   @Authorize()
   @RequiredScopes('agent:invocation:write')
   @RequiredSvcScopes('svc:agent:invocation:write')
@@ -611,6 +618,20 @@ export class AgentController {
     const emitUsage = (interrupted: boolean): void => {
       if (emitted || !this.usageLedger) return;
       emitted = true;
+      // TASK-957 F-10 — no provider, no row. `apps/tts` sends `'none'` when it cannot name the
+      // engine that served, and an absent header says the same thing. Writing the row anyway
+      // asserted `provider: 'none'` (in no price book — zero COGS) on `SELF_HOSTED` (the
+      // platform's own hardware, the one claim a missing header contradicts), while still
+      // draining the tenant's CHARACTER allowance ahead of rows that CAN be rated.
+      if (!isAttributableTtsProvider(provider)) {
+        recordUsageEmissionFailure('tts.synthesize');
+        this.logger.warn({
+          message: 'TTS synthesis reported no provider; recording no usage row for it',
+          agentSlug: slug,
+          requestId,
+        });
+        return;
+      }
       const responseBytes = reportedBytes ?? (relayedBytes > 0 ? relayedBytes : null);
       const batch: UsageEventBatchInput = {
         common: {
@@ -619,7 +640,7 @@ export class AgentController {
           occurredAt: new Date(),
           capability: AiCapability.TTS,
           operation: 'tts.synthesize', // the frozen TTS operation; the agent identity rides on attributesJson
-          provider: provider ?? 'none',
+          provider,
           model: resolved.compiledConfig.model.slug,
           deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
           ...(costBasis ? { costBasis } : {}),
