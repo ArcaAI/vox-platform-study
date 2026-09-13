@@ -17879,18 +17879,6 @@
             "description": "Character offset start within THIS SECTION's `content` (never a concatenated document)",
             "type": "number"
           },
-          "transcriptEnd": {
-            "description": "A2 — character offset end within THAT SEGMENT's text",
-            "type": "number"
-          },
-          "transcriptSegmentId": {
-            "description": "A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from",
-            "type": "string"
-          },
-          "transcriptStart": {
-            "description": "A2 — character offset start within THAT SEGMENT's text",
-            "type": "number"
-          },
           "type": {
             "description": "For `entity`: the entity class (MEDICATION, CONDITION, …). For `finding`: the label the TENANT`s own instruction told the model to assign — the platform supplies no importance vocabulary.",
             "type": "string"
@@ -26355,7 +26343,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible department-aware pre-summary (stateless shim over TEXT /generate)",
@@ -26404,7 +26395,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible synchronous medical summary (stateless shim over TEXT /generate)",
@@ -26460,7 +26454,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT session start",
@@ -26516,7 +26513,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT session stop",
@@ -26571,7 +26571,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "v1-compatible STT mid-session engine switch",
@@ -26632,7 +26635,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List the published agents visible to the tenant (own agents shadow the platform defaults)",
@@ -26690,7 +26696,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Describe one published agent: its task, version, I/O schemas and protocols",
@@ -26740,6 +26749,39 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "example": {
+                  "text": "Summarise the consultation note below."
+                },
+                "properties": {
+                  "context": {
+                    "additionalProperties": true,
+                    "description": "The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.",
+                    "type": "object"
+                  },
+                  "text": {
+                    "description": "The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.",
+                    "type": "string"
+                  },
+                  "variables": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Values substituted into the agent’s prompt template.",
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.",
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The generated output (JSON) or the SSE stream."
@@ -26768,7 +26810,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)",
@@ -26806,6 +26851,30 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "example": {
+                  "text": "Your appointment is confirmed for Tuesday at ten."
+                },
+                "properties": {
+                  "ssml": {
+                    "description": "An SSML document to synthesise. Only for agents that declare SSML support.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "description": "Plain text to synthesise.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "Provide `text` OR `ssml` — exactly one is expected. Sending neither is a 400; if both are sent, `ssml` is used. `ssml` is accepted only by an agent whose parameters declare `ssml: true`, otherwise it is a 400. Everything else about the synthesis — voice, format, speed, model, engine chain — is the AGENT’s, not the caller’s.",
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "audio/pcm | audio/wav | audio/mpeg, streamed."
@@ -26825,7 +26894,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Synthesize speech with a TEXT_TO_SPEECH agent (streamed audio, the existing speech proxy contract)",
@@ -26863,6 +26935,37 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "example": {
+                  "mediaId": "019a1f1e-2c3d-7e4f-8a90-1b2c3d4e5f60"
+                },
+                "properties": {
+                  "consultationId": {
+                    "description": "Optional consultation to attach the resulting transcript to.",
+                    "type": "string"
+                  },
+                  "language": {
+                    "description": "Optional language hint forwarded to the ASR worker; omit to use the agent’s own resolved spec.",
+                    "type": "string"
+                  },
+                  "mediaId": {
+                    "description": "Id of the uploaded media object to transcribe. Another tenant’s id is a 404, like an unknown one.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mediaId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Batch transcription of media ALREADY uploaded through the media plane — this route takes an id, never audio bytes. The answer is a 201 carrying the job and an `sseUrl` to watch it on; the transcript is not in the response.",
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "The transcription job."
@@ -26885,7 +26988,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Start a batch transcription with a SPEECH_TO_TEXT agent (returns a TranscriptionJob)",
@@ -26945,7 +27051,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple PipelineResponses",
@@ -27001,7 +27107,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Non-admin read-by-slug (tenant-scoped via `getBySlug`).",
@@ -27057,7 +27163,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Non-admin read-by-id (tenant-scoped via `getById`).\n\nCross-tenant lookups return 404 (not 403) to avoid existence leaks.",
@@ -27117,7 +27223,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List transcription jobs (paginated, caller-owned jobs)",
@@ -27171,7 +27280,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a transcription job",
@@ -27227,7 +27339,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a batch transcription job",
@@ -27286,7 +27401,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription jobs by consultation (caller-owned jobs)",
@@ -27335,7 +27453,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The fallback engine of the tenant’s assigned (or the named) ASR agent, for the live provider toggle",
@@ -27374,7 +27495,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List selectable STT language modes + per-mode supported engines ",
@@ -27413,7 +27537,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Batch upload ceilings (recordings per batch, minutes per recording, size, in-flight jobs)",
@@ -27459,7 +27586,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription job status counts (caller-owned jobs)",
@@ -27518,7 +27648,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription jobs by status (caller-owned jobs)",
@@ -27580,7 +27713,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a WebSocket streaming session",
@@ -27629,7 +27765,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Close a WebSocket streaming session",
@@ -27678,7 +27817,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Refresh the stream ticket for a live streaming session",
@@ -27730,7 +27872,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Switch a live streaming session to the tenant fallback pipeline",
@@ -27782,7 +27927,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Switch a live streaming session back to its primary pipeline",
@@ -27838,7 +27986,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Create a streaming transcription job",
@@ -27900,7 +28051,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Upload audio file for batch transcription via worker",
@@ -27956,7 +28110,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get transcription job by ID",
@@ -28012,7 +28169,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a transcription job",
@@ -28068,7 +28228,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retry a failed transcription job",
@@ -28124,7 +28287,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream transcription job events via SSE",
@@ -28229,9 +28395,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Impersonate another user (admin only)",
@@ -28320,9 +28483,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "User logout",
@@ -28361,9 +28521,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -28529,9 +28686,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -28860,9 +29014,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Issue a single-use, 30-second ticket for authenticating SSE streams",
@@ -28987,7 +29138,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the release notes visible to the caller",
@@ -29033,7 +29184,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Mark entries as seen for the current user",
@@ -29079,7 +29230,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Entries driving the one-time What's New dialog",
@@ -29161,7 +29312,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses",
@@ -29217,7 +29368,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get the current status of an async consultation job",
@@ -29269,7 +29423,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Cancel a pending or running async consultation job",
@@ -29322,7 +29476,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream real-time status updates for an async consultation job via SSE",
@@ -29390,10 +29547,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           },
           {
-            "bearer": []
+            "service-account": []
           }
         ],
         "summary": "Creating a ConsultationResponse",
@@ -29474,7 +29631,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by patientId and date",
@@ -29603,7 +29760,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by patientId",
@@ -29652,10 +29809,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The workflows this caller may select when opening a consultation.",
@@ -29715,7 +29869,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The published workflows runnable AGAINST a consultation.",
@@ -29838,7 +29995,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Run a published workflow against THIS consultation.",
@@ -29899,7 +30059,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ConsultationResponse by id",
@@ -29982,7 +30145,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a ConsultationResponse by id",
@@ -30049,7 +30212,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by id",
@@ -30127,7 +30293,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -30194,7 +30360,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -30275,7 +30444,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a ContextItemResponse by id",
@@ -30345,7 +30517,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -30415,7 +30590,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -30482,7 +30657,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple ContextItemResponses by id",
@@ -30552,7 +30730,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and contextId",
@@ -30638,7 +30816,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a ContextItemResponse by id and contextId",
@@ -30714,7 +30892,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemVersionResponses by id and contextId",
@@ -30785,7 +30963,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single ContextItemVersionResponse by id and contextId and versionNumber",
@@ -30855,7 +31033,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DocumentSectionResponses by id",
@@ -30937,7 +31118,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple DocumentSectionResponses by id and documentKey",
@@ -31014,7 +31198,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single DocumentSectionResponse by id and documentKey and sectionKey",
@@ -31118,7 +31305,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a DocumentSectionResponse by id and documentKey and sectionKey",
@@ -31171,7 +31358,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Stream live harness assurance (per-claim verdicts) for a consultation via SSE",
@@ -31224,7 +31411,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream live harness draft-generation progress for a consultation via SSE",
@@ -31294,7 +31484,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple HighlightResponses by id",
@@ -31355,7 +31545,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a HighlightResponse by id",
@@ -31422,7 +31612,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and highlightId",
@@ -31478,7 +31668,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream interpreter suggestions and proposed corrections for a consultation via SSE",
@@ -31534,7 +31727,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream the running live summary for an in-progress consultation via SSE",
@@ -31590,7 +31786,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream consultation-loop workflow events for a consultation via SSE",
@@ -31658,7 +31857,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single AggregateNerResponse by id",
@@ -31736,7 +31938,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -31802,7 +32004,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a RecordingStateResponse by id",
@@ -31871,7 +32076,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a RecordingStateResponse by id",
@@ -31941,7 +32149,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple AudioRecordingResponses by id",
@@ -32002,7 +32210,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ContextItemResponse by id",
@@ -32077,7 +32285,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -32144,7 +32352,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving multiple SummaryResponses by id",
@@ -32208,7 +32419,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a SummaryResponse by id",
@@ -32271,7 +32482,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",
@@ -32334,7 +32545,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ComprehensiveSummaryResponse by id",
@@ -32397,7 +32608,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a ComprehensiveSummaryResponse by id",
@@ -32453,7 +32664,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single SummaryResponse by id",
@@ -32519,7 +32733,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a SummaryResponse by id",
@@ -32585,7 +32802,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",
@@ -32644,7 +32864,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single SummaryResponse by id",
@@ -32735,7 +32958,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a SummaryApprovalResponseDto by id and contextItemId",
@@ -32815,7 +33038,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single VersionDiffResponse by id and contextItemId",
@@ -32882,7 +33105,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a OkResponseDto by id and contextItemId",
@@ -32944,7 +33167,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving a single SummaryProvenanceResponse by id and contextItemId",
@@ -33020,7 +33243,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple TagResponses by id and contextItemId",
@@ -33090,7 +33313,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Creating a TagResponse by id and contextItemId",
@@ -33166,7 +33389,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Deleting a OkResponseDto by id and contextItemId and tagId",
@@ -33242,7 +33465,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Retrieving multiple ContextItemVersionResponses by id and contextItemId",
@@ -33330,7 +33553,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Updating a SummaryResponse by id and summaryId",
@@ -33395,7 +33618,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Retrieving a single ConsultationTimelineResponse by id",
@@ -33451,7 +33677,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Stream the ordered agentic-session trajectory for a consultation via SSE",
@@ -33510,7 +33736,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.",
@@ -33570,9 +33799,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving a single DnaReportResponse by doctorId",
@@ -33621,9 +33847,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -33676,9 +33899,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Get current user DNA generation job status",
@@ -33717,9 +33937,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -33773,9 +33990,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving multiple DnaReportResponses",
@@ -33816,9 +34030,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Erase the caller doctor's entire learned DNA writing-style profile",
@@ -33857,9 +34068,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Retrieving a single DnaReportResponse",
@@ -33888,9 +34096,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -33928,9 +34133,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -33998,9 +34200,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Set the caller doctor's DNA writing-style on/off toggle",
@@ -34052,9 +34251,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -34131,9 +34327,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Updating a DnaReportResponse by reportId",
@@ -34203,9 +34396,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Updating a DnaReportResponse by reportId",
@@ -34271,9 +34461,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -34505,7 +34692,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Create a personal prompt template owned by the calling clinician",
@@ -34563,7 +34750,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the prompt templates the calling clinician may use",
@@ -34621,7 +34808,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Set or clear the calling clinician's preferred prompt template",
@@ -34682,7 +34869,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Soft-delete a personal prompt template the caller owns",
@@ -34767,7 +34954,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update a personal prompt template the caller owns",
@@ -34815,7 +35002,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Run a content-safety / PII / prompt-injection check on the supplied text (proxied to the Guardrail service).",
@@ -34851,7 +35038,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Synthesize speech via TTS (batch audio, streamed audio, or SSE)",
@@ -34894,7 +35081,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List available TTS voices (stable internal ids + providers)",
@@ -34953,7 +35140,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List all storage buckets",
@@ -35006,7 +35193,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Create a new storage bucket",
@@ -35061,7 +35248,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Delete a storage bucket",
@@ -35114,7 +35301,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get bucket info",
@@ -35177,7 +35364,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update bucket metadata",
@@ -35234,7 +35421,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List files in bucket",
@@ -35295,7 +35482,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Upload file to bucket",
@@ -35359,7 +35546,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Delete file from bucket",
@@ -35421,7 +35608,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get file info with presigned download URL",
@@ -35459,7 +35646,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check storage service health (detailed)",
@@ -35507,7 +35694,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current tenant information",
@@ -35553,7 +35740,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current tenant configuration",
@@ -35627,10 +35814,7 @@
             "bearer": []
           },
           {
-            "bearer": []
-          },
-          {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update current tenant configuration",
@@ -35693,7 +35877,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Discover the caller tenant's pinned consultation context schema",
@@ -35757,7 +35944,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Discover the caller tenant's pinned document template",
@@ -35803,7 +35990,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Capability/usage snapshot for the caller's own tenant (limits, usage, meters, features, trial clock).",
@@ -35851,7 +36038,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The caller's own tenant's invoices, newest period first.",
@@ -35905,7 +36092,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "One of my invoices (lines, memos, BYOK notional spend). A foreign id → 404.",
@@ -35960,7 +36147,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Month-to-date usage-and-spend snapshot vs my spend limit. Defaults to the current period.",
@@ -36016,7 +36203,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.",
@@ -36072,7 +36259,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month.",
@@ -36120,7 +36307,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint).",
@@ -36166,7 +36353,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Extract medical entities (NER) from the supplied text (proxied to the NLP token-classification endpoint).",
@@ -36212,7 +36399,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Classify text into one of the caller tenant configured intents (open-taxonomy, delegated by NLP to text).",
@@ -36258,7 +36445,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Classify text into one of the caller tenant configured topics (open-taxonomy, delegated by NLP to text).",
@@ -36301,7 +36488,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Generate text with server-side prompt assembly (debug mode)",
@@ -36359,7 +36549,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List Guardrail LLM providers/models from the AiModel registry (ENABLED GUARDRAIL rows), the effective guardrail.validate default marked. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",
@@ -36417,7 +36610,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live TEXT probe fallback when the registry is empty. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=__GLOBAL__.",
@@ -36473,7 +36669,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Get task status from TEXT",
@@ -36529,7 +36728,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a running TEXT task",
@@ -36586,7 +36788,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Stream task chunks via SSE from TEXT",
@@ -36638,7 +36843,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List the caller's own department assignments (tenant-scoped)",
@@ -36681,7 +36886,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current user's effective permissions",
@@ -36727,7 +36932,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get current user preferences",
@@ -36784,7 +36989,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update current user preferences (partial)",
@@ -36833,7 +37038,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Get all settings for current user",
@@ -36911,7 +37116,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Update a specific setting by namespace and key",
@@ -37019,7 +37224,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check if a user has a specific permission",
@@ -37082,7 +37287,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "Check multiple permissions at once",
@@ -37208,7 +37413,7 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
           }
         ],
         "summary": "List roles assigned to the current user (self-only)",
@@ -37250,9 +37455,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -37302,9 +37504,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -37361,9 +37560,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "The embedding model a new enrollment would use",
@@ -37413,9 +37609,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Delete a voice profile",
@@ -37456,9 +37649,6 @@
           }
         },
         "security": [
-          {
-            "bearer": []
-          },
           {
             "bearer": []
           }
@@ -37503,9 +37693,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "bearer": []
           }
         ],
         "summary": "Deactivate a voice profile",
@@ -37547,7 +37734,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The tenant's published + active, invokable workflows (slug + identity — no per-definition input schema exists yet).",
@@ -37634,7 +37824,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.",
@@ -37755,7 +37948,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Start a run of the tenant's active published version of :slug. The canonical invocation entry point.",
@@ -37823,7 +38019,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Live run status + result (queried from the interpreter dispatcher).",
@@ -37891,7 +38090,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",
@@ -37974,7 +38176,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The live state of one Human-review node of a run: whether it is waiting, how many times it has escalated, and the decision if one was made.",
@@ -38070,7 +38275,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Release a Human-review node with a decision — the graph resumes down the `approved` or `rejected` handle.",
@@ -38149,7 +38357,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).",
@@ -38216,7 +38427,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Mint a single-use, 30-second ticket for this run’s WebSocket stream.",
@@ -38269,7 +38483,10 @@
             "bearer": []
           },
           {
-            "bearer": []
+            "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "The published definition`s generated contract: input/output component schemas, trigger kinds, protocols, admitted modes, and an AsyncAPI fragment for its run events (TASK-864).",
