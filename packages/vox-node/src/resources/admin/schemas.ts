@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 434 component schemas the generated surface transitively
+ * Only the 436 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -6740,7 +6740,20 @@ export interface UsageSummaryLine {
   unit: string;
 }
 
+export interface UsageSummaryOperationLine {
+  /** Summed INTERNAL-basis rated cost across every unit of this operation, integer micros. */
+  costMicros: string;
+  /** One of the frozen operations (usageLedger/vocabulary.ts). */
+  operation: string;
+  /** Unit -> summed quantity over the period, fixed-point 6 dp. Units are not summable with each other. */
+  quantityByUnit: Record<string, string>;
+}
+
 export interface UsageSummaryResponse {
+  /** Usage grouped by operation, from the same daily rollups as `lines`. Sorted by operation. */
+  byOperation: UsageSummaryOperationLine[];
+  /** Usage grouped by the activity that CAUSED it. From the raw ledger, not the rollups — `trigger` is an attribute, not a rollup dimension — so it carries quantity and no cost. A trigger with no usage is omitted rather than zeroed. */
+  byTrigger: UsageSummaryTriggerLine[];
   /** BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14). */
   byokNotionalCostMicrosByCapability: Record<string, string>;
   /** GPU vs CPU occupancy seconds across the inference capabilities. */
@@ -6758,6 +6771,13 @@ export interface UsageSummaryResponse {
   totalCostMicros: string;
   /** Σ CPU_SECOND under capability WORKFLOW — the durable worker's own CPU for this tenant's runs. Its own figure because a run's worker CPU is neither STT nor LLM, and adding it to computeSeconds would double-count it against a compute allowance. Fixed-point, 6 dp. */
   workflowCpuSeconds: string;
+}
+
+export interface UsageSummaryTriggerLine {
+  /** Unit -> summed quantity over the period, fixed-point 6 dp. */
+  quantityByUnit: Record<string, string>;
+  /** One of OD-E's five triggers (usageLedger/usage-attributes.ts). */
+  trigger: string;
 }
 
 export interface UsageThirdPartyBytes {
