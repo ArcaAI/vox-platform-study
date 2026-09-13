@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** |
+| Status | **Completed** (residual triage split out — see §7) |
 | Type | bugfix (test infrastructure) |
 | Branch | `dev-2.2` |
 | Severity | the ENTIRE `apps/stt/tests/e2e` suite errors — 210 errors, 0 executed |
@@ -92,8 +92,54 @@ cache", which is the stated intent of the comment above each block.
   routine gate, which is why a 9-day outage went unseen. Either wire it somewhere that runs, or
   state explicitly that it is a manual-only suite so its silence is not mistaken for health.
 
+## 7. Implementation Summary
+
+**Owner decision (2026-09-13), resolving OQ-1: DELETE the teardown, do not port it.** apps/stt no
+longer reads Postgres on the agent path, so there are no engines for the e2e fixtures to dispose.
+
+`apps/stt/tests/e2e/conftest.py` — 7 insertions, 28 deletions:
+
+- all three engine-disposal blocks removed (former lines 162, 240, 330);
+- `db_conn.settings = new_settings` KEPT in each — a settings refresh, not teardown, and not broken;
+- the stale rationale comment (which explained why disposal was necessary) replaced with the
+  TASK-861/963 reasoning, so the absence reads as deliberate rather than an oversight.
+
+`close_database()` was NOT substituted in: with no Postgres read there is nothing to close, and
+calling it would reintroduce a database dependency the platform has removed.
+
+### Result — the suite runs again
+
+| | before | after |
+|---|---|---|
+| executed | **0** | **182 passed**, 3 skipped, 3 xfailed |
+| errors | **210** (all `AttributeError` at fixture setup) | 30 |
+| failures | — | 21 |
+
+`black` and `ruff` clean on the changed file.
+
+## 8. Residual breakage — pre-existing, unmasked by this fix, NOT fixed here
+
+Nine days of changes landed against a suite that could not run. Fixing the teardown made that
+drift visible; none of it is caused by this change, and each wants its own triage:
+
+| Count | Where | Root cause |
+|---|---|---|
+| 30 errors | `test_transcription_http_api` (10), `test_cross_endpoint_workflows` (10), `test_huggingface_pipeline` (6), `test_real_data_transcription` (4) | `DatabaseDisabledError` — these exercise the DEPRECATED `pipeline_id` path, which needs `STT_DATABASE_ENABLED=true`. Off by default since TASK-861. Either set it for the e2e env, or retire the tests with the `pipeline_id` path (scheduled for removal in R4). |
+| 21 failures | `test_streaming_sessions_api` (16), `test_transcription_http_api` (4), `test_health_endpoints_comprehensive` (1) | Test-mock signature drift: `_make_mock_session_manager.<locals>._create_session() got an unexpected keyword argument 'auto_switch_enabled'` — the fake's signature no longer matches the real `create_session`. |
+
+**Separate finding, different file.** `apps/stt/tests/integration/test_database.py` fails with
+`UndefinedColumnError: column "downloadStatus" of relation "AiModel" does not exist`. STT's
+read-only SQLAlchemy mirror (`core/database/models.py`) still declares columns TASK-890 §3.11/L2
+dropped — `localPath` is mapped there too, so it is likely more than one. Only reachable via the
+deprecated readers, but it is real schema drift.
+
+**OQ-2 remains open**: this suite runs in neither the routine local gate nor CI, which is why a
+9-day outage went unseen. Either gate it somewhere that runs, or declare it manual-only so its
+silence is not mistaken for health.
+
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-13 | Opened. Root cause identified (`_engines` / `_session_factories` removed by TASK-861 `50bac3ff2` on 2026-09-04); blast radius measured at 210 errors across 9 e2e files + 1 integration file; public replacement (`close_database()`) identified; two owner questions raised. Not yet implemented. |
+| 2026-09-13 | OQ-1 answered by the owner (delete, not port). Teardown removed; suite executes again — 210 errors/0 tests → 182 passed, 21 failed, 30 errors. Residual drift documented in §8 and deliberately left for separate triage. |
