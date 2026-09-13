@@ -188,6 +188,7 @@ export interface WriteRegistrySettingResult {
  *   1. unknown key → 400
  *   2. `sensitivity === 'secret'` → 400 (secrets never flow through this lane)
  *   3. `globalOnly` + not super admin → 403
+ *   4a. `platformTierKey` + `scope: 'system'` → 400 naming the twin (that row has no reader)
  *   4. `assertWithinMaxScope` → 400 on a too-deep scope
  *   5. tier dispatch → 400 for anything but `global-kv`
  *   6. value validated against `dataType`
@@ -238,6 +239,34 @@ export class SettingsRegistryWriteService extends BaseService {
 
     // 4. The max-scope clamp — THE enforcement point (first production caller).
     const scope: SettingScope = options.scope ?? 'system';
+
+    // 4a. TASK-969 WS-1 — the PAIRED key's dead scope. A key that declares
+    //     `platformTierKey` is the TENANT half of a pair; its SYSTEM row has no
+    //     reader, because the only consumer
+    //     (`TextRequestEnrichmentService.applyTenantGuardrailPolicy`) pushes the
+    //     value only when the cascade reports `sourceScope === 'tenant'`.
+    //     Until this refusal existed the write was ACCEPTED, persisted,
+    //     versioned and read back faithfully while the runtime kept the old
+    //     value — a success that changes nothing, which is worse than an error.
+    //
+    //     It sits BEFORE the clamp for the same reason the reset lane's
+    //     `scope === 'system'` refusal does: the clamp would let this through
+    //     (system is shallower than the descriptor's `tenant` maxScope), so the
+    //     more specific refusal has to speak first or it never speaks at all.
+    //     The `globalOnly` 403 above still runs FIRST, so a caller who may not
+    //     write the key is told that, not handed the platform key's name.
+    //
+    //     The message names the twin because "refused" without "write THAT one
+    //     instead" leaves an admin with no next step — same shape as the
+    //     DELETE-at-system refusal in `reset()`. Descriptor-driven: no key list
+    //     here, so declaring `platformTierKey` is all a new pair needs.
+    if (scope === 'system' && descriptor.platformTierKey) {
+      throw new ArgumentInvalidException(
+        `Setting '${key}' has no readable platform row: its platform tier is '${descriptor.platformTierKey}'. ` +
+          `Write that key at 'system' scope instead. This key holds a single TENANT's override and is read only when a row exists under that tenant.`,
+      );
+    }
+
     HOPE_SETTINGS_REGISTRY.assertWithinMaxScope(key, scope);
 
     // 4b. WHICH ROW this write targets. `globalOnly` gates the

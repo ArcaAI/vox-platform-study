@@ -12,7 +12,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Put, Query } f
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, RequiredSvcScopes } from '../../decorators';
-import { EffectiveSettingResponse } from './dto/setting-catalog.response';
+import { EffectiveSettingResponse, SettingPlatformTierPairResponse } from './dto/setting-catalog.response';
 import { ResetRegistrySettingResponse, WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
 import { resolveSettingsReadTenantId } from './settings-scope';
 
@@ -52,6 +52,11 @@ export class SettingsRegistryWriteController {
   @CanRead('GlobalSetting')
   @ApiOperation({
     summary: 'Read one registry setting: its descriptor metadata plus the effective value and cascade trace.',
+    description:
+      'For a key that is the TENANT half of a pair (its descriptor declares `platformTierKey`) the response also carries a `pair` block: ' +
+      'the platform twin’s key, effective value and SYSTEM-row version, plus which half is `inForce`. That is what lets one console row ' +
+      'represent both halves — the split into two keys is a TRANSPORT decision (pull snapshot vs per-request push), not an audience one. ' +
+      '`pair` is absent for every key that declares no twin.',
   })
   @ApiParam({ name: 'key', description: 'Registry key, e.g. `agentic.context.liveDelta.maxChars`.' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
@@ -100,7 +105,58 @@ export class SettingsRegistryWriteController {
     // one and the caller tenant's override), and preconditioning a tenant write
     // on the platform row's version would 412 forever.
     const version = await this.writeService.getBackingRowVersion(key, scope ?? 'system');
-    return { ...effective, version };
+    const pair = await this.platformTierPairFor(key, effective.sourceScope, {
+      tenantId: resolvedTenant,
+      departmentId: departmentId ?? null,
+      doctorId: doctorId ?? null,
+    });
+    return { ...effective, version, ...(pair ? { pair } : {}) };
+  }
+
+  /**
+   * TASK-969 WS-1 — the PLATFORM half of a paired key, or `undefined`.
+   *
+   * `text.guardrailPolicy.<f>` and `text.externalGuardrail.<f>` are two keys for
+   * one concept, split by DELIVERY CHANNEL: the registry forbids a
+   * `maxScope: 'tenant'` descriptor from declaring `consumedBy`, so the platform
+   * default cannot live on the same key as the tenant override. Both halves are
+   * platform-admin-only (OD-2), so there is ONE audience and no reason for the
+   * split to reach the screen. Returning both here is what lets the console
+   * render a single row without knowing there are two keys.
+   *
+   * `inForce` MIRRORS THE RUNTIME PREDICATE rather than restating the cascade:
+   * `TextRequestEnrichmentService.applyTenantGuardrailPolicy` pushes the
+   * override only when the cascade reports `sourceScope === 'tenant'`, so
+   * anything else — a `system` row on the tenant half very much included — is
+   * `platform`. Reporting a dead SYSTEM row as "in force" is precisely the lie
+   * this ticket exists to remove.
+   *
+   * The platform version is read at `system` scope explicitly and NOT at the
+   * scope the caller asked about: it is the ETag for writing the PLATFORM row,
+   * which lives on the reserved SYSTEM tenant whatever the caller is looking at.
+   *
+   * Costs nothing for the ~240 keys that declare no twin — the descriptor is
+   * consulted first, so no extra resolution is issued.
+   */
+  private async platformTierPairFor(
+    key: string,
+    sourceScope: string,
+    ctx: { tenantId: string | null; departmentId: string | null; doctorId: string | null },
+  ): Promise<SettingPlatformTierPairResponse | undefined> {
+    const platformTierKey = HOPE_SETTINGS_REGISTRY.get(key)?.platformTierKey;
+    if (!platformTierKey) {
+      return undefined;
+    }
+    const [platform, platformVersion] = await Promise.all([
+      this.effective.resolveEffective(platformTierKey, ctx),
+      this.writeService.getBackingRowVersion(platformTierKey, 'system'),
+    ]);
+    return {
+      platformTierKey,
+      platformValue: platform.value,
+      platformVersion,
+      inForce: sourceScope === 'tenant' ? 'tenant' : 'platform',
+    };
   }
 
   @Put('registry/:key')
