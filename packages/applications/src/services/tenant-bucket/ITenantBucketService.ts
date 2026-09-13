@@ -27,6 +27,17 @@ export abstract class ITenantBucketService {
   abstract getBucketByPurpose(purpose: TenantBucketPurpose): Promise<TenantBucketResponse | null>;
   abstract createCustomBucket(dto: CreateTenantBucketRequest): Promise<TenantBucketResponse>;
   abstract registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null>;
+  /**
+   * Adopt an EXISTING physical bucket into an explicitly named tenant —
+   * registry-only, the bucket itself is untouched. Unlike `registerBucket`
+   * the owner is a parameter, because the storage browser's "All tenants"
+   * view is an unscoped platform admin with no ambient tenant.
+   *
+   * Throws `BadRequestException` for a platform bucket or a name already
+   * registered to a different tenant, and `NotFoundException` when the
+   * tenant or the physical bucket does not exist.
+   */
+  abstract adoptPhysicalBucket(name: string, tenantId: string, description?: string): Promise<TenantBucketResponse>;
   abstract deleteBucket(id: string): Promise<TenantBucketResponse>;
   /** List objects in a tenant bucket via the storage provider (optionally under a prefix). */
   abstract listObjects(bucketId: string, prefix?: string): Promise<TenantBucketObjectResponse[]>;

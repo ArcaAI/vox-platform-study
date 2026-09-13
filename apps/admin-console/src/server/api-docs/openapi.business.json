@@ -243,6 +243,28 @@
         },
         "type": "object"
       },
+      "AdoptTenantBucketRequest": {
+        "properties": {
+          "description": {
+            "description": "Bucket description",
+            "type": "string"
+          },
+          "name": {
+            "description": "Existing physical bucket name, exactly as the provider reports it",
+            "example": "legacy-exports",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant that will own the bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "tenantId"
+        ],
+        "type": "object"
+      },
       "AgentAssignmentResponse": {
         "properties": {
           "agentSlug": {
@@ -2680,6 +2702,10 @@
           },
           "physicalMissing": {
             "description": "True when a registered bucket has no matching physical bucket in the provider (includePhysical only)",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "True for a platform-owned bucket that can never be tenant-owned — model weights, MLflow artifacts, backups, the workflow claim check (includePhysical only)",
             "type": "boolean"
           },
           "registered": {

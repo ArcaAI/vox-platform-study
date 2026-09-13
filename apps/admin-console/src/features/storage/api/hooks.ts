@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  adoptBucket,
   createAccessKey,
   createBucket,
   deleteAccessKey,
@@ -23,7 +24,7 @@ import {
   upsertStorageConfig,
 } from './client';
 import { storageKeys } from './keys';
-import type { CreateAccessKeyRequest, CreateBucketRequest, SetBucketDefaultsRequest, UpsertStorageConfigRequest } from './types';
+import type { AdoptBucketRequest, CreateAccessKeyRequest, CreateBucketRequest, SetBucketDefaultsRequest, UpsertStorageConfigRequest } from './types';
 
 export function useBuckets() {
   return useQuery({ queryKey: storageKeys.buckets(), queryFn: listBuckets });
@@ -65,6 +66,12 @@ function useInvalidateStorage() {
 export function useCreateBucket() {
   const invalidate = useInvalidateStorage();
   return useMutation({ mutationFn: (body: CreateBucketRequest) => createBucket(body), onSuccess: invalidate });
+}
+
+/** Adopts an existing physical bucket into a tenant (registry-only). */
+export function useAdoptBucket() {
+  const invalidate = useInvalidateStorage();
+  return useMutation({ mutationFn: (body: AdoptBucketRequest) => adoptBucket(body), onSuccess: invalidate });
 }
 
 export function useDeleteBucket() {

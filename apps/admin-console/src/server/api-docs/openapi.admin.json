@@ -243,6 +243,28 @@
         },
         "type": "object"
       },
+      "AdoptTenantBucketRequest": {
+        "properties": {
+          "description": {
+            "description": "Bucket description",
+            "type": "string"
+          },
+          "name": {
+            "description": "Existing physical bucket name, exactly as the provider reports it",
+            "example": "legacy-exports",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant that will own the bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "tenantId"
+        ],
+        "type": "object"
+      },
       "AgentAssignmentResponse": {
         "properties": {
           "agentSlug": {
@@ -2680,6 +2702,10 @@
           },
           "physicalMissing": {
             "description": "True when a registered bucket has no matching physical bucket in the provider (includePhysical only)",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "True for a platform-owned bucket that can never be tenant-owned — model weights, MLflow artifacts, backups, the workflow claim check (includePhysical only)",
             "type": "boolean"
           },
           "registered": {
@@ -51511,6 +51537,63 @@
         ],
         "x-hope-abilities": [
           "manage:Tenant"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:tenant-storage:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/storage/buckets/register": {
+      "post": {
+        "description": "Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:tenant-storage:manage`).\n\n**Abilities** — `create:Storage`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "TenantBucketController_adoptBucket",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptTenantBucketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Bucket registered to the tenant"
+          },
+          "400": {
+            "description": "Platform bucket, or a name already registered to another tenant"
+          },
+          "404": {
+            "description": "Tenant not found, or no physical bucket with that name"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Adopt an existing physical bucket into a tenant",
+        "tags": [
+          "tenant-storage"
+        ],
+        "x-hope-abilities": [
+          "create:Storage"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [

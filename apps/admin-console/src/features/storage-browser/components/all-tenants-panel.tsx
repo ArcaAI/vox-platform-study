@@ -44,7 +44,13 @@ function AllTenantsBanner() {
   );
 }
 
+/**
+ * A platform bucket is checked FIRST: it is never registered, so the plain
+ * `!registered` test below would otherwise label it "Unregistered" and
+ * advertise an adoption the gateway rejects.
+ */
 function statusBadge(bucket: StorageBucketWithScope) {
+  if (bucket.platform) return <Badge variant="secondary">Platform</Badge>;
   if (!bucket.registered) return <Badge variant="outline">Unregistered</Badge>;
   if (bucket.physicalMissing) return <Badge variant="destructive">Missing physically</Badge>;
   return <Badge variant="secondary">Registered</Badge>;
@@ -57,8 +63,11 @@ function statusBadge(bucket: StorageBucketWithScope) {
  * (`GET storage/buckets?includePhysical=true`). A registered bucket opens a
  * read-only object browser (folders navigate; no upload/download/delete —
  * those routes are tenant-bound); an unregistered physical bucket is a
- * read-only row with a plain-href link to register it on the tier-14 admin
- * screen (`/tenants/storage`) — no cross-feature import.
+ * read-only row with a plain-href link that carries the bucket name to the
+ * tier-14 admin screen (`/tenants/storage?register=<name>`), which opens its
+ * adopt dialog prefilled — no cross-feature import. A PLATFORM bucket
+ * (`hope-models`, `mlflow`, the claim check, backups) is neither registered
+ * nor adoptable and shows no action.
  */
 export function AllTenantsBody() {
   const bucketsQuery = useBucketsAllTenants(true);
@@ -137,8 +146,19 @@ export function AllTenantsBody() {
               </Button>
             );
           }
+          // Platform buckets belong to the platform and can never be adopted,
+          // so they get no action at all rather than a link that dead-ends.
+          if (bucket.platform) {
+            return <span className="text-muted-foreground text-sm">{'\u2014'}</span>;
+          }
+          // The bucket name rides along in the query string so the tier-14
+          // screen can open its register dialog already filled in — without it
+          // the operator lands on a list that does not contain this bucket.
           return (
-            <Link href="/tenants/storage" className="text-foreground inline-flex items-center gap-1 text-sm underline underline-offset-4">
+            <Link
+              href={`/tenants/storage?register=${encodeURIComponent(bucket.name)}`}
+              className="text-foreground inline-flex items-center gap-1 text-sm underline underline-offset-4"
+            >
               Register
               <IconExternalLink aria-hidden className="size-3.5" />
             </Link>

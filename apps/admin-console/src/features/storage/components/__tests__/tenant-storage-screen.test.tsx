@@ -2,7 +2,9 @@
  * Frame 14 — Tenant storage administration screen. fetch is stubbed at the
  * network boundary; assertions cover the bucket list states, the type-to-
  * confirm bucket delete, the prefix object browser, defaults/configs writes,
- * the provision action, and the show-once access-key secret.
+ * the provision action, the register-existing-bucket adoption (including its
+ * `?register=<name>` deep link from the storage browser), and the show-once
+ * access-key secret.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -282,6 +284,62 @@ describe('TenantStorageScreen', () => {
     const { container } = renderWithProviders(<TenantStorageScreen />);
 
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+  });
+
+  // The storage browser's "Register" action links here as
+  // `/tenants/storage?register=<name>`. Before this existed the operator
+  // landed on a list that did not contain the bucket and had no way to add it.
+  describe('register an existing bucket', () => {
+    it('opens the adopt dialog prefilled from the ?register= deep link', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?register=legacy-exports' });
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/register existing bucket/i)).toBeDefined();
+      expect((within(dialog).getByLabelText(/bucket name/i) as HTMLInputElement).value).toBe('legacy-exports');
+    });
+
+    it('keeps Register disabled until an owning tenant is chosen', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?register=legacy-exports' });
+
+      const dialog = await screen.findByRole('dialog');
+      expect((within(dialog).getByRole('button', { name: /^register$/i }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('posts the adoption with the name and the chosen tenant', async () => {
+      const calls = stubStorage((call) => {
+        if (call.method === 'POST' && new URL(call.url, 'http://test.local').pathname.endsWith('/buckets/register')) {
+          return Response.json(bucket({ id: 'b-9', name: 'legacy-exports', slug: 'legacy-exports' }));
+        }
+        return undefined;
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?register=legacy-exports' });
+
+      const dialog = await screen.findByRole('dialog');
+      // Radix Select opens on keyboard in happy-dom, where pointer capture is absent.
+      const tenantSelect = within(dialog).getByRole('combobox', { name: /owning tenant/i });
+      fireEvent.keyDown(tenantSelect, { key: 'Enter' });
+      fireEvent.click(await screen.findByRole('option', { name: 'Acme Hospital' }));
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /^register$/i }));
+
+      await waitFor(() => {
+        const post = calls.find((call) => call.method === 'POST' && call.url.includes('/buckets/register'));
+        expect(post?.body).toEqual({ name: 'legacy-exports', tenantId: 't-2' });
+      });
+    });
+
+    it('opens the same dialog from the page action with an empty name', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />);
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+      fireEvent.click(await screen.findByRole('button', { name: /register existing/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect((within(dialog).getByLabelText(/bucket name/i) as HTMLInputElement).value).toBe('');
+    });
   });
 
   it('shows the provision-ready empty state when no buckets exist', async () => {
