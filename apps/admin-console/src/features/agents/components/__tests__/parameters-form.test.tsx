@@ -37,6 +37,12 @@ const CATALOGUE_MODELS = [
     unusableReason: null,
     asrProfile: { maxDecodeWindowSec: 7, partialWindowSec: 15, decoding: { noSpeechThreshold: 0.4 } },
   },
+  // TASK-970 — TEXT_GENERATION rows spanning all three reasoning-enforcement classes
+  // (`reasoning-support.ts`), plus one provider id the table does not recognise.
+  { id: 'm-llm-azure', slug: 'azure-gpt-5.4-mini', name: 'GPT-5.4 mini', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'azure', providerClass: 'cloud-platform', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-llm-ollama', slug: 'llama3.1-8b', name: 'Llama 3.1 8B', taskType: 'TEXT_GENERATION', providerId: 'hope', provider: 'ollama', providerClass: 'engine-served', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-llm-bedrock', slug: 'bedrock-claude', name: 'Claude on Bedrock', taskType: 'TEXT_GENERATION', providerId: 'byo:llm:bedrock', provider: 'bedrock', providerClass: 'cloud-byo', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  { id: 'm-llm-unknown', slug: 'mystery-engine', name: 'Mystery Engine', taskType: 'TEXT_GENERATION', providerId: 'byo:llm:mystery', provider: 'a-future-engine-nobody-seeded-yet', providerClass: 'cloud-byo', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
 ];
 
 function stubRegistry(models: unknown[] = CATALOGUE_MODELS) {
@@ -254,6 +260,74 @@ describe('ParametersForm', () => {
         <ParametersForm task="TEXT_GENERATION" value={{ generation: { reasoning: { enabled: true, effort: 'medium' } } }} onChange={() => undefined} />,
       );
       expect(await axe(enabledContainer)).toHaveNoViolations();
+    });
+  });
+
+  /**
+   * TASK-970 (L3, F-2/F-4) — the toggle's description used to promise "the engine is
+   * instructed not to reason and reasoning tokens are never billed", unconditionally.
+   * Measured: that promise reached only 3 of 10 provider adapters. These tests pin the
+   * corrected copy and the per-provider support note that replaces the false blanket claim —
+   * one case per `ReasoningSupportClass`, plus "no model bound yet" and "provider unrecognised"
+   * (neither of which may fabricate a claim), and a check that none of this ever blocks saving.
+   */
+  describe('TEXT_GENERATION reasoning provider support (TASK-970)', () => {
+    it('no longer promises the engine is instructed — states that honouring it depends on the provider', () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+      expect(screen.queryByText(/instructed not to reason/)).toBeNull();
+      expect(screen.queryByText(/reasoning tokens are never billed to this agent/)).toBeNull();
+      expect(screen.getByText(/depends\s+on the model.s provider/)).toBeTruthy();
+    });
+
+    it('shows no per-provider note when no model is bound yet', () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+      expect(screen.queryByText(/has a genuine off-switch/)).toBeNull();
+      expect(screen.queryByText(/has no true off-switch/)).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('shows no per-provider note for a provider this table does not recognise', async () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-unknown" />);
+      // The catalogue lookup resolves the bound model to a provider this table has no
+      // opinion about — wait for that fetch to settle before asserting the (unchanged) absence.
+      await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+      expect(screen.queryByText(/has a genuine off-switch/)).toBeNull();
+      expect(screen.queryByText(/has no true off-switch/)).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('native-off (Ollama): a quiet note that the posture is fully honoured', async () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-ollama" />);
+      await waitFor(() => expect(screen.getByText(/Ollama has a genuine off-switch/)).toBeTruthy());
+      // Quiet, not an Alert — this is the "the platform CAN speak to the engine" case.
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('effort-only (Azure OpenAI): a quiet note that "off" is only approximated', async () => {
+      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-azure" />);
+      await waitFor(() => expect(screen.getByText(/Azure OpenAI has no true off-switch/)).toBeTruthy());
+      expect(screen.getByText(/lowest reasoning effort/)).toBeTruthy();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('unsupported (Bedrock): an unmissable but non-destructive Alert, never blocking the toggle', async () => {
+      const onChange = vi.fn();
+      render(<Host task="TEXT_GENERATION" onChange={onChange} modelId="m-llm-bedrock" />);
+      const alert = await waitFor(() => screen.getByRole('status'));
+      expect(within(alert).getByText(/Not enforceable on Amazon Bedrock/)).toBeTruthy();
+      expect(within(alert).getByText(/engine decides on its own/)).toBeTruthy();
+      // A real limitation, not an error — the destructive/red treatment is reserved for actual failures.
+      expect(alert.className).not.toContain('destructive');
+
+      // Do not block saving: the toggle still writes normally against an unsupported provider.
+      fireEvent.click(screen.getByLabelText('Enable reasoning'));
+      expect(onChange).toHaveBeenLastCalledWith({ generation: { reasoning: { enabled: true } } });
+    });
+
+    it('has no axe violations with the unsupported-provider Alert showing', async () => {
+      const { container } = render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} modelId="m-llm-bedrock" />);
+      await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });
