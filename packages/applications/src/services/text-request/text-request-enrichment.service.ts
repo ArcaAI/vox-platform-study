@@ -8,7 +8,12 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
 import type { TextGuardrailPostureKey } from '../settings-registry/descriptors/text-provider-connections.descriptors';
 import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
-import { readAgentReasoning, reasoningExtra } from '../agent/agent-reasoning';
+import { REASONING_EFFORT_EXTRA_KEY, readAgentReasoning, reasoningExtra } from '../agent/agent-reasoning';
+import {
+  TEXT_REASONING_DEFAULT_EFFORTS,
+  TEXT_REASONING_DEFAULT_EFFORT_KEY,
+  TEXT_REASONING_ENGINE_DEFAULT,
+} from '../settings-registry/descriptors/text-reasoning.descriptors';
 
 /**
  * The ONE implementation of the enrichments every outgoing TEXT
@@ -308,17 +313,81 @@ export class TextRequestEnrichmentService {
    * made a decision about this specific request, and an agent-level default must not
    * silently overwrite it — the same precedence `applyTenantProviderOverrides` gives a
    * caller-supplied `provider_overrides`.
+   *
+   * ## The cascade (TASK-968)
+   *
+   * TASK-891 gave the posture ONE tier — the agent — so an agent that authored nothing
+   * resolved to the ENGINE's default, which on `gemma-4-e2b-it-qat` measured 5168 ms /
+   * 184 reasoning tokens against 1237 ms / 30 at `minimal`. The platform default
+   * (`text.reasoning.defaultEffort`) is the second tier, so this now reads the way every
+   * other cascade in the platform does:
+   *
+   *     the agent's authored block  →  the platform default  →  nothing
+   *
+   * It fills ABSENCE ONLY. An agent that authored `{ enabled: true }` with no effort still
+   * sends nothing: `reasoningExtra` refuses to invent a budget for an agent that asked to
+   * reason without naming one, and the platform tier must not answer over an opinion — it
+   * answers where there is none. That is the `AiProviderConnection` rule verbatim.
    */
   async applyTextRuntimeProfile<T extends { provider?: string; model?: string; extra?: Record<string, unknown> }>(
     target: T,
     generation?: unknown,
   ): Promise<T> {
-    const extra = reasoningExtra(readAgentReasoning(generation));
+    const authored = readAgentReasoning(generation);
+    const extra = authored ? reasoningExtra(authored) : await this.platformReasoningExtra();
     if (!extra) return target;
 
     const existing = isPlainObject(target.extra) ? target.extra : undefined;
     (target as { extra?: Record<string, unknown> }).extra = { ...extra, ...existing };
     return target;
+  }
+
+  /**
+   * The PLATFORM tier of the reasoning cascade — what an agent that authored no posture
+   * gets instead of the engine's own default.
+   *
+   * Three ways this yields nothing, and each is deliberate:
+   *
+   *  - the settings facade is unwired (`@Optional`, as it is in every positional test
+   *    fixture and in a composition that reads no registry key). An unwired dependency is
+   *    not a defect here, it is a graph that never reads this family — the same posture
+   *    `EffectiveSettingsService` itself takes — so the call behaves exactly as it did
+   *    before this tier existed;
+   *  - the admin explicitly chose `engine-default`, which is the one state this ticket
+   *    removed as an ACCIDENT and keeps available as a DECISION;
+   *  - the resolve threw. A hyper-parameter must never fail a consultation, so the error is
+   *    logged and the call proceeds — the same fail-open the two guardrail enrichments above
+   *    take, and the reason this is not `failMode: 'closed'`.
+   *
+   * `resolve` under `resolveEffective` is a synchronous in-memory cache read, so this costs
+   * nothing on the live flush path.
+   */
+  private async platformReasoningExtra(): Promise<Record<string, unknown> | undefined> {
+    if (!this.effectiveSettings) return undefined;
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(TEXT_REASONING_DEFAULT_EFFORT_KEY, {
+        tenantId: this.clsService.get('tenantId') ?? null,
+        departmentId: null,
+        doctorId: null,
+      });
+      const effort = resolved.value;
+      if (typeof effort !== 'string' || !(TEXT_REASONING_DEFAULT_EFFORTS as readonly string[]).includes(effort)) {
+        this.logger.warn({
+          message: 'Platform default reasoning effort is not a declared member — leaving this call with no posture',
+          key: TEXT_REASONING_DEFAULT_EFFORT_KEY,
+          received: typeof effort === 'string' ? effort : typeof effort,
+        });
+        return undefined;
+      }
+      if (effort === TEXT_REASONING_ENGINE_DEFAULT) return undefined;
+      return { [REASONING_EFFORT_EXTRA_KEY]: effort };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Platform default reasoning effort could not be resolved; forwarding without a posture',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 }
 

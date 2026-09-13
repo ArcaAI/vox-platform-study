@@ -86,7 +86,7 @@ class EvalRunRequest(BaseModel):
     no_faithfulness: bool = Field(default=True, alias="noFaithfulness")
 
 
-def _resolve_evaluators(request: Request, *, no_faithfulness: bool) -> tuple[Any, Any]:
+async def _resolve_evaluators(request: Request, *, no_faithfulness: bool) -> tuple[Any, Any]:
     """Return ``(judge, faithfulness)`` — the injected test doubles when present,
     else a live model-agnostic judge built lazily from env/config."""
     injected_judge = getattr(request.app.state, "eval_judge", None)
@@ -95,23 +95,39 @@ def _resolve_evaluators(request: Request, *, no_faithfulness: bool) -> tuple[Any
         return injected_judge, (None if no_faithfulness else injected_faith)
 
     # Live path — only reached on a real deployment, never in the hermetic suite.
+    from harness.core.effective_config import get_effective_config_client
     from harness.eval.config import get_eval_config
     from harness.eval.judge.pdsqi import PDSQI9Judge
     from harness.eval.judge.prompts import OutputMode
     from harness.eval.judge.providers import build_judge_client
     from harness.eval.metrics.faithfulness import build_faithfulness_evaluator
+    from harness.eval.reasoning import JudgeReasoning, resolve_judge_reasoning
 
     config = get_eval_config()
-    client = build_judge_client(config.judge)
+    # TASK-968 — the judge's reasoning posture is PLATFORM configuration, pulled from the
+    # control plane, not `HARNESS_JUDGE_*` env. A failed pull keeps the config's own floor,
+    # which is already reasoning off, so this endpoint never reverts to the engine default.
+    try:
+        snapshot = await get_effective_config_client().get()
+    except Exception:  # noqa: BLE001 — a config read must never fail an eval run
+        snapshot = None
+    reasoning = resolve_judge_reasoning(
+        snapshot,
+        base=JudgeReasoning(mode=config.judge.reasoning_mode, effort=config.judge.reasoning_effort),
+    )
+    judge_config = config.judge.model_copy(
+        update={"reasoning_mode": reasoning.mode, "reasoning_effort": reasoning.effort}
+    )
+    client = build_judge_client(judge_config)
     judge = PDSQI9Judge(
         client,
-        output_mode=OutputMode(config.judge.output_mode),
-        anchored=config.judge.anchored,
-        self_consistency=config.judge.self_consistency,
-        sc_temperature=config.judge.sc_temperature,
-        seed=config.judge.seed,
-        reasoning_mode=getattr(config.judge, "reasoning_mode", "auto"),
-        suppress_reasoning=config.judge.suppress_reasoning,
+        output_mode=OutputMode(judge_config.output_mode),
+        anchored=judge_config.anchored,
+        self_consistency=judge_config.self_consistency,
+        sc_temperature=judge_config.sc_temperature,
+        seed=judge_config.seed,
+        reasoning_mode=reasoning.mode,
+        suppress_reasoning=judge_config.suppress_reasoning,
     )
     faithfulness = None if no_faithfulness else build_faithfulness_evaluator(client)
     return judge, faithfulness
@@ -138,7 +154,7 @@ async def run_eval(body: EvalRunRequest, request: Request) -> dict[str, Any]:
             ),
         )
 
-    judge, faithfulness = _resolve_evaluators(request, no_faithfulness=body.no_faithfulness)
+    judge, faithfulness = await _resolve_evaluators(request, no_faithfulness=body.no_faithfulness)
 
     run = await run_and_gate(
         InMemoryGoldenSetSource(body.golden_set),

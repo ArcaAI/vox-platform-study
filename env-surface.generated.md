@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 112 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 304 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 349 |
-| `turbo.json#globalEnv` entries | 496 |
+| Python declared fields | 301 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 346 |
+| `turbo.json#globalEnv` entries | 493 |
 
 ## Variables — the TypeScript platform surface
 
@@ -260,7 +260,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_AZURE_ENDPOINT` | `apps/harness` | no | no | `` | commented | — |
 | `HARNESS_JUDGE_BEDROCK_REGION` | `apps/harness` | no | no | `us-east-1` | commented | — |
 | `HARNESS_JUDGE_ENTAILMENT_BATCH_SIZE` | `apps/harness` | no | no | `1` | commented | — |
-| `HARNESS_JUDGE_EXTRA_BODY` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_JUDGE_MAX_RETRIES` | `apps/harness` | no | no | `2` | commented | — |
 | `HARNESS_JUDGE_MAX_TOKENS` | `apps/harness` | no | no | `8192` | commented | — |
 | `HARNESS_JUDGE_MODEL` | `apps/harness` | no | no | `gemma-4-e2b-it-qat` | commented | — |
@@ -269,11 +268,9 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_OPENAI_COMPAT_ORGANIZATION` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_JUDGE_OUTPUT_MODE` | `apps/harness` | no | no | `with_explanation` | commented | — |
 | `HARNESS_JUDGE_PROVIDER` | `apps/harness` | no | no | `openai_compat` | commented | — |
-| `HARNESS_JUDGE_REASONING_MODE` | `apps/harness` | no | no | `auto` | commented | — |
 | `HARNESS_JUDGE_SC_TEMPERATURE` | `apps/harness` | no | no | `0.2` | commented | — |
 | `HARNESS_JUDGE_SEED` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_JUDGE_SELF_CONSISTENCY` | `apps/harness` | no | no | `1` | commented | — |
-| `HARNESS_JUDGE_SUPPRESS_REASONING` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_JUDGE_TEMPERATURE` | `apps/harness` | no | no | `0` | commented | — |
 | `HARNESS_JUDGE_TIMEOUT_S` | `apps/harness` | no | no | `300` | commented | — |
 | `HARNESS_JUDGE_TRANSIENT_RETRIES` | `apps/harness` | no | no | `3` | commented | — |

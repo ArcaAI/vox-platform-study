@@ -1103,7 +1103,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
     const prompt = this.renderTestPrompt(content, dto.variables, sampleInput, declaredVariables, id);
-    const { provider, model } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
+    const { provider, model, generation } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model, modelId: dto.modelId });
 
     // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
     // that would have been sent; no job, no tokens, no cost.
@@ -1119,7 +1119,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
     }
 
-    const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model);
+    const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model, generation);
     return { mode: 'stream', provider, model, assembledPrompt: prompt, taskId, streamUrl };
   }
 
@@ -1457,7 +1457,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     provider?: string;
     model?: string;
     modelId?: string;
-  }): Promise<{ provider: string; model: string }> {
+  }): Promise<{ provider: string; model: string; generation?: Record<string, unknown> }> {
     if (override.modelId !== undefined) {
       if (override.provider !== undefined || override.model !== undefined) {
         throw new ArgumentInvalidException('modelId is mutually exclusive with provider/model.');
@@ -1484,7 +1484,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // provider as apps/text registers it (`azure` → `azure-openai`) and the provider-native
       // model id, so no mapping is re-done here.
       const spec = await this.textAgents.resolve({ tenantId });
-      return { provider: spec.primary.provider, model: spec.primary.model };
+      // …including the agent's authored `parameters.generation`. A bench run that resolved the
+      // agent's reasoning posture and then DISCARDED it (as this did) is a bench that does not
+      // reproduce the run it exists to predict — the same defect TASK-891 C2 fixed on the live and
+      // finalize paths. `applyTextRuntimeProfile` reads it leniently, so a malformed block
+      // degrades to "no opinion" rather than failing the bench.
+      const generation = spec.primary.parameters?.generation;
+      return {
+        provider: spec.primary.provider,
+        model: spec.primary.model,
+        generation: typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined,
+      };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw new BadRequestException(
@@ -1598,13 +1608,21 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * subscription: it replays from seq 0 out of the replay buffer. This service
    * still holds no stream state, which is what keeps the id round-trip honest.
    */
-  private async submitTextGenerationJob(prompt: string, provider: string, model: string): Promise<{ taskId: string; streamUrl: string }> {
+  private async submitTextGenerationJob(
+    prompt: string,
+    provider: string,
+    model: string,
+    generation?: Record<string, unknown>,
+  ): Promise<{ taskId: string; streamUrl: string }> {
     if (!this.httpService) {
       throw new BadRequestException('TEXT/text-generation client is not configured');
     }
     const body: Record<string, unknown> = { prompt, stream: true, provider, model };
     if (this.textRequestEnrichment) {
-      await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
+      // `generation` is the resolved agent's authored block, when an AGENT served this run. A
+      // caller-pinned `provider`/`model`/`modelId` names a raw registry row with no agent behind
+      // it, so there is no authored posture to apply and none is invented here.
+      await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
       await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
       // TASK-890 §3.14 — a prompt bench run is ALWAYS screened. There is no node and no agent
       // here, so there is no opinion to inherit: `resolveGuardrailDecision` would answer its

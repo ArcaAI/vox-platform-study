@@ -132,17 +132,35 @@ on `http://localhost:1234/v1`. Override per env: `HARNESS_JUDGE_MODEL` (model id
 
 Reasoning families spend hundreds–thousands of "thinking" tokens before they emit the
 score JSON; these knobs keep a single judge robust across reasoning **and** non-reasoning
-families. All opt-in via `HARNESS_JUDGE_*`; defaults are safe everywhere.
+families.
+
+> **TASK-968 — the two REASONING levers are no longer environment variables.**
+> `HARNESS_JUDGE_REASONING_MODE`, `HARNESS_JUDGE_SUPPRESS_REASONING` and
+> `HARNESS_JUDGE_EXTRA_BODY` were **removed** (2026-09-13). They are platform settings a
+> platform admin writes without a redeploy, and both default to reasoning **off**:
+>
+> | Setting | Lever | Default | Reaches |
+> |---|---|---|---|
+> | `harness.judge.reasoningMode` | prompt — `auto` \| `think` \| `none` | `none` | the PDSQI-9 rubric judge (this gate, `/eval/run`) |
+> | `harness.judge.reasoningEffort` | wire — `extra_body.reasoning_effort` | `minimal` | **every** judge call, the live groundedness / citation-verify sensors included |
+>
+> `suppress_reasoning` collapsed into `reasoningMode: 'none'` — `resolve_prompt` always read
+> the two as one state. The wire lever is the one that was NOT eval-only: it is applied inside
+> `JudgeClient.complete()`, so it rode every real consultation's assurance pass.
+>
+> **The CI gate runs on the in-code floor** (`none` / `minimal`), not on the control plane: no
+> gateway is reachable from a GitLab job, and a gate wants one fixed, reproducible posture. The
+> deployed judge follows the registry. See
+> `docs/implementation/TASK-968-Reasoning-Off-For-Text-Generation/README.md`.
+
+The remaining knobs below are still `HARNESS_JUDGE_*` env; defaults are safe everywhere.
 
 | Env                                                | Default            | Effect                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | -------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HARNESS_JUDGE_REASONING_MODE`                     | `auto`             | How the system prompt treats reasoning. `auto` = neutral prompt — **neither forces nor forbids** a reasoning pass (safe across families). `think` = elicit an explicit reasoning pass before the JSON (helps Qwen-style judges). `none` = forbid reasoning; answer with the JSON object **only**.                                                                                                                                    |
-| `HARNESS_JUDGE_SUPPRESS_REASONING`                 | `false`            | Append a hard `/no_think` + "output ONLY the JSON object" directive to the system prompt. Needed for small local judges (e.g. gemma-4-e4b) that otherwise emit a long thinking pass and may end the turn _before_ the JSON (premature stop). Note: gemma-4 still emits reasoning into `reasoning_content` even with this on — the win is that the final JSON is reliably present.                                                    |
 | `HARNESS_JUDGE_OUTPUT_MODE`                        | `with_explanation` | `score` = compact score-only JSON; `with_explanation` = per-dimension rationale. `score` is markedly more reliable for ≤~7B judges (a long prose preamble can exhaust the token/context budget before any JSON appears).                                                                                                                                                                                                             |
 | `HARNESS_JUDGE_MAX_TOKENS`                         | `8192`             | Completion budget. Large on purpose for reasoning models — BUT must stay **≤ the judge's loaded context window**. A value larger than the loaded context (e.g. 8192 against a model loaded at 4096 ctx) makes LM Studio reject/terminate the request (`400 {'error':'terminated'}`). For gemma-4-e4b @ 4096 ctx use `3072`.                                                                                                          |
 | `HARNESS_JUDGE_TRANSIENT_RETRIES` / `_BACKOFF_S`   | `3` / `12.0`       | Bounded app-level retry (linear backoff) for **transient** backend failures — a local model engine terminated/unloaded under sustained load (`'terminated'`), a dropped connection, a momentary 5xx. Lets a long run survive a mid-run crash (the server JIT-reloads on the next call). A genuinely-down backend still aborts once retries are exhausted — never a silent green gate.                                                |
 | `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT` | `json_object`      | `response_format.type` sent on json_mode calls (faithfulness claim-extract/verify). LM Studio rejects `json_object` (HTTP 400) and small models choke under a strict `json_schema` grammar, so set **`text`** for LM Studio — the prompt asks for JSON and parsing is tolerant.                                                                                                                                                      |
-| `HARNESS_JUDGE_EXTRA_BODY`                         | `none`             | JSON-**string** passthrough forwarded verbatim into the OpenAI-compatible / Azure `create(...)` call (ignored by Bedrock). For server-specific reasoning controls on vLLM/Azure, e.g. `HARNESS_JUDGE_EXTRA_BODY='{"reasoning_effort":"low"}'` or `'{"chat_template_kwargs":{"enable_thinking":false}}'`. Empirically a no-op on LM Studio (there the large `max_tokens` + reading the reasoning channel is the only reliable lever). |
 
 **Per-family reasoning serialization** (what the judge must survive):
 
@@ -211,7 +229,7 @@ HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1 \
 HARNESS_JUDGE_OPENAI_COMPAT_API_KEY=lm-studio \
 HARNESS_JUDGE_MODEL=google/gemma-4-e4b \
 HARNESS_JUDGE_TEMPERATURE=0.0 HARNESS_JUDGE_SEED=7 \
-HARNESS_JUDGE_OUTPUT_MODE=score HARNESS_JUDGE_SUPPRESS_REASONING=true \
+HARNESS_JUDGE_OUTPUT_MODE=score \
 HARNESS_JUDGE_ANCHORED=false HARNESS_JUDGE_SELF_CONSISTENCY=1 \
 HARNESS_JUDGE_MAX_TOKENS=16384 \
 HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text \
@@ -545,7 +563,7 @@ HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1 \
 HARNESS_JUDGE_OPENAI_COMPAT_API_KEY=lm-studio \
 HARNESS_JUDGE_MODEL=google/gemma-4-e4b \
 HARNESS_JUDGE_TEMPERATURE=0.0 HARNESS_JUDGE_SEED=7 \
-HARNESS_JUDGE_OUTPUT_MODE=score HARNESS_JUDGE_SUPPRESS_REASONING=true \
+HARNESS_JUDGE_OUTPUT_MODE=score \
 HARNESS_JUDGE_ANCHORED=false HARNESS_JUDGE_SELF_CONSISTENCY=1 \
 HARNESS_JUDGE_MAX_TOKENS=3072 \
 HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text \
@@ -596,7 +614,7 @@ than discriminating unfaithful output (the calibration lane does that).
 | Symptom                                                                                | Cause                                                                                                              | Mitigation (in this harness)                                                                                         |
 | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `400 {'error':'terminated'}` mid-run                                                   | LM Studio terminates/unloads the model engine under sustained sequential load (and when `max_tokens` > loaded ctx) | `HARNESS_JUDGE_TRANSIENT_RETRIES` retry-with-backoff (JIT reload) + keep `max_tokens` ≤ loaded ctx (3072)            |
-| `no JSON object found` / truncated JSON                                                | 4096 ctx: long prompt + verbose reasoning leaves no room for the JSON                                              | `output_mode=score`, `suppress_reasoning=true`, `anchored=false`; reload judge at ≥ 8192 ctx to re-enable `anchored` |
+| `no JSON object found` / truncated JSON                                                | 4096 ctx: long prompt + verbose reasoning leaves no room for the JSON                                              | `output_mode=score`, `anchored=false` (reasoning is already suppressed by default — `harness.judge.reasoningMode` is `none`); reload judge at ≥ 8192 ctx to re-enable `anchored` |
 | Complete JSON stranded in `reasoning_content` while `content` is a truncated duplicate | gemma splits answer across channels                                                                                | provider prefers whichever channel carries a **balanced** JSON object                                                |
 
 ## Label provenance & the OPEN PREREQUISITE — real golden set

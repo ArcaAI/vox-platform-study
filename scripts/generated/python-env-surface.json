@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 349,
+  "distinctNames": 346,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -563,18 +563,6 @@
           "description": "Groundedness batching: claims verified per judge call. ``1`` keeps the legacy one-call-per-claim path byte-for-byte; ``>= 2`` states the shared transcript premise ONCE and labels that many claims in a single JSON-array call (``ceil(N / size)`` long-prefill calls instead of N), the dominant latency lever for the inferential pass. Conservative parser: any ambiguous array item degrades to ungrounded, so a larger batch can never loosen a verdict."
         },
         {
-          "name": "HARNESS_JUDGE_EXTRA_BODY",
-          "aliases": [],
-          "class": "JudgeConfig",
-          "field": "extra_body",
-          "prefix": "HARNESS_JUDGE_",
-          "required": false,
-          "secret": false,
-          "dataType": "json",
-          "default": null,
-          "description": "Reasoning-control levers (cross-family robustness) Forwarded verbatim into the OpenAI-compatible / Azure ``create(...)`` call (ignored by Bedrock's converse API) when set. This is the passthrough for server-specific reasoning knobs that DO take effect on vLLM/Azure \u2014 e.g. ``{\"reasoning_effort\": \"low\"}`` or ``{\"chat_template_kwargs\": {\"enable_thinking\": false}}``. Empirically these had NO effect on LM Studio (where a large ``max_tokens`` + reading reasoning text is the only reliable lever), so this stays off by default. Accepts a JSON string from the environment (``HARNESS_JUDGE_EXTRA_BODY='{\"reasoning_effort\":\"low\"}'``)."
-        },
-        {
           "name": "HARNESS_JUDGE_MAX_RETRIES",
           "aliases": [],
           "class": "JudgeConfig",
@@ -635,18 +623,6 @@
           "description": "Priority/default = a small \u226420B model on a local OpenAI-compatible endpoint. gemma-4-e2b-it-qat is the owner-standardized default (2026-08-16): the one model resident in LM Studio, verified served by the live dev instance."
         },
         {
-          "name": "HARNESS_JUDGE_REASONING_MODE",
-          "aliases": [],
-          "class": "JudgeConfig",
-          "field": "reasoning_mode",
-          "prefix": "HARNESS_JUDGE_",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": "auto",
-          "description": "Selects how the prompt asks the model to reason (consumed by the judge prompts): \"auto\" (let the model decide), \"think\" (encourage an explicit reasoning pass), or \"none\" (instruct it to answer directly). Distinct from ``suppress_reasoning`` so prompt phrasing and the hard ``/no_think`` suffix can be tuned independently."
-        },
-        {
           "name": "HARNESS_JUDGE_SC_TEMPERATURE",
           "aliases": [],
           "class": "JudgeConfig",
@@ -681,18 +657,6 @@
           "dataType": "number",
           "default": 1,
           "description": "Self-consistency: sample the judge ``self_consistency`` times and take the per-dimension median (variance reduction). ``1`` == single deterministic pass."
-        },
-        {
-          "name": "HARNESS_JUDGE_SUPPRESS_REASONING",
-          "aliases": [],
-          "class": "JudgeConfig",
-          "field": "suppress_reasoning",
-          "prefix": "HARNESS_JUDGE_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "false",
-          "description": "Append a \"/no_think\" + JSON-only directive to the judge system prompt. Needed for small local judges (e.g. gemma-4-e4b on LM Studio) that otherwise emit a long ``<think>`` block and may end the turn before the JSON (premature stop). Off by default so larger judges (gpt-oss, Azure) keep their pristine prompt."
         },
         {
           "name": "HARNESS_JUDGE_TEMPERATURE",
@@ -3177,7 +3141,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "true",
-          "description": "Use TLS for the s3:// model endpoint (set false for local MinIO)"
+          "description": "Use TLS for a BARE host:port s3:// model endpoint (set false for local MinIO). A URL-form endpoint \u2014 the platform-storage fallback's http://\u2026 \u2014 decides for itself."
         },
         {
           "name": "STT_OTEL_SERVICE_NAME",

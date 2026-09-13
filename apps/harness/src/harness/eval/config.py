@@ -15,9 +15,8 @@ hardcoded. The judge is **model-agnostic** — pick the provider via
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any
 
 from hope_env import hope_settings_sources, load_env
 from pydantic import Field, SecretStr, field_validator
@@ -180,59 +179,74 @@ class JudgeConfig(BaseSettings):
     # (≤~7B) judge models, which can otherwise emit a long un-tagged prose preamble that
     # exhausts ``max_tokens`` before any JSON appears.
     output_mode: str = "with_explanation"
-    # Append a "/no_think" + JSON-only directive to the judge system prompt. Needed for
-    # small local judges (e.g. gemma-4-e4b on LM Studio) that otherwise emit a long
-    # ``<think>`` block and may end the turn before the JSON (premature stop). Off by
-    # default so larger judges (gpt-oss, Azure) keep their pristine prompt.
-    suppress_reasoning: bool = False
+    # -- Reasoning-control levers (TASK-968) --------------------------------
+    #
+    # These three are GOVERNED, not environmental. Their values come from the platform
+    # settings registry (`harness.judge.reasoningMode` / `harness.judge.reasoningEffort`,
+    # served on `GET /internal/effective-config?service=harness`) and are applied by
+    # `harness.eval.reasoning.resolve_judge_reasoning` at each entry point. The env path is
+    # CLOSED STRUCTURALLY, not by convention — the `validation_alias` names below are dead
+    # names no environment variable matches, the same pattern the judge CREDENTIAL fields
+    # use above. Do NOT add `populate_by_name=True` to this class: one flag re-opens all
+    # three env paths at once.
+    #
+    # The DEFAULTS here are the in-code floor, and the floor is reasoning OFF (owner
+    # directive 2026-09-13). They used to be `"auto"` / `None`, i.e. "let the engine
+    # decide" — measured on `gemma-4-e2b-it-qat` at 5168 ms / 184 reasoning tokens against
+    # 1237 ms / 30 with `minimal`. A platform admin raises either lever without a redeploy.
 
-    # -- Reasoning-control levers (cross-family robustness) ------------------
-    # Forwarded verbatim into the OpenAI-compatible / Azure ``create(...)`` call
-    # (ignored by Bedrock's converse API) when set. This is the passthrough for
-    # server-specific reasoning knobs that DO take effect on vLLM/Azure — e.g.
-    # ``{"reasoning_effort": "low"}`` or
-    # ``{"chat_template_kwargs": {"enable_thinking": false}}``. Empirically these had
-    # NO effect on LM Studio (where a large ``max_tokens`` + reading reasoning text is
-    # the only reliable lever), so this stays off by default. Accepts a JSON string
-    # from the environment (``HARNESS_JUDGE_EXTRA_BODY='{"reasoning_effort":"low"}'``).
-    extra_body: dict[str, Any] | None = None
-    # Selects how the prompt asks the model to reason (consumed by the judge prompts):
-    # "auto" (let the model decide), "think" (encourage an explicit reasoning pass), or
-    # "none" (instruct it to answer directly). Distinct from ``suppress_reasoning`` so
-    # prompt phrasing and the hard ``/no_think`` suffix can be tuned independently.
-    reasoning_mode: str = "auto"
+    # Back-compat alias for `reasoning_mode == "none"`; `resolve_prompt` reads them as one
+    # (`if suppress_reasoning or reasoning_mode == "none"`). Retained as a constructor-level
+    # name only — nothing sources it any more.
+    suppress_reasoning: bool = Field(
+        default=False,
+        validation_alias="HARNESS_JUDGE_SUPPRESS_REASONING__ENV_REMOVED",
+    )
+
+    # The generic engine passthrough (e.g. `{"chat_template_kwargs": {"enable_thinking":
+    # false}}` on vLLM). `reasoning_effort` is NOT set here: it is its own governed field
+    # below, so that every judge client sends a posture even on a path that never consulted
+    # the control plane. A key of that name in here is overridden by it.
+    extra_body: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="HARNESS_JUDGE_EXTRA_BODY__ENV_REMOVED",
+    )
+
+    # The PROMPT lever, consumed by `resolve_prompt`: "auto" (say nothing), "think"
+    # (ask for an explicit reasoning pass) or "none" (append `/no_think` + a JSON-only
+    # directive). Reaches the PDSQI-9 rubric judge only.
+    reasoning_mode: str = Field(
+        default="none",
+        validation_alias="HARNESS_JUDGE_REASONING_MODE__ENV_REMOVED",
+    )
+
+    # The WIRE lever, sent as `extra_body.reasoning_effort` by every OpenAI-compatible and
+    # Azure judge call — the rubric judge AND the live groundedness / citation-verify
+    # sensors. `minimal` is the engine's own off switch.
+    reasoning_effort: str = Field(
+        default="minimal",
+        validation_alias="HARNESS_JUDGE_REASONING_EFFORT__ENV_REMOVED",
+    )
 
     # Provider sub-configs (each reads its own env prefix at instantiation).
     openai_compat: OpenAICompatJudgeConfig = Field(default_factory=OpenAICompatJudgeConfig)
     azure: AzureJudgeConfig = Field(default_factory=AzureJudgeConfig)
     bedrock: BedrockJudgeConfig = Field(default_factory=BedrockJudgeConfig)
 
-    @field_validator("extra_body", mode="before")
-    @classmethod
-    def _parse_extra_body(cls, v: object) -> dict[str, Any] | None:
-        """Accept a JSON string (env) or a dict; blank/None → None.
-
-        ``HARNESS_JUDGE_EXTRA_BODY='{"reasoning_effort":"low"}'`` arrives as a string
-        on direct construction; this parses it into a dict. An already-parsed dict
-        (or ``None``) passes through unchanged.
-        """
-        if v is None:
-            return None
-        if isinstance(v, str):
-            stripped = v.strip()
-            if not stripped:
-                return None
-            return cast("dict[str, Any]", json.loads(stripped))
-        return cast("dict[str, Any] | None", v)
-
-    @field_validator("reasoning_mode")
-    @classmethod
-    def _validate_reasoning_mode(cls, v: str) -> str:
-        allowed = {"auto", "think", "none"}
-        if v not in allowed:
-            raise ValueError(f"reasoning_mode must be one of {sorted(allowed)}")
-        return v
-
+    # NO VALIDATORS for `extra_body` / `reasoning_mode` / `reasoning_effort` (TASK-968).
+    #
+    # They had one, and it is deliberately gone rather than merely unused: with the
+    # `validation_alias` above closing the env path, pydantic also stops accepting the FIELD
+    # NAME on construction (`JudgeConfig(reasoning_mode="auto")` is rejected as an extra
+    # field), and `model_copy` — the only way these are set now — bypasses validation by
+    # design. A validator on this class could therefore never fire again, and a guard that
+    # cannot run is worse than none: it reads as protection that is not there.
+    #
+    # The vocabularies are enforced where the values actually enter the system:
+    #   • the admin write lane, by the `validate` hook on `harness.judge.reasoningMode` /
+    #     `.reasoningEffort` (`harness-judge.descriptors.ts`) — a bad value is a 400;
+    #   • the read side, by `harness.eval.reasoning.resolve_judge_reasoning`, which REFUSES
+    #     an out-of-vocabulary value and logs it rather than coercing it.
 
 class EvalConfig(BaseSettings):
     """Eval-run thresholds + golden-set pin (the release-gate knobs)."""
