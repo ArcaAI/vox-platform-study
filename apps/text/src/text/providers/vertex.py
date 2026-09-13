@@ -28,6 +28,7 @@ from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
 )
+from text.core.reasoning import ReasoningSupport, posture_to_render
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
@@ -61,6 +62,17 @@ _VERTEX_STOP: dict[str, str] = {
     "malformed_function_call": "tool_call",
 }
 
+# TASK-970 effort rung → Gemini ``ThinkingLevel``. An exact one-to-one match:
+# google-genai==2.18.1 enumerates MINIMAL|LOW|MEDIUM|HIGH, which is this
+# contract's whole effort vocabulary. Vertex is the only engine here that can
+# express BOTH halves of the posture natively.
+_VERTEX_THINKING_LEVEL: dict[str, types.ThinkingLevel] = {
+    "minimal": types.ThinkingLevel.MINIMAL,
+    "low": types.ThinkingLevel.LOW,
+    "medium": types.ThinkingLevel.MEDIUM,
+    "high": types.ThinkingLevel.HIGH,
+}
+
 
 def _get_tracer() -> Tracer:
     return get_tracer(__name__)
@@ -81,6 +93,16 @@ class VertexProvider:
     """Google Vertex AI provider using the google-genai SDK."""
 
     credential_posture = CredentialPosture.BYOK
+
+    # TASK-970 — the contract fixture SEEDED this adapter as `unsupported`; that
+    # guess was wrong. google-genai==2.18.1 carries
+    # `GenerateContentConfig.thinking_config: ThinkingConfig`, whose
+    # `thinking_budget` is documented "0 is DISABLED, -1 is AUTOMATIC" and whose
+    # `thinking_level` enumerates MINIMAL|LOW|MEDIUM|HIGH. Both halves of the
+    # posture are expressible, which makes Vertex the most complete of the ten.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "generation_config.thinking_config.thinking_budget"
+    reasoning_effort_parameter = "generation_config.thinking_config.thinking_level"
 
     #: Google's own default region, used when a connection pins a project but no
     #: location. A property of the Vertex API, not a deployment choice.
@@ -210,7 +232,25 @@ class VertexProvider:
             # NOT forwarded as ``response_schema`` — Gemini's schema type is
             # narrower than JSON-Schema and a mismatch would fail the generation.
             cfg_kwargs["response_mime_type"] = "application/json"
+        self._apply_reasoning(cfg_kwargs, request)
         return types.GenerateContentConfig(**cfg_kwargs)
+
+    def _apply_reasoning(self, cfg_kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture as Gemini's ``thinking_config``.
+
+        "On" with no named effort sends NOTHING: the engine's own default is
+        AUTOMATIC, and pinning `thinking_budget=-1` to say so would be this
+        adapter asserting a budget the admin did not choose.
+        """
+        posture = posture_to_render(request)
+        if posture is None:
+            return
+        if not posture.enabled:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        elif posture.effort is not None:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=_VERTEX_THINKING_LEVEL[posture.effort]
+            )
 
     def _build_contents(self, request: GenerateRequest) -> Any:
         """``contents`` for ``generate_content``/``generate_content_stream``.

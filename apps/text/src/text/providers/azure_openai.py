@@ -12,6 +12,7 @@ from openai import AsyncAzureOpenAI, BadRequestError
 from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
 from text.core.exceptions import ProviderConnectionMissingError, ProviderCredentialsError
+from text.core.reasoning import ReasoningSupport, apply_openai_wire_reasoning
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
@@ -74,6 +75,16 @@ class AzureOpenAIProvider:
     """Azure OpenAI provider using the openai Python SDK."""
 
     credential_posture = CredentialPosture.BYOK
+
+    # TASK-970 — a TRUE off-switch, verified against the pinned SDK: openai==3.1.0
+    # declares `ReasoningEffort = Literal['none','minimal','low','medium','high',
+    # 'xhigh','max']` and `chat.completions.create` takes it as a typed parameter.
+    # This adapter is one of the two the ticket named specifically: the posture's
+    # correct native parameter has always lived on this wire, and until now this
+    # adapter forwarded nothing at all.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "reasoning_effort"
+    reasoning_effort_parameter = "reasoning_effort"
 
     #: Azure pins its wire contract by date. This is the version this ADAPTER is
     #: written against — a property of the code, not a deployment choice — used
@@ -193,6 +204,16 @@ class AzureOpenAIProvider:
             messages.append({"role": "user", "content": request.prompt})
         return messages
 
+    def _apply_reasoning(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture as this wire's own ``reasoning_effort``."""
+        apply_openai_wire_reasoning(
+            kwargs,
+            request,
+            provider="azure_openai",
+            model=self._resolve_model(request),
+            off_is_expressible=self.reasoning_support is ReasoningSupport.NATIVE_OFF,
+        )
+
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
         resolved_model = require_model(self._resolve_model(request), provider="azure_openai")
@@ -234,6 +255,8 @@ class AzureOpenAIProvider:
                 }
             elif request.response_format is not None and request.response_format.type == "json":
                 kwargs["response_format"] = {"type": "json_object"}
+
+            self._apply_reasoning(kwargs, request)
 
             start = time.monotonic()
             try:
@@ -326,6 +349,8 @@ class AzureOpenAIProvider:
                     }
                 elif request.response_format.type == "json":
                     kwargs["response_format"] = {"type": "json_object"}
+
+            self._apply_reasoning(kwargs, request)
 
             # DRAIN to completion (AD-1) — see openai_compat for the rationale: an
             # early-return on the finish chunk drops the trailing usage-only chunk.
