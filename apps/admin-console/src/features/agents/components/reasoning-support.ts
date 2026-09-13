@@ -41,8 +41,8 @@ export interface ReasoningProviderSupport {
  * is the sole writer of what these values actually verify against the deployed engines.
  */
 const REASONING_SUPPORT_BY_ADAPTER: Record<string, ReasoningSupportClass> = {
-  openai: 'effort-only',
-  azure_openai: 'effort-only',
+  openai: 'native-off',
+  azure_openai: 'native-off',
   openai_compat: 'effort-only',
   lmstudio: 'effort-only',
   vllm: 'native-off',
@@ -50,7 +50,7 @@ const REASONING_SUPPORT_BY_ADAPTER: Record<string, ReasoningSupportClass> = {
   anthropic: 'native-off',
   llama_cpp: 'unsupported',
   bedrock: 'unsupported',
-  vertex: 'unsupported',
+  vertex: 'native-off',
 };
 
 /**
