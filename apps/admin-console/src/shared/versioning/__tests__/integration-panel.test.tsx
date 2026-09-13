@@ -152,6 +152,40 @@ describe('IntegrationPanel — the example body is derived, not invented', () =>
     expect(node).not.toMatch(/\binput:\s*\{/);
   });
 
+  /**
+   * TASK-971 FU-1 — found by the runtime pass: the seeded `general-medicine-summarization`
+   * REFUSED the panel's own example, because its instruction binds `trigger.context.*` paths that
+   * `inputSchema` never declares. The example must carry those too or it is not copy-pasteable.
+   */
+  it("includes the context an agent's instruction binds, alongside the flat input", () => {
+    renderWithProviders(
+      <IntegrationPanel
+        kind="agent"
+        slug="clinic-summarizer"
+        task="TEXT_GENERATION"
+        inputSchema={AGENT_INPUT_SCHEMA}
+        compiledConfig={{
+          instruction: {
+            variables: {
+              language: { path: 'trigger.context.language' },
+              safe_age: { path: 'trigger.context.safe_age' },
+              headings: { value: 'bound at publish — the caller must not send this' },
+            },
+          },
+        }}
+      />,
+    );
+
+    const node = codeOf('Node.js (@arcaai/vox-node) snippet');
+    // Still flat at the top level — `context` is a sibling of `text`, never an envelope over it.
+    expect(node).toContain('"text": "…"');
+    expect(node).toContain('"context"');
+    expect(node).toContain('"language": "…"');
+    expect(node).toContain('"safe_age": "…"');
+    expect(node).not.toContain('headings');
+    expect(node).not.toMatch(/"input"\s*:/);
+  });
+
   it('falls back to the documented flat minimum when the agent declares no usable schema', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={null} />);
     expect(codeOf('Node.js (@arcaai/vox-node) snippet')).toContain('"text"');

@@ -98,3 +98,78 @@ export function exampleBodyFromJsonSchema(schema: Record<string, unknown> | null
   if (!isRecord(schema)) return null;
   return objectExample(schema, 0);
 }
+
+// ---------------------------------------------------------------------------
+// TASK-971 FU-1 — the context an agent's INSTRUCTION requires
+// ---------------------------------------------------------------------------
+
+/**
+ * The `context` half of an agent's example body.
+ *
+ * ## Why `inputSchema` alone was not enough
+ *
+ * Verified live against the seeded `general-medicine-summarization`: the example derived from
+ * `inputSchema` was refused with *"instruction references `trigger.context.language`, which this
+ * invocation does not supply"*. The two declarations are deliberately separate — `inputSchema`
+ * says what the agent is called WITH, the instruction's bindings say what it is called ABOUT —
+ * and `inputSchema` carries `additionalProperties: false` without ever declaring `context`,
+ * because the gateway withholds `context` from that check and validates it against the agent's
+ * bound context schema instead.
+ *
+ * ## Where the truth lives
+ *
+ * `compiledConfig.instruction.variables`, stamped at publish. Each entry is either
+ * `{ path: 'trigger.context.language' }` — the caller must supply it — or `{ value: '…' }`,
+ * already bound, which a caller must NOT send. So this needs no template parsing: the required
+ * paths are declared.
+ *
+ * ## Why `trigger.` becomes `context.`
+ *
+ * On the invocation lane the prompt scope is built with `trigger` bound to the request's `context`
+ * object (`AgentInvocationService.contextScopeFor`), so a binding on `trigger.context.language` is
+ * satisfied by `context: { context: { language } }`. The doubled word is the context FIELD holding
+ * a map of context KINDS, one of which is itself named `context` — the same kinds map the
+ * workflow plane shows as its trigger payload. Confusing to read, consistent to send.
+ */
+export function agentContextExample(compiledConfig: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!isRecord(compiledConfig)) return null;
+
+  // The bound schema is the better source where it exists: it carries types, enums and `required`,
+  // so a declared value beats this module's generic placeholder.
+  const contextSchema = isRecord(compiledConfig.contextSchema) ? compiledConfig.contextSchema : null;
+  const fromSchema = contextSchema ? exampleBodyFromJsonSchema(isRecord(contextSchema.payloadSchema) ? contextSchema.payloadSchema : contextSchema) : null;
+  const example: Record<string, unknown> = fromSchema ? { ...fromSchema } : {};
+
+  const variables = isRecord(compiledConfig.instruction) ? compiledConfig.instruction.variables : null;
+  if (isRecord(variables)) {
+    for (const binding of Object.values(variables)) {
+      // `{ value }` is already bound at publish; only `{ path }` is the caller's to supply.
+      if (!isRecord(binding) || typeof binding.path !== 'string') continue;
+      const segments = binding.path.split('.');
+      if (segments.shift() !== 'trigger' || segments.length === 0) continue;
+      setMissingPath(example, segments);
+    }
+  }
+
+  return Object.keys(example).length > 0 ? example : null;
+}
+
+/**
+ * Set `segments` to a placeholder, leaving anything the bound schema already supplied intact —
+ * a declared enum or default must win over this module's `…`.
+ *
+ * A segment that collides with a non-object already in place is skipped rather than overwritten:
+ * the schema is the stronger statement, and a half-replaced value would be neither.
+ */
+function setMissingPath(target: Record<string, unknown>, segments: string[]): void {
+  let cursor = target;
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const key = segments[index];
+    const next = cursor[key];
+    if (next === undefined) cursor[key] = {};
+    else if (!isRecord(next)) return;
+    cursor = cursor[key] as Record<string, unknown>;
+  }
+  const leaf = segments[segments.length - 1];
+  if (cursor[leaf] === undefined) cursor[leaf] = STRING_PLACEHOLDER;
+}
