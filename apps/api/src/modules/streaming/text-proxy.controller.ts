@@ -766,7 +766,7 @@ export class TextProxyController {
       // TASK-957 F-5 — a `warn` alone is indistinguishable from noise at request volume, and an
       // unbilled generation that only ever appears in a log is exactly the finding. The counter
       // is the alertable half.
-      recordUsageEmissionFailure('generate');
+      recordUsageEmissionFailure('generate', 'dropped');
       this.logger.warn({
         message: 'Usage metering failed for a sync TEXT generation',
         error: error instanceof Error ? error.message : String(error),

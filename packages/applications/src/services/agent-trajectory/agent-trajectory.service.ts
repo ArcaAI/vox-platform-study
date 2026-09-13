@@ -155,8 +155,12 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     try {
       return metrics.createCounter({
         name: USAGE_EMISSION_FAILED_METRIC,
-        help: 'Usage-ledger emissions that exhausted their retry budget. Non-zero means metered work was NOT billed.',
-        labelNames: ['operation', 'trigger'],
+        help: 'Usage-ledger emissions that never reached the ledger. Non-zero means metered work was NOT billed.',
+        // `reason` is shared with the harness half of this counter (`core/metrics.py`):
+        // the worker answers `rejected` | `spooled` | `dropped`, the gateway `dropped`
+        // (retry budget spent, nothing spooled) | `unattributable` (a row it refused
+        // to guess — TASK-957 F-10). One name, one `sum by (reason)`.
+        labelNames: ['operation', 'trigger', 'reason'],
       });
     } catch (err) {
       this.logger.warn({
@@ -614,7 +618,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
           // `none` rather than an empty label: an absent trigger is a real
           // answer (the consultation lane stamps none), and an empty string
           // renders as a blank facet nobody can filter on.
-          this.emissionFailedCounter?.inc({ operation, trigger: trigger ?? 'none' });
+          this.emissionFailedCounter?.inc({ operation, trigger: trigger ?? 'none', reason: 'dropped' });
           return;
         }
         // Jittered so a shared outage does not resynchronise every in-flight
