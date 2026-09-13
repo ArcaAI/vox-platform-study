@@ -178,8 +178,7 @@ const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
  * treated exactly like a missing one — the generic, redacted body below.
  */
 const RELAYABLE_ERROR_PHRASES: Readonly<Record<string, string>> = {
-  CONTENT_BLOCKED_NOT_MEDICAL:
-    'The prompt was not classified as clinical content and was blocked by the guardrail.',
+  CONTENT_BLOCKED_NOT_MEDICAL: 'The prompt was not classified as clinical content and was blocked by the guardrail.',
   CONTENT_BLOCKED: 'Content was blocked by the safety guardrail.',
   GUARDRAIL_UNAVAILABLE: 'The safety guardrail is temporarily unavailable. Please retry shortly.',
   MODEL_NOT_SELECTED: 'No model is configured for this request.',
@@ -482,10 +481,8 @@ export class TextProxyController {
     // CODE — never the upstream `detail`/`message` alongside it, which is why
     // this reads ONLY `error_code` off `payload` and looks up the gateway's own
     // phrase rather than ever touching `payload.detail`/`payload.message`.
-    const errorCode =
-      typeof payload === 'object' && payload !== null ? payload.error_code : undefined;
-    const relayedMessage =
-      typeof errorCode === 'string' ? RELAYABLE_ERROR_PHRASES[errorCode] : undefined;
+    const errorCode = typeof payload === 'object' && payload !== null ? payload.error_code : undefined;
+    const relayedMessage = typeof errorCode === 'string' ? RELAYABLE_ERROR_PHRASES[errorCode] : undefined;
 
     if (typeof status === 'number') {
       if (relayedMessage !== undefined) {
