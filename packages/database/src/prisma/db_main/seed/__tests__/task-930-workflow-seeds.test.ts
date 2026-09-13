@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
-import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
+import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS, approvedVersionFor } from '../07b-arcaai-clinical-templates';
 import { NOTE_CONTEXT_SCHEMA_DEFINITION } from '../07e-consultation-note-context-schema';
 import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from '../25-agents';
 import { CONSULTATION_WORKFLOW_SLUG, SUMMARIZATION_WORKFLOW_SLUG, WORKFLOW_LIBRARY_ASSIGNMENTS, WORKFLOW_LIBRARY_TARGETS, workflowLibraryDefinitions } from '../28-workflow-library';
@@ -145,7 +145,10 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(typeof instruction.promptTemplateId).toBe('string');
       const template = templateById.get(instruction.promptTemplateId!);
       expect(template, `no ArcaAI template ${String(instruction.promptTemplateId)} for ${spec.slug}`).toBeDefined();
-      expect(instruction.promptVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+      // The pre-summary agent pins the corpus default; a per-turn agent pins ITS template's approved
+      // version (v4 for Breast & Endocrine since 2026-09-13, v3 elsewhere).
+      const expectedPin = spec.slug === 'case-notes-pre-summary' ? ARCAAI_CLINICAL_APPROVED_VERSION : approvedVersionFor(instruction.promptTemplateId!);
+      expect(instruction.promptVersionNumber, spec.slug).toBe(expectedPin);
       expect(template!.approvedVersionNumber).toBe(instruction.promptVersionNumber);
       expect(versionKeys.has(`${instruction.promptTemplateId}@${instruction.promptVersionNumber}`)).toBe(true);
     }
