@@ -6,7 +6,7 @@
  * fallback twin `resolveTextFallbackSelection`, but only ever destructured `{ provider, model }`
  * before calling `applyTextRuntimeProfile(textPayload)` with NO second argument — so the agent's
  * `parameters.generation.reasoning` block, already carried on the `TextSelection`, was discarded
- * before it ever reached the enrichment call that turns it into `extra.reasoning_effort`.
+ * before it ever reached the enrichment call that states it as `GenerateRequest.reasoning`.
  *
  * The REAL `TextRequestEnrichmentService` is used (not a double), for the same reason the live-tier
  * and agent-invocation specs give: the claim under test is about the body THAT service builds.
@@ -147,7 +147,7 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
 
     await service.generateSummary('c-1', {} as any);
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });
   });
 
   it('an agent that named an effort sends that effort', async () => {
@@ -156,10 +156,10 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
 
     await service.generateSummary('c-1', {} as any);
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'high' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: true, effort: 'high' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` key at all', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` key at all', async () => {
     const { service, httpService } = buildService({ generation: { temperature: 0.1 } });
     httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
 
@@ -178,6 +178,6 @@ describe('TASK-891 — SummaryService (finalize) carries the resolved agent`s re
     await service.generateSummary('c-1', {} as any);
 
     expect(httpService.axiosRef.post).toHaveBeenCalledTimes(2);
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });
   });
 });

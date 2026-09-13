@@ -104,7 +104,7 @@ describe('TASK-891 — PreSummaryProcessor carries the resolved agent`s reasonin
 
     await processor.process(job());
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: false });
   });
 
   it('an agent that named an effort sends that effort', async () => {
@@ -112,10 +112,10 @@ describe('TASK-891 — PreSummaryProcessor carries the resolved agent`s reasonin
 
     await processor.process(job());
 
-    expect(lastPostBody(httpService).extra).toEqual({ reasoning_effort: 'medium' });
+    expect(lastPostBody(httpService).reasoning).toEqual({ enabled: true, effort: 'medium' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` key at all', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` key at all', async () => {
     const { processor, httpService } = buildProcessor({ temperature: 0.1 });
 
     await processor.process(job());

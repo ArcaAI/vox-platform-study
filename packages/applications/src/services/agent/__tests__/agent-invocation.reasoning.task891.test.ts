@@ -63,31 +63,32 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { content: 'ok', provider: 'lm-studio' } });
 });
 
-describe('TASK-891 — the invoked agent`s reasoning posture rides `extra`', () => {
+describe('TASK-891 — the invoked agent`s reasoning posture rides `reasoning`', () => {
   it('an agent that disabled reasoning instructs the engine not to reason', async () => {
     await service().invokeText(resolved({ generation: { temperature: 0.1, reasoning: { enabled: false } } }), TENANT, { text: 'hi' }, 'blocking');
 
-    expect(sentBody().extra).toEqual({ reasoning_effort: 'minimal' });
-    // The hyper-parameters that DO have first-class fields still travel as fields, not as extras.
+    expect(sentBody().reasoning).toEqual({ enabled: false });
+    // The hyper-parameters that DO have first-class fields still travel as fields. Since
+    // TASK-970 so does the posture — `reasoning` is a field of its own, not a ride-along.
     expect(sentBody().temperature).toBe(0.1);
   });
 
   it('an agent that named an effort sends that effort', async () => {
     await service().invokeText(resolved({ generation: { reasoning: { enabled: true, effort: 'medium' } } }), TENANT, { text: 'hi' }, 'blocking');
 
-    expect(sentBody().extra).toEqual({ reasoning_effort: 'medium' });
+    expect(sentBody().reasoning).toEqual({ enabled: true, effort: 'medium' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` key at all', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` key at all', async () => {
     await service().invokeText(resolved({ generation: { temperature: 0.1 } }), TENANT, { text: 'hi' }, 'blocking');
 
-    expect(Object.keys(sentBody())).not.toContain('extra');
+    expect(Object.keys(sentBody())).not.toContain('reasoning');
   });
 
   it('carries on the streaming path too — the posture is not a blocking-mode nicety', async () => {
     post.mockResolvedValue({ data: { on: () => undefined } });
     await service().invokeText(resolved({ generation: { reasoning: { enabled: false } } }), TENANT, { text: 'hi' }, 'stream');
 
-    expect(sentBody().extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(sentBody().reasoning).toEqual({ enabled: false });
   });
 });

@@ -7,8 +7,9 @@
  * a distinct live-tier agent through the `phase:live` assignment tag, and the seed gives that
  * agent `parameters.generation.reasoning = { enabled: false }`. Separately, TASK-891 C2 built the
  * wire: `TextRequestEnrichmentService.applyTextRuntimeProfile(target, generation)` turns that
- * block into `extra.reasoning_effort`, which the OpenAI-compatible family forwards as
- * `extra_body`.
+ * block into the `GenerateRequest.reasoning` posture, which each adapter renders into its
+ * own engine's parameter (TASK-970; it was `extra.reasoning_effort` under TASK-891, which
+ * only the OpenAI-compatible family ever read).
  *
  * The two halves did not meet. `resolveTextSelection` LOADED the agent's parameters during
  * resolution and returned `{ provider, model }` — the block was resolved and then discarded, so

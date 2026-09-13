@@ -5,9 +5,14 @@
  *
  * The shape is `{ enabled: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high' }`, and
  * an unknown effort is REFUSED at write time rather than shipped to an engine that will
- * ignore it. "Disabled" is not silence — it is `reasoning_effort: 'minimal'`, i.e. the
- * engine is instructed not to reason; leaving the field out would leave the engine on its
- * own default, which is the state being turned off.
+ * ignore it. "Disabled" is not silence — the engine is instructed not to reason; leaving the
+ * field out would leave the engine on its own default, which is the state being turned off.
+ *
+ * TASK-970 changed HOW that instruction travels, not what it means: the block is no longer
+ * pre-rendered into OpenAI's `reasoning_effort` here (which collapsed "off" into "minimal"
+ * and reached three adapters out of ten) but emitted as the neutral posture
+ * `GenerateRequest.reasoning`, for each adapter to render. The cross-language contract is
+ * `tests/contracts/reasoning-posture.fixture.json`.
  *
  * Measured motivation (`gemma-4-e2b-it-qat`, LM Studio, idle, 2026-09-07): a SOAP note from
  * a 136-token transcript spent **422 of 538 completion tokens (78%) on reasoning** and took
@@ -18,8 +23,9 @@ import {
   AGENT_REASONING_EFFORTS,
   agentReasoningProblems,
   readAgentReasoning,
-  reasoningExtra,
+  reasoningWire,
   REASONING_EFFORT_EXTRA_KEY,
+  REASONING_WIRE_FIELD,
 } from '../agent-reasoning';
 
 describe('readAgentReasoning', () => {
@@ -43,20 +49,37 @@ describe('readAgentReasoning', () => {
   });
 });
 
-describe('reasoningExtra — the GenerateRequest.extra ride-along', () => {
+describe('reasoningWire — the GenerateRequest.reasoning posture (TASK-970)', () => {
   it('disabled asks the engine not to reason, rather than saying nothing', () => {
-    expect(reasoningExtra({ enabled: false })).toEqual({ [REASONING_EFFORT_EXTRA_KEY]: 'minimal' });
+    // The posture, NOT `reasoning_effort: 'minimal'`. That rendering is now the receiving
+    // adapter's job, and only the `effort-only` engines make it; an engine with a true
+    // off-switch gets its own (`think: false`, `thinking: {type: 'disabled'}`).
+    expect(reasoningWire({ enabled: false })).toEqual({ enabled: false });
   });
 
-  it('enabled with an effort sends that effort', () => {
+  it('enabled with an effort carries that effort', () => {
     for (const effort of AGENT_REASONING_EFFORTS) {
-      expect(reasoningExtra({ enabled: true, effort })).toEqual({ [REASONING_EFFORT_EXTRA_KEY]: effort });
+      expect(reasoningWire({ enabled: true, effort })).toEqual({ enabled: true, effort });
     }
   });
 
-  it('enabled with no effort sends nothing — the engine keeps its own budget', () => {
-    expect(reasoningExtra({ enabled: true })).toBeUndefined();
-    expect(reasoningExtra(null)).toBeUndefined();
+  it('enabled with no effort is now SAYABLE — "on, engine keeps its own budget"', () => {
+    // TASK-891 flattened this to silence because `reasoning_effort` had no way to spell it,
+    // which on the wire was indistinguishable from an agent with no view at all.
+    expect(reasoningWire({ enabled: true })).toEqual({ enabled: true });
+  });
+
+  it('an absent posture is still silence — nothing is ever synthesized', () => {
+    expect(reasoningWire(null)).toBeUndefined();
+  });
+
+  it('drops an effort authored beside `enabled: false` — one instruction per wire', () => {
+    expect(reasoningWire({ enabled: false, effort: 'high' })).toEqual({ enabled: false });
+  });
+
+  it('names the field it is written to, and keeps the caller-pin key it no longer renders', () => {
+    expect(REASONING_WIRE_FIELD).toBe('reasoning');
+    expect(REASONING_EFFORT_EXTRA_KEY).toBe('reasoning_effort');
   });
 });
 
