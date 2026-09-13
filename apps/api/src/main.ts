@@ -28,7 +28,7 @@ import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService, startServiceReleaseRegistration } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
 // (bearer + api-key) is unit-testable.
-import { buildSwaggerConfig } from './swagger.config';
+import { createHopeOpenApiDocument } from './swagger.config';
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- express-session ships an `export =` CJS module; `import session = require(...)` is the correct TS interop form, not an ESM default import
 import session = require('express-session');
 
@@ -111,9 +111,10 @@ async function bootstrap() {
   app.setGlobalPrefix(globalPrefix, API_GLOBAL_PREFIX_OPTIONS);
 
   if (!isProduction) {
-    const config = buildSwaggerConfig().build();
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/v1/docs', app, document);
+    // Same builder AND the same per-operation security derivation the committed
+    // `openapi.json` gets, so the dev UI cannot show different lock icons from
+    // the published reference. See `swagger.config.ts`.
+    SwaggerModule.setup('api/v1/docs', app, createHopeOpenApiDocument(app));
   }
 
   // The SecretsService cache is warmed inside `SecretsModule.forRoot`'s
