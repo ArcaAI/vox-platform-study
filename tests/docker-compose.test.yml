@@ -162,6 +162,7 @@ services:
       /usr/bin/mc mb --ignore-existing local/generated-audio;
       /usr/bin/mc mb --ignore-existing local/documents;
       /usr/bin/mc mb --ignore-existing local/backups;
+      /usr/bin/mc mb --ignore-existing local/harness-claim-check;
       /usr/bin/mc policy set public local/recordings;
       /usr/bin/mc policy set public local/generated-audio;
       echo 'Test buckets created successfully';
