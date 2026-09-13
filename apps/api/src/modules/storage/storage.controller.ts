@@ -8,6 +8,7 @@ import {
   deriveThumbnailKey,
   isThumbnailableImageMimeType,
 } from '@arcaai/applications';
+import { isPlatformBucket } from '@arcaai/domains';
 import {
   BadRequestException,
   Body,
@@ -94,6 +95,7 @@ export class StorageController {
         tenantName: bucket.tenantName,
         registered: bucket.registered,
         physicalMissing: bucket.physicalMissing,
+        platform: bucket.platform,
       }));
     }
 
@@ -115,6 +117,12 @@ export class StorageController {
     }
     if (/[.]{2}|[/\\]/.test(body.name)) {
       throw new BadRequestException('Invalid bucket name');
+    }
+    // Rejected BEFORE `createBucket`, not just inside `registerBucket`:
+    // creating first would leave an untracked physical bucket behind when the
+    // registration that follows throws.
+    if (isPlatformBucket(body.name)) {
+      throw new BadRequestException(`'${body.name.trim()}' is a platform bucket name and is reserved`);
     }
     await this.blobStorage.createBucket(body.name);
     // Register the TenantBucket row so the bucket is owned by the caller's

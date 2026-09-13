@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantBucketController } from '../tenant-bucket.controller';
 import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
@@ -11,6 +12,7 @@ const mockTenantBucketService = {
   getBucketTree: vi.fn(),
   getBucketBySlug: vi.fn(),
   createCustomBucket: vi.fn(),
+  adoptPhysicalBucket: vi.fn(),
   deleteBucket: vi.fn(),
   listObjects: vi.fn(),
   uploadObject: vi.fn(),
@@ -116,6 +118,39 @@ describe('TenantBucketController', () => {
         slug: 'reports',
         description: 'Business reports',
       });
+    });
+  });
+
+  // The adopt route is what the storage browser's "Register" action finally
+  // reaches. Distinct from createBucket: the physical name is given, not
+  // derived, and the owner is explicit because the caller is unscoped.
+  describe('adoptBucket', () => {
+    it('forwards name, tenantId and description to adoptPhysicalBucket', async () => {
+      const adopted = createMockBucketResponse({ id: 'bucket-9', name: 'legacy-exports', bucketType: BUCKET_TYPE_CUSTOM, isSystemBucket: false });
+      mockTenantBucketService.adoptPhysicalBucket.mockResolvedValue(adopted);
+
+      const result = await controller.adoptBucket({
+        name: 'legacy-exports',
+        tenantId: '50000000-0000-0000-0000-000000000001',
+        description: 'Migrated exports',
+      });
+
+      expect(mockTenantBucketService.adoptPhysicalBucket).toHaveBeenCalledWith(
+        'legacy-exports',
+        '50000000-0000-0000-0000-000000000001',
+        'Migrated exports',
+      );
+      expect(result).toEqual(adopted);
+      // Adoption must never route through the derive-a-name path.
+      expect(mockTenantBucketService.createCustomBucket).not.toHaveBeenCalled();
+    });
+
+    it('propagates the service rejection for a platform bucket', async () => {
+      mockTenantBucketService.adoptPhysicalBucket.mockRejectedValue(new BadRequestException("'hope-models' is a platform bucket"));
+
+      await expect(
+        controller.adoptBucket({ name: 'hope-models', tenantId: '50000000-0000-0000-0000-000000000001' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -6,6 +6,7 @@
 
 import { deleteJson, getJson, postJson, putJson, request } from '@/shared/api';
 import type {
+  AdoptBucketRequest,
   BucketDefaults,
   BucketObject,
   BucketTree,
@@ -33,6 +34,11 @@ export function getBucket(id: string): Promise<TenantBucket | null> {
 
 export function createBucket(body: CreateBucketRequest): Promise<TenantBucket> {
   return postJson(BUCKETS, body);
+}
+
+/** Adopts an existing physical bucket into a tenant (registry-only). */
+export function adoptBucket(body: AdoptBucketRequest): Promise<TenantBucket> {
+  return postJson(`${BUCKETS}/register`, body);
 }
 
 export function deleteBucket(id: string): Promise<TenantBucket> {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { IconBucket, IconBuilding, IconDatabase, IconDots, IconFilterOff, IconFolderOpen, IconTrash } from '@tabler/icons-react';
+import { IconBucket, IconBuilding, IconDatabase, IconDots, IconFilterOff, IconFolderOpen, IconPlugConnected, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { VirtualizedDataGrid, includesSomeFilter, type ColumnDef } from '@arcaai/ui';
@@ -17,6 +17,7 @@ import {
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
@@ -34,7 +35,7 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useBuckets, useDeleteBucket, useProvisionTenantBuckets } from '../api/hooks';
+import { useAdoptBucket, useBuckets, useDeleteBucket, useProvisionTenantBuckets } from '../api/hooks';
 import type { TenantBucket, TenantBucketPurpose } from '../api/types';
 import { AccessKeysTab } from './access-keys-tab';
 import { BucketBrowserSheet } from './bucket-browser-sheet';
@@ -315,6 +316,133 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   );
 }
 
+/**
+ * Adopts an EXISTING physical bucket into a tenant (`POST .../buckets/register`).
+ *
+ * This is the destination of the storage browser's "Register" action: that
+ * screen lists physical MinIO buckets an unscoped platform admin can see, and
+ * an unregistered one is invisible here until a `TenantBucket` row exists for
+ * it — which is precisely what this dialog creates. The bucket name arrives in
+ * `?register=<name>` so the operator does not have to retype it.
+ *
+ * The tenant is picked explicitly rather than inherited: the screen that
+ * links here is unscoped by definition (no working tenant), so there is no
+ * ambient owner. Registry-only — the bucket itself is never touched.
+ *
+ * Seeded from `initialName` on mount; the caller remounts via `key` when the
+ * deep link names a different bucket.
+ */
+function RegisterBucketDialog({
+  open,
+  initialName,
+  onOpenChange,
+}: {
+  open: boolean;
+  initialName: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const adopt = useAdoptBucket();
+  const tenantCatalog = useTenantCatalog();
+  const [name, setName] = useState(initialName);
+  const [tenantId, setTenantId] = useState('');
+  const [description, setDescription] = useState('');
+
+  const tenants = tenantCatalog.data ?? [];
+
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setTenantId('');
+      setDescription('');
+      adopt.reset();
+    }
+    onOpenChange(next);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    adopt.mutate(
+      { name: name.trim(), tenantId, description: description.trim() || undefined },
+      {
+        onSuccess: (bucket) => {
+          toast.success(`${bucket.name} registered`);
+          handleOpenChange(false);
+        },
+        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not register the bucket.'),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Register existing bucket</DialogTitle>
+          <DialogDescription>
+            Registers a bucket that already exists in storage so a tenant owns it. The bucket and its contents are left untouched. Platform buckets
+            (model weights, MLflow artifacts, backups, the workflow claim check) cannot be registered.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-bucket-name">
+              Bucket name
+              <span aria-hidden className="text-destructive">
+                *
+              </span>
+            </Label>
+            <Input
+              id="register-bucket-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Physical bucket name, exactly as storage reports it"
+              className="font-mono"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-bucket-tenant">
+              Owning tenant
+              <span aria-hidden className="text-destructive">
+                *
+              </span>
+            </Label>
+            <Select value={tenantId} onValueChange={setTenantId}>
+              <SelectTrigger id="register-bucket-tenant" className="w-full">
+                <SelectValue placeholder={tenantCatalog.isPending ? 'Loading tenants…' : 'Select a tenant'} />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map((tenant) => (
+                  <SelectItem key={tenant.id} value={tenant.id}>
+                    {tenant.name || tenant.key || tenant.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="register-bucket-description">Description</Label>
+            <Input
+              id="register-bucket-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={adopt.isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || !tenantId || adopt.isPending}>
+              {adopt.isPending ? <Spinner /> : null}
+              Register
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Frame 14 — Tenant storage administration: buckets, defaults, configs, keys. */
 /**
  * The buckets list works CROSS-TENANT for an unscoped elevated
@@ -355,6 +483,23 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
   const bucketsQuery = useBuckets();
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('buckets'));
   const [provisionOpen, setProvisionOpen] = useState(false);
+  // `?register=<bucket>` is the storage browser's deep link (frame 31 → here).
+  // A non-empty value opens the dialog prefilled; clearing the param closes
+  // it, so the URL stays the single source of truth and a browser Back
+  // dismisses the dialog rather than stranding it.
+  const [registerParam, setRegisterParam] = useQueryState('register', parseAsString.withDefault(''));
+  const [manualRegisterOpen, setManualRegisterOpen] = useState(false);
+
+  const registerOpen = Boolean(registerParam) || manualRegisterOpen;
+
+  function setRegisterOpen(next: boolean) {
+    if (!next) {
+      setManualRegisterOpen(false);
+      if (registerParam) void setRegisterParam(null);
+      return;
+    }
+    setManualRegisterOpen(true);
+  }
 
   const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'buckets';
   const buckets = bucketsQuery.data ?? [];
@@ -379,10 +524,16 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
               </>
             }
             actions={
-              <Button variant="outline" onClick={() => setProvisionOpen(true)}>
-                <IconDatabase aria-hidden />
-                Provision buckets
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setRegisterOpen(true)}>
+                  <IconPlugConnected aria-hidden />
+                  Register existing
+                </Button>
+                <Button variant="outline" onClick={() => setProvisionOpen(true)}>
+                  <IconDatabase aria-hidden />
+                  Provision buckets
+                </Button>
+              </>
             }
           />
         }
@@ -419,6 +570,13 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
         </TabsContent>
       </ScreenTemplate>
       <ProvisionBucketsDialog open={provisionOpen} onOpenChange={setProvisionOpen} />
+      {/*
+        `key` remounts the dialog whenever the deep-linked bucket changes, so
+        `useState(initialName)` seeds the name field correctly on every open
+        without an effect syncing prop → state (react-hooks/set-state-in-effect).
+        It also clears tenant/description between opens for free.
+      */}
+      <RegisterBucketDialog key={registerParam} open={registerOpen} initialName={registerParam} onOpenChange={setRegisterOpen} />
     </Tabs>
   );
 }
