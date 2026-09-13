@@ -59,7 +59,10 @@ async function emissionFailures(): Promise<number> {
 
 async function run(headers: Record<string, string>) {
   const upstream = new PassThrough();
-  const usageLedger = { recordUsage: vi.fn(async () => ({ written: 1 })) };
+  // Untyped `vi.fn()` on purpose (as the speech-module twin does): a zero-arg
+  // implementation types `mock.calls[0]` as `[]` and the provider assertion below
+  // fails `tsc --noEmit` even though vitest runs it fine.
+  const usageLedger = { recordUsage: vi.fn().mockResolvedValue({ written: 1 }) };
   const controller = new AgentController(
     { listPublished: vi.fn(), getPublishedBySlug: vi.fn() } as never,
     { resolve: vi.fn(async () => TTS_AGENT) } as never,
