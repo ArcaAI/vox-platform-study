@@ -608,12 +608,17 @@ export class PromptAssemblyService {
           `--- PRIOR DRAFT (running SOAP note from the live session — STAGE 1 SCRATCHPAD) ---\n` +
           `${preSummaryBlock}\n` +
           `<<<END_EXTERNAL_DATA>>>\n\n` +
-          `INSTRUCTION (two-stage lineage — refine the STAGE 1 SCRATCHPAD into the STAGE 2 FINAL note): ` +
+          `INSTRUCTION (two-stage lineage — verify the STAGE 1 SCRATCHPAD against the transcript and consolidate it into the STAGE 2 FINAL note): ` +
           `Refine and correct the PRIOR DRAFT above into the final note. ` +
-          `Do not regenerate from scratch — preserve correct content and revise only where ` +
-          `the transcript, recognized entities, or clinician notes indicate. ` +
+          `Do not regenerate from scratch — the draft is your starting point — but treat every statement in it as a CLAIM to check against the full transcript, never as settled content. ` +
+          `Work section by section, under exactly the headings and order of the note template. ` +
+          `KEEP a statement only if the transcript supports it, or a dated prior record or clinician note supports it where that heading permits such a source. ` +
+          `REMOVE a statement the transcript does not support; a repeated or near-repeated sentence or paragraph (state each fact once, in the section where it belongs); ` +
+          `and any text that describes what a section should contain, restates a rule, or stands as a placeholder — that is guidance that leaked into the draft, not clinical content. ` +
+          `ADD what the transcript supports and the draft missed; CORRECT what the draft got wrong. ` +
           `The full transcript remains the single source of truth; if the prior draft ` +
-          `conflicts with the transcript, follow the transcript.`;
+          `conflicts with the transcript, follow the transcript. ` +
+          `Never invent content and never reorder or rename headings; a section with nothing documented in this encounter says so under its heading.`;
       }
     }
 

@@ -789,6 +789,14 @@ describe('PromptAssemblyService', () => {
       // … and the transcript stays the single source of truth on a draft↔transcript conflict.
       expect(prompt).toContain('single source of truth');
       expect(prompt.toLowerCase()).toContain('follow the transcript');
+      // 2026-09-13 — the draft is VERIFIED, not preserved: every statement is a claim to check,
+      // repeats and leaked guidance are removed, what the transcript supports is added.
+      expect(prompt).toContain('CLAIM to check');
+      expect(prompt).toContain('REMOVE a statement the transcript does not support');
+      expect(prompt).toContain('repeated or near-repeated sentence');
+      expect(prompt).toContain('guidance that leaked into the draft');
+      expect(prompt).toContain('ADD what the transcript supports');
+      expect(prompt).not.toContain('preserve correct content and revise only where');
     });
 
     it('substitutes {{context.pre_summary_text}} without duplicating the prior-draft block', async () => {
