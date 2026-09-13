@@ -35,6 +35,7 @@ import {
 } from '../06-ai-models';
 import { AiModelFormat, ModelTaskType } from '../ai-models/shared';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
+import { ASR_PARAMETERS } from '../25-agents';
 
 // =============================================================================
 // The owner's catalogue — README §3.6, in pipeline_tag order
@@ -70,7 +71,7 @@ const CATALOGUE_SLUGS = [
   'sarvam-bulbul',
   // token-classification
   'medical-ner',
-  'cadence-punctuation',
+  'cadence-fast',
   'gliner2-privacy-filter-pii-multi',
   'gliner2-guardrails-pii-multi',
   // text-classification
@@ -187,11 +188,28 @@ describe('the platform model catalogue (33 SYSTEM rows)', () => {
   });
 
   it('serves Cadence punctuation IN-PROCESS by stt while keeping the HF token-classification task (D-4)', () => {
-    const cadence = bySlug('cadence-punctuation');
+    const cadence = bySlug('cadence-fast');
     expect(cadence?.taskType).toBe('TOKEN_CLASSIFICATION');
     expect(cadence?.servedBy).toBe('stt');
     expect(cadence?.libraryName).toBe('cadence-punctuation');
-    expect(cadence?.gated).toBe(true);
+  });
+
+  // TASK-966 — the punctuation row is named after the loader it selects. `apps/stt`'s
+  // `stt.punctuation.service._load_model` takes the direct transformers loader ONLY on the exact
+  // name `cadence-fast` (`cadence_fast.MODEL_NAME`, HF `ai4bharat/Cadence-Fast` at the pinned
+  // `REVISION`); any other name reaches the legacy wrapper, which cannot load under transformers
+  // 5.x and latches punctuation off. The seeded ASR agents must therefore bind THIS slug, and the
+  // row must name the repo + revision the loader actually reads so the publish job stages what
+  // the offline cluster cache will be asked for.
+  it('names the punctuation row after the stt direct loader and binds the seeded ASR agents to it (TASK-966)', () => {
+    const cadence = bySlug('cadence-fast');
+    expect(cadence?.id).toBe('80000000-0000-0000-0004-000000000002');
+    expect(cadence?.sourceUri).toBe('ai4bharat/Cadence-Fast');
+    expect(cadence?.sourceRevision).toBe('8971c5011e4fba5dcfbcac52744587d7da605534');
+    expect(cadence?.gated).toBe(false);
+    expect(ASR_PARAMETERS.postProcessing.punctuation).toEqual({ enabled: true, modelSlug: 'cadence-fast' });
+    expect(bySlug('cadence-punctuation')).toBeUndefined();
+    expect(RETIRED_AI_MODEL_SLUGS).toContain('cadence-punctuation');
   });
 
   it('runs Nemotron on transformers (AutoModelForRNNT, D-3) — not parakeet.cpp', () => {
@@ -313,8 +331,9 @@ describe('RETIRED_AI_MODEL_SLUGS ledger (TASK-860 extension)', () => {
   it('contains the 11 TASK-860 retirements on top of the 53 earlier entries (64)', () => {
     TASK_860_RETIRED_SLUGS.forEach((slug) => expect(RETIRED_AI_MODEL_SLUGS, slug).toContain(slug));
     CATALOGUE_33_RETIRED_SLUGS.forEach((slug) => expect(RETIRED_AI_MODEL_SLUGS, slug).toContain(slug));
-    expect(RETIRED_AI_MODEL_SLUGS).toHaveLength(67);
-    expect(new Set(RETIRED_AI_MODEL_SLUGS).size).toBe(67);
+    // 67 + `cadence-punctuation` (TASK-966)
+    expect(RETIRED_AI_MODEL_SLUGS).toHaveLength(68);
+    expect(new Set(RETIRED_AI_MODEL_SLUGS).size).toBe(68);
   });
 
   it('is disjoint from the live catalogue', () => {
@@ -411,10 +430,11 @@ describe('seedAiModels upsert', () => {
 });
 
 describe('retireLegacyAiModels sweep', () => {
-  const makeClient = (activeYamls: string[]) => {
+  const makeClient = (activeYamls: string[], activeAgents: Array<{ parameters: unknown; compiledConfig: unknown }> = []) => {
     const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const client = {
       asrPipeline: { findMany: vi.fn(async () => activeYamls.map((configYaml) => ({ configYaml }))) },
+      agent: { findMany: vi.fn(async () => activeAgents) },
       aiModel: {
         updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
           updates.push(args);
@@ -446,6 +466,31 @@ describe('retireLegacyAiModels sweep', () => {
 
     expect(result.skipped).toEqual(['whisper-large-v3-turbo-gguf']);
     expect(updates.map((u) => u.where.slug)).not.toContain('whisper-large-v3-turbo-gguf');
+  });
+
+  // TASK-966 — a PUBLISHED agent version is immutable, so a slug it binds cannot be migrated by
+  // the seed; retiring the row would make every resolution of that agent a 409 in
+  // `AgentResolverService`. The sweep must leave such a slug active (an environment seeded
+  // before TASK-966 carries `realtime-transcription` rows bound to `cadence-punctuation`).
+  it('skips a slug a non-deleted agent version still binds (parameters or compiledConfig) and reports it', async () => {
+    const bound = { postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-punctuation' } } };
+    const { client, updates } = makeClient(
+      [],
+      [
+        { parameters: bound, compiledConfig: { parameters: bound } },
+        // A slug that merely PREFIXES a bound one is not a reference (`whisper-large-v3` vs `-turbo`).
+        { parameters: { audioFrontEnd: { vad: { modelSlug: 'whisper-large-v3-turbo' } } }, compiledConfig: null },
+      ],
+    );
+    const result = await retireLegacyAiModels(client as never);
+
+    expect(result.skipped).toEqual(['whisper-large-v3-turbo', 'cadence-punctuation']);
+    expect(updates.map((u) => u.where.slug)).not.toContain('cadence-punctuation');
+    expect(updates.map((u) => u.where.slug)).toContain('whisper-large-v3');
+    expect(client.agent.findMany).toHaveBeenCalledWith({
+      where: { resourceStatus: { not: 'DELETED' } },
+      select: { parameters: true, compiledConfig: true },
+    });
   });
 });
 

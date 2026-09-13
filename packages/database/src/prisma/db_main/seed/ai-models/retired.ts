@@ -107,6 +107,11 @@ export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
   'whisper-large-v3-turbo-q8_0',
   'lms-gemma-4-e4b-it-qat',
   'lms-gemma-4-medical-icd10',
+  // TASK-966 — replaced by `cadence-fast` (80000000-…-0004-000000000002): the slug named the
+  // legacy `cadence-punctuation` wrapper path, which cannot load under transformers 5.x, so
+  // every seeded ASR agent bound to it ran unpunctuated. The seeded agents now bind
+  // `cadence-fast`, the exact name the stt punctuation service routes to its direct loader.
+  'cadence-punctuation',
 ];
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

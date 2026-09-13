@@ -617,30 +617,41 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
   // (decision D-4: a network hop inside the realtime transcript path is the
   // wrong trade; the HF task stays token-classification, `servedBy` says who).
   // =========================================================================
+  // TASK-966 — the row is named after the STT loader it selects. `stt.punctuation.service`
+  // routes a punctuation slug to the direct transformers loader ONLY on the exact name
+  // `cadence-fast` (`cadence_fast.MODEL_NAME`); every other name goes to the legacy
+  // `cadence-punctuation` wrapper, which cannot load under the pinned transformers 5.x and
+  // latches punctuation OFF for the process. The previous row (`cadence-punctuation`,
+  // ai4bharat/Cadence 1B) bound exactly that dead path, so every seeded ASR agent passed
+  // text through unpunctuated. Its slug is now in the retirement ledger.
+  //
+  // The loader reads the HF hub cache (`HF_HUB_CACHE`) at the pinned revision below; on the
+  // cluster that cache is the s3fs-mounted `hope-models` bucket under `HF_HUB_OFFLINE=1`, so the
+  // publish job (`POST admin/ai-models/:id/download`) must lay this row out before it serves.
   {
-    id: '80000000-0000-0000-0004-000000000001',
+    id: '80000000-0000-0000-0004-000000000002',
     tenantId: SYSTEM_TENANT_ID,
-    name: 'Cadence Punctuation (1B)',
-    slug: 'cadence-punctuation',
+    name: 'Cadence-Fast Punctuation (270M)',
+    slug: 'cadence-fast',
     description:
-      'ai4bharat/Cadence — 1B punctuation & casing restoration model used by the stt post-processing stage (cadence-punctuation wrapper). Cadence-Fast (270M) is the direct-load variant. Gated Hub repo.',
+      'ai4bharat/Cadence-Fast — 270M punctuation & casing restoration model used by the stt post-processing stage. The slug is the exact name the stt punctuation service maps to its direct transformers loader (pinned revision 8971c501). MIT, not gated.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TOKEN_CLASSIFICATION,
     modelType: ModelType.BASE_MODEL,
     source: AiModelSource.HUGGINGFACE,
-    sourceUri: 'ai4bharat/Cadence',
-    sourceRevision: 'main',
+    sourceUri: 'ai4bharat/Cadence-Fast',
+    sourceRevision: '8971c5011e4fba5dcfbcac52744587d7da605534',
     format: AiModelFormat.SAFETENSOR,
     libraryName: 'cadence-punctuation',
     servedBy: 'stt',
     deploymentKind: AiDeploymentKind.SELF_HOSTED,
-    license: 'cc-by-4.0',
-    gated: true,
+    license: 'mit',
+    gated: false,
     languages: ['en', 'ml', 'hi'],
     provider: 'built-in',
-    architecture: null,
-    memorySizeMb: 4096,
+    architecture: 'gemma3',
+    memorySizeMb: 1100,
     computeType: 'float32',
-    tags: ['punctuation', 'stt', 'cadence', 'gated'],
+    tags: ['punctuation', 'stt', 'cadence'],
   },
 ];
