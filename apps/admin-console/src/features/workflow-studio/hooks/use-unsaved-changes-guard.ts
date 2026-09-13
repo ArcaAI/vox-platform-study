@@ -18,6 +18,16 @@ import { useEffect } from 'react';
 
 const DEFAULT_MESSAGE = 'You have unsaved changes. Leave this page?';
 
+/**
+ * The programmatic-navigation half of the guard (TASK-965 WF-7). The click listener below covers
+ * anchors; every `router.push` a dirty editor issues — "New", "Edit as new draft", clone, import,
+ * the workflow switcher — asks the SAME question through this helper, so the answer cannot differ
+ * by how the admin chose to leave. `true` means "go ahead".
+ */
+export function confirmLeave(shouldBlock: boolean, message: string = DEFAULT_MESSAGE): boolean {
+  return !shouldBlock || window.confirm(message);
+}
+
 export function useUnsavedChangesGuard(shouldBlock: boolean, message: string = DEFAULT_MESSAGE): void {
   useEffect(() => {
     if (!shouldBlock) return;

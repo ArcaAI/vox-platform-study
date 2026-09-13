@@ -33,10 +33,13 @@ export interface WorkflowSwitcherProps {
   /** The definition currently open in the editor — rendered on the trigger and ticked in the list. */
   current: WorkflowDefinition;
   className?: string;
+  /** TASK-965 WF-7 — the editor's guarded navigation (asks about unsaved changes first). Default: a plain `router.push`. */
+  onNavigate?: (href: string) => void;
 }
 
-export function WorkflowSwitcher({ current, className }: WorkflowSwitcherProps) {
+export function WorkflowSwitcher({ current, className, onNavigate }: WorkflowSwitcherProps) {
   const router = useRouter();
+  const navigate = onNavigate ?? ((href: string) => router.push(href));
   const [open, setOpen] = useState(false);
   const definitionsQuery = useWorkflowDefinitions({ page: 0, limit: PAGE_SIZE });
 
@@ -88,7 +91,7 @@ export function WorkflowSwitcher({ current, className }: WorkflowSwitcherProps) 
                       value={`${row.name} ${row.slug} v${row.versionNumber} ${row.status}`}
                       onSelect={() => {
                         setOpen(false);
-                        if (row.id !== current.id) router.push(`/workflow-studio/${encodeURIComponent(row.id)}`);
+                        if (row.id !== current.id) navigate(`/workflow-studio/${encodeURIComponent(row.id)}`);
                       }}
                     >
                       <span className="min-w-0 flex-1 truncate">{row.name}</span>

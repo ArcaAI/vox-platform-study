@@ -10,7 +10,7 @@
  * `If-Match` on either would be a client bug, not a safety net.
  */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, putWithEtag, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, postWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   CloneWorkflowDefinitionRequest,
@@ -118,15 +118,18 @@ export function deleteWorkflowDefinition(id: string): Promise<WorkflowDefinition
 }
 
 /** Re-runs shape + engine + DRAFT rule-catalogue validation and persists the report. NOT an
- *  If-Match route — see the module doc comment. */
-export function validateWorkflowDefinition(id: string): Promise<WorkflowDefinition> {
-  return postJson(`${definitionPath(id)}/validate`);
+ *  If-Match route — see the module doc comment — but it COMMITS through `updateWithVersion`
+ *  server-side, so the row version moves: the response ETag is kept so the editor can adopt it,
+ *  or the next Save 412s against the version it just invalidated (TASK-965 WF-2). */
+export function validateWorkflowDefinition(id: string): Promise<WithEtag<WorkflowDefinition>> {
+  return postWithEtag(`${definitionPath(id)}/validate`);
 }
 
 /** Compiles the graph and publishes this version. NOT an If-Match route. `activate` defaults to
- *  `true` server-side when the body is omitted. */
-export function publishWorkflowDefinition(id: string, body?: PublishWorkflowDefinitionRequest): Promise<WorkflowDefinition> {
-  return postJson(`${definitionPath(id)}/publish`, body);
+ *  `true` server-side when the body is omitted. The ETag is kept for the same reason as
+ *  `validateWorkflowDefinition`. */
+export function publishWorkflowDefinition(id: string, body?: PublishWorkflowDefinitionRequest): Promise<WithEtag<WorkflowDefinition>> {
+  return postWithEtag(`${definitionPath(id)}/publish`, body);
 }
 
 /** The code-owned node-type registry — the Studio's palette source. Read-gated

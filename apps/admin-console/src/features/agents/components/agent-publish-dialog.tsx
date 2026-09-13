@@ -58,6 +58,15 @@ function snippetTaskOf(task: AgentTask): SdkSnippetAgentTask {
 
 export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, agent, published }: AgentPublishDialogProps) {
   const [activate, setActivate] = useState(true);
+  // TASK-965 WS-1 (AG-6) — the switch is a per-open decision, never remembered across opens: the
+  // component stays mounted for the drawer's lifetime, so a single "off" used to make every later
+  // publish default to inactive. Adjusted during render on the open transition (the compiler lint
+  // forbids `setState` inside an effect body).
+  const [seenOpen, setSeenOpen] = useState(open);
+  if (open !== seenOpen) {
+    setSeenOpen(open);
+    if (open) setActivate(true);
+  }
 
   if (published) {
     const endpoint = ENDPOINTS[published.task];
