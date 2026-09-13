@@ -73,14 +73,21 @@ async def _client_factory(mock_registry, mock_task_manager):
 @pytest.mark.asyncio
 async def test_blocked_content_rejected_with_422(_client_factory, mock_provider):
     # A genuine content rejection (guardrail reachable, verdict not-allowed) is a 422.
+    # `is_medical: False` is the REAL shape `ExternalGuardrailClient.validate()._parse`
+    # always sets on a reachable rejection (TASK-969 WS-3) — it is the signal the
+    # gate uses to pick `CONTENT_BLOCKED_NOT_MEDICAL`, never the free-text `reason`.
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(return_value={"allowed": False, "reason": "not_medical"})
+    guardrail.validate = AsyncMock(
+        return_value={"allowed": False, "reason": "not_medical", "is_medical": False}
+    )
     client = await _client_factory(guardrail)
 
     resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
 
     assert resp.status_code == 422
-    assert "guardrail" in resp.json()["detail"].lower()
+    body = resp.json()
+    assert "guardrail" in body["detail"].lower()
+    assert body["error_code"] == "CONTENT_BLOCKED_NOT_MEDICAL"
     mock_provider.generate.assert_not_called()  # rejected before provider work
 
 
@@ -143,13 +150,15 @@ async def test_sustained_outage_returns_503_and_never_generates(_client_factory,
     resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
 
     assert resp.status_code == 503
+    assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
     mock_provider.generate.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
     # A malformed verdict with no ``allowed`` key must default to fail-CLOSED
-    # (reject), never proceed.
+    # (reject), never proceed. No ``is_medical`` key either, so this is the
+    # generic (not-specifically-non-medical) content-blocked branch.
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
     client = await _client_factory(guardrail)
@@ -157,6 +166,51 @@ async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
     resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
 
     assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CONTENT_BLOCKED"
+    mock_provider.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generic_content_block_when_not_specifically_non_medical(
+    _client_factory, mock_provider
+):
+    # A reachable, blocked verdict that does NOT say `is_medical: False` (e.g. a
+    # future guardrail check unrelated to medical relevance) gets the generic
+    # `CONTENT_BLOCKED` code, never the `_NOT_MEDICAL` variant.
+    guardrail = AsyncMock()
+    guardrail.validate = AsyncMock(
+        return_value={"allowed": False, "reason": "some_other_policy", "is_medical": True}
+    )
+    client = await _client_factory(guardrail)
+
+    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CONTENT_BLOCKED"
+    mock_provider.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_content_rejection_never_leaks_the_free_text_reasoning(
+    _client_factory, mock_provider
+):
+    # The REAL bug (TASK-969): `reason` here mirrors guardrail's `reasoning`
+    # field, which can quote the prompt back verbatim. The response `detail`
+    # must be a FIXED sentence — the PHI-shaped reason must never appear
+    # anywhere in the HTTP response body.
+    phi_shaped_reason = "the prompt discusses patient Jane Doe, DOB 1990-01-01, SSN 123-45-6789"
+    guardrail = AsyncMock()
+    guardrail.validate = AsyncMock(
+        return_value={"allowed": False, "reason": phi_shaped_reason, "is_medical": False}
+    )
+    client = await _client_factory(guardrail)
+
+    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CONTENT_BLOCKED_NOT_MEDICAL"
+    assert "123-45-6789" not in resp.text
+    assert "Jane Doe" not in resp.text
     mock_provider.generate.assert_not_called()
 
 
@@ -176,4 +230,5 @@ async def test_none_client_with_enforce_posture_fails_closed(
         resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
 
     assert resp.status_code == 503
+    assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
     mock_provider.generate.assert_not_called()

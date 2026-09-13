@@ -16,7 +16,7 @@ export type RunState =
   | { kind: 'idle' }
   | { kind: 'sync'; result: GenerateTextResponse; debug?: AssembledDebugMeta }
   | { kind: 'stream'; taskId: string }
-  | { kind: 'fail-closed'; message: string };
+  | { kind: 'fail-closed'; message: string; code?: string };
 
 interface OutputPaneProps {
   run: RunState;
@@ -150,20 +150,49 @@ function ReasoningPanel({ reasoning, live }: { reasoning: string; live: boolean 
   );
 }
 
+/**
+ * Per-`error_code` copy for the designed 422 fail-closed panel (TASK-969 WS-3).
+ * The gateway relays a fixed, non-PHI token (`text-proxy.controller.ts`
+ * `RELAYABLE_ERROR_PHRASES`) — this is the ONLY place that turns it into
+ * user-facing guidance, so a code this console build does not yet recognise
+ * (or none at all, e.g. an older gateway) still renders something useful
+ * rather than a guess. `MODEL_NOT_SELECTED` keeps the ORIGINAL copy verbatim —
+ * it used to be shown for every 422, and is now the one true cause it named.
+ */
+const FAIL_CLOSED_COPY: Record<string, { title: string; explanation: string }> = {
+  MODEL_NOT_SELECTED: {
+    title: 'No model resolved for this tenant.',
+    explanation:
+      'Provider and model were omitted and the tenant’s HarnessPolicy cascade produced no effective model, the service refuses to guess. Pick an explicit provider/model or fix the tenant policy.',
+  },
+  CONTENT_BLOCKED_NOT_MEDICAL: {
+    title: 'The prompt was not classified as clinical content.',
+    explanation:
+      'The medical-relevance guardrail blocked this prompt because it was not recognized as clinical. Rephrase it as a clinical request, or ask a platform admin to review the tenant’s guardrail policy.',
+  },
+  CONTENT_BLOCKED: {
+    title: 'Content was blocked by the safety guardrail.',
+    explanation: 'The guardrail refused this prompt or response. Revise the prompt, or ask a platform admin to review the tenant’s guardrail policy.',
+  },
+};
+
+const DEFAULT_FAIL_CLOSED_COPY = {
+  title: 'Generation failed closed.',
+  explanation: 'The service refused to generate rather than proceed unsafely. See the message below, or ask a platform admin for help.',
+};
+
 /** Designed 422 error variant: the service failed CLOSED, no toast, a real panel. */
-function FailClosedPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
+function FailClosedPanel({ message, code, onRetry }: { message: string; code?: string; onRetry: () => void }) {
+  const copy = (code && FAIL_CLOSED_COPY[code]) || DEFAULT_FAIL_CLOSED_COPY;
   return (
     <div role="alert" className="bg-destructive/5 flex flex-col gap-2 rounded-lg p-4">
       <div className="flex items-center gap-2">
         <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
         <p className="text-destructive text-sm font-medium">422, text-generation fail-closed</p>
       </div>
-      <p className="text-sm font-medium">No model resolved for this tenant.</p>
+      <p className="text-sm font-medium">{copy.title}</p>
       <p className="text-muted-foreground text-sm">{message}</p>
-      <p className="text-muted-foreground text-xs">
-        Provider and model were omitted and the tenant’s HarnessPolicy cascade produced no effective model, the service refuses to guess. Pick an explicit
-        provider/model or fix the tenant policy.
-      </p>
+      <p className="text-muted-foreground text-xs">{copy.explanation}</p>
       <div>
         <Button variant="outline" size="sm" onClick={onRetry}>
           <IconRefresh aria-hidden />
@@ -246,7 +275,7 @@ export function OutputPane({
         ) : run.kind === 'idle' ? (
           <EmptyOutput />
         ) : run.kind === 'fail-closed' ? (
-          <FailClosedPanel message={run.message} onRetry={onRetry} />
+          <FailClosedPanel message={run.message} code={run.code} onRetry={onRetry} />
         ) : run.kind === 'sync' ? (
           <>
             {run.result.reasoning ? <ReasoningPanel reasoning={run.result.reasoning} live={false} /> : null}
