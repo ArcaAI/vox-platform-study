@@ -16,17 +16,88 @@
   },
 
   "support": {
-    "$comment": "class: 'native-off' = the engine has a true off-switch AND an effort dial; 'effort-only' = effort can be expressed but 'off' can only be approximated (e.g. minimal); 'unsupported' = the transport cannot express the posture at all -> log and proceed (owner decision 2026-09-13), never fail the call.",
-    "openai":        { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
-    "azure_openai":  { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
-    "openai_compat": { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
-    "lmstudio":      { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
-    "vllm":          { "class": "native-off",   "renders": "chat_template_kwargs.enable_thinking", "verified": false },
-    "ollama":        { "class": "native-off",   "renders": "think", "verified": false },
-    "anthropic":     { "class": "native-off",   "renders": "thinking", "verified": false },
-    "llama_cpp":     { "class": "unsupported",  "renders": null, "verified": false },
-    "bedrock":       { "class": "unsupported",  "renders": null, "verified": false },
-    "vertex":        { "class": "unsupported",  "renders": null, "verified": false }
+    "$comment": "VERIFIED by the L1 (adapters) lane on 2026-09-13 against the client library each adapter actually pins (apps/text/pyproject.toml, resolved in conda env `arcaenv`) and, for the HTTP engines that pin no client, against the deployed image and the engine's own documentation. Two seeded guesses were WRONG and are corrected here: `openai`/`azure_openai` were seeded `effort-only` but the pinned SDK's own `ReasoningEffort` literal carries a true `\"none\"` rung, and `vertex` was seeded `unsupported` but the pinned SDK exposes a full off-switch AND an effort dial. `class`/`renders` describe WHAT THE ADAPTER RENDERS, not merely what the vendor could theoretically accept: where a vendor parameter exists but cannot be driven safely for every model of that engine, the adapter does not send it and records the posture as unenforceable instead (owner decision: log and proceed, never fail the call).",
+    "$classes": {
+      "native-off": "the engine has a TRUE off-switch this adapter renders; `effort` says whether it also has a dial the adapter can drive",
+      "effort-only": "an effort can be expressed but OFF cannot; `enabled: false` is RECORDED as unenforceable, never approximated onto a low effort — that lossy mapping is the defect this contract removes",
+      "unsupported": "the transport cannot express the posture at all -> log and proceed"
+    },
+    "$fields": {
+      "renders": "the engine parameter the OFF/ON posture is rendered into; null when nothing is sent",
+      "effort": "the engine parameter a named effort is rendered into; null when the adapter cannot pin a budget, in which case ON is still rendered and the EFFORT is recorded as unenforceable",
+      "verified": "true only when checked against a pinned artifact or the engine's own documentation, with the check named in `evidence`"
+    },
+
+    "openai": {
+      "class": "native-off",
+      "renders": "reasoning_effort",
+      "effort": "reasoning_effort",
+      "verified": true,
+      "evidence": "openai==3.1.0 (pinned `openai>=3.1.0,<4`): `openai/types/shared/reasoning_effort.py` declares `ReasoningEffort = Optional[Literal['none','minimal','low','medium','high','xhigh','max']]`, and `chat/completion_create_params.py` carries `reasoning_effort: Optional[ReasoningEffort]`. `'none'` is the off-switch; minimal|low|medium|high are all legal rungs."
+    },
+    "azure_openai": {
+      "class": "native-off",
+      "renders": "reasoning_effort",
+      "effort": "reasoning_effort",
+      "verified": true,
+      "evidence": "Same pinned SDK and the same `chat.completions.create` wire (AsyncAzureOpenAI). The api-version the adapter is written against is `2024-12-01-preview` (AzureOpenAIProvider.ADAPTER_API_VERSION); a connection may pin a newer one."
+    },
+    "openai_compat": {
+      "class": "effort-only",
+      "renders": "reasoning_effort",
+      "effort": "reasoning_effort",
+      "verified": false,
+      "evidence": "NOT VERIFIABLE BY CONSTRUCTION — this adapter is 'any server that speaks the OpenAI chat-completions wire' and is documented as wire-only (`providers/openai_compat.py` docstring). An effort rung is standard OpenAI vocabulary and is passed through; `'none'` is a newer rung this adapter cannot promise an unknown server understands, and an unknown enum value is a 400 the owner decision rules out — so OFF is recorded, not guessed."
+    },
+    "lmstudio": {
+      "class": "effort-only",
+      "renders": "reasoning_effort",
+      "effort": "reasoning_effort",
+      "verified": true,
+      "evidence": "LM Studio's OpenAI-compatibility docs and its API changelog document `reasoning_effort` with the rungs low|medium|high (gpt-oss); no off value is documented on /v1/chat/completions. Deployed as the in-cluster `hope-lmstudio` image (deployment repo `base/lmstudio.yaml`)."
+    },
+    "vllm": {
+      "class": "native-off",
+      "renders": "chat_template_kwargs.enable_thinking",
+      "effort": null,
+      "verified": true,
+      "evidence": "Deployed image `vllm/vllm-openai:v0.11.0` (deployment repo `base/vllm.yaml:88`) serving a Qwen3-class checkpoint (`base/config/vllm.env`). vLLM's own reasoning-outputs docs give `extra_body={'chat_template_kwargs': {'enable_thinking': False}}` as the per-request off-switch for that family. There is no effort dial on that toggle, so a named effort is recorded as unenforceable."
+    },
+    "ollama": {
+      "class": "native-off",
+      "renders": "think",
+      "effort": null,
+      "verified": true,
+      "evidence": "Ollama's Thinking docs (docs.ollama.com/capabilities/thinking): `think` on /api/generate takes true|false, and SOME models additionally take the levels low|medium|high|max. Booleans are universal, the levels are per-model, so this adapter renders only the boolean and records a named effort as unenforceable — sending a level to a boolean-only model would fail the call. NOTE: before this ticket the adapter sent a hardcoded `think: true` on EVERY request; that literal is gone."
+    },
+    "anthropic": {
+      "class": "native-off",
+      "renders": "thinking",
+      "effort": null,
+      "verified": true,
+      "evidence": "anthropic==0.122.0 (pinned `anthropic>=0.122.0`): `message_create_params.thinking: ThinkingConfigParam` = Union[Enabled, Disabled, Adaptive]. OFF is `{'type': 'disabled'}`; ON with no named budget is `{'type': 'adaptive'}` (the engine picks). The only budget the vendor accepts is `budget_tokens: int` (required, >= 1024) — a token COUNT, not an effort rung, so this adapter will not invent one and records a named effort as unenforceable."
+    },
+    "vertex": {
+      "class": "native-off",
+      "renders": "generation_config.thinking_config.thinking_budget",
+      "effort": "generation_config.thinking_config.thinking_level",
+      "verified": true,
+      "evidence": "google-genai==2.18.1 (pinned `google-genai>=2.18.1`): `types.GenerateContentConfig.thinking_config: ThinkingConfig`, whose `thinking_budget` is documented '0 is DISABLED, -1 is AUTOMATIC', and whose `thinking_level: ThinkingLevel` enumerates MINIMAL|LOW|MEDIUM|HIGH — an exact match for this contract's effort vocabulary. The seeded `unsupported` was wrong."
+    },
+    "llama_cpp": {
+      "class": "unsupported",
+      "renders": null,
+      "effort": null,
+      "verified": true,
+      "evidence": "This adapter targets llama.cpp's NATIVE `/completion` endpoint (providers/llama_cpp.py), deliberately, for its `timings` block. llama.cpp's server README documents `reasoning_effort`, `reasoning_format`, `reasoning_control` and `chat_template_kwargs` on `/v1/chat/completions` ONLY; `/completion` is a raw-prompt endpoint that applies no chat template and accepts no reasoning parameter. `--reasoning-budget` is a server CLI flag, not per-request."
+    },
+    "bedrock": {
+      "class": "unsupported",
+      "renders": null,
+      "effort": null,
+      "verified": true,
+      "evidence": "botocore==1.43.72 service model `bedrock-runtime/2023-09-30`: `ConverseRequest` has no reasoning member; the only route is `additionalModelRequestFields`, a free-form `Document` passed through to the UNDERLYING model's own vocabulary. That vocabulary differs by model family and generation (`reasoning_config` for Claude 3.7, `thinking` for Sonnet 4 / adaptive on Opus) and a key the family does not know is a ValidationException — i.e. a failed generation, which the owner decision forbids. A normalized posture therefore cannot be rendered here until the bound model declares its own family vocabulary (WS-3 territory)."
+    }
   },
 
   "unenforceable": {

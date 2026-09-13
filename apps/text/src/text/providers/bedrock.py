@@ -17,6 +17,7 @@ from botocore.tokens import FrozenAuthToken
 from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
 from text.core.exceptions import InputValidationError, ProviderConnectionMissingError
+from text.core.reasoning import ReasoningSupport, record_unsupported_posture
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ImageContentPart, ProviderOverride
@@ -179,6 +180,22 @@ class BedrockProvider:
 
     credential_posture = CredentialPosture.BYOK
 
+    # TASK-970 — UNSUPPORTED, and that is a property of the CONVERSE API, not an
+    # oversight. Verified against the pinned service model (botocore==1.43.72,
+    # `bedrock-runtime/2023-09-30`): `ConverseRequest` has no reasoning member at
+    # all. The only route is `additionalModelRequestFields`, a free-form
+    # `Document` passed straight through to the UNDERLYING model's own
+    # vocabulary — which differs by family and generation (`reasoning_config` on
+    # Claude 3.7, `thinking` on Sonnet 4 / adaptive on Opus), and where a key the
+    # family does not know is a ValidationException, i.e. a FAILED generation.
+    # A normalized posture cannot be rendered safely here, so it is recorded and
+    # the call proceeds — the owner decision, and the opposite of today's silent
+    # drop. Enabling it needs the bound model to declare its own family
+    # vocabulary first.
+    reasoning_support = ReasoningSupport.UNSUPPORTED
+    reasoning_parameter = None
+    reasoning_effort_parameter = None
+
     def __init__(self) -> None:
         """No configuration, and NO AMBIENT CREDENTIAL CHAIN.
 
@@ -276,6 +293,8 @@ class BedrockProvider:
                 "guardrailIdentifier": override.guardrail_id,
                 "guardrailVersion": override.guardrail_version or "DRAFT",
             }
+
+        record_unsupported_posture(request, provider="bedrock", model=self._resolve_model(request))
 
         return params
 

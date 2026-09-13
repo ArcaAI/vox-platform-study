@@ -167,7 +167,14 @@ class TestOllamaGenerateStream:
         assert text_chunks[1].content == " world"
 
     @pytest.mark.asyncio
-    async def test_stream_requests_thinking(self, mock_http_client):
+    async def test_stream_asks_for_thinking_only_when_the_posture_says_so(self, mock_http_client):
+        """TASK-970 — this used to assert an unconditional ``think: True``.
+
+        That literal was a hardcoded reasoning SELECTION: an admin who turned
+        reasoning off on an Ollama-bound agent got ``think: True`` anyway. The
+        adapter now renders `GenerateRequest.reasoning`, and with NO posture at
+        any tier it sends no ``think`` key at all and lets the engine decide.
+        """
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -199,7 +206,7 @@ class TestOllamaGenerateStream:
         ):
             pass
 
-        assert captured["kwargs"]["json"]["think"] is True
+        assert "think" not in captured["kwargs"]["json"]
 
     @pytest.mark.asyncio
     async def test_stream_yields_reasoning_chunks_from_thinking_field(self, mock_http_client):

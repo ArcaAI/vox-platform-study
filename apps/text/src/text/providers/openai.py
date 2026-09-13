@@ -22,6 +22,7 @@ from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
 )
+from text.core.reasoning import ReasoningSupport, apply_openai_wire_reasoning
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
@@ -49,6 +50,16 @@ class OpenAIProvider:
     """OpenAI provider using the openai Python SDK (``AsyncOpenAI``)."""
 
     credential_posture = CredentialPosture.BYOK
+
+    # TASK-970 — a TRUE off-switch, verified against the pinned SDK: openai==3.1.0
+    # declares `ReasoningEffort = Literal['none','minimal','low','medium','high',
+    # 'xhigh','max']` and `chat.completions.create` takes it as a typed parameter.
+    # This adapter is one of the two the ticket named specifically: the posture's
+    # correct native parameter has always lived on this wire, and until now this
+    # adapter forwarded nothing at all.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "reasoning_effort"
+    reasoning_effort_parameter = "reasoning_effort"
 
     def __init__(self) -> None:
         """No configuration. OpenAI is BYOK-only and Text holds no connection of
@@ -155,6 +166,16 @@ class OpenAIProvider:
             messages.append({"role": "user", "content": request.prompt})
         return messages
 
+    def _apply_reasoning(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture as this wire's own ``reasoning_effort``."""
+        apply_openai_wire_reasoning(
+            kwargs,
+            request,
+            provider=_PROVIDER_NAME,
+            model=self._resolve_model(request),
+            off_is_expressible=self.reasoning_support is ReasoningSupport.NATIVE_OFF,
+        )
+
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
         if request.response_format is None:
             return
@@ -193,6 +214,7 @@ class OpenAIProvider:
                 "stream": False,
             }
             self._apply_response_format(kwargs, request)
+            self._apply_reasoning(kwargs, request)
 
             start = time.monotonic()
             response = await self._client_for(request).chat.completions.create(**kwargs)
@@ -247,6 +269,7 @@ class OpenAIProvider:
                 "stream_options": {"include_usage": True},
             }
             self._apply_response_format(kwargs, request)
+            self._apply_reasoning(kwargs, request)
 
             # DRAIN to completion (AD-1): the finish chunk precedes the
             # usage-only chunk; an early return drops usage.

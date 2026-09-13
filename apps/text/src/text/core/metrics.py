@@ -200,3 +200,16 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
             time.perf_counter() - start
         )
         MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()
+
+
+# TASK-970 — how often an admin's reasoning posture could NOT be honoured by
+# the engine it was routed to. The owner decision is "log and proceed": an
+# engine that cannot express the posture sends nothing and the call RUNS, so
+# without a counter the only evidence is a line in Loki and the surprise on the
+# bill. `reason` separates "this engine expresses nothing" from "the on/off
+# switch landed but the named effort could not be pinned".
+REASONING_UNENFORCEABLE_TOTAL = Counter(
+    "text_reasoning_unenforceable_total",
+    "Generations whose resolved reasoning posture the engine could not express",
+    ["provider", "model", "reason"],
+)
