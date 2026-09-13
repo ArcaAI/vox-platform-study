@@ -44,7 +44,7 @@ import { Alert, AlertDescription, AlertTitle, Badge, Button, FieldDescription, S
 import { GatewayError, getJson } from '@/shared/api';
 import { CopyButton } from '@/shared/copy-button';
 import { publicEnv } from '@/config/public-env';
-import { exampleBodyFromJsonSchema } from '@/shared/docs/example-body';
+import { agentContextExample, exampleBodyFromJsonSchema } from '@/shared/docs/example-body';
 import { buildPostmanCollection, type PostmanCollection } from '@/shared/docs/postman-collection';
 import {
   agentCurlSnippet,
@@ -59,6 +59,8 @@ import {
 
 const API_KEYS_HREF = '/api-keys';
 const SOCKET_MODE = 'socket';
+/** The flat minimum the invocations route always accepts, when the schema yields nothing usable. */
+const FLAT_MINIMUM_BODY: Record<string, unknown> = { text: '…' };
 /** The ONLY palette the public invoke surface exposes (`EXPOSURE_ALLOWED_PALETTES` server-side). */
 export const EXPOSABLE_PALETTE_KEY = 'core';
 
@@ -221,6 +223,13 @@ export interface AgentIntegrationProps {
    * it; `null`/absent falls back to the documented flat minimum rather than an empty object.
    */
   inputSchema?: Record<string, unknown> | null;
+  /**
+   * TASK-971 FU-1 — `Agent.compiledConfig`, stamped at publish. Carries the OTHER half of the
+   * example: the instruction's `trigger.*` bindings (and a bound context schema when there is
+   * one), which `inputSchema` never declares. Without it the rendered example is refused by
+   * agents whose prompt binds clinical context.
+   */
+  compiledConfig?: Record<string, unknown> | null;
 }
 
 /** The two agent tasks `@arcaai/vox` cannot reach BY SLUG, and what it does instead. */
@@ -254,7 +263,7 @@ function BrowserAbsence({ task }: { task: IntegrationAgentTask }) {
   );
 }
 
-function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema }: AgentIntegrationProps) {
+function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema, compiledConfig }: AgentIntegrationProps) {
   const endpoint = AGENT_ENDPOINTS[task];
   const path = `${endpoint.method} ${endpoint.path.replace('{slug}', slug)}`;
   const snippetTask = snippetTaskOf(task);
@@ -262,7 +271,14 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
   // gateway shape (`{ text | ssml }`, `{ mediaId, … }`) the agent's own schema does not describe,
   // so deriving one for them would be a guess dressed as a contract.
   const invocable = snippetTask === 'TEXT_GENERATION';
-  const exampleBody = invocable ? exampleBodyFromJsonSchema(inputSchema) : null;
+  // TASK-971 FU-1 — `inputSchema` is only half the body. An agent's instruction binds
+  // `trigger.context.*` paths that schema never declares (the gateway withholds `context` from its
+  // `additionalProperties: false` check and validates it against the bound context schema instead),
+  // so an example built from the schema alone is refused by every agent that binds clinical
+  // context. `context` is a SIBLING of `text` — the body stays flat.
+  const contextExample = invocable ? agentContextExample(compiledConfig) : null;
+  const schemaExample = invocable ? exampleBodyFromJsonSchema(inputSchema) : null;
+  const exampleBody = contextExample ? { ...(schemaExample ?? FLAT_MINIMUM_BODY), context: contextExample } : schemaExample;
   // NER shares the route but is one-shot: `?mode=stream` on it is a 400 `MODE_UNSUPPORTED`.
   const options: AgentSnippetOptions = { exampleBody, streamable: task === 'TEXT_GENERATION' };
 

@@ -10,7 +10,7 @@
  * empty object as if it were the answer.
  */
 import { describe, expect, it } from 'vitest';
-import { exampleBodyFromJsonSchema } from '../example-body';
+import { agentContextExample, exampleBodyFromJsonSchema } from '../example-body';
 
 describe('exampleBodyFromJsonSchema — an unusable schema is null, never {}', () => {
   it.each([
@@ -112,5 +112,67 @@ describe('exampleBodyFromJsonSchema — what the schema states', () => {
     const body = exampleBodyFromJsonSchema(node);
     expect(body).not.toBeNull();
     expect(JSON.stringify(body)).toContain('label');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-971 FU-1 — the context an agent's INSTRUCTION requires
+// ---------------------------------------------------------------------------
+
+/**
+ * Verified live against the seeded `general-medicine-summarization` on 2026-09-13: its example
+ * derived from `inputSchema` alone was refused with
+ * "instruction references `trigger.context.language`, which this invocation does not supply".
+ *
+ * `inputSchema` says what the agent is called WITH; the instruction's BINDINGS say what it is
+ * called ABOUT, and they are a separate declaration on `compiledConfig.instruction.variables`:
+ * `{ path: 'trigger.…' }` is caller-supplied, `{ value: … }` is already bound. On this lane
+ * `trigger` IS the request's `context` object, so a `trigger.context.language` binding is
+ * `context: { context: { language } }`.
+ */
+describe('agentContextExample', () => {
+  const bindings = {
+    language: { path: 'trigger.context.language' },
+    safe_age: { path: 'trigger.context.safe_age' },
+    revisit_headings: { value: 'A | B | C' },
+  };
+
+  it('builds the nested context a trigger-path binding requires', () => {
+    expect(agentContextExample({ instruction: { variables: bindings } })).toEqual({
+      context: { language: '…', safe_age: '…' },
+    });
+  });
+
+  it('ignores bindings that already carry a value — the caller must not supply those', () => {
+    const context = agentContextExample({ instruction: { variables: { revisit_headings: { value: 'A | B | C' } } } });
+    expect(context).toBeNull();
+  });
+
+  it('prefers the bound context schema, and still covers a path the schema does not declare', () => {
+    const context = agentContextExample({
+      instruction: { variables: bindings },
+      contextSchema: {
+        payloadSchema: {
+          type: 'object',
+          required: ['context'],
+          properties: {
+            context: { type: 'object', required: ['language'], properties: { language: { type: 'string', enum: ['en', 'ml'] } } },
+          },
+        },
+      },
+    });
+
+    // `language` comes from the schema (so it carries the enum value), `safe_age` from the binding.
+    expect(context).toEqual({ context: { language: 'en', safe_age: '…' } });
+  });
+
+  it('returns null when the agent binds nothing from the trigger', () => {
+    expect(agentContextExample({ instruction: { variables: {} } })).toBeNull();
+    expect(agentContextExample(null)).toBeNull();
+    expect(agentContextExample({})).toBeNull();
+  });
+
+  it('ignores a binding that is not rooted at `trigger.`', () => {
+    expect(agentContextExample({ instruction: { variables: { x: { path: 'input.text' } } } })).toBeNull();
   });
 });

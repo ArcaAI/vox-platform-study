@@ -692,8 +692,11 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                   versionNumber={agent.versionNumber}
                   isActive={agent.isActive}
                   /* TASK-971 lane B — the example body in every lane comes from the agent's own
-                     declared input, not a placeholder. */
+                     declared input, not a placeholder. FU-1: `inputSchema` is only half of it —
+                     `compiledConfig` carries the instruction's `trigger.*` bindings, which the
+                     schema never declares and the invocation still requires. */
                   inputSchema={agent.inputSchema}
+                  compiledConfig={agent.compiledConfig}
                 />
               ) : (
                 <EmptyState

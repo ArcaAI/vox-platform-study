@@ -61,6 +61,9 @@ export function AgentPublishDialog({ open, onOpenChange, onConfirm, confirming, 
               versionNumber={published.versionNumber}
               isActive={published.isActive}
               inputSchema={published.inputSchema}
+              /* TASK-971 FU-1 — the instruction's `trigger.*` bindings, which `inputSchema` never
+                 declares and the invocation still requires. */
+              compiledConfig={published.compiledConfig}
             />
           </div>
           <DialogFooter className="shrink-0">
