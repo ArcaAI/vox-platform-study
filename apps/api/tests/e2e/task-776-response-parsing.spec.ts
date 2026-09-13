@@ -282,10 +282,18 @@ test.describe('response parsing — ETag / If-Match OCC + pagination', () => {
       expect(body.data.length).toBeLessThanOrEqual(10);
     });
 
+    // `filters` carries the REAL grammar (`field[op]:value`) rather than the bare
+    // `action:UPDATE` this line used to send. That token matched no grammar and was
+    // silently dropped, so the request passed while filtering nothing — the assertion
+    // below ('200, <= 3 rows') held either way and could never have caught it. A
+    // malformed token is now a 400, which is what makes the well-formed spelling load-bearing.
     test('page/limit/search/searchFields/filters/sort are all accepted and echoed/coerced', async ({ request }) => {
-      const res = await request.get('/api/v1/admin/audit-logs?page=0&limit=3&search=&searchFields=action&filters=action:UPDATE&sort=createdAt:desc', {
-        headers: auth(tenantAdminToken),
-      });
+      const res = await request.get(
+        '/api/v1/admin/audit-logs?page=0&limit=3&search=&searchFields=action&filters=action%5Bequals%5D:UPDATE&sort=createdAt:desc',
+        {
+          headers: auth(tenantAdminToken),
+        },
+      );
       expect(res.status()).toBe(200);
       const body = await res.json();
       expect(body.limit).toBe(3);

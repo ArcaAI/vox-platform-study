@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from nlp.schemas.clinical_taxonomy import ClinicalTaxonomy
@@ -250,6 +252,21 @@ class TopicClassificationResponse(BaseModel):
     available_topics: list[str] = Field(
         default_factory=list, description="The tenant's topic list this call was constrained to"
     )
+    # TASK-957 F-7b — what the DELEGATED `apps/text` generation cost, carried
+    # verbatim so the gateway can write the ledger row. These two routes run no
+    # local model: the whole cost of a classification here is that one LLM call
+    # (plus the guardrail call it triggered), and until this field existed it
+    # reached nobody. Omitted, never `null`, when text reported none — the
+    # TASK-959 §10.2 wire convention, so an older gateway sees the shape it saw
+    # before. NOT reshaped here: the gateway owns the one parser for it.
+    llm_usage: dict[str, Any] | None = Field(
+        default=None,
+        description="Verbatim `usage_detail` from the delegated text /generate call (TASK-957)",
+    )
+    llm_guardrail_usage: dict[str, Any] | None = Field(
+        default=None,
+        description="Verbatim `guardrail_usage` from the delegated text /generate call (TASK-957)",
+    )
 
 
 class IntentClassificationRequest(BaseModel):
@@ -273,6 +290,21 @@ class IntentClassificationResponse(BaseModel):
     )
     available_intents: list[str] = Field(
         default_factory=list, description="The tenant's intent list this call was constrained to"
+    )
+    # TASK-957 F-7b — what the DELEGATED `apps/text` generation cost, carried
+    # verbatim so the gateway can write the ledger row. These two routes run no
+    # local model: the whole cost of a classification here is that one LLM call
+    # (plus the guardrail call it triggered), and until this field existed it
+    # reached nobody. Omitted, never `null`, when text reported none — the
+    # TASK-959 §10.2 wire convention, so an older gateway sees the shape it saw
+    # before. NOT reshaped here: the gateway owns the one parser for it.
+    llm_usage: dict[str, Any] | None = Field(
+        default=None,
+        description="Verbatim `usage_detail` from the delegated text /generate call (TASK-957)",
+    )
+    llm_guardrail_usage: dict[str, Any] | None = Field(
+        default=None,
+        description="Verbatim `guardrail_usage` from the delegated text /generate call (TASK-957)",
     )
 
 

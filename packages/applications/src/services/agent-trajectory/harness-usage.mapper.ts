@@ -15,6 +15,9 @@ import {
   UsageOperation,
   UsageTrigger,
 } from '../usageLedger';
+// TASK-957 F-9 — the ONE canonical self-hosted set + its classifier. Imported,
+// never restated (see `classifyDeployment` below).
+import { classifyLlmDeployment } from '../usageLedger/vocabulary';
 
 /**
  * `AgentTrajectoryStep` -> usage-ledger emission hook.
@@ -81,22 +84,29 @@ const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
   aws_bedrock: 'bedrock',
 };
 
-/**
- * Ledger provider ids that run on platform hardware — mirrors the
- * self-hosted-server-id group in `KNOWN_PROVIDERS` (`usageLedger/vocabulary.ts`).
- * Everything else defaults to `CLOUD`: a BYOK (tenant-funded) call needs an
- * explicit signal this lane does not have (see the module header on
- * `costBasis`), so `deployment` never claims more than "not self-hosted".
- */
-const SELF_HOSTED_PROVIDERS = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp', 'built-in']);
-
 function canonicalizeProvider(raw: string): string {
   const trimmed = raw.trim();
   return PROVIDER_ALIASES[trimmed] ?? trimmed;
 }
 
-function classifyDeployment(provider: string): AiDeploymentKind {
-  return SELF_HOSTED_PROVIDERS.has(provider) ? AiDeploymentKind.SELF_HOSTED : AiDeploymentKind.CLOUD;
+/**
+ * Deployment kind, from the ONE canonical self-hosted set (TASK-957 F-9).
+ *
+ * This module used to keep a private `SELF_HOSTED_PROVIDERS` restatement of
+ * `SELF_HOSTED_PROVIDER_IDS`, and `consultation/summary/text-usage.ts` kept a
+ * third. All three were identical, which is what made the fork survivable and
+ * what guaranteed it would not stay that way: the blocking and the streaming
+ * half of the SAME agent classify through different functions, so an id added
+ * to one list and not the others bills one half as CLOUD and nothing fails. The
+ * concrete instance was `harness` — the durable worker joined the canonical set
+ * under TASK-959 and never reached this copy.
+ *
+ * Funding still wins over the provider (`classifyLlmDeployment`'s own rule):
+ * a call served on the tenant's credential is BYOK whichever vendor answered,
+ * and only when nobody's credential was borrowed does the provider decide.
+ */
+function classifyDeployment(provider: string, tenantFunded: boolean): AiDeploymentKind {
+  return AiDeploymentKind[classifyLlmDeployment(provider, tenantFunded)];
 }
 
 /**
@@ -213,6 +223,21 @@ export interface BuildHarnessUsageOptions {
    * step, whose seconds are HOPE's own CPU spent calling the vendor.
    */
   device?: ComputeDevice | null;
+  /**
+   * TASK-957 F-8 — the CLINICIAN the run acts for, from the trajectory wire.
+   *
+   * Passed in rather than read off the step for the same structural reason
+   * `device` is: `AgentTrajectoryStep` has no column for it. It is attribution
+   * the ingest carried, not state the trajectory table stores, and adding a
+   * column to relay a value nothing reads from that table would be the
+   * expensive way to be right. Absent stays ABSENT — a `doctorId: null` where
+   * there used to be no key is a diff on every consultation-lane row.
+   */
+  doctorId?: string | null;
+  /** The interpreter node this step belongs to ({@link UsageAttributes.nodeId}). */
+  nodeId?: string | null;
+  /** The published definition version that node belongs to ({@link UsageAttributes.workflowVersionId}). */
+  workflowVersionId?: string | null;
 }
 
 /**
@@ -294,7 +319,7 @@ export function buildHarnessUsageBatches(step: AgentTrajectoryStepEntity, option
       model,
       // BYOK is claimed ONLY from a funding tier the gateway derived; otherwise the
       // engine decides, exactly as before.
-      deployment: tenantFunded ? AiDeploymentKind.BYOK : classifyDeployment(provider),
+      deployment: classifyDeployment(provider, tenantFunded),
       // The two halves move TOGETHER — `UsageLedgerService` warns on either alone (a BYOK
       // deployment on the INTERNAL basis inflates COGS; the reverse loses platform spend).
       // Omitted for everything else, which defaults to INTERNAL: a consultation-lane step
@@ -304,6 +329,8 @@ export function buildHarnessUsageBatches(step: AgentTrajectoryStepEntity, option
       consultationId: step.consultationId ?? null,
       requestId: step.runId || step.sessionId,
       sessionId: step.sessionId,
+      // TASK-957 F-8 — the existing column, filled for the first time on this lane.
+      ...(options.doctorId ? { doctorId: options.doctorId } : {}),
       attributesJson: {
         engine: provider,
         interrupted: step.status !== AgentStepStatus.OK,
@@ -312,6 +339,11 @@ export function buildHarnessUsageBatches(step: AgentTrajectoryStepEntity, option
         ...(trigger ? { trigger } : {}),
         ...(guardrail ? { guardrail } : {}),
         ...(leg ? { leg } : {}),
+        // TASK-957 F-8 — WHICH node of WHICH definition version. Independent of
+        // each other and of `doctorId`: a run with no clinical subject still
+        // names its node, and a step the interpreter did not label still bills.
+        ...(options.nodeId ? { nodeId: options.nodeId } : {}),
+        ...(options.workflowVersionId ? { workflowVersionId: options.workflowVersionId } : {}),
       },
     },
     units,

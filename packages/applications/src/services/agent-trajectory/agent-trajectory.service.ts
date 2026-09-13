@@ -186,6 +186,11 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
       }
     }
 
+    // TASK-957 F-8 — the ingest carries four attribution fields that have no
+    // column on `AgentTrajectoryStep` (`doctorId`, `nodeId`, `workflowVersionId`,
+    // `nodeType`). They are paired with their entity here and handed to the
+    // usage mapper below, which is the only thing that reads them; persisting
+    // them would grow the trajectory table by four columns nothing reads back.
     const entities = steps.map((step) =>
       AgentTrajectoryStepFactory.CreateStep({
         tenantId: step.tenantId,
@@ -225,12 +230,12 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
       ({ count } = await this.unitOfWorkService.runInTransaction(async (tx) => {
         const result = await this.agentTrajectoryStepRepository.createMany(entities, true, tx);
         // Attempted for EVERY entity, deliberately NOT gated on `count` — see `emitUsage`.
-        await this.emitUsage(entities, tx);
+        await this.emitUsage(entities, steps, tx);
         return result;
       }));
     } else {
       ({ count } = await this.agentTrajectoryStepRepository.createMany(entities, true));
-      await this.emitUsage(entities);
+      await this.emitUsage(entities, steps);
     }
 
     // Only republish when at least one row was actually persisted — a fully
@@ -502,11 +507,23 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    * and extending it is outside this service's boundary. See the
    * report for the recommended follow-up.
    */
-  private async emitUsage(entities: AgentTrajectoryStepEntity[], tx?: CorePrisma.TransactionClient): Promise<void> {
+  private async emitUsage(
+    entities: AgentTrajectoryStepEntity[],
+    inputs: CreateAgentTrajectoryStepInput[],
+    tx?: CorePrisma.TransactionClient,
+  ): Promise<void> {
     if (!this.usageLedgerService) return;
-    for (const entity of entities) {
+    for (const [index, entity] of entities.entries()) {
       const device = await this.resolveStepDevice(entity);
-      const event = buildHarnessUsageBatches(entity, { device });
+      // Positional, because `entities` is `inputs.map(...)` two statements up —
+      // the pairing is the map's own, not a lookup that could miss.
+      const input = inputs[index];
+      const event = buildHarnessUsageBatches(entity, {
+        device,
+        doctorId: input?.doctorId,
+        nodeId: input?.nodeId,
+        workflowVersionId: input?.workflowVersionId,
+      });
       if (!event) continue;
 
       const operation = event.batch.common.operation;
@@ -652,11 +669,18 @@ function buildComputeSampleUsage(sample: ComputeSampleInput): UsageEventBatchInp
       deployment: AiDeploymentKind.SELF_HOSTED,
       requestId: sample.runId,
       sessionId: sample.sessionId,
+      // TASK-957 F-8 — the same identity a trajectory step carries, when the
+      // metering interceptor could read it off the activity input. Absent
+      // today (the harness half lives in `temporal/compute_metering.py`), and
+      // absent is exactly what an unset one must look like on the row.
+      ...(sample.doctorId ? { doctorId: sample.doctorId } : {}),
       attributesJson: {
         engine: HARNESS_WORKER_PROVIDER,
         device: 'cpu',
         ...(activityType ? { activityType } : {}),
         ...(trigger ? { trigger } : {}),
+        ...(sample.nodeId ? { nodeId: sample.nodeId } : {}),
+        ...(sample.workflowVersionId ? { workflowVersionId: sample.workflowVersionId } : {}),
       },
     },
     // Three decimals, like every other occupancy row: a fast activity burns

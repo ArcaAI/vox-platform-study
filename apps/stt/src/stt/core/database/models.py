@@ -64,12 +64,13 @@ AiModelFormatType = ENUM(
     create_type=False,
 )
 
-AiModelDownloadStatusType = ENUM(
-    "NOT_DOWNLOADED",
-    "DOWNLOADING",
-    "DOWNLOADED",
-    "DOWNLOAD_FAILED",
-    name="AiModelDownloadStatus",
+AiModelAvailabilityType = ENUM(
+    "UNKNOWN",
+    "AVAILABLE",
+    "MISSING",
+    "PARTIAL",
+    "NOT_APPLICABLE",
+    name="AiModelAvailability",
     schema="core",
     create_type=False,
 )
@@ -214,10 +215,15 @@ class AiModelRead(Base):
     architecture: Mapped[str | None] = mapped_column(String)
     memory_size_mb: Mapped[int | None] = mapped_column("memorySizeMb", Integer)
     compute_type: Mapped[str | None] = mapped_column("computeType", String)
-    download_status: Mapped[str] = mapped_column("downloadStatus", AiModelDownloadStatusType)
-    local_path: Mapped[str | None] = mapped_column("localPath", String)
-    downloaded_at: Mapped[datetime | None] = mapped_column("downloadedAt", DateTime)
-    file_size_mb: Mapped[int | None] = mapped_column("fileSizeMb", Integer)
+    # TASK-964 — the four columns that used to sit here were DROPPED by
+    # TASK-890 §3.11/L2: the mount path became a DERIVATION over the bucket
+    # identity below, and the three run-bookkeeping fields moved into
+    # `_metadata.download`. Declaring them made every SELECT through this mirror
+    # raise UndefinedColumnError; `config_reader` reconstructs all four from
+    # what follows.
+    availability: Mapped[str] = mapped_column(AiModelAvailabilityType)
+    bucket_prefix: Mapped[str | None] = mapped_column("bucketPrefix", String)
+    primary_object: Mapped[str | None] = mapped_column("primaryObject", String)
     checksum: Mapped[str | None] = mapped_column(String)
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])

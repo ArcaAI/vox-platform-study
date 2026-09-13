@@ -10,6 +10,8 @@
 
 import logging
 import warnings
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +30,78 @@ from .dto import (
 from .yaml_parser import get_yaml_parser
 
 logger = logging.getLogger(__name__)
+
+# ── TASK-964: reconstructing what TASK-890 §3.11/L2 removed ──────────────────
+#
+# `localPath` stopped being a column and became a DERIVATION over the bucket
+# identity; the gateway owns the canonical one (`derivedLocalPath` in
+# `packages/applications/src/services/ai-model/constants.ts`). These two
+# constants mirror it. They live HERE, local to the deprecated reader, rather
+# than in a shared module on purpose: TASK-861 removed stt's dependency on this
+# derivation for the live path, and re-exporting it would invite the spec-driven
+# path to start using it again.
+
+#: Mount point of the s3fs sidecar that serves `hope-models` in every pod.
+_HOPE_MODELS_MOUNT = "/mnt/models-bucket"
+
+#: Libraries whose loader opens ONE file, so the derived path names the primary
+#: object rather than the directory holding it. Mirrors `SINGLE_FILE_LIBRARIES`.
+_SINGLE_FILE_LIBRARIES = frozenset({"whisper.cpp", "llama.cpp", "onnxruntime", "parakeet.cpp"})
+
+
+def _download_status_of(availability: str | None) -> AiModelDownloadStatus:
+    """The retired `downloadStatus`, expressed through the column that replaced it.
+
+    Only AVAILABLE means the weights are staged. Everything else — MISSING,
+    PARTIAL, UNKNOWN, NOT_APPLICABLE — is reported NOT_DOWNLOADED rather than
+    guessed at: this DTO field has four states and the measurement has five, so
+    the mapping is deliberately lossy in the safe direction.
+    """
+    return (
+        AiModelDownloadStatus.DOWNLOADED
+        if availability == "AVAILABLE"
+        else AiModelDownloadStatus.NOT_DOWNLOADED
+    )
+
+
+def _derived_local_path(model: "AiModelRead") -> str | None:
+    """`/mnt/models-bucket/<bucketPrefix>[/<primaryObject>]`, or None.
+
+    None when the row has no bucket identity — which is exactly the signal the
+    resolvers use to fall back to `source_uri` scheme dispatch.
+    """
+    prefix = (model.bucket_prefix or "").strip().strip("/")
+    if not prefix:
+        return None
+    base = f"{_HOPE_MODELS_MOUNT}/{prefix}"
+    if model.library_name in _SINGLE_FILE_LIBRARIES and model.primary_object:
+        return f"{base}/{model.primary_object.lstrip('/')}"
+    return f"{base}/"
+
+
+def _download_meta(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """The `_metadata.download` block the publish job writes, or an empty dict."""
+    if not isinstance(metadata, dict):
+        return {}
+    block = metadata.get("download")
+    return block if isinstance(block, dict) else {}
+
+
+def _download_meta_datetime(metadata: dict[str, Any] | None, key: str) -> datetime | None:
+    """An ISO-8601 timestamp from the run bookkeeping, or None if absent/unparseable."""
+    raw = _download_meta(metadata).get(key)
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _download_meta_int(metadata: dict[str, Any] | None, key: str) -> int | None:
+    """An integer from the run bookkeeping, or None if absent or not a number."""
+    raw = _download_meta(metadata).get(key)
+    return int(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
 
 
 def _deprecated(what: str) -> None:
@@ -309,8 +383,14 @@ class ModelRegistryReader:
         """
         _deprecated("ModelRegistryReader.get_downloaded_models()")
         async with get_session() as session:
+            # TASK-964 — `downloadStatus` is gone (TASK-890 §3.11/L2). `availability`
+            # is the MEASURED replacement: the bucket inventory writes it, and
+            # AVAILABLE means the weights are really staged. NOT_APPLICABLE is
+            # deliberately excluded here — it marks a cloud row or a library that
+            # ships its own weights, neither of which this deprecated
+            # "downloaded models" listing ever returned.
             query = select(AiModelRead).where(
-                AiModelRead.download_status == "DOWNLOADED",
+                AiModelRead.availability == "AVAILABLE",
                 AiModelRead.resource_status == "ENABLED",
             )
 
@@ -376,10 +456,13 @@ class ModelRegistryReader:
             library_name=getattr(model, "library_name", None),
             memory_size_mb=model.memory_size_mb,
             compute_type=model.compute_type,
-            download_status=AiModelDownloadStatus(model.download_status),
-            local_path=model.local_path,
-            downloaded_at=model.downloaded_at,
-            file_size_mb=model.file_size_mb,
+            # TASK-964 — all four were columns until TASK-890 §3.11/L2 dropped
+            # them; they are reconstructed here so this deprecated path keeps its
+            # DTO contract without the gateway having to keep dead columns alive.
+            download_status=_download_status_of(model.availability),
+            local_path=_derived_local_path(model),
+            downloaded_at=_download_meta_datetime(model.extra_metadata, "finishedAt"),
+            file_size_mb=_download_meta_int(model.extra_metadata, "sizeMb"),
             checksum=model.checksum,
             tags=model.tags or [],
         )

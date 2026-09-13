@@ -19,7 +19,8 @@ import type { AxiosError } from 'axios';
 
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
-import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
+import { type ProviderFunding, classifyTtsProvider, isAttributableTtsProvider } from './tts-provider-classification';
 import { resolveTtsRequestConfig } from './tts-tenant-config';
 import { RequiredScopes } from '../../decorators';
 
@@ -341,6 +342,17 @@ export class SpeechProxyController {
       const emitUsage = (interrupted: boolean): void => {
         if (emitted || !tenantId || !this.usageLedger) return;
         emitted = true;
+        // TASK-957 F-10 — no provider, no row. See `isAttributableTtsProvider`: the alternative
+        // is a row asserting `provider: 'none'` on the platform's own hardware, which rates at
+        // zero COGS and drains the tenant's allowance first.
+        if (!isAttributableTtsProvider(provider)) {
+          recordUsageEmissionFailure('tts.synthesize');
+          this.logger.warn({
+            message: 'TTS synthesis reported no provider; recording no usage row for it',
+            requestId,
+          });
+          return;
+        }
         const audioSeconds = this.resolveAudioSeconds(upstream.headers, proxiedBytes);
         const batch: UsageEventBatchInput = {
           common: {

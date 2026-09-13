@@ -103,7 +103,11 @@ export class WorkflowRunController {
     // ledger being consulted at all, or the metering read becomes an oracle
     // over the run id space.
     const run = await this.workflowRunService.getRun(tenantId, runId);
-    const cpuSeconds = await this.usageAnalytics.getWorkflowRunCpuSeconds(tenantId, runId);
+    // By the run's SESSION id, not the path's run id: a WORKFLOW ledger row's
+    // `requestId` is Temporal's execution-attempt id, so the domain run id
+    // matched nothing. `sessionId` is the key this run already joins its own
+    // trajectory steps by (`workflow-run.prisma:10-20`).
+    const cpuSeconds = await this.usageAnalytics.getWorkflowRunCpuSeconds(tenantId, run.sessionId);
     return Object.assign(new WorkflowRunDetailResponse(), run, { cpuSeconds });
   }
 
