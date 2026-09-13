@@ -25,9 +25,14 @@
 
 const HEADER_LINES = [`import { HopeClient } from '@arcaai/vox-node';`, ``];
 
-/** The client construction every snippet opens with — the consumer's own two variables. */
+/**
+ * The client construction every snippet opens with — the consumer's own two variables.
+ *
+ * `baseUrl` is NOT optional: `HopeClient`'s constructor throws without it. A key-only variant
+ * used to live here and was rendered by the workflow snippet, so the one example a tenant admin
+ * was handed after publishing threw before it made a request (TASK-971 F-A2).
+ */
 const CLIENT_WITH_BASE_URL = `const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL, apiKey: process.env.HOPE_API_KEY });`;
-const CLIENT_KEY_ONLY = `const hope = new HopeClient({ apiKey: process.env.HOPE_API_KEY! });`;
 
 /** The agent task shapes the business plane exposes — one call per task, never a generic one. */
 export type SdkSnippetAgentTask = 'TEXT_GENERATION' | 'SPEECH_TO_TEXT' | 'TEXT_TO_SPEECH';
@@ -43,15 +48,21 @@ export function agentVoxNodeSnippet(slug: string, task: SdkSnippetAgentTask): st
   return [...HEADER_LINES, CLIENT_WITH_BASE_URL, ``, call].join('\n');
 }
 
-/** Start a blocking run of a published workflow by slug. */
+/**
+ * Start a blocking run of a published workflow by slug.
+ *
+ * `runAndWait` is the blocking lane — the mode is the METHOD, never a body field, and the body
+ * is the `{ input }` envelope (the agent plane takes its input flat; mixing the two is a 400 on
+ * every call). It throws `GatewayTimeoutError` at the gateway's ~60s ceiling, which means the run
+ * is still going: `hope.workflows.run(...)` + `streamRun` is the lane for anything longer.
+ */
 export function workflowVoxNodeSnippet(slug: string): string {
   return [
     ...HEADER_LINES,
-    CLIENT_KEY_ONLY,
+    CLIENT_WITH_BASE_URL,
     ``,
-    `const run = await hope.workflows.runs.create('${slug}', {`,
+    `const status = await hope.workflows.runAndWait('${slug}', {`,
     `  input: { /* this workflow's trigger payload */ },`,
-    `  mode: 'blocking',`,
     `});`,
   ].join('\n');
 }
