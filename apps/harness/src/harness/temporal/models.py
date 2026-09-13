@@ -227,6 +227,14 @@ class TrajectoryContext(BaseModel):
     stage_id: str | None = None
     node_id: str | None = None
     node_type: str | None = None
+    #: TASK-957 F-8 — the clinician the run acts FOR, so the ledger row a step produces can be
+    #: attributed the way every consultation-lane row already is. On the interpreter lane it is
+    #: the run's SERVER-RESOLVED ``RunSubject.user_id`` (never a payload-sourced identity —
+    #: ``RunSubject`` exists precisely because ``payload`` cannot be trusted to carry one). The
+    #: durable consultation lane carries no clinician in any activity input, so it stays ``None``
+    #: there: absent is a real answer, and guessing the activity's caller would attribute a
+    #: tenant's spend to whoever happened to trigger the workflow.
+    doctor_id: str | None = None
 
 
 class FetchPolicyInput(BaseModel):
