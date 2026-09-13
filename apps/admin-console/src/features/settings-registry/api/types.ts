@@ -94,6 +94,43 @@ export interface SettingCatalogItem {
   lockLabel?: string;
   /** Why it is locked and where the value actually changes. Present iff `locked`. */
   lockReason?: string;
+
+  /**
+   * TASK-969 F-1 — this key is the TENANT half of a two-key pair, and the named
+   * key is its PLATFORM half.
+   *
+   * The split exists for a TRANSPORT reason: the platform half is PULLed as one
+   * cached snapshot per process (so it may declare `consumedBy`), the tenant
+   * half is PUSHed per request (so it may not, or one snapshot becomes one per
+   * tenant). Neither reason is visible to an administrator, and surfacing it as
+   * two near-identically-named keys is what produced the defect this field
+   * closes: the tenant half's SYSTEM row has NO READER — its only consumer
+   * refuses anything but `sourceScope === 'tenant'` — so a platform admin could
+   * write it, read the new value back, and watch the runtime keep the old one.
+   *
+   * DECLARED SERVER-SIDE, on the descriptor. The console holds no key list: it
+   * collapses the pair into one row, and omits the dead SYSTEM scope, purely
+   * because this field is present. Absent for every other key.
+   */
+  platformTierKey?: string;
+}
+
+/**
+ * The platform half of a paired key, returned alongside the TENANT half's value
+ * (TASK-969 §7.3). Present only on a key that declares `platformTierKey`.
+ *
+ * `inForce` is the load-bearing field and the one the console must never
+ * re-derive: it is the server's own statement of which half the RUNTIME applies,
+ * and the whole defect was the console inferring that from a cascade whose
+ * generic shape does not describe this family.
+ */
+export interface SettingPair {
+  platformTierKey: string;
+  platformValue: unknown;
+  /** The platform row's stored version, or absent when no row is stored. */
+  platformVersion?: number;
+  /** `tenant` when the tenant holds an override of its own, else `platform`. */
+  inForce: 'tenant' | 'platform';
 }
 
 /** `GET admin/settings/catalog`. */
@@ -116,6 +153,13 @@ export interface EffectiveSetting {
   /** Which cascade tier actually supplied the value — the "why is it this?" answer. */
   sourceScope: string;
   version?: number;
+  /**
+   * Both halves of a twin-key pair, for a key declaring `platformTierKey`.
+   * Absent for every other key — and absent, harmlessly, from a gateway that
+   * has not yet shipped it, in which case the drawer withholds the "which half
+   * is in force" line rather than guessing it.
+   */
+  pair?: SettingPair;
 }
 
 /** `PUT admin/settings/registry/:key` result; `version` is the next If-Match. */

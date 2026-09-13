@@ -13,7 +13,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import type { SettingCatalog, SettingCatalogItem } from '../../api/types';
+import type { SettingCatalog, SettingCatalogItem, SettingPair } from '../../api/types';
 import { SettingsRegistryScreen } from '../settings-registry-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -22,6 +22,12 @@ const NUMBER_KEY = 'rate-limit.maxRequests';
 const FLAG_KEY = 'workflowExposure.enabled';
 const ENV_KEY = 'storage.minio.endpoint';
 const LIST_KEY = 'guardrail.policy.categories';
+// TASK-969 F-1 — one concept, two keys, split by DELIVERY CHANNEL: the platform
+// half is PULLed as a cached per-process snapshot, the tenant half is PUSHed per
+// request. Both are `globalOnly`, so the pair has exactly one audience and no
+// business surfacing as two rows.
+const PAIR_TENANT_KEY = 'text.guardrailPolicy.requireMedical';
+const PAIR_PLATFORM_KEY = 'text.externalGuardrail.requireMedical';
 
 const ITEMS: SettingCatalogItem[] = [
   {
@@ -74,6 +80,41 @@ const ITEMS: SettingCatalogItem[] = [
   },
 ];
 
+/**
+ * The pair gets its OWN catalog rather than joining `ITEMS`: both halves are
+ * `globalOnly`, and adding a second "Platform-wide" badge to the shared fixture
+ * would break the singular assertions above for reasons that have nothing to do
+ * with what those tests are pinning.
+ */
+const PAIR_ITEMS: SettingCatalogItem[] = [
+  {
+    key: PAIR_TENANT_KEY,
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'tenant',
+    editableBy: 'GlobalSetting',
+    category: 'Guardrail policy',
+    globalOnly: true,
+    label: 'Require medical content',
+    // The declaration is the SERVER's: the console never carries a key list.
+    platformTierKey: PAIR_PLATFORM_KEY,
+  },
+  {
+    key: PAIR_PLATFORM_KEY,
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    category: 'Guardrail policy',
+    globalOnly: true,
+    label: 'Require medical content (platform default)',
+  },
+];
+
+const PAIR_CATALOG: SettingCatalog = { items: PAIR_ITEMS, categories: ['Guardrail policy'] };
+
 const CATALOG: SettingCatalog = {
   items: ITEMS,
   categories: ['Guardrail', 'Pipeline', 'Rate limits', 'Storage'],
@@ -86,11 +127,20 @@ interface RecordedCall {
   body: unknown;
 }
 
-const STORED: Record<string, { value: unknown; sourceScope: string; version: number }> = {
+const STORED: Record<string, { value: unknown; sourceScope: string; version: number; pair?: SettingPair }> = {
   [NUMBER_KEY]: { value: 100, sourceScope: 'global-kv', version: 3 },
   [FLAG_KEY]: { value: false, sourceScope: 'code-default', version: 0 },
   [ENV_KEY]: { value: 'http://localhost:9000', sourceScope: 'env', version: 0 },
   [LIST_KEY]: { value: ['pii'], sourceScope: 'global-kv', version: 2 },
+  // The TENANT half carries the pair block; the platform half is an ordinary
+  // system-scope key and carries nothing (TASK-969 §7.3).
+  [PAIR_TENANT_KEY]: {
+    value: false,
+    sourceScope: 'tenant',
+    version: 4,
+    pair: { platformTierKey: PAIR_PLATFORM_KEY, platformValue: true, platformVersion: 2, inForce: 'tenant' },
+  },
+  [PAIR_PLATFORM_KEY]: { value: true, sourceScope: 'system', version: 2 },
 };
 
 /** Radix mounts focusable `aria-hidden` guards at body level; scan the sheet itself. */
@@ -100,7 +150,9 @@ function sheetContent(): HTMLElement {
   return element;
 }
 
-function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?: () => Response; workingTenant?: string | null } = {}): RecordedCall[] {
+function stubFetch(
+  opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?: () => Response; workingTenant?: string | null; omitPair?: boolean } = {},
+): RecordedCall[] {
   const { elevated = true, catalog = CATALOG } = opts;
   const calls: RecordedCall[] = [];
 
@@ -140,7 +192,9 @@ function stubFetch(opts: { elevated?: boolean; catalog?: SettingCatalog; onPut?:
       }
       if (path.startsWith('/api/hope/admin/settings/registry/')) {
         const key = decodeURIComponent(path.replace('/api/hope/admin/settings/registry/', ''));
-        const stored = STORED[key] ?? { value: null, sourceScope: 'code-default', version: 0 };
+        const base = STORED[key] ?? { value: null, sourceScope: 'code-default', version: 0 };
+        // `omitPair` simulates a gateway that has not yet shipped the pair block.
+        const stored = opts.omitPair ? { ...base, pair: undefined } : base;
         if (call.method === 'PUT') {
           return opts.onPut ? opts.onPut() : Response.json({ key, tier: 'global-kv', value: call.body, scope: 'system', version: stored.version + 1 });
         }
@@ -542,6 +596,163 @@ describe('SettingRegistryDrawer — optimistic concurrency', () => {
     renderWithProviders(<SettingsRegistryScreen />);
     const dialog = await openKey(NUMBER_KEY);
     await within(dialog).findByLabelText('New value');
+
+    expect(await axe(sheetContent())).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-969 WS-1 — the twin-key pair renders as ONE row.
+ *
+ * The trap this closes: a platform admin set `text.guardrailPolicy.requireMedical`
+ * to `false` at SYSTEM scope, got a 200, read `false` back, and the runtime kept
+ * enforcing `true`. That SYSTEM row has no reader — the only consumer refuses
+ * anything but `sourceScope === 'tenant'` — so the write was real, confirmed and
+ * inert. Below: the dead scope is not offered, both halves are visible at once,
+ * and each picker option routes to the key that actually owns it.
+ */
+describe('SettingRegistryDrawer — the twin-key pair (TASK-969 F-1)', () => {
+  it('lists the pair ONCE — the platform half is not a second row', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+
+    expect(await screen.findByText(PAIR_TENANT_KEY)).toBeDefined();
+    expect(screen.queryByText(PAIR_PLATFORM_KEY)).toBeNull();
+  });
+
+  it('offers the pair picker instead of the dead SYSTEM scope', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    expect(await within(dialog).findByRole('radio', { name: 'Platform default (every tenant)' })).toBeDefined();
+    expect(within(dialog).getByRole('radio', { name: 'ArcaAI override' })).toBeDefined();
+    // The old picker's SYSTEM option is the one that wrote a row nobody reads.
+    expect(within(dialog).queryByRole('radio', { name: /SYSTEM/ })).toBeNull();
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('titles the row by the CONCEPT and still names both real keys', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    // Either key as the title would name a row the Save button may not touch.
+    expect(within(dialog).getAllByText('Require medical content').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText(PAIR_TENANT_KEY)).toBeDefined();
+    expect(within(dialog).getByText(PAIR_PLATFORM_KEY)).toBeDefined();
+  });
+
+  it('shows BOTH values and which one the runtime applies', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    expect(await within(dialog).findByText('ArcaAI: off')).toBeDefined();
+    expect(within(dialog).getByText('platform default: on')).toBeDefined();
+    expect(within(dialog).getByText('ArcaAI wins')).toBeDefined();
+  });
+
+  it('defaults to the tenant override and writes the TENANT key at tenant scope', async () => {
+    const calls = stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    fireEvent.click(await within(dialog).findByRole('switch'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(putCalls(calls)).toHaveLength(1));
+    expect(putCalls(calls)[0].url).toContain(encodeURIComponent(PAIR_TENANT_KEY));
+    expect((putCalls(calls)[0].body as { scope: string }).scope).toBe('tenant');
+  });
+
+  it('routes the platform option to the PLATFORM key at system scope', async () => {
+    const calls = stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    fireEvent.click(await within(dialog).findByRole('radio', { name: 'Platform default (every tenant)' }));
+    fireEvent.click(await within(dialog).findByRole('switch'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(putCalls(calls)).toHaveLength(1));
+    expect(putCalls(calls)[0].url).toContain(encodeURIComponent(PAIR_PLATFORM_KEY));
+    expect((putCalls(calls)[0].body as { scope: string }).scope).toBe('system');
+    // The platform half's own row version, not the tenant half's.
+    expect(putCalls(calls)[0].headers.get('if-match')).toBe('"2"');
+  });
+
+  it('keeps the platform-wide warning on the platform option', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    expect(within(dialog).queryByText(/changes the platform for every tenant/i)).toBeNull();
+    fireEvent.click(await within(dialog).findByRole('radio', { name: 'Platform default (every tenant)' }));
+
+    expect(await within(dialog).findByText(/changes the platform for every tenant/i)).toBeDefined();
+  });
+
+  it('still keeps the pair summary visible while the platform half is being edited', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    fireEvent.click(await within(dialog).findByRole('radio', { name: 'Platform default (every tenant)' }));
+
+    // The pair block rides on the TENANT half's read, which is already cached
+    // from the default target — so this costs no extra request.
+    expect(await within(dialog).findByText('ArcaAI: off')).toBeDefined();
+  });
+
+  it('follows a deep link to the platform half to the ONE row that owns it', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: `?key=${PAIR_PLATFORM_KEY}` });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(PAIR_TENANT_KEY)).toBeDefined();
+  });
+
+  it('surfaces a governance 400 inline, naming the twin, rather than only a toast', async () => {
+    // Unreachable from this UI — the picker no longer offers it — but the API is
+    // reachable without the console, and a refusal an admin has to catch in a
+    // vanishing toast is the same failure this ticket is about.
+    stubFetch({
+      catalog: PAIR_CATALOG,
+      onPut: () =>
+        Response.json(
+          { statusCode: 400, message: 'text.guardrailPolicy.requireMedical has no reader at system scope. Write text.externalGuardrail.requireMedical instead.' },
+          { status: 400 },
+        ),
+    });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    fireEvent.click(await within(dialog).findByRole('switch'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    expect(await within(dialog).findByText(/Write text\.externalGuardrail\.requireMedical instead/)).toBeDefined();
+  });
+
+  it('withholds the verdict — never guesses it — when the pair block has not shipped yet', async () => {
+    // The catalog declares the pairing but the read lane does not yet answer
+    // with `pair`. The picker is catalog-driven so it still routes correctly;
+    // only the "which is in force" line is withheld, because that is the one
+    // fact the console must never infer. Inferring it from the generic cascade
+    // is the whole defect.
+    stubFetch({ catalog: PAIR_CATALOG, omitPair: true });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+
+    expect(await within(dialog).findByRole('radio', { name: 'Platform default (every tenant)' })).toBeDefined();
+    expect(within(dialog).queryByText(/wins$/)).toBeNull();
+  });
+
+  it('has no axe violations with the paired editor open', async () => {
+    stubFetch({ catalog: PAIR_CATALOG });
+    renderWithProviders(<SettingsRegistryScreen />);
+    const dialog = await openKey(PAIR_TENANT_KEY);
+    await within(dialog).findByRole('switch');
 
     expect(await axe(sheetContent())).toHaveNoViolations();
   });
