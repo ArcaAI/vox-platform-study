@@ -132,6 +132,9 @@ describe('validateUsageAttributes — the allow-list', () => {
         'device',
         'leg',
         'storageClass',
+        // TASK-957 F-8 — node identity on the workflow lane.
+        'nodeId',
+        'workflowVersionId',
       ].sort(),
     );
   });
