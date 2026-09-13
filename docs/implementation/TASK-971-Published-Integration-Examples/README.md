@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — all six lanes merged on `dev-2.2` and gated; the §3.2 runtime pass is the one outstanding criterion (it needs an authenticated console session) |
+| Status | **Completed** — all six lanes merged on `dev-2.2`, gated, and the §3.2 runtime pass driven in a real browser against the live stack. One follow-up recorded (FU-1) |
 | Type | `feature` (+ one `bugfix` lane, A) |
 | Branch | `dev-2.2` |
 | Depends on | TASK-965 WS-1 (`shared/versioning/IntegrationPanel`, commit `fb0971e9e`) |
@@ -289,15 +289,66 @@ operations repeating a scheme: 0                               (was 179)
 `route-manifest.json` and `packages/vox-node/src/resources/admin/**` regenerated
 **byte-identical** — the proof that no authorization metadata and no SDK surface moved.
 
+### §3.2 runtime pass — DONE (owner authorised the seeded dev credentials)
+
+Driven in a real browser against the running dev stack as the seeded `tenant_admin`
+(tenantKey `__GLOBAL__`), all six seeded agents plus the published
+`platform-default-summarization` workflow.
+
+| Surface | Verified |
+|---|---|
+| Agent · TEXT_GENERATION | `POST /agents/general-medicine-summarization/invocations`, `?mode=` note, flat-body callout, all four tabs |
+| Agent · NER | no `?mode=stream` note; Node snippet omits `invokeAndStream`; **Postman: 1 item, 0 stream requests**, still warns `MODE_UNSUPPORTED` — the `51900f666` fix confirmed live |
+| Agent · SPEECH_TO_TEXT | `/transcriptions` route; body callout names `mediaId`/`consultationId`/`language`; Browser tab renders **"No browser path by slug"** naming `audio.start({ agentSlug })` and the pipeline-id route |
+| Agent · TEXT_TO_SPEECH | `/speech` route; "answers audio rather than JSON"; Browser tab names `useTtsPlayback`/`useTtsStream` selecting a `voice`, and writes no snippet |
+| Workflow | `POST /workflows/…/runs`; `?mode=` badges `async`/`blocking`/`stream` with `socket` filtered; **"The body is enveloped"**; reserved `input` keys listed |
+| Workflow · Node | `hope.workflows.runAndWait(...)` with **the real schema-derived body** — `context.{language,safe_age,safe_dob,visit_type:"new-visit",…}`, `case_note`, `audio_stream` — the data F-B1 was discarding |
+| Workflow · Postman | **5 requests** (3 modes + status + stream-ticket), guarded `runId` capture script, `apiKey` empty |
+| `/developer/invoke` | Renders; every route, scope, credential, the CASL caveat and the async→poll→stream progression match §2.4 |
+
+**The central claim proven against the live gateway**, both directions:
+
+```
+POST /agents/general-medicine-summarization/invocations   {"input":{...}}   → 400
+  "The invocation body does not match the agent's inputSchema."
+  problems: ["/text: required property is missing",
+             "/input: property is not declared and additionalProperties is false"]
+
+POST /agents/medical-ner/invocations   {"text":"Patient with hypertension started on amlodipine 5mg daily."}
+  → 200, entities: hypertension/DISEASE_DISORDER, amlodipine/MEDICATION, 5mg daily/DOSAGE
+```
+
+The flat body the panel renders works end to end; the enveloped one fails exactly as the callout says.
+
+### FU-1 — the derived example is incomplete for agents with instruction placeholders
+
+`general-medicine-summarization` rejects the panel's own example with a DIFFERENT 400:
+
+> Agent … instruction references `trigger.context.language`, which this invocation does not supply.
+
+The example body is derived from `inputSchema`, but an agent's INSTRUCTION may reference
+`trigger.context.*` placeholders — a separate declaration (the bound context schema), which is
+exactly the distinction `AgentInvocationBody` documents: `inputSchema` says what the agent is
+called WITH, the context schema says what it is called ABOUT. So for such agents the rendered
+example is valid against the schema it was derived from and still insufficient to succeed.
+
+Worth noting: supplying `{"context":{"language":"en"}}` did **not** satisfy it either, so the
+placeholder resolver on the direct-invocation path needs its own look — one shape tested, not a
+diagnosis. Follow-up: merge the agent's bound context schema into the derived example (the agent
+carries `contextSchemaId`), and confirm what `context` shape the resolver actually accepts.
+
+### Two failures deliberately left alone
+
+`membership-bounded-sync.integration.test.ts` needs the live test DB the orchestrator owns;
+`parameters-form.test.tsx` was another session's uncommitted TASK-970 work mid-flight (it passes
+now that they committed, `05078144b`).
+
 ### Not done
 
-- **The §3.2 runtime pass.** Publishing an agent and a workflow, walking all four tabs and
-  importing a generated collection needs an authenticated tenant-admin session; the assistant does
-  not enter passwords into login forms. The dev stack was up and healthy throughout (console 307 →
-  login, gateway `/health` 200), so the merged code compiles and serves.
-- **Two failures deliberately left alone**: `membership-bounded-sync.integration.test.ts` needs the
-  live test DB the orchestrator owns; `parameters-form.test.tsx` was another session's uncommitted
-  TASK-970 work mid-flight (it passes now that they committed, `05078144b`).
+- **Importing the collection into Postman itself** — no Postman client in this environment. The
+  collection was parsed and structurally verified live in the panel (schema URL, variables,
+  collection-level `X-API-Key` auth, per-request URLs and bodies, the capture script), and lane D's
+  35 tests assert v2.1 conformance.
 
 ---
 
@@ -308,3 +359,4 @@ operations repeating a scheme: 0                               (was 179)
 | 2026-09-13 | Ticket opened. Two read-only explorations (public invoke contract; browser SDK surface) + direct verification of every P1. Owner decided OD-1…OD-4. Plan written; awaiting approval. |
 | 2026-09-13 | Owner approved the plan. Lane A landed in the primary checkout; lanes B–F ran in four parallel worktrees (tiered opus/sonnet per rule 14 §1) and were merged in order postman → panel → openapi → portal, with gates re-run after each. Three integration defects found and fixed (§4). Status → Review; the runtime pass is the one criterion outstanding. |
 | 2026-09-13 | Follow-up fixed in `79224fcf2`: the `@arcaai/ui` `"use client"` banner never reached `dist/` because `treeshake: true` sends every chunk back through rollup, which drops the directive. `scripts/ensure-use-client.mjs` restores it post-build (source maps realigned). 24/24 bundles verified; a Server Component importing the barrel now compiles. |
+| 2026-09-13 | Runtime pass done (owner authorised the seeded dev credentials): all six seeded agents + the published workflow walked in a real browser; the NER Postman fix and both "no browser path" absences confirmed live; the flat-vs-enveloped contract proven against the gateway (enveloped → 400, flat → 200 with real NER entities). **FU-1 found**: the derived example is insufficient for agents whose instruction references `trigger.context.*`. Status → Completed. |
