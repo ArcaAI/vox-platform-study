@@ -20,23 +20,39 @@
  * frozen §10.2 sample shape, exactly as the worker's flush does. Hop 1 is the
  * worker's own, and proving it means starting a real run.
  *
- * WHAT CHANGED (TASK-957 lane D, 2026-09-13). The stack this file was written
- * against no longer describes the blocker. `apps/harness` now serves the
- * gateway on the test port, and a `python -m harness.temporal.worker` is
- * attached to the TEST Temporal (`hope-temporal-test`, host port 7333) rather
- * than only the DEV broker on 7233 — both had to be launched with an explicit
- * `TEMPORAL_ADDRESS=localhost:7333`, because `.env.test` declares no
- * `TEMPORAL_ADDRESS` at all and the launchers therefore default to the DEV
- * broker.
+ * HOP 1 NOW RUNS, AND IT IS WRONG (TASK-957 lane D, measured 2026-09-13
+ * against gateway `0.0.0-dev-2-2.aca4944e`). The environment excuse this file
+ * was written under is gone: `apps/harness` serves the gateway on the test
+ * port and a `python -m harness.temporal.worker` is attached to the TEST
+ * Temporal (`hope-temporal-test`, host 7333). Both need an explicit
+ * `TEMPORAL_ADDRESS=localhost:7333`, because `.env.test` declares none and the
+ * launchers default to the DEV broker on 7233; the worker additionally needs
+ * `HARNESS_API_BASE_URL=http://localhost:8968` (it defaults to the dev gateway
+ * on 8868) and `HARNESS_CLAIM_CHECK_STORE=s3` +
+ * `HARNESS_CLAIM_CHECK_ENDPOINT_URL=http://localhost:9002` to read back what
+ * the gateway wrote. `POST /workflows/:slug/runs` now answers 202, a run
+ * executes, and `workflow.step` / `CPU_SECOND` rows land with real
+ * quantities.
  *
- * With both of those up, `POST /workflows/:slug/runs` answers HTTP 500 — for
- * EVERY published workflow (`platform-default-summarization` and
- * `general-medicine-consultation` alike), and `apps/harness` logs no inbound
- * request, so the throw is upstream of the dispatch. Measured against gateway
- * build `0.0.0-dev-2-2.aca4944e`. That is a gateway defect, not an absent
- * service, so hop 1 stays unproven and the run-triggered test still SKIPS —
- * now naming the 500. The skip CONDITION is unchanged (`status >= 500`), so
- * the test runs unaltered the day that route answers 202.
+ * They are nonetheless unreachable by run id, and the run-triggered test below
+ * FAILS on exactly that. `temporal/compute_metering.py:397` sets
+ * `run_id=str(info.workflow_run_id)` — TEMPORAL's own per-execution id, which
+ * appears nowhere else in HOPE. HOPE's run id is the SUFFIX of
+ * `info.workflow_id` (`workflow-interpreter-<runId>`), which the same call
+ * already passes as `session_id`. So every real row carries a `requestId` that
+ * matches no run, and "CPU time for this workflow" — the single ledger query
+ * §3.4 exists to make possible — returns nothing. Measured consequence:
+ * `GET admin/workflow-runs/:id` reports `cpuSeconds: null` on runs whose rows
+ * hold 0.001 / 0.037 / 0.4 / 1.251 CPU-seconds. Secondly, the worker never
+ * sends `trigger` at all (`compute_metering.py:97-100` declares it optional
+ * because no activity input carries one), so `attributesJson.trigger` is
+ * absent where the contract says `WORKFLOW_RUN`.
+ *
+ * BOTH are worker-side, and the hop-2 test above proves the gateway intake is
+ * correct — it supplies `runId` and `trigger` itself and every assertion
+ * holds. Do NOT reconcile the failing test by matching on `sessionId` or by
+ * dropping the `trigger` assertion: that would make the suite agree with the
+ * defect and erase the only signal that a run's CPU is unattributable.
  */
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'crypto';
@@ -202,13 +218,22 @@ test.describe('TASK-959 §3.4 — an API-triggered run bills its own worker CPU'
 
     // A run the gateway cannot dispatch, or one no worker will ever pick up,
     // proves nothing about metering. Both are the same skip.
-    test.skip(
-      start.status() >= 500,
-      `the gateway could not start the run (${start.status()}) — measured 2026-09-13 with apps/harness serving on the test port AND a Temporal worker attached to the test broker (7333): this route answers 500 for every published workflow and apps/harness logs no inbound request, so the throw is the gateway's, upstream of the dispatch`,
-    );
+    // Answers 202 as of 2026-09-13, so this no longer fires. It used to, with a
+    // bare 500: the test MinIO had no `harness-claim-check` bucket (the test
+    // compose omitted it), so the gateway's claim-check upload threw
+    // `NoSuchBucket` before any harness call. With the bucket present the same
+    // route answers a typed 503 while the harness is down, which is the shape it
+    // should have — so a >=500 here now means a genuinely unreachable dispatcher.
+    test.skip(start.status() >= 500, `the gateway could not start the run (${start.status()}) — the harness dispatcher is unreachable`);
     expect(start.status(), await start.text()).toBe(202);
     const { runId } = (await start.json()) as { runId: string };
 
+    // FAILS TODAY, AND THE PREDICATE IS THE CORRECT ONE (see the header). Rows
+    // DO land — the timeout message lists them with real quantities — but each
+    // carries `requestId = info.workflow_run_id`, Temporal's per-execution id,
+    // instead of HOPE's `runId`. The fix is one line in
+    // `apps/harness/.../compute_metering.py`; matching on `sessionId` here would
+    // only teach the suite to accept a run whose CPU no operator can find.
     const rows = await waitForLedgerRows(since, (row) => row.requestId === runId && row.capability === 'WORKFLOW', {
       label: 'run worker CPU',
       timeoutMs: 120_000,
