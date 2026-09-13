@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { IconBook2, IconKey, IconPackage } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
