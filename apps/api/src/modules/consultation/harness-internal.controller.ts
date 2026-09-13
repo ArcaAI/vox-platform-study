@@ -238,6 +238,36 @@ class HarnessTrajectoryStepInput {
   @IsOptional()
   @IsString()
   correlationId?: string;
+
+  // ── TASK-957 F-8: clinician + node identity ────────────────────────────────
+  // ADDITIVE-OPTIONAL, and declared here BEFORE any worker sends them: the
+  // global pipe runs `forbidNonWhitelisted`, so an undeclared key 400s the
+  // WHOLE batch — every step in it — and the harness POST is fire-and-forget,
+  // which turns that into a warn line and a permanently missing ledger row.
+  // The harness prunes each one it does not know rather than sending null.
+
+  @ApiPropertyOptional({ nullable: true, description: "The clinician the run acts for (the interpreter's RunSubject.userId)." })
+  @IsOptional()
+  @IsString()
+  doctorId?: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'The interpreter node this step belongs to.' })
+  @IsOptional()
+  @IsString()
+  nodeId?: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'The published workflow-definition version that node belongs to.' })
+  @IsOptional()
+  @IsString()
+  workflowVersionId?: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The node's type (e.g. core.agent). Accepted so a sender is never 400'd; not a ledger dimension.",
+  })
+  @IsOptional()
+  @IsString()
+  nodeType?: string;
 }
 
 /**
@@ -298,6 +328,26 @@ class HarnessComputeSampleInput {
   @IsOptional()
   @IsString()
   trigger?: string;
+
+  // TASK-957 F-8 — the same identity the steps carry, for the worker-CPU rows.
+  // Accepted ahead of a sender for the reason above: under
+  // `forbidNonWhitelisted` the receiving side must land first, or the first
+  // flush that carries them 400s entirely.
+
+  @ApiPropertyOptional({ description: 'The interpreter node whose activity burned this CPU.' })
+  @IsOptional()
+  @IsString()
+  nodeId?: string;
+
+  @ApiPropertyOptional({ description: 'The published definition version that node belongs to.' })
+  @IsOptional()
+  @IsString()
+  workflowVersionId?: string;
+
+  @ApiPropertyOptional({ description: 'The clinician the run acts for.' })
+  @IsOptional()
+  @IsString()
+  doctorId?: string;
 }
 
 /**
@@ -838,6 +888,14 @@ export class HarnessInternalController {
       payloadRef: (step.payloadRef ?? undefined) as JsonValue | undefined,
       errorCode: step.errorCode ?? undefined,
       correlationId: step.correlationId ?? undefined,
+      // TASK-957 F-8 — attribution for the usage row this ingest also emits.
+      // `?? undefined` and never `?? null`: the mapper spreads each one only
+      // when truthy, and a null here would read identically but say something
+      // different to anyone reading the mapping.
+      doctorId: step.doctorId ?? undefined,
+      nodeId: step.nodeId ?? undefined,
+      workflowVersionId: step.workflowVersionId ?? undefined,
+      nodeType: step.nodeType ?? undefined,
     }));
 
     // The trigger is narrowed against the ledger's closed vocabulary inside the
@@ -853,6 +911,9 @@ export class HarnessInternalController {
       cpuMs: sample.cpuMs,
       wallMs: sample.wallMs,
       trigger: sample.trigger as ComputeSampleInput['trigger'],
+      nodeId: sample.nodeId ?? undefined,
+      workflowVersionId: sample.workflowVersionId ?? undefined,
+      doctorId: sample.doctorId ?? undefined,
     }));
 
     await this.cls.run(async () => {

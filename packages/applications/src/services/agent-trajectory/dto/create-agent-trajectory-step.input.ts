@@ -35,4 +35,25 @@ export interface CreateAgentTrajectoryStepInput {
   payloadRef?: JsonValue | null;
   errorCode?: string | null;
   correlationId?: string | null;
+  // ── TASK-957 F-8: attribution, NOT persisted state ─────────────────────────
+  // None of the four has a column on `AgentTrajectoryStep`, and none is meant
+  // to: they exist to reach the usage-ledger emission that rides this same
+  // ingest. Carried on the input rather than on the entity so the trajectory
+  // table does not grow four columns nothing reads back.
+  /** The clinician the run acts for — the interpreter's `RunSubject.userId`. */
+  doctorId?: string | null;
+  /** The interpreter node this step belongs to. */
+  nodeId?: string | null;
+  /** The published workflow-definition version that node belongs to. */
+  workflowVersionId?: string | null;
+  /**
+   * The node's TYPE (`core.agent`, …).
+   *
+   * Accepted from the wire and deliberately not stamped on a ledger row:
+   * `attributesJson` is a PHI allow-list whose extension is a deliberate act,
+   * `nodeId` already identifies the node within its version, and the type is
+   * recoverable from the definition. It is carried so a worker that sends it is
+   * never 400'd by the whitelist, and so the ingest shape matches the wire.
+   */
+  nodeType?: string | null;
 }
