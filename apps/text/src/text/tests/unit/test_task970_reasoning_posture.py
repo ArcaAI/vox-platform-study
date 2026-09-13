@@ -207,7 +207,15 @@ def _make_lmstudio() -> Any:
     return LMStudioProvider()
 
 
-@pytest.mark.parametrize("factory", [_make_openai, _make_azure], ids=["openai", "azure_openai"])
+# LM Studio joins this group on MEASURED evidence, not documentation: its docs list
+# low|medium|high with no off value, but the deployed server honours `'none'`
+# (gemma-4-e4b-it-qat 61.7s -> 0.9s, granite-guardian-4.1-8b 17.7s -> 1.3s), while
+# `'minimal'` does not stop thinking at all and is worse than sending nothing.
+@pytest.mark.parametrize(
+    "factory",
+    [_make_openai, _make_azure, _make_lmstudio],
+    ids=["openai", "azure_openai", "lmstudio"],
+)
 class TestNativeOffOpenAIWire:
     """`reasoning_effort: "none"` is a real rung of the pinned SDK's own literal."""
 
@@ -246,7 +254,10 @@ async def _aempty():
         yield item
 
 
-@pytest.mark.parametrize("factory", [_make_compat, _make_lmstudio], ids=["openai_compat", "lm"])
+# Only the GENERIC OpenAI-compatible adapter remains effort-only, and it is effort-only
+# precisely because it is unverifiable: an unknown server may reject an enum it has
+# never heard of, and a rejected enum is a 400 — a failed generation.
+@pytest.mark.parametrize("factory", [_make_compat], ids=["openai_compat"])
 class TestEffortOnlyOpenAIWire:
     """A generic OpenAI-wire server has an effort dial but no promised off rung.
 
