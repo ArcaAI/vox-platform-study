@@ -21,6 +21,7 @@ fabricated. So a sustained outage RAISES `ExternalTextUnavailableError`
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -34,6 +35,27 @@ logger = get_logger(__name__)
 class ExternalTextUnavailableError(Exception):
     """Raised when `text` is unreachable after the bounded retry budget, or
     returns a response with no usable generated content."""
+
+
+@dataclass(frozen=True)
+class GeneratedLabel:
+    """One delegated generation: the label, and what it COST (TASK-957 F-7b).
+
+    `nlp.topic` / `nlp.intent` run no local model — they spend a real LLM call
+    on `apps/text`, which answers with the same `usage_detail` (and
+    `guardrail_usage`) block every other TEXT caller bills from. This client
+    read `content` and threw the rest away, so the only consumer of those two
+    routes had nothing to record and the spend went unbilled.
+
+    Both blocks are carried VERBATIM: the gateway already owns one parser for
+    that wire shape, and a second interpretation here is a second place for the
+    cache / reasoning split to be lost. `None` means the service reported none —
+    a different fact from an empty block, and never collapsed into one.
+    """
+
+    label: str
+    usage_detail: dict[str, Any] | None = None
+    guardrail_usage: dict[str, Any] | None = None
 
 
 class ExternalTextClient:
@@ -68,7 +90,23 @@ class ExternalTextClient:
         """Post `prompt` to `text`'s `/generate` and return the generated
         label (the response's `content`, stripped). Raises
         `ExternalTextUnavailableError` when the retry budget is exhausted or
-        the response carries no usable content — never guesses a label."""
+        the response carries no usable content — never guesses a label.
+
+        The narrow accessor over :meth:`generate_label_with_usage`, kept for
+        callers that have no billing plane to feed."""
+        return (
+            await self.generate_label_with_usage(prompt, system_prompt, tenant_id=tenant_id)
+        ).label
+
+    async def generate_label_with_usage(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        *,
+        tenant_id: str,
+    ) -> GeneratedLabel:
+        """The same call as :meth:`generate_label`, also returning what it cost
+        (TASK-957 F-7b — see :class:`GeneratedLabel`)."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
@@ -112,7 +150,11 @@ class ExternalTextClient:
                     raise ExternalTextUnavailableError(
                         "text returned an empty generation — refusing to fabricate a label"
                     )
-                return content
+                return GeneratedLabel(
+                    label=content,
+                    usage_detail=_usage_block(payload.get("usage_detail")),
+                    guardrail_usage=_usage_block(payload.get("guardrail_usage")),
+                )
             except ExternalTextUnavailableError:
                 raise
             except Exception as exc:
@@ -141,3 +183,15 @@ class ExternalTextClient:
         raise ExternalTextUnavailableError(
             f"text unreachable after {attempts} attempt(s): {last_error}"
         )
+
+
+def _usage_block(value: Any) -> dict[str, Any] | None:
+    """A usage block, or `None` — never a scalar and never an empty dict.
+
+    Shape-checked rather than trusted: this is an unvalidated peer response, and
+    anything but an object here would eventually reach a
+    `forbidNonWhitelisted` DTO on the gateway. An EMPTY object is dropped too —
+    it would parse downstream as "measured, and it was nothing", which is not
+    what a service that reported no usage said.
+    """
+    return value if isinstance(value, dict) and value else None
