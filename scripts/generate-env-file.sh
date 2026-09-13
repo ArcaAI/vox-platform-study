@@ -310,6 +310,9 @@ _apply_test_overrides() {
   _set_env "$file" TTS_URL "http://localhost:8965"
   _set_env "$file" HARNESS_PORT 8966
   _set_env "$file" HARNESS_URL "http://localhost:8966"
+  # The test stack runs its own Temporal (hope-temporal-test, host 7333); without
+  # this the harness + worker test launchers attach to the DEV broker on 7233.
+  _set_env "$file" TEMPORAL_ADDRESS localhost:7333
   _set_env "$file" LOG_LEVEL error
   _set_env "$file" LOG_FILE_ENABLED false
   _set_env "$file" LOG_FILE_PATH "./logs"
