@@ -113,9 +113,29 @@ export const TEXT_GUARDRAIL_POLICY_PLATFORM_TIER: Record<TextGuardrailPolicyKey,
   'text.guardrailPolicy.includeReasoning': 'text.externalGuardrail.includeReasoning',
 };
 
+/**
+ * Label + description per tenant-half key.
+ *
+ * TASK-969 WS-1 — the labels name the CONCEPT and carry no scope suffix. They
+ * used to read "… (this tenant)", which was right while the console rendered
+ * these as their own rows and wrong the moment it stopped: the pair now renders
+ * as ONE row, titled from the TENANT half's label, whose picker writes EITHER
+ * this key at tenant scope OR its `platformTierKey` twin at system scope. A
+ * "(this tenant)" title on the control that also sets the platform default
+ * would restate the very confusion the pairing removes — the row's picker is
+ * what says which scope, not its title.
+ *
+ * The PLATFORM half's labels in `text-provider-connections.descriptors.ts` keep
+ * their "(platform default)" suffix and must NOT be harmonised with these: the
+ * seeded SYSTEM rows copy those strings verbatim into `GlobalSetting.name`, so
+ * editing one desyncs the seed from the descriptor. Pinned by a test.
+ *
+ * The descriptions are unchanged — they already explain the inherit-on-absence
+ * semantics, which is the part an admin actually needs at the point of editing.
+ */
 const META: Record<TextGuardrailPolicyKey, { label: string; description: string }> = {
   'text.guardrailPolicy.requireMedical': {
-    label: 'Require medical content (this tenant)',
+    label: 'Require medical content',
     description:
       'This tenant’s own clinical-enforcement stance: whether a reachable guardrail must classify the prompt as ' +
       'medical for it to be allowed. Set it only if this tenant differs from the platform default — leaving it ' +
@@ -123,7 +143,7 @@ const META: Record<TextGuardrailPolicyKey, { label: string; description: string 
       'off here rather than by weakening the platform floor for everyone else.',
   },
   'text.guardrailPolicy.includeReasoning': {
-    label: 'Include guardrail reasoning (this tenant)',
+    label: 'Include guardrail reasoning',
     description:
       'Whether this tenant’s moderation calls ask guardrail to return its reasoning. Off at the platform floor ' +
       'because the reasoning quotes the prompt, so it widens what a verdict carries back across a service boundary; ' +

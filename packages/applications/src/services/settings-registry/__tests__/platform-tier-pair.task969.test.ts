@@ -95,6 +95,23 @@ describe('the real registry declares both guardrail pairs', () => {
     expect(() => HOPE_SETTINGS_REGISTRY.assertPlatformTierPairs()).not.toThrow();
   });
 
+  it('the TENANT half is titled after the CONCEPT, not after its scope', () => {
+    // The pair renders as ONE row whose title is the tenant half's label, and
+    // that row sets BOTH halves — so a "(this tenant)" suffix would be wrong on
+    // the very control that also writes the platform default. The scope is what
+    // the row's own picker says; the label names the concept.
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.guardrailPolicy.requireMedical').label).toBe('Require medical content');
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.guardrailPolicy.includeReasoning').label).toBe('Include guardrail reasoning');
+  });
+
+  it('the PLATFORM half keeps its label VERBATIM — the seed copies it into GlobalSetting.name', () => {
+    // Not cosmetic and not ours to tidy: the seeded SYSTEM rows carry these
+    // strings in their `name` column, so editing a label here silently desyncs
+    // the seed from the descriptor it was transcribed from.
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.externalGuardrail.requireMedical').label).toBe('Require medical content (platform default)');
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.externalGuardrail.includeReasoning').label).toBe('Include guardrail reasoning (platform default)');
+  });
+
   it('no OTHER key declares a platform tier — the pair is an exception, not a pattern', () => {
     const declaring = HOPE_SETTINGS_REGISTRY.list()
       .filter((d) => d.platformTierKey !== undefined)
