@@ -57,6 +57,12 @@ from typing import Any, Protocol
 from temporalio import activity
 from temporalio.worker import ActivityInboundInterceptor, ExecuteActivityInput, Interceptor
 
+from harness.temporal.workflow_ids import (
+    CORE_LOOP_WORKFLOW_ID_PREFIX,
+    DOC_WORKFLOW_ID_PREFIX,
+    INTERPRETER_WORKFLOW_ID_PREFIX,
+)
+
 #: Flush cadence for the per-worker sample buffer. A sample is worth nothing until the gateway
 #: has it, and a worker rolled mid-window must not lose more than this much metering, so the
 #: interval is short relative to the graceful-shutdown budget rather than tuned for throughput.
@@ -381,6 +387,41 @@ def _field(args: Sequence[Any], *names: str) -> Any:
     return None
 
 
+#: Workflow-id prefix → the `trigger` a sample carries when its own input declares none.
+#:
+#: TASK-957: every `WORKFLOW`/`CPU_SECOND` row was landing WITHOUT a trigger, because
+#: `_field(input.args, "trigger")` is the only source there was and no activity input model on
+#: either lane declares the field — so the answer was unconditionally `None` and the gateway
+#: correctly dropped it, against a wire contract that says a run's rows carry `WORKFLOW_RUN`.
+#:
+#: The workflow id is the fact that IS always present, and its prefix is a deterministic
+#: addressing contract (`workflow_ids.py`) that the gateway's own `WorkflowRun` join already
+#: relies on — so reading it answers "what was this CPU burned for" without adding a field to
+#: 94 activity inputs. `core-loop-` maps to `WORKFLOW_RUN` too: a loop child's CPU belongs to
+#: the interpreter run that started it, not to a lane of its own.
+#:
+#: Ordered rather than a dict because it is matched by PREFIX, and a longest-match rule would
+#: be a trap the day two prefixes share a stem. They do not today; the tuple keeps it explicit.
+_TRIGGER_BY_WORKFLOW_ID_PREFIX: tuple[tuple[str, str], ...] = (
+    (INTERPRETER_WORKFLOW_ID_PREFIX, "WORKFLOW_RUN"),
+    (CORE_LOOP_WORKFLOW_ID_PREFIX, "WORKFLOW_RUN"),
+    (DOC_WORKFLOW_ID_PREFIX, "CONSULTATION"),
+)
+
+
+def _trigger_for_workflow_id(workflow_id: str) -> str | None:
+    """The trigger a workflow id implies, or ``None`` for one this service does not name.
+
+    Never guesses. `trigger` is a CLOSED vocabulary on the ledger side, and a wrong value is
+    worse than an absent one: it moves spend onto a lane that did not incur it, where nobody
+    is looking for it. An unrecognised prefix therefore omits the label, exactly as before.
+    """
+    for prefix, trigger in _TRIGGER_BY_WORKFLOW_ID_PREFIX:
+        if workflow_id.startswith(prefix):
+            return trigger
+    return None
+
+
 def _build_sample(
     input: ExecuteActivityInput, *, cpu_ms: float, wall_ms: float
 ) -> ComputeSample | None:
@@ -403,7 +444,20 @@ def _build_sample(
         )
         return None
 
+    # An input that states its own trigger WINS; the workflow id is the fallback for the ones
+    # that cannot (which, today, is all of them — see `_TRIGGER_BY_WORKFLOW_ID_PREFIX`).
     trigger = _field(input.args, "trigger")
+    if not (isinstance(trigger, str) and trigger):
+        trigger = _trigger_for_workflow_id(str(info.workflow_id))
+
+    # `run_id` IS TEMPORAL'S EXECUTION ID, DELIBERATELY — do not "fix" it to the business run
+    # id parsed out of the workflow id. Two things depend on that: the ledger key
+    # `harness:cpu:<sessionId>:<runId>:<activityId>:<attempt>` dedupes a REDELIVERED attempt,
+    # which only works while `runId` identifies the execution Temporal redelivered; and a
+    # `continue_as_new` chain deliberately starts a new execution, whose samples must not
+    # collide with the previous one's on the same `(activityId, attempt)`. The business run is
+    # carried by `session_id` (the workflow id), and the gateway sums a run's CPU by
+    # `sessionId` for exactly this reason.
     return ComputeSample(
         tenant_id=tenant_id,
         session_id=str(info.workflow_id),
@@ -413,5 +467,5 @@ def _build_sample(
         activity_type=str(info.activity_type),
         cpu_ms=cpu_ms,
         wall_ms=wall_ms,
-        trigger=trigger if isinstance(trigger, str) and trigger else None,
+        trigger=trigger,
     )
