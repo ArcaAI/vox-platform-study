@@ -284,11 +284,28 @@ test.describe('TASK-959 — a billed second reaches the screen', () => {
       tenantId: TENANT_GLOBAL,
     });
 
+    /**
+     * Round to 5 dp — the SAME precision the `toBeCloseTo(…, 5)` assertions
+     * below use, so the wait and the check cannot disagree about whether the
+     * rollup arrived.
+     *
+     * A bare `>=` on the raw subtraction is a float trap, and it fired: with
+     * the bucket at 25.542 a correct +4.257 drain reads
+     * `29.799 - 25.542 === 4.256999999999998`, which is BELOW `GPU_SECONDS` by
+     * 1.8e-15. The loop then spun its full 150s and reported "never reached the
+     * usage surface" about a rollup that had arrived exactly right, while the
+     * assertions after it would have passed. Whether it fires at all depends on
+     * `beforeGpu`, which is why this was latent — the same code passed on other
+     * starting values. This is the §10.2 rule ("a JSON number is an IEEE
+     * double") applied to the test's own arithmetic.
+     */
+    const round5 = (value: number): number => Math.round(value * 1e5) / 1e5;
+
     const deadline = Date.now() + 150_000;
     let point: TimeseriesPoint | undefined;
     for (;;) {
       point = await bucket();
-      if (point && Number(point.computeSeconds.gpuSeconds) - beforeGpu >= GPU_SECONDS) break;
+      if (point && round5(Number(point.computeSeconds.gpuSeconds) - beforeGpu) >= round5(GPU_SECONDS)) break;
       if (Date.now() >= deadline) {
         throw new Error(
           `the drained rollup never reached the usage surface: gpuSeconds went ${beforeGpu} → ${point?.computeSeconds.gpuSeconds ?? '(no bucket)'}`,
