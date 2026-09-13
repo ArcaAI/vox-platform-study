@@ -111,6 +111,31 @@ const INSENSITIVE_STRING_OPERATORS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
+ * The Prisma operators a SCALAR column filter may carry — the fall-through path
+ * at the end of the token loop, after the JSON-path, list and case-insensitive
+ * branches have each claimed their own.
+ *
+ * Validated for the reason {@link JSON_PATH_FILTER_OPERATORS} states about its
+ * own set: an operator this module does not recognise used to be written
+ * straight onto the `where` fragment, so `name[frobnicate]:x` reached Prisma
+ * and came back as an opaque `PERSISTENCE.QUERY_INVALID` naming neither the
+ * offending operator nor the valid ones. Rejecting it here costs the caller a
+ * message they can act on.
+ *
+ * `in` / `notIn` ({@link LIST_FILTER_OPERATORS}) and the `i*` family
+ * ({@link INSENSITIVE_STRING_OPERATORS}) are absent ON PURPOSE — they return
+ * before this point — and `mode` is absent because the i* branch owns it; a
+ * bare `field[mode]:insensitive` means nothing on its own.
+ *
+ * The array-column operators (`has` / `hasEvery` / `hasSome` / `isEmpty`) are
+ * deliberately NOT here: no column is declared as a list in
+ * `FilterFieldType`, nothing in the repo emits them, and `hasEvery`/`hasSome`
+ * take an ARRAY that this scalar path cannot build. Add them with the list
+ * handling they need, not as bare strings.
+ */
+const SCALAR_FILTER_OPERATORS: ReadonlySet<string> = new Set(['equals', 'not', 'lt', 'lte', 'gt', 'gte', 'contains', 'startsWith', 'endsWith']);
+
+/**
  * Filter KEYS are attacker-controlled query-string input,
  * so field entries must be created as OWN properties: a plain
  * `filterObject[key] = {}` / truthiness guard with key `'__proto__'` walks the
@@ -168,6 +193,10 @@ function coerceJsonPathValue(op: string, value: string): unknown {
  * are unaffected. Coercion only ever applies to KNOWN columns of the target
  * model, so a genuine String column whose value is literally `"true"`/`"123"`
  * is never mangled.
+ *
+ * An UNRECOGNISED OPERATOR is a 400 too, on every branch: JSON paths against
+ * {@link JSON_PATH_FILTER_OPERATORS}, scalars against
+ * {@link SCALAR_FILTER_OPERATORS}. Neither is forwarded for Prisma to fail on.
  *
  * MALFORMED TOKENS ARE A 400, NOT A NO-OP. A token that does not match
  * `field[op]:value` (most often the operator omitted — `status:ACTIVE`) used to
@@ -297,6 +326,11 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
         }
         bucket[insensitiveOp] = value;
         return;
+      }
+
+      if (!SCALAR_FILTER_OPERATORS.has(op)) {
+        const allowed = [...SCALAR_FILTER_OPERATORS, ...LIST_FILTER_OPERATORS, ...INSENSITIVE_STRING_OPERATORS.keys()].join(', ');
+        throw new BadRequestException(`Unsupported filter operator '${op}' on '${key}'. Allowed operators: ${allowed}.`);
       }
 
       const coercedValue = coerceFilterValue(key, value, fieldTypes?.[key]);

@@ -17,10 +17,10 @@ describe('paginatedQueryParamConverters', () => {
   });
 
   it('should correctly deserialize filter string', () => {
-    const filtersString = 'field1[eq]:value1;field2[gt]:value2';
+    const filtersString = 'field1[equals]:value1;field2[gt]:value2';
     const result = deserializeFilterString(filtersString);
     expect(result).toEqual({
-      field1: { eq: 'value1' },
+      field1: { equals: 'value1' },
       field2: { gt: 'value2' },
     });
   });
@@ -37,7 +37,7 @@ describe('paginatedQueryParamConverters', () => {
       limit: 10,
       search: 'test',
       searchFields: 'field1,field2',
-      filters: 'field1[eq]:value1;field2[gt]:value2',
+      filters: 'field1[equals]:value1;field2[gt]:value2',
       sort: 'field1:asc,field2:desc',
     };
     const result = withFormattedPaginatedProps(props);
@@ -47,7 +47,7 @@ describe('paginatedQueryParamConverters', () => {
       search: 'test',
       searchFields: ['field1', 'field2'],
       filters: {
-        field1: { eq: 'value1' },
+        field1: { equals: 'value1' },
         field2: { gt: 'value2' },
       },
       sort: [{ field1: 'asc' }, { field2: 'desc' }],
@@ -58,14 +58,14 @@ describe('paginatedQueryParamConverters', () => {
     const props = {
       search: 'test',
       searchFields: 'field1,field2',
-      filters: 'field1[eq]:value1;field2[gt]:value2',
+      filters: 'field1[equals]:value1;field2[gt]:value2',
     };
     const result = withFormattedCountProps(props);
     expect(result).toEqual({
       search: 'test',
       searchFields: ['field1', 'field2'],
       filters: {
-        field1: { eq: 'value1' },
+        field1: { equals: 'value1' },
         field2: { gt: 'value2' },
       },
     });
@@ -744,5 +744,51 @@ describe('deserializeFilterString — malformed tokens are rejected, not dropped
   it('still accepts an empty VALUE, which is a real predicate', () => {
     // `field[equals]:` is well-formed and means "equals the empty string" — untouched.
     expect(deserializeFilterString('name[equals]:')).toEqual({ name: { equals: '' } });
+  });
+});
+
+describe('deserializeFilterString — unrecognised scalar operators are rejected', () => {
+  // An operator this module does not know used to be written straight onto the `where`
+  // fragment, so it reached Prisma and returned an opaque PERSISTENCE.QUERY_INVALID that
+  // named neither the bad operator nor the valid ones. The JSON-path branch already
+  // validated its own operators; the scalar branch did not. Same rule now on both.
+
+  it.each(['frobnicate', 'eq', 'ne', 'like', 'isEmpty', 'has', 'hasEvery', 'mode'])('rejects the operator %p', (op) => {
+    expect(() => deserializeFilterString(`name[${op}]:x`)).toThrow(BadRequestException);
+  });
+
+  it('names the offending operator and the allowed set', () => {
+    // The whole point of catching it here rather than at Prisma: an actionable message.
+    expect(() => deserializeFilterString('name[frobnicate]:x')).toThrow(/Unsupported filter operator 'frobnicate' on 'name'/);
+    expect(() => deserializeFilterString('name[frobnicate]:x')).toThrow(/equals.*contains.*in.*icontains/s);
+  });
+
+  it.each(['equals', 'not', 'lt', 'lte', 'gt', 'gte', 'contains', 'startsWith', 'endsWith'])(
+    'still accepts the scalar operator %p',
+    (op) => {
+      expect(deserializeFilterString(`name[${op}]:x`)).toEqual({ name: { [op]: 'x' } });
+    },
+  );
+
+  it('still accepts the list operators, which return before the scalar check', () => {
+    expect(deserializeFilterString('status[in]:A|B')).toEqual({ status: { in: ['A', 'B'] } });
+    expect(deserializeFilterString('status[notIn]:A')).toEqual({ status: { notIn: ['A'] } });
+  });
+
+  it('still accepts the case-insensitive family, which also returns earlier', () => {
+    expect(deserializeFilterString('name[icontains]:jo')).toEqual({ name: { contains: 'jo', mode: 'insensitive' } });
+  });
+
+  it('leaves the JSON-path branch on its own operator set', () => {
+    // `string_contains` is valid on a JSON path and meaningless as a scalar operator —
+    // the two sets must not leak into each other in either direction.
+    expect(deserializeFilterString('metaData.subType[string_contains]:rec', 'User')).toEqual({
+      metaData: { path: ['subType'], string_contains: 'rec' },
+    });
+    expect(() => deserializeFilterString('subType[string_contains]:rec', 'User')).toThrow(BadRequestException);
+  });
+
+  it('rejects an unrecognised operator inside an AND[…] group', () => {
+    expect(() => deserializeFilterString('AND[name[equals]:a,name[frobnicate]:b]')).toThrow(BadRequestException);
   });
 });
