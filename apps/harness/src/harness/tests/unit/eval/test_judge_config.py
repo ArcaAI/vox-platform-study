@@ -196,29 +196,56 @@ class TestRobustnessDefaults:
         assert cfg.temperature == 0.0
         assert cfg.sc_temperature == 0.2
 
-    def test_reasoning_mode_defaults_to_auto(self):
-        assert JudgeConfig().reasoning_mode == "auto"
+    # ── TASK-968: the reasoning levers are GOVERNED, not environmental ──────────
+    #
+    # These five tests replace the env-driven contract this block used to pin
+    # (`reasoning_mode` defaulting to "auto", `HARNESS_JUDGE_EXTRA_BODY` parsing a JSON
+    # string, blank-string handling). That contract is gone on purpose: the values now come
+    # from `harness.judge.reasoningMode` / `.reasoningEffort` on the platform settings
+    # registry, and the env path is closed structurally by a dead `validation_alias`.
 
-    def test_extra_body_defaults_to_none(self):
-        assert JudgeConfig().extra_body is None
+    def test_reasoning_defaults_are_off(self):
+        """The in-code FLOOR is the directive, not the engine's own default."""
+        cfg = JudgeConfig()
+        assert cfg.reasoning_mode == "none"
+        assert cfg.reasoning_effort == "minimal"
+        # `extra_body` stays the GENERIC passthrough; the posture is its own field, so a
+        # client that never consulted the control plane still sends one.
+        assert cfg.extra_body is None
 
-    def test_extra_body_env_json_parses_to_dict(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_JUDGE_EXTRA_BODY", '{"reasoning_effort": "low"}')
+    @pytest.mark.parametrize(
+        "env_name,env_value",
+        [
+            ("HARNESS_JUDGE_REASONING_MODE", "auto"),
+            ("HARNESS_JUDGE_SUPPRESS_REASONING", "true"),
+            ("HARNESS_JUDGE_EXTRA_BODY", '{"reasoning_effort": "high"}'),
+            ("HARNESS_JUDGE_REASONING_EFFORT", "high"),
+        ],
+    )
+    def test_env_cannot_set_the_reasoning_posture(
+        self, monkeypatch: pytest.MonkeyPatch, env_name: str, env_value: str
+    ):
+        """The env path is CLOSED — a redeploy is no longer how this is retuned."""
+        monkeypatch.setenv(env_name, env_value)
         cfg = get_judge_config()
-        assert cfg.extra_body == {"reasoning_effort": "low"}
+        assert cfg.reasoning_mode == "none"
+        assert cfg.reasoning_effort == "minimal"
+        assert cfg.extra_body is None
 
-    def test_extra_body_json_string_parses_on_construction(self):
-        cfg = JudgeConfig(extra_body='{"chat_template_kwargs": {"enable_thinking": false}}')
-        assert cfg.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+    def test_field_name_construction_is_closed_too(self):
+        """`validation_alias` also stops the FIELD NAME re-opening the path."""
+        for kwargs in (
+            {"reasoning_mode": "auto"},
+            {"reasoning_effort": "high"},
+            {"extra_body": {"reasoning_effort": "high"}},
+            {"suppress_reasoning": True},
+        ):
+            with pytest.raises(ValidationError):
+                JudgeConfig(**kwargs)
 
-    def test_blank_extra_body_stays_none(self):
-        assert JudgeConfig(extra_body="").extra_body is None
-        assert JudgeConfig(extra_body=None).extra_body is None
-
-    def test_valid_reasoning_modes_accepted(self):
-        for mode in ("auto", "think", "none"):
-            assert JudgeConfig(reasoning_mode=mode).reasoning_mode == mode
-
-    def test_invalid_reasoning_mode_raises(self):
-        with pytest.raises(ValidationError):
-            JudgeConfig(reasoning_mode="loud")
+    def test_model_copy_is_the_one_way_in(self):
+        """What `resolve_judge_reasoning` and `_build_runtime_judge` actually use."""
+        cfg = JudgeConfig().model_copy(
+            update={"reasoning_mode": "think", "reasoning_effort": "high"}
+        )
+        assert (cfg.reasoning_mode, cfg.reasoning_effort) == ("think", "high")

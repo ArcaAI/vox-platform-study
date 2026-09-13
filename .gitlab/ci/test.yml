@@ -872,7 +872,12 @@ harness-eval-gate:
     # `loaded_context_length` and warns rather than failing 10 minutes in.
     HARNESS_JUDGE_MAX_TOKENS: "16384"
     HARNESS_JUDGE_OUTPUT_MODE: "score"
-    HARNESS_JUDGE_SUPPRESS_REASONING: "true"
+    # TASK-968 — `HARNESS_JUDGE_SUPPRESS_REASONING: "true"` used to sit here. The variable is
+    # GONE (the judge's reasoning posture is platform configuration now, not env), and the
+    # behaviour it bought is the DEFAULT: `JudgeConfig.reasoning_mode` is `none`, which appends
+    # the same `/no_think` + JSON-only directive. This gate deliberately runs on that in-code
+    # floor rather than pulling the control plane — no gateway is reachable from a CI job, and a
+    # gate wants one fixed, reproducible posture. Setting the old name here would now be inert.
     # LM Studio rejects `response_format={"type":"json_object"}` on this
     # build (HTTP 400 "must be json_schema or text") — required for the
     # faithfulness claim-extract/verify json_mode calls to succeed at all.

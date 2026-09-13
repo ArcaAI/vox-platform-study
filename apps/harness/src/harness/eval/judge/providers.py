@@ -264,6 +264,27 @@ def _pick_answer_text(content: str, reasoning: str) -> str:
     return content
 
 
+def _reasoning_extra_body(config: JudgeConfig) -> dict[str, Any]:
+    """The `extra_body` a judge call carries: the generic passthrough + the governed posture.
+
+    TASK-968. `reasoning_effort` is its own governed field (registry key
+    `harness.judge.reasoningEffort`, in-code floor `minimal`), so it is set on EVERY call
+    rather than only when an admin has written something. That is deliberate: the state being
+    removed is "nobody decided and the engine reasons by default", and a client that omits the
+    key silently re-enters it.
+
+    The governed field WINS over a same-named key in `extra_body`. `extra_body` exists for the
+    other engine knobs (`chat_template_kwargs`, say); it is no longer an env-settable surface
+    and must not become a second way to say this one thing.
+
+    Bedrock has no `extra_body` passthrough on `converse` and calls neither this nor the
+    clients that use it.
+    """
+    merged: dict[str, Any] = dict(config.extra_body or {})
+    merged["reasoning_effort"] = config.reasoning_effort
+    return merged
+
+
 class OpenAICompatJudgeClient:
     """Judge served by any OpenAI-compatible endpoint (LM Studio, vLLM, …)."""
 
@@ -307,9 +328,14 @@ class OpenAICompatJudgeClient:
             # the prompts request JSON and parsing is tolerant). Otherwise pass through.
             if fmt and fmt not in ("text", "none"):
                 kwargs["response_format"] = {"type": fmt}
-        # Server-specific reasoning knobs (vLLM/Azure); only sent when configured.
-        if self._config.extra_body:
-            kwargs["extra_body"] = self._config.extra_body
+        # The engine reasoning posture, plus any generic passthrough (TASK-968). ALWAYS
+        # sent: `reasoning_effort` is a governed field with an in-code floor of `minimal`,
+        # so there is no path on which this client leaves reasoning to the engine's own
+        # default — which is the state the directive removes. The governed field wins over
+        # a same-named key in `extra_body`; that passthrough is for the OTHER engine knobs.
+        extra_body = _reasoning_extra_body(self._config)
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         started = time.monotonic()
         try:
             resp = await _create_with_retry(
@@ -375,9 +401,11 @@ class AzureOpenAIJudgeClient:
             kwargs["seed"] = effective_seed
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        # Server-specific reasoning knobs (e.g. reasoning_effort); only when configured.
-        if self._config.extra_body:
-            kwargs["extra_body"] = self._config.extra_body
+        # The engine reasoning posture, plus any generic passthrough — see the
+        # OpenAI-compatible client above (TASK-968).
+        extra_body = _reasoning_extra_body(self._config)
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         started = time.monotonic()
         try:
             resp = await _create_with_retry(

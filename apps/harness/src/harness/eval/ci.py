@@ -237,9 +237,13 @@ def main(
             self_consistency=config.judge.self_consistency,
             sc_temperature=config.judge.sc_temperature,
             seed=config.judge.seed,
-            # getattr: Worker A is adding ``reasoning_mode`` to JudgeConfig concurrently;
-            # default to "auto" so this wiring is safe before that field lands.
-            reasoning_mode=getattr(config.judge, "reasoning_mode", "auto"),
+            # TASK-968 — the CI gate runs on the in-code FLOOR (reasoning off), not on env
+            # and not on the control plane: this is a `python -m harness.eval.ci` process in
+            # a GitLab job, where the gateway is not reachable and a 5s pull per run would
+            # buy a timeout rather than a value. A platform admin's tuning applies to the
+            # deployed judge (the `/eval/run` endpoint and the live inferential pass); the
+            # gate stays on one fixed, reproducible posture, which is what a gate wants.
+            reasoning_mode=config.judge.reasoning_mode,
             suppress_reasoning=config.judge.suppress_reasoning,
         )
         if not args.no_faithfulness and faithfulness is None:

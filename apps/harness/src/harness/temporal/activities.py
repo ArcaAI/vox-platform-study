@@ -48,6 +48,7 @@ from harness.core.provider_credentials import (
 from harness.eval.config import JudgeProvider
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
+from harness.eval.reasoning import JudgeReasoning, resolve_judge_reasoning
 from harness.guards.phi import (
     PhiEgressBlocked,
     PhiRedactor,
@@ -704,6 +705,7 @@ def _build_runtime_judge(
     provider: str | None = None,
     model: str | None = None,
     credential: ProviderCredential | None = None,
+    reasoning: JudgeReasoning | None = None,
 ) -> JudgeClient:
     """Build the calibrated runtime judge from the DB-selected provider/model.
 
@@ -725,6 +727,12 @@ def _build_runtime_judge(
     unauthenticated in-boundary endpoint. A DENIED/UNAVAILABLE credential must be
     rejected by the CALLER before it gets here (`raise_if_unusable`); this
     function does not silently ignore one.
+
+    ``reasoning`` is the POSTURE, resolved from the platform control plane by the caller
+    (TASK-968). ``None`` keeps the config's own floor, which is already reasoning off — so
+    an unreachable control plane degrades to the directive rather than to the engine's
+    default. Threaded in rather than read here for the same reason provider/model are: this
+    function is monkeypatched by the tests, and a config read inside it would be untestable.
     """
     config = get_runtime_judge_config()
     updates: dict[str, Any] = {}
@@ -732,6 +740,9 @@ def _build_runtime_judge(
         updates["provider"] = provider
     if model:
         updates["model"] = model
+    if reasoning is not None:
+        updates["reasoning_mode"] = reasoning.mode
+        updates["reasoning_effort"] = reasoning.effort
 
     if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
         # The EFFECTIVE provider decides which sub-config the credential lands on
@@ -2667,8 +2678,15 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             judge_credential.raise_if_unusable(
                 service="llm", provider=connection_provider_for_judge(judge_provider)
             )
+            # TASK-968 — the judge's reasoning posture is PLATFORM configuration
+            # (`harness.judge.reasoningMode` / `.reasoningEffort`), not an env var. It
+            # travels the same pull route as the sensor thresholds below and degrades the
+            # same way: an unreachable control plane keeps the in-code floor, which is off.
             judge = _build_runtime_judge(
-                provider=judge_provider, model=judge_model, credential=judge_credential
+                provider=judge_provider,
+                model=judge_model,
+                credential=judge_credential,
+                reasoning=resolve_judge_reasoning(await _config_snapshot()),
             )
         except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
             reason = f"inferential judge unavailable: {exc}"

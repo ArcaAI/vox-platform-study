@@ -424,7 +424,15 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       fallbackModelSlugs: [],
       instruction: { systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
       // No `responseFormat`: the declared `outputSchema` IS the response format (INTERFACES §5).
-      parameters: { generation: { temperature: 0.1, maxTokens: 4096 }, guards: { enabled: true } },
+      //
+      // Reasoning OFF (owner directive 2026-09-13). TASK-891 C3 seeded the posture on the REALTIME
+      // tier only and left this one "as-is" — which is not neutral: an absent block is the engine's
+      // OWN default, the exact state the 5168 ms / 184-reasoning-token measurement was taken in. The
+      // directive is now platform-wide, so no seeded TEXT_GENERATION agent leaves the decision to
+      // the engine. `enabled: false` reaches the wire as `reasoning_effort: 'minimal'`
+      // (`agent-reasoning.ts`), and `lms-gemma-4-e2b-it-qat` DECLARES `reasoning` in
+      // `supportedGenerationParams`, so the publish gate accepts it.
+      parameters: { generation: { temperature: 0.1, maxTokens: 4096, reasoning: { enabled: false } }, guards: { enabled: true } },
       outputSchema: CASENOTE_OUTPUT_SCHEMA,
       status: 'PUBLISHED',
       isActive: true,

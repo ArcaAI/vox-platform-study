@@ -450,8 +450,15 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // and pass both explicitly on the generate call.
     let provider: string | undefined;
     let model: string | undefined;
+    // `generation` is the RESOLVED agent's authored `parameters.generation` (TASK-891 C2). It is
+    // destructured here — and not thrown away, as it was — because discarding it is precisely the
+    // defect that ticket fixed on the live and finalize paths: the reasoning posture was selected
+    // during the cascade and then never reached the wire, leaving this job on the engine's own
+    // default. Selection stays the `finalize` task (`resolveTextSelection`'s default): this is a
+    // durable, offline job, and nothing about which agent serves it changes here.
+    let generation: Record<string, unknown> | undefined;
     if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection());
+      ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection());
     }
     // the payload is HOISTED out of the call argument (it used to be
     // an inline object literal) so the shared credential enrichment below has
@@ -477,10 +484,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // per-provider env plane, so the endpoint and key must arrive per request.
     // `processWithContext` puts the job's tenant in CLS, which is where the
     // resolver reads it from.
-    // layer the platform admin's runtime profile (hyperparameters + engine
-    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
-    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
-    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
+    // layer the resolved agent's engine ride-alongs (`extra.reasoning_effort`) BEFORE the
+    // credential fold, exactly as the TEXT proxy does. Caller-set fields win; an agent that
+    // authored no posture injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
       timeout: 120000,

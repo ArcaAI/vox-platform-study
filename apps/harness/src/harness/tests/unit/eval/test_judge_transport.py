@@ -41,11 +41,18 @@ def _fake_create(captured: dict, *, content, reasoning_content=None, reasoning=N
 
 
 def _openai_compat(**overrides) -> OpenAICompatJudgeClient:
-    return OpenAICompatJudgeClient(JudgeConfig(**overrides))
+    # `_update` goes through `model_copy` — the `validation_alias`-closed reasoning fields
+    # (TASK-968) cannot be set on the constructor, which is exactly how production sets them.
+    update = overrides.pop("_update", None)
+    cfg = JudgeConfig(**overrides)
+    return OpenAICompatJudgeClient(cfg.model_copy(update=update) if update else cfg)
 
 
 def _azure(**overrides) -> AzureOpenAIJudgeClient:
+    update = overrides.pop("_update", None)
     cfg = JudgeConfig(provider=JudgeProvider.AZURE, model="gpt-4o", **overrides)
+    if update:
+        cfg = cfg.model_copy(update=update)
     cfg.azure.endpoint = "https://example.openai.azure.com"
     cfg.azure.api_key = "secret"  # type: ignore[assignment]
     cfg.azure.deployment = "gpt-4o-judge"
@@ -59,24 +66,61 @@ CLIENT_BUILDERS = [
 ]
 
 
-@pytest.mark.parametrize("build_client", CLIENT_BUILDERS)
-@pytest.mark.asyncio
-async def test_extra_body_forwarded_when_configured(build_client):
-    client = build_client(extra_body={"reasoning_effort": "low"})
-    captured: dict = {}
-    client._client.chat.completions.create = _fake_create(captured, content='{"succinct": 3}')
-    await client.complete([{"role": "user", "content": "hi"}])
-    assert captured["extra_body"] == {"reasoning_effort": "low"}
+# ── TASK-968: the posture is ALWAYS on the wire ────────────────────────────────
+#
+# These replace the old "forwarded only when configured / omitted otherwise" pair. Omission
+# was the defect: an absent `extra_body` is the ENGINE's default, i.e. reasoning on, and this
+# transport is shared by the live groundedness + citation-verify sensors that run on every
+# consultation — not just by the eval gate. `reasoning_effort` is now its own governed field
+# with an in-code floor of `minimal`, so there is no call on which the judge is left to decide
+# for itself.
 
 
 @pytest.mark.parametrize("build_client", CLIENT_BUILDERS)
 @pytest.mark.asyncio
-async def test_extra_body_omitted_when_not_configured(build_client):
-    client = build_client()  # extra_body defaults to None
+async def test_reasoning_effort_always_forwarded(build_client):
+    client = build_client()  # nothing configured — the floor still travels
     captured: dict = {}
     client._client.chat.completions.create = _fake_create(captured, content='{"succinct": 3}')
     await client.complete([{"role": "user", "content": "hi"}])
-    assert "extra_body" not in captured
+    assert captured["extra_body"] == {"reasoning_effort": "minimal"}
+
+
+@pytest.mark.parametrize("build_client", CLIENT_BUILDERS)
+@pytest.mark.asyncio
+async def test_resolved_effort_reaches_the_wire(build_client):
+    client = build_client(_update={"reasoning_effort": "high"})
+    captured: dict = {}
+    client._client.chat.completions.create = _fake_create(captured, content='{"succinct": 3}')
+    await client.complete([{"role": "user", "content": "hi"}])
+    assert captured["extra_body"] == {"reasoning_effort": "high"}
+
+
+@pytest.mark.parametrize("build_client", CLIENT_BUILDERS)
+@pytest.mark.asyncio
+async def test_generic_passthrough_rides_alongside_the_posture(build_client):
+    """`extra_body` is still the passthrough for the OTHER engine knobs."""
+    client = build_client(
+        _update={"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    )
+    captured: dict = {}
+    client._client.chat.completions.create = _fake_create(captured, content='{"succinct": 3}')
+    await client.complete([{"role": "user", "content": "hi"}])
+    assert captured["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning_effort": "minimal",
+    }
+
+
+@pytest.mark.parametrize("build_client", CLIENT_BUILDERS)
+@pytest.mark.asyncio
+async def test_governed_field_wins_over_a_same_named_passthrough_key(build_client):
+    """One way to say this, and it is the governed field."""
+    client = build_client(_update={"extra_body": {"reasoning_effort": "high"}})
+    captured: dict = {}
+    client._client.chat.completions.create = _fake_create(captured, content='{"succinct": 3}')
+    await client.complete([{"role": "user", "content": "hi"}])
+    assert captured["extra_body"] == {"reasoning_effort": "minimal"}
 
 
 @pytest.mark.parametrize("build_client", CLIENT_BUILDERS)

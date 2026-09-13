@@ -19,6 +19,8 @@ import { FEATURE_AVAILABILITY_SETTINGS } from './descriptors/feature-availabilit
 import { GUARDRAIL_JUDGE_SETTINGS } from './descriptors/guardrail-judge.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
+import { HARNESS_JUDGE_SETTINGS } from './descriptors/harness-judge.descriptors';
+import { TEXT_REASONING_SETTINGS } from './descriptors/text-reasoning.descriptors';
 import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_COMPUTE_SETTINGS } from './descriptors/metering-compute.descriptors';
 import { METERING_STORAGE_SETTINGS } from './descriptors/metering-storage.descriptors';
@@ -204,6 +206,18 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // descriptor file for why the split falls that way (D-1).
   ...HARNESS_SENSOR_SETTINGS,
   HARNESS_CLAIM_CHECK_MIN_BYTES,
+
+  // ── Judge reasoning posture ──────────────────────────────────────────────
+  // TASK-968 — the two levers that decide how hard the assurance judge thinks,
+  // moved off `HARNESS_JUDGE_*` env and defaulted OFF. The wire lever is NOT
+  // eval-only: it rides every judge call, the live inferential pass included.
+  ...HARNESS_JUDGE_SETTINGS,
+
+  // ── Default reasoning posture for the TEXT plane ─────────────────────────
+  // TASK-968 — the SECOND tier of the reasoning cascade. An agent that authored
+  // no posture used to resolve to the ENGINE's default; it now resolves here.
+  // Fills absence only: an agent with an opinion still wins outright.
+  ...TEXT_REASONING_SETTINGS,
 
   // ── Context-schema user identity ─────────────────────────────────────────
   // TASK-950 D-9 — whether HOPE may provision a tenant user for an unrecognised
