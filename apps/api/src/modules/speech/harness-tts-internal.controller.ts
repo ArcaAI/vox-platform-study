@@ -312,7 +312,7 @@ export class HarnessTtsInternalController {
     const requestId = generateId();
     // TASK-957 F-10 — no provider, no row. See `isAttributableTtsProvider`.
     if (!isAttributableTtsProvider(args.provider)) {
-      recordUsageEmissionFailure('tts.synthesize');
+      recordUsageEmissionFailure('tts.synthesize', 'unattributable');
       this.logger.warn({
         message: 'TTS synthesis reported no provider; recording no usage row for it',
         requestId,

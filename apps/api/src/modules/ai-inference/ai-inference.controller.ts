@@ -312,7 +312,7 @@ export class AiInferenceController {
     try {
       await this.usageLedgerService.recordUsage(batch);
     } catch (error) {
-      recordUsageEmissionFailure('nlp.classify');
+      recordUsageEmissionFailure('nlp.classify', 'dropped');
       this.logger.warn({
         message: 'NLP classification usage emission failed',
         error: error instanceof Error ? error.message : String(error),
@@ -388,7 +388,7 @@ export class AiInferenceController {
         await ledger.recordUsage(input);
       }
     } catch (error) {
-      recordUsageEmissionFailure('generate');
+      recordUsageEmissionFailure('generate', 'dropped');
       this.logger.warn({
         message: 'Delegated NLP classification usage emission failed',
         error: error instanceof Error ? error.message : String(error),

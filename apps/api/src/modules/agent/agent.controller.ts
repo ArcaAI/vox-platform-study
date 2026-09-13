@@ -624,7 +624,7 @@ export class AgentController {
       // platform's own hardware, the one claim a missing header contradicts), while still
       // draining the tenant's CHARACTER allowance ahead of rows that CAN be rated.
       if (!isAttributableTtsProvider(provider)) {
-        recordUsageEmissionFailure('tts.synthesize');
+        recordUsageEmissionFailure('tts.synthesize', 'unattributable');
         this.logger.warn({
           message: 'TTS synthesis reported no provider; recording no usage row for it',
           agentSlug: slug,

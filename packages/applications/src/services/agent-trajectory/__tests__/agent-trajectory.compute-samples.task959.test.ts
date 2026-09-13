@@ -13,14 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import {
-  AgentSessionKind,
-  AgentStepStatus,
-  AgentStepType,
-  AiCapability,
-  AiDeploymentKind,
-  AiUsageUnit,
-} from '@arcaai/domains';
+import { AgentSessionKind, AgentStepStatus, AgentStepType, AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 
 import { AgentTrajectoryService } from '../agent-trajectory.service';
 import type { ComputeSampleInput, CreateAgentTrajectoryStepInput } from '../dto';
@@ -176,9 +169,9 @@ describe('emission resilience (TASK-957 F-5, gateway half)', () => {
     await makeService({ metrics }).recordComputeSamples([sample({ trigger: 'WORKFLOW_RUN' })]);
 
     expect(metrics.createCounter).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'hope_usage_emission_failed_total', labelNames: ['operation', 'trigger'] }),
+      expect.objectContaining({ name: 'hope_usage_emission_failed_total', labelNames: ['operation', 'trigger', 'reason'] }),
     );
-    expect(inc).toHaveBeenCalledWith({ operation: 'workflow.step', trigger: 'WORKFLOW_RUN' });
+    expect(inc).toHaveBeenCalledWith({ operation: 'workflow.step', trigger: 'WORKFLOW_RUN', reason: 'dropped' });
   });
 
   it('does not count a retry that eventually succeeded', async () => {
@@ -199,7 +192,7 @@ describe('emission resilience (TASK-957 F-5, gateway half)', () => {
     const workflowStep = { ...step(), stats: { ...(step().stats as object), trigger: 'WORKFLOW_RUN' } };
     await makeService({ metrics }).recordSteps([workflowStep]);
 
-    expect(inc).toHaveBeenCalledWith({ operation: 'workflow.step', trigger: 'WORKFLOW_RUN' });
+    expect(inc).toHaveBeenCalledWith({ operation: 'workflow.step', trigger: 'WORKFLOW_RUN', reason: 'dropped' });
   });
 
   it('works with no metrics service wired — observability is never a precondition', async () => {
