@@ -27,6 +27,13 @@ COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 # builder stage's `turbo run build --filter=@arcaai/admin-console` fails on
 # `@arcaai/workflow-contract#build` — the CI-only failure in pipeline #1002.
 COPY packages/workflow-contract/package.json ./packages/workflow-contract/
+# Same failure mode, one release later: `@arcaai/vox-node` became a devDependency
+# of the app (TASK-971 lane A, b9e6687df) so turbo's `^build` now reaches it AND
+# its own devDependency `@arcaai/vox-node-codegen`. Without both package.jsons
+# here neither gets node_modules, and the builder stage dies on
+# `@arcaai/vox-node-codegen#build` with `sh: 1: tsup: not found` — pipeline #1209.
+COPY packages/vox-node/package.json ./packages/vox-node/
+COPY packages/vox-node-codegen/package.json ./packages/vox-node-codegen/
 COPY packages/room/package.json ./packages/room/
 COPY packages/stt/package.json ./packages/stt/
 COPY packages/agentic-sdk-v2/package.json ./packages/agentic-sdk-v2/
