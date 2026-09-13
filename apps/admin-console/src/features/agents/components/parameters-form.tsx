@@ -1,8 +1,9 @@
 'use client';
 
 import { useId } from 'react';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@arcaai/ui';
+import { Alert, AlertDescription, AlertTitle, Field, FieldContent, FieldDescription, FieldLabel } from '@arcaai/ui';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
@@ -15,6 +16,7 @@ import { getPath, labelOf, props, setPath, type Schema, type Value } from '@/sha
 import type { AgentTask } from '../api';
 import { JsonField } from './json-field';
 import { useTaskModelCatalogue } from './model-picker';
+import { reasoningSupportFor, type ReasoningProviderSupport } from './reasoning-support';
 
 /**
  * TASK-887 — a registry-model REFERENCE, picked rather than typed.
@@ -234,6 +236,39 @@ function GuardrailScreeningField({ id, value, onChange }: { id: string; value: u
 const REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high'] as const;
 
 /**
+ * TASK-970 (L3, F-2/F-4) — the bound model's reasoning-enforcement class, rendered next to
+ * the toggle it qualifies. `unsupported` is deliberately an `Alert` (visually distinct,
+ * `role="status"` rather than the default assertive `role="alert"` — see the precedent in
+ * `playground-consultation/scribe/case-note-column.tsx`'s "newer draft" callout): it is a
+ * real platform limitation worth noticing, not an error, and the owner's 2026-09-13 fail
+ * posture is log-and-proceed, never a block on saving. `native-off`/`effort-only` are quiet,
+ * positive notes — the two cases where the platform CAN speak to the engine.
+ */
+function ReasoningProviderSupportNote({ support }: { support: ReasoningProviderSupport | null | undefined }) {
+  if (!support) return null;
+  const { class: supportClass, providerLabel } = support;
+  if (supportClass === 'unsupported') {
+    return (
+      <Alert role="status" className="[&>svg]:text-warning">
+        <IconAlertTriangle aria-hidden />
+        <AlertTitle>Not enforceable on {providerLabel}</AlertTitle>
+        <AlertDescription>
+          {providerLabel} has no way to receive this instruction for this model. The posture stays recorded on the agent, but the engine
+          decides on its own — it may still reason, and bill for it, regardless of this switch.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  return (
+    <p className="text-muted-foreground text-xs">
+      {supportClass === 'native-off'
+        ? `${providerLabel} has a genuine off-switch for this model, so this posture reaches the engine as set.`
+        : `${providerLabel} has no true off-switch for this model — "off" is approximated by asking for the engine's lowest reasoning effort, not a full stop.`}
+    </p>
+  );
+}
+
+/**
  * TASK-891 C4/OD-4 — reasoning/thinking control, authored PER AGENT (not a governed settings
  * descriptor): `parameters.generation.reasoning = { enabled: boolean, effort?: 'minimal' |
  * 'low' | 'medium' | 'high' }` is the pinned cross-lane contract shape (authored in
@@ -245,8 +280,26 @@ const REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high'] as const;
  * "Disabled" is a real, explicit value — instructs the engine not to reason — never inferred
  * from absence, so the switch only ever writes `true` or `false`, matching OD-4's "disabled
  * means instruct the engine not to reason", not "unset".
+ *
+ * TASK-970 F-2 — the toggle's own description used to promise "the engine is instructed not
+ * to reason and reasoning tokens are never billed", unconditionally. Measured: that promise
+ * reached only 3 of 10 provider adapters; the other seven dropped it silently. The copy below
+ * states what is actually true instead — the posture is always recorded on the agent, and
+ * whether it reaches the engine depends on the bound model's provider, detailed by
+ * `ReasoningProviderSupportNote` just below the toggle.
  */
-function ReasoningField({ id, value, onChange }: { id: string; value: unknown; onChange: (next: unknown) => void }) {
+function ReasoningField({
+  id,
+  value,
+  onChange,
+  providerSupport,
+}: {
+  id: string;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  /** The bound model's provider support class (TASK-970), or `null`/absent when unknown. */
+  providerSupport?: ReasoningProviderSupport | null;
+}) {
   const reasoning = value && typeof value === 'object' ? (value as { enabled?: unknown; effort?: unknown }) : {};
   const enabled = reasoning.enabled === true;
   const effort = typeof reasoning.effort === 'string' ? reasoning.effort : '';
@@ -260,7 +313,10 @@ function ReasoningField({ id, value, onChange }: { id: string; value: unknown; o
       <Field orientation="horizontal">
         <FieldContent>
           <FieldLabel htmlFor={`${id}-enabled`}>Enable reasoning</FieldLabel>
-          <FieldDescription>When off, the engine is instructed not to reason and reasoning tokens are never billed to this agent.</FieldDescription>
+          <FieldDescription>
+            An explicit posture recorded on the agent either way. Whether the bound engine can actually be instructed to honour it depends
+            on the model&apos;s provider.
+          </FieldDescription>
         </FieldContent>
         <Switch
           id={`${id}-enabled`}
@@ -268,6 +324,7 @@ function ReasoningField({ id, value, onChange }: { id: string; value: unknown; o
           onCheckedChange={(checked) => onChange(checked ? { enabled: true, ...(effort ? { effort } : {}) } : { enabled: false })}
         />
       </Field>
+      <ReasoningProviderSupportNote support={providerSupport} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-effort`}>Reasoning effort</Label>
         <Select value={effort} onValueChange={(next) => onChange({ enabled: true, ...(next ? { effort: next } : {}) })} disabled={!enabled}>
@@ -297,6 +354,7 @@ function SchemaFields({
   value,
   onChange,
   fieldHints,
+  reasoningSupport,
 }: {
   idPrefix: string;
   schema: Schema;
@@ -305,6 +363,8 @@ function SchemaFields({
   onChange: (next: Value) => void;
   /** Dotted path → "inherits X from the model profile" (TASK-934); see `asrInheritHints`. */
   fieldHints?: Record<string, string>;
+  /** TASK-970 — the bound model's reasoning-enforcement class, threaded down to `ReasoningField`. */
+  reasoningSupport?: ReasoningProviderSupport | null;
 }) {
   return (
     <>
@@ -324,7 +384,15 @@ function SchemaFields({
             <fieldset key={name} className="flex flex-col gap-3 rounded-md border p-3">
               <legend className="px-1 text-sm font-medium">{labelOf(name)}</legend>
               {typeof child.description === 'string' ? <p className="text-muted-foreground text-xs">{child.description}</p> : null}
-              <SchemaFields idPrefix={idPrefix} schema={child} path={childPath} value={value} onChange={onChange} fieldHints={fieldHints} />
+              <SchemaFields
+                idPrefix={idPrefix}
+                schema={child}
+                path={childPath}
+                value={value}
+                onChange={onChange}
+                fieldHints={fieldHints}
+                reasoningSupport={reasoningSupport}
+              />
               {/* TASK-891 C4 — reasoning sits inside the SAME "Generation" fieldset as the
                   schema-driven temperature/maxTokens controls, next to them per the brief,
                   rather than as a disconnected section (see ReasoningField's docblock). */}
@@ -333,6 +401,7 @@ function SchemaFields({
                   id={`${id}-reasoning`}
                   value={getPath(value, [...childPath, 'reasoning'])}
                   onChange={(next) => onChange(setPath(value, [...childPath, 'reasoning'], next))}
+                  providerSupport={reasoningSupport}
                 />
               ) : null}
             </fieldset>
@@ -441,18 +510,24 @@ export function ParametersForm({ task, value, onChange, modelId }: { task: Agent
   const idPrefix = useId();
   const schema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
   const isSpeechToText = task === 'SPEECH_TO_TEXT';
+  const isTextGeneration = task === 'TEXT_GENERATION';
   // Called unconditionally (rules of hooks) — `task` is a prop and can change
   // across renders, so the hook itself must not be behind an `if`.
   const catalogue = useTaskModelCatalogue(task);
-  const selectedModel = isSpeechToText && modelId ? catalogue.models.find((model) => model.id === modelId) : undefined;
-  const asrProfile = selectedModel?.asrProfile ?? null;
+  // TASK-970 — resolved for every task now (not just SPEECH_TO_TEXT): TEXT_GENERATION needs
+  // the same lookup to read the bound model's `provider` for the reasoning support note below.
+  const selectedModel = modelId ? catalogue.models.find((model) => model.id === modelId) : undefined;
+  const asrProfile = isSpeechToText ? (selectedModel?.asrProfile ?? null) : null;
   const profileSummary = isSpeechToText ? summarizeAsrProfile(asrProfile) : null;
   const fieldHints = isSpeechToText ? asrInheritHints(asrProfile) : undefined;
+  // TASK-970 (F-2/F-4) — which of the three reasoning-enforcement cases the bound model's
+  // provider is in, or `null` until a model is selected / its provider is unrecognised.
+  const reasoningSupport = isTextGeneration ? reasoningSupportFor(selectedModel?.provider) : null;
 
   return (
     <div className="flex flex-col gap-4">
       {profileSummary ? <p className="text-muted-foreground text-xs">{profileSummary}</p> : null}
-      <SchemaFields idPrefix={idPrefix} schema={schema} path={[]} value={value} onChange={onChange} fieldHints={fieldHints} />
+      <SchemaFields idPrefix={idPrefix} schema={schema} path={[]} value={value} onChange={onChange} fieldHints={fieldHints} reasoningSupport={reasoningSupport} />
     </div>
   );
 }
