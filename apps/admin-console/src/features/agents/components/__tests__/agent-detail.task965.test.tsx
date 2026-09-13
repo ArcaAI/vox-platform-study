@@ -134,3 +134,28 @@ describe('AgentDetailDrawer — assignment copy tells the fail-closed truth (TAS
     expect(confirm.textContent).toMatch(/AGENT_NOT_ASSIGNED/);
   });
 });
+
+describe('AgentDetailDrawer — Integration tab (TASK-965, O-2 / AG-8)', () => {
+  it('a PUBLISHED row exposes its endpoint and vox-node snippet from the Integration tab, long after the publish dialog is gone', async () => {
+    stubFetch([agent({ status: 'PUBLISHED', isActive: true, publishedAt: '2026-09-10T10:00:00.000Z' })]);
+    renderWithProviders(<AgentDetailDrawer agentId="a-1" onOpenChange={vi.fn()} onSelect={vi.fn()} />);
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Integration' }), { button: 0 });
+
+    expect(await within(drawer).findByText('POST /agents/clinic-summarizer/invocations')).toBeTruthy();
+    expect(within(drawer).getByRole('group', { name: /vox-node/i }).textContent).toContain('hope.agents.invoke');
+    expect((within(drawer).getByRole('link', { name: /api keys/i }) as HTMLAnchorElement).getAttribute('href')).toBe('/api-keys');
+  });
+
+  it('a DRAFT row explains that publishing is what exposes the endpoint', async () => {
+    stubFetch([agent()]);
+    renderWithProviders(<AgentDetailDrawer agentId="a-1" onOpenChange={vi.fn()} onSelect={vi.fn()} />);
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Integration' }), { button: 0 });
+
+    expect(await within(drawer).findByText(/not published yet/i)).toBeTruthy();
+    expect(within(drawer).queryByText(/POST \/agents/)).toBeNull();
+  });
+});

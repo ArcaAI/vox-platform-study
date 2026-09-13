@@ -52,8 +52,13 @@ function WorkflowEdge({
   label,
   markerEnd,
   style,
+  data,
 }: EdgeProps) {
   const { readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById } = React.useContext(WorkflowEdgeChromeContext);
+  // A BINDING edge (`WorkflowCanvasEdge.kind`): a data binding the consumer edits in its own
+  // inspector field, drawn dashed and always labelled so the flow reads correctly, and never
+  // deletable from the canvas — the X is not rendered at all.
+  const binding = (data as { kind?: string } | undefined)?.kind === 'binding';
   // Reveal state the portaled button cannot observe for itself: React Flow reports the pointer
   // entering the EDGE (`onEdgeMouseEnter`), but the button lives in the edge-label portal, so
   // moving the pointer off the path and onto the button would fire `onEdgeMouseLeave` and hide
@@ -63,7 +68,7 @@ function WorkflowEdge({
 
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
-  const deletable = !readOnly && onEdgeDelete !== undefined;
+  const deletable = !readOnly && onEdgeDelete !== undefined && !binding;
   const revealed = hoveredEdgeId === id || pointerOverButton || buttonFocused || Boolean(selected);
   const fromLabel = nodeLabelById.get(source) ?? source;
   const toLabel = nodeLabelById.get(target) ?? target;
@@ -74,12 +79,18 @@ function WorkflowEdge({
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
-        style={{ ...style, stroke: 'var(--workflow-canvas-edge)', strokeWidth: selected ? 2 : 1.5 }}
+        style={{
+          ...style,
+          stroke: 'var(--workflow-canvas-edge)',
+          strokeWidth: selected ? 2 : 1.5,
+          ...(binding ? { strokeDasharray: '6 4', opacity: 0.75 } : {}),
+        }}
       />
       {label || deletable ? (
         <EdgeLabelRenderer>
           <div
             data-slot="workflow-edge-chrome"
+            data-kind={binding ? 'binding' : 'wire'}
             className="nodrag nopan pointer-events-none absolute flex items-center gap-1"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
@@ -87,7 +98,9 @@ function WorkflowEdge({
               <span
                 className={cn(
                   'rounded-sm bg-[var(--workflow-canvas-edge-label-bg)] px-1.5 py-0.5 text-xs text-[var(--workflow-canvas-edge-label-fg)]',
+                  binding && 'font-mono',
                 )}
+                title={binding ? `Bound as "${label}" on ${toLabel} — edit it in the node's inspector` : undefined}
               >
                 {label}
               </span>

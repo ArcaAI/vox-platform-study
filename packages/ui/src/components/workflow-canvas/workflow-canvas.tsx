@@ -147,6 +147,7 @@ function toXyNode(
 }
 
 function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
+  const kind = edge.kind ?? 'wire';
   return {
     id: edge.id,
     type: 'workflowEdge',
@@ -156,7 +157,10 @@ function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
     targetHandle: edge.targetHandle,
     label: edge.label,
     focusable: true,
-    deletable: !readOnly,
+    // A binding is edited where it is bound (the consumer's inspector field), never deleted from
+    // the canvas — the Delete key and the hover-X both stay off it.
+    deletable: !readOnly && kind !== 'binding',
+    data: { kind },
   };
 }
 
@@ -165,6 +169,7 @@ function fromXyNode(node: Node<WorkflowNodeData>): WorkflowCanvasNode {
 }
 
 function fromXyEdge(edge: Edge): WorkflowCanvasEdge {
+  const kind = (edge.data as { kind?: WorkflowCanvasEdge['kind'] } | undefined)?.kind;
   return {
     id: edge.id,
     source: edge.source,
@@ -172,6 +177,8 @@ function fromXyEdge(edge: Edge): WorkflowCanvasEdge {
     sourceHandle: edge.sourceHandle ?? undefined,
     targetHandle: edge.targetHandle ?? undefined,
     label: typeof edge.label === 'string' ? edge.label : undefined,
+    // `wire` is the implicit default; only a binding is worth naming on the way back out.
+    ...(kind === 'binding' ? { kind } : {}),
   };
 }
 
