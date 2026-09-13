@@ -158,14 +158,6 @@ async def configured_app(postgres_container, redis_container, minio_container):
     new_settings = get_settings()
 
     db_conn.settings = new_settings
-    # Dispose stale engines so new ones are created with the correct URL
-    for engine in list(db_conn._engines.values()):
-        try:
-            await engine.dispose()
-        except Exception:
-            pass
-    db_conn._engines.clear()
-    db_conn._session_factories.clear()
 
     health_routes.settings = new_settings
     main_mod.settings = new_settings
@@ -231,19 +223,13 @@ async def configured_app(postgres_container, redis_container, minio_container):
     # Restore global state so session-scoped fixtures (real_audio_client)
     # continue to work correctly after this function-scoped test.
     #
-    # We dispose testcontainer engines and clear the cache entirely so
-    # that _get_or_create_engine() lazily creates fresh engines with
-    # the restored (real DB) settings on next use.  Restoring the old
-    # engine objects is unsafe because they were disposed during setup
-    # and their pools may reconnect to stale addresses.
+    # TASK-963: no engine teardown here any more. Since TASK-861 apps/stt
+    # performs NO Postgres read on the agent path — selection arrives as a
+    # gateway-resolved `ResolvedAsrSpec` — and the connection is optional and
+    # OFF by default (`STT_DATABASE_ENABLED`). The disposal that used to live
+    # here reached into two private dicts TASK-861 deleted, and errored every
+    # e2e test at fixture setup.
     # ------------------------------------------------------------------
-    for engine in list(db_conn._engines.values()):
-        try:
-            await engine.dispose()
-        except Exception:
-            pass
-    db_conn._engines.clear()
-    db_conn._session_factories.clear()
 
     # Restore env vars BEFORE restoring settings so get_settings()
     # picks up the original values.
@@ -322,18 +308,11 @@ async def real_audio_client():
     get_settings.cache_clear()
     new_settings = get_settings()
 
-    # Force-update module-level settings and dispose stale DB engines
+    # Force-update module-level settings (no engine disposal — TASK-963)
     # (same as configured_app — prevents cross-contamination)
     import stt.core.database.connection as db_conn
 
     db_conn.settings = new_settings
-    for engine in list(db_conn._engines.values()):
-        try:
-            await engine.dispose()
-        except Exception:
-            pass
-    db_conn._engines.clear()
-    db_conn._session_factories.clear()
 
     import stt.health.api.routes as health_routes
 
