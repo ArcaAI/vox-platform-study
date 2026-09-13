@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  adoptBucket,
   createAccessKey,
   createBucket,
   deleteAccessKey,
@@ -77,6 +78,19 @@ describe('storage client — buckets', () => {
       'DELETE /api/hope/admin/tenants/storage/buckets/b-1',
       'POST /api/hope/admin/tenants/storage/buckets/provision/t-1',
     ]);
+  });
+
+  // Adoption is a DIFFERENT route from createBucket: that one derives the
+  // physical name from tenantKey + slug, this one takes a name that already
+  // exists in storage, plus the owning tenant (the caller is unscoped).
+  it('posts an adoption to .../buckets/register with the name and owning tenant', async () => {
+    const calls = installFetchMock();
+
+    await adoptBucket({ name: 'legacy-exports', tenantId: 't-2', description: 'Migrated exports' });
+
+    expect(calls).toHaveLength(1);
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/admin/tenants/storage/buckets/register');
+    expect(calls[0].body).toEqual({ name: 'legacy-exports', tenantId: 't-2', description: 'Migrated exports' });
   });
 
   it('round-trips defaults and browses tree/objects/presigned URLs', async () => {

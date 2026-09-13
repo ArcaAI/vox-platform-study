@@ -23,6 +23,13 @@ export interface StorageBucketWithScope extends StorageBucket {
   tenantName: string | null;
   registered: boolean;
   physicalMissing: boolean;
+  /**
+   * Platform-owned bucket (model weights, MLflow artifacts, backups, the
+   * workflow claim check). Never tenant-ownable, so the row shows a Platform
+   * badge and NO register action — the adopt route rejects these outright.
+   * Optional on the wire so an older gateway degrades to "not platform".
+   */
+  platform?: boolean;
 }
 
 /** POST /storage/buckets body (CreateBucketRequest). */

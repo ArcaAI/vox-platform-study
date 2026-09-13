@@ -70,6 +70,7 @@ describe('StorageController — includePhysical (TASK-932)', () => {
         tenantName: 'ArcaAI',
         registered: true,
         physicalMissing: false,
+        platform: false,
       },
       {
         name: 'orphan-bucket',
@@ -78,6 +79,16 @@ describe('StorageController — includePhysical (TASK-932)', () => {
         tenantName: null,
         registered: false,
         physicalMissing: false,
+        platform: false,
+      },
+      {
+        name: 'hope-models',
+        creationDate: '2026-01-04T00:00:00.000Z',
+        tenantId: null,
+        tenantName: null,
+        registered: false,
+        physicalMissing: false,
+        platform: true,
       },
     ]);
 
@@ -93,6 +104,7 @@ describe('StorageController — includePhysical (TASK-932)', () => {
         tenantName: 'ArcaAI',
         registered: true,
         physicalMissing: false,
+        platform: false,
       },
       {
         name: 'orphan-bucket',
@@ -101,6 +113,18 @@ describe('StorageController — includePhysical (TASK-932)', () => {
         tenantName: null,
         registered: false,
         physicalMissing: false,
+        platform: false,
+      },
+      // The console keys its "Platform" badge (and the absence of a register
+      // action) off this flag, so the mapping must carry it through.
+      {
+        name: 'hope-models',
+        creationDate: '2026-01-04T00:00:00.000Z',
+        tenantId: null,
+        tenantName: null,
+        registered: false,
+        physicalMissing: false,
+        platform: true,
       },
     ]);
   });
@@ -111,6 +135,32 @@ describe('StorageController — includePhysical (TASK-932)', () => {
     );
 
     await expect(controller.listBuckets('true')).rejects.toThrow(BadRequestException);
+  });
+
+  describe('POST /storage/buckets — platform bucket names are reserved', () => {
+    it('rejects a platform bucket name BEFORE creating anything, so no untracked bucket is left behind', async () => {
+      await expect(controller.createBucket({ name: 'hope-models' } as any)).rejects.toThrow(BadRequestException);
+
+      expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
+      expect(mockTenantBucketService.registerBucket).not.toHaveBeenCalled();
+    });
+
+    it('rejects regardless of casing or surrounding whitespace', async () => {
+      await expect(controller.createBucket({ name: '  Hope-Models ' } as any)).rejects.toThrow(BadRequestException);
+
+      expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
+    });
+
+    it('still creates and registers an ordinary bucket', async () => {
+      mockBlobStorage.createBucket.mockResolvedValue(undefined);
+      mockTenantBucketService.registerBucket.mockResolvedValue(null);
+
+      const result = await controller.createBucket({ name: 'legacy-exports' } as any);
+
+      expect(mockBlobStorage.createBucket).toHaveBeenCalledWith('legacy-exports');
+      expect(mockTenantBucketService.registerBucket).toHaveBeenCalledWith('legacy-exports');
+      expect(result).toEqual({ name: 'legacy-exports', created: true });
+    });
   });
 
   it('falls through to the existing tenant-scoped listing when includePhysical is absent or not "true"', async () => {
