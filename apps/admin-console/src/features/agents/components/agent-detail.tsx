@@ -685,7 +685,16 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                 the one-shot publish dialog: derived from slug + task, so they can be reopened any time. */}
             <TabsContent value="integration" className="flex flex-col gap-4">
               {agent.status === 'PUBLISHED' || agent.status === 'DEPRECATED' ? (
-                <IntegrationPanel kind="agent" slug={agent.slug} task={agent.task} versionNumber={agent.versionNumber} isActive={agent.isActive} />
+                <IntegrationPanel
+                  kind="agent"
+                  slug={agent.slug}
+                  task={agent.task}
+                  versionNumber={agent.versionNumber}
+                  isActive={agent.isActive}
+                  /* TASK-971 lane B — the example body in every lane comes from the agent's own
+                     declared input, not a placeholder. */
+                  inputSchema={agent.inputSchema}
+                />
               ) : (
                 <EmptyState
                   icon={IconRocket}
