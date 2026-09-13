@@ -12,47 +12,59 @@
  *      client as `computeSamples[]` on `POST /internal/harness/trajectory`.
  *   2. `AgentTrajectoryService.recordSteps` turns each sample into one
  *      `WORKFLOW` / `CPU_SECOND` row keyed
- *      `harness:cpu:<sessionId>:<runId>:<activityId>:<attempt>`, whose
- *      `requestId` IS the run id — which is what makes "CPU time for this
- *      workflow" a single ledger query.
+ *      `harness:cpu:<sessionId>:<runId>:<activityId>:<attempt>`.
  *
  * Hop 2 is the gateway's, and this file proves it over HTTP by POSTing the
  * frozen §10.2 sample shape, exactly as the worker's flush does. Hop 1 is the
  * worker's own, and proving it means starting a real run.
  *
- * HOP 1 NOW RUNS, AND IT IS WRONG (TASK-957 lane D, measured 2026-09-13
- * against gateway `0.0.0-dev-2-2.aca4944e`). The environment excuse this file
- * was written under is gone: `apps/harness` serves the gateway on the test
- * port and a `python -m harness.temporal.worker` is attached to the TEST
- * Temporal (`hope-temporal-test`, host 7333). Both need an explicit
- * `TEMPORAL_ADDRESS=localhost:7333`, because `.env.test` declares none and the
- * launchers default to the DEV broker on 7233; the worker additionally needs
- * `HARNESS_API_BASE_URL=http://localhost:8968` (it defaults to the dev gateway
- * on 8868) and `HARNESS_CLAIM_CHECK_STORE=s3` +
- * `HARNESS_CLAIM_CHECK_ENDPOINT_URL=http://localhost:9002` to read back what
- * the gateway wrote. `POST /workflows/:slug/runs` now answers 202, a run
- * executes, and `workflow.step` / `CPU_SECOND` rows land with real
- * quantities.
+ * ============================================================================
+ * `sessionId` IS THE JOIN — NOT `runId`
+ * ============================================================================
+ * The two id columns on a sample are not interchangeable, and which one
+ * answers "CPU time for THIS workflow" is the single fact this file has to get
+ * right.
  *
- * They are nonetheless unreachable by run id, and the run-triggered test below
- * FAILS on exactly that. `temporal/compute_metering.py:397` sets
- * `run_id=str(info.workflow_run_id)` — TEMPORAL's own per-execution id, which
- * appears nowhere else in HOPE. HOPE's run id is the SUFFIX of
- * `info.workflow_id` (`workflow-interpreter-<runId>`), which the same call
- * already passes as `session_id`. So every real row carries a `requestId` that
- * matches no run, and "CPU time for this workflow" — the single ledger query
- * §3.4 exists to make possible — returns nothing. Measured consequence:
- * `GET admin/workflow-runs/:id` reports `cpuSeconds: null` on runs whose rows
- * hold 0.001 / 0.037 / 0.4 / 1.251 CPU-seconds. Secondly, the worker never
- * sends `trigger` at all (`compute_metering.py:97-100` declares it optional
- * because no activity input carries one), so `attributesJson.trigger` is
- * absent where the contract says `WORKFLOW_RUN`.
+ *   * `sessionId` is `workflow-interpreter-<HOPE run id>` — Temporal's
+ *     `workflow_id`. `WorkflowRun` joins its steps on exactly this string
+ *     (`workflow-run.prisma:10-20`), never on `AgentTrajectoryStep.runId`, so
+ *     it is the run's identity across the ledger and the gateway's
+ *     `getWorkflowRunCpuSeconds` sums on it.
+ *   * `runId` is Temporal's per-EXECUTION id, and the worker sending it
+ *     (`temporal/compute_metering.py:397`, `str(info.workflow_run_id)`) is
+ *     DELIBERATE: it is the fourth member of the trajectory table's dedupe
+ *     tuple `(tenantId, sessionId, runId, seq)`, which is what makes a
+ *     continue-as-new or a replayed execution bill separately instead of
+ *     colliding. It is not the HOPE run id and is not meant to be.
  *
- * BOTH are worker-side, and the hop-2 test above proves the gateway intake is
- * correct — it supplies `runId` and `trigger` itself and every assertion
- * holds. Do NOT reconcile the failing test by matching on `sessionId` or by
- * dropping the `trigger` assertion: that would make the suite agree with the
- * defect and erase the only signal that a run's CPU is unattributable.
+ * So a run's rows are found by `sessionId`, and the run-triggered test below
+ * matches on it. An earlier revision of this file matched `requestId === runId`
+ * and read the resulting emptiness as a worker defect; that was the test
+ * holding the wrong column, and `cpuSeconds: null` on a run that really burned
+ * CPU was the gateway summing on `requestId` for the same reason. Both are
+ * corrected. Do NOT "restore" a `requestId === runId` predicate here: it can
+ * only ever match the hop-2 test's hand-supplied ids, never a real run's.
+ *
+ * Launching the harness and worker against the TEST stack needs four overrides
+ * `.env.test` does not supply — `TEMPORAL_ADDRESS=localhost:7333` (it declares
+ * none, so the launchers default to the DEV broker on 7233),
+ * `HARNESS_API_BASE_URL=http://localhost:8968` (defaults to the dev gateway on
+ * 8868), and `HARNESS_CLAIM_CHECK_STORE=s3` +
+ * `HARNESS_CLAIM_CHECK_ENDPOINT_URL=http://localhost:9002` so the worker reads
+ * back the claim-check blob the gateway wrote. The test MinIO also needs the
+ * `harness-claim-check` bucket; without it the gateway threw `NoSuchBucket`
+ * and the route answered a bare 500 long before any harness call.
+ *
+ * Hop 1 was unprovable when this file was written and is provable now
+ * (TASK-957 lane D, 2026-09-13): `POST /workflows/:slug/runs` answers 202, a
+ * run executes on the test broker, and `workflow.step` / `CPU_SECOND` rows
+ * land with real quantities. The run-triggered test below no longer skips.
+ *
+ * It asserts the run is BILLED, not that it SUCCEEDS. A run that fails at a
+ * node still occupied the worker, so it still owes CPU — and on this stack it
+ * does fail, at `core.trigger`, because the payload below is not shaped to the
+ * seeded workflow's declared context schema. That is deliberate: making the
+ * payload valid would drag an LLM backend into a metering test.
  */
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'crypto';
@@ -149,8 +161,12 @@ test.describe('TASK-959 §3.4 — the worker CPU flush becomes WORKFLOW / CPU_SE
       expect(row.unit).toBe('CPU_SECOND');
       expect(row.provider, 'the durable worker is a self-hosted provider in its own right').toBe('harness');
       expect(row.deployment).toBe('SELF_HOSTED');
-      // `requestId` IS the run id: "CPU time for this workflow" has to be one
-      // query, and this is the column it runs on.
+      // The intake stamps `requestId` from whatever the wire's `runId` field
+      // carried — it transforms nothing — so this asserts FIDELITY, not that
+      // `requestId` is the HOPE run id. It is not: a real worker sends
+      // Temporal's execution id there (see the header), and this test can
+      // assert equality only because it minted `runId` itself a few lines up.
+      // The column a run is actually found by is `sessionId`.
       expect(row.requestId).toBe(runId);
       expect(row.attributesJson?.device).toBe('cpu');
       expect(row.attributesJson?.activityType).toBe('core.agent');
@@ -217,24 +233,23 @@ test.describe('TASK-959 §3.4 — an API-triggered run bills its own worker CPU'
     });
 
     // A run the gateway cannot dispatch, or one no worker will ever pick up,
-    // proves nothing about metering. Both are the same skip.
-    // Answers 202 as of 2026-09-13, so this no longer fires. It used to, with a
-    // bare 500: the test MinIO had no `harness-claim-check` bucket (the test
-    // compose omitted it), so the gateway's claim-check upload threw
-    // `NoSuchBucket` before any harness call. With the bucket present the same
-    // route answers a typed 503 while the harness is down, which is the shape it
-    // should have — so a >=500 here now means a genuinely unreachable dispatcher.
+    // proves nothing about metering. Both are the same skip, and it no longer
+    // fires: the route answered a bare 500 only while the test MinIO lacked the
+    // `harness-claim-check` bucket, so the gateway's claim-check upload threw
+    // `NoSuchBucket` before any harness call. With the bucket present it answers
+    // a typed 503 while the harness is down, so a >=500 here now means a
+    // genuinely unreachable dispatcher.
     test.skip(start.status() >= 500, `the gateway could not start the run (${start.status()}) — the harness dispatcher is unreachable`);
     expect(start.status(), await start.text()).toBe(202);
     const { runId } = (await start.json()) as { runId: string };
 
-    // FAILS TODAY, AND THE PREDICATE IS THE CORRECT ONE (see the header). Rows
-    // DO land — the timeout message lists them with real quantities — but each
-    // carries `requestId = info.workflow_run_id`, Temporal's per-execution id,
-    // instead of HOPE's `runId`. The fix is one line in
-    // `apps/harness/.../compute_metering.py`; matching on `sessionId` here would
-    // only teach the suite to accept a run whose CPU no operator can find.
-    const rows = await waitForLedgerRows(since, (row) => row.requestId === runId && row.capability === 'WORKFLOW', {
+    // `sessionId`, not `requestId` — see the header. This is the same string
+    // `WorkflowRun` joins its steps on and the same one the gateway sums
+    // `cpuSeconds` over, so matching it here asserts the run's CPU is reachable
+    // by the identity an operator actually holds. A `requestId === runId`
+    // predicate would match only the hop-2 test's hand-supplied ids.
+    const sessionId = `workflow-interpreter-${runId}`;
+    const rows = await waitForLedgerRows(since, (row) => row.sessionId === sessionId && row.capability === 'WORKFLOW', {
       label: 'run worker CPU',
       timeoutMs: 120_000,
       tenantId: TENANT_GLOBAL,
@@ -243,6 +258,13 @@ test.describe('TASK-959 §3.4 — an API-triggered run bills its own worker CPU'
       expect(row.operation).toBe('workflow.step');
       expect(row.unit).toBe('CPU_SECOND');
       expect(row.attributesJson?.trigger).toBe('WORKFLOW_RUN');
+      // Pins the EXECUTION-id semantics: `requestId` carries Temporal's
+      // per-execution id, which is the fourth member of the trajectory dedupe
+      // tuple. It must be present — a sample with no execution id cannot
+      // deduplicate — and must NOT be the HOPE run id, or a continue-as-new
+      // would collide with the execution it replaced.
+      expect(typeof row.requestId === 'string' && row.requestId.length > 0).toBe(true);
+      expect(row.requestId).not.toBe(runId);
     }
 
     // And the figure surfaces on the run detail, which is where an operator
