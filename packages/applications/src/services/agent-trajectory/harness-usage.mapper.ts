@@ -223,6 +223,21 @@ export interface BuildHarnessUsageOptions {
    * step, whose seconds are HOPE's own CPU spent calling the vendor.
    */
   device?: ComputeDevice | null;
+  /**
+   * TASK-957 F-8 — the CLINICIAN the run acts for, from the trajectory wire.
+   *
+   * Passed in rather than read off the step for the same structural reason
+   * `device` is: `AgentTrajectoryStep` has no column for it. It is attribution
+   * the ingest carried, not state the trajectory table stores, and adding a
+   * column to relay a value nothing reads from that table would be the
+   * expensive way to be right. Absent stays ABSENT — a `doctorId: null` where
+   * there used to be no key is a diff on every consultation-lane row.
+   */
+  doctorId?: string | null;
+  /** The interpreter node this step belongs to ({@link UsageAttributes.nodeId}). */
+  nodeId?: string | null;
+  /** The published definition version that node belongs to ({@link UsageAttributes.workflowVersionId}). */
+  workflowVersionId?: string | null;
 }
 
 /**
@@ -314,6 +329,8 @@ export function buildHarnessUsageBatches(step: AgentTrajectoryStepEntity, option
       consultationId: step.consultationId ?? null,
       requestId: step.runId || step.sessionId,
       sessionId: step.sessionId,
+      // TASK-957 F-8 — the existing column, filled for the first time on this lane.
+      ...(options.doctorId ? { doctorId: options.doctorId } : {}),
       attributesJson: {
         engine: provider,
         interrupted: step.status !== AgentStepStatus.OK,
@@ -322,6 +339,11 @@ export function buildHarnessUsageBatches(step: AgentTrajectoryStepEntity, option
         ...(trigger ? { trigger } : {}),
         ...(guardrail ? { guardrail } : {}),
         ...(leg ? { leg } : {}),
+        // TASK-957 F-8 — WHICH node of WHICH definition version. Independent of
+        // each other and of `doctorId`: a run with no clinical subject still
+        // names its node, and a step the interpreter did not label still bills.
+        ...(options.nodeId ? { nodeId: options.nodeId } : {}),
+        ...(options.workflowVersionId ? { workflowVersionId: options.workflowVersionId } : {}),
       },
     },
     units,
