@@ -405,13 +405,13 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
     it('a draft that disables reasoning instructs the engine not to reason', async () => {
       await makeWiredTransport().submit({ ...base, generation: { reasoning: { enabled: false } } });
 
-      expect(sentBody().extra).toEqual({ reasoning_effort: 'minimal' });
+      expect(sentBody().reasoning).toEqual({ enabled: false });
     });
 
-    it('a draft with no reasoning opinion sends no `extra` key at all', async () => {
+    it('a draft with no reasoning opinion sends no `reasoning` key at all', async () => {
       await makeWiredTransport().submit({ ...base, generation: { temperature: 0.1 } });
 
-      expect(Object.keys(sentBody())).not.toContain('extra');
+      expect(Object.keys(sentBody())).not.toContain('reasoning');
     });
   });
 

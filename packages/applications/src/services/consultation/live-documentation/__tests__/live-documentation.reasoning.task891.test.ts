@@ -1,11 +1,11 @@
 /**
  * TASK-891 C2 + C5 — the agent's reasoning posture on the wire, and `reasoning_content` off it.
  *
- * ## C2 — no new transport
+ * ## C2 — the posture reaches TEXT
  *
- * `GenerateRequest.extra` is ALREADY declared on `apps/text`
- * (`models/requests.py`) and ALREADY forwarded as `extra_body` to the
- * OpenAI-compatible family — its own field comment names `reasoning_effort` as the example.
+ * The agent's `parameters.generation.reasoning` block travels as `GenerateRequest.reasoning`,
+ * the neutral posture each adapter renders into its own engine's parameter (TASK-970; it was
+ * `extra.reasoning_effort` under TASK-891, which only three adapters ever read).
  * So the whole of C2 is: read `parameters.generation.reasoning` off the RESOLVED agent and
  * merge it into `extra` on the `applyTextRuntimeProfile` path the three live TEXT hops
  * already call. No new field, no new HTTP call, no new adapter.
@@ -164,22 +164,22 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('TASK-891 C2 — the agent`s reasoning posture rides GenerateRequest.extra', () => {
+describe('TASK-891 C2 — the agent`s reasoning posture rides GenerateRequest.reasoning', () => {
   it('an agent that disables reasoning instructs the engine not to reason', async () => {
     const { bodies } = await runOneFlush({ generation: { temperature: 0.1, reasoning: { enabled: false } } });
 
     expect(bodies).toHaveLength(1);
-    expect(bodies[0].extra, 'the agent`s reasoning posture never reached the wire').toEqual({ reasoning_effort: 'minimal' });
+    expect(bodies[0].reasoning, 'the agent`s reasoning posture never reached the wire').toEqual({ enabled: false });
   });
 
   it('an agent that asks for an effort sends that effort', async () => {
     const { bodies } = await runOneFlush({ generation: { reasoning: { enabled: true, effort: 'low' } } });
-    expect(bodies[0].extra).toEqual({ reasoning_effort: 'low' });
+    expect(bodies[0].reasoning).toEqual({ enabled: true, effort: 'low' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` at all (byte-identical to before C2)', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` at all — absence is its own statement', async () => {
     const { bodies } = await runOneFlush({ generation: { temperature: 0.1 } });
-    expect(bodies[0].extra).toBeUndefined();
+    expect(bodies[0].reasoning).toBeUndefined();
   });
 });
 
@@ -190,7 +190,7 @@ describe('TASK-891 C5 — `reasoning_content` never reaches the document parser'
       responseData: { summary: NOTE, reasoning_content: CHAIN_OF_THOUGHT, content: NOTE },
     });
 
-    expect(bodies[0].extra).toEqual({ reasoning_effort: 'high' });
+    expect(bodies[0].reasoning).toEqual({ enabled: true, effort: 'high' });
     expect(payload).not.toBeNull();
     expect(payload!.runningSummary).not.toContain('differentials');
     expect(payload!.runningSummary).not.toContain(CHAIN_OF_THOUGHT);
