@@ -98,6 +98,17 @@ interface TextGenerateRequest {
   response_format?: TextResponseFormat;
   context?: Record<string, unknown>;
   /**
+   * TASK-970 — the reasoning/thinking posture, ACCEPTED FROM THE CALLER.
+   *
+   * Unlike `provider_overrides` below, this one legitimately arrives from a
+   * client: the LLM playground lets an admin drive reasoning per run. A caller
+   * posture wins outright (`TextRequestEnrichmentService.callerPinnedReasoning`);
+   * when absent the platform tier fills it in, which is what makes an unpinned
+   * playground run obey `text.reasoning.defaultEffort` instead of silently
+   * inheriting the engine's own default.
+   */
+  reasoning?: { enabled: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high' };
+  /**
    * Gateway-injected tenant BYO credentials, keyed by provider.
    * NEVER accepted from a client: the strict global ValidationPipe rejects
    * undeclared fields on the request DTOs, and this interface describes the
@@ -375,6 +386,17 @@ export class TextProxyController {
     // provider veto → 409, a missing entitlement → 403), and a policy refusal
     // should not be reached with a half-built body.
     await this.textRequestEnrichment.applyTenantGuardrailPolicy(target);
+    // TASK-970 — the reasoning posture. This proxy is the ONE text path that
+    // never applied it: every other caller of `applyTextRuntimeProfile` is an
+    // applications-layer service resolving an Agent, so a playground / SDK call
+    // arriving here carried no posture at all and the engine decided for itself.
+    // That is why reasoning stayed on in the playground no matter what any agent
+    // or platform setting said.
+    //
+    // No `generation` argument is passed on purpose: there is no Agent behind a
+    // caller-pinned provider/model, so the cascade is exactly "caller posture, else
+    // platform tier" — and a caller that sent `reasoning` short-circuits it.
+    await this.textRequestEnrichment.applyTextRuntimeProfile(target);
     // Then fold in the caller tenant's BYO cloud credential, if any.
     return this.applyTenantProviderOverrides(target);
   }

@@ -16,7 +16,7 @@ import { getPath, labelOf, props, setPath, type Schema, type Value } from '@/sha
 import type { AgentTask } from '../api';
 import { JsonField } from './json-field';
 import { useTaskModelCatalogue } from './model-picker';
-import { reasoningSupportFor, type ReasoningProviderSupport } from './reasoning-support';
+import { reasoningSupportFor, type ReasoningProviderSupport } from '@/shared/reasoning/reasoning-support';
 
 /**
  * TASK-887 — a registry-model REFERENCE, picked rather than typed.

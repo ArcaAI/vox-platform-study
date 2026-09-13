@@ -28,8 +28,21 @@ export interface TextResponseFormat {
 }
 
 /** POST text-generations/generate body (TextGenerateRequest on the gateway). */
+/**
+ * TASK-970 — the reasoning/thinking posture a playground run pins for itself.
+ *
+ * Omitted entirely means "no opinion": the gateway then applies the platform tier
+ * (`text.reasoning.defaultEffort`). That distinction is load-bearing — sending
+ * `{enabled: true}` to mean "inherit" would pin every run to ON.
+ */
+export interface ReasoningPosture {
+  enabled: boolean;
+  effort?: 'minimal' | 'low' | 'medium' | 'high';
+}
+
 export interface GenerateTextRequest {
   prompt: string;
+  reasoning?: ReasoningPosture;
   system_prompt?: string;
   provider?: string;
   model?: string;
@@ -104,6 +117,7 @@ export type AssembledVisitType = 'new_visit' | 'referral';
 
 /** POST text-generations/generate/assembled body — EXACTLY one of context_item_ids | message. */
 export interface AssembledGenerateRequest {
+  reasoning?: ReasoningPosture;
   type: AssembledGenerationType;
   visit_type?: AssembledVisitType;
   context_item_ids?: string[];

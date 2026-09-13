@@ -16,7 +16,7 @@ interface ReasoningPostureFixture {
   support: Record<string, { class: ReasoningSupportClass; renders: string | null; verified: boolean }>;
 }
 
-const FIXTURE_PATH = fileURLToPath(new URL('../../../../../../../tests/contracts/reasoning-posture.fixture.json', import.meta.url));
+const FIXTURE_PATH = fileURLToPath(new URL('../../../../../../tests/contracts/reasoning-posture.fixture.json', import.meta.url));
 const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as ReasoningPostureFixture;
 
 // The fixture's `support` object carries one non-adapter key: `$comment`, documentation for

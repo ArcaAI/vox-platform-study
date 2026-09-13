@@ -62,6 +62,8 @@ const INITIAL_FORM: LlmFormState = {
   templateId: '',
   dnaStyleId: '',
   debug: false,
+  reasoningMode: 'inherit',
+  reasoningEffort: '',
 };
 
 type LlmRequest = { assembled: false; body: GenerateTextRequest } | { assembled: true; body: AssembledGenerateRequest };
@@ -292,12 +294,21 @@ function PlaygroundLlmBody() {
       : null;
 
   const handleGenerate = () => {
+    // TASK-970 — `inherit` sends NOTHING so the gateway applies the platform tier;
+    // anything else pins this run's own posture, which wins outright.
+    const reasoning =
+      form.reasoningMode === 'inherit'
+        ? undefined
+        : form.reasoningMode === 'off'
+          ? { enabled: false }
+          : { enabled: true, ...(form.reasoningEffort ? { effort: form.reasoningEffort } : {}) };
     const shared = {
       ...(selectedProvider ? { provider: selectedProvider } : {}),
       ...(selectedModel ? { model: selectedModel } : {}),
       temperature: form.temperature,
       max_tokens: parseMaxTokens(form.maxTokens),
       stream: form.streaming,
+      ...(reasoning ? { reasoning } : {}),
     };
     if (form.assembled) {
       runRequest({
