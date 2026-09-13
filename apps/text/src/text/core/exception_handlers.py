@@ -11,6 +11,7 @@ from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
     ContentBlockedError,
+    GuardrailUnavailableError,
     InputValidationError,
     PoolUnhealthyError,
     ProviderCredentialsError,
@@ -27,6 +28,7 @@ from text.core.exceptions import (
 _STATUS_MAP: dict[type, int] = {
     InputValidationError: 422,
     ContentBlockedError: 422,
+    GuardrailUnavailableError: 503,
     RateLimitError: 429,
     QueueFullError: 429,
     QueueTimeoutError: 429,

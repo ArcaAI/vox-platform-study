@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError, TextError
 from text.core.guardrail_posture import platform_moderation_enabled, tenant_opted_out
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.external_guardrail import (
@@ -101,6 +102,24 @@ class OutputRejectedError(Exception):
     def task_error(self) -> str:
         """What the task record says. Same string on both call sites."""
         return f"{_TASK_ERROR_PREFIX}{self.reason}"
+
+    def as_text_error(self) -> TextError:
+        """The FIXED, non-PHI error this rejection becomes on the HTTP surface.
+
+        Mirrors the input gate (TASK-969 WS-3): the non-streaming ``/generate``
+        body converts this into an HTTP response via ``raise self.as_text_error()``
+        rather than a bare ``HTTPException`` — ``detail`` becomes a fixed
+        sentence and ``error_code`` a closed-vocabulary token, never
+        ``self.reason``. Guardrail's outbound screen restricts ``reason`` to
+        check names/labels (never raw text), but this keeps the HTTP contract
+        of both gate halves identical and PHI-safe BY CONSTRUCTION rather than
+        by that label happening to be safe today. The SSE terminal frame
+        (``terminal_data`` below) and structured logs are unaffected — they keep
+        carrying ``self.reason`` for operators, exactly as before.
+        """
+        if self.retryable:
+            return GuardrailUnavailableError()
+        return ContentBlockedError("The response was blocked by the safety guardrail.")
 
     def terminal_data(self, *, usage: dict[str, Any]) -> dict[str, Any]:
         """The ``data`` of the terminal ``error`` frame on the streaming path.

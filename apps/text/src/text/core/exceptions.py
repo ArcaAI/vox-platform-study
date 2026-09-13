@@ -182,10 +182,38 @@ class ConcurrencyLimitError(TextError):
 
 
 class ContentBlockedError(TextError):
-    """Content blocked by guardrails."""
+    """Content blocked by guardrails.
 
-    def __init__(self, message: str = "Content blocked by safety filter"):
-        super().__init__(message, error_code="CONTENT_BLOCKED")
+    ``error_code`` defaults to the generic ``CONTENT_BLOCKED`` token. The input
+    gate's medical-relevance check (``api/endpoints/generate._apply_guardrail_gate``)
+    raises this with ``error_code="CONTENT_BLOCKED_NOT_MEDICAL"`` when the
+    verdict says so explicitly (``is_medical: False``) — TASK-969 WS-3's closed,
+    non-PHI vocabulary. ``message`` must always be a FIXED sentence: guardrail's
+    own free-text ``reason``/``reasoning`` can quote the prompt and must never be
+    interpolated into it.
+    """
+
+    def __init__(
+        self,
+        message: str = "Content blocked by safety filter",
+        *,
+        error_code: str = "CONTENT_BLOCKED",
+    ):
+        super().__init__(message, error_code=error_code)
+
+
+class GuardrailUnavailableError(TextError):
+    """Guardrail is unreachable, or its retry budget is exhausted (TASK-969 WS-3).
+
+    Distinct from ``ContentBlockedError``: no verdict was ever reached, so this
+    is a retryable platform-availability gap (503), never a content judgement.
+    Both gate halves — the input gate's ``_apply_guardrail_gate`` and the output
+    gate's ``services/output_gate.OutputRejectedError.as_text_error`` — raise
+    this identically; generation never runs while it is in flight.
+    """
+
+    def __init__(self, message: str = "The safety guardrail is temporarily unavailable."):
+        super().__init__(message, error_code="GUARDRAIL_UNAVAILABLE")
 
 
 class ProviderNotFoundError(TextError):

@@ -381,7 +381,14 @@ describe('PlaygroundLlmScreen', () => {
     const calls = stubLlm((call, parsed) => {
       if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
         return Response.json(
-          { statusCode: 422, message: 'No text-generation model is configured for this tenant', error: 'Unprocessable Entity' },
+          {
+            statusCode: 422,
+            message: 'No text-generation model is configured for this tenant',
+            error: 'Unprocessable Entity',
+            // TASK-969 WS-3: the gateway relay for a real MODEL_NOT_SELECTED
+            // 422 carries this code — the console branches the panel on it.
+            error_code: 'MODEL_NOT_SELECTED',
+          },
           { status: 422 },
         );
       }
@@ -397,9 +404,62 @@ describe('PlaygroundLlmScreen', () => {
     expect(within(panel).getByText(/fail-closed/i)).toBeDefined();
     expect(within(panel).getByText(/no model resolved for this tenant/i)).toBeDefined();
     expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    expect(screen.getByText(/no effective model for this tenant/i)).toBeDefined();
 
     fireEvent.click(within(panel).getByRole('button', { name: /retry/i }));
     await waitFor(() => expect(calls.filter((call) => call.method === 'POST' && call.url.endsWith('/text-generations/generate')).length).toBe(2));
+  });
+
+  it('renders the content-not-clinical panel for a CONTENT_BLOCKED_NOT_MEDICAL 422, never the "no model resolved" copy', async () => {
+    stubLlm((call, parsed) => {
+      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+        return Response.json(
+          {
+            // The gateway's own fixed phrase for this code (never the upstream
+            // TEXT `detail`, which can quote the prompt) — deliberately worded
+            // differently from the panel's own title copy below, so the test
+            // proves the TITLE is code-driven rather than an accidental
+            // substring match against the message line.
+            detail: 'TEXT rejected this request under the tenant guardrail policy.',
+            error_code: 'CONTENT_BLOCKED_NOT_MEDICAL',
+          },
+          { status: 422 },
+        );
+      }
+      return undefined;
+    });
+    renderWithProviders(<PlaygroundLlmScreen />);
+
+    await screen.findByLabelText('Provider');
+    await generateWithPrompt('hello');
+
+    const panel = await screen.findByRole('alert');
+    expect(within(panel).getByText('The prompt was not classified as clinical content.')).toBeDefined();
+    expect(within(panel).getByText('TEXT rejected this request under the tenant guardrail policy.')).toBeDefined();
+    expect(within(panel).queryByText(/no model resolved for this tenant/i)).toBeNull();
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+    // The footer status line names the real cause too, not the stale
+    // "no effective model" text that used to be shown for every 422.
+    expect(screen.getByText(/prompt not classified as clinical content/i)).toBeDefined();
+  });
+
+  it('renders a generic fail-closed explanation when the 422 carries no recognised error_code', async () => {
+    stubLlm((call, parsed) => {
+      if (parsed.pathname === '/api/hope/text-generations/generate' && call.method === 'POST') {
+        return Response.json({ detail: 'Something else went wrong upstream.' }, { status: 422 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<PlaygroundLlmScreen />);
+
+    await screen.findByLabelText('Provider');
+    await generateWithPrompt('hello');
+
+    const panel = await screen.findByRole('alert');
+    expect(within(panel).getByText(/generation failed closed/i)).toBeDefined();
+    expect(within(panel).queryByText(/no model resolved for this tenant/i)).toBeNull();
+    expect(within(panel).queryByText(/not classified as clinical content/i)).toBeNull();
+    expect(within(panel).getByText('Something else went wrong upstream.')).toBeDefined();
   });
 
   it('surfaces a transport drop as the designed reattach state and reads the task post-mortem', async () => {

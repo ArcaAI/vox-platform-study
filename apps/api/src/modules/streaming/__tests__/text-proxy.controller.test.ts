@@ -317,6 +317,80 @@ describe('TextProxyController', () => {
     });
   });
 
+  // TASK-969 WS-3: a small, CLOSED vocabulary of non-PHI `error_code`s may cross
+  // the gateway boundary AS A CODE ONLY — never the upstream `detail`, which can
+  // quote the prompt. The gateway supplies its OWN fixed phrase per code; an
+  // unlisted or absent code keeps the C4-05 redaction above unchanged.
+  describe('relayable error_code allow-list (TASK-969 WS-3)', () => {
+    const PHI_DETAIL = 'prompt fragment: Patient Jane Doe DOB 1980-01-01 SSN 123-45-6789';
+
+    it.each([
+      'CONTENT_BLOCKED_NOT_MEDICAL',
+      'CONTENT_BLOCKED',
+      'GUARDRAIL_UNAVAILABLE',
+      'MODEL_NOT_SELECTED',
+      'PROVIDER_CREDENTIALS_MISSING',
+      'VISION_NOT_SUPPORTED',
+      'VALIDATION_ERROR',
+      'POOL_UNHEALTHY',
+    ])('relays %s as a code, never the upstream detail', async (code) => {
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 422, data: { detail: PHI_DETAIL, error_code: code } },
+      });
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect(thrown).toBeInstanceOf(HttpException);
+      const body = (thrown as HttpException).getResponse() as { detail?: string; error_code?: string };
+      expect(body.error_code).toBe(code);
+      expect(body.detail).toBeTruthy();
+      expect(body.detail).not.toBe(PHI_DETAIL);
+      const serialized = JSON.stringify(body);
+      expect(serialized).not.toContain('Jane Doe');
+      expect(serialized).not.toContain('123-45-6789');
+    });
+
+    it('preserves the upstream status when relaying an allow-listed code', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 503, data: { detail: PHI_DETAIL, error_code: 'GUARDRAIL_UNAVAILABLE' } },
+      });
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect((thrown as HttpException).getStatus()).toBe(503);
+      expect((thrown as HttpException).getResponse()).toEqual({
+        detail: expect.any(String),
+        error_code: 'GUARDRAIL_UNAVAILABLE',
+      });
+    });
+
+    it('still redacts a code that is NOT on the allow-list, exactly as an absent code', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 422, data: { detail: PHI_DETAIL, error_code: 'SOME_OTHER_CODE' } },
+      });
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
+    });
+
+    it('still logs the redaction marker even when an allow-listed code is relayed', async () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error');
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 422, data: { detail: PHI_DETAIL, error_code: 'CONTENT_BLOCKED' } },
+      });
+
+      await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch(() => undefined);
+
+      const redactedLog = errorSpy.mock.calls.some((call) => {
+        const arg = call[0] as { upstreamBodyRedacted?: unknown } | undefined;
+        return arg != null && typeof arg === 'object' && arg.upstreamBodyRedacted === true;
+      });
+      expect(redactedLog).toBe(true);
+      errorSpy.mockRestore();
+    });
+  });
+
   // The playground/SDK proxy passes a caller-supplied
   // model through untouched (SDK fidelity); only when the model is absent does it
   // fall back to the HarnessPolicy cascade. When neither is available it forwards

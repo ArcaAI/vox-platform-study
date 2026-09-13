@@ -37,6 +37,8 @@ from text.core.dependencies import (
 from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
+    ContentBlockedError,
+    GuardrailUnavailableError,
     ProviderCredentialsError,
     QueueTimeoutError,
     RateLimitError,
@@ -215,11 +217,19 @@ async def _apply_guardrail_gate(
             reason = verdict.get("reason", "not_allowed")
             # A sustained guardrail outage is retryable (503); a genuine content
             # rejection is a 422. Both fail CLOSED — generation never runs.
-            status_code = 503 if reason == GUARDRAIL_UNAVAILABLE_REASON else 422
-            raise HTTPException(
-                status_code=status_code,
-                detail=f"Content rejected by guardrail: {reason}",
-            )
+            # `error_code` is a FIXED, non-PHI token from the closed vocabulary
+            # (TASK-969 WS-3): `reason` — which mirrors guardrail's free-text
+            # `reasoning` and can quote the prompt — only PICKS the branch below
+            # and is NEVER interpolated into the response.
+            if reason == GUARDRAIL_UNAVAILABLE_REASON:
+                raise GuardrailUnavailableError()
+            if verdict.get("is_medical") is False:
+                raise ContentBlockedError(
+                    "The prompt was not classified as clinical content by the "
+                    "medical-relevance guardrail.",
+                    error_code="CONTENT_BLOCKED_NOT_MEDICAL",
+                )
+            raise ContentBlockedError("Content was blocked by the safety guardrail.")
         return guardrail_usage
     if _platform_moderation_enabled(app_state) and not tenant_opted_out(
         request_body.guardrail_policy
@@ -235,10 +245,7 @@ async def _apply_guardrail_gate(
         # the same answer through `validate`'s own short-circuit; this branch keeps the
         # two consistent. The decision is still recorded — `guardrail: 'opted_out'` on
         # the usage row, gateway-side.
-        raise HTTPException(
-            status_code=503,
-            detail="Content rejected by guardrail: external_guardrail_unavailable",
-        )
+        raise GuardrailUnavailableError()
     return None
 
 
@@ -1017,7 +1024,9 @@ async def generate(
                 tenant_id=x_tenant_id,
             )
         )
-        raise HTTPException(status_code=rejected.status_code, detail=rejected.detail) from None
+        # TASK-969 WS-3: a FIXED, non-PHI `TextError` (never `rejected.detail`,
+        # which carries the free-text reason) — see `OutputRejectedError.as_text_error`.
+        raise rejected.as_text_error() from None
     except ProviderCredentialsError:
         # A missing BYOK credential is a platform-CONFIG gap, not a
         # provider health failure — do NOT record a circuit-breaker failure (it
