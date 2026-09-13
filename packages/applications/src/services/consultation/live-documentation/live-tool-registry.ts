@@ -232,6 +232,22 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
       icd10: e.icd_code ?? undefined,
       start: e.position?.start,
       end: e.position?.end,
+      // A2 — the RAW offsets, under names of their own.
+      //
+      // `start`/`end` are OVERWRITTEN downstream: `groundEntitiesToNote` re-locates every entity
+      // inside the rendered note so the highlight overlay can index `runningSummary`. That is the
+      // right contract for a highlight and the wrong one for a CITATION — after it runs, nothing
+      // in the payload said which utterance the entity was actually spoken in, so a console could
+      // only offer "jump to the note", never "jump to the transcript".
+      //
+      // These two index `input.sourceText` — the transcript DELTA this flush ran NER over — and
+      // are therefore not publishable as they stand: the delta is a per-flush window no consumer
+      // holds. The flush rebases them onto the utterance that contains them (and names it in
+      // `transcriptSegmentId`) before they reach anyone; an entity that lands in an UNTIMED part
+      // has no utterance to name and loses all three fields rather than carrying a number against
+      // a string the consumer cannot obtain.
+      transcriptStart: e.position?.start,
+      transcriptEnd: e.position?.end,
     }));
     return { entities, vitals: mapVitals(response.data?.vitals) };
   }

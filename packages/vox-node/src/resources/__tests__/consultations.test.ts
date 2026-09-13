@@ -141,3 +141,82 @@ describe('ConsultationsResource#addContext', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
+
+// -----------------------------------------------------------------------------
+// documentSections — the DURABLE, template-shaped read of the clinical note
+// -----------------------------------------------------------------------------
+
+const SECTION = {
+  id: 'ds1',
+  consultationId: 'c1',
+  documentKey: 'arcaai-bren-soap-revisit',
+  sectionKey: 'subjective',
+  title: 'Subjective',
+  idx: 0,
+  state: 'provisional' as const,
+  revision: 3,
+  version: 4,
+  content: 'Cough since monday.',
+  annotations: [{ kind: 'entity' as const, start: 0, end: 5, type: 'SYMPTOM', transcriptSegmentId: 'utt-0', transcriptStart: 0, transcriptEnd: 5 }],
+  createdAt: '2026-09-13T00:00:00Z',
+  updatedAt: '2026-09-13T00:01:00Z',
+};
+
+describe('ConsultationsResource#documentSections', () => {
+  it('GETs the DISCOVERY route when no documentKey is given', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, [SECTION]));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    const sections = await resource.documentSections('c1');
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c1/documents/sections');
+    expect(sections).toEqual([SECTION]);
+    // `version` is the `If-Match` operand and `revision` is the stream-ordering token. A client
+    // that sends the wrong one gets a 412 it cannot explain, so both survive the round trip.
+    expect(sections[0].version).toBe(4);
+    expect(sections[0].revision).toBe(3);
+    // A2 — the transcript anchor rides through on the section's annotations.
+    expect(sections[0].annotations?.[0]).toMatchObject({ transcriptSegmentId: 'utt-0', transcriptStart: 0, transcriptEnd: 5 });
+  });
+
+  it('GETs the single-document route when a documentKey is given', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, [SECTION]));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.documentSections('c1', 'arcaai-bren-soap-revisit');
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c1/documents/arcaai-bren-soap-revisit/sections');
+  });
+
+  it('percent-encodes BOTH path segments', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, []));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.documentSections('c/1', 'soap/note');
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c%2F1/documents/soap%2Fnote/sections');
+  });
+
+  it('returns an empty array for a consultation whose documents have not been written', async () => {
+    // Not a 404. A consultation that has not generated yet is a normal, expected state — the 404
+    // on this route means the CONSULTATION is missing (or another tenant's).
+    const fetchImpl = fetchMock(async () => jsonResponse(200, []));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.documentSections('c1')).resolves.toEqual([]);
+  });
+
+  it('is a GET, so the transport RETRIES it', async () => {
+    let calls = 0;
+    const fetchImpl = fetchMock(async () => (++calls < 3 ? jsonResponse(503, { message: 'unavailable' }) : jsonResponse(200, [SECTION])));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, maxRetries: 3, sleep: async () => {} });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.documentSections('c1')).resolves.toEqual([SECTION]);
+    expect(calls).toBe(3);
+  });
+});

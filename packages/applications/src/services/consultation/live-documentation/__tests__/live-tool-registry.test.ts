@@ -152,7 +152,12 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     // body never goes out without the resolved `nlp.ner` model.
     expect(body).toEqual({ text: 'pt aspirin daily', model_name: 'blaze999/Medical-NER' });
     expect(config.timeout).toBe(30000);
-    expect(out.entities).toEqual([{ text: 'aspirin', type: 'MEDICATION', confidence: 0.9, icd10: undefined, start: 3, end: 10 }]);
+    // A2 — the RAW offsets are kept under `transcriptStart`/`transcriptEnd` beside `start`/`end`,
+    // because `groundEntitiesToNote` overwrites the latter with NOTE offsets and the transcript
+    // address (the one a "jump to transcript" citation needs) had no other way out of here.
+    expect(out.entities).toEqual([
+      { text: 'aspirin', type: 'MEDICATION', confidence: 0.9, icd10: undefined, start: 3, end: 10, transcriptStart: 3, transcriptEnd: 10 },
+    ]);
     expect(out.vitals).toEqual({ systolic: 120, diastolic: 80 });
   });
 

@@ -108,7 +108,7 @@ import type { HarnessLiveAssistProposalDto, HarnessLiveSummaryRequest, HarnessRe
 import { HarnessLiveAssistService } from '../harness/harness-live-assist.service';
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
-import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+import { buildRunningSummary, buildStructuredSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
 // TASK-943 — the SAME builder the summary path uses, so the two surfaces cannot drift on what an
 // absent clinical variable means.
 import { buildPreSummaryVariables } from '../prompt/pre-summary-variables';
@@ -464,6 +464,19 @@ end
 return 0`;
 
 /**
+ * A5 — the client's declared `speaker_label`, when it declared one and it is usable.
+ *
+ * Defensive by necessity: `metadata` is an arbitrary object an integration declared, validated
+ * only against the tenant's `stream` context schema (which does not require this field). A
+ * non-string, or a blank one, is NOT a speaker — returning it would put `""` or `[object Object]`
+ * where the note expects a name.
+ */
+function declaredSpeakerLabel(metadata: Record<string, unknown> | undefined): string | undefined {
+  const label = metadata?.speaker_label;
+  return typeof label === 'string' && label.trim().length > 0 ? label : undefined;
+}
+
+/**
  * A live transcript segment fed into the watcher.
  *
  * Everything below `segmentId` is the CORRELATION the STT wire has always carried
@@ -496,6 +509,19 @@ export interface LiveTranscriptSegment {
   words?: RealtimeTranscriptWord[];
   /** Epoch ms at which this service received the utterance. Defaulted to `Date.now()` at ingest. */
   receivedAtMs?: number;
+  /**
+   * A5 — the CLIENT's own metadata in force over this utterance's audio (TASK-951), verbatim.
+   *
+   * HOPE declares nothing about its shape and interprets none of it: it is whatever the
+   * integration declared with a `{ type: 'metadata' }` frame, sticky until the next declaration.
+   * In the ArcaAI deployment it is `{ mic_id, speaker_label }` and it is the ONLY source of
+   * per-microphone attribution, because that tenant's ASR agent has diarization off — so dropping
+   * it here (which this service used to do at the socket) meant a two-microphone consultation
+   * reached the note as one undifferentiated speaker.
+   *
+   * Absent for a session that never declared any, which is every pre-TASK-951 client.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -540,6 +566,13 @@ interface GraphFlushProjection {
   turnRefusals: TurnRefusal[];
   /** True when the generation could not be read as a turn and fell back to a whole-document rewrite. */
   turnDegraded: boolean;
+  /**
+   * A3 — the agent that ACTUALLY SERVED this turn's document node, when one was bound.
+   *
+   * Absent for a node with no `core.agent` binding, where the session's frozen snapshot is the
+   * correct provenance and there is nothing to correct.
+   */
+  turnAgent?: LiveSummaryAgentDto;
   /** The raw run, for the trajectory and for the parity diff. */
   run: RealtimeRunResult;
 }
@@ -3326,6 +3359,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // A2 — anchor THIS FLUSH's entities to the utterances that produced them, before anything
+    // rebases them onto the note.
+    //
+    // Both branches above reach the same executor (`toolRegistry.extraction()` — the graph lane's
+    // `consultation.extractEntities` node calls it through `capabilities.extractEntities`), so both
+    // arrive here carrying raw `transcriptStart`/`transcriptEnd` into `nerSourceText`. And
+    // `session.pendingGraphSegments` was built a few dozen lines above over EXACTLY that string,
+    // in both modes — which is what makes one anchoring pass correct for both.
+    //
+    // Applied to the flush's OWN entities only. `priorEntities` were anchored by the flush that
+    // extracted them, against a delta that no longer exists; re-anchoring them here would resolve
+    // last turn's offsets against this turn's window and cite the wrong utterance.
+    extracted = this.anchorEntitiesToTranscript(extracted, session.pendingGraphSegments);
+    flushFindings = this.anchorEntitiesToTranscript(flushFindings, session.pendingGraphSegments);
+
     if (isStale()) return this.dropStale(session);
 
     // Live OUTPUT groundedness gate: verify the generated note
@@ -3371,15 +3419,30 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // non-null value wins, prior values persist. Absent until one is seen.
     const vitals = this.mergeVitals(session.lastPayload?.vitals, flushVitals);
 
-    const agentMetadata: LiveSummaryAgentDto | null = agent.promptTemplateId
-      ? {
-          id: agent.agentId,
-          name: agent.agentName,
-          promptTemplateId: agent.promptTemplateId,
-          promptVersionNumber: agent.promptVersionNumber,
-          resolvedFrom: agent.resolvedFrom,
-        }
-      : null;
+    // A3 — provenance names the agent that RAN THIS TURN, not the one frozen at recording start.
+    //
+    // The two are the same on a lane with one document node, and different on exactly the lane the
+    // clinic runs: a `core.condition` visit-type split has a new-visit node and a revisit node, and
+    // the session freeze resolves before the branch is taken. So a revisit consultation published
+    // `metadata.agent.{id, promptTemplateId}` for the NEW-VISIT agent beside a
+    // `metadata.stats.agent_slug` reading `…-summary-revisit`, in the same envelope — and anyone
+    // auditing which prompt wrote a note had two answers and no way to choose.
+    //
+    // `graph.turnAgent` is derived from the candidate the call actually served (see
+    // `turnAgentIdentity`), so the two fields now name one agent by construction. The frozen
+    // snapshot remains the answer for a node with no `core.agent` binding and for the legacy path,
+    // where it genuinely is what ran.
+    const agentMetadata: LiveSummaryAgentDto | null =
+      graph?.turnAgent ??
+      (agent.promptTemplateId
+        ? {
+            id: agent.agentId,
+            name: agent.agentName,
+            promptTemplateId: agent.promptTemplateId,
+            promptVersionNumber: agent.promptVersionNumber,
+            resolvedFrom: agent.resolvedFrom,
+          }
+        : null);
 
     /**
      * TASK-946 D6 — the flush's own verdict, which nothing computed before.
@@ -3629,6 +3692,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let turnWrites: TurnSectionWrite[] = [];
     let turnRefusals: TurnRefusal[] = [];
     let turnDegraded = false;
+    /**
+     * A3 — the candidates the document node was allowed to run this turn, captured for PROVENANCE.
+     *
+     * The session's frozen snapshot (`ctx.agent`) answers "which agent was resolved when recording
+     * started", which on a department with a `core.condition` visit-type split is the DEFAULT
+     * branch's agent — the new-visit one. The turn may have run the other branch, and `stats
+     * .agent_slug` said so while `metadata.agent` kept naming the default. Same object, two
+     * different agents. This is the half that was missing.
+     */
+    let turnCandidates: readonly ResolvedTextCandidate[] | undefined;
 
     const capabilities: RealtimeCapabilities = {
       // task 14 / — capture PRODUCES the transcript.
@@ -3662,6 +3735,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // the tenant default in its place. A legacy summary node carries no ref and keeps the
         // assigned-agent path inside `callText`.
         const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId, effectiveLane);
+        // A3 — the primary plus every fallback the call may switch to, in the order `callText`
+        // walks them. WHICH of them served is read back off the stats below, because that is the
+        // one field that already knows.
+        if (textAgent) turnCandidates = [textAgent.spec.primary, ...textAgent.spec.fallback.chain];
         // TASK-939 OD-2(a) — the TURN schema, derived per call. `responseFormat` is the only field
         // the call path reads off `compiled`, and the committed one is a persisted artifact the
         // durable finalisation path decodes against, so it is spread rather than mutated.
@@ -3817,6 +3894,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // lookup is kept keyed on the capability rather than deleted so wiring a handler is enough.
     const findingsNode = ran('extractFindings');
     const findingsOutput = findingsNode?.status === 'succeeded' ? findingsNode.output : undefined;
+    const turnAgent = this.turnAgentIdentity(turnCandidates, textStats);
 
     return {
       sections: summarize?.status === 'succeeded' ? parsedSections : [],
@@ -3838,7 +3916,47 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       nlpRan: extract !== undefined && extract.status !== 'skipped',
       nlpFailed: extract !== undefined && extract.status !== 'succeeded' && extract.status !== 'skipped',
       nlpLatencyMs: extract?.durationMs ?? 0,
+      // A3 — the identity of the agent that ACTUALLY RAN this turn. Undefined when the node ran on
+      // the session's assigned agent (no `core.agent` binding), where the frozen snapshot already
+      // is the right answer.
+      ...(turnAgent ? { turnAgent } : {}),
       run,
+    };
+  }
+
+  /**
+   * A3 — WHICH agent served this turn, as a provenance block.
+   *
+   * `stats.agent_slug` is stamped by `callTextCandidate` from the candidate it actually ran, so it
+   * already distinguishes the primary from a fallback that took over after an outage. It is also
+   * only a slug. This pairs it back with the resolved candidate to recover the version pin, so a
+   * reader of `metadata.agent` gets the same identity `metadata.stats.agent_slug` names instead of
+   * a second, contradicting one.
+   *
+   * Returns undefined — never a guess — when no candidate was bound, or when the served slug
+   * matches none of them (a shape that should be impossible, and must not be papered over with
+   * "probably the primary").
+   */
+  private turnAgentIdentity(
+    candidates: readonly ResolvedTextCandidate[] | undefined,
+    stats: LiveSummaryStatsDto | null,
+  ): LiveSummaryAgentDto | undefined {
+    if (!candidates || candidates.length === 0) return undefined;
+    const served = stats?.agent_slug ? candidates.find((candidate) => candidate.agent.slug === stats.agent_slug) : candidates[0];
+    if (!served) return undefined;
+    return {
+      // `versionId` IS the agent row id — agent rows ARE versions (see `ResolvedAgent.agentVersionId`).
+      id: served.agent.versionId,
+      // An agent has no display name distinct from its slug on this path; the slug is its real
+      // name, not a placeholder standing in for one.
+      name: served.agent.slug,
+      slug: served.agent.slug,
+      // For a `core.agent` the immutable prompt artifact is the AGENT VERSION, not a PromptVersion
+      // row: the instruction bytes live on `compiledConfig`. So the pin reported here is that
+      // version — which is what a reader has to re-resolve to see the prompt this turn ran.
+      promptTemplateId: served.agent.versionId,
+      promptVersionNumber: served.agent.versionNumber,
+      resolvedFrom: 'agent',
     };
   }
 
@@ -4608,6 +4726,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         ...(meta.pipelineId === undefined ? {} : { pipelineId: meta.pipelineId }),
         ...(meta.receivedAtMs === undefined ? {} : { receivedAtMs: meta.receivedAtMs }),
         ...(meta.words === undefined ? {} : { words: meta.words }),
+        // A5 — mic identity travels with the utterance it labels, so the capture node's published
+        // segments (and through them the live handoff the durable finalizer binds) can attribute a
+        // turn to a microphone.
+        ...(meta.metadata === undefined ? {} : { metadata: meta.metadata }),
       });
     }
     return built;
@@ -4647,7 +4769,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               // `speakerLabel` is the anonymous human-readable name the bridge derives once from
               // `speakerId`; `speakerId` is the raw diarization cluster. Prefer the label and fall
               // back to the id — carrying both would leave a consumer to guess which identifies.
-              speaker: msg.speakerLabel ?? msg.speakerId,
+              //
+              // A5 — and, LAST, the client's own `metadata.speaker_label`. Strictly a fallback:
+              // diarization is a measurement of the audio and the declaration is an assertion
+              // about it, so the measurement wins wherever there is one. With ArcaAI's ASR agent
+              // there never is — diarization is off — and without this the `speaker` field was
+              // empty on every utterance of every consultation, which is why the finalizer had no
+              // speaker turns to work from.
+              speaker: msg.speakerLabel ?? msg.speakerId ?? declaredSpeakerLabel(msg.metadata),
+              // A5 — the declaration itself, carried whole and uninterpreted. `speaker` above is
+              // one reading of it; a consumer that wants the mic id (or anything else the tenant
+              // declared) needs the object, not this service's opinion of it.
+              metadata: msg.metadata,
               speakerConfidence: msg.speakerConfidence,
               // `detectedLanguage`, not the session's configured mode: this field exists to say
               // what was actually SPOKEN in this utterance, which is the whole point of it on a
@@ -4904,7 +5037,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const durableSnapshotMs = this.realtimeBudgets.durableSnapshotMs;
     if (!opts.force && (durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < durableSnapshotMs)) return;
 
-    const content = payload.runningSummary?.trim();
+    // A1 — the finalizer's input is a DOCUMENT, so write it as one.
+    //
+    // This row's `content` is what `harness.finalize` reads as `preSummaryText`
+    // (`harness-internal.service.ts#loadLiveSoapSnapshot`). It used to be `payload.runningSummary`
+    // — `buildRunningSummary(sections)`, an unlabelled `\n\n` join of the section BODIES — so the
+    // finalizer was handed prose whose partition had been discarded and asked for a 13-section
+    // note back. It answered with a narrative paragraph, every time.
+    //
+    // `buildStructuredSummary` is the same sections WITH their titles. Scoped to this ONE write on
+    // purpose: `payload.runningSummary` is the NER offset base and the "section content is a
+    // contiguous substring of runningSummary" invariant, and neither it nor any consumer of it is
+    // touched. Falls back to the flat text when the flush produced no non-empty section (a resumed
+    // or degraded note), so a snapshot is never LOST to the new rendering.
+    const content = buildStructuredSummary(payload.sections ?? [], session.templateSnapshot?.compiled) || payload.runningSummary?.trim();
     if (!content) return;
 
     session.lastDurableAt = Date.now();
@@ -6181,6 +6327,61 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * mention that shares no surface form with the note is intentionally not surfaced (source-
    * faithful over recall).
    */
+  /**
+   * A2 — rebase a flush's RAW NER offsets onto the UTTERANCE that produced them.
+   *
+   * ## What comes in, and why it cannot be published as it stands
+   *
+   * `transcriptStart`/`transcriptEnd` (live-tool-registry) index `nerSourceText` — the per-flush
+   * transcript DELTA. That string is internal: it is a window whose bounds move every turn and
+   * which no consumer ever receives. An offset into it is not an anchor, it is a coincidence.
+   *
+   * ## What goes out
+   *
+   * `session.pendingGraphSegments` describes exactly that same string as `[charStart, charEnd)`
+   * ranges per utterance, built from the same range in the same order (`buildGraphSegments`), so
+   * the segment CONTAINING an entity is a lookup rather than a text search a repeated phrase could
+   * fool. The entity then carries the segment's own id (`utt-<utteranceIndex>`, which is what
+   * `ingestSegment` stamps and what the downlink `utteranceIndex` equals) and offsets into THAT
+   * segment's text — stable for as long as the utterance exists, which is the property a
+   * "jump to transcript" citation needs and a delta offset never had.
+   *
+   * ## When it refuses
+   *
+   * All three fields are dropped — never partially kept, never guessed — when the entity cannot be
+   * tied to one timed utterance:
+   *  - the producer sent no offsets at all (a findings node, a manual entity);
+   *  - the span falls in an UNTIMED part, which `buildGraphSegments` omits by construction rather
+   *     than claim a fabricated `start: 0` for;
+   *  - the span STRADDLES two utterances, where a clamped offset would silently cite text the
+   *     entity was not extracted from (the same rule `reanchorAnnotations#localSpan` applies).
+   *
+   * A dropped anchor costs a console its "jump to transcript" link for that entity; a wrong one
+   * costs it the clinician's trust in every link.
+   */
+  private anchorEntitiesToTranscript(
+    entities: readonly LiveSummaryEntityDto[],
+    segments: readonly RealtimeTranscriptSegment[] | undefined,
+  ): LiveSummaryEntityDto[] {
+    return entities.map((entity) => {
+      // Stripped up front so a refusal below can never leave a delta-relative number behind, and
+      // so a producer cannot smuggle in a `transcriptSegmentId` this pass did not verify.
+      const { transcriptSegmentId: _claimed, transcriptStart, transcriptEnd, ...rest } = entity;
+      if (typeof transcriptStart !== 'number' || typeof transcriptEnd !== 'number') return rest;
+
+      const segment = segments?.find((candidate) => transcriptStart >= candidate.charStart && transcriptStart < candidate.charEnd);
+      if (!segment || segment.utteranceIndex === undefined) return rest;
+      if (transcriptEnd > segment.charEnd) return rest;
+
+      return {
+        ...rest,
+        transcriptSegmentId: `utt-${segment.utteranceIndex}`,
+        transcriptStart: transcriptStart - segment.charStart,
+        transcriptEnd: transcriptEnd - segment.charStart,
+      };
+    });
+  }
+
   private groundEntitiesToNote(entities: LiveSummaryEntityDto[], note: string): LiveSummaryEntityDto[] {
     if (!note) return [];
     const haystack = note.toLowerCase();

@@ -126,6 +126,12 @@ export interface RealtimeTranscriptSegment {
   /** Per-utterance provenance: a mid-session engine switch splits one transcript across two bindings. */
   pipelineId?: string;
   words?: RealtimeTranscriptWord[];
+  /**
+   * A5 — the CLIENT's own metadata in force over this utterance (TASK-951), verbatim and
+   * uninterpreted. `{ mic_id, speaker_label }` in the ArcaAI deployment; absent for a session that
+   * declared none, which is every pre-TASK-951 client.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**

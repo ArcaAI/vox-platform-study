@@ -277,6 +277,57 @@ describe('the live ASR agent publishes per-utterance timing, not a bare string',
     expect(audio.epochMs).toBeLessThanOrEqual(segment.receivedAtMs);
   });
 
+  it('A5: carries the client’s declared mic metadata onto the segment, and uses it for `speaker` only when diarization gave none', async () => {
+    const { service, stream, cache } = buildService();
+    service.start({ consultationId: CID, tenantId: ARCAAI, sessionId: STT_SESSION });
+    await settle();
+
+    // ArcaAI's ASR agent has diarization OFF, so `speakerLabel`/`speakerId` are absent on every
+    // frame and the client's own TASK-951 declaration is the only source of attribution.
+    stream.emit(
+      frame({ text: 'cough since monday', startTime: 0, endTime: 2, utteranceIndex: 0, metadata: { mic_id: 'mic_1', speaker_label: 'Doctor' } }),
+    );
+    // The SAME declaration, but this frame also carries a diarization result. The measurement of
+    // the audio must win over an assertion about it.
+    stream.emit(
+      frame({
+        text: 'no fever',
+        startTime: 2.5,
+        endTime: 3.25,
+        utteranceIndex: 1,
+        speakerLabel: 'Speaker 1',
+        metadata: { mic_id: 'mic_2', speaker_label: 'Patient' },
+      }),
+    );
+    await service.flush(CID);
+    await service.stop(CID, { persistSnapshot: false });
+
+    const segments = captureOutput(cache).segments as Array<Record<string, unknown>>;
+    expect(segments).toHaveLength(2);
+    // The declaration rides along WHOLE and uninterpreted — HOPE never reshapes it, so an
+    // integration reads `metadata.mic_id` here exactly as it wrote it.
+    expect(segments[0].metadata).toEqual({ mic_id: 'mic_1', speaker_label: 'Doctor' });
+    expect(segments[1].metadata).toEqual({ mic_id: 'mic_2', speaker_label: 'Patient' });
+    expect(segments[0].speaker).toBe('Doctor');
+    expect(segments[1].speaker).toBe('Speaker 1');
+  });
+
+  it('A5: a session that declared no metadata publishes segments with no metadata key at all', async () => {
+    const { service, stream, cache } = buildService();
+    service.start({ consultationId: CID, tenantId: ARCAAI, sessionId: STT_SESSION });
+    await settle();
+
+    stream.emit(frame({ text: 'cough since monday', startTime: 0, endTime: 2, utteranceIndex: 0 }));
+    await service.flush(CID);
+    await service.stop(CID, { persistSnapshot: false });
+
+    const [segment] = captureOutput(cache).segments as Array<Record<string, unknown>>;
+    // Byte-identical to the pre-A5 wire for every client that does not use TASK-951 metadata —
+    // an `undefined`-valued key would still change the published JSON shape.
+    expect('metadata' in segment).toBe(false);
+    expect('speaker' in segment).toBe(false);
+  });
+
   it('an UNTIMED ingest contributes its words and no segment — never a fabricated `start: 0`', async () => {
     const { service, cache } = buildService();
     service.start({ consultationId: CID, tenantId: ARCAAI, sessionId: STT_SESSION });

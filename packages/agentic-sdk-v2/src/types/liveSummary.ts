@@ -33,8 +33,21 @@ export interface LiveSummaryEntity {
   confidence?: number;
   /** ICD-10-CM code from the NLP OntologyLinker (curated vocabulary); absent otherwise. */
   icd10?: string;
+  /** Character offsets into `runningSummary` — the NOTE address the highlight overlay paints. */
   start?: number;
   end?: number;
+  /**
+   * The TRANSCRIPT address. NER runs over the transcript and the server then re-locates each
+   * entity inside the rendered note, overwriting `start`/`end`; these survive that pass so a
+   * client can jump to where the mention was actually spoken.
+   *
+   * One anchor, three fields: all present or all absent. Absent means the mention could not be
+   * tied to a single timed utterance — never guessed. `transcriptSegmentId` is
+   * `utt-<utteranceIndex>`; the offsets index THAT segment's own text.
+   */
+  transcriptSegmentId?: string;
+  transcriptStart?: number;
+  transcriptEnd?: number;
 }
 
 /** Structured vitals deterministically extracted by the NLP service; fields absent when unmatched. */
