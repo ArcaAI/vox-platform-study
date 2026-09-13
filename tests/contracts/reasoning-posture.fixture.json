@@ -1,0 +1,37 @@
+{
+  "$comment": "TASK-970 — the reasoning-posture cross-language contract fixture. Authored by the orchestrator BEFORE the implementation lanes, so `packages/applications` (producer) and `apps/text` (consumer) build against one written shape instead of discovering it mid-flight. `wire` is what @arcaai/applications MUST send on GenerateRequest; `support` is what each adapter MUST declare about its own engine. OWNERSHIP: the Python lane (L1) is the ONLY writer of `support[*].renders` and `support[*].class` — it must VERIFY each against the deployed engine version and correct this file where the seeded guess is wrong. Every other lane reads it. The seeded values below are a STARTING POINT taken from documentation knowledge with a May-2026 cutoff; they are explicitly NOT authoritative and a lane that ships them unverified has not done the work.",
+
+  "why": "Before TASK-970 the posture was pre-rendered TS-side into `extra.reasoning_effort` (agent-reasoning.ts::reasoningExtra maps `enabled:false` -> 'minimal'). That is LOSSY: once on the wire, 'minimal' cannot be distinguished from an admin who asked for minimal EFFORT, and an engine with a true off-switch (Ollama `think:false`) can no longer be driven correctly. The posture therefore travels as a posture and each adapter renders it.",
+
+  "wire": {
+    "field": "reasoning",
+    "location": "GenerateRequest (apps/text/src/text/models/requests.py)",
+    "cases": [
+      { "name": "off",           "posture": { "enabled": false },                    "meaning": "Admin turned reasoning OFF on the agent. Render the engine's own off-switch." },
+      { "name": "on-unspecified","posture": { "enabled": true },                     "meaning": "Reasoning on, no budget named. Render 'on' without pinning an effort." },
+      { "name": "on-effort",     "posture": { "enabled": true, "effort": "high" },   "meaning": "Reasoning on at a named budget. Effort vocabulary: minimal|low|medium|high." },
+      { "name": "absent",        "posture": null,                                    "meaning": "No posture at any tier. Send NOTHING; the engine decides. Never synthesize a default here — the platform tier (text.reasoning.defaultEffort) already resolved before the wire." }
+    ],
+    "caller_override": "`extra.reasoning_effort` REMAINS supported and still wins per-key, preserving the documented 'CALLER WINS, per key' rule in TextRequestEnrichmentService. A call site that pins the raw ride-along is not second-guessed."
+  },
+
+  "support": {
+    "$comment": "class: 'native-off' = the engine has a true off-switch AND an effort dial; 'effort-only' = effort can be expressed but 'off' can only be approximated (e.g. minimal); 'unsupported' = the transport cannot express the posture at all -> log and proceed (owner decision 2026-09-13), never fail the call.",
+    "openai":        { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
+    "azure_openai":  { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
+    "openai_compat": { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
+    "lmstudio":      { "class": "effort-only",  "renders": "reasoning_effort", "verified": false },
+    "vllm":          { "class": "native-off",   "renders": "chat_template_kwargs.enable_thinking", "verified": false },
+    "ollama":        { "class": "native-off",   "renders": "think", "verified": false },
+    "anthropic":     { "class": "native-off",   "renders": "thinking", "verified": false },
+    "llama_cpp":     { "class": "unsupported",  "renders": null, "verified": false },
+    "bedrock":       { "class": "unsupported",  "renders": null, "verified": false },
+    "vertex":        { "class": "unsupported",  "renders": null, "verified": false }
+  },
+
+  "unenforceable": {
+    "behaviour": "log-and-proceed",
+    "owner_decision": "2026-09-13 — an engine that cannot honour the posture sends nothing, records provider + model + posture on the generation's telemetry, and the call RUNS. No 422: a tuning knob must not become an outage risk on a provider swap.",
+    "must_not": "Silently drop. Today's defect is that seven adapters drop the posture with no record at all."
+  }
+}
