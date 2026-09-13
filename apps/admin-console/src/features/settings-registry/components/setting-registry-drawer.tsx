@@ -19,15 +19,19 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useRegistrySetting, usePutRegistrySetting } from '../api/hooks';
 import type { SettingCatalogItem, SettingScope } from '../api/types';
 import {
+  defaultPairTarget,
   defaultScopeFor,
   floorHint,
   isPlatformWideWrite,
   isUnsetAndFailClosed,
   killSwitchWarning,
+  pairSummary,
+  pairTargetsFor,
   sourceScopeLabel,
   writableScopes,
   writeBlockFor,
 } from './governance';
+import type { PairTarget } from './governance';
 import { RegistryValueEditor } from './registry-value-editor';
 import { fromDraft, toDraft } from './registry-value';
 
@@ -53,6 +57,24 @@ function scopeLabel(scope: SettingScope, workingTenantName: string | null): stri
 }
 
 /**
+ * The pair picker's option labels.
+ *
+ * These name the AUDIENCE of the write, not the mechanism: an admin choosing
+ * between "every tenant" and "this tenant" is answering the question they
+ * actually have. The two underlying keys are still shown — under the picker and
+ * in the Governance tab — so nothing is hidden, only de-emphasised.
+ */
+const PAIR_LABEL: Record<PairTarget, string> = {
+  platform: 'Platform default (every tenant)',
+  tenant: 'This tenant only',
+};
+
+function pairTargetLabel(target: PairTarget, workingTenantName: string | null): string {
+  if (target === 'tenant' && workingTenantName) return `${workingTenantName} override`;
+  return PAIR_LABEL[target];
+}
+
+/**
  * One governance row. `mono` is a flag rather than pre-rendered JSX so the row
  * list stays plain data — an array of elements would need a key on every entry
  * and makes the table harder to read than the thing it describes.
@@ -64,7 +86,18 @@ interface GovernanceRow {
 }
 
 /** Metadata pane — the descriptor as governance, not as a field dump. */
-function GovernanceTab({ item, sourceScope, version }: { item: SettingCatalogItem; sourceScope: string | undefined; version: number | undefined }) {
+function GovernanceTab({
+  item,
+  sourceScope,
+  version,
+  activeKey,
+}: {
+  item: SettingCatalogItem;
+  sourceScope: string | undefined;
+  version: number | undefined;
+  /** The key the Value tab is currently editing — the twin, on the platform half. */
+  activeKey: string;
+}) {
   const rows: GovernanceRow[] = [
     { label: 'Key', value: item.key, mono: true },
     { label: 'Category', value: item.category },
@@ -87,6 +120,12 @@ function GovernanceTab({ item, sourceScope, version }: { item: SettingCatalogIte
   if (item.killSwitch) rows.push({ label: 'Kill-switch', value: 'yes — safe position is OFF' });
   if (item.floorDirection) rows.push({ label: 'Tenant floor', value: item.floorDirection });
   if (item.default !== undefined) rows.push({ label: 'Code default', value: JSON.stringify(item.default), mono: true });
+  // TASK-969 — the pair is collapsed in the Value tab; the two real keys are
+  // named here, so "which row did I just write" stays answerable.
+  if (item.platformTierKey) {
+    rows.push({ label: 'Platform tier key', value: item.platformTierKey, mono: true });
+    rows.push({ label: 'Now editing', value: activeKey, mono: true });
+  }
 
   return (
     <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-4 gap-y-2 text-sm">
@@ -144,10 +183,29 @@ export function SettingRegistryDrawer({
   const hasWorkingTenant = !isElevated || workingTenantName !== null;
   const scopes = item ? writableScopes(item, isElevated, hasWorkingTenant) : [];
 
-  const [scope, setScope] = useState<SettingScope | null>(null);
-  const activeScope = scope ?? defaultScopeFor(scopes);
+  // TASK-969 F-1 — the twin. When the descriptor declares one, this drawer
+  // edits a PAIR of keys rather than two scopes of one key, and the picker
+  // chooses which half. Absent for every other key, which keeps the scope
+  // picker below exactly as it was.
+  const twinKey = item?.platformTierKey ?? null;
+  const pairTargets = item ? pairTargetsFor(item, isElevated, hasWorkingTenant) : [];
 
-  const settingQuery = useRegistrySetting(item?.key ?? null, activeScope, open);
+  const [scope, setScope] = useState<SettingScope | null>(null);
+  const [target, setTarget] = useState<PairTarget | null>(null);
+  const activeTarget = target ?? defaultPairTarget(pairTargets);
+
+  // The scope is a CONSEQUENCE of the chosen half, not a second choice: the
+  // platform half is a `maxScope: 'system'` key and the tenant half's SYSTEM row
+  // has no reader, so each half has exactly one legal scope.
+  const activeScope: SettingScope = twinKey ? (activeTarget === 'platform' ? 'system' : 'tenant') : (scope ?? defaultScopeFor(scopes));
+  const activeKey = twinKey && activeTarget === 'platform' ? twinKey : (item?.key ?? null);
+
+  const settingQuery = useRegistrySetting(activeKey, activeScope, open);
+  // The pairing lives on the TENANT half, so its read is where `pair` (both
+  // values + which one the runtime applies) comes from — even while the PLATFORM
+  // half is the one being edited. Same query key as the default target's read,
+  // so flipping the picker is a cache hit, not a second request.
+  const pairTenantQuery = useRegistrySetting(twinKey && activeTarget === 'platform' ? (item?.key ?? null) : null, 'tenant', open);
   const putSetting = usePutRegistrySetting();
 
   // `null` = untouched, so the value is DERIVED from the server during render
@@ -158,6 +216,11 @@ export function SettingRegistryDrawer({
 
   const stored = settingQuery.data?.data;
   const etag = settingQuery.data?.etag ?? null;
+  // Whichever read carries it — the active one when the tenant half is selected,
+  // the companion read when the platform half is.
+  const tenantRead = activeTarget === 'tenant' ? stored : pairTenantQuery.data?.data;
+  const pair = stored?.pair ?? pairTenantQuery.data?.data?.pair ?? null;
+  const summary = item && twinKey ? pairSummary(item, pair, tenantRead?.value, workingTenantName) : null;
   const serverDraft = useMemo(() => (item ? toDraft(item.dataType, stored?.value) : ''), [item, stored]);
   const draft = edited ?? serverDraft;
   const dirty = edited !== null && edited !== serverDraft;
@@ -172,16 +235,32 @@ export function SettingRegistryDrawer({
     setConfirmedKillSwitch(false);
   };
 
+  /**
+   * A governance refusal, shown INLINE rather than as a toast.
+   *
+   * The picker no longer offers the dead SYSTEM scope on a paired key, so the
+   * 400 that names the twin should be unreachable from here — but the API is
+   * reachable without the console, and a refusal that explains WHICH key to
+   * write instead is exactly the sentence that must not vanish after four
+   * seconds. 412/428 keep their own `OccConflictAlert`; everything else still
+   * toasts.
+   */
+  const refusal = putSetting.error instanceof GatewayError && putSetting.error.status === 400 ? putSetting.error.message : null;
+
   if (!item) return null;
 
   const onSave = () => {
     if (!parsed.ok) return;
+    const writeKey = activeKey ?? item.key;
+    // The half NOT being written. One read carries both values, so writing
+    // either half stales the other's cache entry.
+    const otherHalf = twinKey ? (writeKey === twinKey ? item.key : twinKey) : null;
     putSetting.mutate(
-      { key: item.key, value: parsed.value, scope: activeScope, etag },
+      { key: writeKey, value: parsed.value, scope: activeScope, etag, twinKey: otherHalf },
       {
         onSuccess: () => {
           reset();
-          toast.success(`${item.key} saved at ${activeScope} scope.`);
+          toast.success(`${writeKey} saved at ${activeScope} scope.`);
         },
         onError: (error) => {
           const status = error instanceof GatewayError ? error.status : undefined;
@@ -200,7 +279,10 @@ export function SettingRegistryDrawer({
             void settingQuery.refetch();
             return;
           }
-          toast.error(error instanceof GatewayError ? error.message : `Could not save ${item.key}.`);
+          // A 400 is a governance refusal and is rendered inline instead — see
+          // `refusal` above.
+          if (status === 400) return;
+          toast.error(error instanceof GatewayError ? error.message : `Could not save ${writeKey}.`);
         },
       },
     );
@@ -217,11 +299,18 @@ export function SettingRegistryDrawer({
           if (!next) {
             reset();
             setScope(null);
+            setTarget(null);
           }
           onOpenChange(next);
         }}
         size="lg"
-        title={<span className="font-mono text-sm">{item.key}</span>}
+        title={
+          // A pair has ONE title, and it cannot be either key: while the
+          // platform half is selected, a title reading the tenant half's key
+          // would name a row the Save button is not going to touch. The two real
+          // keys move to the meta line below, where both are visible at once.
+          twinKey ? <span className="text-sm font-medium">{item.label ?? item.key}</span> : <span className="font-mono text-sm">{item.key}</span>
+        }
         badges={
           <>
             <Badge variant="outline" className="font-mono text-xs">
@@ -242,7 +331,17 @@ export function SettingRegistryDrawer({
             ) : null}
           </>
         }
-        meta={<span>{item.label ?? item.category}</span>}
+        meta={
+          twinKey ? (
+            <span className="flex flex-wrap items-center gap-1 font-mono text-xs">
+              <span>{item.key}</span>
+              <span aria-hidden>&middot;</span>
+              <span>{twinKey}</span>
+            </span>
+          ) : (
+            <span>{item.label ?? item.category}</span>
+          )
+        }
         closeBlockedReason={putSetting.isPending ? 'a save is in progress' : undefined}
         tabs={
           <TabsList variant="line">
@@ -276,6 +375,14 @@ export function SettingRegistryDrawer({
               }}
             />
 
+            {refusal ? (
+              <Alert variant="destructive">
+                <IconAlertTriangle aria-hidden />
+                <AlertTitle>The gateway refused this write</AlertTitle>
+                <AlertDescription>{refusal}</AlertDescription>
+              </Alert>
+            ) : null}
+
             {block ? (
               <Alert>
                 <IconLock aria-hidden />
@@ -305,7 +412,79 @@ export function SettingRegistryDrawer({
               <ErrorState error={settingQuery.error} onRetry={() => void settingQuery.refetch()} />
             ) : (
               <>
-                {scopes.length > 1 && !block ? (
+                {/* TASK-969 — ONE row, ONE picker, and each option names the
+                    audience of the write rather than the transport that made it
+                    two keys. The platform option writes the twin at `system`;
+                    the tenant option writes this key at `tenant`. The dead
+                    SYSTEM row of the tenant half is not reachable from here at
+                    all — it is not a hidden option, it is not an option. */}
+                {twinKey && pairTargets.length > 1 && !block ? (
+                  <div className="flex flex-col gap-1.5">
+                    <Label id={`${uid}-pair-label`}>Set for</Label>
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      size="sm"
+                      value={activeTarget}
+                      aria-labelledby={`${uid}-pair-label`}
+                      onValueChange={(next) => {
+                        if (!next) return;
+                        // A different half means a different row, so the draft's
+                        // value AND its ETag precondition both stop applying —
+                        // and a refusal about the old half stops being true.
+                        reset();
+                        putSetting.reset();
+                        setTarget(next as PairTarget);
+                      }}
+                    >
+                      {pairTargets.map((option) => (
+                        <ToggleGroupItem key={option} value={option}>
+                          {pairTargetLabel(option, workingTenantName)}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                    <p className="text-muted-foreground text-xs">
+                      {activeTarget === 'platform' ? (
+                        <>
+                          Saving writes <span className="font-mono">{twinKey}</span> on the reserved SYSTEM tenant — the value every tenant without
+                          an override of its own inherits.
+                        </>
+                      ) : (
+                        <>
+                          Saving writes <span className="font-mono">{item.key}</span> as an override on {workingTenantName ?? 'the selected tenant'}{' '}
+                          only. The platform default is left untouched.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Both halves at once, and which one the RUNTIME applies.
+                    Absent when the gateway did not send a pair block: `inForce`
+                    is the one fact this screen must never infer — inferring it
+                    from the generic cascade is what made a dead write look
+                    live. */}
+                {summary ? (
+                  <p className="text-sm">
+                    <span className={cx(summary.inForce === 'tenant' && 'font-medium')}>{summary.tenant}</span>
+                    {/* Separators are decoration: the three clauses are whole
+                        phrases, so a screen reader loses nothing by skipping the
+                        glyphs, and the verdict is stated in WORDS rather than
+                        carried by the arrow (rule 11 §10). */}
+                    <span aria-hidden className="text-muted-foreground">
+                      {' '}
+                      &middot;{' '}
+                    </span>
+                    <span className={cx(summary.inForce === 'platform' && 'font-medium')}>{summary.platform}</span>
+                    <span aria-hidden className="text-muted-foreground">
+                      {' '}
+                      &rarr;{' '}
+                    </span>
+                    <span className="font-medium">{summary.verdict}</span>
+                  </p>
+                ) : null}
+
+                {!twinKey && scopes.length > 1 && !block ? (
                   <div className="flex flex-col gap-1.5">
                     <Label id={`${uid}-scope-label`}>Write at scope</Label>
                     <ToggleGroup
@@ -318,8 +497,10 @@ export function SettingRegistryDrawer({
                         if (!next) return;
                         // The version/ETag belongs to a SPECIFIC row, so
                         // switching scope invalidates the draft's precondition
-                        // as well as its value.
+                        // as well as its value — and any refusal about the row
+                        // being left behind.
                         reset();
+                        putSetting.reset();
                         setScope(next as SettingScope);
                       }}
                     >
@@ -422,7 +603,7 @@ export function SettingRegistryDrawer({
           </TabsContent>
 
           <TabsContent value="governance">
-            <GovernanceTab item={item} sourceScope={stored?.sourceScope} version={stored?.version} />
+            <GovernanceTab item={item} sourceScope={stored?.sourceScope} version={stored?.version} activeKey={activeKey ?? item.key} />
           </TabsContent>
         </div>
       </DetailDrawer>
