@@ -35,11 +35,11 @@ const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'max
  * The LM Studio tier declares one MORE parameter than the resolved set above: `reasoning`.
  *
  * It is not part of `defaults.py`'s `{temperature, max_tokens, top_p}` because it does not travel
- * that way at all. `parameters.generation.reasoning` (TASK-891 C1 / OD-4) maps to
- * `GenerateRequest.extra.reasoning_effort` and is forwarded into the SDK's `extra_body` by
- * `apps/text/src/text/providers/openai_compat.py#_apply_request_extras` — pinned by
- * `apps/text/src/text/tests/unit/test_runtime_profile_extras.py`, which asserts exactly
- * `extra_body == {"ttl": 900, "reasoning_effort": "none"}` for the `lm-studio` provider.
+ * that way at all. `parameters.generation.reasoning` (TASK-891 C1 / OD-4) travels as its own
+ * `GenerateRequest.reasoning` posture since TASK-970, and each adapter renders it into that
+ * engine's own parameter — `apps/text/src/text/core/reasoning.py`. LM Studio is classified
+ * `effort-only` there: its documented vocabulary is low|medium|high with no off value, so an
+ * authored `enabled: false` is approximated by the lowest rung rather than a true stop.
  *
  * And it is honoured, not merely accepted: measured on `gemma-4-e2b-it-qat` under LM Studio on
  * 2026-09-07, unset gave 5168 ms / 184 reasoning tokens against 1237 ms / 30 with `minimal`

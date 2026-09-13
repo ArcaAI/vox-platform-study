@@ -382,9 +382,13 @@ export type GenerationParamName =
   | 'stopSequences'
   | 'seed'
   /** TASK-891's `parameters.generation.reasoning`. It does NOT ride the resolved parameter set —
-   *  it rides `GenerateRequest.extra.reasoning_effort` -> `extra_body`, which only the
-   *  OpenAI-compatible adapters forward (`openai_compat.py#_apply_request_extras`). Declare it
-   *  only on a row whose engine actually carries that ride-along. */
+   *  it travels as its own `GenerateRequest.reasoning` posture (TASK-970) and each adapter
+   *  renders it into that engine's own parameter. Declare it on any row whose engine can express
+   *  the posture: `tests/contracts/reasoning-posture.fixture.json` `support` is the truth table,
+   *  and only `llama_cpp` / `bedrock` are `unsupported` there. (Before TASK-970 this said to
+   *  declare it ONLY on OpenAI-compatible rows, because they were the only adapters that
+   *  forwarded the old `extra.reasoning_effort` ride-along — that is no longer true and following
+   *  it would wrongly exclude Ollama, Anthropic and Vertex.) */
   | 'reasoning';
 
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */

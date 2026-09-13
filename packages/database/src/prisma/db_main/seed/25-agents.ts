@@ -183,9 +183,24 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
  * had already retired (`dto.py:589-593`) — at 250ms a spoken yes/no (~150-250ms) is
  * discarded before it ever reaches ASR. 100ms is the engine's own default; this seed no
  * longer overrides it upward.
+ *
+ * ALaaS-Hope alignment plan Lane F2 (2026-09-13) — reactivity tuning for the ArcaAI tenant's
+ * `realtime-transcription` agent (this row is the SYSTEM/Global default the tenant inherits;
+ * it carries no per-tenant override today, so the change is platform-wide until one exists):
+ *   - `streaming.partialIntervalMs` 500 -> 300 ms: how often a partial is re-emitted.
+ *   - `streaming.partialWindowSec` added at 3 s (was unset, so the model row's `partialWindowSec`
+ *     6 s applied): overrides the assigned model's window to trade decode-tail length for
+ *     latency. `agent-schemas.ts`'s own doc comment on this field measured MORE garbage partials
+ *     at shorter tails (31% at 6s -> 0% at 15s going the OTHER direction), so this is a
+ *     deliberate experiment, not a settled win — see the runbook's revert rule.
+ *   - `audioFrontEnd.vad.minSilenceMs` 500 -> 350 ms: how long a gap ends an utterance for VAD.
+ *   - `endpointing` stays `semantic` (unchanged) and `maxUtteranceSec` stays 60 (unchanged).
+ * Full measurement protocol, the admin-console equivalent (this dev stack is already seeded, so
+ * these values only apply to a FRESH seed/reseed) and the revert rule:
+ * `apps/audio-stream-svc/docs/tenant-config-runbook.md` (ALaaS repo) section F2.
  */
 export const ASR_PARAMETERS = {
-  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 500 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
+  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
   // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
   // TASK-938 (owner directive 2026-09-09): `wordTimestamps` back to true. It is no longer the
@@ -198,7 +213,8 @@ export const ASR_PARAMETERS = {
   // transformers loader; the previous `cadence-punctuation` binding selected the legacy wrapper
   // path that cannot load under transformers 5.x, so the seeded agents ran unpunctuated.
   postProcessing: { punctuation: { enabled: true, modelSlug: 'cadence-fast' }, disfluency: true, stabilizer: true },
-  streaming: { partialIntervalMs: 500, endpointing: 'semantic', maxUtteranceSec: 60 },
+  // Lane F2: partialIntervalMs 500 -> 300, partialWindowSec added at 3 (was unset / model default 6).
+  streaming: { partialIntervalMs: 300, partialWindowSec: 3, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
 export const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.', hotwords: [] as string[] };
@@ -429,7 +445,8 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       // tier only and left this one "as-is" — which is not neutral: an absent block is the engine's
       // OWN default, the exact state the 5168 ms / 184-reasoning-token measurement was taken in. The
       // directive is now platform-wide, so no seeded TEXT_GENERATION agent leaves the decision to
-      // the engine. `enabled: false` reaches the wire as `reasoning_effort: 'minimal'`
+      // the engine. `enabled: false` travels as the `reasoning` posture and each adapter renders
+      // its own engine's off-switch (TASK-970); on an effort-only engine it is approximated
       // (`agent-reasoning.ts`), and `lms-gemma-4-e2b-it-qat` DECLARES `reasoning` in
       // `supportedGenerationParams`, so the publish gate accepts it.
       parameters: { generation: { temperature: 0.1, maxTokens: 4096, reasoning: { enabled: false } }, guards: { enabled: true } },
