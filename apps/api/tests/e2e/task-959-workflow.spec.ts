@@ -269,10 +269,24 @@ test.describe('TASK-959 §3.4 — an API-triggered run bills its own worker CPU'
 
     // And the figure surfaces on the run detail, which is where an operator
     // asks the question.
-    const detail = await request.get(`/api/v1/admin/workflow-runs/${runId}`, { headers: bearer() });
-    expect(detail.status()).toBe(200);
-    const { cpuSeconds } = (await detail.json()) as { cpuSeconds: number | null };
-    expect(typeof cpuSeconds).toBe('number');
+    //
+    // POLLED, not read once. `waitForLedgerRows` above returns the moment the
+    // rows are in the OUTBOX, while `cpuSeconds` is a sum over what the drainer
+    // has since written — so a single read here races the drain and sees
+    // `null`. Measured 2026-09-13: this read returned `null` and the very same
+    // run reported `cpuSeconds: 0.062` minutes later. The assertion is
+    // unchanged (a number, strictly positive); only the waiting is.
+    const detailDeadline = Date.now() + 45_000;
+    let cpuSeconds: number | null = null;
+    for (;;) {
+      const detail = await request.get(`/api/v1/admin/workflow-runs/${runId}`, { headers: bearer() });
+      expect(detail.status()).toBe(200);
+      cpuSeconds = ((await detail.json()) as { cpuSeconds: number | null }).cpuSeconds;
+      if (typeof cpuSeconds === 'number') break;
+      if (Date.now() >= detailDeadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    expect(typeof cpuSeconds, `cpuSeconds never became a number for run ${runId} within 45s`).toBe('number');
     expect(cpuSeconds).toBeGreaterThan(0);
   });
 });
