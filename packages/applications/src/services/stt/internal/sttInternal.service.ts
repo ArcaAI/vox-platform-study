@@ -28,7 +28,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
-import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, type UsageTrigger } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 import { ISttInternalService } from './ISttInternalService';
@@ -550,7 +550,19 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    */
   private async emitBatchUsage(
     jobId: string,
-    job: { tenantId?: string | null; consultationId?: string | null; pipelineId?: string; completedAt?: Date | null },
+    job: {
+      tenantId?: string | null;
+      consultationId?: string | null;
+      pipelineId?: string;
+      completedAt?: Date | null;
+      // TASK-957 F-8 — set ONLY by the agent transcriptions route (TASK-861
+      // resolves an ASR Agent and writes `agentVersionId` + `resolvedSpec`), so
+      // its presence IS the trigger. Read from the widened entity rather than
+      // added to the worker callback: the row was written at job creation by the
+      // route that knows, and a worker must not be able to assert its own
+      // billing dimension.
+      agentVersionId?: string | null;
+    },
     dto: InternalCompleteJobRequest,
     tx: CorePrisma.TransactionClient,
   ): Promise<void> {
@@ -578,6 +590,13 @@ export class SttInternalService extends BaseService implements ISttInternalServi
           engine: dto.engine!,
           pipelineId: job.pipelineId ?? null,
           channelCount: 1,
+          // TASK-957 F-8 — WHY this transcription happened. Exactly two routes
+          // create a BATCH job and the row distinguishes them: an agent-keyed
+          // job carries `agentVersionId`, the consultation lane (the realtime
+          // service and the harness batch trigger) carries a `pipelineId` and
+          // no agent. Two values, no third state — an absent trigger here would
+          // be the hole this closes, not a fact.
+          trigger: (job.agentVersionId ? 'AGENT_INVOCATION' : 'CONSULTATION') as UsageTrigger,
         },
       };
 

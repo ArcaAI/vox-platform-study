@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 
-import { UsageComputeSeconds, UsageThirdPartyBytes } from './dto';
+import { UsageComputeSeconds, UsageSummaryOperationLine, UsageThirdPartyBytes } from './dto';
 
 /** Matches `UsageSummaryLine.quantity` and the ledger's own `Decimal(_,6)` columns. */
 export const QUANTITY_DECIMAL_PLACES = 6;
@@ -107,4 +107,62 @@ export function summariseMeasures(rollups: readonly MeasurableRollup[]): UsageMe
  */
 function isThirdParty(deployment: AiDeploymentKind | undefined): boolean {
   return deployment !== undefined && THIRD_PARTY_DEPLOYMENTS.has(deployment);
+}
+
+/** The rollup dimensions {@link summariseByOperation} reads. */
+export interface OperationRollup {
+  operation: string;
+  unit: AiUsageUnit;
+  quantitySum: Decimal.Value;
+  costMicrosSum: bigint;
+}
+
+/**
+ * Group a period's rollup buckets by OPERATION (TASK-957 F-8).
+ *
+ * Pure, and over rows the caller has already read: `operation` has been a
+ * rollup dimension since the hourly/daily models were split, so "what KIND of
+ * work did this tenant buy" needs no query of its own — only a different
+ * grouping of what `lines` is built from. `lines` splits by
+ * (capability, provider, model, unit); this collapses all four onto the
+ * operation, which is the shape a consumption screen wants when the question is
+ * "transcription vs synthesis vs workflow", not "which model".
+ *
+ * Quantity stays PER UNIT. An operation spans units that are not summable —
+ * `generate` produces INPUT_TOKEN, OUTPUT_TOKEN and CPU_SECOND rows — so a
+ * single number over them would be arithmetic on incompatible things. Cost IS
+ * summable across units (it is already rated micros) and is summed.
+ *
+ * A bucket with an EMPTY operation (the column's sentinel default, on rows
+ * written before the dimension existed) is skipped rather than bucketed under
+ * `""`: an unlabelled row is not an operation, and giving it a bucket would
+ * invite a reader to treat the sentinel as a kind of work.
+ */
+export function summariseByOperation(rollups: readonly OperationRollup[]): UsageSummaryOperationLine[] {
+  const byOperation = new Map<string, { quantityByUnit: Map<AiUsageUnit, Decimal>; costMicros: bigint }>();
+
+  for (const rollup of rollups) {
+    const operation = typeof rollup.operation === 'string' ? rollup.operation.trim() : '';
+    if (!operation) continue;
+
+    const bucket = byOperation.get(operation) ?? { quantityByUnit: new Map<AiUsageUnit, Decimal>(), costMicros: 0n };
+    const previous = bucket.quantityByUnit.get(rollup.unit) ?? new Decimal(0);
+    bucket.quantityByUnit.set(rollup.unit, previous.plus(new Decimal(String(rollup.quantitySum))));
+    bucket.costMicros += rollup.costMicrosSum;
+    byOperation.set(operation, bucket);
+  }
+
+  return [...byOperation.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([operation, bucket]) => {
+      const line = new UsageSummaryOperationLine();
+      line.operation = operation;
+      line.quantityByUnit = Object.fromEntries(
+        [...bucket.quantityByUnit.entries()]
+          .sort(([a], [b]) => String(a).localeCompare(String(b)))
+          .map(([unit, quantity]) => [unit, quantity.toFixed(QUANTITY_DECIMAL_PLACES)]),
+      );
+      line.costMicros = bucket.costMicros.toString();
+      return line;
+    });
 }

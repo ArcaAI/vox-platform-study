@@ -509,6 +509,14 @@ class _TrajectoryBatch:
                 payload_ref=payload_ref,
                 error_code=error_code,
                 correlation_id=self._ctx.correlation_id,
+                # TASK-957 F-8 — read straight off the workflow-owned context, which has
+                # carried node identity since the interpreter lane landed and simply had
+                # nowhere to put it. ONE emitter, so both lanes get it from one place; the
+                # consultation lane's context sets none of the four and `to_wire` prunes them.
+                doctor_id=self._ctx.doctor_id,
+                node_id=self._ctx.node_id,
+                workflow_version_id=self._ctx.workflow_version_id,
+                node_type=self._ctx.node_type,
             )
         )
 

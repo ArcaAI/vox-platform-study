@@ -111,14 +111,20 @@ describe('WorkflowRunController', () => {
 describe('GET admin/workflow-runs/:runId — cpuSeconds (TASK-959 §3.4)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('decorates the run row with the ledger sum for that run, tenant-scoped', async () => {
+  // Keyed on the run's SESSION id, not the path's run id (corrected under
+  // TASK-957): the ledger's `requestId` on a WORKFLOW row is Temporal's
+  // execution-attempt id, so the domain run id matched nothing and a real run
+  // answered `cpuSeconds: null` over four CPU_SECOND rows. `sessionId` is the
+  // key `WorkflowRun` already joins its own trajectory steps by, so the ledger
+  // read reuses that join rather than inventing a second one.
+  it('decorates the run row with the ledger sum for that run\u2019s SESSION, tenant-scoped', async () => {
     const { controller, service, usageAnalytics } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.getRun.mockResolvedValue({ id: 'run-row-1', runId: 'run-7', tenantId: 't1' });
+    service.getRun.mockResolvedValue({ id: 'run-row-1', runId: 'run-7', sessionId: 'workflow-interpreter-run-7', tenantId: 't1' });
     usageAnalytics.getWorkflowRunCpuSeconds.mockResolvedValue(12.75);
 
     const response = await controller.getRun('run-7');
 
-    expect(usageAnalytics.getWorkflowRunCpuSeconds).toHaveBeenCalledWith('t1', 'run-7');
+    expect(usageAnalytics.getWorkflowRunCpuSeconds).toHaveBeenCalledWith('t1', 'workflow-interpreter-run-7');
     expect(response.cpuSeconds).toBe(12.75);
     // Purely additive — the run row the service returned is passed through whole.
     expect(response.id).toBe('run-row-1');

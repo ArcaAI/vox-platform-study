@@ -18,11 +18,11 @@ import { isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { resolveBillingAllowances } from '../billing/allowances';
 import { parseBillingPeriod } from '../billing/billing-period';
-import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryResponse } from './dto';
+import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryResponse, UsageSummaryTriggerLine } from './dto';
 import { BudgetBurndownResponse, CostPerEncounterResponse, TopTenantsResponse, UsageTimeseriesResponse } from './dto';
 import { UsageStorageSnapshotSummary } from './dto';
-import { STORAGE_CLASSES, type StorageClass } from '../usageLedger/usage-attributes';
-import { MeasurableRollup, QUANTITY_DECIMAL_PLACES, summariseMeasures } from './usage-measures';
+import { STORAGE_CLASSES, type StorageClass, USAGE_TRIGGERS } from '../usageLedger/usage-attributes';
+import { MeasurableRollup, QUANTITY_DECIMAL_PLACES, summariseByOperation, summariseMeasures } from './usage-measures';
 import { IUsageAnalyticsService, TopTenantsQuery, UsageTimeseriesQuery } from './IUsageAnalyticsService';
 import { projectCapabilityBurndown } from './budget-burndown';
 import { computeCostDistribution } from './percentile';
@@ -104,9 +104,10 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     );
     const totalCostMicros = lines.reduce((sum, line) => sum + BigInt(line.costMicros), 0n);
 
-    const [byokRows, storage] = await Promise.all([
+    const [byokRows, storage, byTrigger] = await Promise.all([
       this.aggregateRepository.sumByokNotionalByCapability(tenantId, billingPeriod.start, billingPeriod.end),
       this.readLatestStorageSnapshot(tenantId, billingPeriod.start, billingPeriod.end),
+      this.readUsageByTrigger(tenantId, billingPeriod.start, billingPeriod.end),
     ]);
     const byokNotionalCostMicrosByCapability = Object.fromEntries(byokRows.map((row) => [row.capability, row.costMicros.toString()]));
 
@@ -123,7 +124,64 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     response.workflowCpuSeconds = measures.workflowCpuSeconds;
     response.thirdPartyBytes = measures.thirdPartyBytes;
     response.storage = storage;
+    // TASK-957 F-8 — the SAME rollups, regrouped. `operation` is a rollup
+    // dimension, so this costs no extra read; `byTrigger` is not, which is why
+    // it was resolved above instead.
+    response.byOperation = summariseByOperation(rollups);
+    response.byTrigger = byTrigger;
     return response;
+  }
+
+  /**
+   * Usage per TRIGGER over the period, from the RAW ledger (TASK-957 F-8).
+   *
+   * `trigger` lives on `attributesJson` and is deliberately not a rollup
+   * dimension — adding one would multiply every rollup row by five for a facet
+   * nothing prices on. So this is the same structural exception as
+   * `readLatestStorageSnapshot` above and `MeteringService.countGuardrailCalls`:
+   * a bounded aggregate on the base client, with the tenant passed explicitly
+   * rather than taken from CLS.
+   *
+   * ONE AGGREGATE PER TRIGGER, and that is what makes "bounded" a fact rather
+   * than a hope: `USAGE_TRIGGERS` is a CLOSED vocabulary, so the query count is
+   * a constant and each one returns at most one row per unit. Postgres does the
+   * summing; nothing streams a month of ledger rows into this process.
+   *
+   * A trigger that produced nothing is OMITTED rather than zeroed — a zero row
+   * asserts "this activity ran and consumed nothing", which is a different
+   * claim from "this activity did not run".
+   */
+  private async readUsageByTrigger(tenantId: string, from: Date, to: Date): Promise<UsageSummaryTriggerLine[]> {
+    const lines = await Promise.all(
+      USAGE_TRIGGERS.map(async (trigger) => {
+        const groups = await this.databaseService.baseClient.aiUsageEvent.groupBy({
+          by: ['unit'],
+          where: {
+            tenantId,
+            occurredAt: { gte: from, lt: to },
+            attributesJson: { path: ['trigger'], equals: trigger },
+          },
+          _sum: { quantity: true },
+        });
+
+        const quantityByUnit: Record<string, string> = {};
+        for (const group of groups) {
+          const sum = group._sum?.quantity;
+          if (sum === null || sum === undefined) continue;
+          quantityByUnit[group.unit] = new Decimal(String(sum)).toFixed(QUANTITY_DECIMAL_PLACES);
+        }
+
+        const line = new UsageSummaryTriggerLine();
+        line.trigger = trigger;
+        line.quantityByUnit = quantityByUnit;
+        return line;
+      }),
+    );
+
+    // Sorted by NAME, not by the vocabulary's own declaration order: `lines` and
+    // `byOperation` on this same response are lexicographic, and one array that
+    // orders itself differently is a trap for anyone diffing two periods.
+    return lines.filter((line) => Object.keys(line.quantityByUnit).length > 0).sort((a, b) => a.trigger.localeCompare(b.trigger));
   }
 
   /**
@@ -180,21 +238,40 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
   }
 
   /**
-   * Σ `CPU_SECOND` under capability `WORKFLOW` for ONE run (TASK-959 §3.4).
+   * Σ `CPU_SECOND` under capability `WORKFLOW` for ONE run, keyed by its SESSION
+   * id (TASK-959 §3.4, corrected under TASK-957).
    *
-   * `requestId` IS the run id on those rows, which is why this is answerable at
-   * all: the metering interceptor stamps it per activity, so a run's worker CPU
-   * is the sum over its own request id. Not a rollup read — `requestId` is not
-   * a rollup dimension, and a per-run figure is exactly what a rollup discards.
+   * ============================================================================
+   * WHY `sessionId` AND NOT `requestId`
+   * ============================================================================
+   * `requestId` on a WORKFLOW row is Temporal's EXECUTION-ATTEMPT id — the
+   * `workflow_run_id` the worker's metering interceptor reads off
+   * `activity.info()`, the same value `_TrajectoryBatch.record` puts in a
+   * trajectory step's `runId`. That is deliberate and stays: the trajectory
+   * table's dedupe tuple is `(tenantId, sessionId, runId, seq)` with the
+   * execution id in it, and the LLM `workflow.step` rows of the same run key
+   * identically, so one run's inference and its orchestration agree.
+   *
+   * The DOMAIN run id is a different value, and filtering on it matched nothing:
+   * a real run whose ledger held four CPU_SECOND rows answered `cpuSeconds:
+   * null`. `WorkflowRun` already joins its own steps by `sessionId` — the
+   * derived `"workflow-interpreter-" + runId` (`workflow-run.prisma:10-20`) —
+   * so summing by that key reuses the join the run plane already trusts rather
+   * than inventing a second one. It also survives a continue-as-new, where one
+   * run legitimately spans more than one execution id and a `requestId` sum
+   * would silently report only the last leg.
+   *
+   * Not a rollup read — neither key is a rollup dimension, and a per-run figure
+   * is exactly what a rollup discards.
    *
    * `null`, never 0, when there are no rows: a run that predates the interceptor
    * and a run that burned no measurable CPU are different facts, and only the
    * first is a reason to stop looking for the number.
    */
-  async getWorkflowRunCpuSeconds(tenantId: string, runId: string): Promise<number | null> {
+  async getWorkflowRunCpuSeconds(tenantId: string, sessionId: string): Promise<number | null> {
     const result = await this.databaseService.baseClient.aiUsageEvent.aggregate({
       _sum: { quantity: true },
-      where: { tenantId, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, requestId: runId },
+      where: { tenantId, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, sessionId },
     });
     const sum = result._sum?.quantity ?? null;
     if (sum === null || sum === undefined) return null;
