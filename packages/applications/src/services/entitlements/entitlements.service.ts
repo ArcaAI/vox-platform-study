@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
@@ -589,6 +589,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
   }
 
   async upsertTenantEntitlement(tenantId: EntityId, request: UpsertTenantEntitlementRequest): Promise<TenantEntitlementResponse> {
+    this.assertOverridableTenant(tenantId);
+
     const existing = await this.tenantEntitlementRepository.findByTenant(tenantId);
 
     if (existing) {
@@ -635,6 +637,13 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
         request.monthlyNlpTextUnits === null || request.monthlyNlpTextUnits === undefined ? null : BigInt(request.monthlyNlpTextUnits),
       monthlyEmbeddingTokens:
         request.monthlyEmbeddingTokens === null || request.monthlyEmbeddingTokens === undefined ? null : BigInt(request.monthlyEmbeddingTokens),
+      // The tenant's own spend ceiling (D12). Explicitly NOT `?? null` on a
+      // number: `0` is the honest "spend nothing more this month" setting, and
+      // `0 ?? null` is fine while `0 || null` is not — spelt out in full like
+      // its allowance siblings so the next edit cannot turn a real ceiling into
+      // "unlimited", which is the direction that costs money.
+      monthlySpendLimitMicros:
+        request.monthlySpendLimitMicros === null || request.monthlySpendLimitMicros === undefined ? null : BigInt(request.monthlySpendLimitMicros),
       featurePlatformDefaultCredential: request.featurePlatformDefaultCredential ?? null,
       modelTier: request.modelTier ?? null,
       rateLimitTier: request.rateLimitTier ?? null,
@@ -676,6 +685,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.monthlyTtsCharacters = null;
     existing.monthlyNlpTextUnits = null;
     existing.monthlyEmbeddingTokens = null;
+    existing.monthlySpendLimitMicros = null;
     existing.featurePlatformDefaultCredential = null;
     existing.modelTier = null;
     existing.rateLimitTier = null;
@@ -747,6 +757,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (entity.monthlyTtsCharacters = v));
     this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (entity.monthlyNlpTextUnits = v));
     this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (entity.monthlyEmbeddingTokens = v));
+    this.applyBigIntField(request.monthlySpendLimitMicros, (v) => (entity.monthlySpendLimitMicros = v));
     if (request.featurePlatformDefaultCredential !== undefined) entity.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) entity.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) entity.rateLimitTier = request.rateLimitTier;
@@ -827,11 +838,38 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
       monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
       monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
+      monthlySpendLimitMicros: toAllowanceNumber(row.monthlySpendLimitMicros),
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential ?? null,
       modelTier: row.modelTier ?? null,
       rateLimitTier: row.rateLimitTier ?? null,
       rateLimitPerMinute: row.rateLimitPerMinute ?? null,
       version: row.version,
     };
+  }
+
+  /**
+   * The SYSTEM tenant has no entitlements to override (TASK-959 FU-1).
+   *
+   * `00000000-…` is the platform CONFIGURATION tier, not a customer: it carries
+   * no plan, and no request ever runs as it, so nothing resolves an override row
+   * written there. `monthlySpendLimitMicros` is where that stops being harmless
+   * — `assertSpendLimit` is called with the REQUEST tenant, so a ceiling set on
+   * SYSTEM bounds nobody while looking, in the admin UI and in the row, exactly
+   * like a ceiling that is set.
+   *
+   * Refused for EVERYONE, platform administrator included: this is not a
+   * privilege boundary (there is no caller for whom it would be meaningful), it
+   * is an invalid target. `EntitlementsLifecycleService.triggerDowngrade`
+   * already refuses the same tenant on the same reasoning.
+   *
+   * The check runs BEFORE any lookup deliberately, and that is consistent with
+   * rule 05's ordering rule rather than an exception to it: the answer does not
+   * vary by row, so there is no id space to probe — every caller gets the same
+   * 403 for the one id, whether or not a row exists behind it.
+   */
+  private assertOverridableTenant(tenantId: EntityId): void {
+    if (tenantId === ENTITLEMENTS_TENANT_ID) {
+      throw new ForbiddenException('The system tenant is a configuration tier and carries no entitlement override.');
+    }
   }
 }
