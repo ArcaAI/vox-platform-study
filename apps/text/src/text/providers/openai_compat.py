@@ -24,6 +24,7 @@ from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
 from text.core.connection import require_connection
 from text.core.defaults import resolve_request_defaults
+from text.core.reasoning import ReasoningSupport, apply_openai_wire_reasoning
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
@@ -54,6 +55,17 @@ class OpenAICompatProvider:
     # credential to fail closed on. It still honours a tenant override — see
     # `_client_for`.
     credential_posture = CredentialPosture.SELF_HOST
+
+    # TASK-970 — what this adapter can express of an admin's reasoning posture.
+    # EFFORT_ONLY, and deliberately so: `reasoning_effort` is standard OpenAI
+    # vocabulary that any compliant server should tolerate, but this class is
+    # documented as wire-only ("any server that speaks the OpenAI chat-completions
+    # wire"), so it cannot promise that an unknown server knows the newer `'none'`
+    # rung — and an unrecognised enum value is a 400, i.e. a failed generation.
+    # OFF is therefore RECORDED rather than approximated onto a low effort.
+    reasoning_support: ReasoningSupport = ReasoningSupport.EFFORT_ONLY
+    reasoning_parameter: str | None = "reasoning_effort"
+    reasoning_effort_parameter: str | None = "reasoning_effort"
 
     def __init__(
         self,
@@ -201,6 +213,25 @@ class OpenAICompatProvider:
         for key, value in request.extra.items():
             extra_body.setdefault(key, value)
 
+    def _apply_reasoning(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture onto this engine's own parameter.
+
+        Hook, like ``_apply_retention_hint``: the OpenAI wire spells it
+        ``reasoning_effort``, and `providers/vllm.py` overrides this entirely
+        because vLLM's off-switch is a chat-template kwarg instead.
+
+        ``off_is_expressible`` is READ OFF THE DECLARATION rather than restated,
+        so a subclass that declares ``NATIVE_OFF`` cannot forget to also change
+        the behaviour it declared.
+        """
+        apply_openai_wire_reasoning(
+            kwargs,
+            request,
+            provider=self._provider_name,
+            model=self._resolve_model(request),
+            off_is_expressible=self.reasoning_support is ReasoningSupport.NATIVE_OFF,
+        )
+
     def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
         """Hook: attach the engine's server-side idle-retention directive.
 
@@ -295,6 +326,7 @@ class OpenAICompatProvider:
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
+            self._apply_reasoning(kwargs, request)
             self._apply_request_extras(kwargs, request)
 
             start = time.monotonic()
@@ -354,6 +386,7 @@ class OpenAICompatProvider:
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
+            self._apply_reasoning(kwargs, request)
             self._apply_request_extras(kwargs, request)
 
             # DRAIN the stream to completion (AD-1): the finish chunk arrives

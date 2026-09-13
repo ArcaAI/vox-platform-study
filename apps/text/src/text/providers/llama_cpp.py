@@ -21,6 +21,7 @@ import structlog
 
 from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
+from text.core.reasoning import ReasoningSupport, record_unsupported_posture
 from text.core.telemetry import get_tracer
 from text.models.probe import ProbeConnection
 from text.models.provider import ProviderInfo
@@ -45,6 +46,18 @@ class LlamaCppProvider:
     """llama.cpp server provider over the native ``/completion`` endpoint."""
 
     credential_posture = CredentialPosture.SELF_HOST
+
+    # TASK-970 — UNSUPPORTED because of the ENDPOINT this adapter deliberately
+    # targets. llama.cpp's server documents `reasoning_effort`,
+    # `reasoning_format`, `reasoning_control` and `chat_template_kwargs` on
+    # `/v1/chat/completions` ONLY; `/completion` applies no chat template and
+    # accepts no reasoning parameter (`--reasoning-budget` is a server CLI flag,
+    # not per-request). The native endpoint is chosen for its `timings` block —
+    # this adapter is the AD-1 reference engine — so the trade is deliberate, and
+    # the posture is recorded rather than dropped.
+    reasoning_support = ReasoningSupport.UNSUPPORTED
+    reasoning_parameter = None
+    reasoning_effort_parameter = None
 
     #: Name used when reporting a missing connection and on the admin listing.
     _probe_name = _ENGINE
@@ -105,6 +118,8 @@ class LlamaCppProvider:
         elif request.response_format is not None and request.response_format.type == "json_schema":
             if request.response_format.json_schema:
                 payload["json_schema"] = request.response_format.json_schema
+
+        record_unsupported_posture(request, provider=_ENGINE, model=self._resolve_model(request))
 
         return payload
 
