@@ -256,8 +256,13 @@ describe('TenantBucketController', () => {
       expect(meta('getPresignedUrl')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
     });
 
-    it('deleteBucket is annotated with modelName TenantBucket + paramName id', () => {
+    // DEFAULT scope, deliberately — the assertion doubles as the guard against a
+    // future widening. An unscoped platform admin is browse-only here; bucket
+    // deletion destroys the physical bucket and stays tenant-bound, so a
+    // `scope: 'super-admin'` added to this route must fail this test.
+    it('deleteBucket is annotated with modelName TenantBucket + paramName id and NO super-admin scope', () => {
       expect(meta('deleteBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+      expect(meta('deleteBucket')?.scope).toBeUndefined();
     });
 
     it('deleteObject is annotated with modelName TenantBucket + paramName id', () => {
@@ -276,6 +281,14 @@ describe('TenantBucketController', () => {
       expect(meta('listBuckets')).toBeUndefined();
       expect(meta('createBucket')).toBeUndefined();
       expect(meta('provisionSystemBuckets')).toBeUndefined();
+    });
+
+    // `register` and `provision/:tenantId` name their tenant in the REQUEST, so
+    // there is no ambient owner to assert and they work for an unscoped platform
+    // admin by design. That is the line: explicit-tenant routes are unannotated,
+    // id-addressed mutations stay tenant-bound.
+    it('adoptBucket is NOT annotated — the owning tenant is explicit in the body', () => {
+      expect(meta('adoptBucket')).toBeUndefined();
     });
   });
 });

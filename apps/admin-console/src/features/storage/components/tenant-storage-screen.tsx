@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
@@ -58,7 +59,24 @@ const TYPE_OPTIONS: FilterOption[] = [
   { value: 'CUSTOM', label: 'Custom' },
 ];
 
-function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket; onBrowse: () => void; onDelete: () => void }) {
+/**
+ * `deleteBlockedReason` present = the caller cannot delete this bucket, and the
+ * string says why. Deletion stays DISABLED rather than hidden so the capability
+ * is still discoverable, and the reason is rendered as adjacent text rather
+ * than a tooltip because a disabled Radix item takes no pointer events (UX
+ * principles §7: a disabled control needs a visible reason).
+ */
+function BucketRowActions({
+  bucket,
+  onBrowse,
+  onDelete,
+  deleteBlockedReason,
+}: {
+  bucket: TenantBucket;
+  onBrowse: () => void;
+  onDelete: () => void;
+  deleteBlockedReason?: string;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -73,21 +91,56 @@ function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket
           Browse objects
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+        <DropdownMenuItem variant="destructive" disabled={Boolean(deleteBlockedReason)} onSelect={onDelete}>
           <IconTrash aria-hidden />
           Delete
         </DropdownMenuItem>
+        {deleteBlockedReason ? (
+          <DropdownMenuLabel className="text-muted-foreground max-w-64 px-2 py-1 text-xs font-normal whitespace-normal">
+            {deleteBlockedReason}
+          </DropdownMenuLabel>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
 /**
+ * Why this row's Delete cannot succeed, or `undefined` when it can.
+ *
+ * Both branches mirror a refusal the gateway ALREADY makes, so the menu never
+ * offers a call that is guaranteed to fail:
+ *   - a SYSTEM bucket is refused by `TenantBucketService.deleteBucket` itself
+ *     (403 "System buckets cannot be deleted") — checked first, because it is
+ *     the more fundamental blocker: switching tenant would not help;
+ *   - an unscoped elevated session is refused by the `@TenantOwnedResource`
+ *     guard on `DELETE .../buckets/:id` (404) before the service runs.
+ */
+function deleteBlockedReason(bucket: TenantBucket, scoped: boolean, tenantNames: Map<string, string>): string | undefined {
+  if (bucket.isSystemBucket) {
+    return 'System buckets are provisioned with the tenant and cannot be deleted.';
+  }
+  if (!scoped) {
+    return `Deleting a bucket is tenant-scoped. Switch your working tenant to ${tenantNames.get(bucket.tenantId) ?? 'its owner'} to delete this one.`;
+  }
+  return undefined;
+}
+
+/**
  * Frame 14 buckets list: embedded grid (client search + faceted filters).
  * Spans all tenants for an unscoped elevated session, so the grid
  * carries a Tenant column and tenant/purpose/type filters.
+ *
+ * `scoped` is false for an unscoped elevated session (no working tenant). That
+ * session can LIST every tenant's buckets and browse their objects, but it
+ * cannot delete one: `DELETE .../buckets/:id` carries the default
+ * `@TenantOwnedResource` scope, so the gateway answers 404 before the service
+ * runs. Only `listObjects` was widened to `scope: 'super-admin'` (TASK-932) —
+ * the unscoped view is deliberately browse-only, and bucket deletion destroys
+ * the physical bucket, so the row's Delete is disabled here rather than
+ * offering an action that always fails.
  */
-function BucketsTab({ onProvision }: { onProvision: () => void }) {
+function BucketsTab({ onProvision, scoped }: { onProvision: () => void; scoped: boolean }) {
   const { data, isLoading, error, refetch } = useBuckets();
   const deleteBucket = useDeleteBucket();
   const [browsing, setBrowsing] = useState<TenantBucket | null>(null);
@@ -172,7 +225,12 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
       minSize: 56,
       cell: ({ row }) => (
         <div className="flex w-full justify-end">
-          <BucketRowActions bucket={row.original} onBrowse={() => setBrowsing(row.original)} onDelete={() => setDeleting(row.original)} />
+          <BucketRowActions
+            bucket={row.original}
+            onBrowse={() => setBrowsing(row.original)}
+            onDelete={() => setDeleting(row.original)}
+            deleteBlockedReason={deleteBlockedReason(row.original, scoped, tenantNames)}
+          />
         </div>
       ),
     },
@@ -557,7 +615,7 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
         }
       >
         <TabsContent value="buckets" className="flex min-h-0 flex-col">
-          <BucketsTab onProvision={() => setProvisionOpen(true)} />
+          <BucketsTab onProvision={() => setProvisionOpen(true)} scoped={scoped} />
         </TabsContent>
         <TabsContent value="defaults" className="overflow-y-auto">
           {scoped ? <BucketDefaultsTab /> : <PickTenantState />}

@@ -286,6 +286,92 @@ describe('TenantStorageScreen', () => {
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
   });
 
+  // An unscoped elevated session can LIST every tenant's buckets and browse
+  // their objects, but `DELETE .../buckets/:id` carries the default
+  // `@TenantOwnedResource` scope, so the gateway 404s before the service runs.
+  // The row used to offer a Delete that always failed with "Resource not found".
+  describe('delete is unavailable without a working tenant', () => {
+    function unscopedSession(call: RecordedCall): Response | undefined {
+      if (new URL(call.url, 'http://test.local').pathname === '/api/auth/session') {
+        return Response.json(session({ workingTenantId: null }));
+      }
+      return undefined;
+    }
+
+    /** Radix opens on pointerdown, not click — same shape the slug-confirm test uses. */
+    async function openMenu(rowName: string) {
+      const trigger = await openRowActions(rowName);
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+      return screen.findByRole('menuitem', { name: /delete/i });
+    }
+
+    it('disables the row Delete and says which tenant to switch to', async () => {
+      stubStorage(unscopedSession);
+      renderWithProviders(<TenantStorageScreen />);
+
+      const del = await openMenu('Transcripts');
+
+      expect(del.getAttribute('data-disabled')).not.toBeNull();
+      // The reason names the owning tenant, so the fix is one switch away.
+      expect(screen.getByText(/switch your working tenant to sunrise medical group/i)).toBeDefined();
+    });
+
+    it('selecting the disabled Delete opens no confirm dialog and issues no request', async () => {
+      const calls = stubStorage(unscopedSession);
+      renderWithProviders(<TenantStorageScreen />);
+
+      const del = await openMenu('Transcripts');
+      fireEvent.click(del);
+
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    });
+
+    // Browsing is the half that IS widened (`listObjects` carries
+    // `scope: 'super-admin'`), so it must stay reachable.
+    it('still offers Browse objects', async () => {
+      stubStorage(unscopedSession);
+      renderWithProviders(<TenantStorageScreen />);
+
+      await openMenu('Transcripts');
+
+      expect(screen.getByRole('menuitem', { name: /browse objects/i }).getAttribute('data-disabled')).toBeNull();
+    });
+
+    it('keeps Delete enabled when a working tenant IS selected', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />);
+
+      const del = await openMenu('Transcripts');
+
+      expect(del.getAttribute('data-disabled')).toBeNull();
+      expect(screen.queryByText(/switch your working tenant/i)).toBeNull();
+    });
+
+    // Same defect shape, different refusal: the SERVICE rejects a system bucket
+    // (403) whether or not a tenant is selected, so that Delete is dead too.
+    it('disables Delete for a system bucket even with a working tenant selected', async () => {
+      stubStorage();
+      renderWithProviders(<TenantStorageScreen />);
+
+      const del = await openMenu('Consultation audio');
+
+      expect(del.getAttribute('data-disabled')).not.toBeNull();
+      expect(screen.getByText(/system buckets are provisioned with the tenant/i)).toBeDefined();
+    });
+
+    // The system-bucket reason wins: switching tenant would not make it work.
+    it('prefers the system-bucket reason over the working-tenant one', async () => {
+      stubStorage(unscopedSession);
+      renderWithProviders(<TenantStorageScreen />);
+
+      await openMenu('Consultation audio');
+
+      expect(screen.getByText(/system buckets are provisioned with the tenant/i)).toBeDefined();
+      expect(screen.queryByText(/switch your working tenant/i)).toBeNull();
+    });
+  });
+
   // The storage browser's "Register" action links here as
   // `/tenants/storage?register=<name>`. Before this existed the operator
   // landed on a list that did not contain the bucket and had no way to add it.
@@ -373,14 +459,20 @@ describe('TenantStorageScreen', () => {
     );
   });
 
+  // Drives the CUSTOM bucket (`Transcripts`, b-2) on purpose. This used to run
+  // against `Consultation audio`, which is a SYSTEM bucket — a delete the
+  // gateway refuses with 403 ("System buckets cannot be deleted"), so the flow
+  // it asserted could never happen; it passed only because the fetch stub
+  // answered 200 to any DELETE. The row's Delete is now disabled for a system
+  // bucket, which is what surfaced it.
   it('deletes a bucket only after typing its slug to confirm', async () => {
     const calls = stubStorage((call) => {
-      if (call.method === 'DELETE' && call.url.endsWith('/admin/tenants/storage/buckets/b-1')) return Response.json(BUCKETS[0]);
+      if (call.method === 'DELETE' && call.url.endsWith('/admin/tenants/storage/buckets/b-2')) return Response.json(BUCKETS[1]);
       return undefined;
     });
     renderWithProviders(<TenantStorageScreen />);
 
-    const trigger = await openRowActions('Consultation audio');
+    const trigger = await openRowActions('Transcripts');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /delete/i }));
 
@@ -388,11 +480,11 @@ describe('TenantStorageScreen', () => {
     const confirm = within(dialog).getByRole('button', { name: /delete bucket/i }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
 
-    fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: 'consult-audio' } });
+    fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: 'transcripts' } });
     expect(confirm.disabled).toBe(false);
     fireEvent.click(confirm);
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.endsWith('/admin/tenants/storage/buckets/b-1'))).toBe(true));
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.endsWith('/admin/tenants/storage/buckets/b-2'))).toBe(true));
   });
 
   it('opens the object browser on row click and descends folder prefixes', async () => {
