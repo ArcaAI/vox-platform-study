@@ -352,7 +352,10 @@ class Settings(BaseSettings):
     model_s3_secure: bool = Field(
         default=True,
         validation_alias="STT_MODEL_S3_SECURE",
-        description="Use TLS for the s3:// model endpoint (set false for local MinIO)",
+        description=(
+            "Use TLS for a BARE host:port s3:// model endpoint (set false for local MinIO). "
+            "A URL-form endpoint — the platform-storage fallback's http://… — decides for itself."
+        ),
     )
 
     @field_validator("huggingface_cache_dir", mode="before")

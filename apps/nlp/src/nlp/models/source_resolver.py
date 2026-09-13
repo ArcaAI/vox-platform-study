@@ -112,6 +112,9 @@ class ModelSourceConfig:
     s3_endpoint: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
+    # Settings-tier TLS flag for a BARE `host:port` endpoint. When the credential
+    # carries a URL (`http://…` / `https://…`) its scheme decides instead — see
+    # `_s3_endpoint_and_tls`.
     s3_secure: bool = True
     # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
     # `MINIO_CERT_CHECK`): defaults to False — the object store's TLS
@@ -171,6 +174,38 @@ async def config_for_model(settings: Any) -> ModelSourceConfig:
 # ---------------------------------------------------------------------------
 
 
+def _s3_endpoint_and_tls(endpoint: str, secure: bool) -> tuple[str, bool]:
+    """Split the configured S3 endpoint into `host[:port]` plus whether to speak TLS.
+
+    The gateway's model-registry credential contract carries `baseUrl` as a URL:
+    the platform-storage fallback answers `http://localhost:9000`, and the console
+    refuses to save an explicit row whose endpoint has no http(s) scheme. The
+    object-store clients want the opposite shape — minio-py rejects any scheme
+    inside its endpoint argument ("path in endpoint is not allowed"), boto3 wants
+    the scheme prepended exactly once — so a scheme, when present, is
+    authoritative for TLS and is stripped here. A bare `host:port` keeps the
+    settings-tier `secure` flag that predates the credential carrying a URL.
+    Anything else (an unknown scheme, a path, a query) is refused loudly rather
+    than silently mis-addressed: the bucket and prefix come from `source_uri`,
+    never from the endpoint.
+    """
+    raw = (endpoint or "").strip()
+    if "://" not in raw:
+        return raw, secure
+    parsed = urlparse(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ModelSourceError(
+            f"Unsupported S3 endpoint {raw!r}: expected 'host:port', "
+            f"'http://host:port' or 'https://host:port'."
+        )
+    if parsed.path.strip("/") or parsed.params or parsed.query or parsed.fragment:
+        raise ModelSourceError(
+            f"S3 endpoint {raw!r} must not carry a path, query or fragment — the "
+            f"bucket and prefix come from the model's source_uri."
+        )
+    return parsed.netloc, parsed.scheme == "https"
+
+
 def _make_s3_client(config: ModelSourceConfig) -> Any:
     """Build a MinIO-compatible S3 client. Imported lazily and stubbed in tests."""
     if not config.s3_endpoint or not config.s3_access_key or not config.s3_secret_key:
@@ -189,19 +224,20 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
             "s3:// model sources require the 'minio' package to be installed."
         ) from exc
 
+    endpoint, secure = _s3_endpoint_and_tls(config.s3_endpoint, config.s3_secure)
     client_kwargs: dict[str, Any] = {
         "access_key": config.s3_access_key,
         "secret_key": config.s3_secret_key,
-        "secure": config.s3_secure,
+        "secure": secure,
     }
-    if config.s3_secure and not config.s3_cert_check:
+    if secure and not config.s3_cert_check:
         # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see
         # `ModelSourceConfig.s3_cert_check` (`MINIO_CERT_CHECK`).
         import urllib3
 
         client_kwargs["http_client"] = urllib3.PoolManager(cert_reqs="CERT_NONE")
 
-    return Minio(config.s3_endpoint, **client_kwargs)
+    return Minio(endpoint, **client_kwargs)
 
 
 def _hf_snapshot_download(**kwargs: Any) -> str:

@@ -100,12 +100,27 @@ describe('source_resolver.py — the four copies stay in step', () => {
     // Not "the same functions" — a service may add its own. Every function the
     // SHARED core defines must exist everywhere, or one copy has lost a
     // capability the others still advertise.
-    const shared = ['resolve_model_dir', '_resolve_hf', '_resolve_s3', '_resolve_file', '_verify_checksum_sync', '_hf_snapshot_download'];
+    const shared = ['resolve_model_dir', '_resolve_hf', '_resolve_s3', '_resolve_file', '_verify_checksum_sync', '_hf_snapshot_download', '_s3_endpoint_and_tls'];
     for (const [service, path] of Object.entries(RESOLVERS)) {
       const names = defNames(read(path));
       for (const fn of shared) {
         expect(names, `${service} (${path}) is missing ${fn}()`).toContain(fn);
       }
+    }
+  });
+
+  it('every copy routes the S3 endpoint through _s3_endpoint_and_tls — the credential carries a URL, the clients want host:port', () => {
+    // The gateway's model-registry credential contract hands the resolver `baseUrl`
+    // as a URL (the platform-storage fallback answers `http://localhost:9000`; the
+    // console refuses an explicit row without an http(s) scheme), while minio-py
+    // refuses a scheme in its endpoint and boto3 wants it prepended exactly once.
+    // A copy that feeds `config.s3_endpoint` straight into its client silently
+    // breaks every URL-form credential — the regression this pins.
+    for (const [service, path] of Object.entries(RESOLVERS)) {
+      const body = defBody(read(path), '_make_s3_client');
+      expect(body, `${service}: _make_s3_client() not found in ${path}`).not.toBe('');
+      expect(body, `${service}: _make_s3_client() must derive host + TLS via _s3_endpoint_and_tls()`).toMatch(/_s3_endpoint_and_tls\(config\.s3_endpoint, config\.s3_secure\)/);
+      expect(body, `${service}: _make_s3_client() still hands the raw endpoint to its client`).not.toMatch(/Minio\(config\.s3_endpoint|\{config\.s3_endpoint\}/);
     }
   });
 
