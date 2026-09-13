@@ -194,9 +194,7 @@ class TestBytesFollowTheEngineThatMovedThem:
         acc = EngineUsageAccumulator(AiModelFormat.WHISPER_CPP, clock=clock)
         clock.advance(60.0)
         # The self-hosted primary moved nothing: the counters are unchanged.
-        acc.switch_to(
-            AiModelFormat.SARVAM, audio_seconds=55.0, counters=EngineUsageCounters()
-        )
+        acc.switch_to(AiModelFormat.SARVAM, audio_seconds=55.0, counters=EngineUsageCounters())
         clock.advance(60.0)
 
         segments = _by_engine(

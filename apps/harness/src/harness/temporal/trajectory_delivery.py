@@ -265,7 +265,9 @@ def reset_trajectory_spool() -> None:
 
 def _backoff_seconds(attempt: int) -> float:
     """Exponential with full jitter — so a fleet of workers does not retry in lockstep."""
-    return BACKOFF_BASE_S * (2.0 ** (attempt - 1)) + random.uniform(0.0, BACKOFF_JITTER_S)  # noqa: S311
+    return BACKOFF_BASE_S * (2.0 ** (attempt - 1)) + random.uniform(
+        0.0, BACKOFF_JITTER_S
+    )  # noqa: S311
 
 
 async def deliver_trajectory(

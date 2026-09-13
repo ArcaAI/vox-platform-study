@@ -74,9 +74,7 @@ class TestSarvamCountsItsWireBytes:
         """`0` is a real measurement; a missing key would read as "unknown"."""
         from stt.streaming.sarvam_asr import sarvam_recognize_utterance
 
-        with patch(
-            "httpx.AsyncClient", return_value=_mock_client({"transcript": ""}, content=b"")
-        ):
+        with patch("httpx.AsyncClient", return_value=_mock_client({"transcript": ""}, content=b"")):
             result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, "ml")
 
         assert result["response_bytes"] == 0

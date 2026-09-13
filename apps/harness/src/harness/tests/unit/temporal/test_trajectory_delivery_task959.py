@@ -153,9 +153,7 @@ class TestRetry:
                 return httpx.Response(503, json={"message": "gateway restarting"})
             return httpx.Response(200, json={"accepted": 1})
 
-        landed = await deliver_trajectory(
-            _client(handler), steps=[_step()], spool=spool
-        )
+        landed = await deliver_trajectory(_client(handler), steps=[_step()], spool=spool)
 
         assert landed is True
         assert attempts == 3
@@ -170,9 +168,7 @@ class TestRetry:
             attempts += 1
             return httpx.Response(503, json={"message": "still down"})
 
-        landed = await deliver_trajectory(
-            _client(handler), steps=[_step()], spool=spool
-        )
+        landed = await deliver_trajectory(_client(handler), steps=[_step()], spool=spool)
 
         assert landed is False
         assert attempts == trajectory_delivery.DELIVERY_ATTEMPTS
@@ -191,9 +187,7 @@ class TestRetry:
         clock = iter([0.0, 99.0])
         monkeypatch.setattr(trajectory_delivery, "_now_s", lambda: next(clock))
 
-        landed = await deliver_trajectory(
-            _client(handler), steps=[_step()], spool=spool
-        )
+        landed = await deliver_trajectory(_client(handler), steps=[_step()], spool=spool)
 
         assert landed is False
         assert attempts == 1  # the budget was already spent when attempt 2 was considered
@@ -208,9 +202,7 @@ class TestRetry:
             attempts += 1
             return httpx.Response(400, json={"message": "unknown property computeSamples"})
 
-        landed = await deliver_trajectory(
-            _client(handler), steps=[_step()], spool=spool
-        )
+        landed = await deliver_trajectory(_client(handler), steps=[_step()], spool=spool)
 
         assert landed is False
         assert attempts == 1

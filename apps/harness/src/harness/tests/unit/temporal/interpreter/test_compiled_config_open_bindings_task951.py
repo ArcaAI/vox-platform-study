@@ -181,7 +181,11 @@ class TestAdmission:
         # the whole-dict comparison above.
         config = parse_and_verify(_signed_document(with_bindings=True))
         bindings = config.stages[0].nodes[0].config["contextSchema"]["openBindings"]
-        assert bindings["department"] == {"kindKey": "encounter", "field": "department_code", "by": "code"}
+        assert bindings["department"] == {
+            "kindKey": "encounter",
+            "field": "department_code",
+            "by": "code",
+        }
         assert bindings["materialize"] == [{"kindKey": "previous_case_notes", "as": "CASE_NOTE"}]
         assert bindings["streamContext"] == {"kindKey": "stream"}
 
@@ -206,7 +210,13 @@ class TestTriggerValidationIsUnaffected:
 
     @pytest.mark.asyncio
     async def test_a_valid_payload_still_passes(self) -> None:
-        payload = {"encounter": {"doctor_id": "DR-951", "department_code": "GEN", "visit_type": "new-visit"}}
+        payload = {
+            "encounter": {
+                "doctor_id": "DR-951",
+                "department_code": "GEN",
+                "visit_type": "new-visit",
+            }
+        }
         result = await core.interpreter_core_trigger(_trigger(payload, with_bindings=True))
         assert result.status == "SUCCEEDED"
         # The published context is the full payload, exactly as without the bindings.
@@ -217,13 +227,17 @@ class TestTriggerValidationIsUnaffected:
         # Presence is governed by the schema's own `required` flags, never by a marker.
         # `_DERIVED_CONTEXT_SCHEMA` declares no `required`, so a payload omitting every marked
         # field is still valid — a marker says what to do with a value, not that there is one.
-        result = await core.interpreter_core_trigger(_trigger({"encounter": {}}, with_bindings=True))
+        result = await core.interpreter_core_trigger(
+            _trigger({"encounter": {}}, with_bindings=True)
+        )
         assert result.status == "SUCCEEDED"
 
     @pytest.mark.asyncio
     async def test_additionalProperties_false_still_bites(self) -> None:
         with pytest.raises(RuntimeError, match="violates the declared context schema"):
-            await core.interpreter_core_trigger(_trigger({"not_a_declared_kind": "x"}, with_bindings=True))
+            await core.interpreter_core_trigger(
+                _trigger({"not_a_declared_kind": "x"}, with_bindings=True)
+            )
 
     @pytest.mark.asyncio
     async def test_a_declared_value_is_still_type_checked(self) -> None:
@@ -246,10 +260,14 @@ class TestTriggerValidationIsUnaffected:
             RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001"),
         )
         for with_bindings in (True, False):
-            result = await core.interpreter_core_trigger(_trigger(accepted, with_bindings=with_bindings))
+            result = await core.interpreter_core_trigger(
+                _trigger(accepted, with_bindings=with_bindings)
+            )
             assert result.status == "SUCCEEDED"
             assert result.output == {"context": accepted}
 
         for with_bindings in (True, False):
             with pytest.raises(RuntimeError, match="violates the declared context schema"):
-                await core.interpreter_core_trigger(_trigger({"undeclared": 1}, with_bindings=with_bindings))
+                await core.interpreter_core_trigger(
+                    _trigger({"undeclared": 1}, with_bindings=with_bindings)
+                )

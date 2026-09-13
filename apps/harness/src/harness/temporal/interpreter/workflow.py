@@ -623,7 +623,9 @@ class WorkflowInterpreter:
             for node in stage.nodes
         )
 
-    async def _await_live_outputs(self, inp: InterpreterInput, config: CompiledWorkflowConfig) -> None:
+    async def _await_live_outputs(
+        self, inp: InterpreterInput, config: CompiledWorkflowConfig
+    ) -> None:
         """Park until the live session hands off, then seed its outputs into the walk's cache.
 
         A poll rather than a signal, deliberately. The interpreter's signal surface is a
@@ -660,7 +662,12 @@ class WorkflowInterpreter:
             # asked for `n_asr,n_ner,n_presummary` and the finalizer still had nothing bound).
             node_ids=sorted(
                 self._live_skipped
-                | {node.node_id for stage in config.stages for node in stage.nodes if _configured_realtime(node)}
+                | {
+                    node.node_id
+                    for stage in config.stages
+                    for node in stage.nodes
+                    if _configured_realtime(node)
+                }
             ),
         )
         deadline = workflow.now() + _LIVE_HANDOFF_MAX_WAIT

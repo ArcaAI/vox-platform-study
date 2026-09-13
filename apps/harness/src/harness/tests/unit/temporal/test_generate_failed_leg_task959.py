@@ -61,9 +61,7 @@ class _CapTraj:
 
 
 class _Text:
-    def __init__(
-        self, failing: set[str], usage_detail: dict[str, Any] | None = None
-    ) -> None:
+    def __init__(self, failing: set[str], usage_detail: dict[str, Any] | None = None) -> None:
         self.failing = failing
         self.usage_detail = usage_detail
         self.calls: list[dict[str, Any]] = []
