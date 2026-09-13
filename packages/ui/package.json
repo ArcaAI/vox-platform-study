@@ -38,7 +38,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css",
+    "build": "tsup && node ./scripts/ensure-use-client.mjs && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css",
     "build-storybook": "storybook build",
     "dev": "tsup --watch --onSuccess 'tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css'",
     "storybook": "storybook dev -p 6006",
