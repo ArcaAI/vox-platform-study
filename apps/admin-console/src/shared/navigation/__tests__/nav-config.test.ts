@@ -60,8 +60,9 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(12);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
-    // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
+    // The two routes moved to the user menu, plus the new /developer/invoke
+    // entry (TASK-971 lane E), are accounted for, not lost.
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -709,14 +710,15 @@ describe('NAV_DOMAINS (TASK-932 R-2 — Platform Ops moved ahead of AI Platform)
   });
 });
 
-describe('USER_MENU_ENTRIES — the two routes that leave the rail', () => {
-  it('removes /developer and /account from the rail', () => {
+describe('USER_MENU_ENTRIES — the three routes that leave the rail', () => {
+  it('removes /developer, /developer/invoke and /account from the rail', () => {
     expect(NAV_ENTRIES.some((entry) => entry.route === '/developer')).toBe(false);
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/developer/invoke')).toBe(false);
     expect(NAV_ENTRIES.some((entry) => entry.route === '/account')).toBe(false);
   });
 
-  it('keeps both reachable from the topbar user menu with an unchanged gate (AC-2)', () => {
-    expect(USER_MENU_ENTRIES.map((entry) => entry.route)).toEqual(['/developer', '/account']);
+  it('keeps all three reachable from the topbar user menu with an unchanged gate (AC-2)', () => {
+    expect(USER_MENU_ENTRIES.map((entry) => entry.route)).toEqual(['/developer', '/developer/invoke', '/account']);
 
     const developer = USER_MENU_ENTRIES.find((entry) => entry.route === '/developer');
     expect(developer?.tier).toBe('20-29');
@@ -729,13 +731,26 @@ describe('USER_MENU_ENTRIES — the two routes that leave the rail', () => {
     expect(account?.implemented).toBe(true);
   });
 
-  it('still resolves both for the breadcrumb (matchNavEntry spans rail + user menu)', () => {
+  it('gives /developer/invoke the same tier and gate as /developer (TASK-971 lane E)', () => {
+    const invoke = USER_MENU_ENTRIES.find((entry) => entry.route === '/developer/invoke');
+    expect(invoke?.label).toBe('Call an agent or workflow');
+    expect(invoke?.tier).toBe('20-29');
+    expect(invoke?.required).toEqual([['read', 'ApiDocumentation']]);
+    expect(invoke?.implemented).toBe(true);
+  });
+
+  it('still resolves all three for the breadcrumb (matchNavEntry spans rail + user menu)', () => {
     expect(matchNavEntry('/developer')?.label).toBe('Developer');
+    expect(matchNavEntry('/developer/invoke')?.label).toBe('Call an agent or workflow');
     expect(matchNavEntry('/account')?.label).toBe('Account');
   });
 
   it('gates the developer portal on the dedicated ApiDocumentation subject, not on manage:all', () => {
-    expect(visibleUserMenuEntries([{ action: 'read', subject: 'ApiDocumentation' }]).map((entry) => entry.route)).toEqual(['/developer', '/account']);
+    expect(visibleUserMenuEntries([{ action: 'read', subject: 'ApiDocumentation' }]).map((entry) => entry.route)).toEqual([
+      '/developer',
+      '/developer/invoke',
+      '/account',
+    ]);
     expect(visibleUserMenuEntries([{ action: 'manage', subject: 'Consultation' }]).map((entry) => entry.route)).toEqual(['/account']);
     // Permissions still loading: nothing is asserted, exactly as the sidebar does.
     expect(visibleUserMenuEntries(null)).toEqual([]);
