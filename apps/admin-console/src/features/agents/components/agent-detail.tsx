@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { IntegrationPanel } from '@/shared/versioning';
 import {
   AGENT_TASK_LABEL,
   instructionForm,
@@ -381,6 +382,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="configuration">Configuration</TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>
+            <TabsTrigger value="integration">Integration</TabsTrigger>
             <TabsTrigger value="test">Test run</TabsTrigger>
             <TabsTrigger value="usage">Usage</TabsTrigger>
           </TabsList>
@@ -675,6 +677,20 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
                       ? 'Direct test runs cover text-generation agents; every other task is exercised from the Playground.'
                       : 'Publish and activate this version to run it through POST /agents/{slug}/invocations.'
                   }
+                />
+              )}
+            </TabsContent>
+
+            {/* TASK-965 (O-2 / AG-8) — the endpoint and SDK snippet live on the lineage, not only in
+                the one-shot publish dialog: derived from slug + task, so they can be reopened any time. */}
+            <TabsContent value="integration" className="flex flex-col gap-4">
+              {agent.status === 'PUBLISHED' || agent.status === 'DEPRECATED' ? (
+                <IntegrationPanel kind="agent" slug={agent.slug} task={agent.task} versionNumber={agent.versionNumber} isActive={agent.isActive} />
+              ) : (
+                <EmptyState
+                  icon={IconRocket}
+                  title="Not published yet"
+                  description={`Publish this version to expose ${agent.slug} on the business plane. The endpoint and the @arcaai/vox-node snippet appear here once it is published.`}
                 />
               )}
             </TabsContent>

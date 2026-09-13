@@ -38,3 +38,18 @@ describe('nodeDisplayName', () => {
     expect(nodeDisplayName({ id: 'node_x1', type: 'core.agent' })).toBe('Core.agent · x1');
   });
 });
+
+// TASK-965 — an authored, digit-free id is a name and is shown whole; the seed's `n_trigger`
+// rendered as "rigger" on the canvas, which read as a typo.
+describe('shortNodeId — authored ids (TASK-965)', () => {
+  it('keeps a digit-free authored id whole up to 24 characters', () => {
+    expect(shortNodeId('n_trigger')).toBe('n_trigger');
+    expect(shortNodeId('n_summary')).toBe('n_summary');
+    expect(shortNodeId('general_medicine_summary')).toBe('general_medicine_summary');
+  });
+
+  it('still slices a generated id and a uuid to their stable tail', () => {
+    expect(shortNodeId('node_mtqb1kr9_7')).toBe('1kr9_7');
+    expect(shortNodeId('01a09985-5191-70ea-b54d-fca9bc8fbc67')).toBe('8fbc67');
+  });
+});

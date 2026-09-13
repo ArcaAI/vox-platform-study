@@ -409,6 +409,55 @@ No existing test was changed; no backend change; no migration.
 Deferred to later workstreams on purpose: WF-12 (continue-or-branch), WF-13/AG-2 (activate route,
 WS-2), the lineage row model (WS-4/5), the model-B badge/confirm alignment (WS-6).
 
+### 4.2 WS-1 addendum (2026-09-13) — the Integration surface pulled forward, and the invisible trigger → agent binding
+
+Owner, after WS-1, as super admin impersonating the ArcaAI tenant admin: *"I don't see anywhere I
+can get the published information (endpoints, etc) of any agents or any workflows"* and
+*"`Platform Default — Summarization` shows no connection between the trigger node and the agent
+node — get me the root cause."*
+
+**Integration surface (O-2 / AG-8 / WF-24, originally WS-3/4/5).** WS-1 had left the endpoint,
+`?mode=` set, SDK snippet and API-key link inside the one-shot publish dialogs, so an admin who did
+not publish in this session (or closed the dialog) had no way to see them. Pulled forward:
+
+| Change | Where |
+|---|---|
+| `IntegrationPanel` — the console-shared "how developers reach this" surface for a published agent (task-shaped endpoint, note, `hope.agents.invoke`/`transcribe`/`speak` snippet) or workflow (`POST /workflows/{slug}/runs`, admitted `?mode=` values without `socket`, snippet), plus the API-keys link. Everything derives from the LINEAGE (slug, task/palette, active flag), never from a publish response. The three workflow non-error outcomes (not active / palette not exposable / exposure gate off) are explained; the first two never fetch. | new `apps/admin-console/src/shared/versioning/{integration-panel.tsx,index.ts}` (the first piece of the WS-3 kit) |
+| Agents drawer gains an **Integration** tab: the panel for PUBLISHED/DEPRECATED rows, an empty state ("Publish this version to expose …") otherwise | `agent-detail.tsx` |
+| Workflow Studio header gains an **Integration** button on every PUBLISHED version, opening the panel in a dialog | `workflow-studio-editor.tsx` |
+| Both publish dialogs render the SAME shared panel as their published step, so the dialog and the persistent surface cannot disagree | `publish-dialog.tsx`, `agent-publish-dialog.tsx` |
+
+**Root cause — the trigger → agent connection that does not draw.** Verified against the ArcaAI
+tenant's row (`platform-default-summarization` v1, PUBLISHED, active): the graph carries TWO edges,
+`n_trigger.out → n_summary.context` and `n_summary.out → n_output.in`. The registry declares
+`context` (object) as an input of `core.agent` and `out` (`context<schemaRef>`) as the trigger's
+data output, so the wire is valid — the footer counted it ("3 nodes · 2 connections"). It was
+invisible because the editor's canvas projection **filtered out every edge whose target port is a
+"secondary input"** — any data input other than `in` — before handing the graph to the canvas
+(`workflow-studio-editor.tsx` `canvasEdges`, `.filter((edge) => !isSecondaryBinding(edge))`).
+TASK-893 §3.1 moved secondary inputs (`context`, `audio`, …) from canvas wires to inspector
+binding fields ("Context ← ① Trigger") and dropped them from the canvas entirely. The platform's
+own default workflow feeds the agent exclusively through `context`, so its primary data flow
+became a trigger connected to nothing. Not a data problem, not a seed problem, not a permission
+problem.
+
+**Fix.** The shared canvas gains `WorkflowCanvasEdge.kind: 'wire' | 'binding'`
+(`packages/ui/src/components/workflow-canvas/{types.ts,workflow-canvas.tsx,workflow-edge.tsx}`): a
+binding edge is drawn dashed (`strokeDasharray 6 4`, 75 % opacity), always labelled with the port
+name (mono, with a title naming the node it is bound on), lands on the primary input dot, and is
+**never deletable from the canvas** (no hover-X, `deletable: false` for the Delete key). The
+editor now projects secondary bindings as `kind: 'binding'` instead of dropping them; the
+inspector stays the one place they are edited (TASK-893 §3.1 honoured, only the invisibility is
+gone). Alongside: `shortNodeId` keeps a digit-free authored id whole (the seed's `n_trigger`
+rendered as "rigger" and `n_summary` as "ummary", which read as typos); generated ids and uuids
+still show their stable tail.
+
+Files: `packages/ui/src/components/workflow-canvas/{types.ts,workflow-canvas.tsx,workflow-edge.tsx}` +
+`__tests__/workflow-canvas-binding-edge.vitest.tsx`; `apps/admin-console/src/shared/versioning/**` (+ tests);
+`features/workflow-studio/{components/workflow-studio-editor.tsx,components/publish-dialog.tsx,lib/node-identity.ts}`;
+`features/agents/components/{agent-detail.tsx,agent-publish-dialog.tsx}`. Tests added: 7 (panel), 2 (agent
+Integration tab), 4 (studio Integration + binding edge + node names), 2 (short id), 1 (canvas binding edge).
+
 ## 5. Verification
 
 ### 5.1 WS-1 evidence (2026-09-13)
@@ -424,6 +473,19 @@ WS-2), the lineage row model (WS-4/5), the model-B badge/confirm alignment (WS-6
 
 Screenshots (session scratchpad): `v-1-fresh.png`, `v-2-after-save.png`, `v-3-published-dialog.png`, `v-4-after-done.png`; the pre-fix state is `wf-3-after-done.png`.
 
+### 5.2 WS-1 addendum evidence (2026-09-13)
+
+| Gate | Command | Result |
+|---|---|---|
+| Shared canvas | `npx vitest run src/components/workflow-canvas` (packages/ui) | `10 files · 63 tests passed` (one pre-existing case pinned the exact edge shape handed back to `onEdgesChange`; `kind` is now emitted only for bindings, so it stays green) |
+| Console | `npx vitest run src/features/workflow-studio src/features/agents src/features/dna-writing-styles src/shared/versioning` | `89 files · 758 tests passed` |
+| Lint | `npx eslint <touched files>` in both packages | exit 0 |
+| Typecheck | `pnpm --filter @arcaai/ui typecheck`, `pnpm --filter @arcaai/admin-console typecheck` | exit 0 / exit 0 |
+| Build | `pnpm --filter @arcaai/ui build` (the console resolves `@arcaai/ui/components/workflow-canvas` to `dist`, so the running dev server only sees the canvas change after this build) | exit 0 |
+| Runtime, tenant admin | headless Playwright on the Global tenant's `platform-default-summarization` (PUBLISHED, active) and on `/agents` | canvas renders BOTH edges — `e1` with `stroke-dasharray: 6, 4`, `data-kind="binding"`, label `context`; `e2` solid — node headers `Core.trigger · n_trigger` / `Core.agent · n_summary`, footer `3 nodes · 2 connections`; header **Integration** opens `POST /workflows/platform-default-summarization/runs` + snippet + API-keys link; the agent drawer's **Integration** tab shows `POST /agents/general-medicine-summarization/invocations` + `hope.agents.invoke` snippet + link |
+
+Screenshots: `b-1-studio-canvas.png`, `b-2-studio-integration.png`, `b-3-agent-integration.png`.
+
 ## 6. Change History
 
 | Date | Change |
@@ -431,3 +493,4 @@ Screenshots (session scratchpad): `v-1-fresh.png`, `v-2-after-save.png`, `v-3-pu
 | 2026-09-13 | Ticket opened. Runtime repro of the "cannot see published information" report as the seeded tenant admin; O-1…O-4 recorded; six investigation lanes dispatched. |
 | 2026-09-13 | All six lanes returned; P1 claims re-verified against source and runtime (G2, G8, G9 probed); defect register §2.4 (77 findings), target UX §3.1, nine owner decisions §3.2, seven workstreams §3.3 and the route contract §3.4 written. Status → Review. |
 | 2026-09-13 | Owner approved every §3.2 recommendation ("approve all recommendations, start WS-1"). **WS-1 delivered** (§4.1, §5.1): 12 console fixes, 6 new test files (22 cases, RED → GREEN), 743/743 feature tests, lint + typecheck + build green, tenant-admin runtime pass. Status → In Progress (WS-2 next: backend lineage API per §3.4). |
+| 2026-09-13 | **WS-1 addendum** (§4.2, §5.2) on two owner reports: the persistent Integration surface pulled forward from WS-3/4/5 (`shared/versioning/IntegrationPanel`, agent drawer tab, studio header dialog, both publish dialogs on the same panel); root cause of the invisible trigger → agent connection on `Platform Default — Summarization` (the editor dropped every secondary-input binding edge before the canvas) fixed with a dashed, labelled, non-deletable `binding` edge kind in the shared canvas; authored node ids no longer sliced ("rigger"). 758/758 console tests, 63/63 canvas tests, lint/typecheck/build green, runtime pass. |

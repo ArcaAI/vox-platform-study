@@ -72,6 +72,8 @@ import { getWorkflowDefinition } from '../api/client';
 import { workflowStudioKeys } from '../api/keys';
 import { confirmLeave } from '../hooks/use-unsaved-changes-guard';
 import { CORE_PALETTE_KEY } from '../lib/palette-keys';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
+import { IntegrationPanel } from '@/shared/versioning';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { layoutClusteredGraph } from '../lib/ensure-canvas-layout';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
@@ -263,6 +265,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const queryClient = useQueryClient();
   /** Whether the last publish ACTIVATED the version — drives the dialog's published step (O-3). */
   const [publishedActive, setPublishedActive] = useState(true);
+  /** TASK-965 (O-2 / WF-24) — the integration panel, reachable from the header for ANY published version, not only right after publishing. */
+  const [integrationOpen, setIntegrationOpen] = useState(false);
   // TASK-885 — the portable-bundle export of the SERVER's stored version (see handleExportBundle).
   const exportBundle = useExportWorkflowDefinition();
 
@@ -990,20 +994,26 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
    * intact. Branch handles keep their own id (they are really rendered); everything else lands on
    * the primary pair. The store is untouched — this is presentation only.
    */
-  const canvasEdges: WorkflowCanvasEdge[] = edges
-    .filter((edge) => !isSecondaryBinding(edge))
-    .map((edge) => {
-      const source = nodes.find((node) => node.id === edge.source);
-      const isBranch =
-        source !== undefined && branchHandlesFor(descriptorByType, source.type, source.config).some((branch) => branch.id === edge.sourceHandle);
-      return {
-        id: edge.id,
-        source: edge.source,
-        sourceHandle: isBranch ? edge.sourceHandle : 'out',
-        target: edge.target,
-        targetHandle: 'in',
-      };
-    });
+  const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => {
+    const source = nodes.find((node) => node.id === edge.source);
+    const isBranch =
+      source !== undefined && branchHandlesFor(descriptorByType, source.type, source.config).some((branch) => branch.id === edge.sourceHandle);
+    // TASK-965 — a SECONDARY-input binding (`context`, `audio`, …: edited in the consumer's
+    // inspector field, TASK-893 §3.1) used to be filtered out here entirely, so the platform's own
+    // default workflow — trigger `out` bound into the agent's `context` — drew a trigger connected
+    // to nothing while the footer counted the connection. It is now drawn as a dashed, labelled,
+    // non-deletable BINDING edge landing on the primary input dot: the flow reads correctly, and
+    // the inspector stays the one place it is edited.
+    const binding = isSecondaryBinding(edge);
+    return {
+      id: edge.id,
+      source: edge.source,
+      sourceHandle: isBranch ? edge.sourceHandle : 'out',
+      target: edge.target,
+      targetHandle: 'in',
+      ...(binding ? { kind: 'binding' as const, label: edge.targetHandle } : {}),
+    };
+  });
 
   /** Upstream nodes the inspector's secondary-input pickers offer, in execution order (§4.1). */
   const upstreamNodes = useMemo(() => {
@@ -1087,6 +1097,11 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
                   <IconPlus aria-hidden="true" />
                   {createNewVersion.isPending ? 'Creating…' : 'Edit as new draft'}
+                </Button>
+              ) : null}
+              {status === 'PUBLISHED' ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => setIntegrationOpen(true)} title="How developers reach this workflow">
+                  Integration
                 </Button>
               ) : null}
               <Button type="button" variant="outline" size="sm" onClick={() => navigate('/workflow-studio/new')}>
@@ -1360,6 +1375,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         exposable={definition.paletteKey === CORE_PALETTE_KEY}
         paletteKey={definition.paletteKey}
       />
+      {/* TASK-965 — the same panel the publish dialog shows, reachable at any later time. */}
+      <Dialog open={integrationOpen} onOpenChange={setIntegrationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Integration — {definition.slug}</DialogTitle>
+            <DialogDescription>How developers reach this workflow. The endpoint always resolves the active version.</DialogDescription>
+          </DialogHeader>
+          <IntegrationPanel kind="workflow" slug={definition.slug} isActive={definition.isActive} exposable={definition.paletteKey === CORE_PALETTE_KEY} paletteKey={definition.paletteKey} />
+        </DialogContent>
+      </Dialog>
       <DefinitionMetadataForm
         open={metadataOpen}
         onOpenChange={setMetadataOpen}

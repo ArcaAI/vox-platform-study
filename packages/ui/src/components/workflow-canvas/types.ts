@@ -83,6 +83,12 @@ export interface WorkflowCanvasEdge {
   target: string;
   targetHandle?: string;
   label?: string;
+  /**
+   * `wire` (default) — a connection the admin draws and deletes on the canvas.
+   * `binding` — a data binding the consumer edits elsewhere (an inspector field): drawn dashed and
+   * labelled so the flow stays legible, never deletable or reconnectable from the canvas.
+   */
+  kind?: 'wire' | 'binding';
 }
 
 export interface WorkflowCanvasNodeRendererProps {

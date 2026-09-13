@@ -378,3 +378,83 @@ describe('WorkflowStudioEditor — 412 recovery (TASK-965 WS-1, WF-3)', () => {
     await waitFor(() => expect(screen.getByText('All changes saved.')).toBeTruthy());
   });
 });
+
+describe('WorkflowStudioEditor — the published version stays reachable (TASK-965, O-2 / WF-24)', () => {
+  it('offers Integration in the header of a PUBLISHED version and opens the endpoint panel', async () => {
+    installFetchMock((call) => {
+      if (call.method === 'GET' && call.path.endsWith('/schema')) {
+        return Response.json({ slug: 'discharge_summary', versionNumber: 1, triggerKinds: ['api'], protocols: ['http'], modes: ['async', 'blocking'] });
+      }
+      return undefined;
+    });
+    renderWithProviders(<WorkflowStudioEditor definition={withNode({ status: 'PUBLISHED', isActive: true })} etag='"1"' registryNodes={[NOTE]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Integration' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('POST /workflows/discharge_summary/runs')).toBeTruthy();
+    expect(within(dialog).getByRole('group', { name: /vox-node/i }).textContent).toContain('discharge_summary');
+  });
+
+  it('does not offer Integration on a draft', () => {
+    installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={withNode()} etag='"1"' registryNodes={[NOTE]} />);
+    expect(screen.queryByRole('button', { name: 'Integration' })).toBeNull();
+  });
+});
+
+/**
+ * The seeded `platform-default-summarization` wires the trigger's `out` into the agent's
+ * `context` input. `context` is a SECONDARY input (an inspector binding, TASK-893 §3.1), and the
+ * editor used to drop every such edge before handing the graph to the canvas — so the platform's
+ * own default workflow drew a trigger connected to nothing while the footer said "2 connections".
+ */
+describe('WorkflowStudioEditor — secondary-input bindings are drawn (TASK-965)', () => {
+  // Port and class literals are wider than the registry's unions in this fixture; the cast keeps
+  // the shape the editor reads without re-typing the whole descriptor vocabulary here.
+  const TRIGGER = {
+    ...descriptor('core.trigger'),
+    classes: ['mandatory'],
+    outputs: [
+      { name: 'out', primitive: 'context<schemaRef>', required: false, multiple: true },
+      { name: 'next', primitive: 'control', required: false, multiple: true },
+    ],
+  } as unknown as WorkflowNodeDescriptor;
+  const AGENT = {
+    ...descriptor('core.agent'),
+    inputs: [
+      { name: 'in', primitive: 'text', required: false, multiple: true },
+      { name: 'context', primitive: 'object', required: false, multiple: true },
+      { name: 'after', primitive: 'control', required: false, multiple: true },
+    ],
+    outputs: [{ name: 'out', primitive: 'text', required: false, multiple: true }],
+  } as unknown as WorkflowNodeDescriptor;
+  const seeded = definition({
+    graph: {
+      version: 1,
+      nodes: [
+        { id: 'n_trigger', type: 'core.trigger', config: {}, position: { x: 0, y: 0 } },
+        { id: 'n_summary', type: 'core.agent', config: {}, position: { x: 300, y: 0 } },
+      ],
+      edges: [{ id: 'e1', from: 'n_trigger', to: 'n_summary', fromPort: 'out', toPort: 'context' }],
+    },
+  });
+
+  it('hands the trigger → agent context binding to the canvas as a labelled binding edge on the primary input', () => {
+    installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={seeded} etag='"1"' registryNodes={[TRIGGER, AGENT]} />);
+
+    const edges = (capturedCanvasProps as { edges?: { id: string; kind?: string; label?: string; sourceHandle?: string; targetHandle?: string }[] } | null)?.edges ?? [];
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ id: 'e1', source: 'n_trigger', target: 'n_summary', kind: 'binding', label: 'context', sourceHandle: 'out', targetHandle: 'in' });
+    expect(screen.getByText('2 nodes · 1 connection')).toBeTruthy();
+  });
+
+  it('names an authored node id whole in the canvas header, never a sliced "rigger"', () => {
+    installFetchMock();
+    renderWithProviders(<WorkflowStudioEditor definition={seeded} etag='"1"' registryNodes={[TRIGGER, AGENT]} />);
+    const labels = ((capturedCanvasProps as { nodes?: { label?: string }[] } | null)?.nodes ?? []).map((node) => node.label);
+    expect(labels).toContain('Core.trigger · n_trigger');
+    expect(labels.some((label) => label?.includes('rigger') && !label.includes('n_trigger'))).toBe(false);
+  });
+});

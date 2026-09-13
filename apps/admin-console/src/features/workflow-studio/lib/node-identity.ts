@@ -19,7 +19,13 @@ import { humanizeKey } from './schema-form';
  */
 export function shortNodeId(id: string): string {
   const bare = id.replace(/^node_/, '');
-  return bare.length <= 8 ? bare : bare.slice(-6);
+  // TASK-965 — an AUTHORED id (letters, underscores and dashes only, no digits: the seed's
+  // `n_trigger` / `n_summary`) is a name and is shown whole; slicing it produced "rigger" and
+  // "ummary" on the canvas, which read as typos. A GENERATED id (the store's base-36 stamp, a
+  // uuid) still shows only its stable tail.
+  if (bare.length <= 8) return bare;
+  if (bare.length <= 24 && !/\d/.test(bare)) return bare;
+  return bare.slice(-6);
 }
 
 /** The one display name for a node, everywhere in the Studio. */
