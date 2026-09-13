@@ -17,6 +17,7 @@ import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import type { PostmanCollection, PostmanItem } from '@/shared/docs/postman-collection';
 import { IntegrationPanel } from '../integration-panel';
 
 /** The agent's own declared input — the example body in every lane must come from HERE. */
@@ -62,6 +63,15 @@ function codeOf(label: string): string {
   return screen.getByRole('group', { name: label }).textContent ?? '';
 }
 
+/** The rendered Postman tab, parsed — assertions about REQUESTS must not be substring matches. */
+function collectionOf(): PostmanCollection {
+  return JSON.parse(codeOf('Postman collection JSON')) as PostmanCollection;
+}
+
+function streamRequestsIn(collection: PostmanCollection): PostmanItem[] {
+  return collection.item.filter((entry) => (entry.request.url.query ?? []).some((q) => q.key === 'mode' && q.value === 'stream'));
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   cleanup();
@@ -92,6 +102,31 @@ describe('IntegrationPanel — agent', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="ner" task="NAMED_ENTITY_RECOGNITION" />);
     expect(screen.getByText('POST /agents/ner/invocations')).toBeTruthy();
     expect(screen.queryByText(/\?mode=stream/)).toBeNull();
+  });
+
+  // Lanes C and D were built in parallel against a shared contract, and this is the seam between
+  // them: the panel maps NER onto TEXT_GENERATION before handing the task over (they share the
+  // route), so the collection builder cannot tell the two apart on `task` alone. Without the
+  // explicit flag it emits the `?mode=stream` request that TEXT_GENERATION deserves and NER
+  // answers with a 400 — a dead request shipped inside a downloadable file.
+  it('a NER agent gets no ?mode=stream REQUEST in its Postman collection, only the warning', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="ner" task="NAMED_ENTITY_RECOGNITION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    selectTab('Postman');
+
+    const collection = collectionOf();
+    expect(streamRequestsIn(collection)).toHaveLength(0);
+    expect(collection.item.map((entry) => entry.request.url.raw)).toEqual(['{{baseUrl}}/api/v1/agents/ner/invocations']);
+    // Asserted on the parsed REQUESTS above rather than on the raw text, because the surviving
+    // blocking request explains the rule in prose — "`?mode=stream` … answers 400
+    // `MODE_UNSUPPORTED`" — and a substring match cannot tell a live request from a warning
+    // against one. It should still say so.
+    expect(JSON.stringify(collection)).toContain('MODE_UNSUPPORTED');
+  });
+
+  it('a TEXT_GENERATION agent still gets one', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    selectTab('Postman');
+    expect(streamRequestsIn(collectionOf())).toHaveLength(1);
   });
 
   it('says the endpoint resolves the ACTIVE version when this one is not it', () => {
