@@ -40,6 +40,42 @@ await hope.admin.users.list();`;
 
 const VOX_BROWSER = `pnpm add @arcaai/vox`;
 
+/**
+ * `baseUrl` MUST include the gateway's `/api/v1` prefix here — the one
+ * detail that differs from the `@arcaai/vox-node` examples above, whose
+ * `HopeClient` takes the bare origin instead.
+ */
+const VOX_BROWSER_JWT = `import { AgenticProvider, useAgentInvocation } from '@arcaai/vox/core';
+
+function App({ sessionJwt }) {
+  return (
+    <AgenticProvider config={{ api: { baseUrl: 'https://api.example.com/api/v1', accessToken: sessionJwt } }}>
+      <Triage />
+    </AgenticProvider>
+  );
+}
+
+function Triage() {
+  const { invoke, result, isLoading } = useAgentInvocation();
+
+  const onSubmit = () => invoke('triage-summariser', { text: note });
+  // ...
+}`;
+
+const VOX_BROWSER_API_KEY = `<AgenticProvider config={{ api: { baseUrl: 'https://api.example.com/api/v1', apiKey: process.env.HOPE_API_KEY } }}>
+  <Triage />
+</AgenticProvider>`;
+
+/** The browser always starts async and then watches — it never passes ?mode= on a run. */
+const VOX_BROWSER_WORKFLOW = `import { useWorkflowRun } from '@arcaai/vox/core';
+
+function StartRun() {
+  const { workflows, start, status, events, isRunning } = useWorkflowRun();
+
+  const onSubmit = () => start('triage-workflow', { note });
+  // status/events update live as the run streams — the browser never passes ?mode=.
+}`;
+
 export function SdkScreen() {
   return (
     <ScreenTemplate
@@ -93,6 +129,41 @@ export function SdkScreen() {
             <p className="text-muted-foreground text-sm">
               Browser-only — every entry point is a client module and React is a required peer. Do not import it from server code, and do not reach
               for it to make plain API calls: that is what <code className="font-mono text-xs">@arcaai/vox-node</code> is for.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Calling a published agent — with a session JWT</h2>
+              <p className="text-muted-foreground text-sm">
+                <code className="font-mono text-xs">baseUrl</code> MUST include the gateway&apos;s{' '}
+                <code className="font-mono text-xs">/api/v1</code> prefix here — the one detail that differs from the{' '}
+                <code className="font-mono text-xs">@arcaai/vox-node</code> examples above, whose client takes the bare origin instead.
+              </p>
+              <CodeBlock label="AgenticProvider and useAgentInvocation example" code={VOX_BROWSER_JWT} />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Or with an API key</h2>
+              <p className="text-muted-foreground text-sm">
+                Only when a session JWT is not available. An API key baked into a browser bundle is readable by anyone who opens it — mint one
+                scoped to <code className="font-mono text-xs">agent:invocation:write</code> alone, which is mintable on its own, so a compromised
+                key can invoke one agent family and do nothing else.
+              </p>
+              <CodeBlock label="API key AgenticProvider example" code={VOX_BROWSER_API_KEY} />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Starting and watching a workflow run</h2>
+              <CodeBlock label="useWorkflowRun example" code={VOX_BROWSER_WORKFLOW} />
+              <p className="text-muted-foreground text-sm">
+                The browser always starts a run async and then watches it — it never passes <code className="font-mono text-xs">?mode=</code> the
+                way a direct HTTP call or the server SDK can.
+              </p>
+            </div>
+
+            <p className="text-muted-foreground text-sm">
+              No browser path by slug exists for TEXT_TO_SPEECH or batch SPEECH_TO_TEXT — those go through{' '}
+              <code className="font-mono text-xs">useTtsPlayback</code>/<code className="font-mono text-xs">useTtsStream</code> and{' '}
+              <code className="font-mono text-xs">FileTranscriptionService</code> respectively, not the invocation hooks above.
             </p>
           </CardContent>
         </Card>
