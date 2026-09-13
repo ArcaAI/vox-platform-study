@@ -23,6 +23,12 @@ from text.core.exceptions import (
     ProviderConnectionMissingError,
     ProviderCredentialsError,
 )
+from text.core.reasoning import (
+    REASON_EFFORT_NOT_EXPRESSIBLE,
+    ReasoningSupport,
+    posture_to_render,
+    record_unenforceable,
+)
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
@@ -64,6 +70,21 @@ class AnthropicProvider:
     """Anthropic provider using the anthropic Python SDK (``AsyncAnthropic``)."""
 
     credential_posture = CredentialPosture.BYOK
+
+    # TASK-970 — verified against the pinned SDK (anthropic==0.122.0):
+    # `message_create_params.thinking: ThinkingConfigParam` is a union of
+    # Enabled / Disabled / Adaptive. OFF is `{"type": "disabled"}`; ON with no
+    # named budget is `{"type": "adaptive"}` — the engine picks. The ONLY budget
+    # the vendor accepts is `budget_tokens: int` (required, >= 1024), a token
+    # COUNT rather than an effort rung, so a named effort is recorded rather than
+    # translated into a number nobody chose.
+    #
+    # Anthropic is also the one engine where "on" cannot be silence: extended
+    # thinking is opt-IN, so an absent `thinking` block means OFF, not "engine
+    # decides".
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "thinking"
+    reasoning_effort_parameter = None
 
     def __init__(self) -> None:
         """No configuration. Anthropic is BYOK-only and Text holds no connection
@@ -162,7 +183,25 @@ class AnthropicProvider:
         }
         if request.system_prompt:
             kwargs["system"] = request.system_prompt
+        self._apply_reasoning(kwargs, request)
         return kwargs
+
+    def _apply_reasoning(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture as the Messages API's ``thinking`` block."""
+        posture = posture_to_render(request)
+        if posture is None:
+            return
+        if not posture.enabled:
+            kwargs["thinking"] = {"type": "disabled"}
+            return
+        kwargs["thinking"] = {"type": "adaptive"}
+        if posture.effort is not None:
+            record_unenforceable(
+                provider=_PROVIDER_NAME,
+                model=self._resolve_model(request) or "",
+                posture=posture,
+                reason=REASON_EFFORT_NOT_EXPRESSIBLE,
+            )
 
     def _apply_structured_output(self, kwargs: dict[str, Any], request: GenerateRequest) -> bool:
         """Force a single-tool response for ``json_schema`` requests (the

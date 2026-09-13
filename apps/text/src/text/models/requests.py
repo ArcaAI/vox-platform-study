@@ -213,6 +213,47 @@ class ImageContentPart(BaseModel):
 ContentPart = Annotated[TextContentPart | ImageContentPart, Field(discriminator="type")]
 
 
+ReasoningEffort = Literal["minimal", "low", "medium", "high"]
+"""The ONE effort vocabulary, neutral of any engine.
+
+Deliberately NOT OpenAI's full `reasoning_effort` literal (which also carries
+``none``/``xhigh``/``max``): ``none`` is not an effort, it is the OFF state, and
+conflating the two is the exact loss this contract removes.
+"""
+
+
+class ReasoningPosture(BaseModel):
+    """One request's resolved reasoning/thinking posture (TASK-970).
+
+    The posture travels as a POSTURE and each adapter renders it into its own
+    engine's parameter. It used to be pre-rendered gateway-side into
+    ``extra.reasoning_effort`` — `agent-reasoning.ts::reasoningExtra` mapped
+    ``enabled: false`` onto ``'minimal'`` — which is LOSSY twice over: once on
+    the wire, "the admin turned reasoning OFF" was indistinguishable from "the
+    admin asked for minimal effort", and an engine whose off-switch is a
+    different parameter entirely (Ollama ``think: false``, Anthropic
+    ``thinking: {type: disabled}``) could no longer be driven at all.
+
+    Three states, and ABSENCE is a fourth that must never be synthesized here:
+
+    * ``{enabled: false}`` — render the engine's own off-switch.
+    * ``{enabled: true}`` — reasoning on, no budget named; render "on" without
+      pinning an effort (on an engine whose default is already on, that means
+      sending nothing).
+    * ``{enabled: true, effort: ...}`` — on at a named budget.
+    * the FIELD ABSENT — no posture at any tier. Send nothing; the engine
+      decides. The platform tier resolved before the wire, so an absent field
+      here is a real "nobody had an opinion", not a missing default.
+
+    Which adapter can express which state is declared per adapter and pinned by
+    the cross-language contract ``tests/contracts/reasoning-posture.fixture.json``
+    (see `text/core/reasoning.py`).
+    """
+
+    enabled: bool
+    effort: ReasoningEffort | None = None
+
+
 #: The engine a request that names no provider is routed to.
 #:
 #: ⚠️ THIS IS A HARDCODED SELECTION, and it is retained deliberately rather than
@@ -287,6 +328,14 @@ class GenerateRequest(BaseModel):
     # no profile extra ever reached an engine. The OpenAI-compatible family sends
     # it as `extra_body`; adapters with no such ride-along ignore it.
     extra: dict[str, Any] | None = None
+    # TASK-970 — the resolved reasoning/thinking posture, rendered per engine by
+    # the adapter (see `ReasoningPosture`). ABSENT means "no posture at any
+    # tier": every adapter sends nothing and synthesizes no default.
+    #
+    # `extra.reasoning_effort` REMAINS supported and still wins per key — a call
+    # site that pins the raw OpenAI-shaped ride-along is not second-guessed, and
+    # `core/reasoning.posture_to_render` is the single place that rule lives.
+    reasoning: ReasoningPosture | None = None
 
     @field_validator("prompt")
     @classmethod

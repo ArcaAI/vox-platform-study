@@ -43,6 +43,15 @@ ALLOWED_GEN_AI_ATTRIBUTES = frozenset(
         "gen_ai.usage.output_tokens",
         "gen_ai.response.finish_reason",
         "gen_ai.response.finish_reasons",
+        # TASK-970 — the reasoning posture an engine could not honour
+        # (`core/reasoning.record_unenforceable`). Reviewed and NOT
+        # content-bearing: `enabled` is a bool, `effort` is one of the four
+        # closed rungs minimal|low|medium|high, and `unenforceable` is one of
+        # three module-level reason constants. None of the three can carry a
+        # prompt, a completion, or any request-derived string.
+        "gen_ai.request.reasoning.enabled",
+        "gen_ai.request.reasoning.effort",
+        "gen_ai.request.reasoning.unenforceable",
     }
 )
 

@@ -23,6 +23,12 @@ import httpx
 import structlog
 
 from text.core.metrics import TEXT_ENGINE_CACHE_HIT_RATE
+from text.core.reasoning import (
+    REASON_EFFORT_NOT_EXPRESSIBLE,
+    ReasoningSupport,
+    posture_to_render,
+    record_unenforceable,
+)
 from text.models.requests import GenerateRequest
 from text.providers.openai_compat import OpenAICompatProvider
 
@@ -36,6 +42,16 @@ _ENGINE = "vllm"
 
 class VllmProvider(OpenAICompatProvider):
     """vLLM self-hosted provider (OpenAI-wire, engine-native identity)."""
+
+    # TASK-970 — vLLM's reasoning switch is NOT the OpenAI effort word. For the
+    # Qwen3-class checkpoints this deployment serves (`vllm/vllm-openai:v0.11.0`),
+    # thinking is turned off by re-rendering the chat template:
+    # `extra_body={"chat_template_kwargs": {"enable_thinking": False}}`. There is
+    # no effort dial on that toggle, so a NAMED effort is recorded as
+    # unenforceable while the on/off half is still honoured.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "chat_template_kwargs.enable_thinking"
+    reasoning_effort_parameter = None
 
     def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
         """No configuration — the engine endpoint arrives per request, exactly as
@@ -68,6 +84,29 @@ class VllmProvider(OpenAICompatProvider):
             return None
         root = base.rstrip("/")
         return root[: -len("/v1")] if root.endswith("/v1") else root
+
+    def _apply_reasoning(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Re-render the chat template with thinking on or off.
+
+        Overrides the base entirely: sending ``reasoning_effort`` here would be
+        OpenAI vocabulary aimed at an engine that answers to a different word,
+        which is the whole defect this ticket removes. ``setdefault`` on
+        ``extra_body`` so the structured-output ``guided_json`` route and this
+        one can coexist on the same request.
+        """
+        posture = posture_to_render(request)
+        if posture is None:
+            return
+        extra_body = kwargs.setdefault("extra_body", {})
+        template_kwargs = extra_body.setdefault("chat_template_kwargs", {})
+        template_kwargs["enable_thinking"] = posture.enabled
+        if posture.enabled and posture.effort is not None:
+            record_unenforceable(
+                provider=self._provider_name,
+                model=self._resolve_model(request) or "",
+                posture=posture,
+                reason=REASON_EFFORT_NOT_EXPRESSIBLE,
+            )
 
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
         # ``use_guided_json`` fallback (vLLM < 0.8): send the raw JSON schema via

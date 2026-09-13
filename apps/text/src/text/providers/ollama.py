@@ -12,6 +12,12 @@ import structlog
 
 from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
+from text.core.reasoning import (
+    REASON_EFFORT_NOT_EXPRESSIBLE,
+    ReasoningSupport,
+    posture_to_render,
+    record_unenforceable,
+)
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.telemetry import get_tracer
 from text.models.probe import ProbeConnection
@@ -55,6 +61,16 @@ class OllamaProvider:
     """Ollama self-hosted LLM provider."""
 
     credential_posture = CredentialPosture.SELF_HOST
+
+    # TASK-970 — Ollama's off-switch is the top-level `think`. Its docs give
+    # `think: true|false` on /api/generate for every thinking model, and levels
+    # (low|medium|high|max) for SOME models only. Booleans are universal and the
+    # levels are per-model, so this adapter renders only the boolean: sending a
+    # level to a boolean-only model would fail the call, which the owner decision
+    # forbids. A named effort is honoured as "on" and recorded as unenforceable.
+    reasoning_support = ReasoningSupport.NATIVE_OFF
+    reasoning_parameter = "think"
+    reasoning_effort_parameter = None
 
     #: Name used when reporting a missing connection and on the admin listing.
     _probe_name = "ollama"
@@ -109,7 +125,6 @@ class OllamaProvider:
                 "num_predict": resolved["max_tokens"],
                 "top_p": resolved["top_p"],
             },
-            "think": True,
             # Ollama owns residency; this per-request hint
             # overrides the server's OLLAMA_KEEP_ALIVE (default 5 min idle).
             # Sent on generate AND stream: both share this builder.
@@ -117,6 +132,8 @@ class OllamaProvider:
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
+
+        self._apply_reasoning(payload, request)
 
         images = request.image_parts()
         if images:
@@ -134,6 +151,28 @@ class OllamaProvider:
                 payload["format"] = "json"
 
         return payload
+
+    def _apply_reasoning(self, payload: dict[str, Any], request: GenerateRequest) -> None:
+        """Render the reasoning posture as Ollama's ``think``.
+
+        This payload used to carry a hardcoded ``"think": True`` on EVERY
+        request — a reasoning SELECTION baked into the adapter, and the reason an
+        admin who turned reasoning off on an Ollama-bound agent was billed for
+        thinking tokens anyway. With no posture at any tier nothing is sent now
+        and the engine decides; the inline ``<think>`` splitter below already
+        handles a model that reasons without being asked to.
+        """
+        posture = posture_to_render(request)
+        if posture is None:
+            return
+        payload["think"] = posture.enabled
+        if posture.enabled and posture.effort is not None:
+            record_unenforceable(
+                provider=self._probe_name,
+                model=self._resolve_model(request) or "",
+                posture=posture,
+                reason=REASON_EFFORT_NOT_EXPRESSIBLE,
+            )
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)

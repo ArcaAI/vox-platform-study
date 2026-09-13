@@ -52,6 +52,7 @@ from typing import Any
 import httpx
 import structlog
 
+from text.core.reasoning import ReasoningSupport
 from text.models.provider import ModelInfo
 from text.models.requests import GenerateRequest
 from text.providers.openai_compat import OpenAICompatProvider
@@ -73,6 +74,15 @@ def _native_probe_client() -> httpx.AsyncClient:
 
 class LMStudioProvider(OpenAICompatProvider):
     """LM Studio self-hosted provider (OpenAI-wire, engine-native identity)."""
+
+    # TASK-970 — restated rather than inherited, because this subclass knows its
+    # engine and the evidence is its own: LM Studio documents `reasoning_effort`
+    # with the rungs low|medium|high (gpt-oss) and NO off value on
+    # /v1/chat/completions. The base class reaches EFFORT_ONLY by not knowing what
+    # server it is talking to; this one reaches it by knowing.
+    reasoning_support = ReasoningSupport.EFFORT_ONLY
+    reasoning_parameter = "reasoning_effort"
+    reasoning_effort_parameter = "reasoning_effort"
 
     def __init__(self) -> None:
         """No configuration — the engine endpoint arrives per request, exactly as
