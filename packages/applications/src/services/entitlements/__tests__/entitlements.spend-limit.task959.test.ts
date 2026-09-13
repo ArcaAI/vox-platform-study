@@ -35,6 +35,10 @@ const tenantRepository = { findById: vi.fn() };
 const planEntitlementRepository = { findByPlan: vi.fn(), findAll: vi.fn(), updateWithVersion: vi.fn() };
 const tenantEntitlementRepository = { findByTenant: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 const apiKeyRepository = { count: vi.fn() };
+// TASK-962's two capability-row counters. Unused on the upsert path, but the
+// constructor is POSITIONAL, so they have to sit in their real slots.
+const workflowDefinitionRepository = { count: vi.fn().mockResolvedValue(0) };
+const aiProviderConnectionRepository = { count: vi.fn().mockResolvedValue(0) };
 const tenantService = { getUsageStats: vi.fn() };
 const metering = { getCurrentUsage: vi.fn() };
 const appSettings = { getFromCache: vi.fn(), getValueWithDefault: vi.fn((_k: string, d: unknown) => d), refreshCache: vi.fn() };
@@ -50,6 +54,8 @@ const makeService = () =>
     planEntitlementRepository as never,
     tenantEntitlementRepository as never,
     apiKeyRepository as never,
+    workflowDefinitionRepository as never,
+    aiProviderConnectionRepository as never,
     tenantService as never,
     metering as never,
     appSettings as never,
