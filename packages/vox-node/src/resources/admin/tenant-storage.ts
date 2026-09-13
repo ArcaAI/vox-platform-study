@@ -12,6 +12,7 @@ import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
+  AdoptTenantBucketRequest,
   CreateTenantBucketRequest,
   DeleteTenantBucketObjectResponse,
   SetTenantBucketDefaultsRequest,
@@ -29,7 +30,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers TenantBucketController, TenantStorageConfigAdminController
- * (18 routes). Several controllers sharing one scope share one
+ * (19 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -206,6 +207,23 @@ export class AdminTenantStorageResource extends AdminResource {
     return this.request<unknown>({
       method: 'POST',
       path: `admin/tenants/storage/buckets/provision/${encodePathSegment(String(tenantId))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Adopt an existing physical bucket into a tenant
+   *
+   * Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.
+   *
+   * `POST /api/v1/admin/tenants/storage/buckets/register` — `TenantBucketController.adoptBucket`.
+   */
+  adoptBucket(body: AdoptTenantBucketRequest, options: AdminRequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'POST',
+      path: 'admin/tenants/storage/buckets/register',
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

@@ -15,6 +15,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from nlp.models.source_resolver import (
     ModelSourceConfig,
     ModelSourceError,
