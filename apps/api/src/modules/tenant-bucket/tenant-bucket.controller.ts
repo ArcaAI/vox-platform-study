@@ -118,6 +118,18 @@ export class TenantBucketController {
     return this.tenantBucketService.adoptPhysicalBucket(request.name, request.tenantId, request.description);
   }
 
+  // DEFAULT scope on purpose — do NOT widen this to `scope: 'super-admin'`.
+  // An unscoped platform admin may LIST every tenant's buckets and browse their
+  // objects (`listObjects` is the single route widened for that, TASK-932), but
+  // the unscoped view is browse-only: `uploadObject`, `deleteObject`,
+  // `getBucketTree` and `getPresignedUrl` are all tenant-bound too, and this one
+  // destroys the physical bucket. A platform admin deletes by selecting the
+  // owning tenant, which also puts the "Acting on: «Tenant»" banner on the act.
+  // The console disables the row's Delete when unscoped rather than offering a
+  // call that would 404 (`BucketsTab`'s `deleteBlockedReason`).
+  //
+  // Routes that name their tenant EXPLICITLY are the platform-level exception
+  // and carry no annotation at all: `provision/:tenantId` and `register`.
   @Delete(':id')
   @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
   @ApiOperation({ summary: 'Delete a custom storage bucket (system buckets cannot be deleted)' })
