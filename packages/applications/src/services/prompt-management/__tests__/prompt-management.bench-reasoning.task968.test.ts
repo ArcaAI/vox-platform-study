@@ -73,7 +73,7 @@ describe('TASK-968 — the bench runs on the assigned agent`s reasoning posture'
 
     await svc.startPromptTemplateTest('tpl-1', {} as never);
 
-    expect(lastBody(post).extra, 'the bench ran on a posture it had already resolved and dropped').toEqual({ reasoning_effort: 'minimal' });
+    expect(lastBody(post).reasoning, 'the bench ran on a posture it had already resolved and dropped').toEqual({ enabled: false });
   });
 
   it('an agent that named an effort benches with that effort', async () => {
@@ -81,10 +81,10 @@ describe('TASK-968 — the bench runs on the assigned agent`s reasoning posture'
 
     await svc.startPromptTemplateTest('tpl-1', {} as never);
 
-    expect(lastBody(post).extra).toEqual({ reasoning_effort: 'high' });
+    expect(lastBody(post).reasoning).toEqual({ enabled: true, effort: 'high' });
   });
 
-  it('an agent with no reasoning opinion sends no `extra` key at all', async () => {
+  it('an agent with no reasoning opinion sends no `reasoning` key at all', async () => {
     const { svc, post } = buildService(candidate({ generation: { temperature: 0.2 } }));
 
     await svc.startPromptTemplateTest('tpl-1', {} as never);

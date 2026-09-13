@@ -7,7 +7,7 @@
  * `resolveTextSelection(tenant, 'live')` resolves a distinct live-tier agent through the
  * `phase:live` assignment tag — and that agent is seeded with
  * `parameters.generation.reasoning = { enabled: false }`. TASK-891 C2 built the wire:
- * `applyTextRuntimeProfile(target, generation)` turns the block into `extra.reasoning_effort`,
+ * `applyTextRuntimeProfile(target, generation)` states the block as `GenerateRequest.reasoning`,
  * forwarded by `apps/text` as `extra_body`.
  *
  * But `resolveTextSelection` returned only `{ provider, model }`. The agent's parameters were
@@ -23,7 +23,7 @@
  * ## Why the real chain, and the real enrichment service
  *
  * The claim is end to end: an agent ROW that authors `reasoning: { enabled: false }` produces a
- * `/api/v1/generate` body carrying `extra.reasoning_effort: 'minimal'`. Every link between those
+ * `/api/v1/generate` body carrying `reasoning: { enabled: false }`. Every link between those
  * two facts is real here — the assignment cascade, `AgentResolverService`,
  * `TextAgentResolverService`, `HarnessPolicyService.resolveTextSelection`, `callText` and
  * `TextRequestEnrichmentService`. Only the repositories and the HTTP hop are doubles.
@@ -295,13 +295,13 @@ const SPLIT: Row[] = [
 beforeEach(() => vi.clearAllMocks());
 
 describe('TASK-891 — the ASSIGNED live agent`s reasoning posture reaches the wire', () => {
-  it('a live agent that disables reasoning ships `extra.reasoning_effort: minimal`', async () => {
+  it('a live agent that disables reasoning ships `reasoning: { enabled: false }`', async () => {
     const bodies = await runOneFlush(SPLIT);
 
     expect(bodies).toHaveLength(1);
     // The LIVE tier answered, not the unqualified finalize row.
     expect(bodies[0].model).toBe('gemma-4-e2b-it-qat-live');
-    expect(bodies[0].extra, 'the live agent`s reasoning posture never reached the wire').toEqual({ reasoning_effort: 'minimal' });
+    expect(bodies[0].reasoning, 'the live agent`s reasoning posture never reached the wire').toEqual({ enabled: false });
   });
 
   /**
@@ -309,17 +309,17 @@ describe('TASK-891 — the ASSIGNED live agent`s reasoning posture reaches the w
    * on some transports and as nothing on others; the engine's default is what "no opinion"
    * means, so the field must simply not be there.
    */
-  it('a live agent with no reasoning block sends no `extra` key at all', async () => {
+  it('a live agent with no reasoning block sends no `reasoning` key at all', async () => {
     const bodies = await runOneFlush([{ agentSlug: 'no-opinion-live', selectorKey: '' }]);
 
     expect(bodies[0].model).toBe('quiet-model');
-    expect(Object.keys(bodies[0])).not.toContain('extra');
+    expect(Object.keys(bodies[0])).not.toContain('reasoning');
   });
 
   it('an effort the agent named travels verbatim rather than collapsing to on/off', async () => {
     const bodies = await runOneFlush([{ agentSlug: 'measured-live', selectorKey: '' }]);
 
-    expect(bodies[0].extra).toEqual({ reasoning_effort: 'low' });
+    expect(bodies[0].reasoning).toEqual({ enabled: true, effort: 'low' });
   });
 
   /**
@@ -329,11 +329,11 @@ describe('TASK-891 — the ASSIGNED live agent`s reasoning posture reaches the w
    */
   it('the LIVE tier`s posture ships, never the finalize tier`s', async () => {
     const split = await runOneFlush(SPLIT);
-    expect(split[0].extra).toEqual({ reasoning_effort: 'minimal' });
+    expect(split[0].reasoning).toEqual({ enabled: false });
 
     const unqualifiedOnly = await runOneFlush([{ agentSlug: 'platform-summarization', selectorKey: '' }]);
     expect(unqualifiedOnly[0].model).toBe('gemma-4-e2b-it-qat');
-    expect(unqualifiedOnly[0].extra).toEqual({ reasoning_effort: 'high' });
+    expect(unqualifiedOnly[0].reasoning).toEqual({ enabled: true, effort: 'high' });
   });
 });
 
