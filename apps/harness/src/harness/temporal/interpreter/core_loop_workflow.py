@@ -45,6 +45,10 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
+from harness.temporal.workflow_ids import (
+    CORE_LOOP_WORKFLOW_ID_PREFIX as _CORE_LOOP_WORKFLOW_ID_PREFIX,
+)
+
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.compiled_config import CompiledLoopBody, CompiledNode
@@ -83,7 +87,9 @@ _CHECKPOINT_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(s
 _EVALUATE_TIMEOUT = timedelta(seconds=10)
 _EVALUATE_RETRY = RetryPolicy(maximum_attempts=2)
 
-CORE_LOOP_WORKFLOW_ID_PREFIX = "core-loop-"
+# DEFINED in the leaf module `temporal/workflow_ids.py` and re-exported here — see the
+# note on `INTERPRETER_WORKFLOW_ID_PREFIX` (TASK-957).
+CORE_LOOP_WORKFLOW_ID_PREFIX = _CORE_LOOP_WORKFLOW_ID_PREFIX
 
 
 def core_loop_workflow_id(run_id: str, node_id: str, iteration_path: str = "") -> str:
