@@ -33,9 +33,8 @@
  * other's writes.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { join } from 'path';
-import { pathToFileURL } from 'url';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { closeLedgerDb, ledgerRowsSince } from './helpers/usage-ledger.helper';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -74,41 +73,33 @@ const AGENT_CONTEXT = {
   },
 };
 
-interface OutboxRow {
-  id: string;
-  createdAt: Date;
-  payload: unknown;
-}
-interface DbClient {
-  aiUsageOutbox: {
-    findMany(args: { where: Record<string, unknown>; orderBy?: unknown }): Promise<OutboxRow[]>;
-  };
-  $disconnect(): Promise<void>;
-}
-
-let dbClient: DbClient | null = null;
-async function getDb(): Promise<DbClient> {
-  if (!dbClient) {
-    const distEntry = pathToFileURL(join(__dirname, '../../../../packages/database/dist/index.js')).href;
-    const mod = (await import(distEntry)) as { getPlatformAdminPrismaClient_Unscoped(): unknown };
-    dbClient = mod.getPlatformAdminPrismaClient_Unscoped() as DbClient;
-  }
-  return dbClient;
-}
-
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-/** The outbox rows this tenant produced since `since`, newest first. */
+/**
+ * The ledger rows this tenant produced since `since`, newest first.
+ *
+ * FU-2. This used to read the outbox itself and project `payload?.common ??
+ * payload`, which matched NOTHING on any row, ever: `UsageLedgerService`
+ * expands a batch before it writes, so the stored payload is
+ * `{ version, events[] }` — there is no `common` key, the fallback resolved to
+ * the ENVELOPE, its `tenantId` was `undefined`, and the tenant filter below
+ * then dropped every row. Both "row lands" tests were therefore vacuous
+ * whenever they ran at all, and they only ever ran on a box where `apps/text`
+ * could serve a generation — which is why the defect survived. Reading through
+ * `helpers/usage-ledger.helper.ts` puts the shape in ONE place, beside the
+ * TASK-959 specs that already use it.
+ *
+ * The helper widens `since` by five seconds to absorb clock skew between the
+ * suite and Postgres — right for a positive assertion, wrong for the NEGATIVE
+ * one below, where a row that predates the mark would read as a bill this test
+ * provoked. So the window is narrowed back here on the event's OWN
+ * `occurredAt`, which the emitter stamps.
+ */
 async function outboxSince(since: Date): Promise<Array<{ operation: string; trigger?: string }>> {
-  const db = await getDb();
-  const rows = await db.aiUsageOutbox.findMany({ where: { createdAt: { gt: since } }, orderBy: { createdAt: 'desc' } });
+  const rows = await ledgerRowsSince(since, { tenantId: TENANT_GLOBAL });
   return rows
-    .map((row) => (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) as Record<string, unknown>)
-    .map((payload) => {
-      const common = (payload?.common ?? payload) as { tenantId?: string; operation?: string; attributesJson?: { trigger?: string } };
-      return { tenantId: common?.tenantId, operation: String(common?.operation ?? ''), trigger: common?.attributesJson?.trigger };
-    })
-    .filter((row) => row.tenantId === TENANT_GLOBAL);
+    .filter((row) => new Date(row.occurredAt).getTime() >= since.getTime())
+    .map((row) => ({ operation: row.operation, trigger: row.attributesJson?.trigger as string | undefined }));
 }
 
 /** Poll: emission is fire-and-forget, so the row lands shortly AFTER the response. */
@@ -137,6 +128,11 @@ test.beforeAll(async ({ playwright }) => {
   doctorToken = doctor.token;
   adminToken = admin.token;
   await request.dispose();
+});
+
+/** Release the pool the reader opened, so the Playwright worker can exit instead of hanging on it. */
+test.afterAll(async () => {
+  await closeLedgerDb();
 });
 
 test.describe('TASK-890 — an agent invocation is metered', () => {

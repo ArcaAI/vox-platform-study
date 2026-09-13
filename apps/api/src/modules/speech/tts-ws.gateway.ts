@@ -526,7 +526,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // building entirely: this `return true` still consumes the frame, which is TTS's own control
     // framing and must never reach the client whether or not it produced a ledger row.
     if (!isAttributableTtsProvider(parsed.provider)) {
-      recordUsageEmissionFailure('tts.synthesize');
+      recordUsageEmissionFailure('tts.synthesize', 'unattributable');
       this.logger.warn({
         message: 'TTS session reported no provider; recording no usage row for it',
         sessionId: bridge.sessionId,

@@ -310,25 +310,28 @@ test.describe('TASK-959 — a billed second reaches the screen', () => {
 });
 
 test.describe('TASK-959 §3.4 — a run detail carries the worker CPU it consumed', () => {
-  test('`cpuSeconds` is on the run detail, as a number or null', async ({ request }) => {
+  test('`cpuSeconds` is on the run detail, as a positive number', async ({ request }) => {
     const list = await request.get('/api/v1/admin/workflow-runs?limit=1', { headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL } });
     expect(list.status(), await list.text()).toBe(200);
     const listed = (await list.json()) as { data?: Array<{ id?: string; runId?: string }> };
     const run = listed.data?.[0];
-    test.skip(
-      !run,
-      'no workflow run exists in this database to read — starting one needs the harness service and a Temporal worker on the TEST stack, neither of which is running here',
-    );
+    test.skip(!run, 'no workflow run exists in this database to read — start one, or run task-959-workflow.spec.ts first');
 
     const runId = run!.runId ?? run!.id;
     const detail = await request.get(`/api/v1/admin/workflow-runs/${runId}`, { headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL } });
     expect(detail.status(), await detail.text()).toBe(200);
     const body = (await detail.json()) as { cpuSeconds?: number | null };
 
-    // `null` is the honest answer for a run the metering interceptor never saw
-    // — it is a sum over the ledger, not a column on the run — and a number
-    // otherwise. Anything else (undefined, a string) is the field missing.
+    // STRICT ON PURPOSE: a real number, strictly positive. `cpuSeconds` is a
+    // sum over the ledger rather than a column on the run, so a `null` here
+    // does NOT mean "this run was free" — it means the sum found nothing, and
+    // every run that reached a worker burned some CPU. Accepting `null` is what
+    // let this pass for runs whose ledger held 0.001 / 0.037 / 0.4 / 1.251
+    // CPU-seconds each (measured 2026-09-13, while the sum still filtered
+    // `requestId`; it filters the run's `sessionId` now, which is the column
+    // `WorkflowRun` actually joins on).
     expect(body).toHaveProperty('cpuSeconds');
-    expect(body.cpuSeconds === null || typeof body.cpuSeconds === 'number').toBe(true);
+    expect(typeof body.cpuSeconds).toBe('number');
+    expect(body.cpuSeconds).toBeGreaterThan(0);
   });
 });

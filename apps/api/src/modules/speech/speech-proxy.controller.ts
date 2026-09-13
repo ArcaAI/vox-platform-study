@@ -346,7 +346,7 @@ export class SpeechProxyController {
         // is a row asserting `provider: 'none'` on the platform's own hardware, which rates at
         // zero COGS and drains the tenant's allowance first.
         if (!isAttributableTtsProvider(provider)) {
-          recordUsageEmissionFailure('tts.synthesize');
+          recordUsageEmissionFailure('tts.synthesize', 'unattributable');
           this.logger.warn({
             message: 'TTS synthesis reported no provider; recording no usage row for it',
             requestId,
