@@ -18,7 +18,7 @@ import { isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { resolveBillingAllowances } from '../billing/allowances';
 import { parseBillingPeriod } from '../billing/billing-period';
-import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryOperationLine, UsageSummaryResponse, UsageSummaryTriggerLine } from './dto';
+import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryResponse, UsageSummaryTriggerLine } from './dto';
 import { BudgetBurndownResponse, CostPerEncounterResponse, TopTenantsResponse, UsageTimeseriesResponse } from './dto';
 import { UsageStorageSnapshotSummary } from './dto';
 import { STORAGE_CLASSES, type StorageClass, USAGE_TRIGGERS } from '../usageLedger/usage-attributes';
@@ -181,9 +181,7 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     // Sorted by NAME, not by the vocabulary's own declaration order: `lines` and
     // `byOperation` on this same response are lexicographic, and one array that
     // orders itself differently is a trap for anyone diffing two periods.
-    return lines
-      .filter((line) => Object.keys(line.quantityByUnit).length > 0)
-      .sort((a, b) => a.trigger.localeCompare(b.trigger));
+    return lines.filter((line) => Object.keys(line.quantityByUnit).length > 0).sort((a, b) => a.trigger.localeCompare(b.trigger));
   }
 
   /**
