@@ -315,10 +315,7 @@ test.describe('TASK-959 §3.4 — a run detail carries the worker CPU it consume
     expect(list.status(), await list.text()).toBe(200);
     const listed = (await list.json()) as { data?: Array<{ id?: string; runId?: string }> };
     const run = listed.data?.[0];
-    test.skip(
-      !run,
-      'no workflow run exists in this database to read. Measured 2026-09-13 with apps/harness serving on the test port AND a Temporal worker attached to the test broker (7333), so the missing piece is no longer the services: `POST /workflows/:slug/runs` answers 500 for every published workflow (see task-959-workflow.spec.ts), so no run row can be created to read back',
-    );
+    test.skip(!run, 'no workflow run exists in this database to read — start one, or run task-959-workflow.spec.ts first');
 
     const runId = run!.runId ?? run!.id;
     const detail = await request.get(`/api/v1/admin/workflow-runs/${runId}`, { headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL } });
@@ -328,6 +325,16 @@ test.describe('TASK-959 §3.4 — a run detail carries the worker CPU it consume
     // `null` is the honest answer for a run the metering interceptor never saw
     // — it is a sum over the ledger, not a column on the run — and a number
     // otherwise. Anything else (undefined, a string) is the field missing.
+    //
+    // READ THE PASS NARROWLY. This asserts the FIELD's shape, not that the
+    // figure is right, and today it passes on `null` for runs that really did
+    // burn CPU: measured 2026-09-13, two executed runs reported `cpuSeconds:
+    // null` while the ledger held 0.001 / 0.037 / 0.4 / 1.251 CPU-seconds for
+    // them. The sum runs on `requestId = runId` and the harness worker writes
+    // Temporal's per-execution id there instead — the defect
+    // `task-959-workflow.spec.ts` fails on. When that lands, this test keeps
+    // passing and the number becomes real; it is that file, not this one, that
+    // guards the attribution.
     expect(body).toHaveProperty('cpuSeconds');
     expect(body.cpuSeconds === null || typeof body.cpuSeconds === 'number').toBe(true);
   });
