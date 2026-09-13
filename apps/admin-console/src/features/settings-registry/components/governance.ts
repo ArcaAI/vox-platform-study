@@ -12,7 +12,8 @@
  * the server would refuse; it only declines to offer one, with the reason.
  */
 
-import type { SettingCatalogItem, SettingScope } from '../api/types';
+import type { SettingCatalogItem, SettingPair, SettingScope } from '../api/types';
+import { formatValue } from './registry-value';
 
 /** Why a key cannot be written here, or `null` when it can. */
 export interface WriteBlock {
@@ -110,7 +111,13 @@ export function writableScopes(item: SettingCatalogItem, isElevated: boolean, ha
   // `system` is the platform row — SUPER_ADMIN only, always. It needs NO
   // working tenant: the row lives on the reserved SYSTEM tenant by definition,
   // which is exactly what the read side had wrong (TASK-932 R-6).
-  if (isElevated) scopes.push('system');
+  //
+  // TASK-969 F-1 — EXCEPT on the tenant half of a twin-key pair, whose SYSTEM
+  // row has no reader at all. Offering it produced a write that succeeded, read
+  // back, and changed nothing; the platform tier of such a key is reached
+  // through its twin (`pairTargetsFor`), never through this scope. The
+  // declaration gates it, so no key list lives here.
+  if (isElevated && !item.platformTierKey) scopes.push('system');
   // `tenant` needs a maxScope that reaches it AND a tenant to write to. An
   // elevated caller with nothing selected has no tenant row to address, so
   // offering the option would produce a 400 on save; a tenant-bound caller
@@ -203,4 +210,94 @@ export function sourceScopeLabel(sourceScope: string | undefined): string {
     default:
       return sourceScope ?? 'unknown';
   }
+}
+
+/**
+ * Which HALF of a twin-key pair a write targets.
+ *
+ * `platform` writes the twin (`item.platformTierKey`) at `system` scope;
+ * `tenant` writes this key at `tenant` scope. The picker chooses a KEY, which is
+ * why it is not `writableScopes` with an extra option: the two halves are two
+ * rows of two different descriptors, and the scope is a consequence of the
+ * choice rather than the choice itself.
+ */
+export type PairTarget = 'platform' | 'tenant';
+
+/**
+ * The halves this caller may write, platform first.
+ *
+ * Empty for a key that declares no twin — the caller then falls back to the
+ * ordinary scope picker. Both halves of every declared pair are `globalOnly`
+ * today, so `writeBlockFor` has already refused a non-elevated caller before
+ * this is consulted; the elevation check stays anyway, because a pair declared
+ * on a non-`globalOnly` key later must not silently hand a tenant admin the
+ * platform row.
+ */
+export function pairTargetsFor(item: SettingCatalogItem, isElevated: boolean, hasWorkingTenant = true): PairTarget[] {
+  if (!item.platformTierKey) return [];
+  const targets: PairTarget[] = [];
+  // The platform half is a `maxScope: 'system'` key: SUPER_ADMIN only, and it
+  // needs no working tenant.
+  if (isElevated) targets.push('platform');
+  // The tenant half needs a tenant to write to — the write lane takes the
+  // target from CLS, never from a caller-supplied id.
+  if (!isElevated || hasWorkingTenant) targets.push('tenant');
+  return targets;
+}
+
+/**
+ * Which half the drawer opens on — the tenant override whenever one is
+ * addressable, for the same reason `defaultScopeFor` prefers it: an admin who
+ * deliberately selected a working tenant is almost never asking to move the
+ * default for every OTHER tenant.
+ */
+export function defaultPairTarget(targets: readonly PairTarget[]): PairTarget {
+  return targets.includes('tenant') ? 'tenant' : (targets[0] ?? 'platform');
+}
+
+/** The three clauses of the pair line: both values, then which one is applied. */
+export interface PairSummary {
+  /** e.g. `ArcaAI: off` — or `ArcaAI: no override` when the tenant holds none. */
+  tenant: string;
+  /** e.g. `platform default: on`. */
+  platform: string;
+  /** e.g. `ArcaAI wins` / `platform default applies`. */
+  verdict: string;
+  /** Which clause to emphasise. Never colour alone (rule 11 §10). */
+  inForce: PairTarget;
+}
+
+/** A boolean reads as on/off; everything else through the shared formatter. */
+function describe(item: SettingCatalogItem, value: unknown): string {
+  if (item.dataType === 'boolean') return value === true ? 'on' : 'off';
+  return formatValue(item.dataType, value);
+}
+
+/**
+ * Both halves of a pair as one sentence, with the winner named.
+ *
+ * Returns `null` without a `pair` block, and that is deliberate: `inForce` is
+ * the server's statement of what the RUNTIME applies, and inferring it from the
+ * generic cascade is precisely the mistake that let a dead write look live. A
+ * missing block withholds the clause; it never guesses one.
+ *
+ * When the platform half is in force the tenant clause reads "no override"
+ * rather than echoing `tenantValue`. The read DOES return a value there — the
+ * cascade widens — and rendering it as the tenant's own is what made the
+ * inert SYSTEM row indistinguishable from a live one.
+ */
+export function pairSummary(
+  item: SettingCatalogItem,
+  pair: SettingPair | null | undefined,
+  tenantValue: unknown,
+  workingTenantName: string | null,
+): PairSummary | null {
+  if (!pair) return null;
+  const who = workingTenantName ?? 'This tenant';
+  return {
+    tenant: pair.inForce === 'tenant' ? `${who}: ${describe(item, tenantValue)}` : `${who}: no override`,
+    platform: `platform default: ${describe(item, pair.platformValue)}`,
+    verdict: pair.inForce === 'tenant' ? `${who} wins` : 'platform default applies',
+    inForce: pair.inForce,
+  };
 }

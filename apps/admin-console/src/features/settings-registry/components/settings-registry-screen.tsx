@@ -75,6 +75,19 @@ function previewValue(value: unknown): string {
 }
 
 /**
+ * The value a paired row's runtime actually applies.
+ *
+ * For an ordinary key that is just the resolved value. For a pair it is the half
+ * `inForce` names: when the platform default applies, the tenant half's own read
+ * still returns a value (the cascade widens) and showing THAT is what made an
+ * inert SYSTEM row indistinguishable from a live one.
+ */
+function inForceValue(setting: EffectiveSetting): unknown {
+  if (setting.pair && setting.pair.inForce === 'platform') return setting.pair.platformValue;
+  return setting.value;
+}
+
+/**
  * Settings registry (/settings-registry, tier 20-29 shared).
  *
  * The descriptor-driven editor over `GET admin/settings/catalog` +
@@ -125,6 +138,33 @@ export function SettingsRegistryScreen() {
 
   const items = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data]);
 
+  /**
+   * TASK-969 F-1 — the PLATFORM half of every declared pair.
+   *
+   * `requireMedical` and `includeReasoning` each exist as two keys split by
+   * delivery channel (a cached per-process PULL snapshot vs a per-request PUSH),
+   * and both halves are platform-admin-only. The split is a transport detail
+   * with no audience, and rendering it as two near-identically-named rows is
+   * what let an admin edit the half whose SYSTEM row nothing reads.
+   *
+   * So the pair is listed ONCE, on the TENANT half, and the platform half is
+   * suppressed as a separate entry. Which half survives is not arbitrary: the
+   * tenant half is the one that DECLARES the pairing (`platformTierKey`), and it
+   * is the one whose read carries both values plus `inForce` — the platform half
+   * carries no back-pointer and no twin's value, so a row built on it could
+   * neither name its partner nor say which is in force without a second lookup
+   * the contract does not provide.
+   *
+   * Derived from the catalog itself, so it is self-correcting: a catalog that
+   * serves only one half (RBAC, or a gateway that has not shipped the field)
+   * suppresses nothing and simply lists what it was given.
+   */
+  const twinKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const entry of items) if (entry.platformTierKey) set.add(entry.platformTierKey);
+    return set;
+  }, [items]);
+
   // m3 — `?key=` was written on every row open but never READ back: a shared
   // deep link landed on the plain list with the drawer closed. Seed the
   // active drawer from the param once the catalog carries a matching item —
@@ -133,7 +173,10 @@ export function SettingsRegistryScreen() {
   // themselves (or this already opened one), so it never fights that choice,
   // and the seed always lands in the SAME commit as the catalog arriving.
   if (active === null && selectedKey) {
-    const found = items.find((item) => item.key === selectedKey);
+    // A link to the SUPPRESSED platform half lands on the row that owns it —
+    // two editors for one concept is the thing this ticket removes, and old
+    // links must not be the way back to the second one.
+    const found = items.find((item) => item.key === selectedKey && !twinKeys.has(item.key)) ?? items.find((item) => item.platformTierKey === selectedKey);
     if (found) setActive(found);
   }
 
@@ -171,13 +214,16 @@ export function SettingsRegistryScreen() {
     const editability = ruleValues(EDITABILITY_FILTER_ID);
 
     return items.filter((item) => {
+      // The platform half of a pair is edited through its twin's row, never as
+      // an entry of its own.
+      if (twinKeys.has(item.key)) return false;
       if (categories.length > 0 && !categories.includes(item.category)) return false;
       if (tiers.length > 0 && !tiers.includes(item.tier)) return false;
       if (scopes.length > 0 && !scopes.includes(item.maxScope)) return false;
       if (editability.length > 0 && !editability.includes(editabilityOf(item, isElevated))) return false;
       return matchesSearch(item, needle);
     });
-  }, [items, query.queryState, isElevated]);
+  }, [items, twinKeys, query.queryState, isElevated]);
 
   const sorted = useMemo(() => {
     const rules = query.queryState.sorting.length > 0 ? query.queryState.sorting : DEFAULT_SORT;
@@ -238,6 +284,11 @@ export function SettingsRegistryScreen() {
               Tighten-only
             </Badge>
           ) : null}
+          {row.original.platformTierKey ? (
+            <Badge variant="outline" className="shrink-0" title={`Platform default: ${row.original.platformTierKey}`}>
+              Platform + tenant
+            </Badge>
+          ) : null}
         </span>
       ),
     },
@@ -277,9 +328,10 @@ export function SettingsRegistryScreen() {
       size: 200,
       cell: ({ row }) => {
         const known = resolved.get(row.original.key);
+        const shown = known ? inForceValue(known) : row.original.default;
         return (
-          <span className="block truncate font-mono text-xs" title={previewValue(known ? known.value : row.original.default)}>
-            {previewValue(known ? known.value : row.original.default)}
+          <span className="block truncate font-mono text-xs" title={previewValue(shown)}>
+            {previewValue(shown)}
           </span>
         );
       },
@@ -292,7 +344,11 @@ export function SettingsRegistryScreen() {
       size: 140,
       cell: ({ row }) => {
         const known = resolved.get(row.original.key);
-        return <span className="text-muted-foreground text-xs">{known ? sourceScopeLabel(known.sourceScope) : 'code default'}</span>;
+        // On a paired row `sourceScope` describes the tenant half's own cascade,
+        // which is exactly the reading that misled — `pair.inForce` is the
+        // server's statement of which half the runtime applies.
+        const source = known ? (known.pair ? sourceScopeLabel(known.pair.inForce === 'platform' ? 'system' : 'tenant') : sourceScopeLabel(known.sourceScope)) : 'code default';
+        return <span className="text-muted-foreground text-xs">{source}</span>;
       },
     },
     {

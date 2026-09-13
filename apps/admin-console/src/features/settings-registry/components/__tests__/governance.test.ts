@@ -11,7 +11,17 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SettingCatalogItem } from '../../api/types';
-import { floorHint, isUnsetAndFailClosed, killSwitchWarning, sourceScopeLabel, writableScopes, writeBlockFor } from '../governance';
+import {
+  defaultPairTarget,
+  floorHint,
+  isUnsetAndFailClosed,
+  killSwitchWarning,
+  pairSummary,
+  pairTargetsFor,
+  sourceScopeLabel,
+  writableScopes,
+  writeBlockFor,
+} from '../governance';
 
 function item(overrides: Partial<SettingCatalogItem> = {}): SettingCatalogItem {
   return {
@@ -149,5 +159,111 @@ describe('sourceScopeLabel — "why is this value what it is"', () => {
   it('degrades to the raw token rather than lying when it does not recognise one', () => {
     expect(sourceScopeLabel('something-new')).toBe('something-new');
     expect(sourceScopeLabel(undefined)).toBe('unknown');
+  });
+});
+
+/**
+ * TASK-969 F-1 — the twin-key pair.
+ *
+ * `text.guardrailPolicy.<f>` is the TENANT half of `text.externalGuardrail.<f>`.
+ * Its SYSTEM row has NO reader: the only consumer
+ * (`TextRequestEnrichmentService.applyTenantGuardrailPolicy`) refuses anything
+ * but `sourceScope === 'tenant'`. The console used to offer that scope anyway,
+ * so a platform admin could write it, read it back, and watch the runtime keep
+ * ignoring it. The descriptor now DECLARES the pairing, and every rule below
+ * hangs off that declaration rather than off a hardcoded key list.
+ */
+describe('the twin-key pair — a picker that means what it says', () => {
+  const tenantHalf = item({
+    key: 'text.guardrailPolicy.requireMedical',
+    dataType: 'boolean',
+    maxScope: 'tenant',
+    globalOnly: true,
+    category: 'Guardrail policy',
+    platformTierKey: 'text.externalGuardrail.requireMedical',
+  });
+
+  describe('writableScopes', () => {
+    it('never offers system scope on the tenant half — that row has no reader', () => {
+      expect(writableScopes(tenantHalf, true)).toEqual(['tenant']);
+    });
+
+    it('still offers system scope on an ordinary tenant key, pair or no pair', () => {
+      expect(writableScopes(item({ maxScope: 'tenant' }), true)).toEqual(['system', 'tenant']);
+    });
+
+    it('offers nothing when an elevated caller has selected no tenant — the platform row is reached by the pair picker', () => {
+      expect(writableScopes(tenantHalf, true, false)).toEqual([]);
+    });
+  });
+
+  describe('pairTargetsFor — the picker chooses the KEY, not just the row', () => {
+    it('is empty for a key that declares no twin', () => {
+      expect(pairTargetsFor(item(), true)).toEqual([]);
+    });
+
+    it('offers the platform default first, then the tenant override', () => {
+      expect(pairTargetsFor(tenantHalf, true)).toEqual(['platform', 'tenant']);
+    });
+
+    it('drops the tenant override when no working tenant is selected', () => {
+      expect(pairTargetsFor(tenantHalf, true, false)).toEqual(['platform']);
+    });
+
+    it('never offers the platform default to a non-elevated caller', () => {
+      expect(pairTargetsFor(tenantHalf, false)).toEqual(['tenant']);
+    });
+  });
+
+  describe('defaultPairTarget', () => {
+    it('opens on the tenant override, like the scope picker does', () => {
+      expect(defaultPairTarget(['platform', 'tenant'])).toBe('tenant');
+    });
+
+    it('falls back to the platform default when that is all there is', () => {
+      expect(defaultPairTarget(['platform'])).toBe('platform');
+    });
+  });
+
+  describe('pairSummary — both values, and which one the runtime actually applies', () => {
+    it('names the tenant, the platform default, and the winner when an override exists', () => {
+      const summary = pairSummary(
+        tenantHalf,
+        { platformTierKey: 'text.externalGuardrail.requireMedical', platformValue: true, inForce: 'tenant' },
+        false,
+        'ArcaAI',
+      );
+      expect(summary).not.toBeNull();
+      expect(summary!.tenant).toBe('ArcaAI: off');
+      expect(summary!.platform).toBe('platform default: on');
+      expect(summary!.verdict).toMatch(/ArcaAI wins/);
+    });
+
+    it('says "no override" rather than echoing the widened value — that echo IS the bug', () => {
+      const summary = pairSummary(
+        tenantHalf,
+        { platformTierKey: 'text.externalGuardrail.requireMedical', platformValue: true, inForce: 'platform' },
+        // The read still returns a value here (the cascade widens), and showing
+        // it as the tenant's own is exactly what made a dead write look live.
+        true,
+        'ArcaAI',
+      );
+      expect(summary!.tenant).toBe('ArcaAI: no override');
+      expect(summary!.verdict).toMatch(/platform default applies/);
+    });
+
+    it('falls back to a generic tenant word when no working tenant is named', () => {
+      const summary = pairSummary(
+        tenantHalf,
+        { platformTierKey: 'text.externalGuardrail.requireMedical', platformValue: false, inForce: 'platform' },
+        undefined,
+        null,
+      );
+      expect(summary!.tenant).toMatch(/^This tenant: /);
+    });
+
+    it('is null without a pair block — it never guesses which half is in force', () => {
+      expect(pairSummary(tenantHalf, null, false, 'ArcaAI')).toBeNull();
+    });
   });
 });
