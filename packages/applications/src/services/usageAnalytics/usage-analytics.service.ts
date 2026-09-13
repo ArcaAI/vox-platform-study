@@ -238,21 +238,40 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
   }
 
   /**
-   * Σ `CPU_SECOND` under capability `WORKFLOW` for ONE run (TASK-959 §3.4).
+   * Σ `CPU_SECOND` under capability `WORKFLOW` for ONE run, keyed by its SESSION
+   * id (TASK-959 §3.4, corrected under TASK-957).
    *
-   * `requestId` IS the run id on those rows, which is why this is answerable at
-   * all: the metering interceptor stamps it per activity, so a run's worker CPU
-   * is the sum over its own request id. Not a rollup read — `requestId` is not
-   * a rollup dimension, and a per-run figure is exactly what a rollup discards.
+   * ============================================================================
+   * WHY `sessionId` AND NOT `requestId`
+   * ============================================================================
+   * `requestId` on a WORKFLOW row is Temporal's EXECUTION-ATTEMPT id — the
+   * `workflow_run_id` the worker's metering interceptor reads off
+   * `activity.info()`, the same value `_TrajectoryBatch.record` puts in a
+   * trajectory step's `runId`. That is deliberate and stays: the trajectory
+   * table's dedupe tuple is `(tenantId, sessionId, runId, seq)` with the
+   * execution id in it, and the LLM `workflow.step` rows of the same run key
+   * identically, so one run's inference and its orchestration agree.
+   *
+   * The DOMAIN run id is a different value, and filtering on it matched nothing:
+   * a real run whose ledger held four CPU_SECOND rows answered `cpuSeconds:
+   * null`. `WorkflowRun` already joins its own steps by `sessionId` — the
+   * derived `"workflow-interpreter-" + runId` (`workflow-run.prisma:10-20`) —
+   * so summing by that key reuses the join the run plane already trusts rather
+   * than inventing a second one. It also survives a continue-as-new, where one
+   * run legitimately spans more than one execution id and a `requestId` sum
+   * would silently report only the last leg.
+   *
+   * Not a rollup read — neither key is a rollup dimension, and a per-run figure
+   * is exactly what a rollup discards.
    *
    * `null`, never 0, when there are no rows: a run that predates the interceptor
    * and a run that burned no measurable CPU are different facts, and only the
    * first is a reason to stop looking for the number.
    */
-  async getWorkflowRunCpuSeconds(tenantId: string, runId: string): Promise<number | null> {
+  async getWorkflowRunCpuSeconds(tenantId: string, sessionId: string): Promise<number | null> {
     const result = await this.databaseService.baseClient.aiUsageEvent.aggregate({
       _sum: { quantity: true },
-      where: { tenantId, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, requestId: runId },
+      where: { tenantId, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, sessionId },
     });
     const sum = result._sum?.quantity ?? null;
     if (sum === null || sum === undefined) return null;
