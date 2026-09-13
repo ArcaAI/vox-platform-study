@@ -21,7 +21,10 @@ const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as ReasoningPost
 
 // The fixture's `support` object carries one non-adapter key: `$comment`, documentation for
 // humans reading the JSON. Every other key is a real adapter entry.
-const adapterEntries = Object.entries(fixture.support).filter(([key]) => key !== '$comment');
+// `$`-prefixed keys are fixture METADATA (`$comment`, and `$classes`/`$fields` added by the
+// Python lane), never adapters. Filter the whole prefix rather than one name, so the next
+// metadata key added upstream does not read as an adapter with no classification.
+const adapterEntries = Object.entries(fixture.support).filter(([key]) => !key.startsWith('$'));
 const adapterKeys = adapterEntries.map(([key]) => key);
 
 describe('reasoningSupportFor — the committed contract fixture', () => {
