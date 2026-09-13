@@ -306,16 +306,45 @@ describe('getUsageTimeseries — the new figures per bucket', () => {
   });
 });
 
+/**
+ * Summed by SESSION id, not by run id (corrected under TASK-957).
+ *
+ * `requestId` on a WORKFLOW / CPU_SECOND row is Temporal's EXECUTION-ATTEMPT id
+ * — `workflow_run_id` from `activity.info()`, which the worker's metering
+ * interceptor and `_TrajectoryBatch.record` both read — and that is deliberate:
+ * the trajectory table dedupes on `(tenantId, sessionId, runId, seq)` with the
+ * same execution id in it, and the LLM `workflow.step` rows of the same run key
+ * the same way. The DOMAIN run id is a different value.
+ *
+ * So filtering on `requestId = <domain runId>` matched nothing: a real run whose
+ * ledger held four CPU_SECOND rows answered `cpuSeconds: null`. `WorkflowRun`
+ * already joins its own steps by `sessionId` (the derived
+ * `"workflow-interpreter-" + runId`, `workflow-run.prisma:10-20`), so summing by
+ * that same key reuses the join the run plane already trusts instead of
+ * inventing a second one — and it keeps working across a Temporal continue-as-new,
+ * where one run legitimately has more than one execution id.
+ */
 describe('getWorkflowRunCpuSeconds', () => {
-  it('sums CPU_SECOND under capability WORKFLOW for one run id, tenant-scoped', async () => {
+  const SESSION = 'workflow-interpreter-run-7';
+
+  it('sums CPU_SECOND under capability WORKFLOW for one SESSION, tenant-scoped', async () => {
     const { service, aiUsageEvent } = makeService(makeRepos());
     aiUsageEvent.aggregate.mockResolvedValue({ _sum: { quantity: { toNumber: () => 12.75 } } });
 
-    const seconds = await service.getWorkflowRunCpuSeconds(TENANT, 'run-7');
+    const seconds = await service.getWorkflowRunCpuSeconds(TENANT, SESSION);
 
     expect(seconds).toBe(12.75);
     const where = aiUsageEvent.aggregate.mock.calls[0][0].where;
-    expect(where).toEqual({ tenantId: TENANT, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, requestId: 'run-7' });
+    expect(where).toEqual({ tenantId: TENANT, capability: AiCapability.WORKFLOW, unit: AiUsageUnit.CPU_SECOND, sessionId: SESSION });
+  });
+
+  it('never filters on requestId — that column holds the EXECUTION id, not the run id', async () => {
+    const { service, aiUsageEvent } = makeService(makeRepos());
+    aiUsageEvent.aggregate.mockResolvedValue({ _sum: { quantity: null } });
+
+    await service.getWorkflowRunCpuSeconds(TENANT, SESSION);
+
+    expect(aiUsageEvent.aggregate.mock.calls[0][0].where).not.toHaveProperty('requestId');
   });
 
   it('answers null — not 0 — when the run has no worker-CPU rows at all', async () => {
@@ -324,6 +353,6 @@ describe('getWorkflowRunCpuSeconds', () => {
 
     // A run from before the interceptor shipped, and a run that burned no
     // measurable CPU, are different facts. Zero would assert the second.
-    expect(await service.getWorkflowRunCpuSeconds(TENANT, 'run-7')).toBeNull();
+    expect(await service.getWorkflowRunCpuSeconds(TENANT, SESSION)).toBeNull();
   });
 });
