@@ -13,19 +13,60 @@
  * Workflow variant: the resolved run contract (`GET workflows/{slug}/schema`) answers 404 for
  * three legitimate outcomes, each explained on its own terms; the two the client already knows
  * (not activated; a palette that is not exposable) never fire the request.
+ *
+ * ## TASK-971 lanes B + C — four lanes, and a body that is real
+ *
+ * **Lane B.** The example body is DERIVED from the lineage's own declared input — `agent.inputSchema`
+ * for the invocations route, `components["Workflow_<slug>_Input"]` from the schema response for a
+ * run. Both were already in hand and discarded; the panel printed a placeholder instead, so the
+ * one example a tenant admin was handed after publishing taught them nothing about their own
+ * contract. When no schema is usable the derivation returns `null` and the lane falls back to the
+ * documented minimum — an empty `{}` would read as "this route takes an empty body", which is
+ * false everywhere here.
+ *
+ * **Lane C.** Four tabs — Node · Browser · HTTP · Postman — each of which shows a real example OR
+ * explains its absence on its own terms. Two browser cells genuinely do not exist: `@arcaai/vox`
+ * has no path by slug for `TEXT_TO_SPEECH` (its TTS hooks select by `voice` against the legacy
+ * `speech/synthesize`) or for batch `SPEECH_TO_TEXT` (`FileTranscriptionService` posts a pipeline
+ * id). Those render as named absences. Inventing a snippet for a route the SDK cannot reach is
+ * the worst thing this panel could do, because it carries the authority of the product.
+ *
+ * The callouts above the tabs carry the two facts no snippet can state for itself: the agent
+ * plane's body is FLAT and the workflow plane's is ENVELOPED (mixing them is a 400 on every
+ * call), and a workflow run over a USER JWT additionally needs a CASL ability that the agent
+ * routes do not require — so the same person who can invoke an agent may get a 403 here.
  */
+import { useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { IconAlertTriangle, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
-import { Alert, AlertDescription, AlertTitle, Badge, FieldDescription, Skeleton } from '@arcaai/ui';
+import { IconAlertTriangle, IconDownload, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
+import { Alert, AlertDescription, AlertTitle, Badge, Button, FieldDescription, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui';
 import { GatewayError, getJson } from '@/shared/api';
 import { CopyButton } from '@/shared/copy-button';
-import { agentVoxNodeSnippet, workflowVoxNodeSnippet, type SdkSnippetAgentTask } from '@/shared/docs/sdk-snippets';
+import { publicEnv } from '@/config/public-env';
+import { exampleBodyFromJsonSchema } from '@/shared/docs/example-body';
+import { buildPostmanCollection, type PostmanCollection } from '@/shared/docs/postman-collection';
+import {
+  agentCurlSnippet,
+  agentVoxNodeSnippet,
+  agentVoxSnippet,
+  workflowCurlSnippet,
+  workflowVoxNodeSnippet,
+  workflowVoxSnippet,
+  type AgentSnippetOptions,
+  type SdkSnippetAgentTask,
+} from '@/shared/docs/sdk-snippets';
 
 const API_KEYS_HREF = '/api-keys';
 const SOCKET_MODE = 'socket';
 /** The ONLY palette the public invoke surface exposes (`EXPOSURE_ALLOWED_PALETTES` server-side). */
 export const EXPOSABLE_PALETTE_KEY = 'core';
+
+const NODE_LABEL = 'Node.js (@arcaai/vox-node) snippet';
+const BROWSER_LABEL = 'Browser (@arcaai/vox) snippet';
+const BROWSER_KEY_LABEL = 'Browser (@arcaai/vox) API-key variant';
+const CURL_LABEL = 'curl snippet';
+const POSTMAN_LABEL = 'Postman collection JSON';
 
 export type IntegrationAgentTask = 'TEXT_GENERATION' | 'SPEECH_TO_TEXT' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
@@ -58,19 +99,95 @@ function ApiKeysLink() {
   );
 }
 
-function Snippet({ snippet }: { snippet: string }) {
+function CodeBlock({ label, caption, code }: { label: string; caption?: string; code: string }) {
   return (
     <div>
-      <FieldDescription>Invoke it from a backend with @arcaai/vox-node</FieldDescription>
-      <div className="group/code relative mt-1" role="group" aria-label="Node.js (@arcaai/vox-node) snippet">
+      {caption ? <FieldDescription>{caption}</FieldDescription> : null}
+      <div className="group/code relative mt-1" role="group" aria-label={label}>
         <pre className="bg-muted text-foreground overflow-x-auto rounded-md border p-3 font-mono text-xs leading-relaxed">
-          <code>{snippet}</code>
+          <code>{code}</code>
         </pre>
         <div className="absolute top-2 right-2">
-          <CopyButton value={snippet} label="Copy the vox-node snippet" />
+          <CopyButton value={code} label={`Copy the ${label}`} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** A static aside, not a live region: `role="note"` so it is not announced on every re-render. */
+function Callout({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Alert role="note">
+      <IconInfoCircle aria-hidden />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
+  );
+}
+
+function LaneTabs({ node, browser, http, postman }: { node: ReactNode; browser: ReactNode; http: ReactNode; postman: ReactNode }) {
+  return (
+    <Tabs defaultValue="node" className="gap-3">
+      <TabsList variant="line">
+        <TabsTrigger value="node">Node</TabsTrigger>
+        <TabsTrigger value="browser">Browser</TabsTrigger>
+        <TabsTrigger value="http">HTTP</TabsTrigger>
+        <TabsTrigger value="postman">Postman</TabsTrigger>
+      </TabsList>
+      <TabsContent value="node" className="flex flex-col gap-3">
+        {node}
+      </TabsContent>
+      <TabsContent value="browser" className="flex flex-col gap-3">
+        {browser}
+      </TabsContent>
+      <TabsContent value="http" className="flex flex-col gap-3">
+        {http}
+      </TabsContent>
+      <TabsContent value="postman" className="flex flex-col gap-3">
+        {postman}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * Download the collection as a file the developer imports into their own Postman.
+ *
+ * The JSON is rendered in full beside the button on purpose: a downloadable file that a developer
+ * is about to run against their own tenant should be readable BEFORE it is imported, and it is the
+ * only way to see for yourself that no credential travels with it.
+ */
+function PostmanLane({ collection, slug }: { collection: PostmanCollection; slug: string }) {
+  const json = useMemo(() => JSON.stringify(collection, null, 2), [collection]);
+  const fileName = `hope-${slug}.postman_collection.json`;
+
+  function download() {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <>
+      <p className="text-muted-foreground text-xs">
+        Import this, then fill the <code className="font-mono">apiKey</code> collection variable in your own Postman environment. It ships EMPTY — the console
+        never holds your key, and a downloaded file travels through chat threads and tickets.
+      </p>
+      <div>
+        <Button type="button" variant="outline" size="sm" onClick={download}>
+          <IconDownload aria-hidden />
+          Download the Postman collection
+        </Button>
+      </div>
+      <CodeBlock label={POSTMAN_LABEL} code={json} />
+    </>
   );
 }
 
@@ -99,12 +216,65 @@ export interface AgentIntegrationProps {
   versionNumber?: number;
   /** Whether that version is the active one. Default `true`. */
   isActive?: boolean;
+  /**
+   * The agent's own declared input (`Agent.inputSchema`). Every lane's example body derives from
+   * it; `null`/absent falls back to the documented flat minimum rather than an empty object.
+   */
+  inputSchema?: Record<string, unknown> | null;
 }
 
-function AgentIntegration({ slug, task, versionNumber, isActive = true }: AgentIntegrationProps) {
+/** The two agent tasks `@arcaai/vox` cannot reach BY SLUG, and what it does instead. */
+function BrowserAbsence({ task }: { task: IntegrationAgentTask }) {
+  return (
+    <Alert role="note">
+      <IconInfoCircle aria-hidden />
+      <AlertTitle>No browser path by slug</AlertTitle>
+      <AlertDescription>
+        {task === 'TEXT_TO_SPEECH' ? (
+          <p>
+            <code className="font-mono">@arcaai/vox</code> synthesizes through <code className="font-mono">useTtsPlayback</code> /{' '}
+            <code className="font-mono">useTtsStream</code>, which select a <code className="font-mono">voice</code> against{' '}
+            <code className="font-mono">speech/synthesize</code> — the legacy route — and never name a published agent.
+          </p>
+        ) : (
+          <>
+            <p>
+              Realtime speech-to-text is a CAPTURE session, not an invocation:{' '}
+              <code className="font-mono">{'audio.start({ agentSlug })'}</code> streams the microphone to the gateway, which resolves the agent there.
+            </p>
+            <p>
+              A recorded file goes to <code className="font-mono">audio/transcription-jobs/transcribe</code>, which still selects a pipeline id rather than an
+              agent slug.
+            </p>
+          </>
+        )}
+        <p>There is no browser call that names this agent, so this panel writes none. The Node and HTTP lanes reach it by slug from a server.</p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema }: AgentIntegrationProps) {
   const endpoint = AGENT_ENDPOINTS[task];
   const path = `${endpoint.method} ${endpoint.path.replace('{slug}', slug)}`;
-  const snippet = agentVoxNodeSnippet(slug, snippetTaskOf(task));
+  const snippetTask = snippetTaskOf(task);
+  // `inputSchema` governs the INVOCATIONS body. `/speech` and `/transcriptions` take a fixed
+  // gateway shape (`{ text | ssml }`, `{ mediaId, … }`) the agent's own schema does not describe,
+  // so deriving one for them would be a guess dressed as a contract.
+  const invocable = snippetTask === 'TEXT_GENERATION';
+  const exampleBody = invocable ? exampleBodyFromJsonSchema(inputSchema) : null;
+  // NER shares the route but is one-shot: `?mode=stream` on it is a 400 `MODE_UNSUPPORTED`.
+  const options: AgentSnippetOptions = { exampleBody, streamable: task === 'TEXT_GENERATION' };
+
+  const collection = buildPostmanCollection({
+    kind: 'agent',
+    slug,
+    task: snippetTask,
+    // The per-task routes (`/speech`, `/transcriptions`) are the builder's to select — lane D.
+    exampleBody: invocable ? exampleBody : null,
+    baseUrl: publicEnv.apiHost,
+  });
+
   return (
     <div className="flex flex-col gap-4">
       {!isActive ? <NotActiveNote slug={slug} /> : null}
@@ -122,7 +292,55 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true }: AgentI
           {isActive && versionNumber ? ` (v${versionNumber}, this one)` : ''}. Reach it on an API key holding the business-plane scopes — never the admin plane.
         </p>
       </div>
-      <Snippet snippet={snippet} />
+
+      {/* Every agent route is flat, not only `invocations` — so the warning is not conditional,
+          only the field list is. A developer holding both an agent slug and a workflow slug is
+          exactly the person who will wrap this one by mistake. */}
+      <Callout title="The body is flat">
+        {invocable ? (
+          <p>
+            This route reads <code className="font-mono">text</code>, <code className="font-mono">variables</code> and <code className="font-mono">context</code>{' '}
+            at the top level, plus whatever this agent&apos;s own input schema declares.
+          </p>
+        ) : task === 'TEXT_TO_SPEECH' ? (
+          <p>
+            This route reads <code className="font-mono">text</code> — or <code className="font-mono">ssml</code> instead — at the top level, and answers audio
+            rather than JSON.
+          </p>
+        ) : (
+          <p>
+            This route reads <code className="font-mono">mediaId</code> at the top level, optionally with <code className="font-mono">consultationId</code> and{' '}
+            <code className="font-mono">language</code>.
+          </p>
+        )}
+        <p>
+          The <code className="font-mono">{'{ "input": … }'}</code> envelope belongs to the workflow plane; sending it here is a 400 on every call.
+        </p>
+      </Callout>
+
+      <LaneTabs
+        node={<CodeBlock label={NODE_LABEL} caption="Invoke it from a backend with @arcaai/vox-node" code={agentVoxNodeSnippet(slug, snippetTask, options)} />}
+        browser={
+          invocable ? (
+            <>
+              <CodeBlock label={BROWSER_LABEL} caption="Call it from a React app with @arcaai/vox" code={agentVoxSnippet(slug, 'accessToken', options)} />
+              <CodeBlock label={BROWSER_KEY_LABEL} code={agentVoxSnippet(slug, 'apiKey', options)} />
+              <p className="text-muted-foreground text-xs">
+                Prefer the signed-in user&apos;s session. A key shipped in a browser bundle is readable by anyone who opens the page — if you need one anyway,
+                mint it with <code className="font-mono">agent:invocation:write</code> alone, which bounds what a lifted key can do to invoking agents.
+              </p>
+            </>
+          ) : (
+            <BrowserAbsence task={task} />
+          )
+        }
+        http={
+          <>
+            <CodeBlock label={CURL_LABEL} caption="Any HTTP client — the same body, on the api/v1 prefix" code={agentCurlSnippet(slug, snippetTask, options)} />
+          </>
+        }
+        postman={<PostmanLane collection={collection} slug={slug} />}
+      />
       <ApiKeysLink />
     </div>
   );
@@ -145,6 +363,13 @@ export interface WorkflowIntegrationProps {
 
 interface WorkflowRunSchemaLike {
   modes?: string[];
+  /** OpenAPI 3.1 entries keyed `Workflow_<slug>_Input` / `_Output` — the run body's real shape. */
+  components?: Record<string, Record<string, unknown>>;
+}
+
+/** `discharge-summary` → `Workflow_discharge_summary_Input` (component names are `^[a-zA-Z0-9.\-_]+$`). */
+function inputComponentName(slug: string): string {
+  return `Workflow_${slug.replace(/[^A-Za-z0-9_]/g, '_')}_Input`;
 }
 
 /** The resolved run contract of a published + active + exposable workflow. 404 = not exposed. */
@@ -224,6 +449,10 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
 
   const runPath = `POST /workflows/${slug}/runs`;
   const modes = (schema.data?.modes ?? []).filter((mode) => mode !== SOCKET_MODE);
+  // The schema response carried the run body's real shape all along; the panel used to read
+  // `modes` and drop the rest (TASK-971 F-B1).
+  const exampleBody = exampleBodyFromJsonSchema(schema.data?.components?.[inputComponentName(slug)]);
+  const collection = buildPostmanCollection({ kind: 'workflow', slug, modes, exampleBody, baseUrl: publicEnv.apiHost });
 
   return (
     <div className="flex flex-col gap-4">
@@ -245,7 +474,33 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
           </div>
         </div>
       ) : null}
-      <Snippet snippet={workflowVoxNodeSnippet(slug)} />
+
+      <Callout title="The body is enveloped">
+        A run takes <code className="font-mono">{'{ "input": { … } }'}</code>; the agent plane takes its input flat, and mixing the two is a 400 on every call.{' '}
+        <code className="font-mono">input</code> may not carry <code className="font-mono">consultationId</code>,{' '}
+        <code className="font-mono">externalPatientId</code>, <code className="font-mono">userId</code>, <code className="font-mono">jobId</code> or{' '}
+        <code className="font-mono">sessionId</code> — the server stamps those itself.
+      </Callout>
+      <Callout title="A user session is not enough">
+        Over a user JWT, starting a run needs the <code className="font-mono">create:WorkflowRun</code> ability (
+        <code className="font-mono">read:WorkflowRun</code> for the status read and the stream ticket). An API key carrying{' '}
+        <code className="font-mono">workflow:run:write</code> is unaffected — so someone who can invoke an agent may still get a 403 here.
+      </Callout>
+
+      <LaneTabs
+        node={<CodeBlock label={NODE_LABEL} caption="Run it from a backend with @arcaai/vox-node" code={workflowVoxNodeSnippet(slug, exampleBody)} />}
+        browser={
+          <>
+            <CodeBlock label={BROWSER_LABEL} caption="Start and follow a run from a React app with @arcaai/vox" code={workflowVoxSnippet(slug, exampleBody)} />
+            <p className="text-muted-foreground text-xs">
+              The browser starts a run asynchronously and watches it. Holding a blocking fetch open against the gateway&apos;s ~60s ceiling from a UI thread, or
+              putting the whole event stream on a POST that cannot be resumed, are both worse than the 202-then-watch it does instead.
+            </p>
+          </>
+        }
+        http={<CodeBlock label={CURL_LABEL} caption="Any HTTP client — start, read, follow" code={workflowCurlSnippet(slug, exampleBody, modes)} />}
+        postman={<PostmanLane collection={collection} slug={slug} />}
+      />
       <ApiKeysLink />
     </div>
   );
