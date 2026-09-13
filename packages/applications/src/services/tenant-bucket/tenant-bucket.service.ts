@@ -1,4 +1,5 @@
 import {
+  isPlatformBucket,
   ResourceType,
   SysEventType,
   TenantBucketFactory,
@@ -39,6 +40,18 @@ const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
 interface TreeNodeAccumulator {
   node: TenantBucketTreeNodeResponse;
   children: Map<string, TreeNodeAccumulator>;
+}
+
+/**
+ * Whether a provider error means "the bucket is not there" — the one bucket
+ * removal failure that still counts as reaching the desired end state. Same
+ * discrimination `S3BlobProvider.bucketExists` already makes; Azure's
+ * `deleteIfExists` never surfaces this shape at all.
+ */
+function isBucketAlreadyGone(error: unknown): boolean {
+  const status = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+  const name = (error as { name?: string })?.name;
+  return status === 404 || name === 'NotFound' || name === 'NoSuchBucket';
 }
 
 @Injectable()
@@ -119,6 +132,10 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       tenantName: tenantNameById.get(bucket.tenantId) ?? null,
       registered: true,
       physicalMissing: !physicalByName.has(bucket.name),
+      // A registered row can only carry a platform name if one was adopted
+      // before `adoptPhysicalBucket`'s guard existed — flag it rather than
+      // hide it, so the console can show what needs unwinding.
+      platform: isPlatformBucket(bucket.name),
     }));
 
     const unregistered: TenantBucketPhysicalResponse[] = physicalBuckets
@@ -130,6 +147,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
         tenantName: null,
         registered: false,
         physicalMissing: false,
+        platform: isPlatformBucket(bucket.name),
       }));
 
     const combined = [...registered, ...unregistered];
@@ -413,6 +431,13 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
 
     const bucket = TenantBucketFactory.CreateCustomBucket(tenantId, tenant.key as string, dto.slug, dto.description, userId ?? undefined);
 
+    // The DERIVED name is checked, not the slug: `buildBucketName` produces
+    // `hope-<slug>-<tenantKey>`, so a tenant keyed `chunks` asking for slug
+    // `audio` lands exactly on the global `hope-audio-chunks`. Without this
+    // the create would adopt STT's streaming-chunk bucket as a tenant bucket
+    // and hand that tenant a delete button for it.
+    this.assertNotPlatformBucket(bucket.name, 'used as a tenant bucket name');
+
     try {
       await this.blobStorage.createBucket(bucket.name);
     } catch (error) {
@@ -450,6 +475,12 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
    * tenant-owned management routes stay 404 for non-tenant callers.
    */
   async registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null> {
+    // A platform bucket is never tenant-ownable. Rejected BEFORE the
+    // no-tenant-context early return: a platform admin creating
+    // `hope-models` through `POST /storage/buckets` must get an error, not a
+    // silent skip that leaves an untracked physical bucket behind.
+    this.assertNotPlatformBucket(name, 'registered to a tenant');
+
     const tenantId = this.tenantId;
     if (!tenantId) {
       this.logger.debug(`registerBucket skipped for '${name}': no tenant context (platform-level caller)`);
@@ -477,6 +508,77 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     return TenantBucketDtoMapper.toResponse(saved);
   }
 
+  /**
+   * Refuse any write that would make a PLATFORM bucket tenant-owned (or
+   * destroy it). Shared by `registerBucket`, `adoptPhysicalBucket` and
+   * `deleteBucket` so the three entry points cannot drift apart.
+   */
+  private assertNotPlatformBucket(name: string, action: string): void {
+    if (!isPlatformBucket(name)) return;
+    throw new BadRequestException(
+      `'${name}' is a platform bucket and cannot be ${action}. It is owned by the platform (model weights, MLflow artifacts, backups or the workflow claim check), not by any tenant.`,
+    );
+  }
+
+  /**
+   * Adopt an EXISTING physical bucket into a tenant — the admin-plane
+   * counterpart of `registerBucket`, which can only ever attribute a bucket
+   * to the caller's own tenant context.
+   *
+   * The storage browser's "All tenants" view is an UNSCOPED platform admin
+   * (`listBucketsCrossTenantWithPhysical` rejects a tenant-bound caller
+   * outright), so there is no ambient tenant to inherit and the owning
+   * tenant arrives explicitly — the same shape `provisionSystemBuckets`
+   * already uses for the same reason.
+   *
+   * Adoption is REGISTRY-ONLY: the physical bucket already exists and is left
+   * exactly as it is. Nothing is created, moved or rewritten.
+   */
+  async adoptPhysicalBucket(name: string, tenantId: string, description?: string): Promise<TenantBucketResponse> {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Bucket name is required');
+    }
+    this.assertNotPlatformBucket(trimmed, 'registered to a tenant');
+
+    const tenant = await this.tenantRepository.findById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant ${tenantId} not found`);
+    }
+
+    const existing = await this.tenantBucketRepository.findByName(trimmed);
+    if (existing) {
+      // Idempotent for the same owner; a different owner is a conflict the
+      // caller must resolve, never a silent re-attribution.
+      if (existing.tenantId !== tenantId) {
+        throw new BadRequestException(`Bucket '${trimmed}' is already registered to another tenant`);
+      }
+      return TenantBucketDtoMapper.toResponse(existing);
+    }
+
+    // Adopt only what the provider actually has: registering a name with no
+    // physical bucket behind it manufactures a row that every object route
+    // then 404s on, which is the `physicalMissing` state the browser exists
+    // to surface — not something an adopt action should create.
+    const physicalBuckets = await this.s3Service.listAllBuckets();
+    if (!physicalBuckets.some((bucket) => bucket.name === trimmed)) {
+      throw new NotFoundException(`No physical bucket named '${trimmed}' exists in the storage provider`);
+    }
+
+    const bucket = TenantBucketFactory.CreateNamedBucket(tenantId, trimmed, description, this.requestUserId ?? undefined);
+    const saved = await this.tenantBucketRepository.create(bucket);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { slug: saved.slug, name: saved.name, tenantId, adopted: true },
+    });
+
+    this.logger.log({ message: 'Adopted an existing physical bucket', bucketName: saved.name, tenantId });
+
+    return TenantBucketDtoMapper.toResponse(saved);
+  }
+
   async deleteBucket(id: string): Promise<TenantBucketResponse> {
     const bucket = await this.tenantBucketRepository.findById(id);
     if (!bucket) {
@@ -487,17 +589,38 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new ForbiddenException('System buckets cannot be deleted');
     }
 
+    // `CreateNamedBucket` stamps CUSTOM, so an adopted platform bucket (one
+    // registered before the guard above existed) would otherwise pass the
+    // system-bucket check and reach `blobStorage.deleteBucket`.
+    this.assertNotPlatformBucket(bucket.name, 'deleted');
+
     // Remove the physical bucket/container via the tenant-resolved provider
-    // (S3/MinIO/Azure). Best-effort: a provider hiccup (bucket already gone,
-    // eventual consistency) must not strand the logical row — the soft-delete
-    // below still runs so the tenant stops seeing the bucket.
+    // (S3/MinIO/Azure). A bucket that is ALREADY GONE is the one tolerable
+    // failure — the desired end state is reached, so the soft-delete proceeds
+    // rather than stranding a row that points at nothing.
+    //
+    // Every other provider failure is re-raised instead of being swallowed.
+    // Swallowing it soft-deletes the row while the bucket survives, so the
+    // registry says "deleted" and the objects are still there, reachable by
+    // anything holding credentials — a divergence nothing downstream can
+    // detect. Object lock (`hope-models`) and a non-empty bucket both land
+    // here, and both are exactly the cases an operator must be told about.
     try {
       await this.blobStorage.deleteBucket(bucket.name);
     } catch (error) {
+      if (!isBucketAlreadyGone(error)) {
+        this.logger.error({
+          message: 'Provider bucket removal failed; refusing to soft-delete the row',
+          bucketName: bucket.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw new BadRequestException(
+          `Could not remove the physical bucket '${bucket.name}': ${error instanceof Error ? error.message : String(error)}. The bucket record was left in place so it keeps matching what is actually in storage.`,
+        );
+      }
       this.logger.warn({
-        message: 'Provider bucket removal failed; continuing with soft-delete',
+        message: 'Provider bucket was already gone; continuing with soft-delete',
         bucketName: bucket.name,
-        error: error instanceof Error ? error.message : String(error),
       });
     }
 

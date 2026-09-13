@@ -243,6 +243,28 @@
         },
         "type": "object"
       },
+      "AdoptTenantBucketRequest": {
+        "properties": {
+          "description": {
+            "description": "Bucket description",
+            "type": "string"
+          },
+          "name": {
+            "description": "Existing physical bucket name, exactly as the provider reports it",
+            "example": "legacy-exports",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant that will own the bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "tenantId"
+        ],
+        "type": "object"
+      },
       "AgentAssignmentResponse": {
         "properties": {
           "agentSlug": {
@@ -2680,6 +2702,10 @@
           },
           "physicalMissing": {
             "description": "True when a registered bucket has no matching physical bucket in the provider (includePhysical only)",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "True for a platform-owned bucket that can never be tenant-owned — model weights, MLflow artifacts, backups, the workflow claim check (includePhysical only)",
             "type": "boolean"
           },
           "registered": {
@@ -46297,6 +46323,49 @@
           }
         ],
         "summary": "Provision system buckets for a tenant (admin only)",
+        "tags": [
+          "tenant-storage"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/storage/buckets/register": {
+      "post": {
+        "description": "Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.",
+        "operationId": "TenantBucketController_adoptBucket",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptTenantBucketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Bucket registered to the tenant"
+          },
+          "400": {
+            "description": "Platform bucket, or a name already registered to another tenant"
+          },
+          "404": {
+            "description": "Tenant not found, or no physical bucket with that name"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Adopt an existing physical bucket into a tenant",
         "tags": [
           "tenant-storage"
         ]

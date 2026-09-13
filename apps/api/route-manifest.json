@@ -8815,6 +8815,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "TenantBucketController",
+      "handler": "adoptBucket",
+      "method": "POST",
+      "path": "/api/v1/admin/tenants/storage/buckets/register",
+      "routePath": "/admin/tenants/storage/buckets/register",
+      "svcScopes": [
+        "svc:admin:tenant-storage:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "create",
+          "Storage"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "TenantStorageConfigAdminController",
       "handler": "listConfigs",
       "method": "GET",

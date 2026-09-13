@@ -1,4 +1,5 @@
 import {
+  AdoptTenantBucketRequest,
   CreateTenantBucketRequest,
   DeleteTenantBucketObjectResponse,
   ITenantBucketService,
@@ -98,6 +99,23 @@ export class TenantBucketController {
   @CanCreate('Storage')
   async createBucket(@Body() request: CreateTenantBucketRequest): Promise<TenantBucketResponse> {
     return this.tenantBucketService.createCustomBucket(request);
+  }
+
+  // Declared before `@Delete(':id')`/`@Get(':id')` siblings is irrelevant for a
+  // POST, but the literal `register` segment still must not collide with a
+  // future `@Post(':id')` — keep it adjacent to the other literal routes.
+  @Post('register')
+  @ApiOperation({
+    summary: 'Adopt an existing physical bucket into a tenant',
+    description:
+      'Registry-only: the physical bucket must already exist and is left untouched. The owning tenant is explicit because the storage browser view that surfaces adoptable buckets is an unscoped platform admin. Platform buckets (model weights, MLflow artifacts, backups, the workflow claim check) are rejected.',
+  })
+  @ApiResponse({ status: 201, description: 'Bucket registered to the tenant' })
+  @ApiResponse({ status: 400, description: 'Platform bucket, or a name already registered to another tenant' })
+  @ApiResponse({ status: 404, description: 'Tenant not found, or no physical bucket with that name' })
+  @CanCreate('Storage')
+  async adoptBucket(@Body() request: AdoptTenantBucketRequest): Promise<TenantBucketResponse> {
+    return this.tenantBucketService.adoptPhysicalBucket(request.name, request.tenantId, request.description);
   }
 
   @Delete(':id')

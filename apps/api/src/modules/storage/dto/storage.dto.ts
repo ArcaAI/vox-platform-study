@@ -51,7 +51,7 @@ export class BucketInfoResponse {
   @ApiPropertyOptional({ description: 'Bucket creation date' })
   creationDate?: string;
 
-  // The four fields below are populated ONLY when `?includePhysical=true`
+  // The five fields below are populated ONLY when `?includePhysical=true`
   // (TASK-932 storage browser "All tenants" view, unscoped platform admin
   // only) — absent otherwise, so the plain listing stays byte-identical.
   @ApiPropertyOptional({ description: 'Owning tenant ID (includePhysical only; null for an unregistered physical bucket)', nullable: true })
@@ -65,6 +65,12 @@ export class BucketInfoResponse {
 
   @ApiPropertyOptional({ description: 'True when a registered bucket has no matching physical bucket in the provider (includePhysical only)' })
   physicalMissing?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'True for a platform-owned bucket that can never be tenant-owned — model weights, MLflow artifacts, backups, the workflow claim check (includePhysical only)',
+  })
+  platform?: boolean;
 }
 
 export class DeleteBucketResponse {

@@ -5,7 +5,9 @@
  * a Tenant column and a registered/unregistered badge. Browsing works for a
  * registered bucket (read-only — no upload/download/delete surface); an
  * unregistered physical bucket only offers a "Register" link out to
- * `/tenants/storage`.
+ * `/tenants/storage`, carrying its name so the destination can prefill.
+ * A PLATFORM bucket (`hope-models` and friends) is never tenant-ownable and
+ * gets neither Browse nor Register.
  */
 
 import type { ReactNode } from 'react';
@@ -70,6 +72,16 @@ const ALL_TENANTS_BUCKETS: StorageBucketWithScope[] = [
     tenantName: null,
     registered: false,
     physicalMissing: false,
+    platform: false,
+  },
+  {
+    name: 'hope-models',
+    creationDate: '2026-03-02T08:00:00.000Z',
+    tenantId: null,
+    tenantName: null,
+    registered: false,
+    physicalMissing: false,
+    platform: true,
   },
 ];
 
@@ -157,9 +169,10 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
     expect(within(grid).getByText('orphan-bucket')).toBeDefined();
     expect(within(grid).getAllByText('Registered')).toHaveLength(2);
     expect(within(grid).getByText('Unregistered')).toBeDefined();
+    expect(within(grid).getByText('Platform')).toBeDefined();
 
     // Header meta: bucket + tenant counts.
-    expect(await screen.findByText(/3 buckets/)).toBeDefined();
+    expect(await screen.findByText(/4 buckets/)).toBeDefined();
     expect(screen.getByText(/2 tenants/)).toBeDefined();
   });
 
@@ -195,7 +208,26 @@ describe('StorageBrowserScreen — "All tenants" view (TASK-932)', () => {
     const orphanRow = orphanCell.closest('[role="row"]') as HTMLElement;
     expect(within(orphanRow).queryByRole('button', { name: 'Browse' })).toBeNull();
     const registerLink = within(orphanRow).getByRole('link', { name: /register/i });
-    expect(registerLink.getAttribute('href')).toBe('/tenants/storage');
+    // The name rides along: without it the operator lands on a list that does
+    // not contain this bucket and has nothing to act on.
+    expect(registerLink.getAttribute('href')).toBe('/tenants/storage?register=orphan-bucket');
+  });
+
+  // `hope-models` is an object-locked weights bucket with its own MinIO
+  // identities. Offering "Register" advertised an adoption the gateway
+  // rejects, and pointed at a screen that could not perform it.
+  it('gives a platform bucket neither Browse nor Register, and badges it Platform', async () => {
+    stubAllTenants();
+    renderAllTenantsScreen();
+
+    const grid = await screen.findByRole('grid', { name: 'Storage buckets across all tenants' });
+    const platformCell = await within(grid).findByText('hope-models');
+    const platformRow = platformCell.closest('[role="row"]') as HTMLElement;
+
+    expect(within(platformRow).getByText('Platform')).toBeDefined();
+    expect(within(platformRow).queryByText('Unregistered')).toBeNull();
+    expect(within(platformRow).queryByRole('button', { name: 'Browse' })).toBeNull();
+    expect(within(platformRow).queryByRole('link', { name: /register/i })).toBeNull();
   });
 
   it('m6 — the "Register" link carries a persistent underline, not a hover-only one', async () => {

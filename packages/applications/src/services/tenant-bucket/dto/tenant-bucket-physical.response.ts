@@ -25,4 +25,12 @@ export class TenantBucketPhysicalResponse {
 
   @ApiProperty({ description: 'True when a registered TenantBucket row has no matching physical bucket in the provider' })
   physicalMissing: boolean;
+
+  /**
+   * A platform bucket is never `registered` and can never become registered —
+   * the console renders it as "Platform" rather than "Unregistered" so it does
+   * not advertise an adoption that `adoptPhysicalBucket` would reject.
+   */
+  @ApiProperty({ description: 'True for a platform-owned bucket (weights, MLflow artifacts, claim check, backups) that can never be tenant-owned' })
+  platform: boolean;
 }

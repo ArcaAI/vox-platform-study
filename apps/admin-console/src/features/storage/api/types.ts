@@ -28,6 +28,18 @@ export interface CreateBucketRequest {
   pathPattern?: string;
 }
 
+/**
+ * POST .../buckets/register — adopt an EXISTING physical bucket into a tenant.
+ * Registry-only; the bucket itself is untouched. `tenantId` is explicit
+ * because the storage browser view that surfaces adoptable buckets runs as an
+ * unscoped platform admin with no working tenant to inherit.
+ */
+export interface AdoptBucketRequest {
+  name: string;
+  tenantId: string;
+  description?: string;
+}
+
 /** GET/PUT .../buckets/defaults. */
 export interface BucketDefaults {
   audio: TenantBucket | null;

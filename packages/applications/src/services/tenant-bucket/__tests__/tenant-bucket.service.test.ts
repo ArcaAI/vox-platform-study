@@ -121,6 +121,19 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
         createdAt: new Date(),
         updatedAt: new Date(),
       })),
+      CreateNamedBucket: vi.fn((tenantId, name, desc, createdBy) => ({
+        id: `new-named-${name}`,
+        tenantId,
+        name,
+        slug: name,
+        description: desc ?? null,
+        bucketType: BUCKET_TYPE_CUSTOM,
+        pathPattern: '{yyyy}/{MM}/{dd}/{user_name}',
+        isSystemBucket: false,
+        createdBy: createdBy ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
       CreateDefaultSystemBuckets: vi.fn((tenantId, tenantKey) => [
         {
           id: 'new-system-attachments',
@@ -323,8 +336,169 @@ describe('TenantBucketService', () => {
 
       expect(mockTenantRepository.findAll).not.toHaveBeenCalled();
       expect(result).toEqual([
-        { name: 'orphan-bucket', creationDate: '2026-01-03T00:00:00.000Z', tenantId: null, tenantName: null, registered: false, physicalMissing: false },
+        {
+          name: 'orphan-bucket',
+          creationDate: '2026-01-03T00:00:00.000Z',
+          tenantId: null,
+          tenantName: null,
+          registered: false,
+          physicalMissing: false,
+          platform: false,
+        },
       ]);
+    });
+  });
+
+  // The storage browser renders `platform` as its own badge and suppresses the
+  // register action for those rows, so the flag has to survive the merge.
+  describe('createCustomBucket — derived-name collision with a platform bucket', () => {
+    it('refuses when tenantKey + slug derive a platform bucket name', async () => {
+      // The mocked CreateCustomBucket mirrors the real `hope-<slug>-<key>`
+      // shape closely enough for the collision: name = `${tenantKey}-${slug}`.
+      mockTenantBucketRepository.findBySlug.mockResolvedValue(null);
+      mockTenantRepository.findById.mockResolvedValue({ id: 'tenant-1', key: 'hope-audio', name: 'Collide' });
+
+      await expect(service.createCustomBucket({ slug: 'chunks' } as never)).rejects.toThrow(BadRequestException);
+
+      expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('platform buckets in the cross-tenant listing', () => {
+    function asUnscopedSuperAdmin() {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return null;
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
+        return null;
+      });
+    }
+
+    it('flags a physical platform bucket rather than reporting it as merely unregistered', async () => {
+      asUnscopedSuperAdmin();
+      mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([]);
+      mockS3Service.listAllBuckets.mockResolvedValue([
+        { name: 'hope-models', creationDate: '2026-01-01T00:00:00.000Z' },
+        { name: 'harness-claim-check', creationDate: '2026-01-01T00:00:00.000Z' },
+        { name: 'legacy-exports', creationDate: '2026-01-02T00:00:00.000Z' },
+      ]);
+
+      const result = await service.listBucketsCrossTenantWithPhysical();
+
+      expect(result.find((row) => row.name === 'hope-models')).toMatchObject({ registered: false, platform: true });
+      expect(result.find((row) => row.name === 'harness-claim-check')).toMatchObject({ registered: false, platform: true });
+      // A genuinely orphaned tenant bucket stays adoptable.
+      expect(result.find((row) => row.name === 'legacy-exports')).toMatchObject({ registered: false, platform: false });
+    });
+
+    it('flags a registered row that carries a platform name, so pre-guard adoptions stay visible', async () => {
+      asUnscopedSuperAdmin();
+      mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([
+        createMockBucketEntity({ id: 'b1', tenantId: 'tenant-1', name: 'hope-models', bucketType: BUCKET_TYPE_CUSTOM, isSystemBucket: false }),
+      ]);
+      mockTenantRepository.findAll.mockResolvedValue([{ id: 'tenant-1', name: 'ArcaAI' }]);
+      mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'hope-models', creationDate: '2026-01-01T00:00:00.000Z' }]);
+
+      const result = await service.listBucketsCrossTenantWithPhysical();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ name: 'hope-models', registered: true, platform: true });
+    });
+  });
+
+  describe('registerBucket', () => {
+    it('refuses a platform bucket BEFORE the no-tenant-context skip, so a platform admin gets an error not a silent no-op', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+      await expect(service.registerBucket('hope-models')).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a platform bucket regardless of casing or surrounding whitespace', async () => {
+      await expect(service.registerBucket('  Hope-Models  ')).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('still registers an ordinary bucket for the caller tenant', async () => {
+      mockTenantBucketRepository.findByName.mockResolvedValue(null);
+      mockTenantBucketRepository.create.mockImplementation((bucket: unknown) => Promise.resolve(bucket));
+
+      const result = await service.registerBucket('legacy-exports');
+
+      expect(result).toMatchObject({ name: 'legacy-exports', tenantId: 'tenant-1' });
+    });
+  });
+
+  describe('adoptPhysicalBucket', () => {
+    beforeEach(() => {
+      mockTenantRepository.findById.mockResolvedValue({ id: 'tenant-2', key: 'global', name: 'Global' });
+      mockTenantBucketRepository.findByName.mockResolvedValue(null);
+      mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'legacy-exports', creationDate: '2026-01-02T00:00:00.000Z' }]);
+      mockTenantBucketRepository.create.mockImplementation((bucket: unknown) => Promise.resolve(bucket));
+    });
+
+    it('registers an existing physical bucket to the named tenant WITHOUT touching the bucket itself', async () => {
+      const result = await service.adoptPhysicalBucket('legacy-exports', 'tenant-2', 'Migrated exports');
+
+      expect(result).toMatchObject({ name: 'legacy-exports', tenantId: 'tenant-2' });
+      expect(mockTenantBucketRepository.create).toHaveBeenCalled();
+      // Registry-only: adoption must never create, delete or rewrite storage.
+      expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
+      expect(mockBlobStorage.deleteBucket).not.toHaveBeenCalled();
+    });
+
+    it('takes the owner from the argument, not from the ambient tenant context', async () => {
+      // The caller here is scoped to tenant-1 (see the outer beforeEach); the
+      // adopted bucket must still land on the tenant that was asked for.
+      const result = await service.adoptPhysicalBucket('legacy-exports', 'tenant-2');
+
+      expect(result.tenantId).toBe('tenant-2');
+    });
+
+    it('rejects a platform bucket', async () => {
+      mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'hope-models', creationDate: '2026-01-01T00:00:00.000Z' }]);
+
+      await expect(service.adoptPhysicalBucket('hope-models', 'tenant-2')).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank name', async () => {
+      await expect(service.adoptPhysicalBucket('   ', 'tenant-2')).rejects.toThrow(BadRequestException);
+    });
+
+    it('404s when the tenant does not exist', async () => {
+      mockTenantRepository.findById.mockResolvedValue(null);
+
+      await expect(service.adoptPhysicalBucket('legacy-exports', 'tenant-missing')).rejects.toThrow(NotFoundException);
+    });
+
+    // Registering a name with nothing behind it manufactures exactly the
+    // `physicalMissing` row the browser exists to surface.
+    it('404s when no physical bucket with that name exists', async () => {
+      mockS3Service.listAllBuckets.mockResolvedValue([{ name: 'something-else', creationDate: '2026-01-02T00:00:00.000Z' }]);
+
+      await expect(service.adoptPhysicalBucket('legacy-exports', 'tenant-2')).rejects.toThrow(NotFoundException);
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent for a bucket already registered to the same tenant', async () => {
+      mockTenantBucketRepository.findByName.mockResolvedValue(
+        createMockBucketEntity({ id: 'existing-1', tenantId: 'tenant-2', name: 'legacy-exports', isSystemBucket: false }),
+      );
+
+      const result = await service.adoptPhysicalBucket('legacy-exports', 'tenant-2');
+
+      expect(result.id).toBe('existing-1');
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to re-attribute a bucket already registered to a DIFFERENT tenant', async () => {
+      mockTenantBucketRepository.findByName.mockResolvedValue(
+        createMockBucketEntity({ id: 'existing-1', tenantId: 'tenant-9', name: 'legacy-exports', isSystemBucket: false }),
+      );
+
+      await expect(service.adoptPhysicalBucket('legacy-exports', 'tenant-2')).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.create).not.toHaveBeenCalled();
     });
   });
 
@@ -489,7 +663,11 @@ describe('TenantBucketService', () => {
       expect(mockTenantBucketRepository.softDelete).toHaveBeenCalledWith('custom-1');
     });
 
-    it('should still soft-delete the row when the provider bucket removal fails', async () => {
+    // Swallowing a live provider failure soft-deletes the row while the bucket
+    // survives — the registry says "deleted", the objects are still reachable,
+    // and nothing downstream can tell. Object lock (`hope-models`) and a
+    // non-empty bucket both land here.
+    it('refuses to soft-delete the row when the provider bucket removal genuinely fails', async () => {
       const customBucket = createMockBucketEntity({
         id: 'custom-1',
         name: 'hope-reports-arcaai',
@@ -500,10 +678,47 @@ describe('TenantBucketService', () => {
       mockTenantBucketRepository.softDelete.mockResolvedValue(customBucket);
       mockBlobStorage.deleteBucket.mockRejectedValue(new Error('provider unavailable'));
 
+      await expect(service.deleteBucket('custom-1')).rejects.toThrow(BadRequestException);
+      expect(mockTenantBucketRepository.softDelete).not.toHaveBeenCalled();
+    });
+
+    // The one tolerable failure: the desired end state is already reached, so
+    // the row must not be stranded pointing at nothing.
+    it.each([
+      ['a 404 $metadata status', Object.assign(new Error('gone'), { $metadata: { httpStatusCode: 404 } })],
+      ['a NoSuchBucket error name', Object.assign(new Error('gone'), { name: 'NoSuchBucket' })],
+      ['a NotFound error name', Object.assign(new Error('gone'), { name: 'NotFound' })],
+    ])('still soft-deletes the row when the provider reports the bucket is already gone (%s)', async (_label, providerError) => {
+      const customBucket = createMockBucketEntity({
+        id: 'custom-1',
+        name: 'hope-reports-arcaai',
+        bucketType: BUCKET_TYPE_CUSTOM,
+        isSystemBucket: false,
+      });
+      mockTenantBucketRepository.findById.mockResolvedValue(customBucket);
+      mockTenantBucketRepository.softDelete.mockResolvedValue(customBucket);
+      mockBlobStorage.deleteBucket.mockRejectedValue(providerError);
+
       const result = await service.deleteBucket('custom-1');
 
       expect(result.id).toBe('custom-1');
       expect(mockTenantBucketRepository.softDelete).toHaveBeenCalledWith('custom-1');
+    });
+
+    // `CreateNamedBucket` stamps CUSTOM, so an adopted platform bucket would
+    // otherwise pass the isSystemBucket check and reach the provider delete.
+    it('refuses to delete a platform bucket even though its row is CUSTOM', async () => {
+      const adoptedPlatform = createMockBucketEntity({
+        id: 'platform-1',
+        name: 'hope-models',
+        bucketType: BUCKET_TYPE_CUSTOM,
+        isSystemBucket: false,
+      });
+      mockTenantBucketRepository.findById.mockResolvedValue(adoptedPlatform);
+
+      await expect(service.deleteBucket('platform-1')).rejects.toThrow(BadRequestException);
+      expect(mockBlobStorage.deleteBucket).not.toHaveBeenCalled();
+      expect(mockTenantBucketRepository.softDelete).not.toHaveBeenCalled();
     });
   });
 
