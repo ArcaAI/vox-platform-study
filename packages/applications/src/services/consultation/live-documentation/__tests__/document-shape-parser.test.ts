@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildRunningSummary,
   buildStructuredSummary,
+  cleanSectionBody,
   NOT_DOCUMENTED_MARKER,
   parseDocumentJson,
   parseDocumentSections,
@@ -286,5 +287,50 @@ describe('buildStructuredSummary', () => {
     );
     // Nothing at all, but a template: the template, complete, every section unrecorded.
     expect(buildStructuredSummary([{ title: 'Subjective', content: '' }], SOAP)).toContain(`## Subjective\n${NOT_DOCUMENTED_MARKER}`);
+  });
+});
+
+describe('cleanSectionBody — the draft the finalizer reads is deduplicated and guidance-free (2026-09-13)', () => {
+  const GUIDANCE =
+    'Examination findings and vital signs measured at this visit — heart rate, blood pressure, temperature, respiratory rate, oxygen saturation. ' +
+    'A historical value may be reported for comparison only where the clinician referred to it today, and its date must appear beside it. Do not complete a partial set from the record.';
+
+  it('keeps each sentence once, at its first occurrence, across paragraphs (the restating-model pattern)', () => {
+    const body = [
+      'The clinician introduced the attending physician, Harris.',
+      '',
+      'The clinician introduced the attending physician, Harris. The clinician stated they would look at what was causing the headache and then do the general physical exam.',
+      '',
+      'The clinician introduced the attending physician, Harris. The clinician introduced the attending physician, Harris. The clinician stated they would look at what was causing the headache and then do the general physical exam.',
+    ].join('\n');
+    expect(cleanSectionBody(body)).toBe(
+      'The clinician introduced the attending physician, Harris.\n\nThe clinician stated they would look at what was causing the headache and then do the general physical exam.',
+    );
+  });
+
+  it("drops the section's own guidance sentences from the body and keeps the rest", () => {
+    const body = `${GUIDANCE}\n\nNo examination findings or vital signs were recorded in the new transcript.`;
+    expect(cleanSectionBody(body, GUIDANCE)).toBe('No examination findings or vital signs were recorded in the new transcript.');
+    expect(cleanSectionBody(GUIDANCE, GUIDANCE)).toBe('');
+  });
+
+  it('preserves bullets and numbering, dropping a bullet emptied by the clean', () => {
+    const body = '- Headache for three days.\n- Headache for three days.\n- Nothing has helped it.\n1. Rest advised.';
+    expect(cleanSectionBody(body)).toBe('- Headache for three days.\n- Nothing has helped it.\n1. Rest advised.');
+  });
+
+  it('is case- and punctuation-insensitive for the repeat check and leaves an ordinary body untouched', () => {
+    expect(cleanSectionBody('Pain 7/10. Pain 7/10')).toBe('Pain 7/10.');
+    expect(cleanSectionBody('BP 120/80!  BP 120/80.')).toBe('BP 120/80!');
+    expect(cleanSectionBody('Cough since Monday. Rest and fluids.')).toBe('Cough since Monday. Rest and fluids.');
+  });
+
+  it('feeds buildStructuredSummary: the snapshot the finalizer reads is cleaned, the running summary is not', () => {
+    const compiled = {
+      checklist: [{ key: 'exam', title: 'General Examination & Vitals', form: 'BULLETS', required: false, instruction: GUIDANCE }],
+    } as never;
+    const sections = [{ title: 'General Examination & Vitals', content: `${GUIDANCE}\n\nBP 120/80. BP 120/80.` }];
+    expect(buildStructuredSummary(sections, compiled)).toBe('## General Examination & Vitals\nBP 120/80.');
+    expect(buildRunningSummary(sections)).toContain(GUIDANCE);
   });
 });
