@@ -66,6 +66,10 @@ function makeService(repos: ReturnType<typeof makeRepos>, storageEvents: ReturnT
     findFirst: vi.fn().mockResolvedValue(latest ? { occurredAt: latest.occurredAt } : null),
     findMany: vi.fn().mockResolvedValue(storageEvents),
     aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: null } }),
+    // TASK-957 F-8 — `byTrigger` aggregates the raw ledger per trigger. No usage
+    // in these fixtures, so every bucket is empty and the summary's other
+    // figures are untouched.
+    groupBy: vi.fn().mockResolvedValue([]),
   };
   const cls = { get: vi.fn().mockReturnValue({ roles: ['TENANT_ADMIN'] }) };
   const service = new UsageAnalyticsService(

@@ -18,11 +18,11 @@ import { isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { resolveBillingAllowances } from '../billing/allowances';
 import { parseBillingPeriod } from '../billing/billing-period';
-import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryResponse } from './dto';
+import { CapabilityBurndownLine, TopTenantUsage, UsageSummaryLine, UsageSummaryOperationLine, UsageSummaryResponse, UsageSummaryTriggerLine } from './dto';
 import { BudgetBurndownResponse, CostPerEncounterResponse, TopTenantsResponse, UsageTimeseriesResponse } from './dto';
 import { UsageStorageSnapshotSummary } from './dto';
-import { STORAGE_CLASSES, type StorageClass } from '../usageLedger/usage-attributes';
-import { MeasurableRollup, QUANTITY_DECIMAL_PLACES, summariseMeasures } from './usage-measures';
+import { STORAGE_CLASSES, type StorageClass, USAGE_TRIGGERS } from '../usageLedger/usage-attributes';
+import { MeasurableRollup, QUANTITY_DECIMAL_PLACES, summariseByOperation, summariseMeasures } from './usage-measures';
 import { IUsageAnalyticsService, TopTenantsQuery, UsageTimeseriesQuery } from './IUsageAnalyticsService';
 import { projectCapabilityBurndown } from './budget-burndown';
 import { computeCostDistribution } from './percentile';
@@ -104,9 +104,10 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     );
     const totalCostMicros = lines.reduce((sum, line) => sum + BigInt(line.costMicros), 0n);
 
-    const [byokRows, storage] = await Promise.all([
+    const [byokRows, storage, byTrigger] = await Promise.all([
       this.aggregateRepository.sumByokNotionalByCapability(tenantId, billingPeriod.start, billingPeriod.end),
       this.readLatestStorageSnapshot(tenantId, billingPeriod.start, billingPeriod.end),
+      this.readUsageByTrigger(tenantId, billingPeriod.start, billingPeriod.end),
     ]);
     const byokNotionalCostMicrosByCapability = Object.fromEntries(byokRows.map((row) => [row.capability, row.costMicros.toString()]));
 
@@ -123,7 +124,66 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     response.workflowCpuSeconds = measures.workflowCpuSeconds;
     response.thirdPartyBytes = measures.thirdPartyBytes;
     response.storage = storage;
+    // TASK-957 F-8 — the SAME rollups, regrouped. `operation` is a rollup
+    // dimension, so this costs no extra read; `byTrigger` is not, which is why
+    // it was resolved above instead.
+    response.byOperation = summariseByOperation(rollups);
+    response.byTrigger = byTrigger;
     return response;
+  }
+
+  /**
+   * Usage per TRIGGER over the period, from the RAW ledger (TASK-957 F-8).
+   *
+   * `trigger` lives on `attributesJson` and is deliberately not a rollup
+   * dimension — adding one would multiply every rollup row by five for a facet
+   * nothing prices on. So this is the same structural exception as
+   * `readLatestStorageSnapshot` above and `MeteringService.countGuardrailCalls`:
+   * a bounded aggregate on the base client, with the tenant passed explicitly
+   * rather than taken from CLS.
+   *
+   * ONE AGGREGATE PER TRIGGER, and that is what makes "bounded" a fact rather
+   * than a hope: `USAGE_TRIGGERS` is a CLOSED vocabulary, so the query count is
+   * a constant and each one returns at most one row per unit. Postgres does the
+   * summing; nothing streams a month of ledger rows into this process.
+   *
+   * A trigger that produced nothing is OMITTED rather than zeroed — a zero row
+   * asserts "this activity ran and consumed nothing", which is a different
+   * claim from "this activity did not run".
+   */
+  private async readUsageByTrigger(tenantId: string, from: Date, to: Date): Promise<UsageSummaryTriggerLine[]> {
+    const lines = await Promise.all(
+      USAGE_TRIGGERS.map(async (trigger) => {
+        const groups = await this.databaseService.baseClient.aiUsageEvent.groupBy({
+          by: ['unit'],
+          where: {
+            tenantId,
+            occurredAt: { gte: from, lt: to },
+            attributesJson: { path: ['trigger'], equals: trigger },
+          },
+          _sum: { quantity: true },
+        });
+
+        const quantityByUnit: Record<string, string> = {};
+        for (const group of groups) {
+          const sum = group._sum?.quantity;
+          if (sum === null || sum === undefined) continue;
+          quantityByUnit[group.unit] = new Decimal(String(sum)).toFixed(QUANTITY_DECIMAL_PLACES);
+        }
+
+        const line = new UsageSummaryTriggerLine();
+        line.trigger = trigger;
+        line.quantityByUnit = quantityByUnit;
+        return line;
+      }),
+    );
+
+    // Sorted by NAME, not by the vocabulary's own declaration order: `lines` and
+    // `byOperation` on this same response are lexicographic, and one array that
+    // orders itself differently is a trap for anyone diffing two periods.
+    return lines
+      .filter((line) => Object.keys(line.quantityByUnit).length > 0)
+      .sort((a, b) => a.trigger.localeCompare(b.trigger));
   }
 
   /**
