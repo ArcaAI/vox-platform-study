@@ -22,7 +22,12 @@ import {
   TextRequestEnrichmentService,
   TENANTLESS,
   TENANT_ID_HEADER,
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
   tenantHeaderValue,
+  toLedgerProvider,
   DEFAULT_VISIT_TYPE_SERVICE,
   VisitTypeService,
   withUsageAttributes,
@@ -69,6 +74,7 @@ import type { AxiosError } from 'axios';
 import type { Readable } from 'node:stream';
 
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
+import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
@@ -657,7 +663,16 @@ export class TextProxyController {
       (err) => this.isConnectPhaseFailure(err),
     );
 
-    if (!streaming) return response.data;
+    // TASK-957 F-7a — the sync half of this route emitted NOTHING. Its STREAMING twin has
+    // metered since TASK-890, so the same playground, on the same platform credential, billed
+    // one of its two response modes and not the other. Emitted from HERE rather than from
+    // `generate()` because this is the ONE place a non-streaming TEXT generation lands — the
+    // assembled-prompt sibling routes through it too, and a second copy in each caller is a
+    // second chance to double-bill the same task id.
+    if (!streaming) {
+      this.emitSyncGenerationUsage(response.data);
+      return response.data;
+    }
 
     const taskId = await readGenerationId(response.data as Readable);
     return {
@@ -668,6 +683,101 @@ export class TextProxyController {
       stream_url: `text-generations/tasks/${encodeURIComponent(taskId)}/stream`,
       created_at: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Bill a NON-streaming TEXT generation (TASK-957 F-7a).
+   *
+   * The same shape as this controller's SSE teardown and as the agent plane's blocking
+   * invocation, and deliberately so — one route answering in two response modes must not bill
+   * two different ways:
+   *
+   *  · The key is TEXT's OWN `task_id` (`llm:<task_id>`), not a fresh gateway id. It is the only
+   *    join between a ledger row and TEXT's persisted task log, which is what a disputed invoice
+   *    is reconciled from, and it is what makes a redelivery converge instead of double-billing.
+   *  · `usage_detail` carries the cache-read/write and reasoning split, the endpoint kind and
+   *    service tier the rater picks price rows by, the connection id, TEXT's own clock, and the
+   *    compute/byte readings. The flat `usage` block carries two counts and would under-bill
+   *    every cloud model that reports a cache or a reasoning split.
+   *  · `guardrail_usage` is the screening call TEXT made on this request's behalf — COGS the
+   *    `GUARDRAIL_CALLS` meter never saw from this route (D16: metered, never invoiced).
+   *
+   * Fire-and-forget with a swallowed rejection, exactly like the stream path: the generation
+   * already happened and the caller already has its bytes, so a metering failure degrades to
+   * "not metered", never to a failed request.
+   */
+  private emitSyncGenerationUsage(data: unknown): void {
+    const tenantId = this.clsService.get('tenantId');
+    if (!this.usageLedger || !tenantId) return;
+    const ledger = this.usageLedger;
+
+    const body = (data ?? {}) as Record<string, unknown>;
+    const generation = parseTextUsageDetail(body.usage_detail);
+    const screening = parseTextUsageDetail(body.guardrail_usage);
+    // Nothing TEXT reported is billable — an older service, or a response that carried no usage
+    // block at all. Fabricating an `endpointKind` to reach the richer builder would stamp an API
+    // shape that never happened, so this records nothing rather than guessing.
+    if (!generation && !screening) return;
+
+    const emit = async (): Promise<void> => {
+      // How this call was SCREENED, for the generation row. The proxy pushes no opt-out
+      // (`applyTextModelSelection` leaves `enabled` absent and the PLATFORM posture governs), so
+      // the answer here can only ever be `screened` or `platform_off` — never `opted_out`.
+      const guardrail = await this.textRequestEnrichment.guardrailDisposition({ enabled: true });
+
+      const inputs: UsageEventBatchInput[] = [];
+      if (generation) {
+        inputs.push(
+          ...usageBatches(
+            buildLlmUsageBatches({
+              usage: generation,
+              tenantId,
+              operation: 'generate',
+              device: await this.llmDeviceFor(tenantId, generation),
+            }),
+            { guardrail },
+          ),
+        );
+      }
+      if (screening) {
+        // The screening call is its OWN provider call — its own operation, its own key, and its
+        // own device (a tenant may screen on one engine and generate on another). It carries NO
+        // `guardrail` disposition: stamping how a generation was screened onto the screening
+        // itself is circular.
+        inputs.push(
+          ...usageBatches(
+            buildGuardrailUsageBatches({
+              usage: screening,
+              tenantId,
+              fallbackRequestId: generation?.taskId ?? null,
+              device: await this.llmDeviceFor(tenantId, screening),
+            }),
+            {},
+          ),
+        );
+      }
+
+      for (const input of inputs) {
+        await ledger.recordUsage(input);
+      }
+    };
+
+    void emit().catch((error: unknown) => {
+      // TASK-957 F-5 — a `warn` alone is indistinguishable from noise at request volume, and an
+      // unbilled generation that only ever appears in a log is exactly the finding. The counter
+      // is the alertable half.
+      recordUsageEmissionFailure('generate');
+      this.logger.warn({
+        message: 'Usage metering failed for a sync TEXT generation',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  /** The device a parsed usage block's OWN provider ran on — see {@link llmDevice}. */
+  private async llmDeviceFor(tenantId: string, usage: { textProvider: string; byok: boolean }): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    return this.llmDevice(tenantId, provider, resolveDeployment(provider, usage.byok));
   }
 
   @Get('tasks/:taskId')
