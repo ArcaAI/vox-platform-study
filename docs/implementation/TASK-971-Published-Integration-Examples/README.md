@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — plan awaiting owner approval |
+| Status | **Review** — all six lanes merged on `dev-2.2` and gated; the §3.2 runtime pass is the one outstanding criterion (it needs an authenticated console session) |
 | Type | `feature` (+ one `bugfix` lane, A) |
 | Branch | `dev-2.2` |
 | Depends on | TASK-965 WS-1 (`shared/versioning/IntegrationPanel`, commit `fb0971e9e`) |
@@ -204,7 +204,79 @@ Six lanes. A is blocking and lands first; F is independent of B–E and may run 
 
 ## 4. Implementation Summary
 
-_Pending._
+Six lanes: A in the primary checkout, B–F in four parallel worktrees, merged by the orchestrator
+in dependency order. All worktrees merged and removed; no branch left behind.
+
+| Lane | Commits | Outcome |
+|---|---|---|
+| A — snippet correctness | `bdbc0ddd9` | F-A1 + F-A2 fixed; `sdk-snippets.drift.test.ts` pins every snippet to the real `@arcaai/vox-node` prototypes (`@arcaai/vox-node` added as an admin-console devDependency) |
+| D — Postman | `d453c053f`, merge `fad99e9ae` | Per-task agent routes, workflow follow-ups, `runId` capture script, deterministic output, no credential embedded. 35 tests |
+| B+C — panel | `7e1a536b8`, merge `163fba329` | `example-body.ts`; four tabs (Node · Browser · HTTP · Postman); schema-derived bodies; named absences for the two browser cells that do not exist; dialog sizing per rule 11 §3 |
+| — cross-lane fix | `51900f666` | See below |
+| F — spec truth | `ffdd0f34e`, `6c3b52f42`, merge `7fa20ad0b` | F-F1 + F-F2 fixed |
+| E — portal | `dd861b913`, `104ada30c`, merge `0951c0f6f` | `/developer/invoke`; the `@arcaai/vox` card filled; nav entry |
+| — unrelated, to unblock CI | `e490ab445` | See below |
+
+### Three defects found during integration that no lane owned
+
+1. **`51900f666` — a NER agent's Postman collection shipped a request the gateway refuses.** The
+   panel folds NER onto `TEXT_GENERATION` before calling `buildPostmanCollection` (they share the
+   route), so the builder could not distinguish them and emitted the `?mode=stream` request NER
+   answers with a 400 `MODE_UNSUPPORTED`. Lane D had anticipated it and added
+   `isNamedEntityRecognition`; the call site was never told to pass it. **The first version of that
+   test asserted `not.toContain('mode=stream')` and failed against correct code** — the surviving
+   blocking request explains the rule in prose. Assert on PARSED requests, never a substring.
+2. **`104ada30c` — lane E broke `next build`, and reported it as a pre-existing `packages/ui`
+   defect.** It is not: the same worktree with the same `packages/ui/dist` builds clean at the base
+   commit. `ScreenTemplate` and `StatusFooter` import `cn` from the `@arcaai/ui` BARREL, and
+   `invoke-guide-screen.tsx` was the one developer-docs screen without `'use client'`, so it pulled
+   `dist/index.mjs` into the Server Component graph.
+3. **`e490ab445` — not this ticket.** `pnpm --filter @arcaai/api lint` was already red on `dev-2.2`
+   from `ff0c74291` (TASK-969 L3): three prettier errors in `text-proxy.controller.ts`. Verified
+   pre-existing on a checkout lane F never touched. Formatting only.
+
+### A latent `packages/ui` defect, filed but NOT fixed here
+
+`packages/ui/tsup.config.ts` sets an esbuild `banner` of `"use client"` that never reaches the
+emitted `js`/`mjs` — it survives only in the `.map` files (0 of 18 dist bundles carry it). So the
+`@arcaai/ui` barrel cannot safely be imported from any Server Component by anyone. Real, separate,
+and out of scope; it is what made defect 2 possible rather than merely wrong.
+
+### Gates (post-merge, on `dev-2.2`)
+
+| Gate | Result |
+|---|---|
+| `npx vitest run` (admin-console, full) | **337 files, 3201 tests passed** |
+| `npx tsc --noEmit` (admin-console) | exit 0 |
+| `npx eslint src --max-warnings 0` | exit 0 |
+| `npx next build` (fully merged tree) | exit 0; `/developer/invoke` present (95 routes, was 94) |
+| `pnpm --filter @arcaai/api test` | **4593 passed, 4 skipped** |
+| `pnpm --filter @arcaai/api lint` | exit 0 (0 errors, 65 pre-existing warnings) |
+| `pnpm api:portal:check` | no drift (admin 665 ops, business 200 ops) |
+| `pnpm --filter @arcaai/vox-node gen:admin:check` | no drift (49 areas, 425 routes, 438 schemas) |
+| `pnpm api:openapi:check` | OK |
+
+Direct proof of lane F on the merged artifact:
+
+```
+POST /api/v1/agents/{slug}/invocations
+  security    : [{"bearer"},{"api-key"},{"service-account"}]   (was [{bearer},{bearer}])
+  requestBody : required, {context,text,variables}, additionalProperties: true  (was absent)
+operations repeating a scheme: 0                               (was 179)
+```
+
+`route-manifest.json` and `packages/vox-node/src/resources/admin/**` regenerated
+**byte-identical** — the proof that no authorization metadata and no SDK surface moved.
+
+### Not done
+
+- **The §3.2 runtime pass.** Publishing an agent and a workflow, walking all four tabs and
+  importing a generated collection needs an authenticated tenant-admin session; the assistant does
+  not enter passwords into login forms. The dev stack was up and healthy throughout (console 307 →
+  login, gateway `/health` 200), so the merged code compiles and serves.
+- **Two failures deliberately left alone**: `membership-bounded-sync.integration.test.ts` needs the
+  live test DB the orchestrator owns; `parameters-form.test.tsx` was another session's uncommitted
+  TASK-970 work mid-flight (it passes now that they committed, `05078144b`).
 
 ---
 
@@ -213,3 +285,4 @@ _Pending._
 | Date | Entry |
 |---|---|
 | 2026-09-13 | Ticket opened. Two read-only explorations (public invoke contract; browser SDK surface) + direct verification of every P1. Owner decided OD-1…OD-4. Plan written; awaiting approval. |
+| 2026-09-13 | Owner approved the plan. Lane A landed in the primary checkout; lanes B–F ran in four parallel worktrees (tiered opus/sonnet per rule 14 §1) and were merged in order postman → panel → openapi → portal, with gates re-run after each. Three integration defects found and fixed (§4). Status → Review; the runtime pass is the one criterion outstanding. |
