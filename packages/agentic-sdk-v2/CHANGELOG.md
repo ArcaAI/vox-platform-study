@@ -1,5 +1,11 @@
 # @arcaai/vox — Changelog
 
+## 3.4.0
+
+### Minor Changes
+
+- **Transcript anchors on live entities** (`transcriptSegmentId`, `transcriptStart`, `transcriptEnd` on the live-summary entity). NER runs over the transcript and the server then re-locates each entity inside the rendered note, overwriting `start`/`end`; these three survive that pass so a client can jump to where the mention was actually spoken. `transcriptSegmentId` is `utt-<utteranceIndex>` and the offsets index THAT segment's own text. All three present or all absent — never guessed. Mirrors hope-v2's live-summary DTO (2026-09-13).
+
 ## 3.3.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @arcaai/vox-node — Changelog
 
+## 3.4.0
+
+### Minor Changes
+
+- **`hope.consultations.documentSections(consultationId, documentKey?)`** — the template-shaped note. Reads `GET /consultations/{id}/documents/sections` (scope `svc:consultation:report:read`) and returns `DocumentSection[]`: one row per section HOPE persisted (`documentKey`, `sectionKey`, `title`, `idx`, `state`, `revision`, `content`, `documentTemplateVersionId`, …). HOPE persists only the sections that carry content, so a caller lays the rows onto the template it already holds from the live snapshot — which is what lets a client render the partial and the finalized note as ONE document with the same keys and order.
+
 ## 3.3.0
 
 ### Minor Changes
