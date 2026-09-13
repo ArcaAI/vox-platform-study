@@ -69,6 +69,22 @@ export class SettingCatalogItemResponse {
   @ApiPropertyOptional({ description: 'Recorded eventual home when `tier` is not where the key ends up.', example: 'global-kv' })
   targetTier?: string;
 
+  // TASK-969 WS-1 -- the same descriptor field the value read projects inside
+  // its `pair` block, exposed here as the bare IDENTIFIER.
+  //
+  // It has to be on the CATALOG and not only on the value read, because the
+  // console decides its row layout at LIST time and the catalog carries no
+  // values by design (metadata only, so the listing is safe for any admin and
+  // costs no cascade reads). Without this field nothing at list time says the
+  // two keys are one thing, and the screen falls back to rendering the pair as
+  // the two separate rows this ticket exists to remove.
+  @ApiPropertyOptional({
+    description:
+      'Present iff this key is the TENANT half of a pair: the PLATFORM-tier key it pairs with. The two render as ONE row — the split into two keys is a transport decision (per-request push vs platform pull snapshot), not an audience one. Omitted for every key that stands alone.',
+    example: 'text.externalGuardrail.requireMedical',
+  })
+  platformTierKey?: string;
+
   // TASK-932 R-6 / D-6 -- the LOCK, derived server-side from tier +
   // sensitivity (`settingLockFor`), never from a key list the console would have
   // to keep in step. A locked key is un-editable for EVERY caller including a

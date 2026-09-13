@@ -78,6 +78,13 @@ export class SettingsCatalogController {
         default: d.sensitivity === 'secret' ? undefined : d.default,
         consumedBy: d.consumedBy,
         targetTier: d.targetTier,
+        // TASK-969 WS-1 -- the twin, so the console can collapse the pair into
+        // one row at LIST time. Spread-guarded rather than assigned so the
+        // property is genuinely ABSENT for the ~240 keys that declare none,
+        // matching the `pair` block on the value read: a client keys its row
+        // layout off presence, and `undefined` and "not there" must not be two
+        // different answers to the same question.
+        ...(d.platformTierKey ? { platformTierKey: d.platformTierKey } : {}),
         // Derived, never listed — see `settingLockFor`. Emitted only when the
         // key IS locked, so `locked === undefined` and `locked === false` cannot
         // drift apart in a client's truthiness check.
