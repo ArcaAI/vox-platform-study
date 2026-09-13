@@ -64,6 +64,19 @@ export function locateSections(sections: readonly LiveSummarySectionDto[], docum
   });
 }
 
+/**
+ * A2 — the entity's transcript anchor, or nothing.
+ *
+ * All three fields or none: the flush emits them together (`anchorEntitiesToTranscript`) and a
+ * partial anchor — a segment id with no offsets, or offsets naming no segment — is not a weaker
+ * citation, it is an unusable one.
+ */
+function transcriptAnchor(entity: LiveSummaryEntityDto): Pick<SectionAnnotationDto, 'transcriptSegmentId' | 'transcriptStart' | 'transcriptEnd'> {
+  const { transcriptSegmentId, transcriptStart, transcriptEnd } = entity;
+  if (transcriptSegmentId === undefined || typeof transcriptStart !== 'number' || typeof transcriptEnd !== 'number') return {};
+  return { transcriptSegmentId, transcriptStart, transcriptEnd };
+}
+
 function localSpan(span: SectionSpan, start?: number, end?: number): { start: number; end: number } | null {
   if (span.start < 0 || typeof start !== 'number' || typeof end !== 'number') return null;
   // Strictly INSIDE the section. An annotation straddling a section boundary is
@@ -109,6 +122,11 @@ export function reanchorAnnotations(
         type: entity.type,
         ...(entity.icd10 ? { icd10: entity.icd10 } : {}),
         ...(typeof entity.confidence === 'number' ? { score: entity.confidence } : {}),
+        // A2 — the transcript anchor rides along VERBATIM. It is already section-independent
+        // (it addresses an utterance, not the note), so unlike `start`/`end` there is nothing
+        // to re-anchor: re-deriving it here could only introduce a disagreement between the
+        // whole-document payload and the per-section one about where a finding was said.
+        ...transcriptAnchor(entity),
       });
     }
 
@@ -121,6 +139,7 @@ export function reanchorAnnotations(
         end: local.end,
         type: finding.type,
         ...(typeof finding.confidence === 'number' ? { score: finding.confidence } : {}),
+        ...transcriptAnchor(finding),
       });
     }
 

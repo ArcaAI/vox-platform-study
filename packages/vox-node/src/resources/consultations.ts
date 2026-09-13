@@ -15,7 +15,7 @@
 import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
-import type { ConsultationOpenResponse, OpenConsultationRequest } from '../types/consultation-realtime';
+import type { ConsultationOpenResponse, DocumentSection, OpenConsultationRequest } from '../types/consultation-realtime';
 import { ConsultationRecordingResource } from './consultation-recording';
 import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
@@ -138,6 +138,49 @@ export class ConsultationsResource {
   async get(id: string, options: ConsultationRequestOptions = {}): Promise<ConsultationGetResponse> {
     return this.transport.request<ConsultationGetResponse>({
       path: `consultations/${encodePathSegment(id)}`,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * `GET /api/v1/consultations/:id/documents/sections` — the consultation's clinical document(s)
+   * as PERSISTED SECTIONS, in render order.
+   *
+   * ## Why you want this and not the summary text
+   *
+   * The live SSE lane's `runningSummary` is the section bodies CONCATENATED — it exists to be the
+   * offset base the entity spans index, so it carries no titles and no keys. Reading the note back
+   * out of it means re-partitioning prose that was already partitioned server-side. These rows are
+   * the partition: `sectionKey`, `title`, `idx`, `state` and the body, exactly as the template
+   * declares them. It is also the DURABLE view — `section.patch` only emits while a flush is
+   * running, so a client that reloads mid-encounter reads its state here.
+   *
+   * ## Which of the two routes this calls
+   *
+   * Without `documentKey`, the DISCOVERY read: every section of EVERY document, ordered by
+   * `(documentKey, idx)` — alphabetical by document, render order within it. Nothing else in the
+   * API enumerates the document keys, so this is how a client that holds none finds them.
+   *
+   * With `documentKey`, the narrow read: that one document's sections, `idx` ascending. Use it once
+   * you know the key and want one document's worth of rows.
+   *
+   * A consultation whose documents have not been written yet is an EMPTY ARRAY, not a 404. A 404
+   * means the consultation itself is missing — or belongs to another tenant, which HOPE answers
+   * the same way (404-over-403; see {@link NotFoundError}).
+   *
+   * **Scopes.** A service account needs `svc:consultation:report:read`. (An API key needs the
+   * corresponding `consultation:report:read`; a user JWT is governed by consultation visibility.)
+   * This is a REPORT-tier read, not a session-tier one: `svc:consultation:session:write` — what
+   * `open` and `recording.*` require — does NOT reach it, and an integration that holds only the
+   * session scope gets a 403 here.
+   *
+   * Each item carries `version`, which is the value that section's PATCH route requires as its
+   * `If-Match`; do not send `revision` there.
+   */
+  async documentSections(consultationId: string, documentKey?: string, options: ConsultationRequestOptions = {}): Promise<DocumentSection[]> {
+    const base = `consultations/${encodePathSegment(consultationId)}/documents`;
+    return this.transport.request<DocumentSection[]>({
+      path: documentKey === undefined ? `${base}/sections` : `${base}/${encodePathSegment(documentKey)}/sections`,
       signal: options.signal,
     });
   }
