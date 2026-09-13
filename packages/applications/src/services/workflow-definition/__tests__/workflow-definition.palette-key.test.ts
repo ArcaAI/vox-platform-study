@@ -23,6 +23,7 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockWorkflowDefinitionRepository = {
   findById: vi.fn(),
+  findAll: vi.fn(),
   count: vi.fn(),
   create: vi.fn(),
   findMaxVersionNumber: vi.fn(),
@@ -132,5 +133,73 @@ describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
     await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH })).resolves.toBeDefined();
 
     expect(mockWorkflowDefinitionRepository.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The same validated palette vocabulary, applied to the LIST filter.
+ *
+ * The register had no `paletteKey` param at all: `?paletteKey=core` was a 400 from the strict
+ * global pipe ('property paletteKey should not exist'), and the generic `filters` grammar —
+ * `field[op]:value`, ';'-separated — silently DROPS a token that omits `[op]`, so the natural
+ * `filters=paletteKey:core` answered 200 with every palette. A caller asking for one palette
+ * held all of them with nothing to distinguish the two.
+ */
+describe('list() — the typed paletteKey filter', () => {
+  let service: WorkflowDefinitionService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClsService.get.mockImplementation((key: string) => {
+      if (key === 'tenantId') return 'tenant-1';
+      if (key === 'user') return { id: 'admin-1', roles: ['TENANT_ADMIN'] };
+      return undefined;
+    });
+    mockWorkflowDefinitionRepository.findAll.mockResolvedValue([]);
+    mockWorkflowDefinitionRepository.count.mockResolvedValue(0);
+    service = new WorkflowDefinitionService(
+      mockWorkflowDefinitionRepository as any,
+      mockEventEmitter as any,
+      mockClsService as any,
+      mockDatabaseService as any,
+      mockEntitlements as any,
+      mockSttPipelineCompiler as any,
+    );
+  });
+
+  it('constrains BOTH the page and the count to the requested palette', async () => {
+    await service.list({ page: 0, limit: 10, paletteKey: 'core' } as any);
+
+    // Both halves, deliberately: constraining `findAll` alone yields a short page beside a total
+    // counted across every palette — a pager that offers pages the filter can never fill.
+    expect(mockWorkflowDefinitionRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { paletteKey: 'core' } }));
+    expect(mockWorkflowDefinitionRepository.count).toHaveBeenCalledWith(expect.objectContaining({ where: { paletteKey: 'core' } }));
+  });
+
+  it('applies no palette predicate when the filter is omitted', async () => {
+    await service.list({ page: 0, limit: 10 } as any);
+
+    const [findAllProps] = mockWorkflowDefinitionRepository.findAll.mock.calls[0];
+    expect(findAllProps.where).toEqual({});
+  });
+
+  it.each(['consultation', 'summarization', 'Core', 'core ', 'nope'])(
+    'refuses the unknown palette %p with a 400 rather than an empty page',
+    async (paletteKey) => {
+      // The distinction this pins: "no definitions in this palette" and "that palette has never
+      // existed" must not look identical in a register an admin reads to find out what exists.
+      // 'consultation' is the live example — TASK-893 retired it, and a spec querying it was
+      // reading an empty result as fact.
+      await expect(service.list({ page: 0, limit: 10, paletteKey } as any)).rejects.toThrow(BadRequestException);
+      expect(mockWorkflowDefinitionRepository.findAll).not.toHaveBeenCalled();
+    },
+  );
+
+  it('composes with the generic filters grammar instead of replacing it', async () => {
+    await service.list({ page: 0, limit: 10, paletteKey: 'core', filters: 'status[equals]:PUBLISHED' } as any);
+
+    const [findAllProps] = mockWorkflowDefinitionRepository.findAll.mock.calls[0];
+    expect(findAllProps.where).toEqual({ paletteKey: 'core' });
+    expect(findAllProps.filters).toEqual({ status: { equals: 'PUBLISHED' } });
   });
 });
