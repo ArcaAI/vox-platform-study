@@ -520,6 +520,90 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
       'Gates TEXT input and output moderation (TASK-871). ON since TASK-890 D-2. A tenant may opt OUT per agent / workflow / node; nothing can turn screening on that this switch turns off. Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
+  // TASK-969 L4 (F-4/WS-4) — the other five `text.externalGuardrail.*` keys were resolving to
+  // an invisible `code-default`: a platform admin could not see or edit the value actually in
+  // force without guessing the key and creating a row. Seeded here at their current code-default
+  // floors, verbatim, from `apps/text/src/text/core/runtime_defaults.py`
+  // (`GUARDRAIL_REQUIRE_MEDICAL_FLOOR` / `GUARDRAIL_INCLUDE_REASONING_FLOOR` /
+  // `GUARDRAIL_TIMEOUT_FLOOR_S` / `GUARDRAIL_MAX_RETRIES_FLOOR` / `GUARDRAIL_RETRY_BACKOFF_FLOOR_MS`),
+  // so a fresh deployment behaves exactly as it does today and a platform admin sees five real
+  // rows instead of five phantoms.
+  //
+  // Same shape as the row above: NAMESPACE `registry` (any other namespace makes the first
+  // governed write create a SECOND SYSTEM row for the same key, tripping `AppSettingsService`'s
+  // boot-time duplicate-key invariant and refusing gateway startup), NAME matches
+  // `descriptor.label` (`text-provider-connections.descriptors.ts`), and `value`/`defaultValue`
+  // are equal — these are tuning floors, not a fail-safe switch, so there is no "safer" value to
+  // revert to on reset.
+  //
+  // HAZARD: do NOT seed `text.guardrailPolicy.*` here. Those are the TENANT half of the pair
+  // (F-1) and have no reader at SYSTEM scope — a row there is the exact dead-write defect this
+  // ticket exists to remove.
+  {
+    id: '00000000-0000-0000-0002-000000000007',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'Require medical content (platform default)',
+    key: 'text.externalGuardrail.requireMedical',
+    value: 'true',
+    defaultValue: 'true',
+    dataType: ValueType.Boolean,
+    description:
+      'Platform default for clinical enforcement: a reachable guardrail must classify the prompt as medical before it is allowed. A tenant with its own opinion pushes it per request and wins; this is only what a tenant with no opinion inherits. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
+  {
+    id: '00000000-0000-0000-0002-000000000008',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'Include guardrail reasoning (platform default)',
+    key: 'text.externalGuardrail.includeReasoning',
+    value: 'false',
+    defaultValue: 'false',
+    dataType: ValueType.Boolean,
+    description:
+      'Platform default for whether the moderation call asks guardrail to return its reasoning. Off, since the reasoning can quote the prompt and would widen what crosses the service boundary. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
+  {
+    id: '00000000-0000-0000-0002-000000000009',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'Guardrail call timeout (s)',
+    key: 'text.externalGuardrail.timeoutS',
+    value: '10',
+    defaultValue: '10',
+    dataType: ValueType.Integer,
+    description:
+      'Per-attempt timeout, in seconds, on the moderation call TEXT makes before generating. Raise it only against the caller-side request timeout that bounds it. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
+  {
+    id: '00000000-0000-0000-0002-000000000010',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'Guardrail retry budget',
+    key: 'text.externalGuardrail.maxRetries',
+    value: '2',
+    defaultValue: '2',
+    dataType: ValueType.Integer,
+    description:
+      'Extra attempts after the first when the moderation call fails (total tries = this value + 1); 0 means no retry. A momentary blip is absorbed and the prompt proceeds, while a sustained outage exhausts the budget and fails closed. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
+  {
+    id: '00000000-0000-0000-0002-000000000011',
+    tenantId: SYSTEM_TENANT_ID,
+    namespace: 'registry',
+    name: 'Guardrail retry backoff (ms)',
+    key: 'text.externalGuardrail.retryBackoffMs',
+    value: '100',
+    defaultValue: '100',
+    dataType: ValueType.Integer,
+    description:
+      'Linear backoff, in milliseconds, between moderation retries: attempt N waits N times this value. Counts toward the latency ceiling described under the call timeout. Locked — only SUPER_ADMIN may change it.',
+    locked: true,
+  },
   // TASK-950 — identity auto-provisioning platform defaults (owner ask, 2026-09-11).
   //
   // A service-account request naming a context-schema "user identity" field resolves it to a
