@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — owner decisions answered 2026-09-13 (§4); WS-2 DROPPED; awaiting approval to implement WS-1 / WS-3 / WS-4 |
+| **Status** | `Review` — WS-1 / WS-3 / WS-4 implemented, merged to `dev-2.2`, gates green. WS-2 dropped by OD-1/2/3. One acceptance test outstanding (§5.9). |
 | **Type** | `feature` (UX + governance), with three `bugfix` workstreams folded in |
 | **Branch** | `dev-2.2` |
 | **Raised** | 2026-09-13, from a live debugging session on the LLM playground |
@@ -293,15 +293,149 @@ decision, and it carries the tenant's own credentials.
 
 ## 5. Implementation Summary
 
-*(pending — nothing implemented yet)*
+Four lanes, path-disjoint, merged to `dev-2.2` on 2026-09-13. **32 files across the
+four branches with ZERO files claimed by more than one lane** (proved by set
+intersection before merging, not assumed).
 
----
+### 5.1 Merge record — all four clean, no conflicts
+
+| Merge commit | Branch | Lane commit |
+|---|---|---|
+| `f26a29070` | `task-969-registry` | `132dd208a` |
+| `cd04e9634` | `task-969-console` | `e3d7c4fa7` |
+| `aa8948604` | `task-969-errors` | `ff0c74291` |
+| `2f8bbfb8f` | `task-969-seed` | `ef6b9f776` |
+| `af574b69c` | — | regenerated derived artifacts |
+
+Merged into `dev-2.2` (owner-confirmed target). Branch ancestry re-verified with
+`git merge-base --is-ancestor` before any worktree was removed.
+
+### 5.2 Post-merge gates
+
+| Gate | Result |
+|---|---|
+| `@arcaai/api` test | **4566 passed**, 4 skipped, 315 files |
+| `@arcaai/admin-console` build / lint / test | build ✓ · `eslint --max-warnings 0` ✓ · **3079 passed**, 332 files |
+| `text:test` | **1747 passed**, 4 skipped |
+| `@arcaai/database` typecheck | ✓ |
+| `@arcaai/applications` test | 853 files passed, **1 failed** — see below |
+| `api:openapi:check` | `OK — every served route documented or deliberately excluded` |
+| `api:portal:check` | `no drift (admin 665 ops, business 200 ops)` |
+| `vox-node gen:admin:check` | `no drift (49 areas, 425 routes, 438 schemas)` |
+
+The single red is `membership-bounded-sync.integration.test.ts`, a live-DB test
+failing on port 5433 credentials (that port is held by an unrelated container, so
+the test DB is not ours). L1 PROVED its independence rather than asserting it:
+reverted its own two paths with `git checkout HEAD~1`, re-ran the single file,
+identical failure, restored. No lane touches `agentPromotion`.
+
+### 5.3 Derived artifacts — regenerated once, after all merges
+
+`af574b69c` carries `openapi.json` (+61), `openapi.admin.json`,
+`openapi.business.json`, and the two `vox-node` admin resources.
+`route-manifest.json` shows **no drift**, exactly as L1 predicted — no route or
+authz metadata changed. All three drift gates green afterwards.
+
+> **Shared-checkout hazard, avoided.** `git status` after the chain listed ten
+> changed files, five of them under `packages/vox-node/` — but only TWO were ours;
+> the rest were another session's in-flight work that the path pattern happened to
+> match. Committing that list wholesale would have swept their uncommitted work
+> into this ticket's commit. Separated by diffing against a dirty-file snapshot
+> taken before the merge, then committed with an explicit pathspec. Their 23 files
+> were still untouched at the end.
+
+### 5.4 WS-1 — VERIFIED LIVE against the running gateway
+
+The write that started this investigation is now refused:
+
+```
+PUT admin/settings/registry/text.guardrailPolicy.requireMedical {"scope":"system"}
+→ 400 GENERIC.ARGUMENT_INVALID
+  "Setting 'text.guardrailPolicy.requireMedical' has no readable platform row:
+   its platform tier is 'text.externalGuardrail.requireMedical'. Write that key
+   at 'system' scope instead. This key holds a single TENANT's override and is
+   read only when a row exists under that tenant."
+```
+
+The tenant-scope write still succeeds (200), and the read carries the `pair` block
+in the exact §7.3 shape with `inForce: "tenant"`. The catalog projects
+`platformTierKey` on exactly the two paired keys, and their labels now read
+`Require medical content` / `Include guardrail reasoning` — no parenthetical, correct
+as a paired row's single title.
+
+### 5.5 WS-3 — gateway half VERIFIED LIVE, `apps/text` half by unit test
+
+A live 503 came back as:
+
+```json
+{"detail":"The AI provider pool is temporarily unavailable.","error_code":"POOL_UNHEALTHY"}
+```
+
+Two things proved at once: the allow-listed code IS relayed, and the upstream's own
+free text (`"Provider 'lm-studio' is marked unhealthy and no usable fallback was
+supplied."`) is NOT — the gateway emitted its own fixed phrase. That is the whole
+design: relay the code, never the message.
+
+The PHI leak is closed at the source. `generate.py` previously interpolated
+`verdict["reason"]` — guardrail's free-text `reasoning`, which quotes the prompt —
+straight into the HTTP body. Every raise site now carries a string literal, and two
+regression tests feed a PHI-shaped string (SSN, DOB, patient name) through both the
+input and output gates and assert it is absent from `resp.text`.
+
+### 5.6 WS-4 — VERIFIED LIVE, double-seed
+
+Six `text.externalGuardrail.*` rows present with correct values. `requireMedical`
+was flipped to `false` by hand, the seed re-run, and the flip SURVIVED — create-only
+on `value` holds. Zero `text.guardrailPolicy.*` rows created, the hazard that would
+have shipped the very bug this ticket removes.
+
+The create-only property is visible in the emitted SQL: `ON CONFLICT … DO UPDATE SET`
+touches only `dataType`, `description`, `namespace`, `updatedAt` — never `value`.
+
+> **`pnpm db:seed` is a NO-OP unless `RUN_SEED` is set.** The first run exited 0 and
+> seeded nothing: *"Skipping database seeding: RUN_SEED is unset or 'none'."* An exit
+> code alone would have been read as success. `RUN_SEED=safe` (platform configuration)
+> or `all` (development) is required.
+
+### 5.7 Cross-lane consistency — the check no lane could run
+
+L4's six seeded `name` values were diffed against L1's platform-half descriptor
+labels across their two branches: **six for six identical**.
+`text-provider-connections.descriptors.ts` is untouched on the registry branch. L1
+went further and pinned both platform labels verbatim in a test, so a future retitle
+now fails a gate instead of silently desyncing the seed.
+
+### 5.8 Orchestration defects worth carrying forward
+
+1. **The §7.3 contract was incomplete** — it specified `platformTierKey` on the value
+   read only. The catalog needs it too (values are lazy, so `pair` does not exist at
+   list time). L2 caught it; L1 was resumed in place and closed it. **The orchestrator's
+   error, not a lane's.**
+2. **`pnpm --filter @arcaai/database lint` does not exist** — that package has no lint
+   script. A brief must not specify a command that cannot run.
+3. **`pnpm install` is not enough to prepare a worktree.** Every lane independently hit
+   missing Prisma client / `packages/types` / `packages/ui` dist and had to bootstrap.
+   Worktree prep should include the codegen + dependency build.
+
+### 5.9 OUTSTANDING — one acceptance test
+
+The `"hello"` end-to-end repro could not be completed. `apps/text` is still running
+pre-merge code (process started 18:25; the merge landed 19:44), and `lm-studio` is
+currently circuit-broken (`POOL_UNHEALTHY`). Restarting `apps/text` would disturb the
+shared dev stack that several other sessions are using, so it was NOT done
+unilaterally. The gateway half restarted on its own (watch mode) and IS verified.
+
+To close: restart `apps/text`, wait for the lm-studio breaker to clear, then
+`POST text-generations/generate {"prompt":"hello"}` and assert
+`error_code: CONTENT_BLOCKED_NOT_MEDICAL` — replacing the old
+`{"detail":"TEXT service unavailable"}`.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-13 | Ticket raised from a live LLM-playground debugging session. F-1…F-4 measured against the running dev stack; plan and owner decisions drafted. Status `Pending`. |
+| 2026-09-13 | WS-1/3/4 implemented across 4 disjoint lanes, merged to `dev-2.2` (`f26a29070`, `cd04e9634`, `aa8948604`, `2f8bbfb8f`), artifacts regenerated (`af574b69c`). Gates green bar one proven-environmental red. WS-1 and WS-4 verified live; WS-3's gateway half verified live, its `apps/text` half by unit test. Worktrees removed after ancestry-confirmed merge. Status → `Review`. |
 | 2026-09-13 | F-4 CORRECTED: the `db:all` force-reset (not the seed) wiped the rows; the seed is idempotent upsert, so the durability justification was withdrawn and WS-4 re-based on visibility. §7 execution plan added — 4 disjoint lanes, tiers, shared surfaces, pre-written L1↔L2 contract. |
 | 2026-09-13 | OD-1…OD-4 answered by the owner: no tenant-admin widening, no guardrail devolution, no console-gate devolution, no platform-setting visibility. **WS-2 dropped.** WS-1 UPGRADED — with both halves of each pair confirmed platform-admin-only, the pair collapses into one console row with a scope picker instead of merely hiding the dead scope. Residual: 7 unnamed keys recorded in §4, non-blocking. |
 
