@@ -36,28 +36,24 @@ import { describe, it, expect } from 'vitest';
 
 import {
   ARCAAI_CLINICAL_APPROVED_VERSION,
-  ARCAAI_CLINICAL_TEMPLATE_IDS,
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
-  approvedVersionFor,
 } from '../07b-arcaai-clinical-templates';
 
 const ICD10_PATTERN = /ICD-?10/i;
 
 describe('ArcaAI clinical prompt version policy ', () => {
   describe('all current versions stay available', () => {
-    it('seeds exactly versions 1, 2, 3 and 4 — none retired, none added', () => {
+    it('seeds exactly versions 1, 2 and 3 — none retired, none added', () => {
       const versions = [...new Set(ARCAAI_CLINICAL_VERSIONS.map((v) => v.versionNumber))].sort();
-      expect(versions).toEqual([1, 2, 3, 4]);
+      expect(versions).toEqual([1, 2, 3]);
     });
 
-    it('seeds v4 for exactly the two Breast & Endocrine templates (the only v4 bodies authored so far)', () => {
-      const v4 = ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === 4).map((v) => v.promptTemplateId).sort();
-      expect(v4).toEqual(
-        [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL, ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP].sort(),
-      );
-      for (const id of v4) expect(approvedVersionFor(id)).toBe(4);
-    });
+    // There is deliberately NO v4. A department's heading list is the customer's signed-off
+    // case-note structure, so when the document template and the prompt disagree it is the
+    // TEMPLATE that is wrong; `27-document-template-library.ts` now derives every department
+    // shape from these v3 bodies. A v4 that rewrote the headings to match a template would be
+    // editing the clinical content to fit the software.
     it('seeds versions 1–3 for every template, so any pin up to the corpus default is a complete corpus', () => {
       const templateIds = [...new Set(ARCAAI_CLINICAL_VERSIONS.map((v) => v.promptTemplateId))];
       for (const versionNumber of [1, 2, 3]) {
@@ -74,13 +70,9 @@ describe('ArcaAI clinical prompt version policy ', () => {
     });
   });
 
-  describe('v3 is the go-live default; v4 where a v4 body exists', () => {
-    it('pins the corpus default at 3 and every template without a v4 body to it', () => {
+  describe('v3 is the go-live default for every template', () => {
+    it('pins the corpus default at 3', () => {
       expect(ARCAAI_CLINICAL_APPROVED_VERSION).toBe(3);
-      const v4Ids = new Set(ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === 4).map((v) => v.promptTemplateId));
-      for (const template of ARCAAI_CLINICAL_TEMPLATES) {
-        expect(approvedVersionFor(template.id), template.id).toBe(v4Ids.has(template.id) ? 4 : ARCAAI_CLINICAL_APPROVED_VERSION);
-      }
     });
 
     it('pins every template to the approved version on BOTH the content row and the version pointer', () => {
@@ -89,11 +81,11 @@ describe('ArcaAI clinical prompt version policy ', () => {
       // resolver serves the pinned PromptVersion snapshot, so a `content`
       // column saying something else is a silent divergence.
       for (const template of ARCAAI_CLINICAL_TEMPLATES) {
-        expect(template.approvedVersionNumber, `${template.id} approvedVersionNumber`).toBe(approvedVersionFor(template.id));
-        expect(template.currentVersionNumber, `${template.id} currentVersionNumber`).toBe(approvedVersionFor(template.id));
+        expect(template.approvedVersionNumber, `${template.id} approvedVersionNumber`).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+        expect(template.currentVersionNumber, `${template.id} currentVersionNumber`).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
 
         const pinned = ARCAAI_CLINICAL_VERSIONS.find(
-          (v) => v.promptTemplateId === template.id && v.versionNumber === approvedVersionFor(template.id),
+          (v) => v.promptTemplateId === template.id && v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION,
         );
         expect(pinned, `${template.id} must have a PromptVersion row at the approved version`).toBeDefined();
         expect(template.content, `${template.id} content must equal its pinned snapshot`).toBe(pinned!.content);
@@ -107,7 +99,7 @@ describe('ArcaAI clinical prompt version policy ', () => {
       // rolls ARCAAI_CLINICAL_APPROVED_VERSION back to 1 or 2, this is the
       // assertion that fires. v1 stays selectable; it just cannot become the
       // silent default.
-      const servedAtPin = ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === approvedVersionFor(v.promptTemplateId));
+      const servedAtPin = ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION);
       const violations = servedAtPin.filter((v) => ICD10_PATTERN.test(v.content)).map((v) => v.promptTemplateId);
       expect(violations, 'the default-served corpus must never instruct the model to write a diagnostic code').toEqual([]);
 

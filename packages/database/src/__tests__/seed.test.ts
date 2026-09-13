@@ -30,7 +30,6 @@ import {
 } from '../prisma/db_main/seed/04-department';
 import {
   ARCAAI_CLINICAL_APPROVED_VERSION,
-  approvedVersionFor,
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
   ARCAAI_CLINICAL_TEMPLATE_IDS,
@@ -826,9 +825,8 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => {
       expect(t.status).toBe('APPROVED');
       expect(t.category).toBe('SUMMARY');
-      // v4 for the two Breast & Endocrine templates (2026-09-13), the corpus default elsewhere.
-      expect(t.currentVersionNumber, t.id).toBe(approvedVersionFor(t.id));
-      expect(t.approvedVersionNumber, t.id).toBe(approvedVersionFor(t.id));
+      expect(t.currentVersionNumber, t.id).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+      expect(t.approvedVersionNumber, t.id).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
     });
   });
 
@@ -858,19 +856,17 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     });
   });
 
-  it('should keep every version per template — v1 and v2 retained, v3 approved, v4 where authored', () => {
+  it('should keep every version per template — v1 and v2 retained, v3 approved', () => {
     // Older versions are not replaced by newer ones; they stay seeded so the
     // approved pin is a one-field rollback with no content to restore.
     const SEEDED_VERSIONS = [1, 2, 3];
     expect(ARCAAI_CLINICAL_APPROVED_VERSION).toBe(3);
-    const withV4 = ARCAAI_CLINICAL_TEMPLATES.filter((t) => approvedVersionFor(t.id) === 4);
-    expect(withV4.length).toBe(2); // Breast & Endocrine new referral + follow-up
-    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length * SEEDED_VERSIONS.length + withV4.length);
+    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length * SEEDED_VERSIONS.length);
 
     const byTemplate = new Map<string, number[]>();
     ARCAAI_CLINICAL_VERSIONS.forEach((v) => byTemplate.set(v.promptTemplateId, [...(byTemplate.get(v.promptTemplateId) ?? []), v.versionNumber]));
     expect(byTemplate.size).toBe(ARCAAI_CLINICAL_TEMPLATES.length);
-    byTemplate.forEach((versions, id) => expect([...versions].sort(), id).toEqual(approvedVersionFor(id) === 4 ? [...SEEDED_VERSIONS, 4] : SEEDED_VERSIONS));
+    byTemplate.forEach((versions, id) => expect([...versions].sort(), id).toEqual(SEEDED_VERSIONS));
 
     // Version ids are unique, and carry the version number in the third UUID
     // group (v1 keeps its original `…-0000-0001-…` mirror slot).
@@ -890,24 +886,35 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
       later.forEach((body, i) => expect(body, `v${i + 2} of ${templateId} is byte-identical to v1`).not.toBe(v1));
     });
 
-    // v3 vs v2 is DELIBERATELY asymmetric, and this asserts it rather than
-    // letting it drift unnoticed: the v3 release changed ONLY the pre-summary.
-    // The 22 department bodies are byte-identical to v2 — v3's own version
-    // history credits itself with the RULE 6 ASR-repair rewrite, but that text
-    // was already present in the v2 corpus, so there is nothing new to seed for
-    // them. They are still versioned to 3 because the corpus ships as a matched
-    // set: the department prompts depend on the v3 pre-summary's `(recorded …)`
-    // stamp to tell history from what was said today, so a single uniform pin
-    // keeps the pair from being rolled back independently.
-    const differsFromV2 = ARCAAI_CLINICAL_TEMPLATES.filter((t) => {
+    // EVERY template's v3 now differs from its v2 — all 23, not just the pre-summary.
+    //
+    // It used to be exactly one. The v3 release changed only the pre-summary, and this assertion
+    // pinned that asymmetry so it could not drift unnoticed. The LANGUAGE directive (owner,
+    // 2026-09-14) is what changed it: the corpus was edited IN PLACE at v3 — deliberately, on the
+    // owner's instruction not to mint a v4 — so all 22 department bodies now carry the
+    // Malayalam→English translation block and none is byte-identical to its v2 any more.
+    //
+    // The assertion is kept, inverted rather than deleted: "all 23 differ" is as falsifiable as
+    // "exactly one differs", and it still catches the failure this test was written for — a body
+    // edited at v2 by accident, or a v3 body that silently reverted to its v2 text.
+    const identicalToV2 = ARCAAI_CLINICAL_TEMPLATES.filter((t) => {
       const [v2, v3] = [2, 3].map((n) => ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === t.id && v.versionNumber === n)!.content);
-      return v2 !== v3;
+      return v2 === v3;
     }).map((t) => t.id);
-    expect(differsFromV2).toEqual([ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY]);
+    expect(identicalToV2).toEqual([]);
+
+    // …and the LANGUAGE block is the reason, in every one of the 22 department bodies. Asserted
+    // per body rather than in aggregate: a single missed body is a consultation finalized in
+    // Malayalam, which is exactly the defect the directive exists to close.
+    ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.id !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY).forEach((t) => {
+      const v3 = ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === t.id && v.versionNumber === 3)!.content;
+      expect(v3, `${t.name} carries the LANGUAGE block`).toContain('- LANGUAGE. The transcript may be in Malayalam');
+      expect(v3, `${t.name} still says "conversation language"`).not.toContain('conversation language');
+    });
 
     // The template's mutable `content` column mirrors the APPROVED version.
     const approvedById = new Map(
-      ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === approvedVersionFor(v.promptTemplateId)).map((v) => [v.promptTemplateId, v.content]),
+      ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION).map((v) => [v.promptTemplateId, v.content]),
     );
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => expect(t.content).toBe(approvedById.get(t.id)));
 
