@@ -5385,6 +5385,8 @@ export interface TenantEntitlementResponse {
   monthlyLlmTokens?: number | null;
   /** Override monthly NLP text-units allowance (D11); null = inherit */
   monthlyNlpTextUnits?: number | null;
+  /** The tenant's OWN monthly spend ceiling in integer micros (D12); null = no self-imposed limit, which is the default. Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429. */
+  monthlySpendLimitMicros?: number | null;
   /** Override monthly STT session-seconds allowance (D11); null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */
@@ -6628,6 +6630,8 @@ export interface UpsertTenantEntitlementRequest {
   monthlyLlmTokens?: number | null;
   /** Override monthly NLP text-units allowance (D11); null = inherit */
   monthlyNlpTextUnits?: number | null;
+  /** The tenant's OWN monthly spend ceiling in integer micros (D12); null = clear it (no self-imposed limit, the default). Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429. `0` is a real setting, not "unlimited". */
+  monthlySpendLimitMicros?: number | null;
   /** Override monthly STT session-seconds allowance (D11); null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */

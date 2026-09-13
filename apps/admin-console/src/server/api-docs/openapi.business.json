@@ -19994,6 +19994,11 @@
             "nullable": true,
             "type": "number"
           },
+          "monthlySpendLimitMicros": {
+            "description": "The tenant's OWN monthly spend ceiling in integer micros (D12); null = no self-imposed limit, which is the default. Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429.",
+            "nullable": true,
+            "type": "number"
+          },
           "monthlySttSessionSeconds": {
             "description": "Override monthly STT session-seconds allowance (D11); null = inherit",
             "nullable": true,
@@ -23607,6 +23612,12 @@
           },
           "monthlyNlpTextUnits": {
             "description": "Override monthly NLP text-units allowance (D11); null = inherit",
+            "nullable": true,
+            "type": "number"
+          },
+          "monthlySpendLimitMicros": {
+            "description": "The tenant's OWN monthly spend ceiling in integer micros (D12); null = clear it (no self-imposed limit, the default). Not an allowance: an allowance caps a QUANTITY of one unit, this caps MONEY across all of them, and exhausting it answers 402 rather than 409/429. `0` is a real setting, not \"unlimited\".",
+            "example": 250000000,
             "nullable": true,
             "type": "number"
           },
