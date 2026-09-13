@@ -291,10 +291,15 @@ class TestModelRegistryReader:
         mock.format = "SAFETENSOR"
         mock.memory_size_mb = 3000
         mock.compute_type = "float16"
-        mock.download_status = "DOWNLOADED"
-        mock.local_path = os.path.join(_MODEL_BASE, "whisper")
-        mock.downloaded_at = datetime(2024, 1, 1)
-        mock.file_size_mb = 3000
+        # TASK-964 — the row no longer carries `downloadStatus`, `localPath`,
+        # `downloadedAt` or `fileSizeMb`. The reader reconstructs all four from
+        # the measured availability, the bucket identity, and the publish-run
+        # bookkeeping in `_metadata.download`.
+        mock.availability = "AVAILABLE"
+        mock.bucket_prefix = "whisper-large-v3/f16-0123456789ab/"
+        mock.primary_object = "model.safetensors"
+        mock.library_name = "transformers"
+        mock.extra_metadata = {"download": {"finishedAt": "2024-01-01T00:00:00Z", "sizeMb": 3000}}
         mock.checksum = "abc123"
         mock.tags = ["asr", "english"]
         mock.resource_status = "ENABLED"

@@ -92,13 +92,15 @@ class TestAiModelRead:
             INSERT INTO core."AiModel" (
                 id, "tenantId", name, slug, category, "taskType", "modelType",
                 source, "sourceUri", format,
-                "resourceStatus", "downloadStatus", tags, "_version",
+                "libraryName", "servedBy", "deploymentKind",
+                "resourceStatus", availability, tags, "_version",
                 "createdAt", "updatedAt"
             ) VALUES (
                 :mid, 't-1', 'Whisper Large', :slug,
                 'AUDIO', 'AUTOMATIC_SPEECH_RECOGNITION', 'BASE_MODEL',
                 'HUGGINGFACE', 'openai/whisper-large-v3', 'SAFETENSOR',
-                'ENABLED', 'NOT_DOWNLOADED', '{}', 1,
+                'transformers', 'stt', 'SELF_HOSTED',
+                'ENABLED', 'UNKNOWN', '{}', 1,
                 :now, :now
             )
         """),
