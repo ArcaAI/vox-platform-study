@@ -22,6 +22,7 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { runInTenantContext } from '../../agentPromotion/tenant-context';
 import { IAgentService } from '../../agent/IAgentService';
+import { isPlatformHiddenAgentSlug } from '../../agent/platform-hidden-agents';
 import { IAgentAssignmentService } from '../../agent-assignment/IAgentAssignmentService';
 import type { IAgentAssignmentService as IAgentAssignmentServicePort } from '../../agent-assignment/IAgentAssignmentService';
 import { IConsultationContextSchemaService } from '../../consultation-context-schema/IConsultationContextSchemaService';
@@ -337,7 +338,19 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
     }
   }
 
-  /** Every PUBLISHED SYSTEM agent, cloned and published into the tenant as its own. */
+  /**
+   * Every PUBLISHED SYSTEM agent, cloned and published into the tenant as its own — EXCEPT a
+   * platform hidden one (TASK-974 D-1).
+   *
+   * Cloning is the TASK-890 OD-M rule for CONTENT: the tenant owns its copy and may re-model it.
+   * A platform SERVICE agent is CONFIGURATION, and the two differ in both directions — a tenant
+   * could change the model the platform funds, and a platform admin's model change would be
+   * stranded in SYSTEM because re-sync is missing-only. So it is skipped here and resolved at
+   * runtime by the one service that owns the capability, through its own SYSTEM-pinned read.
+   *
+   * The skip is REPORTED, not silent: it lands in `skipped` with a warning naming the slug, so
+   * an operator reading a provisioning summary can tell a deliberate omission from a failed copy.
+   */
   private async copyAgents(tenantId: string, summary: ReferenceSetSummary): Promise<void> {
     const outcome = summary.kinds.agents;
     const agents = this.port<AgentClonePort>(IAgentService);
@@ -348,6 +361,13 @@ export class TenantReferenceSetService extends BaseService implements ITenantRef
     }
     const sources = await this.agentRepository.findSystemReferences(this.databaseService.baseClient);
     for (const source of sources) {
+      if (isPlatformHiddenAgentSlug(source.slug)) {
+        outcome.skipped += 1;
+        summary.warnings.push(
+          `agents: '${source.slug}' was NOT provisioned — it is a platform-owned agent, resolved by the platform for every tenant rather than cloned into one.`,
+        );
+        continue;
+      }
       try {
         const result = await agents.cloneFromSystem(source.slug, tenantId);
         if (result.created) outcome.added += 1;
