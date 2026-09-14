@@ -10,10 +10,15 @@
  *
  * Deliberately NOT deferred until open: the list is small, tenant-scoped and already in the
  * query cache when the `/workflow-studio` resolver route brought the admin here, so opening the
- * combobox shows results immediately instead of a spinner on every click. `shouldFilter` stays
- * on cmdk's default (client-side) — the list endpoint takes no search filter.
+ * combobox shows results immediately instead of a spinner on every click.
+ *
+ * TASK-973 RC-2: the list endpoint DOES take a search filter (`ListWorkflowDefinitionsQuery`
+ * extends `PaginatedQuery`, which applies `search`/`searchFields` — see
+ * `workflow-definition.service.ts#list`), so a tenant with more than one page of definitions is
+ * searched server-side rather than only over the first `PAGE_SIZE` rows. `shouldFilter={false}`
+ * turns off cmdk's own client-side re-filter so it never second-guesses (or hides) a server match.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { IconCheck, IconSelector } from '@tabler/icons-react';
 import { Badge, Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, Popover, PopoverContent, PopoverTrigger, cn } from '@arcaai/ui';
@@ -21,6 +26,13 @@ import { useWorkflowDefinitions } from '../api';
 import type { WorkflowDefinition, WorkflowDefinitionStatus } from '../api/types';
 
 const PAGE_SIZE = 100;
+/** `name` + `slug` — the two scalar `String` columns on `WorkflowDefinition`
+ * (`packages/database/src/prisma/db_main/workflow-definition.prisma:66-67`) a
+ * caller would plausibly type. `status` is an enum column, not `String` — Prisma's
+ * `contains`/`mode:'insensitive'` OR-filter only applies to `String` fields. */
+const WORKFLOW_SEARCH_FIELDS = 'name,slug';
+/** House debounce for server-hitting free-text search (`departments-screen.tsx:60-70`). */
+const SEARCH_DEBOUNCE_MS = 300;
 
 export const STATUS_VARIANT: Record<WorkflowDefinitionStatus, 'default' | 'secondary' | 'outline'> = {
   DRAFT: 'outline',
@@ -41,17 +53,33 @@ export function WorkflowSwitcher({ current, className, onNavigate }: WorkflowSwi
   const router = useRouter();
   const navigate = onNavigate ?? ((href: string) => router.push(href));
   const [open, setOpen] = useState(false);
-  const definitionsQuery = useWorkflowDefinitions({ page: 0, limit: PAGE_SIZE });
+  // Debounced (300ms) draft over the search box; `search` is what actually hits the server.
+  const [draft, setDraft] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    if (draft === search) return;
+    const timer = setTimeout(() => setSearch(draft), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [draft, search]);
+
+  const trimmedSearch = search.trim();
+  const definitionsQuery = useWorkflowDefinitions({
+    page: 0,
+    limit: PAGE_SIZE,
+    ...(trimmedSearch ? { search: trimmedSearch, searchFields: WORKFLOW_SEARCH_FIELDS } : {}),
+  });
 
   /**
    * The open row may not be in the page the list returned (a brand-new draft, or page 2 of a
    * long lineage), and a switcher that cannot show what you are looking at is worse than no
-   * switcher — so it is merged in rather than assumed present.
+   * switcher — so it is merged in rather than assumed present. Only while UNfiltered: once the
+   * admin is searching for something else, forcing the open row back in would defeat the search.
    */
   const rows = useMemo(() => {
     const fetched = definitionsQuery.data?.data ?? [];
+    if (trimmedSearch) return fetched;
     return fetched.some((row) => row.id === current.id) ? fetched : [current, ...fetched];
-  }, [definitionsQuery.data, current]);
+  }, [definitionsQuery.data, current, trimmedSearch]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -75,11 +103,15 @@ export function WorkflowSwitcher({ current, className, onNavigate }: WorkflowSwi
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-80 p-0">
-        <Command>
-          <CommandInput placeholder="Search workflows…" />
+        {/* `shouldFilter={false}` — the search is server-side (`search`/`searchFields` above);
+            cmdk's own client-side re-filter would only fight it. */}
+        <Command shouldFilter={false}>
+          <CommandInput value={draft} onValueChange={setDraft} placeholder="Search workflows by name or slug…" />
           <CommandList>
             {definitionsQuery.isLoading ? (
-              <div className="text-muted-foreground py-6 text-center text-sm">Loading workflows…</div>
+              <div className="text-muted-foreground py-6 text-center text-sm">
+                {trimmedSearch ? 'Searching…' : 'Loading workflows…'}
+              </div>
             ) : (
               <>
                 <CommandEmpty>No workflow matches.</CommandEmpty>
@@ -87,8 +119,7 @@ export function WorkflowSwitcher({ current, className, onNavigate }: WorkflowSwi
                   {rows.map((row) => (
                     <CommandItem
                       key={row.id}
-                      // cmdk filters on `value`, so the searchable text is the whole label, not the id.
-                      value={`${row.name} ${row.slug} v${row.versionNumber} ${row.status}`}
+                      value={row.id}
                       onSelect={() => {
                         setOpen(false);
                         if (row.id !== current.id) navigate(`/workflow-studio/${encodeURIComponent(row.id)}`);
