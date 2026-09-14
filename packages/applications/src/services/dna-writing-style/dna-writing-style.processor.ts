@@ -669,9 +669,18 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         task: AgentTask.TEXT_GENERATION,
         agentSlug: DNA_WRITING_STYLE_ANALYST_SLUG,
         allowPlatformHidden: true,
-        // `mark`, not `fail-closed`: `resolveFromAgent` walks its own chain, so a primary whose
-        // connection cannot serve must leave the fallbacks a chance rather than throw here.
-        primaryBinding: 'mark',
+        // `fail-closed` (the resolver's DEFAULT), stated explicitly because the alternative is
+        // tempting and wrong here. `mark` returns the agent with NO `providerOverride` when the
+        // primary model names a connection that cannot serve, and `applyTenantProviderOverrides`
+        // below then folds by provider NAME — spending the tenant's DEFAULT vendor account, which
+        // this binding did not name, and metering the call against it (TASK-958 D-3).
+        //
+        // `mark` belongs to the CHAIN planes, which resolve a credential per candidate and walk
+        // on. This job does not walk: `callText` dispatches `spec.primary` and nothing else, so
+        // there is no fallback for `mark` to protect. Making the DNA job walk the chain is a
+        // follow-up; until then an unusable binding stops the job instead of quietly spending
+        // somebody else's account.
+        primaryBinding: 'fail-closed',
       }),
     );
 
@@ -694,6 +703,20 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     items: ReadonlyArray<{ text: string; writtenAt: string; kind?: string; sourceRef?: string }>,
     maxContextChars: number,
   ): { corpus: string; summary: DnaIngestSummary } {
+    // L5/F3 — a `writtenAt` that `Date.parse` cannot read sorts unpredictably here and renders a
+    // window of `Invalid Date` that is then persisted as the profile's provenance. The service
+    // refuses one at enqueue; this is the second lock, for a payload that reached the queue
+    // another way (an older build's job still in flight, a hand-enqueued replay). Named, not
+    // silently dropped: a job that learns from a corpus the caller did not send is worse than one
+    // that stops.
+    const unreadable = items.findIndex((item) => Number.isNaN(Date.parse(item.writtenAt)));
+    if (unreadable !== -1) {
+      throw new Error(
+        `DNA_INGEST_WRITTEN_AT_INVALID: samples[${unreadable}].writtenAt is '${items[unreadable]!.writtenAt}', which is not a date-time this ` +
+          'platform can order a time series by.',
+      );
+    }
+
     const ordered = [...items].sort((a, b) => Date.parse(a.writtenAt) - Date.parse(b.writtenAt));
 
     // Drop from the FRONT (oldest) until the rendered corpus fits. Measured on the RENDERED

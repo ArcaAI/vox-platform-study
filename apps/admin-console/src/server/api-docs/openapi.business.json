@@ -33999,7 +33999,17 @@
       "post": {
         "description": "Submits writing the platform has not seen — case notes, work notes, any prose the clinician authored — as a TIME SERIES, and queues the platform analyst over it. Each sample carries a `writtenAt`, which is what orders the corpus and what decides which samples survive when a batch exceeds the analysis budget (the oldest are dropped, whole). The response is a job handle, not a profile: poll `GET ingest/jobs/{jobId}`, then read the profile from the clinician's own DNA surfaces.\n\nA machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary — the submitted text itself is never persisted.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:dna-writing-style:ingest`).\n\n**API key scopes** — `dna-writing-style:ingest`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "DnaWritingStyleIngestController_ingest",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Retry-safe key (≤ 200 characters). Reusing it with the same credential joins the job the first attempt enqueued instead of starting a second analysis, for as long as that job is retained by the queue.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -34022,7 +34032,7 @@
             "description": "Accepted and queued."
           },
           "400": {
-            "description": "Validation failed, or the batch exceeds the total character budget (`DNA_INGEST_TOO_LARGE`), or the caller may not name this clinician (`DNA_INGEST_CLINICIAN_NOT_ALLOWED`), or a machine caller named none (`DNA_INGEST_CLINICIAN_REQUIRED`)."
+            "description": "Validation failed, or the batch exceeds the total character budget (`DNA_INGEST_TOO_LARGE`), or the caller may not name this clinician (`DNA_INGEST_CLINICIAN_NOT_ALLOWED`), or a machine caller named none (`DNA_INGEST_CLINICIAN_REQUIRED`), or a `writtenAt` is not a date-time this platform can order a series by (`DNA_INGEST_WRITTEN_AT_INVALID`), or the `Idempotency-Key` header is too long."
           },
           "403": {
             "description": "Scope violation, or an administrator not acting as a clinician tried to ingest under their own account."

@@ -405,3 +405,80 @@ describe('the `samples` time series (§4.3)', () => {
     expect(body(httpService).prompt).toBe('REDACTED CORPUS');
   });
 });
+
+/**
+ * L5/F4 — the PRIMARY binding policy.
+ *
+ * `primaryBinding` decides what happens when the agent's primary model NAMES a connection that
+ * cannot serve (disabled, keyless, or an id this tenant cannot read). `'mark'` returns the agent
+ * with NO `providerOverride`, and `applyTenantProviderOverrides` then folds by provider NAME —
+ * spending the tenant's DEFAULT vendor account, which the binding did not name, and metering the
+ * call there (the TASK-958 D-3 hazard verbatim).
+ *
+ * `'mark'` is the right answer for the CHAIN planes, because they resolve a credential per
+ * candidate and walk on. This job does not: `callText` dispatches `spec.primary` and nothing else,
+ * so there is no fallback for `'mark'` to protect. A chain walk here is a follow-up; until it
+ * exists, an unusable binding must stop the job.
+ */
+describe('an unusable connection binding stops the job — it never quietly spends another account', () => {
+  it('asks the resolver to FAIL CLOSED on the primary binding', async () => {
+    const { processor, agentResolver } = build();
+
+    await processor.process(job());
+
+    expect(agentResolver.resolve).toHaveBeenCalledWith(expect.objectContaining({ primaryBinding: 'fail-closed' }));
+  });
+
+  it('fails the job with the resolver`s named reason instead of dispatching', async () => {
+    const { processor, agentResolver, httpService, notifyFailed } = build();
+    agentResolver.resolve.mockRejectedValue(
+      Object.assign(new Error("Agent 'dna-writing-style-analyst' binds a connection that cannot serve"), { code: 'AGENT_CONNECTION_UNAVAILABLE' }),
+    );
+
+    await expect(processor.process(job())).rejects.toThrow(/cannot serve/);
+
+    expect(httpService.axiosRef.post).not.toHaveBeenCalled();
+    expect(notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('cannot serve'));
+  });
+});
+
+/**
+ * L5/F3 — the ingest renderer's half of the `writtenAt` contract.
+ *
+ * `renderIngestedSeries` SORTS by `Date.parse(writtenAt)` and reports the surviving window from
+ * it. A `NaN` there sorts unpredictably and renders a window of `Invalid Date`, which is then
+ * persisted on the report as the profile's provenance. The service refuses such a value at
+ * enqueue; this is the second lock, for a payload that reached the queue another way (an older
+ * build's job still in flight, a hand-enqueued replay).
+ */
+describe('the ingested time series must be orderable', () => {
+  it('fails the job, naming the field, rather than rendering a corpus around an unreadable date', async () => {
+    const { processor, httpService, notifyFailed } = build();
+
+    await expect(
+      processor.process(
+        job({ textSamples: undefined, samples: [{ text: 'A note.', writtenAt: '2026-W01', kind: 'CASE_NOTE' }] }),
+      ),
+    ).rejects.toThrow(/writtenAt/);
+
+    expect(httpService.axiosRef.post).not.toHaveBeenCalled();
+    expect(notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('writtenAt'));
+  });
+
+  it('renders a well-formed series unchanged', async () => {
+    const { processor, httpService } = build();
+
+    const result = await processor.process(
+      job({
+        textSamples: undefined,
+        samples: [
+          { text: 'Later note.', writtenAt: '2026-09-02T09:00:00.000Z', kind: 'CASE_NOTE' },
+          { text: 'Earlier note.', writtenAt: '2026-09-01T09:00:00.000Z', kind: 'WORK_NOTE' },
+        ],
+      }),
+    );
+
+    expect(body(httpService).prompt).toContain('Earlier note.');
+    expect(result.reportData.ingest).toMatchObject({ itemCount: 2, from: '2026-09-01T09:00:00.000Z', to: '2026-09-02T09:00:00.000Z' });
+  });
+});

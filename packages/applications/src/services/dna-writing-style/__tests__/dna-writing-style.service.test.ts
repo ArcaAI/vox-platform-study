@@ -260,6 +260,23 @@ describe('DnaWritingStyleService', () => {
       expect(payload).not.toHaveProperty('departmentId');
     });
 
+    /**
+     * L5/F7 — `origin` names the SURFACE that asked for a profile, and `GenerateDnaReportJobPayload`
+     * declares three of them. Only `ingest` was ever stamped, so the other two arms of the union
+     * were unreachable and a report's provenance read "unknown" for every profile the clinician
+     * asked for themselves — the audit trail this field exists for.
+     */
+    it('stamps `origin: generate` on the job and on the audit event', async () => {
+      await service.generateDnaReport('doctor-id-1', {});
+
+      const [, payload] = mockQueue.add.mock.calls[0];
+      expect(payload.origin).toBe('generate');
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'SysEvent.ResourceCreated',
+        expect.objectContaining({ data: expect.objectContaining({ kind: 'dna-generation-requested', origin: 'generate' }) }),
+      );
+    });
+
     it('should generate unique jobId for each call', async () => {
       const result1 = await service.generateDnaReport('doctor-id-1', {});
       const result2 = await service.generateDnaReport('doctor-id-1', {});

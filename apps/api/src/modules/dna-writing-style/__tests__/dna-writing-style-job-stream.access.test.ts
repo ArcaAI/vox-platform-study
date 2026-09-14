@@ -115,3 +115,47 @@ describe('streamDnaJobStatus ownership gate', () => {
     await expect(firstValueFrom(streamDnaJobStatus(queueWith(OWNED), '1', { tenantId: 't-2', doctorId: 'd-1' }))).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+/**
+ * L5/F1 — a MACHINE-enqueued job is not readable through the HUMAN disjunct.
+ *
+ * The doctor branch accepts the job's `userId` as well as its `doctorId`, so that an admin who
+ * IMPERSONATED a clinician can poll the job they started. A machine's bound human is not an
+ * impersonator: they never asked for anything, and on a job a credential enqueued for somebody
+ * else that disjunct would hand them another clinician's writing-style model — through
+ * `GET dna-writing-styles/jobs/:jobId`, a route this ticket never touched.
+ *
+ * Two locks, deliberately: `DnaWritingStyleService` stamps the CLINICIAN as a machine job's
+ * `userId`, and the gate below ignores that field entirely once `requestedBy` says a machine
+ * enqueued it. Either alone would close today's hole; together they survive the next payload
+ * change.
+ */
+describe('a machine-enqueued job is read by its SUBJECT, never by the credential`s bound human', () => {
+  const machineJobFor = (doctorId: string, userId: string) => ({
+    tenantId: 't-1',
+    doctorId,
+    userId,
+    requestedBy: { credentialClass: 'api-key', principalId: 'key-1' },
+  });
+
+  it('404s for a non-admin human the job was merely enqueued BY', async () => {
+    await expect(getDnaJobStatus(queueWith(machineJobFor('d-1', 'u-9')), '1', { tenantId: 't-1', doctorId: 'u-9' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('serves it to the clinician it is ABOUT', async () => {
+    const res = await getDnaJobStatus(queueWith(machineJobFor('d-1', 'd-1')), '1', { tenantId: 't-1', doctorId: 'd-1' });
+    expect(res.status).toBe('completed');
+  });
+
+  it('leaves HUMAN impersonation alone — a job with no `requestedBy` keeps the enqueuing-user disjunct', async () => {
+    const res = await getDnaJobStatus(queueWith({ tenantId: 't-1', doctorId: 'd-1', userId: 'u-9' }), '1', { tenantId: 't-1', doctorId: 'u-9' });
+    expect(res.status).toBe('completed');
+  });
+
+  it('leaves the tenant-wide ADMIN branch alone', async () => {
+    const res = await getDnaJobStatus(queueWith(machineJobFor('d-1', 'd-1')), '1', { tenantId: 't-1' });
+    expect(res.status).toBe('completed');
+  });
+});

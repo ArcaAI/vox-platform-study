@@ -316,6 +316,10 @@ describe('DnaRegenerationScheduler', () => {
       expect(payload.tenantId).toBe('tenant-X');
       expect(payload.userId).toBe('system-scheduler');
       expect(payload.isRegeneration).toBe(true);
+      // L5/F7 — which surface asked. `isRegeneration` is the scheduler's own flag; `origin` is
+      // the shared provenance field every DNA enqueue stamps, and the one the report is
+      // explainable by.
+      expect(payload.origin).toBe('scheduler');
       expect(payload.jobId).toBeDefined();
       expect(options.jobId).toBe(payload.jobId);
     });
