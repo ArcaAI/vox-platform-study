@@ -13,8 +13,8 @@
  * and the gate that actually blocks an approval reads the node.
  */
 
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { EvalGoldenSetList, PromptTemplate, PromptVersion } from '../../api/types';
@@ -284,5 +284,41 @@ describe('GovernanceTab — Eval panel', () => {
     await pickGoldenSet();
 
     await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
+  });
+
+  // TASK-973 L2 — the list's search already hit GET admin/prompt-templates
+  // server-side (`search` is applied as a `name` contains match in
+  // prompt-management.service.ts:813); the missing piece was the 300ms
+  // debounce required by the house pattern (departments-screen.tsx:60-70).
+  describe('template search debounce', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('debounces the search 300ms before hitting GET admin/prompt-templates', async () => {
+      const calls = stubFetch((call) => defaultHandler(call));
+      renderWithProviders(<GovernanceTab />);
+
+      // The search input renders synchronously (not gated on the list load).
+      const input = screen.getByRole('textbox', { name: 'Search templates' });
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      const baseline = calls.length;
+
+      fireEvent.change(input, { target: { value: 'cardio' } });
+      // Still nothing new — the keystroke has not hit the server yet.
+      expect(calls.length).toBe(baseline);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(calls.length).toBe(baseline);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(baseline));
+      expect(calls.some((call) => call.method === 'GET' && call.url.includes('/admin/prompt-templates') && call.url.includes('search=cardio'))).toBe(
+        true,
+      );
+    });
   });
 });
