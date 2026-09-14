@@ -8,6 +8,7 @@ import { IDnaWritingStyleService } from './IDnaWritingStyleService';
 import { DnaWritingStyleProcessor } from './dna-writing-style.processor';
 import { DnaRegenerationScheduler } from './dna-regeneration.scheduler';
 import { CommonServiceModule } from '../baseServices';
+import { AgentServiceModule } from '../agent/agent.service.module';
 import { PromptManagementServiceModule } from '../prompt-management/prompt-management.service.module';
 import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-job.service.module';
 import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
@@ -23,7 +24,12 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
     ConfigModule,
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
-    HarnessPolicyServiceModule, // TEXT-selection resolver for DnaWritingStyleProcessor
+    // TASK-974 D-1 — `AgentResolverService` + `TextAgentResolverService` for the PLATFORM DNA
+    // analyst (`AgentRepository` and `CORE_DATABASE_SERVICE` come from `CoreDatabaseModule`
+    // above). Named rather than left to an `@Optional()` absence: without it the processor falls
+    // back to the pre-974 finalize-agent selection, which is the behaviour this ticket replaced.
+    AgentServiceModule,
+    HarnessPolicyServiceModule, // legacy TEXT-selection resolver; only the positional fixtures reach it now
     // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.

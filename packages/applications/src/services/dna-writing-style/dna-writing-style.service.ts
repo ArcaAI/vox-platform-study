@@ -46,6 +46,32 @@ import { BaseService, encryptPhiFields } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 
+/** TASK-974 §4.1 — what a caller may say a writing sample IS. Explainability only; never a gate. */
+export type DnaWritingSampleKind = 'CASE_NOTE' | 'WORK_NOTE' | 'OTHER';
+
+/** TASK-974 §4.1 — ONE writing sample of the ingested time series. */
+export interface DnaWritingSample {
+  text: string;
+  /** ISO-8601 date-time — the time-series key the corpus is ordered and truncated by. */
+  writtenAt: string;
+  kind: DnaWritingSampleKind;
+  /** The caller's own record locator. Carried for support, NEVER persisted on the report. */
+  sourceRef?: string;
+}
+
+/**
+ * TASK-974 §4.3 — WHO asked, for a machine caller.
+ *
+ * The job-status route lets a machine read back only the jobs it enqueued, and this is the only
+ * record of that: a service account and an API key both act "as" a bound user, so the user id
+ * alone cannot tell one credential's job from another's.
+ */
+export interface DnaJobRequestedBy {
+  credentialClass: 'jwt' | 'api-key' | 'service-account';
+  /** The CREDENTIAL's id — a `ServiceAccount.id` or an `ApiKey.id`, never the bound user's. */
+  principalId: string;
+}
+
 export interface GenerateDnaReportJobPayload {
   jobId: string;
   doctorId: string;
@@ -54,6 +80,18 @@ export interface GenerateDnaReportJobPayload {
   textSamples?: string[];
   // Historical source IDs the generation was seeded from.
   sourceIds?: string[];
+  /**
+   * TASK-974 §4.3 — the ingested TIME SERIES. Additive beside `textSamples` rather than
+   * replacing it: the two carry different things (an unordered bag of strings vs. dated,
+   * typed items) and the older callers keep working byte-identically.
+   *
+   * The batch rides the payload rather than a table by design (D-3): the raw notes are PHI, and
+   * the durable artifact is the schema-constrained PROFILE, not the writing that produced it.
+   */
+  samples?: DnaWritingSample[];
+  /** Which surface asked. Stamped on the audit event so a profile's provenance is readable. */
+  origin?: 'generate' | 'ingest' | 'scheduler';
+  requestedBy?: DnaJobRequestedBy;
 }
 
 export interface DnaReportJobResult {
