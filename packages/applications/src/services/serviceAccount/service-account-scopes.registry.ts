@@ -292,6 +292,26 @@ export const CONSULTATION_REALTIME_SCOPE_SOURCES = [
 export const CONSULTATION_REALTIME_SVC_SCOPES: readonly string[] = CONSULTATION_REALTIME_SCOPE_SOURCES.map(toServiceAccountScope);
 
 /**
+ * TASK-974 §4.2 — the SIXTH family: the DNA writing-sample INGEST plane.
+ *
+ * Its own constant, for the reason each of the five before it has one: a family name has to keep
+ * describing its contents, or the next scope gets mis-derived and the boot audit reconciles
+ * against a lie. This is neither a standalone end-user feature nor part of the consultation
+ * plane — it is a BACK-OFFICE submission an integrator makes on a clinician's behalf, typically
+ * as a batch out of an EMR, and it reaches a PHI-derived artifact (`DnaWritingStyleReport`) that
+ * no other family touches.
+ *
+ * ONE scope, and the narrowness is the point. `svc:dna-writing-style:ingest` submits samples; it
+ * reads no profile back, which is why the personal DNA controller keeps its `@ForbidApiKey()`
+ * exemption and gains no `svc:` twin. The ADMIN half of DNA is `svc:admin:dna-writing-style:manage`
+ * — derived from `admin:dna-writing-style:manage` like every other admin area, and unrelated.
+ */
+export const DNA_WRITING_STYLE_SCOPE_SOURCES = ['dna-writing-style:ingest'] as const;
+
+/** The renamespaced form of {@link DNA_WRITING_STYLE_SCOPE_SOURCES}. */
+export const DNA_WRITING_STYLE_SVC_SCOPES: readonly string[] = DNA_WRITING_STYLE_SCOPE_SOURCES.map(toServiceAccountScope);
+
+/**
  * Renamespace one declared source family into the registry. Shared by both
  * source-list families so they cannot drift in how a `svc:` row is built: the
  * description, the category and — the load-bearing part — the `implies` all
@@ -330,7 +350,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
     };
   }
 
-  // The four source-list families, each derived from the SAME API-key definition
+  // The source-list families, each derived from the SAME API-key definition
   // the human-credential path uses on the same route, so the scope and its
   // abilities can never disagree. A source name that stops existing in
   // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
@@ -340,6 +360,7 @@ function buildRegistry(): Record<string, ScopeDefinition> {
   deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES');
   deriveFamilyInto(registry, AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES, 'AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES');
   deriveFamilyInto(registry, CONSULTATION_REALTIME_SCOPE_SOURCES, 'CONSULTATION_REALTIME_SCOPE_SOURCES');
+  deriveFamilyInto(registry, DNA_WRITING_STYLE_SCOPE_SOURCES, 'DNA_WRITING_STYLE_SCOPE_SOURCES');
 
   // Wildcards carry `[]` and are resolved by EXPANSION in
   // `resolveServiceAccountImpliedPermissions`, never by a literal of their own —

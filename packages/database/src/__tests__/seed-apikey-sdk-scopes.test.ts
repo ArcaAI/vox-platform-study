@@ -135,6 +135,7 @@ const SDK_BUSINESS_PLANE_SCOPES: ReadonlyArray<readonly [scope: string, why: str
   ['platform:changelog:read', "GET /changelog, /changelog/unseen — the What's New dialog"],
   ['tts:speech:write', 'POST /speech/synthesize'],
   ['tts:voice:read', 'GET /speech/voices'],
+  ['dna-writing-style:ingest', 'POST /dna-writing-styles/ingest — hope.dnaWritingStyle.ingest / useDnaWritingStyle()'],
 ];
 
 describe('seeded SDK keys —  business-plane coverage', () => {
