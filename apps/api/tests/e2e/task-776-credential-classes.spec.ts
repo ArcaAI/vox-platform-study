@@ -23,7 +23,15 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, SEEDED_API_KEY, loginUser } from '../../../../tests/helpers';
+import {
+  SEEDED_USERS,
+  DEFAULT_TENANT_KEY,
+  SEEDED_API_KEY,
+  SEEDED_ARCAAI_DOCTOR_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET,
+  loginUser,
+} from '../../../../tests/helpers';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -41,15 +49,16 @@ const API_KEY_ARCAAI = 'hope_sk_test_e0g1i90b98g8871jfh1gi1hhi3_075682';
  */
 const API_KEY_STT_WORKER = 'hope_sa_test_d9f0h89a87f7760ieg0fh0ggh2_964571';
 
-const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
-const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
+// L5/F8 — credentials come ONLY from `tests/helpers/e2e.helper.ts` (rule 05 §API Test Standard).
+const SVC_CLIENT_ID = SEEDED_SERVICE_ACCOUNT_CLIENT_ID;
+const SVC_CLIENT_SECRET = SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET;
 
 const TENANT_GLOBAL = '50000000-0000-0000-0000-000000000000';
 const TENANT_ARCAAI = '50000000-0000-0000-0000-000000000001';
 const TENANT_SYSTEM = '00000000-0000-0000-0000-000000000000';
 
 const USER_DOCTOR_GLOBAL = '70000000-0000-0000-0000-000000000010';
-const USER_ARCAAI_DOCTOR = '70000000-0000-0000-0000-000000000040';
+const USER_ARCAAI_DOCTOR = SEEDED_ARCAAI_DOCTOR_ID;
 const CONSULTATION_GLOBAL = '90000000-0000-0000-0000-000000000001';
 const CONSULTATION_ARCAAI = '90000000-0000-0000-0001-000000000001';
 

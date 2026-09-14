@@ -21,7 +21,17 @@
  * opaque 409.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { DEFAULT_TENANT_KEY, SEEDED_API_KEY, SEEDED_API_KEY_DOCTOR2, SEEDED_API_KEY_SERVICE_ACCOUNT, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+import {
+  DEFAULT_TENANT_KEY,
+  SEEDED_API_KEY,
+  SEEDED_API_KEY_DOCTOR2,
+  SEEDED_API_KEY_SERVICE_ACCOUNT,
+  SEEDED_ARCAAI_DOCTOR_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET,
+  SEEDED_USERS,
+  loginUser,
+} from '../../../../tests/helpers';
 
 const INGEST = '/api/v1/dna-writing-styles/ingest';
 const INGEST_JOB = (jobId: string) => `/api/v1/dna-writing-styles/ingest/jobs/${jobId}`;
@@ -30,16 +40,12 @@ const AGENTS = '/api/v1/agents';
 /** The PLATFORM HIDDEN analyst (`PLATFORM_HIDDEN_AGENTS`), seeded into SYSTEM and into Global. */
 const HIDDEN_AGENT_SLUG = 'dna-writing-style-analyst';
 
-/**
- * The seeded ArcaAI service account (`00-constants.ts`). It is bound to the ARCAAI tenant, so
- * every clinician it names must be an ARCAAI clinician — which is also what makes the
- * cross-tenant case below real rather than contrived.
- */
-const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
-const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
-
-/** Seeded users (`91-user.ts`) the helper does not surface by id. */
-const USER_ARCAAI_DOCTOR = '70000000-0000-0000-0000-000000000040';
+// L5/F8 — every credential and seeded id comes from the helper (rule 05 §API Test Standard); the
+// service account is bound to the ARCAAI tenant, which is what makes the cross-tenant case below
+// real rather than contrived.
+const SVC_CLIENT_ID = SEEDED_SERVICE_ACCOUNT_CLIENT_ID;
+const SVC_CLIENT_SECRET = SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET;
+const USER_ARCAAI_DOCTOR = SEEDED_ARCAAI_DOCTOR_ID;
 
 const sample = (
   writtenAt: string,
@@ -171,6 +177,35 @@ test.describe('TASK-974 — DNA writing-sample ingest', () => {
     expect((await res.json()).code).toBe('DNA_INGEST_CLINICIAN_NOT_ALLOWED');
   });
 
+  /**
+   * L5/F1 — scopes bind the CREDENTIAL, abilities bind the BOUND HUMAN, and they compose as AND.
+   *
+   * `SEEDED_API_KEY_DOCTOR2` is bound to `doctor2` and holds the ingest scope, so the scope gate
+   * admits it; what it must NOT be able to do is build (and then read back) `doctor`'s
+   * writing-style profile. This is the case the first cut of the route allowed.
+   */
+  test('an API key bound to one clinician may not name another', async ({ request }) => {
+    const res = await request.post(INGEST, {
+      headers: { 'X-API-Key': SEEDED_API_KEY_DOCTOR2 },
+      data: { clinicianUserId: SEEDED_USERS.doctor.id, ...batch() },
+    });
+
+    expect(res.status()).toBe(400);
+    expect((await res.json()).code).toBe('DNA_INGEST_CLINICIAN_NOT_ALLOWED');
+  });
+
+  test('a `writtenAt` the platform cannot order a series by is refused before anything is queued', async ({ request }) => {
+    // `2026-W01` is valid ISO-8601 and `Date.parse` answers NaN for it, so it used to be accepted
+    // and then 500 inside the job.
+    const res = await request.post(INGEST, {
+      headers: { Authorization: `Bearer ${doctorJwt}` },
+      data: { items: [{ text: 'A note.', writtenAt: '2026-W01', kind: 'CASE_NOTE' }] },
+    });
+
+    expect(res.status()).toBe(400);
+    expect(JSON.stringify(await res.json())).toMatch(/DNA_INGEST_WRITTEN_AT_INVALID|writtenAt/);
+  });
+
   test('a clinician of ANOTHER tenant is 404 — never 403, and never a confirmation that they exist', async ({ request }) => {
     const res = await request.post(INGEST, {
       headers: { Authorization: `Bearer ${adminJwt}` },
@@ -241,6 +276,22 @@ test.describe('TASK-974 — DNA writing-sample ingest', () => {
     // (This is the case the `requestedBy` gate exists for.)
     const otherMachine = await request.get(INGEST_JOB(jobId), { headers: { 'X-API-Key': SEEDED_API_KEY_DOCTOR2 } });
     expect(otherMachine.status()).toBe(404);
+  });
+
+  /**
+   * L5/F5 — `@arcaai/vox-node` advertises `Idempotency-Key` AND lifts its POST retry guard when
+   * one is sent, so without this a retried 503 enqueued a second analysis of the same batch.
+   */
+  test('a retry carrying the same Idempotency-Key joins the original job', async ({ request }) => {
+    const key = `e2e-dna-ingest-${Date.now()}`;
+    const first = await request.post(INGEST, { headers: { Authorization: `Bearer ${doctorJwt}`, 'Idempotency-Key': key }, data: batch() });
+    const a = (await expectAccepted(first, 'idempotent ingest')) as { jobId: string };
+
+    const second = await request.post(INGEST, { headers: { Authorization: `Bearer ${doctorJwt}`, 'Idempotency-Key': key }, data: batch() });
+    const b = (await expectAccepted(second, 'idempotent retry')) as { jobId: string };
+
+    expect(b.jobId).toBe(a.jobId);
+    expect(b).toEqual(a);
   });
 
   test('an unknown job id is 404', async ({ request }) => {
