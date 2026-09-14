@@ -156,6 +156,11 @@ export const SDK_DAY_ONE_SCOPES = [
   'user:settings:write',
   // Release notes / What's New
   'platform:changelog:read',
+  // TASK-974 — `hope.dnaWritingStyle.ingest` (`@arcaai/vox-node`) and `useDnaWritingStyle()`
+  // (`@arcaai/vox`). It gates the INGEST surface only: submitting writing samples for a
+  // clinician, never reading a profile back — `DnaWritingStyleController` keeps its
+  // `@ForbidApiKey()` exemption, so a key still cannot reach a clinician's personal model.
+  'dna-writing-style:ingest',
 ] as const;
 
 export const DEFAULT_API_KEYS = [

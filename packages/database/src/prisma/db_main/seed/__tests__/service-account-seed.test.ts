@@ -41,6 +41,8 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   // standalone-feature scopes — all three renamespace an API-key scope
   // whose `implies` is `create:Consultation`.
   'svc:stt:transcription:write': [['create', 'Consultation']],
+  // TASK-974 §4.2 — the DNA writing-sample ingest plane, derived from `dna-writing-style:ingest`.
+  'svc:dna-writing-style:ingest': [['create', 'DnaWritingStyleReport']],
   'svc:stt:stream:write': [['create', 'Consultation']],
   'svc:consultation:report:write': [['create', 'Consultation']],
   'svc:admin:user:read': [['read', 'User']],

@@ -22,6 +22,21 @@ import { Agent } from '../../../models';
  * {@link findSystemReferences} / {@link findSystemReferenceBySlug}, consumed by provisioning and
  * the super-admin library branch, never by a resolver.
  */
+/**
+ * TASK-974 D-1 — the lineage keys {@link AgentRepository.findPlatformHiddenBySlug} may serve.
+ *
+ * MIRRORED, not imported: the authority is `PLATFORM_HIDDEN_AGENTS`
+ * (`packages/applications/src/services/agent/platform-hidden-agents.ts`), which also records
+ * each slug's task and the reason it is platform-owned — but `packages/applications` sits ABOVE
+ * this package in the dependency graph, so it cannot be read from here. The same shape
+ * `service-account-seed.test.ts` uses for `SVC_SCOPE_IMPLICATIONS`, for the same reason.
+ *
+ * Parity is PROVEN, not trusted: `platform-hidden-agents.test.ts` in the applications package
+ * asserts the two lists are the same set, so adding a slug in one place and not the other fails
+ * a test rather than silently refusing (or silently widening) a read.
+ */
+export const PLATFORM_HIDDEN_AGENT_SLUGS: ReadonlySet<string> = new Set(['dna-writing-style-analyst']);
+
 @Injectable()
 export class AgentRepository extends Repository<AgentEntity, Agent> {
   /** What "a live version" means, written ONCE and shared by every read that serves callers. */
@@ -116,6 +131,43 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
     });
     const mapper = AgentEntityMapper.getInstance();
     return (rows ?? []).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * TASK-974 D-1 — the PLATFORM HIDDEN agent of `slug`: the SYSTEM tenant's live published row,
+   * read on the UNSCOPED base client with an EXPLICIT `tenantId` pin, exactly like
+   * {@link findSystemReferences} above.
+   *
+   * It is the SECOND declared family of two-tenant reads, and it differs from the first in one
+   * way that is the entire safety argument: the reference library will serve ANY SYSTEM slug,
+   * because provisioning legitimately iterates all of them, while this read serves ONLY the
+   * slugs of {@link PLATFORM_HIDDEN_AGENT_SLUGS}. A slug outside that list THROWS before any
+   * query runs — the read is a platform-capability lookup, never a general-purpose cross-tenant
+   * one, and a caller that could pass an arbitrary slug would have turned it into exactly that.
+   *
+   * `client` is REQUIRED and is the unscoped base client; the scoped one would merge the
+   * caller's tenant into this `where` and answer nothing.
+   *
+   * `null` — never a throw — when SYSTEM carries no live row for an ALLOWED slug: that is a
+   * platform misconfiguration for the CALLER to name (the DNA processor fails the job with
+   * `DNA_ANALYST_AGENT_UNAVAILABLE`), not something this read can decide.
+   *
+   * Consumed ONLY by the platform service that owns the capability. NEVER by the assignment
+   * cascade, and never as a fallback for a tenant agent that is merely missing.
+   */
+  async findPlatformHiddenBySlug(client: unknown, slug: string): Promise<AgentEntity | null> {
+    if (!PLATFORM_HIDDEN_AGENT_SLUGS.has(slug)) {
+      throw new Error(
+        `'${slug}' is not a platform hidden agent. This unscoped SYSTEM read serves only ${[...PLATFORM_HIDDEN_AGENT_SLUGS].join(', ')}; ` +
+          'declare the slug in PLATFORM_HIDDEN_AGENTS (and here) or use a tenant-scoped read.',
+      );
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findSystemReferences.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const row: Agent | null = await model.findFirst({
+      where: { slug, tenantId: SYSTEM_TENANT_ID, ...AgentRepository.PUBLISHED_AND_ACTIVE },
+    });
+    return row ? AgentEntityMapper.getInstance().toDomainEntity(row) : null;
   }
 
   /** ONE reference-library row by slug — the same predicate {@link findSystemReferences} lists, so what is listed can always be cloned. */

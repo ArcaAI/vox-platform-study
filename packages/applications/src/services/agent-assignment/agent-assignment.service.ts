@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -18,6 +18,7 @@ import {
 import { agentTagProblems, agentTagsSatisfy, canonicalAgentTags } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { isPlatformHiddenAgentSlug } from '../agent/platform-hidden-agents';
 import { AgentAssignmentResponse, UpsertAgentAssignmentRequest } from './dto';
 import { AgentAssignmentSource, IAgentAssignmentService, ResolvedAgentAssignment } from './IAgentAssignmentService';
 import { AgentAssignmentDtoMapper } from './agent-assignment.dto.mapper';
@@ -160,6 +161,12 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
       throw new BadRequestException('A DEPARTMENT-scope assignment requires scopeId (the department id).');
     }
 
+    // TASK-974 D-1 — a PLATFORM HIDDEN agent is not assignable, in any tenant and at any tier.
+    // Checked BEFORE `assertSlugPublished` because the refusal does not depend on whether the
+    // slug resolves: it is about what an assignment MEANS. The agent is reached by the one
+    // service that owns the capability, through its own SYSTEM-pinned read; the cascade is for
+    // agents a TENANT chooses between, and a tenant chooses nothing here.
+    this.assertSlugNotPlatformHidden(dto.agentSlug);
     await this.assertDepartmentInTenant(scope, scopeId);
     await this.assertSlugPublished(tenantId, dto.task, dto.agentSlug);
 
@@ -301,6 +308,22 @@ export class AgentAssignmentService extends BaseService implements IAgentAssignm
     if (!department || department.tenantId !== tenantId) {
       throw new NotFoundException('Department not found');
     }
+  }
+
+  /**
+   * TASK-974 D-1 — 409, not 400.
+   *
+   * The request is well formed and the slug is real; what is refused is the RELATIONSHIP between
+   * this tenant and a platform-owned agent. A 400 would read as "you spelled it wrong" and send
+   * an admin hunting a typo that is not there.
+   */
+  private assertSlugNotPlatformHidden(slug: string): void {
+    if (!isPlatformHiddenAgentSlug(slug)) return;
+    throw new ConflictException({
+      code: 'AGENT_NOT_ASSIGNABLE',
+      message: `'${slug}' is a platform-owned agent and cannot be assigned. The platform resolves it directly; a tenant configures it through its own prompt template, not through an assignment.`,
+      agentSlug: slug,
+    });
   }
 
   private async assertSlugPublished(tenantId: string, task: AgentTask, slug: string): Promise<void> {
