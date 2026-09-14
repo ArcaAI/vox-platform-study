@@ -73,7 +73,12 @@ beforeEach(() => {
   userRoleAssignmentRepo.findFirst.mockResolvedValue({ id: 'ura', userId: CLINICIAN, tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED });
   userDepartmentRepo.findFirst.mockResolvedValue({ id: 'ud', userId: CLINICIAN, tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED });
   userRepo.findFirst.mockResolvedValue({ id: CLINICIAN, isServiceAccount: false });
-  configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 });
+  configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({
+    effective: true,
+    tenantEnabled: true,
+    doctorToggle: null,
+    doctorPreferenceVersion: 0,
+  });
 });
 
 const payload = () => queue.add.mock.calls[0]![1] as Record<string, unknown>;
@@ -117,7 +122,9 @@ describe('who the samples belong to', () => {
   });
 
   it('a clinician may NOT name another clinician — 400, and it says which rule refused', async () => {
-    expect(await refusalCode(() => make().ingestWritingSamples({ clinicianUserId: CLINICIAN, items }, jwt()))).toBe('DNA_INGEST_CLINICIAN_NOT_ALLOWED');
+    expect(await refusalCode(() => make().ingestWritingSamples({ clinicianUserId: CLINICIAN, items }, jwt()))).toBe(
+      'DNA_INGEST_CLINICIAN_NOT_ALLOWED',
+    );
     expect(queue.add).not.toHaveBeenCalled();
   });
 
@@ -136,7 +143,11 @@ describe('who the samples belong to', () => {
     expect(result.clinicianUserId).toBe(CLINICIAN);
     // The machine is the ACTOR, never the subject: `userId` (which becomes `createdBy` on the
     // report) is the clinician, and the credential is recorded beside them as `requestedBy`.
-    expect(payload()).toMatchObject({ doctorId: CLINICIAN, userId: CLINICIAN, requestedBy: { credentialClass: 'service-account', principalId: 'svc-1' } });
+    expect(payload()).toMatchObject({
+      doctorId: CLINICIAN,
+      userId: CLINICIAN,
+      requestedBy: { credentialClass: 'service-account', principalId: 'svc-1' },
+    });
   });
 
   it('a clinician of ANOTHER tenant is 404 — never 403, and never a confirmation that they exist', async () => {
@@ -180,7 +191,10 @@ describe('the batch itself', () => {
   });
 
   it('refuses a batch over the total character budget — a cross-field rule no decorator can see', async () => {
-    const big = Array.from({ length: 30 }, (_, index) => ({ text: 'x'.repeat(20_000), writtenAt: `2026-09-${String(index + 1).padStart(2, '0')}T09:00:00.000Z` }));
+    const big = Array.from({ length: 30 }, (_, index) => ({
+      text: 'x'.repeat(20_000),
+      writtenAt: `2026-09-${String(index + 1).padStart(2, '0')}T09:00:00.000Z`,
+    }));
 
     expect(await refusalCode(() => make().ingestWritingSamples({ items: big }, jwt()))).toBe('DNA_INGEST_TOO_LARGE');
     expect(queue.add).not.toHaveBeenCalled();
@@ -208,7 +222,12 @@ describe('the batch itself', () => {
 
 describe('the DNA gate is checked at ENQUEUE, not only in the worker', () => {
   it('409 DNA_STYLE_DISABLED when the effective flag is off — a caller learns immediately, not by polling a failed job', async () => {
-    configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null, doctorPreferenceVersion: 0 });
+    configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({
+      effective: false,
+      tenantEnabled: false,
+      doctorToggle: null,
+      doctorPreferenceVersion: 0,
+    });
 
     await expect(make().ingestWritingSamples({ items }, jwt())).rejects.toBeInstanceOf(ConflictException);
     expect(await refusalCode(() => make().ingestWritingSamples({ items }, jwt()))).toBe('DNA_STYLE_DISABLED');

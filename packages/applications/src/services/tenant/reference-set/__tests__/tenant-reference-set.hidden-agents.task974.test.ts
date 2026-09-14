@@ -116,9 +116,7 @@ describe('TenantReferenceSetService — a platform hidden agent is never provisi
     expect(summary.kinds.agents.added).toBe(1);
     expect(summary.kinds.agents.skipped).toBe(1);
     expect(summary.kinds.agents.failed).toBe(0);
-    expect(summary.warnings).toEqual(
-      expect.arrayContaining([expect.stringContaining(DNA_WRITING_STYLE_ANALYST_SLUG)]),
-    );
+    expect(summary.warnings).toEqual(expect.arrayContaining([expect.stringContaining(DNA_WRITING_STYLE_ANALYST_SLUG)]));
     expect(summary.warnings.find((w: string) => w.includes(DNA_WRITING_STYLE_ANALYST_SLUG))).toMatch(/platform/i);
   });
 });

@@ -28,7 +28,8 @@ export class DnaWritingSampleDto {
   text!: string;
 
   @ApiProperty({
-    description: 'When the clinician wrote it (ISO-8601 date-time). The time-series key: the corpus is ordered by it, and the oldest items are dropped first when the batch exceeds the context budget.',
+    description:
+      'When the clinician wrote it (ISO-8601 date-time). The time-series key: the corpus is ordered by it, and the oldest items are dropped first when the batch exceeds the context budget.',
     example: '2026-09-01T09:30:00.000Z',
   })
   @IsISO8601()

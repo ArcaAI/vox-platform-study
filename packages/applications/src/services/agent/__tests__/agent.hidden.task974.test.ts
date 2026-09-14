@@ -49,7 +49,12 @@ const mockAgentRepository = {
   softDelete: vi.fn(),
 };
 const mockFallbackRepository = { findByAgentId: vi.fn(async () => []) };
-const mockAiModelRepository = { findById: vi.fn(), findByIdOrNull: vi.fn(async () => null), findBySlug: vi.fn(), findByTaskTypeSharedRead: vi.fn(async () => []) };
+const mockAiModelRepository = {
+  findById: vi.fn(),
+  findByIdOrNull: vi.fn(async () => null),
+  findBySlug: vi.fn(),
+  findByTaskTypeSharedRead: vi.fn(async () => []),
+};
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 const mockAssignments = { resolve: vi.fn(async () => ({ agentSlug: null, source: 'unassigned' })) };
 const mockProviderConnections = { resolveConnection: vi.fn(), findRow: vi.fn(), findDefaultRow: vi.fn(), resolveTenantCloudOverrides: vi.fn() };
@@ -193,7 +198,12 @@ function makeResolver(): AgentResolverService {
 describe('AgentResolverService — a hidden slug is 404 unless the caller opts in', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resolverModelRepository.findById.mockResolvedValue({ id: 'm1', tenantId: SYSTEM_TENANT_ID, slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio' });
+    resolverModelRepository.findById.mockResolvedValue({
+      id: 'm1',
+      tenantId: SYSTEM_TENANT_ID,
+      slug: 'lms-gemma-4-e2b-it-qat',
+      provider: 'lm-studio',
+    });
     resolverAgentRepository.findPublishedActiveBySlug.mockResolvedValue({
       id: 'agent-hidden',
       tenantId: SYSTEM_TENANT_ID,

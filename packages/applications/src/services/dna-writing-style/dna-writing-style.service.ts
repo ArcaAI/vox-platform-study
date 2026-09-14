@@ -353,7 +353,8 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (!roles.some((role) => DNA_INGEST_ADMIN_ROLES.includes(role))) {
       throw new BadRequestException({
         code: 'DNA_INGEST_CLINICIAN_NOT_ALLOWED',
-        message: 'Only a tenant or super administrator may ingest writing samples on another clinician`s behalf. Omit `clinicianUserId` to ingest your own.',
+        message:
+          'Only a tenant or super administrator may ingest writing samples on another clinician`s behalf. Omit `clinicianUserId` to ingest your own.',
       });
     }
     return named;
