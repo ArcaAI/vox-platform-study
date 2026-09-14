@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IconCheck, IconSelector } from '@tabler/icons-react';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
@@ -20,7 +20,16 @@ export function UserPicker({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [queryDraft, setQueryDraft] = useState('');
   const [query, setQuery] = useState('');
+
+  // Debounced (300ms) draft before it hits the server — house pattern, see
+  // departments-screen.tsx:60-70. `search`/`searchFields=username` is already
+  // a real server-side filter (GET admin/users) — only the debounce was missing.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(queryDraft), 300);
+    return () => clearTimeout(timer);
+  }, [queryDraft]);
 
   const usersQuery = useUsers({ search: query.trim(), searchFields: 'username', limit: 10 }, { enabled: open });
   const results = usersQuery.data?.data ?? [];
@@ -46,7 +55,7 @@ export function UserPicker({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-64 p-0">
         <Command shouldFilter={false}>
-          <CommandInput value={query} onValueChange={setQuery} placeholder="Search users by username…" />
+          <CommandInput value={queryDraft} onValueChange={setQueryDraft} placeholder="Search users by username…" />
           <CommandList>
             {usersQuery.isFetching ? (
               <div className="text-muted-foreground py-6 text-center text-sm">Searching…</div>
