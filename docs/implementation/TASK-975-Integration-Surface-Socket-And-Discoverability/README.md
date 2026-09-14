@@ -236,11 +236,69 @@ runtime pass. No worker merges its own branch or removes its own worktree.
 
 ## 5. Implementation Summary
 
-*(to be filled on completion — files changed, tests added, runtime evidence)*
+All three lanes landed and were verified by the orchestrator against the artifacts — not accepted
+on report (rule 14 §2). **Not yet merged**: the merge target is awaiting an explicit answer
+(rule 14 §5.1).
+
+| Lane | Branch | Commit | Files | Boundary held? | Gates |
+|---|---|---|---|---|---|
+| keystone | `dev-2.2` | `94d4275e3` | `socket-snippets.ts` (new), `sdk-snippets.ts` | n/a | typecheck clean |
+| W-PANEL | `task-975-panel` | `83c637cae` | 2 (`+655 / -55`) | yes | typecheck 0, lint 0, **338/338 files, 3245 tests** under `CI=true`; owned file 46 tests |
+| W-GUIDE | `task-975-guide` | `ac9bead26` | 2 (`+153 / -15`) | yes | typecheck 0, lint 0; owned file 17 tests |
+| W-SDK | `task-975-sdk-screen` | `bf8bfa3a9` | 2 (`+136 / -0`, additive only) | yes | typecheck 0, lint 0; owned file 6 tests, developer-docs 37 |
+
+Orchestrator re-verification, beyond the pasted gates:
+
+- **Every branch is a verified descendant of `94d4275e3`** (`git merge-base --is-ancestor`), and no
+  lane touched a file outside its declared boundary.
+- **W-GUIDE's D1 claim was checked against the authorization oracle**, because it asserted more
+  than the brief did — that `POST auth/stream-ticket` refuses API keys *and* service accounts.
+  `route-manifest.json` confirms `apiKeyForbidden: true`, and `svcScopes: []` denies service
+  accounts by deny-by-default (rule 05). The claim holds, by two different mechanisms.
+- **W-SDK's claim that `SocketUnavailableError` is exported by BOTH packages** was checked:
+  true — `packages/agentic-sdk-v2/src/core.ts:665` as well as vox-node's own.
+
+### The test-suite finding that changes the gate
+
+The console suite is NOT reliably green under a bare `pnpm --filter @arcaai/admin-console test`,
+and this is environmental, not a defect. `vitest.config.ts:60` sets
+`testTimeout: process.env.CI ? 20_000 : 5_000`; on a loaded box the 5s ceiling fails a DIFFERENT
+handful of `findBy`/`waitFor` assertions every run. Measured across four full runs: 12, then 1,
+then 2, then 1 failures, never twice the same set, never in a file any lane touched, and every
+named file green in isolation.
+
+**`CI=true` is the fix, and it is the configuration's own intent.** Verified by the orchestrator on
+the unmodified base: `CI=true npx vitest run` → **338 files / 3226 tests green**.
+Every future console ticket should gate with `CI=true`; a bare run is not evidence of a
+regression. Recorded outside this ticket as a durable note.
+
+### OD-1 (2026-09-15) — the STT Socket lane omits `SOCKET_LANE_RATIONALE`, deliberately
+
+W-PANEL diverged from step B3 and flagged it for review. B3 asked for both exported constants on
+every Socket lane; it renders `SOCKET_RUNTIME_FLOOR` on both, but `SOCKET_LANE_RATIONALE` only on
+the WORKFLOW lane.
+
+**Accepted.** The rationale reads "SSE is the default and the only lane that resumes. Reach for a
+socket when something between you and the gateway buffers `text/event-stream`…" — which presumes an
+SSE alternative exists. For realtime STT it does not: `/ws/stt/stream` **is** the transport, not a
+fallback from one. Rendering that sentence on an STT agent's panel would steer a developer toward a
+lane that does not exist for that task, which fails this ticket's own acceptance bar ("a developer
+can copy it and make a successful call"). In its place the lane renders `SttSocketNote` — the choice
+does not arise here — and points RECORDED audio at `POST /agents/{slug}/transcriptions` + its
+`sseUrl`, which is the real SSE surface for that task.
+
+This is the brief being wrong, not the lane: B3 generalised from the workflow case.
+
+### Outstanding
+
+- The §3.2 **runtime pass** (`next-dev-loop`, live stack, actually opening a socket run). No lane
+  could do it — each owns one file and none owns a running stack. Orchestrator work, after merge.
+- The merge itself, pending the target confirmation.
 
 ## 6. Change History
 
 | Date | Entry |
 |---|---|
+| 2026-09-15 | All three lanes complete and verified; none merged (target awaiting confirmation). Boundaries held, bases correct, two cross-lane factual claims independently re-checked against `route-manifest.json` and the SDK barrels. OD-1 recorded: the STT Socket lane omits the SSE rationale because realtime STT has no SSE lane. Console suite flakiness diagnosed as the `CI ? 20_000 : 5_000` timeout, not a regression — `CI=true` is green on base at 338/338. |
 | 2026-09-14 | Plan approved. Keystone committed (`94d4275e3`): `socket-snippets.ts` + the `curlEnvLines` baseUrl parameter. Three worktree workers dispatched per §3.3 — `task-975-panel` (opus-5), `task-975-guide` (sonnet-5), `task-975-sdk-screen` (sonnet-5). Status → In Progress. |
 | 2026-09-14 | Ticket opened. Review completed against `dev-2.2` @ `b33e1c24a`: four reported symptoms measured, three confirmed real (one as discoverability, one as presentation, one as a true absence), one partly real. Socket inventory mapped across gateway + both SDKs. Three would-be findings checked and dismissed (the `?mode=` socket filter, the `tts_session:` ticket branch, workflow-studio "socket"). Plan drafted; status Pending pending approval of the plan and OQ-1..OQ-3. |
