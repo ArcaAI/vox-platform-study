@@ -43,6 +43,9 @@ export { useAuth, type UseAuthReturn } from './useAuth';
 // Consultation job hook
 export { useConsultationJob, type UseConsultationJobReturn } from './useConsultationJob';
 
+// DNA writing-style sample ingest hook (TASK-974, business plane)
+export { useDnaWritingStyle, type UseDnaWritingStyleReturn, type PollIngestJobOptions } from './useDnaWritingStyle';
+
 // Consultation chain hook — full multi-hop parent/child tree
 export { useConsultationChain, type UseConsultationChainReturn } from './useConsultationChain';
 
