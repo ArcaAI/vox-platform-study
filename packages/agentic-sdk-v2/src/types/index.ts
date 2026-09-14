@@ -254,6 +254,9 @@ export type {
 // DNA aggregate dashboard types
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './dna';
 
+// DNA writing-sample ingest types (TASK-974, business plane)
+export type { DnaWritingSampleKind, DnaWritingSample, DnaWritingSamplesIngestInput, DnaIngestJobResponse, DnaIngestJobStatus } from './dna';
+
 // Prompt Template types
 export type {
   AssignDepartmentPromptInput,

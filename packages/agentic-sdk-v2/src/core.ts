@@ -52,6 +52,8 @@ export {
   useAuth,
   useConsultationChain,
   useConsultationJob,
+  // TASK-974: submit a clinician's writing samples to the hidden DNA analyst agent.
+  useDnaWritingStyle,
   // Schema discovery + the consultation-loop event stream
   useConsultationSchema,
   useConsultationWorkflow,
@@ -98,6 +100,8 @@ export type {
   UseConsultationChainReturn,
   UseConsultationJobReturn,
   UseConsultationSchemaReturn,
+  UseDnaWritingStyleReturn,
+  PollIngestJobOptions,
   UseConsultationWorkflowReturn,
   UseSelectableConsultationWorkflowsReturn,
   // workflow invocation.
@@ -363,6 +367,9 @@ export type {
 // DNA aggregate dashboard types
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './types';
 
+// DNA writing-sample ingest types (TASK-974, business plane)
+export type { DnaWritingSampleKind, DnaWritingSample, DnaWritingSamplesIngestInput, DnaIngestJobResponse, DnaIngestJobStatus } from './types';
+
 // =============================================================================
 // Types - Prompt Template (SDK-207 WS-4)
 // =============================================================================
@@ -500,6 +507,8 @@ export {
   CONSULTATION_ENDPOINTS,
   CONSULTATION_JOB_ENDPOINTS,
   CONTEXT_ENDPOINTS,
+  // TASK-974: DNA writing-style sample ingest (business plane).
+  DNA_WRITING_STYLE_ENDPOINTS,
   ENTITLEMENTS_ENDPOINTS,
   ENTITY_ENDPOINTS,
   HEALTH_ENDPOINTS,
