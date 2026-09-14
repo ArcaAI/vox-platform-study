@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Review |
 | Type | feature |
 | Branch | `dev-2.2` (lanes in worktrees `../hope-v2-t974-{core,node,vox,console}`) |
 | Owner request | 2026-09-14 (verbatim in §1) |
@@ -186,7 +186,96 @@ Gates: `pnpm --filter @arcaai/domains build test`, `pnpm --filter @arcaai/applic
 
 ## 6. Implementation Summary
 
-_Pending — filled in at merge._
+Merged on `dev-2.2` on 2026-09-14/15 as four `--no-ff` lane merges (`4f5e67f3b` core, `023c747bd` node,
+`4f6849d61` vox, `185840d00` console) plus `c5e36e311` (rules 00/05/08 + the e2e owner-access fix).
+Worktrees removed after the merge. No schema change; **a reseed is required** wherever the feature must
+work (`RUN_SEED=all pnpm db:seed` on dev; the test DB was reseeded here) — without the SYSTEM analyst row
+every DNA job fails closed with `DNA_ANALYST_AGENT_UNAVAILABLE`, and the new scope grants exist only in
+freshly seeded credentials.
+
+### What landed
+
+| Area | Files (key) | Notes |
+|---|---|---|
+| Platform hidden agent registry | `packages/applications/src/services/agent/platform-hidden-agents.ts` (+ mirror `PLATFORM_HIDDEN_AGENT_SLUGS` in `packages/domains/.../AgentRepository.ts`, parity test) | `dna-writing-style-analyst`, task `TEXT_GENERATION` |
+| Hidden semantics | `tenant-reference-set.service.ts` (no clone), `agent-resolver.service.ts` (`allowPlatformHidden` opt-in — the one by-slug chokepoint: invoke / speech / transcribe / `core.agent` / realtime all refuse), `agent.service.ts` (`listPublished` omits), `agent-assignment.service.ts` (409 `AGENT_NOT_ASSIGNABLE`), `agent.dto.mapper.ts` + `agent.response.ts` (`hidden: boolean`) | Admin list/get still serve it, flagged |
+| SYSTEM-pinned read | `AgentRepository.findPlatformHiddenBySlug(baseClient, slug)` | Unscoped, explicit `tenantId = SYSTEM`, allow-listed slug; `SYSTEM_SHARED_READ_MODELS` untouched |
+| Processor | `dna-writing-style.processor.ts` — `resolveAnalyst` (fail closed `DNA_ANALYST_AGENT_UNAVAILABLE`), `callText` on the analyst's spec (provider / model / temperature / max_tokens / reasoning; credential + funding for the JOB tenant via `TextAgentResolverService.resolveFromAgent`), instruction cascade (tenant `DNA_ANALYSIS` newest ENABLED → agent prompt), schema cascade (tenant `promptConfig.outputSchema` → the SYSTEM row's AUTHORED `outputSchema` → fail closed), `samples` branch (chronological render, oldest-first truncation, `reportData.ingest` + `reportData.generator`) | Pre-existing `textSamples` / approved-summary paths byte-identical; all 259 pre-existing DNA tests unchanged |
+| Ingest surface | `IDnaWritingStyleService.ingestWritingSamples`, `dna-writing-style.service.ts`, DTOs `ingest-dna-writing-samples.request.ts` / `dna-ingest-job.response.ts`, `apps/api/.../dna-writing-style-ingest.controller.ts`, `dna-writing-style-job-stream.ts` (machine principal gate) | 202; clinician rules per §4.1; 409 `DNA_STYLE_DISABLED` pre-check |
+| Scopes | `apikey-scopes.registry.ts` (`dna-writing-style:ingest`), `service-account-scopes.registry.ts` (derived `svc:dna-writing-style:ingest`), `apps/api/src/bootstrap/service-account-surface-audit.ts` (sixth family) | Granted to the seeded SDK keys (`SDK_DAY_ONE_SCOPES`) and the ArcaAI tenant-admin service account |
+| Seeds | `seed/25-agents.ts` (7th spec, Global + SYSTEM, `modelSlug: lms-gemma-4-e2b-it-qat`, `temperature 0 / maxTokens 2048 / reasoning off`, `instruction.systemPrompt = DNA_ANALYSIS_CONTENT_V3`, `outputSchema = DNA_OUTPUT_SCHEMA`, NO assignment), `02-apikey.ts`, `94-service-account.ts` | Agent totals 12 → 14 |
+| Artifacts | `route-manifest.json` (749 routes), `openapi.json`, admin-console portal JSON, vox-node generated schemas | all `:check`s green |
+| `@arcaai/vox-node` | `resources/dna-writing-style.ts`, `types/dna-writing-style.ts`, `core/errors.ts` (`DnaIngestJobTimeoutError`), `client.ts` (`hope.dnaWritingStyle`), README | polling only |
+| `@arcaai/vox` | `hooks/useDnaWritingStyle.ts`, `DNA_WRITING_STYLE_ENDPOINTS`, `types/dna.ts`, exports + gate tests, API-Reference, CHANGELOG | removed TASK-890 names stay absent |
+| Admin console | `AgentHiddenBadge` (`Hidden · platform`) on `/agents` list + detail; `listAgentOptions()` filters hidden rows out of the workflow-studio `core.agent` picker | |
+| Rules | `00-project-context.md` (platform service agents = configuration, D-1), `05-nestjs-api.md` (imperative-check row for ingest), `08-vox-sdk.md` (new SDK surface) | |
+
+### Adversarial review (opus, three lenses) and the fix lane (merged `fcbda23ea`)
+
+| # | Finding | Severity | Fix |
+|---|---|---|---|
+| R-1 | An API key bound to one clinician could ingest for ANY clinician of the tenant (scope was the whole decision; a credential exceeded its human) and the bound human could then read the other doctor's job result through the personal `jobs/:jobId` route | blocker | API key may name only its BOUND user unless that human holds `SUPER_ADMIN`/`TENANT_ADMIN` in this tenant (tenant-scoped role assignments, never the cross-tenant role list); service account keeps "any clinician of its tenant"; machine-enqueued jobs stamp `userId = doctorId` and the personal route no longer accepts `jobUserId` as owner for a machine-enqueued job |
+| R-2 | Super admin (session `tenantId: ''`, elevated only in CLS) could never read back its own ingest job | should-fix | ingest controller reads `DnaJobAccess.tenantId` from CLS like its sibling |
+| R-3 | `@IsISO8601()` accepts week/basic dates `Date.parse` cannot parse → 500 AFTER enqueue, corpus order undefined | should-fix | `strict` ISO on the DTO + 400 `DNA_INGEST_WRITTEN_AT_INVALID` before `queue.add`; the renderer refuses NaN |
+| R-4 | `primaryBinding: 'mark'` swallowed an unusable connection binding while nothing walks the chain | should-fix | `'fail-closed'`; chain walk recorded as follow-up F-6 |
+| R-5 | Fail-closed now applies to the pre-existing generate/admin/scheduler paths; an already-seeded environment has no SYSTEM analyst row | should-fix | documented: reseed is mandatory (§6); pre-production, no migration |
+| R-6 | vox-node advertised `Idempotency-Key` retry-safety the gateway did not implement, and the flag lifted the SDK's POST retry guard → duplicate jobs | should-fix | gateway honours the header (≤200 chars): `jobId = sha256(tenant|principal|key)`, `queue.getJob` first so a retry JOINS the original job and answers the same 202 |
+| R-7 | e2e inlined service-account fixtures its own header forbade | nit | exported from `tests/helpers/e2e.helper.ts` |
+| R-8 | `origin` only ever stamped by ingest | nit | `generate` / `scheduler` stamp theirs |
+| DB | **Found by the orchestrator's DB check, not the review:** the SEED's own reference-set phase (`26-tenant-reference-set.ts`) cloned the hidden agent into the ArcaAI tenant — it mirrors the runtime clone but shares no code | blocker (AC-2) | seed skips `PLATFORM_HIDDEN_AGENT_SLUGS` (declared in `seed/00-constants.ts`); THREE-way parity test applications ↔ domains ↔ seed; a create-only seed does not remove an existing clone — recreate the DB or delete by provenance (`sourceAgentId = 9c000000-0000-0000-0001-000000000007`) |
+
+Checked and clean by the review: hidden-agent containment on every by-slug path (list, get, invocations, speech, `core.agent` internal route, assignment, reference set), CLS restoration around the SYSTEM read, BYO credential folded for the JOB tenant, reasoning on the wire, `reportData.ingest` carries no PHI, 404-over-403 ordering, three-way contract parity gateway ↔ vox-node ↔ vox.
+
+### Contract deviations (from §4, all deliberate)
+
+- Business-plane exclusion lives in `AgentResolverService.resolve` (opt-in flag), not in `agent.controller.ts` — stronger, one chokepoint.
+- The agent-tier output schema is the SYSTEM row's **authored** `outputSchema`, not `compiledConfig.outputSchema` (compilation substitutes the `{ text }` task default, which would have turned "no schema" into a fail-open constraint).
+- The real invoke route is `POST /agents/{slug}/invocations`; assignment write is `POST /admin/agent-assignments`.
+- Machine job-status reads compare `requestedBy.principalId`; the clinician the job is ABOUT keeps owner access (200) — the first e2e draft expected 404 there and was corrected.
+
+### Evidence (post-merge, primary checkout, 2026-09-15)
+
+```
+domains test        Test Files 169 passed | 2 skipped   Tests 1980 passed
+database test       Test Files 91 passed               Tests 1822 passed
+applications test   (task-974 surfaces) 79 files / 1858 tests passed; the 1 "failed" file is
+                    agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts —
+                    a LIVE-DB integration test swept in by the path filter, not a unit test
+api unit            (dna + bootstrap + agent) Test Files 34 passed   Tests 599 passed
+vox-node            Test Files 37 passed  Tests 531 passed; attw/publint clean; gen:admin:check no drift
+vox                 Test Files 246 passed Tests 3729 passed
+admin-console       typecheck clean; agents + workflow-studio tests 23 files / 164 passed (lane: full 339/3229 + build)
+artifacts           openapi-coverage OK · api portal no drift (admin 667 / business 202 ops) · vox-node codegen no drift
+lint                api 0 errors (65 pre-existing warnings, none in touched files — eslint on the touched files is clean)
+e2e                 task-974-dna-ingest.spec.ts  18 passed (2.0s) against a live test gateway on :8968
+                    (seeded test DB; RESET_DB=false)
+live probe          POST …/ingest via the seeded API key → 202 → job queued (progress 10) → the job reached the
+                    PHI-redaction hop and failed there with ECONNREFUSED :8963 (guardrail is not running in the
+                    test env). Ingest, enqueue and the samples branch are proven live; the analyst resolution and
+                    the model call are proven by unit tests (`dna-writing-style.processor.hidden-agent.task974.test.ts`)
+                    and by the seeded rows (SYSTEM + Global `dna-writing-style-analyst`, PUBLISHED/active, prompt +
+                    schema + generation present; 0 assignments; 0 tenant clones).
+```
+
+Round 2 (after the fix merge `fcbda23ea`, 2026-09-15): rebuilt; test DB DROPPED + recreated + reseeded
+(`RUN_SEED=all`); hidden analyst rows = SYSTEM + Global ONLY, 0 assignments (the ArcaAI clone is gone);
+gateway `0.0.0-dev-2-2.fcbda23e` on :8968; `task-974-dna-ingest.spec.ts` **21 passed (2.4s)** — the three
+new cases: an API key bound to one clinician may not name another (400), an unorderable `writtenAt` is
+refused before anything is queued (400), a retry carrying the same `Idempotency-Key` joins the original job.
+Fix-lane unit gates: domains 1980 passed; applications targeted 938 passed (+ full suite 863 files passed);
+database 1825 passed; api targeted 483 passed; vox-node 531 passed; artifacts no drift.
+
+Pre-existing reds on `dev-2.2` NOT caused here: `tests/contracts/npm-publish-policy.contract.test.ts`
+(vox family version drift `3.4.0` vs `3.3.0`, from `d3c8f0086`); `audit-correlation.test.ts` sits at its
+30 s timeout boundary (21 s at base).
+
+### Operator notes
+
+- Platform admin authoring path: edit `dna-writing-style-analyst` in the Global working tenant on `/agents`
+  (model, fallbacks, `parameters.generation`, the inline system prompt), then `POST admin/agents/promote-to-system`.
+- Tenant override: create a `PromptTemplate` with category `DNA_ANALYSIS` in the tenant (the newest ENABLED wins);
+  optionally give it `metaData.promptConfig.outputSchema`.
+- The `visibility:hidden` tag on the seeded rows is a label; the gate is the code allow-list.
 
 ## 7. Follow-ups (not in scope)
 
@@ -194,9 +283,14 @@ _Pending — filled in at merge._
 - F-2: `dna-regen.*` keys are read through `IAppSettingsService` with in-code defaults and are absent from the settings registry (found by lane 1); register descriptors.
 - F-3: the business-plane `GET dna-writing-styles/jobs/:jobId/stream` still carries no `@StreamScope` (pre-existing, documented at the controller).
 - F-4: `useArcaSummary.analyzeDNA` / `useArca.analyzeDNA` stubs reference a removed hook; retire or re-point at `useDnaWritingStyle`.
+- F-5: six other e2e specs still inline the service-account fixture pair now exported by `tests/helpers/e2e.helper.ts`.
+- F-6: the DNA job dispatches `spec.primary` only; walking the analyst's fallback chain (`spec.fallback.chain`) on a primary failure is unbuilt (why R-4 is fail-closed).
+- F-7: reseed policy for already-seeded environments — the SYSTEM analyst row and the two scope grants exist only in a fresh seed (pre-production, so `pnpm db:all` is the documented path; a data migration would be needed once real data exists).
 
 ## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-14 | Ticket opened; exploration (3 read-only lanes); design D-1..D-4; contract §4 frozen; lanes spawned. |
+| 2026-09-15 | Four lanes merged (`--no-ff`); post-merge gates + artifacts green; test DB reseeded; e2e 18/18 live; rules 00/05/08 updated; worktrees removed; adversarial review run. |
+| 2026-09-15 | Review findings R-1..R-8 + the seed-clone defect fixed in lane L5 (merged `fcbda23ea`); test DB recreated from the fixed seed; e2e 21/21 live; rule 05 row refined (API key binds to its human); fix worktree removed. Status: Review — awaiting owner confirmation; dev DB still needs `RUN_SEED=all pnpm db:seed` (or `pnpm db:all`). |
