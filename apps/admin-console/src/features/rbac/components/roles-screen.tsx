@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { IconLock, IconPlus, IconSearch, IconShieldCog, IconUsersGroup } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
@@ -229,12 +229,10 @@ function RoleListPanel({
   onCreate: () => void;
   className?: string;
 }) {
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return term ? roles.filter((role) => role.name.toLowerCase().includes(term)) : roles;
-  }, [roles, search]);
-  const system = filtered.filter((role) => role.isSystemRole);
-  const custom = filtered.filter((role) => !role.isSystemRole);
+  // `roles` already reflects the server-side search (RC-2 fix — see RolesScreen);
+  // this panel only groups the result, it does not re-narrow it.
+  const system = roles.filter((role) => role.isSystemRole);
+  const custom = roles.filter((role) => !role.isSystemRole);
 
   return (
     <div className={cx('flex min-h-0 flex-col', className)} aria-label="Roles">
@@ -256,6 +254,8 @@ function RoleListPanel({
           <div className="p-3">
             <ErrorState error={error} onRetry={onRetry} />
           </div>
+        ) : roles.length === 0 && search.trim().length > 0 ? (
+          <p className="text-muted-foreground p-3 text-sm">No roles match “{search}”.</p>
         ) : roles.length === 0 ? (
           <div className="p-3">
             <EmptyState
@@ -270,8 +270,6 @@ function RoleListPanel({
               }
             />
           </div>
-        ) : filtered.length === 0 ? (
-          <p className="text-muted-foreground p-3 text-sm">No roles match “{search}”.</p>
         ) : (
           <div className="flex flex-col gap-2 pb-2">
             <RoleListGroup label="System · locked" roles={system} selectedId={selectedId} onSelect={onSelect} />
@@ -294,11 +292,34 @@ function RoleListPanel({
 export function RolesScreen() {
   const tier = useViewportTier();
   const compact = tier !== 'desktop';
-  const { data, isLoading, isFetching, error, refetch } = useRoles({ page: 1, pageSize: LIST_LIMIT });
+
+  // URL-bound search (`q`), debounced 300ms before it hits the server —
+  // house pattern from `departments-screen.tsx`. RC-2 fix: the role list is
+  // one bounded server page (`LIST_LIMIT`); searching must narrow the SERVER
+  // query rather than re-filter the loaded page, or a role past the page cap
+  // is unreachable. `admin/rbac/roles` already supports `search` (matches
+  // name + description) — see `role.service.ts#findAll`.
+  const [search, setSearch] = useQueryState('q', parseAsString.withDefault(''));
+  const [searchDraft, setSearchDraft] = useState(search);
+  const [lastSearch, setLastSearch] = useState(search);
+  if (search !== lastSearch) {
+    setLastSearch(search);
+    setSearchDraft(search);
+  }
+  useEffect(() => {
+    if (searchDraft === search) return;
+    const timer = setTimeout(() => void setSearch(searchDraft || null), 300);
+    return () => clearTimeout(timer);
+  }, [searchDraft, search, setSearch]);
+
+  const { data, isLoading, isFetching, error, refetch } = useRoles({
+    page: 1,
+    pageSize: LIST_LIMIT,
+    ...(search.trim() ? { search: search.trim() } : {}),
+  });
   const roles = data?.data ?? [];
   const systemCount = roles.filter((role) => role.isSystemRole).length;
 
-  const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useQueryState('role', parseAsString);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
@@ -369,8 +390,8 @@ export function RolesScreen() {
             isLoading={isLoading}
             error={error}
             onRetry={() => void refetch()}
-            search={search}
-            onSearchChange={setSearch}
+            search={searchDraft}
+            onSearchChange={setSearchDraft}
             selectedId={selectedId}
             onSelect={(id) => void setSelectedId(id)}
             onCreate={() => setCreateOpen(true)}
@@ -383,8 +404,8 @@ export function RolesScreen() {
               isLoading={isLoading}
               error={error}
               onRetry={() => void refetch()}
-              search={search}
-              onSearchChange={setSearch}
+              search={searchDraft}
+              onSearchChange={setSearchDraft}
               selectedId={selectedId}
               onSelect={(id) => void setSelectedId(id)}
               onCreate={() => setCreateOpen(true)}
