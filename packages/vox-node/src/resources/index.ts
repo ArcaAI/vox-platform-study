@@ -42,3 +42,6 @@ export { ConsultationWorkflowsResource, WORKFLOW_PLANE_ROUTES, WorkflowReviewsRe
 
 export type { InvokeAgentOptions } from './agents';
 export { AGENT_PLANE_ROUTES, AgentsResource } from './agents';
+
+export type { DnaWritingStyleIngestOptions, DnaWritingStyleJobRequestOptions, WaitForIngestJobOptions } from './dna-writing-style';
+export { DnaWritingStyleResource } from './dna-writing-style';

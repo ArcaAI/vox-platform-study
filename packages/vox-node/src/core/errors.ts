@@ -402,6 +402,34 @@ export class SocketUnavailableError extends Error {
   }
 }
 
+/**
+ * Thrown by {@link DnaWritingStyleResource.waitForIngestJob | `DnaWritingStyleResource#waitForIngestJob`}
+ * (`resources/dna-writing-style.ts`) when a DNA-writing-style ingest job has
+ * not reached a terminal status (`'completed'`/`'failed'`) before its
+ * `timeoutMs` elapses.
+ *
+ * The job itself is not necessarily stuck — this route has no SSE stream to
+ * fall back to (unlike `hope.jobs.waitFor`), so the ceiling here is purely
+ * how long THIS CALL polled, not a statement about the job's own health.
+ * Recovery is to poll `getIngestJob(jobId)` yourself, or call
+ * `waitForIngestJob` again with the same `jobId` and a longer `timeoutMs`.
+ */
+export class DnaIngestJobTimeoutError extends Error {
+  /** The job that was being awaited. */
+  readonly jobId: string;
+  /** The `timeoutMs` that elapsed. */
+  readonly timeoutMs: number;
+
+  constructor(jobId: string, timeoutMs: number) {
+    super(`DNA writing-style ingest job "${jobId}" did not reach a terminal status within ${timeoutMs}ms.`);
+    this.name = 'DnaIngestJobTimeoutError';
+    this.jobId = jobId;
+    this.timeoutMs = timeoutMs;
+    // Same prototype fix-up rationale as HopeAPIError above.
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Constructor options for {@link APIConnectionError}. */
 export interface APIConnectionErrorInit {
   message?: string;

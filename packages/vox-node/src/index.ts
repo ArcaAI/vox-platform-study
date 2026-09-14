@@ -24,6 +24,7 @@ export {
   ConsultationSummariesResource,
   ConsultationsResource,
   ConsultationWorkflowsResource,
+  DnaWritingStyleResource,
   isTerminalJobStatus,
   JobsResource,
   SttResource,
@@ -39,6 +40,8 @@ export type {
   InvokeAgentOptions,
   ContextSchemaDiscoveryOptions,
   ConsultationSummaryRequestOptions,
+  DnaWritingStyleIngestOptions,
+  DnaWritingStyleJobRequestOptions,
   GenerateSummaryOptions,
   JobRequestOptions,
   LiveSummaryHandlers,
@@ -50,6 +53,7 @@ export type {
   SummarizationRequestOptions,
   SummarizationStream,
   UpdateSummaryOptions,
+  WaitForIngestJobOptions,
   WaitForOptions,
 } from './resources';
 
@@ -144,6 +148,7 @@ export {
   AuthenticationError,
   BadRequestError,
   CredentialClassError,
+  DnaIngestJobTimeoutError,
   GatewayTimeoutError,
   HopeAPIError,
   HopeStreamError,
@@ -264,4 +269,9 @@ export type {
   SpeechSynthesis,
   TranscribeSource,
   TranscriptionJobHandle,
+  DnaIngestJobResponse,
+  DnaIngestJobStatus,
+  DnaWritingSample,
+  DnaWritingSampleKind,
+  DnaWritingSamplesIngestRequest,
 } from './types';
