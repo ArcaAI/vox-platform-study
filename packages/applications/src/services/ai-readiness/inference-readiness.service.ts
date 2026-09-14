@@ -8,7 +8,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
 import { IServiceHealthMonitoringService } from '../baseServices/serviceHealth';
-import { DISCOVERABLE_AI_MODEL_PROVIDERS } from '../ai-model/constants';
+import { DISCOVERABLE_AI_MODEL_PROVIDERS, derivedLocalPath } from '../ai-model/constants';
 import { CLOUD_BYO_PROVIDERS, ENGINE_SERVED_PROVIDERS, ProviderService, isPlatformSelfHostProvider } from '../ai-provider-connection/constants';
 import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
 import { ProviderConnectionProbe } from '../ai-provider-connection/provider-connection-probe';
@@ -402,6 +402,15 @@ export class InferenceReadinessService implements IInferenceReadinessService {
             sourceUri: row.sourceUri ?? null,
             library: row.libraryName ?? null,
             revision: row.sourceRevision ?? null,
+            // A bucket-staged (`source = LOCAL`) row has no fetchable `sourceUri` —
+            // its weights are already under the serving pod's `/mnt/models-bucket`
+            // s3fs mount, and `localPath` is the ONLY field that says where. Omit it
+            // and the service is asked about an `s3://…` URI it cannot resolve, so it
+            // answers `not_cached` and a perfectly loadable row reports
+            // `weights_missing` — which then fails the `MODEL_UNAVAILABLE` publish
+            // gate. `ResolvableItem.localPath` has always been part of the wire
+            // contract on the service side; the gateway simply never sent it.
+            localPath: derivedLocalPath(row),
           })),
         };
         // Per SERVICE, not per sweep: each probe carries its own budget and its

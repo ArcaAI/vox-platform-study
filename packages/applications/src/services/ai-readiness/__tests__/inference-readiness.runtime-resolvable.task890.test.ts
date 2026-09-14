@@ -248,7 +248,57 @@ describe('InferenceReadinessService — runtime resolvability (J1 MAJOR-A)', () 
       sourceUri: 'org/repo',
       library: 'faster-whisper',
       revision: 'abc123',
+      // No `bucketPrefix` on this row, so there is no derived path to send.
+      localPath: null,
     });
+  });
+
+  // TASK-960 follow-up. A bucket-staged row's weights live under the serving
+  // pod's `/mnt/models-bucket` s3fs mount, NOT behind its `s3://…` sourceUri —
+  // which nothing on the serving path fetches. `localPath` is the only field
+  // that says where, and omitting it made the service answer `not_cached` for a
+  // row it could load, which then failed the `MODEL_UNAVAILABLE` publish gate.
+  it('sends the derived localPath for a bucket-staged row, naming the primary object for a single-file library', async () => {
+    const { resolvableCalls, service } = makeHarness({
+      models: [
+        makeModel({
+          id: 'local-1',
+          source: 'LOCAL',
+          sourceUri: 's3://hope-models/arcaai-whisper-en-2609',
+          libraryName: 'whisper.cpp',
+          bucketPrefix: 'arcaai-whisper-en-2609/',
+          primaryObject: 'ggml-arcaai-whisper-en-2609-f16.bin',
+        }),
+      ],
+      resolvable: { stt: { 'local-1': true } },
+    });
+
+    await service.sweep();
+
+    expect((resolvableCalls[0]!.body as { models: Array<{ localPath: string | null }> }).models[0]!.localPath).toBe(
+      '/mnt/models-bucket/arcaai-whisper-en-2609/ggml-arcaai-whisper-en-2609-f16.bin',
+    );
+  });
+
+  it('derives the DIRECTORY, not a file, for a multi-file library', async () => {
+    const { resolvableCalls, service } = makeHarness({
+      models: [
+        makeModel({
+          id: 'local-2',
+          source: 'LOCAL',
+          libraryName: 'transformers',
+          bucketPrefix: 'medical-ner/0123456789ab/',
+          primaryObject: 'model.safetensors',
+        }),
+      ],
+      resolvable: { stt: { 'local-2': true } },
+    });
+
+    await service.sweep();
+
+    expect((resolvableCalls[0]!.body as { models: Array<{ localPath: string | null }> }).models[0]!.localPath).toBe(
+      '/mnt/models-bucket/medical-ner/0123456789ab/',
+    );
   });
 
   it('never asks about a cloud or engine-served row', async () => {
