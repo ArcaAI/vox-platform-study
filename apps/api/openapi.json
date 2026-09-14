@@ -570,6 +570,10 @@
             },
             "type": "array"
           },
+          "hidden": {
+            "description": "Platform-owned agent: never cloned, listed, invoked or assignable on the business plane.",
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -716,6 +720,7 @@
           "modelId",
           "fallbacks",
           "resourceStatus",
+          "hidden",
           "tags",
           "createdAt",
           "updatedAt",
@@ -7828,6 +7833,64 @@
         ],
         "type": "object"
       },
+      "DnaIngestJobResponse": {
+        "properties": {
+          "acceptedItems": {
+            "description": "How many samples were accepted into the job.",
+            "example": 42,
+            "type": "number"
+          },
+          "clinicianUserId": {
+            "description": "The clinician the profile will belong to — RESOLVED, so a caller who omitted it can see whom the server chose.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "jobId": {
+            "description": "The queued job — poll `GET dna-writing-styles/ingest/jobs/{jobId}` with it.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Always `PENDING` on acceptance; the job has been enqueued, not run.",
+            "example": "PENDING",
+            "type": "string"
+          },
+          "window": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DnaIngestWindowResponse"
+              }
+            ],
+            "description": "The time span the accepted samples cover."
+          }
+        },
+        "required": [
+          "jobId",
+          "status",
+          "clinicianUserId",
+          "acceptedItems",
+          "window"
+        ],
+        "type": "object"
+      },
+      "DnaIngestWindowResponse": {
+        "properties": {
+          "from": {
+            "description": "ISO-8601 `writtenAt` of the OLDEST accepted sample.",
+            "example": "2026-08-01T08:00:00.000Z",
+            "type": "string"
+          },
+          "to": {
+            "description": "ISO-8601 `writtenAt` of the NEWEST accepted sample.",
+            "example": "2026-09-01T09:30:00.000Z",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
       "DnaJobResponseDto": {
         "properties": {
           "jobId": {
@@ -8014,6 +8077,40 @@
           "dnaReportId",
           "versionNumber",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "DnaWritingSampleDto": {
+        "properties": {
+          "kind": {
+            "default": "OTHER",
+            "description": "What kind of writing this is. Recorded on the report as a count per kind; it never changes how the sample is treated.",
+            "enum": [
+              "CASE_NOTE",
+              "WORK_NOTE",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "sourceRef": {
+            "description": "The caller's own record locator for this sample (an EMR note id, say). Carried in the job for support and NEVER persisted on the report — it is the caller's identifier for a clinical record.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "text": {
+            "description": "The writing sample itself — a case note, work note, or any prose the clinician authored.",
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "writtenAt": {
+            "description": "When the clinician wrote it (ISO-8601 date-time). The time-series key: the corpus is ordered by it, and the oldest items are dropped first when the batch exceeds the context budget.",
+            "example": "2026-09-01T09:30:00.000Z",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "writtenAt"
         ],
         "type": "object"
       },
@@ -10626,6 +10723,26 @@
           "engines",
           "services",
           "models"
+        ],
+        "type": "object"
+      },
+      "IngestDnaWritingSamplesRequest": {
+        "properties": {
+          "clinicianUserId": {
+            "description": "The clinician these samples belong to. REQUIRED for an API-key or service-account caller — a machine is never itself the clinician. A human caller omits it to ingest their OWN samples; a tenant or super admin may name another clinician of their tenant.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "items": {
+            "description": "The writing samples, in any order — the server sorts them by `writtenAt`. At most 200 items and 400000 characters in total.",
+            "items": {
+              "$ref": "#/components/schemas/DnaWritingSampleDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -17877,6 +17994,18 @@
           },
           "start": {
             "description": "Character offset start within THIS SECTION's `content` (never a concatenated document)",
+            "type": "number"
+          },
+          "transcriptEnd": {
+            "description": "A2 — character offset end within THAT SEGMENT's text",
+            "type": "number"
+          },
+          "transcriptSegmentId": {
+            "description": "A2 — the `TranscriptSegment` id (`utt-<utteranceIndex>`) this annotation was extracted from",
+            "type": "string"
+          },
+          "transcriptStart": {
+            "description": "A2 — character offset start within THAT SEGMENT's text",
             "type": "number"
           },
           "type": {
@@ -57587,6 +57716,112 @@
           }
         ],
         "summary": "Creating a DnaJobResponseDto",
+        "tags": [
+          "dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/dna-writing-styles/ingest": {
+      "post": {
+        "description": "Submits writing the platform has not seen — case notes, work notes, any prose the clinician authored — as a TIME SERIES, and queues the platform analyst over it. Each sample carries a `writtenAt`, which is what orders the corpus and what decides which samples survive when a batch exceeds the analysis budget (the oldest are dropped, whole). The response is a job handle, not a profile: poll `GET ingest/jobs/{jobId}`, then read the profile from the clinician's own DNA surfaces.\\n\\nA machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary — the submitted text itself is never persisted.",
+        "operationId": "DnaWritingStyleIngestController_ingest",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestDnaWritingSamplesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaIngestJobResponse"
+                }
+              }
+            },
+            "description": "Accepted and queued."
+          },
+          "400": {
+            "description": "Validation failed, or the batch exceeds the total character budget (`DNA_INGEST_TOO_LARGE`), or the caller may not name this clinician (`DNA_INGEST_CLINICIAN_NOT_ALLOWED`), or a machine caller named none (`DNA_INGEST_CLINICIAN_REQUIRED`)."
+          },
+          "403": {
+            "description": "Scope violation, or an administrator not acting as a clinician tried to ingest under their own account."
+          },
+          "404": {
+            "description": "The named clinician is not a member of this tenant (also returned for a clinician of another tenant)."
+          },
+          "409": {
+            "description": "`DNA_STYLE_DISABLED` — DNA writing style is off for this clinician (tenant setting or their own opt-out), so nothing was queued."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Ingest a time series of writing samples for a clinician and queue their DNA writing-style analysis",
+        "tags": [
+          "dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/dna-writing-styles/ingest/jobs/{jobId}": {
+      "get": {
+        "description": "Reports the queued analysis. A caller sees only their own jobs: a human their own, a machine those its own credential enqueued. Terminal states are `completed` and `failed`; on `completed` the clinician`s profile has been written and is readable from the DNA surfaces.",
+        "operationId": "DnaWritingStyleIngestController_getIngestJob",
+        "parameters": [
+          {
+            "description": "The job id returned by `POST dna-writing-styles/ingest`.",
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaJobStatusResponseDto"
+                }
+              }
+            },
+            "description": "Job status."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Unknown job (also returned for a job belonging to another caller or tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Status of an ingest job",
         "tags": [
           "dna-writing-styles"
         ]

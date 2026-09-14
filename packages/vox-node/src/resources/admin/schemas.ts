@@ -135,6 +135,8 @@ export interface AgentResponse {
   deprecatedAt?: string | null;
   description?: string | null;
   fallbacks: AgentFallbackResponse[];
+  /** Platform-owned agent: never cloned, listed, invoked or assignable on the business plane. */
+  hidden: boolean;
   id: string;
   inputSchema?: Record<string, unknown> | null;
   instruction?: Record<string, unknown> | null;
