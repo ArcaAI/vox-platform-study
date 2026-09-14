@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Logger, Optional } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -32,6 +32,9 @@ import {
   DnaSettingsResponse,
   UpdateDnaSettingsRequest,
   DnaErasureResponse,
+  DnaIngestJobResponse,
+  DNA_INGEST_LIMITS,
+  IngestDnaWritingSamplesRequest,
 } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
@@ -99,6 +102,19 @@ export interface DnaReportJobResult {
   reportData: Record<string, unknown>;
   styleText: string;
 }
+
+/**
+ * TASK-974 §4.1 — the roles that may ingest on ANOTHER clinician's behalf.
+ *
+ * Mirrors `DNA_ADMIN_ROLES` in `dna-writing-style.controller.ts`. The SUPER_ADMIN member is not
+ * a widening: it is the same "an administrator does administrative acts" rule, and a super admin
+ * still cannot cross a tenant here — `assertUserBelongsToTenant` runs on the named id regardless
+ * of role, because these artifacts are PHI-derived.
+ */
+const DNA_INGEST_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
+
+/** The clinical roles a caller must hold to ingest samples under their OWN account. */
+const DNA_CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 @Injectable()
 export class DnaWritingStyleService extends BaseService implements IDnaWritingStyleService {
@@ -191,6 +207,176 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     });
 
     return { jobId, status: 'PENDING' };
+  }
+
+  /**
+   * TASK-974 §4.1 — ingest a TIME SERIES of writing samples for a clinician.
+   *
+   * ─── Why this is not `generateDnaReport` with a richer body ────────────────────────────────
+   *
+   * `generate` is a clinician asking the platform to re-read THEIR OWN already-stored notes. This
+   * is a caller — usually a machine, usually a back-office integration out of an EMR — SUBMITTING
+   * writing the platform has never seen, on a named clinician's behalf. Different subject,
+   * different credential classes, different authorization rule; the two share a queue and nothing
+   * else.
+   *
+   * ─── The authorization rule, which no decorator can state ──────────────────────────────────
+   *
+   * The route carries a bare `@Authorize()` plus its scopes, and the real gate is here:
+   *
+   *  · a MACHINE (API key / service account) MUST name a clinician. It is never one itself, and
+   *    a machine's bound user is an implementation detail of the credential, not a clinician
+   *    whose writing style anybody asked for.
+   *  · a HUMAN who names nobody gets themselves — but only if they are acting as a clinician.
+   *    An admin who is neither a clinical user nor impersonating one would otherwise build a
+   *    writing-style profile under their own account, which is `generate`'s rule verbatim and
+   *    exists for the same reason.
+   *  · a HUMAN who names somebody else is performing an administrative act, so it takes
+   *    SUPER_ADMIN or TENANT_ADMIN. A clinician naming another clinician is 400, not 403: the
+   *    request is refused on WHO it names, and there is no id to protect — they are being told
+   *    about a rule, not about a row.
+   *  · whoever is named must be a member of the caller's tenant, and a cross-tenant id is 404
+   *    (`assertUserBelongsToTenant`) — the house posture, and doubly right here because a DNA
+   *    profile is derived from PHI.
+   *
+   * The DNA gate (tenant AND doctor) is pre-checked so a caller learns immediately rather than by
+   * polling a job that was always going to fail; the processor re-checks it anyway, because the
+   * toggle may flip between enqueue and run.
+   */
+  async ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy): Promise<DnaIngestJobResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const doctorId = this.resolveIngestClinician(dto.clinicianUserId, caller);
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
+
+    const totalChars = dto.items.reduce((sum, item) => sum + item.text.length, 0);
+    if (totalChars > DNA_INGEST_LIMITS.maxTotalChars) {
+      throw new BadRequestException({
+        code: 'DNA_INGEST_TOO_LARGE',
+        message: `This batch carries ${totalChars} characters; at most ${DNA_INGEST_LIMITS.maxTotalChars} may be submitted in one request. Split it and submit the oldest samples first.`,
+      });
+    }
+
+    // Pre-check the effective DNA decision (tenant graph AND the doctor's own opt-in). Absent
+    // resolver ⇒ no-op, matching every other `@Optional()` ConfigResolver call site: an unwired
+    // dependency is a composition that reads no such flag, not a defect.
+    if (this.configResolver) {
+      const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
+      if (!effective) {
+        throw new ConflictException({
+          code: 'DNA_STYLE_DISABLED',
+          message:
+            'DNA writing style is disabled for this clinician — either the tenant has not enabled it or the clinician has opted out. Ingested samples would be discarded, so nothing was queued.',
+        });
+      }
+    }
+
+    const samples: DnaWritingSample[] = dto.items.map((item) => ({
+      text: item.text,
+      writtenAt: item.writtenAt,
+      kind: item.kind ?? 'OTHER',
+      ...(item.sourceRef ? { sourceRef: item.sourceRef } : {}),
+    }));
+    const writtenAtMs = samples.map((sample) => Date.parse(sample.writtenAt));
+
+    const jobId = uuidv7();
+    const payload: GenerateDnaReportJobPayload = {
+      jobId,
+      doctorId,
+      tenantId,
+      // The CLINICIAN, not the machine. This becomes `createdBy` on the report, and a profile
+      // attributed to a service account would be attributed to nobody. For a human caller
+      // `requestUserId` IS the clinician (or the admin acting for them, which is the record the
+      // audit event keeps); the credential itself is in `requestedBy`.
+      userId: this.requestUserId ?? doctorId,
+      samples,
+      origin: 'ingest',
+      requestedBy: caller,
+    };
+
+    await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, { jobId });
+
+    // Audit the REQUEST. COUNTS and IDS only: the samples are PHI and `sourceRef` is the caller's
+    // own record locator, so neither belongs on an audit row that outlives the job.
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: doctorId,
+      data: {
+        jobId,
+        doctorId,
+        kind: 'dna-ingest-requested',
+        origin: 'ingest',
+        itemCount: samples.length,
+        credentialClass: caller.credentialClass,
+        principalId: caller.principalId,
+      },
+    });
+
+    return {
+      jobId,
+      status: 'PENDING',
+      clinicianUserId: doctorId,
+      acceptedItems: samples.length,
+      window: {
+        from: new Date(Math.min(...writtenAtMs)).toISOString(),
+        to: new Date(Math.max(...writtenAtMs)).toISOString(),
+      },
+    };
+  }
+
+  /** @see ingestWritingSamples — the four-way rule, stated once. */
+  private resolveIngestClinician(named: string | undefined, caller: DnaJobRequestedBy): string {
+    if (caller.credentialClass !== 'jwt') {
+      if (!named) {
+        throw new BadRequestException({
+          code: 'DNA_INGEST_CLINICIAN_REQUIRED',
+          message: 'A machine credential must name the clinician these samples belong to (`clinicianUserId`); it is never the clinician itself.',
+        });
+      }
+      return named;
+    }
+
+    const user = this.requestUser;
+    const callerId = user?.id;
+    if (!callerId) {
+      throw new BadRequestException('User context is required');
+    }
+
+    if (!named || named === callerId) {
+      this.assertActingAsClinician();
+      return callerId;
+    }
+
+    const roles = user?.roles ?? [];
+    if (!roles.some((role) => DNA_INGEST_ADMIN_ROLES.includes(role))) {
+      throw new BadRequestException({
+        code: 'DNA_INGEST_CLINICIAN_NOT_ALLOWED',
+        message: 'Only a tenant or super administrator may ingest writing samples on another clinician`s behalf. Omit `clinicianUserId` to ingest your own.',
+      });
+    }
+    return named;
+  }
+
+  /**
+   * `DnaWritingStyleController.assertActingAsDoctor`, applied to ingest.
+   *
+   * Duplicated as a private method rather than shared, because the CONTROLLER's copy guards a
+   * route whose subject is derived from CLS with no id at all, while this one guards the
+   * "named nobody" branch of a route that also accepts an id. Sharing them would put the rule in
+   * a place where it looked unconditional and is not.
+   */
+  private assertActingAsClinician(): void {
+    const user = this.requestUser;
+    const roles = user?.roles ?? [];
+    const isAdmin = roles.some((role) => DNA_INGEST_ADMIN_ROLES.includes(role));
+    const isClinician = roles.some((role) => DNA_CLINICIAN_ROLES.includes(role));
+    if (isAdmin && !isClinician && !user?.impersonatedBy) {
+      throw new ForbiddenException(
+        'DNA writing styles are personalized per clinician. Name a `clinicianUserId`, or impersonate a clinician — an administrator cannot build one under their own account.',
+      );
+    }
   }
 
   /**
