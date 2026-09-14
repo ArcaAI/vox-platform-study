@@ -557,6 +557,21 @@ export const CONSULTATION_JOB_ENDPOINTS = {
 } as const;
 
 /**
+ * DNA writing-style sample ingest endpoints (TASK-974).
+ *
+ * Business plane — `DnaWritingStyleIngestController`
+ * (`@Controller('dna-writing-styles/ingest')`). Reachable by JWT, API key
+ * (scope `dna-writing-style:ingest`) and service account
+ * (`svc:dna-writing-style:ingest`); NOT `/admin/*`, and deliberately a NEW
+ * name — `DNA_STYLE_ENDPOINTS` stays absent per the TASK-890 gate tests. No
+ * SSE on this surface (job status is polled via `INGEST_JOB`).
+ */
+export const DNA_WRITING_STYLE_ENDPOINTS = {
+  INGEST: '/dna-writing-styles/ingest',
+  INGEST_JOB: (jobId: string) => `/dna-writing-styles/ingest/jobs/${encodeURIComponent(jobId)}`,
+} as const;
+
+/**
  * Storage management endpoints
  */
 export const STORAGE_ENDPOINTS = {
