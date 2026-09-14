@@ -29,6 +29,7 @@ import { isCloudByoProvider, type ProviderService } from '../ai-provider-connect
 import { ProviderCredentialResolver } from '../ai-provider-connection/provider-credential-resolver';
 import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
+import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 
 export interface ResolveAgentInput {
   tenantId: string;
@@ -59,6 +60,21 @@ export interface ResolveAgentInput {
    * fallback that was configured precisely for this case.
    */
   primaryBinding?: PrimaryBindingPolicy;
+  /**
+   * TASK-974 D-1 — opt IN to resolving a PLATFORM HIDDEN agent (`PLATFORM_HIDDEN_AGENTS`).
+   *
+   * This resolver is the ONE by-slug chokepoint every runtime call goes through — the invoke /
+   * speech / transcription routes, a `core.agent` node, the realtime lane — so it is where the
+   * business plane's blindness to a hidden agent is enforced, once, instead of at each of them.
+   * Without this flag a hidden slug answers the same `NotFoundException` an unknown one does,
+   * whichever tenant asked and whether it arrived explicitly or through the cascade.
+   *
+   * The ONLY caller that sets it is the platform service that OWNS the capability (the DNA
+   * writing-style processor). It is a named opt-in rather than an implicit "SYSTEM tenant may"
+   * carve-out for exactly that reason: an opt-in is greppable, and a carve-out is a back door
+   * nobody would notice widening.
+   */
+  allowPlatformHidden?: boolean;
 }
 
 /** @see ResolveAgentInput.primaryBinding */
@@ -283,6 +299,16 @@ export class AgentResolverService {
       entity = await this.agentRepository.findPublishedActiveBySlug(tenantId, assigned.agentSlug);
       if (!entity) throw new NotFoundException('Agent not found');
       source = assigned.source;
+    }
+
+    // TASK-974 D-1 — a PLATFORM HIDDEN agent is not part of any tenant's product surface.
+    // Checked on the RESOLVED row rather than on the input, so both ways in are covered with one
+    // line: an explicit slug, and a slug that reached here through a (stale) assignment. The
+    // answer is the same `NotFoundException` an unknown slug gets, so nothing about the platform
+    // agent's existence is disclosed — including to the Global playground, which OWNS the
+    // authored row and is the only tenant for which this can fire.
+    if (!input.allowPlatformHidden && isPlatformHiddenAgentSlug(entity.slug)) {
+      throw new NotFoundException('Agent not found');
     }
 
     const compiledConfig = entity.compiledConfig as unknown as AgentCompiledConfig | null;

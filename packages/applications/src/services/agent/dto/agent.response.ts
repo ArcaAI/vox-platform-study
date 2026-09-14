@@ -67,6 +67,17 @@ export class AgentResponse {
   @ApiPropertyOptional({ nullable: true }) publishedAt!: string | null;
   @ApiPropertyOptional({ nullable: true }) deprecatedAt!: string | null;
   @ApiProperty() resourceStatus!: string;
+  /**
+   * TASK-974 D-1 — a PLATFORM HIDDEN agent: one the platform owns and serves to every tenant
+   * through its own resolver, never through the business plane.
+   *
+   * DERIVED from the compiled-in `PLATFORM_HIDDEN_AGENTS` allow-list, not stored on the row, so
+   * it cannot be set by an edit. It appears on the ADMIN projection only — `listPublished` /
+   * `getPublishedBySlug` never return such an agent at all, so a business-plane reader has
+   * nothing to read this on. A console uses it to LABEL the row ("Hidden · platform") and to
+   * keep it out of tenant-facing pickers.
+   */
+  @ApiProperty({ description: 'Platform-owned agent: never cloned, listed, invoked or assignable on the business plane.' }) hidden!: boolean;
   @ApiProperty({ type: [String] }) tags!: string[];
   @ApiProperty({ description: 'ISO timestamp' }) createdAt!: string;
   @ApiProperty({ description: 'ISO timestamp' }) updatedAt!: string;
