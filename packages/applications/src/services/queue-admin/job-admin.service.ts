@@ -7,6 +7,18 @@ import { JobDataRedactorService } from './job-data-redactor.service';
 
 const ALL_STATUSES: JobType[] = ['waiting', 'active', 'completed', 'failed', 'delayed'];
 
+/**
+ * How many jobs a NAME-FILTERED list may scan from the head of the queue.
+ *
+ * BullMQ can range-scan a queue by status but has no name predicate, so a name
+ * filter has to be applied in process. Paginating the underlying range FIRST and
+ * filtering after would only ever search the requested page — the defect this
+ * constant exists to avoid — so the filtered path scans from index 0 and pages
+ * within the matches. The cap bounds what one admin request can cost; past it
+ * the filter is necessarily incomplete.
+ */
+const JOB_NAME_SCAN_LIMIT = 1000;
+
 export interface ListJobsOptions {
   page?: number;
   limit?: number;
@@ -38,10 +50,23 @@ export class JobAdminService {
     const page = options.page ?? 0;
     const limit = options.limit ?? 20;
     const start = page * limit;
-    const end = start + limit - 1;
 
     const statuses: JobType[] = options.status ? [options.status as JobType] : [...ALL_STATUSES];
 
+    // `jobName` was accepted by the controller DTO and declared on
+    // `ListJobsOptions`, but never read here — so the console's queue-detail
+    // search box sent a name and got every job back.
+    const needle = options.jobName?.trim().toLowerCase();
+    if (needle) {
+      const scanned = await queue.getJobs(statuses, 0, JOB_NAME_SCAN_LIMIT - 1, true);
+      const matched = scanned.filter((job) => job?.name?.toLowerCase().includes(needle));
+      const items: JobSummary[] = matched.slice(start, start + limit).map((job) => this.toJobSummary(job, queueName));
+      // The total describes the FILTERED set — reporting the queue-wide count
+      // here would offer the pager pages that hold nothing.
+      return { items, total: matched.length, page, limit };
+    }
+
+    const end = start + limit - 1;
     const [jobs, total] = await Promise.all([queue.getJobs(statuses, start, end, true), queue.getJobCountByTypes(...statuses)]);
 
     const items: JobSummary[] = jobs.map((job) => this.toJobSummary(job, queueName));
