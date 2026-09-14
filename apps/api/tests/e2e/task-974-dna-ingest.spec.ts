@@ -21,7 +21,7 @@
  * opaque 409.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { DEFAULT_TENANT_KEY, SEEDED_API_KEY, SEEDED_API_KEY_SERVICE_ACCOUNT, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_API_KEY, SEEDED_API_KEY_DOCTOR2, SEEDED_API_KEY_SERVICE_ACCOUNT, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const INGEST = '/api/v1/dna-writing-styles/ingest';
 const INGEST_JOB = (jobId: string) => `/api/v1/dna-writing-styles/ingest/jobs/${jobId}`;
@@ -226,10 +226,21 @@ test.describe('TASK-974 — DNA writing-sample ingest', () => {
     expect(own.status()).toBe(200);
     expect((await own.json()).jobId).toBe(jobId);
 
-    // The human the key is BOUND to did not enqueue it — the credential did, and the two are not
-    // the same principal. (This is the case the `requestedBy` gate exists for.)
-    const human = await request.get(INGEST_JOB(jobId), { headers: { Authorization: `Bearer ${doctorJwt}` } });
-    expect(human.status()).toBe(404);
+    // The clinician the job is ABOUT may read it: the human gate is `doctorId` (README §4.1), and
+    // the job is their own writing-style profile being rebuilt — owner access, not a leak.
+    const owner = await request.get(INGEST_JOB(jobId), { headers: { Authorization: `Bearer ${doctorJwt}` } });
+    expect(owner.status()).toBe(200);
+
+    // Another clinician of the same tenant is 404 — the job is not about them.
+    const other = await loginUser(request, SEEDED_USERS.doctor2.username, SEEDED_USERS.doctor2.password, DEFAULT_TENANT_KEY);
+    const foreignHuman = await request.get(INGEST_JOB(jobId), { headers: { Authorization: `Bearer ${other!.token}` } });
+    expect(foreignHuman.status()).toBe(404);
+
+    // A DIFFERENT machine credential — holding the scope, in the same tenant — is 404: the
+    // machine gate compares `requestedBy.principalId`, and this key did not enqueue the job.
+    // (This is the case the `requestedBy` gate exists for.)
+    const otherMachine = await request.get(INGEST_JOB(jobId), { headers: { 'X-API-Key': SEEDED_API_KEY_DOCTOR2 } });
+    expect(otherMachine.status()).toBe(404);
   });
 
   test('an unknown job id is 404', async ({ request }) => {
