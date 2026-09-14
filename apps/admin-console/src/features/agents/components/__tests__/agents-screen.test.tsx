@@ -79,6 +79,16 @@ const AGENTS: Agent[] = [
     compiledConfig: { task: 'SPEECH_TO_TEXT' },
     compiledConfigChecksum: 'sha256:abc',
   }),
+  // TASK-974 §4.7 (D-1) — the SYSTEM-tenant DNA writing-style analyst, as an admin surface sees
+  // it: `hidden: true`, still listed and openable so the console can label it.
+  agent({
+    id: 'a-3',
+    slug: 'dna-writing-style-analyst',
+    name: 'DNA writing style analyst',
+    status: 'PUBLISHED',
+    isActive: true,
+    hidden: true,
+  }),
 ];
 
 /** `GET admin/ai-models/catalogue` — one "Hope provider" holding both task's models (TASK-890 §3.7). */
@@ -163,6 +173,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   if (path === '/api/hope/admin/agents') return Response.json(AGENTS);
   if (path === '/api/hope/admin/agents/a-1') return Response.json(AGENTS[0], { headers: { etag: '"3"' } });
   if (path === '/api/hope/admin/agents/a-2') return Response.json(AGENTS[1], { headers: { etag: '"1"' } });
+  if (path === '/api/hope/admin/agents/a-3') return Response.json(AGENTS[2], { headers: { etag: '"1"' } });
   if (path.endsWith('/versions')) return Response.json([AGENTS[0]]);
   if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
   if (path === '/api/hope/admin/ai-models/catalogue') {
@@ -264,6 +275,27 @@ describe('AgentsScreen', () => {
     expect(await within(drawer).findByText('Platform origin')).toBeTruthy();
     expect(within(drawer).getByRole('button', { name: 'Deprecate' })).toBeTruthy();
     expect(within(drawer).getByRole('button', { name: 'New version' })).toBeTruthy();
+  });
+
+  // TASK-974 §4.7 (D-1) — the platform hidden agent is badged "Hidden · platform" in both the
+  // grid row and the detail drawer; an ordinary tenant agent (a-1, a-2) carries no such badge.
+  it('badges the platform hidden agent "Hidden · platform" in the grid and the detail drawer, and no other agent', async () => {
+    stubAgents();
+    renderWithProviders(<AgentsScreen />);
+    await screen.findByText('DNA writing style analyst');
+    // Only the a-3 row is badged — a-1/a-2 carry no "Hidden · platform" badge in the grid.
+    expect(screen.getAllByText('Hidden · platform')).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('DNA writing style analyst'));
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByText('Hidden · platform')).toBeTruthy();
+    // Grid row (behind the overlay) plus the drawer header badge.
+    expect(screen.getAllByText('Hidden · platform')).toHaveLength(2);
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    fireEvent.click(await screen.findByText('Clinic summarizer'));
+    const nextDrawer = await screen.findByRole('dialog');
+    expect(within(nextDrawer).queryByText('Hidden · platform')).toBeNull();
   });
 
   it('?create=1 opens the wizard directly (the Studio’s create-agent deep link)', async () => {

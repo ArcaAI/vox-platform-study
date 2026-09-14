@@ -13,6 +13,7 @@ import {
   deleteWorkflowDefinition,
   etagFromVersion,
   getWorkflowDefinition,
+  listAgentOptions,
   listDepartmentOptions,
   listPromptTemplateOptions,
   listWorkflowAssignments,
@@ -175,5 +176,38 @@ describe('workflow-assignment client ( half (a) Task 6)', () => {
     const calls = installFetchMock();
     await listDepartmentOptions();
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/admin/departments?includeDisabled=false']);
+  });
+});
+
+// TASK-974 §4.7 (D-1) — the `core.agent` picker's options must never offer a platform hidden
+// service agent (e.g. `dna-writing-style-analyst`). `GET admin/agents` deliberately still returns
+// it with `hidden: true` (the admin `/agents` screen labels it), so the Studio's own read filters
+// it out before `AgentPickerField` / `AgentSummarySection` ever see it.
+describe('listAgentOptions (TASK-974 §4.7)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('filters a hidden platform agent out of the core.agent picker options', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json([
+          { slug: 'clinic-summarizer', name: 'Clinic summarizer', task: 'TEXT_GENERATION', hidden: false },
+          { slug: 'dna-writing-style-analyst', name: 'DNA writing style analyst', task: 'TEXT_GENERATION', hidden: true },
+        ]),
+      ),
+    );
+    const options = await listAgentOptions();
+    expect(options.map((agent) => agent.slug)).toEqual(['clinic-summarizer']);
+  });
+
+  it('keeps every agent when none is hidden, including one that omits the field entirely', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ data: [{ slug: 'realtime-transcription', name: 'Realtime transcription', task: 'SPEECH_TO_TEXT' }] }),
+      ),
+    );
+    const options = await listAgentOptions();
+    expect(options.map((agent) => agent.slug)).toEqual(['realtime-transcription']);
   });
 });

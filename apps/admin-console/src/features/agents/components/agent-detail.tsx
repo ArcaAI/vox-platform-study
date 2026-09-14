@@ -37,7 +37,7 @@ import {
   type AgentProblemBody,
   type PromptFragment,
 } from '../api';
-import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
+import { AgentHiddenBadge, AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
 import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
@@ -366,6 +366,7 @@ export function AgentDetailDrawer({ agentId, onOpenChange, onSelect }: { agentId
               <AgentTaskBadge task={agent.task} />
               <AgentStatusBadge status={agent.status} isActive={agent.isActive} />
               <AgentOwnerBadge sourceTenantId={agent.sourceTenantId} />
+              <AgentHiddenBadge hidden={agent.hidden} />
               {isTenantDefault ? <Badge variant="secondary">Tenant default</Badge> : null}
             </>
           ) : null
