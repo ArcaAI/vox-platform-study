@@ -157,10 +157,17 @@ function ConsultationsScreenBody() {
   const list = useConsultations(listParams);
 
   const { rows: pageRows, total } = normalizeList<Consultation>(list.data);
-  const count = total ?? 0;
-  // The API has no type param — new/revisit filters the LOADED PAGE only.
+  // RC-2: `GET /admin/consultations` (see `admin-consultation.controller.ts#list`)
+  // whitelists only page/limit/patientId/doctorId/departmentId/status — visit
+  // type is DERIVED (`visitTypeOf`) and has no server param, so the New/Revisit
+  // facet can only narrow the ONE page already loaded, never the server total.
+  // Surfaced in the empty state below, and `count` tracks what is ACTUALLY
+  // shown once that facet is active (house pattern: `harness-workflows-screen.tsx`'s
+  // `rowCount={rows.length}` for the same "client filter over the loaded page" shape).
   const rows = type ? pageRows.filter((row) => visitTypeOf(row) === type) : pageRows;
+  const count = type ? rows.length : (total ?? 0);
   const hasFilters = Boolean(patientId || doctorId || departmentId || status || type);
+  const typeScopedToLoadedPage = Boolean(type) && rows.length === 0 && pageRows.length > 0;
 
   const clearFilters = () => query.setQueryState({ ...query.queryState, filters: [] });
 
@@ -236,7 +243,11 @@ function ConsultationsScreenBody() {
     <EmptyState
       icon={IconFilterOff}
       title="No consultations in range"
-      description={'Filter mismatch \u2014 empty is not an error. Clear the filters to see every consultation in scope.'}
+      description={
+        typeScopedToLoadedPage
+          ? 'No match on the loaded page. The New/Revisit filter has no server-side endpoint here, so it only scans the current page \u2014 page through, narrow by patient/doctor/department/status (server-filtered), or clear the filters.'
+          : 'Filter mismatch \u2014 empty is not an error. Clear the filters to see every consultation in scope.'
+      }
       action={
         <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
           <IconFilterOff aria-hidden />
