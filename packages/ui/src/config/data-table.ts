@@ -1,13 +1,23 @@
 export type DataTableConfig = typeof dataTableConfig;
 
+/**
+ * NOTE on the operator lists below — they are the operators a user can PICK in
+ * the filter controls, and every one of them must be serializable to a gateway
+ * filter token by the console's `filterToTokens`
+ * (`apps/admin-console/src/shared/data/grid-url-state.ts`).
+ *
+ * `notILike` ("Does not contain"), `isEmpty` and `isNotEmpty` were offered here
+ * but have NO token in the v1 bracket grammar — the gateway's scalar operator
+ * set has no negated-insensitive-contains and no null predicate. Picking one
+ * updated the chip and the URL and then serialized to nothing, so the server
+ * returned every row and the filter looked broken. They are removed rather than
+ * faked. Do not re-add an operator here without a token for it.
+ */
 export const dataTableConfig = {
   textOperators: [
     { label: 'Contains', value: 'iLike' as const },
-    { label: 'Does not contain', value: 'notILike' as const },
     { label: 'Is', value: 'eq' as const },
     { label: 'Is not', value: 'ne' as const },
-    { label: 'Is empty', value: 'isEmpty' as const },
-    { label: 'Is not empty', value: 'isNotEmpty' as const },
   ],
   numericOperators: [
     { label: 'Is', value: 'eq' as const },
@@ -17,8 +27,6 @@ export const dataTableConfig = {
     { label: 'Is greater than', value: 'gt' as const },
     { label: 'Is greater than or equal to', value: 'gte' as const },
     { label: 'Is between', value: 'isBetween' as const },
-    { label: 'Is empty', value: 'isEmpty' as const },
-    { label: 'Is not empty', value: 'isNotEmpty' as const },
   ],
   dateOperators: [
     { label: 'Is', value: 'eq' as const },
@@ -29,20 +37,14 @@ export const dataTableConfig = {
     { label: 'Is on or after', value: 'gte' as const },
     { label: 'Is between', value: 'isBetween' as const },
     { label: 'Is relative to today', value: 'isRelativeToToday' as const },
-    { label: 'Is empty', value: 'isEmpty' as const },
-    { label: 'Is not empty', value: 'isNotEmpty' as const },
   ],
   selectOperators: [
     { label: 'Is', value: 'eq' as const },
     { label: 'Is not', value: 'ne' as const },
-    { label: 'Is empty', value: 'isEmpty' as const },
-    { label: 'Is not empty', value: 'isNotEmpty' as const },
   ],
   multiSelectOperators: [
     { label: 'Has any of', value: 'inArray' as const },
     { label: 'Has none of', value: 'notInArray' as const },
-    { label: 'Is empty', value: 'isEmpty' as const },
-    { label: 'Is not empty', value: 'isNotEmpty' as const },
   ],
   booleanOperators: [
     { label: 'Is', value: 'eq' as const },
