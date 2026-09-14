@@ -211,6 +211,23 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'read', subject: 'DocumentTemplate' }],
   },
 
+  // DNA writing style (TASK-974)
+  //
+  // The FIRST machine-reachable DNA route. `DnaWritingStyleController` stays a named
+  // `@ForbidApiKey()` exemption — a clinician's personal writing model, owner-gated in the
+  // service — and this scope does NOT re-open it: it gates only the INGEST surface, which
+  // SUBMITS writing samples and never reads a profile back. The two are separate controllers for
+  // exactly that reason (D-4).
+  //
+  // `implies` follows this file's derivation rule: the ability the ingest route's own plane
+  // operates on. A tenant admin holds `manage:DnaWritingStyleReport`, which subsumes `create`,
+  // so the minting ceiling admits the scope for the credentials that should carry it.
+  'dna-writing-style:ingest': {
+    description: "Ingest a clinician's writing samples to build their DNA writing style",
+    category: 'DNA',
+    implies: [{ action: 'create', subject: 'DnaWritingStyleReport' }],
+  },
+
   // Media
   'media:file:read': { description: 'Read/download media files', category: 'Media', implies: [{ action: 'read', subject: 'Storage' }] },
   'media:file:write': { description: 'Upload media files', category: 'Media', implies: [{ action: 'create', subject: 'Storage' }] },
