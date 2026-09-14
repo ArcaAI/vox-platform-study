@@ -112,6 +112,65 @@ describe('JobAdminService', () => {
       expect(mockQueue.getJobs).toHaveBeenCalledWith(['failed'], 0, 19, true);
     });
 
+    // `jobName` was declared on `ListJobsOptions` and accepted by the controller
+    // DTO, but `listJobs` never referenced it — so the queue-detail search box
+    // in the admin console sent a name and the service returned every job.
+    it('filters by jobName (case-insensitive substring) and reports the filtered total', async () => {
+      const mockQueue = createMockQueue();
+      mockQueue.getJobs.mockResolvedValue([
+        createMockJob({ id: 'job-1', name: 'SendEmail' }),
+        createMockJob({ id: 'job-2', name: 'PurgeAuditLog' }),
+        createMockJob({ id: 'job-3', name: 'SendEmailDigest' }),
+      ]);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.listJobs(JobQueue.SendEmail, { page: 0, limit: 20, jobName: 'sendemail' });
+
+      expect(result.items.map((job) => job.id)).toEqual(['job-1', 'job-3']);
+      // The total must describe the FILTERED set, or the pager offers pages that
+      // do not exist.
+      expect(result.total).toBe(2);
+    });
+
+    it('paginates within the filtered set rather than the raw queue', async () => {
+      const mockQueue = createMockQueue();
+      mockQueue.getJobs.mockResolvedValue([
+        createMockJob({ id: 'job-1', name: 'SendEmail' }),
+        createMockJob({ id: 'job-2', name: 'PurgeAuditLog' }),
+        createMockJob({ id: 'job-3', name: 'SendEmailDigest' }),
+      ]);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.listJobs(JobQueue.SendEmail, { page: 1, limit: 1, jobName: 'SendEmail' });
+
+      expect(result.items.map((job) => job.id)).toEqual(['job-3']);
+      expect(result.total).toBe(2);
+    });
+
+    it('scans from the head of the queue when filtering, not just the requested page', async () => {
+      const mockQueue = createMockQueue();
+      mockQueue.getJobs.mockResolvedValue([]);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      await service.listJobs(JobQueue.SendEmail, { page: 3, limit: 20, jobName: 'SendEmail' });
+
+      // A page-3 range query would start at 60 and could never see a match that
+      // lives earlier in the queue.
+      const [, start] = mockQueue.getJobs.mock.calls[0];
+      expect(start).toBe(0);
+    });
+
+    it('ignores a blank jobName and keeps the unfiltered range query', async () => {
+      const mockQueue = createMockQueue();
+      mockQueue.getJobs.mockResolvedValue([]);
+      mockQueue.getJobCountByTypes.mockResolvedValue(0);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      await service.listJobs(JobQueue.SendEmail, { page: 0, limit: 20, jobName: '   ' });
+
+      expect(mockQueue.getJobs).toHaveBeenCalledWith([...['waiting', 'active', 'completed', 'failed', 'delayed']], 0, 19, true);
+    });
+
     it('should get all statuses when status is not specified', async () => {
       const mockQueue = createMockQueue();
       mockQueue.getJobs.mockResolvedValue([]);
