@@ -23,9 +23,17 @@ import { CodeBlock } from './code-block';
  * page (TASK-971 F-C1): it produced a 400 on every call.
  *
  * No "Try it" button lives here on purpose: a generated Postman collection
- * (downloaded from a published agent's or workflow's Integration panel) is
+ * (downloaded from a published agent's or workflow's Integration tab) is
  * the sanctioned way to fire a real request, under the developer's own key —
  * never as the signed-in console operator against real tenant data.
+ *
+ * TASK-975 D1/D2 — the stream ticket authenticates SSE *and* WebSocket, minted
+ * by two routes that take different credentials: `POST auth/stream-ticket`
+ * (user JWT only, caller-supplied scope) and
+ * `POST workflows/{slug}/runs/{runId}/stream-ticket` (API key or service
+ * account reachable, scope derived server-side). Documenting the ticket as an
+ * SSE-only mechanism was worse than omitting the WebSocket half, because a
+ * reader concluded the ticket WAS an SSE concept (F-3).
  */
 
 const AGENT_BODY_EXAMPLE = `POST api/v1/agents/{slug}/invocations
@@ -53,19 +61,36 @@ const WORKFLOW_ASYNC_RESPONSE = `HTTP/1.1 202 Accepted
   "streamUrl": "…"
 }`;
 
-const STREAM_TICKET_EXAMPLE = `POST api/v1/workflows/{slug}/runs/{runId}/stream-ticket
+const STREAM_TICKET_EXAMPLE = `POST api/v1/auth/stream-ticket                             (user JWT only — caller supplies the scope)
+
+HTTP/1.1 200 OK
+{ "ticket": "…", "expiresAt": "…", "scope": "…" }
+
+POST api/v1/workflows/{slug}/runs/{runId}/stream-ticket    (API key or service account — scope is derived)
 
 HTTP/1.1 201 Created
-{
-  "ticket": "…",
-  "expiresAt": "…",
-  "scope": "…",
-  "url": "…"
-}
+{ "ticket": "…", "expiresAt": "…", "scope": "…", "url": "…" }
 
-GET {url}                          (Authorization: Bearer …)
-GET {url}?ticket={ticket}          (no Authorization header)
-GET {url}                          (Last-Event-ID: <id>  — resumes)`;
+SSE  —  GET {sseUrl}                       (Authorization: Bearer …)
+SSE  —  GET {sseUrl}?ticket={ticket}       (no Authorization header)
+SSE  —  GET {sseUrl}                       (Last-Event-ID: <id>  — resumes)
+WS   —  open {url}                         (ticket already in the query string — single-use, consumed on first open)`;
+
+/** The two WebSocket surfaces a developer can reach directly (TASK-975 D2). */
+const WEBSOCKET_SURFACES = [
+  {
+    route: '/ws/workflows',
+    handshake: '?slug=&runId=&ticket=[&lastEventId=]',
+    scope: 'workflow_run:<runId>',
+    notes: 'Same frames as the SSE run stream, one JSON message per frame. Mint the ticket from the run-scoped route above.',
+  },
+  {
+    route: '/ws/stt/stream',
+    handshake: '?sessionId=&ticket=',
+    scope: 'stt_session:<sessionId>',
+    notes: 'Binary PCM16 LE mono up, typed transcript/status/error/resumed events down. Mint the ticket from auth/stream-ticket.',
+  },
+] as const;
 
 const SSE_FRAME_EXAMPLE = `event: chunk
 id: 3
@@ -340,9 +365,29 @@ export function InvokeGuideScreen() {
             <CodeBlock label="async start response" code={WORKFLOW_ASYNC_RESPONSE} />
             <p className="text-sm">
               Poll <code className="font-mono text-xs">GET workflows/{'{slug}'}/runs/{'{runId}'}</code> for status, or mint a stream ticket and
-              connect directly:
+              connect directly — over SSE <em>or</em> a WebSocket. The ticket is single-use: it is consumed on the first open, so every
+              reconnect mints a fresh one.
             </p>
             <CodeBlock label="stream ticket example" code={STREAM_TICKET_EXAMPLE} />
+            <Alert role="status">
+              <AlertTitle>Two routes mint this ticket, and they take different credentials.</AlertTitle>
+              <AlertDescription>
+                <code className="font-mono text-xs">POST auth/stream-ticket</code> takes a <strong>user JWT only</strong> — the caller supplies
+                the scope string, and it is refused to API keys and service accounts.{' '}
+                <code className="font-mono text-xs">POST workflows/{'{slug}'}/runs/{'{runId}'}/stream-ticket</code> is the counterpart for
+                unattended callers — reachable by <strong>an API key or a service account</strong> — and derives the scope itself as{' '}
+                <code className="font-mono text-xs">workflow_run:{'{runId}'}</code>, so nothing wider than that run can ever be minted.
+              </AlertDescription>
+            </Alert>
+            <Alert role="status">
+              <AlertTitle>The same ticket authenticates SSE and WebSocket alike.</AlertTitle>
+              <AlertDescription>
+                SSE is the default, and the only lane that resumes — pass{' '}
+                <code className="font-mono text-xs">Last-Event-ID</code> to pick up where a connection dropped. WebSocket answers one symptom
+                only: a proxy that buffers <code className="font-mono text-xs">text/event-stream</code>. See “WebSocket surfaces” below for
+                the two endpoints this platform exposes directly.
+              </AlertDescription>
+            </Alert>
             <Alert role="status">
               <AlertTitle>Reserved input keys are refused with a 400.</AlertTitle>
               <AlertDescription>
@@ -356,6 +401,45 @@ export function InvokeGuideScreen() {
                 . These are stamped by the server itself, never supplied by a caller.
               </AlertDescription>
             </Alert>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>WebSocket surfaces</CardTitle>
+            <CardDescription>
+              For a host that cannot hold an SSE connection. Both take the single-use ticket minted above.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[44rem] text-sm">
+                <thead>
+                  <tr className="text-muted-foreground border-b text-left">
+                    <th scope="col" className="py-2 pr-4 font-medium">Route</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Handshake</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Scope</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {WEBSOCKET_SURFACES.map((entry) => (
+                    <tr key={entry.route} className="border-b align-top last:border-0">
+                      <th scope="row" className="py-3 pr-4 text-left font-normal">
+                        <code className="font-mono text-xs">{entry.route}</code>
+                      </th>
+                      <td className="py-3 pr-4">
+                        <code className="font-mono text-xs">{entry.handshake}</code>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <code className="font-mono text-xs">{entry.scope}</code>
+                      </td>
+                      <td className="py-3 pr-4">{entry.notes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
 
@@ -389,11 +473,14 @@ export function InvokeGuideScreen() {
         <Card>
           <CardHeader>
             <CardTitle>Import into Postman</CardTitle>
-            <CardDescription>Every published agent and workflow ships its own ready-to-run collection.</CardDescription>
+            <CardDescription>
+              Every published agent and workflow generates its own ready-to-run collection from its <strong>Integration tab</strong> — this
+              card only covers importing what you downloaded there.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <ol className="list-decimal space-y-2 pl-5 text-sm">
-              <li>Open the agent&apos;s or workflow&apos;s Integration panel and download its collection.</li>
+              <li>Open the agent&apos;s or workflow&apos;s Integration tab and download its collection.</li>
               <li>Open Postman.</li>
               <li>Import → drop the downloaded file.</li>
               <li>
