@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IconChevronDown, IconInfoCircle, IconSpy } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -21,6 +21,16 @@ interface PersonaUser {
 }
 
 /**
+ * Omni search targets (→ gateway `searchFields`) — stable ref, matching the
+ * verified reference in `features/users/components/users-list-screen.tsx`.
+ * `email` is NOT a column on `User` (it lives on the related `UserProfile`
+ * model — `packages/database/src/prisma/db_main/user.prisma`), so including
+ * it here would make `formatFindAllProps`'s per-field Prisma `contains`
+ * throw at runtime the moment a caller typed anything.
+ */
+const PERSONA_SEARCH_FIELDS = 'username,externalId';
+
+/**
  * Playground persona control (artboard 4a). The playground runs
  * end-user planes under the caller's account; a SUPER_ADMIN impersonates any
  * non-admin user cross-tenant, and — D-25 — a TENANT_ADMIN impersonates a
@@ -39,6 +49,13 @@ export function PersonaControl({ session }: { session: SafeSession }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  // Debounced (300ms, house value — `departments-screen.tsx`) — `search`
+  // hits the server on every change (GET admin/users?search=…).
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [pending, setPending] = useState(false);
 
   const canImpersonate = session.isElevated || isTenantAdmin(session.user.roles);
@@ -67,11 +84,11 @@ export function PersonaControl({ session }: { session: SafeSession }) {
   }
 
   const usersQuery = useQuery({
-    queryKey: ['playground', 'persona', 'user-search', search],
+    queryKey: ['playground', 'persona', 'user-search', debouncedSearch],
     queryFn: () =>
       getJson<Paginated<PersonaUser>>('admin/users', {
-        search: search || undefined,
-        searchFields: 'username,email',
+        search: debouncedSearch || undefined,
+        searchFields: PERSONA_SEARCH_FIELDS,
         limit: 8,
       }),
     enabled: open && canImpersonate,

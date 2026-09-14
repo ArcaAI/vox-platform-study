@@ -140,6 +140,60 @@ describe('PersonaControl', () => {
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
+  /**
+   * TASK-973 RC-1 — `searchFields` used to be `'username,email'`, but `email`
+   * is not a column on `User` (it lives on the related `UserProfile` model),
+   * so `formatFindAllProps`'s per-field `contains` would throw at runtime
+   * the moment a caller typed a query. Verifies the gateway request now
+   * names only real scalar String columns on `User`.
+   */
+  it('RC-1: searches only real User columns (username, externalId) — never the relational email field', async () => {
+    const calls = stubFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    await screen.findByText('dr-smith');
+
+    fireEvent.change(screen.getByPlaceholderText(/search users to act as/i), { target: { value: 'smith' } });
+    await waitFor(() => {
+      const call = calls.find((c) => c.url.includes('/api/hope/admin/users') && c.url.includes('search=smith'));
+      expect(call).toBeDefined();
+    });
+    const searchCall = calls.find((c) => c.url.includes('/api/hope/admin/users') && c.url.includes('search=smith'))!;
+    expect(searchCall.url).toContain('searchFields=username%2CexternalId');
+    expect(searchCall.url).not.toContain('email');
+  });
+
+  /**
+   * TASK-973 fix contract §3.7 — free-text search hitting the server debounces
+   * at the house value (300ms, `departments-screen.tsx`) rather than firing a
+   * request per keystroke.
+   */
+  it('debounces the server-hitting search at 300ms', async () => {
+    const calls = stubFetch();
+    renderWithProviders(<PersonaControl session={session()} />);
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    await screen.findByText('dr-smith');
+    calls.length = 0;
+
+    const input = screen.getByPlaceholderText(/search users to act as/i);
+    fireEvent.change(input, { target: { value: 's' } });
+    fireEvent.change(input, { target: { value: 'sm' } });
+    fireEvent.change(input, { target: { value: 'smi' } });
+
+    // Well under the 300ms debounce — no request fired yet from the typing.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls.filter((c) => c.url.includes('/api/hope/admin/users')).length).toBe(0);
+
+    await waitFor(
+      () => {
+        expect(calls.some((c) => c.url.includes('/api/hope/admin/users') && c.url.includes('search=smi'))).toBe(true);
+      },
+      { timeout: 1000 },
+    );
+    // Only the final value was ever requested — no per-keystroke fan-out.
+    expect(calls.filter((c) => c.url.includes('/api/hope/admin/users')).length).toBe(1);
+  });
+
   it('revoke flow: "Stop acting" POSTs revoke and refreshes', async () => {
     const calls = stubFetch();
     renderWithProviders(<PersonaControl session={session({ impersonatingUserId: 'doc-9', impersonatingUsername: 'dr-smith' })} />);

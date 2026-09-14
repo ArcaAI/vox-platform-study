@@ -64,6 +64,44 @@ describe('TemplatePicker', () => {
     expect(onChange).toHaveBeenCalledWith('pt-1');
   });
 
+  /**
+   * TASK-973 fix contract §3.7 — the search hits GET admin/prompt-templates
+   * on every value change, so it debounces at the house value (300ms,
+   * `departments-screen.tsx`) rather than firing a request per keystroke.
+   * The endpoint itself already applies `search` server-side (hand-rolled
+   * `where.name.contains` in `PromptManagementService.listPromptTemplatesPaginated`
+   * — see `prompt-management.service.ts:813`), so this covers the missing
+   * debounce, not a broken search.
+   */
+  it('debounces the search request at 300ms instead of firing one per keystroke', async () => {
+    const calls = stubFetch((call) => {
+      if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/prompt-templates') {
+        return Response.json({ data: [{ id: 'pt-1', name: 'Cardiology SOAP', scope: 'TENANT_DEFAULT' }], count: 1, limit: 20, page: 1 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<TemplatePicker id="template-picker" value="" onChange={() => {}} />);
+    fireEvent.click(screen.getByRole('combobox'));
+    await waitFor(() => expect(calls.some((c) => pathOf(c) === '/api/hope/admin/prompt-templates')).toBe(true));
+    calls.length = 0;
+
+    const input = screen.getByPlaceholderText(/search templates/i);
+    fireEvent.change(input, { target: { value: 'c' } });
+    fireEvent.change(input, { target: { value: 'ca' } });
+    fireEvent.change(input, { target: { value: 'car' } });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls.filter((c) => pathOf(c) === '/api/hope/admin/prompt-templates').length).toBe(0);
+
+    await waitFor(
+      () => {
+        expect(calls.some((c) => pathOf(c) === '/api/hope/admin/prompt-templates' && c.url.includes('search=car'))).toBe(true);
+      },
+      { timeout: 1000 },
+    );
+    expect(calls.filter((c) => pathOf(c) === '/api/hope/admin/prompt-templates').length).toBe(1);
+  });
+
   it('falls back to a plain text input when the template list fails to load, and toasts the failure', async () => {
     stubFetch((call) => {
       if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/prompt-templates') {
