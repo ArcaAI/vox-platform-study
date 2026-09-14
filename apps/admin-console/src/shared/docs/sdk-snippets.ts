@@ -50,13 +50,25 @@ const HEADER_LINES = [`import { HopeClient } from '@arcaai/vox-node';`, ``];
  */
 const CLIENT_WITH_BASE_URL = `const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL, apiKey: process.env.HOPE_API_KEY });`;
 
-/** Shell preamble for the HTTP lane — the gateway ORIGIN, then `api/v1` on every path. */
-const CURL_ENV_LINES = [
-  `# Your gateway origin, and a key minted on the console's API keys screen.`,
-  `export HOPE_API_URL=${JSON.stringify('https://your-gateway.example.com')}`,
-  `export HOPE_API_KEY=${JSON.stringify('…')}`,
-  ``,
-];
+/** Used only when no configured gateway origin is available to offer. */
+const FALLBACK_ORIGIN = 'https://your-gateway.example.com';
+
+/**
+ * Shell preamble for the HTTP lane — the gateway ORIGIN, then `api/v1` on every path.
+ *
+ * TASK-975 C4: the origin is a PARAMETER, because the Postman lane of the same panel already
+ * injects the console's real `publicEnv.apiHost`. Two tabs answering "what is my gateway URL?"
+ * differently — one with the real host, one with `your-gateway.example.com` — made a developer
+ * comparing them doubt both.
+ */
+function curlEnvLines(baseUrl: string = FALLBACK_ORIGIN): string[] {
+  return [
+    `# Your gateway origin, and a key minted on the console's API keys screen.`,
+    `export HOPE_API_URL=${JSON.stringify(baseUrl)}`,
+    `export HOPE_API_KEY=${JSON.stringify('…')}`,
+    ``,
+  ];
+}
 
 /** The agent task shapes the business plane exposes — one call per task, never a generic one. */
 export type SdkSnippetAgentTask = 'TEXT_GENERATION' | 'SPEECH_TO_TEXT' | 'TEXT_TO_SPEECH';
@@ -75,6 +87,11 @@ export interface AgentSnippetOptions {
    * on it is a 400 `MODE_UNSUPPORTED`, not a slower answer. No lane may offer it a stream.
    */
   streamable?: boolean;
+  /**
+   * The console's configured gateway ORIGIN (no `/api/v1` suffix). Omitted falls back to the
+   * documentation placeholder — see `curlEnvLines`.
+   */
+  baseUrl?: string;
 }
 
 /** The flat minimum the invocations route always accepts, when no schema is usable. */
@@ -235,11 +252,12 @@ function curlPost(url: string, body: string, { extraFlags = '', trailing = [] }:
 
 /** The invoke / speech / transcriptions route as raw HTTP, on the `api/v1` prefix. */
 export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, options?: AgentSnippetOptions): string {
+  const baseUrl = options?.baseUrl;
   const base = `$HOPE_API_URL/api/v1/agents/${slug}`;
 
   if (task === 'TEXT_TO_SPEECH') {
     return [
-      ...CURL_ENV_LINES,
+      ...curlEnvLines(baseUrl),
       ...CREDENTIAL_COMMENT,
       ``,
       `# Answers audio (audio/pcm | wav | mpeg), not JSON — send { "ssml": … } instead for markup.`,
@@ -249,7 +267,7 @@ export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, option
 
   if (task === 'SPEECH_TO_TEXT') {
     return [
-      ...CURL_ENV_LINES,
+      ...curlEnvLines(baseUrl),
       ...CREDENTIAL_COMMENT,
       ``,
       `# 201 → { id, status, agentSlug, agentVersionId, sseUrl }. \`mediaId\` is an already-uploaded`,
@@ -260,7 +278,7 @@ export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, option
 
   const body = jsonBlock(invocationBody(options), 6);
   const lines = [
-    ...CURL_ENV_LINES,
+    ...curlEnvLines(baseUrl),
     ...CREDENTIAL_COMMENT,
     ``,
     // Spelled without JSON quoting on purpose: the ONLY quoted "input" a reader should ever find
@@ -280,10 +298,15 @@ export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, option
 }
 
 /** Start a run, read it, follow it — the three calls a workflow integration actually makes. */
-export function workflowCurlSnippet(slug: string, exampleBody?: Record<string, unknown> | null, modes: readonly string[] = []): string {
+export function workflowCurlSnippet(
+  slug: string,
+  exampleBody?: Record<string, unknown> | null,
+  modes: readonly string[] = [],
+  baseUrl?: string,
+): string {
   const base = `$HOPE_API_URL/api/v1/workflows/${slug}`;
   const lines = [
-    ...CURL_ENV_LINES,
+    ...curlEnvLines(baseUrl),
     ...CREDENTIAL_COMMENT,
     `# A user JWT additionally needs create:WorkflowRun (read:WorkflowRun for the two reads below).`,
     ``,
