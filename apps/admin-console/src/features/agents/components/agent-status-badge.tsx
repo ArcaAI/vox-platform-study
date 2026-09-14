@@ -46,3 +46,17 @@ export function AgentOwnerBadge({ sourceTenantId }: { sourceTenantId: string | n
 export function isClonedFromPlatform(sourceTenantId: string | null): boolean {
   return sourceTenantId === SYSTEM_TENANT_ID;
 }
+
+/**
+ * TASK-974 §4.7 (D-1) — a platform service agent (e.g. `dna-writing-style-analyst`): one SYSTEM
+ * row every tenant's jobs resolve against, never cloned, never listed or invokable on the
+ * business plane. Renders nothing for an ordinary tenant agent.
+ */
+export function AgentHiddenBadge({ hidden }: { hidden?: boolean }) {
+  if (!hidden) return null;
+  return (
+    <Badge variant="outline" title="Platform service agent — never cloned to tenants, not listed or invokable on the business plane">
+      Hidden · platform
+    </Badge>
+  );
+}

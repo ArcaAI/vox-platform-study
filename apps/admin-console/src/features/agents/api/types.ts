@@ -143,6 +143,13 @@ export interface Agent {
   sourceVersionNumber: number | null;
   status: AgentStatus;
   isActive: boolean;
+  /**
+   * TASK-974 §4.7 (D-1) — a platform service agent (`PLATFORM_HIDDEN_AGENTS`, e.g. the DNA
+   * writing-style analyst): one SYSTEM row serving every tenant, never cloned, never listed or
+   * invokable on the business plane. Present only on admin surfaces so the console can label it;
+   * absent/`false` for every ordinary tenant-owned agent.
+   */
+  hidden?: boolean;
   modelId: string;
   /** TASK-890 §3.4 — the tenant context schema this agent pins; `null` ⇒ none bound. */
   contextSchemaId: string | null;

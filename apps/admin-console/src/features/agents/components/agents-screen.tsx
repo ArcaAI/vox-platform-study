@@ -20,7 +20,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { AGENT_TASKS, AGENT_TASK_LABEL, useAgents, useImportAgent, type Agent } from '../api';
 import { AgentDetailDrawer, problemToast } from './agent-detail';
-import { AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
+import { AgentHiddenBadge, AgentOwnerBadge, AgentStatusBadge, AgentTaskBadge, isClonedFromPlatform } from './agent-status-badge';
 import { CreateAgentWizard } from './create-agent-wizard';
 
 const TASK_OPTIONS: FilterOption[] = AGENT_TASKS.map((task) => ({ value: task, label: AGENT_TASK_LABEL[task] }));
@@ -196,7 +196,12 @@ function AgentsBody() {
         enableHiding: false,
         size: 170,
         meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
-        cell: ({ row }) => <AgentStatusBadge status={row.original.status} isActive={row.original.isActive} />,
+        cell: ({ row }) => (
+          <span className="flex flex-wrap items-center gap-1">
+            <AgentStatusBadge status={row.original.status} isActive={row.original.isActive} />
+            <AgentHiddenBadge hidden={row.original.hidden} />
+          </span>
+        ),
       },
       {
         id: 'owner',

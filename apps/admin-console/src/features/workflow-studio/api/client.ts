@@ -254,7 +254,12 @@ export async function listAgentOptions(task?: string): Promise<AgentOption[]> {
   // TASK-949 L0 — an ABSENT task lists every task (`buildQuery` drops `undefined`). A `core.agent`
   // node may reference an agent of any task, so filtering to one hid ASR/NER/TTS agents entirely.
   const result = await getJson<Paginated<AgentOption> | AgentOption[]>(AGENTS_PATH, { task, status: 'PUBLISHED', limit: 200 });
-  return Array.isArray(result) ? result : result.data;
+  const agents = Array.isArray(result) ? result : result.data;
+  // TASK-974 §4.7 (D-1) — a platform service agent (`hidden: true`, e.g. the DNA writing-style
+  // analyst) is configuration the platform admin owns, not something a tenant's `core.agent`
+  // node may reference. `GET admin/agents` deliberately still returns it (the admin `/agents`
+  // screen labels it), so the exclusion belongs here, at this picker's own read.
+  return agents.filter((agent) => !agent.hidden);
 }
 
 /**
