@@ -1,6 +1,6 @@
 # TASK-975 — Integration Surface: the Socket Lane & Discoverability
 
-**Status:** Pending — plan awaiting approval (no code written)
+**Status:** In Progress — plan approved 2026-09-14; three lanes in flight (§3.3)
 **Type:** `feature` (+ two `bugfix` steps, C4 and D1)
 **Branch:** `dev-2.2`
 **Owner directive (2026-09-14):** *"review the agents and workflow integration, i can see there are
@@ -197,6 +197,35 @@ another and may run in parallel once A has landed.
   because the snippet works. Per TASK-971's own lesson, the runtime pass is what found FU-1.
 - Both themes; keyboard pass over the tab list.
 
+### 3.3 Execution — lane allocation (2026-09-14)
+
+Approved and dispatched. **The partition is by FILE, not by lane**, because rule 14 §3 is explicit:
+two tasks that would touch the same file are ONE task. Lanes A, B and C all edit
+`integration-panel.tsx`, so they are a single worker — splitting them three ways would have put
+three writers in one file and produced conflicts instead of parallelism.
+
+`socket-snippets.ts` is the dependency root: every other lane reads from it. It was written and
+committed on `dev-2.2` FIRST (`94d4275e3`), so all three worktrees branch from a base that already
+contains it (rule 14 §3, "commit your own work before spawning"). That also removed the only
+cross-agent interface coupling — `C4`'s `baseUrl` parameter landed in the same commit as an
+OPTIONAL argument, so no existing call site changed behaviour and no worker waits on another.
+
+| Worker | Branch | Owns | Lanes | Tier | Why that tier |
+|---|---|---|---|---|---|
+| keystone (orchestrator) | `dev-2.2` | `shared/docs/socket-snippets.ts` (new), `shared/docs/sdk-snippets.ts` | B1, C4 | opus-5 | Every other lane depends on it, and every method name had to be verified against the real SDK prototypes. Rule 14 §1: never downshift the stage others act on. |
+| W-PANEL | `task-975-panel` | `shared/versioning/integration-panel.tsx` + its tests | A1, A2, B2–B5, C1–C3 | **opus-5**, high effort | Multi-lane change to one file: a fifth tab, a conditional snippet, a Postman manifest, cross-links in five render states, and 8 tests. The hardest lane by a distance. |
+| W-GUIDE | `task-975-guide` | `developer-docs/components/invoke-guide-screen.tsx` + its test | A3, D1, D2 | **sonnet-5**, medium | One file, exactly specified: a correction plus a table, with the gateway facts supplied in the brief. Moderate, not complex. |
+| W-SDK | `task-975-sdk-screen` | `developer-docs/components/sdk-screen.tsx` + a new test | E1 | **sonnet-5**, low | Additive card content in an established idiom. |
+
+Three workers is what the file graph permits without overlap — not a budget choice. A fourth would
+have had to share a file with one of these.
+
+**Orchestrator retains** (rule 14 §3, shared surfaces): all merges, `pnpm install` at the primary
+checkout, every `db:*` / `infra:*` / docker command, the post-merge gate re-run, and the §3.2
+runtime pass. No worker merges its own branch or removes its own worktree.
+
+---
+
 ## 4. Open Questions — owner decision needed before the relevant step
 
 | # | Question | Recommendation |
@@ -213,4 +242,5 @@ another and may run in parallel once A has landed.
 
 | Date | Entry |
 |---|---|
+| 2026-09-14 | Plan approved. Keystone committed (`94d4275e3`): `socket-snippets.ts` + the `curlEnvLines` baseUrl parameter. Three worktree workers dispatched per §3.3 — `task-975-panel` (opus-5), `task-975-guide` (sonnet-5), `task-975-sdk-screen` (sonnet-5). Status → In Progress. |
 | 2026-09-14 | Ticket opened. Review completed against `dev-2.2` @ `b33e1c24a`: four reported symptoms measured, three confirmed real (one as discoverability, one as presentation, one as a true absence), one partly real. Socket inventory mapped across gateway + both SDKs. Three would-be findings checked and dismissed (the `?mode=` socket filter, the `tts_session:` ticket branch, workflow-studio "socket"). Plan drafted; status Pending pending approval of the plan and OQ-1..OQ-3. |
