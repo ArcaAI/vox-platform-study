@@ -108,7 +108,15 @@ function assertDnaJobAccess(payload: DnaJobOwnerFields | undefined | null, jobId
 
   // Doctor surface: the caller must be the subject doctor OR the principal who
   // enqueued it (an admin impersonating a doctor has both stamped).
-  if (!access.doctorId || (jobDoctorId !== access.doctorId && jobUserId !== access.doctorId)) {
+  //
+  // L5/F1 — the enqueuing-user disjunct is for HUMAN impersonation ONLY. On a job a MACHINE
+  // enqueued, the credential's bound human never asked for anything, so accepting them here would
+  // hand them another clinician's writing-style model through this route. `DnaWritingStyleService`
+  // also stamps the CLINICIAN as a machine job's `userId`, which closes the same hole from the
+  // other end; this keeps it closed if that payload ever changes again.
+  const enqueuedByMachine = payload?.requestedBy?.credentialClass === 'api-key' || payload?.requestedBy?.credentialClass === 'service-account';
+  const ownerIds = enqueuedByMachine ? [jobDoctorId] : [jobDoctorId, jobUserId];
+  if (!access.doctorId || !ownerIds.includes(access.doctorId)) {
     throw notFound();
   }
 }
