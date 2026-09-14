@@ -106,7 +106,52 @@ even documents it: *"The id search and type filter only cover the loaded page."*
 
 ## 5. Implementation Summary
 
-_(filled in as lanes merge)_
+### Orchestrator — shared layer (commit `745f3ce8c`)
+
+**RC-3, found during the sweep and invisible to every feature lane:** the filter controls OFFERED
+ten operators; `filterToTokens` serialized four. Picking any of the other six updated the chip and
+the URL and then emitted NO token, so the gateway returned every row. Six of the ten DATE
+operators were dead.
+
+| Operator | Offered in | Was | Now |
+|---|---|---|---|
+| `ne` "Is not" | text, number, date, select, boolean | dropped | `field[not]:v` — `not` is in the gateway's `SCALAR_FILTER_OPERATORS` |
+| `isRelativeToToday` "Last 7 days" etc. | date | dropped | `field[gte]:X;field[lte]:Y` — the control already commits `relativePresetToRange`, an ISO `[start, end]` tuple |
+| `notILike` "Does not contain" | text | dropped | REMOVED from the offered list — no negated-insensitive-contains token exists |
+| `isEmpty` / `isNotEmpty` | text, number, date, select, multiSelect | dropped | REMOVED from the offered lists — the grammar has no null predicate |
+
+The serializer still drops the three removed operators defensively, so a stale shared URL cannot
+throw. A unit test had pinned the old behaviour as INTENDED ("drops operators unsupported by the
+v1 server grammar") — which is why the defect survived; it is replaced by tests asserting the two
+new mappings.
+
+Evidence: `apps/admin-console` 3215 tests pass, typecheck clean, lint clean; `packages/ui` 756
+tests pass.
+
+### Lane results
+
+| Lane | Outcome |
+|---|---|
+| L4 — storage, storage-browser, knowledge, ai-operations-runs, ai-models | **No change required.** Every search surface in scope filters over an UNPAGINATED endpoint, so client-side filtering is correct, not RC-2. Verified independently: `formatFindAllProps` sets `take: limit`, and the bucket list endpoints call `findAll` with no `limit`, so Prisma returns every row. `ai-models-screen.tsx` already passes `searchFields: ['name','slug']` (`ai-model.prisma:42-43`, both scalar `String`). Scoped suite: 21 files / 195 tests pass. |
+
+## 5a. Confirmed follow-ups (out of scope — require `apps/api` changes)
+
+**FU-1 — object listing silently truncates at ~1000 keys.**
+`GET storage/buckets/:name/files` (`apps/api/src/modules/storage/storage.controller.ts:195-198`)
+destructures only `{ objects }` and DISCARDS `isTruncated` / `nextContinuationToken`; it accepts
+no `maxKeys` / `continuationToken` query params. The provider layer supports all four
+(`IBlobStorageProvider.ts:40,42,53,59`), and S3's `ListObjectsV2Command` defaults to 1000 keys per
+page. So a bucket or prefix with more than ~1000 objects shows only the first page with NO signal
+that more exist — and the object search box, which filters the returned listing client-side, can
+never see the rest. Verified by the orchestrator, 2026-09-14. Needs a DTO + controller change plus
+a "load more" in `ObjectBrowserPanel`.
+
+**FU-2 — no repository declares `_defaultSearchFields`.**
+All 107 repositories omit it, so `search` without an explicit `searchFields` is a silent no-op
+server-side. This ticket fixes the console side (every screen now sends `searchFields`), which is
+the surgical fix. Declaring sensible defaults per repository would make the gateway safe by
+default for any future/3rd-party caller. Deliberately not done here: it is a 107-file server
+surface and would have collided across lanes.
 
 ## 6. Change History
 
