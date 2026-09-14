@@ -95,6 +95,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — TASK-974: `useDnaWritingStyle` — DNA writing-style sample ingest
+
+`useDnaWritingStyle()` (`DNA_WRITING_STYLE_ENDPOINTS` in `core/constants.ts`) submits a
+clinician's time-ordered writing samples to `POST /dna-writing-styles/ingest`, which enqueues a
+job for the platform's hidden DNA analyst agent and answers `202` with a `jobId`:
+
+```ts
+const { ingest, pollIngestJob } = useDnaWritingStyle();
+const { jobId } = await ingest({ items: [{ text: '…', writtenAt: '2026-09-01T10:00:00.000Z' }] });
+const job = await pollIngestJob(jobId);
+```
+
+`getIngestJob(jobId)` / `pollIngestJob(jobId, { intervalMs?, timeoutMs? })` track the job via
+`GET /dna-writing-styles/ingest/jobs/:jobId` — polling only, there is no SSE on this surface.
+Business plane only, like the rest of `@arcaai/vox`: `DNA_STYLE_ENDPOINTS` (the admin-plane
+surface removed under TASK-890) stays absent, and no `/admin/` path is introduced.
+
 ### Added — TASK-931: `NAMED_ENTITY_RECOGNITION` is an agent task
 
 `AgentTask` gains the value, so `AGENT_ENDPOINTS.LIST('NAMED_ENTITY_RECOGNITION')` and every

@@ -181,3 +181,61 @@ export interface DnaDashboard {
   avgVersions: number;
   recentActivity: DnaDashboardRecentActivity;
 }
+
+// =============================================================================
+// Writing-Sample Ingest (TASK-974, business plane — `POST dna-writing-styles/ingest`)
+// =============================================================================
+
+/**
+ * The kind of writing sample submitted for DNA analysis. Mirrors the
+ * gateway's `IngestDnaWritingSamplesRequest.items[].kind` (README §4.1);
+ * default on the wire is `'OTHER'` when omitted.
+ */
+export type DnaWritingSampleKind = 'CASE_NOTE' | 'WORK_NOTE' | 'OTHER';
+
+/** One item in a time-ordered batch of a clinician's writing samples. */
+export interface DnaWritingSample {
+  /** 1..20000 chars. */
+  text: string;
+  /** ISO-8601 date-time — the time-series key the processor sorts on. */
+  writtenAt: string;
+  /** Defaults to `'OTHER'` on the gateway when omitted. */
+  kind?: DnaWritingSampleKind;
+  /** Opaque caller reference (≤ 200 chars), explainability only — never echoed back. */
+  sourceRef?: string;
+}
+
+/**
+ * Request body of `POST /dna-writing-styles/ingest`.
+ *
+ * `clinicianUserId` is REQUIRED for an API-key / service-account caller;
+ * for a human JWT caller, absent means "the caller acting as a doctor",
+ * present means naming another clinician (SUPER_ADMIN/TENANT_ADMIN only).
+ */
+export interface DnaWritingSamplesIngestInput {
+  clinicianUserId?: string;
+  /** 1..200 items; Σ `text` ≤ 400000 chars. */
+  items: DnaWritingSample[];
+}
+
+/** `202` response of `POST /dna-writing-styles/ingest`. */
+export interface DnaIngestJobResponse {
+  jobId: string;
+  status: 'PENDING';
+  clinicianUserId: string;
+  acceptedItems: number;
+  window: { from: string; to: string };
+}
+
+/**
+ * `GET /dna-writing-styles/ingest/jobs/:jobId` response — the same
+ * `DnaJobStatusResponseDto` shape the gateway already serves for
+ * `POST dna-writing-styles/generate` jobs (README §4.1).
+ */
+export interface DnaIngestJobStatus {
+  jobId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress?: number;
+  result?: DnaJobResult;
+  error?: string;
+}

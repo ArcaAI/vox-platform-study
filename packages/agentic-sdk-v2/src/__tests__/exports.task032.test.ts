@@ -30,6 +30,11 @@ describe('hooks/index exports', () => {
     expect(typeof hooks.useArcaSession).toBe('function');
     expect(typeof hooks.useArcaConfig).toBe('function');
   });
+
+  it('should export useDnaWritingStyle as a function (TASK-974)', async () => {
+    const hooks = await import('../hooks/index.js');
+    expect(typeof hooks.useDnaWritingStyle).toBe('function');
+  });
 });
 
 describe('core.ts exports', () => {
@@ -53,6 +58,14 @@ describe('core.ts exports', () => {
     expect(core.CONSULTATION_JOB_ENDPOINTS).toHaveProperty('CANCEL');
 
     expect(typeof core.HEALTH_ENDPOINTS).toBe('object');
+  });
+
+  it('should export useDnaWritingStyle and DNA_WRITING_STYLE_ENDPOINTS from core (TASK-974)', async () => {
+    const core = await import('../core.js');
+    expect(typeof core.useDnaWritingStyle).toBe('function');
+    expect(typeof core.DNA_WRITING_STYLE_ENDPOINTS).toBe('object');
+    expect(core.DNA_WRITING_STYLE_ENDPOINTS).toHaveProperty('INGEST');
+    expect(core.DNA_WRITING_STYLE_ENDPOINTS).toHaveProperty('INGEST_JOB');
   });
 
   it('should export AgenticProvider as a function from core', async () => {

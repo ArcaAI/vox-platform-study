@@ -807,6 +807,44 @@ Job tracking with SSE streaming and polling for async operations.
 
 ---
 
+### useDnaWritingStyle()
+
+Submits a clinician's time-ordered writing samples for DNA writing-style analysis (TASK-974,
+business plane). `ingest()` enqueues a job for the platform's hidden DNA analyst agent
+(`POST /dna-writing-styles/ingest`, `202`); the job is tracked by polling — there is no SSE on
+this surface.
+
+**Returns**: `UseDnaWritingStyleReturn`
+
+| Member         | Signature                                                                | Description                                                |
+| -------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `job`          | `DnaIngestJobStatus \| null`                                              | Most recent ingest-job snapshot                               |
+| `isIngesting`  | `boolean`                                                                  | Whether an `ingest()` call is in flight                       |
+| `error`        | `Error \| null`                                                            | Error state                                                   |
+| `ingest`       | `(input: DnaWritingSamplesIngestInput) => Promise<DnaIngestJobResponse>`  | Submit a batch of writing samples; enqueues a job             |
+| `getIngestJob` | `(jobId: string) => Promise<DnaIngestJobStatus>`                          | Fetch the current status of an ingest job                     |
+| `pollIngestJob`| `(jobId: string, options?: PollIngestJobOptions) => Promise<DnaIngestJobStatus>` | Poll an ingest job until `completed`/`failed`, or reject on `timeoutMs` (default 2 min) |
+
+```tsx
+const { ingest, pollIngestJob } = useDnaWritingStyle();
+
+const { jobId } = await ingest({
+  items: [
+    { text: 'Patient presents with mild cough.', writtenAt: '2026-09-01T10:00:00.000Z', kind: 'CASE_NOTE' },
+    { text: 'Follow-up scheduled in two weeks.', writtenAt: '2026-09-05T10:00:00.000Z', kind: 'WORK_NOTE' },
+  ],
+});
+
+const finished = await pollIngestJob(jobId, { intervalMs: 2000, timeoutMs: 120000 });
+```
+
+`clinicianUserId` is omitted for a doctor submitting their own samples; a tenant/super admin
+names another clinician by passing it. Both API-key (scope `dna-writing-style:ingest`) and
+service-account (`svc:dna-writing-style:ingest`) credentials may call `ingest`/`getIngestJob`,
+in which case `clinicianUserId` is REQUIRED.
+
+---
+
 ### usePipelines() (Admin — ASR Pipeline CRUD)
 
 > Not to be confused with `useArcaPipelines()` which controls the runtime transcription/knowledge pipelines.
