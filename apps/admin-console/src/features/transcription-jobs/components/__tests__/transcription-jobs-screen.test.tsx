@@ -239,6 +239,24 @@ describe('TranscriptionJobsScreen', () => {
     expect(calls.some((call) => new URL(call.url, 'http://test.local').pathname === '/api/hope/admin/audio/transcription-jobs')).toBe(false);
   });
 
+  it('RC-2: id search in list mode only scans the loaded page — no server call, and the empty state names the limitation', async () => {
+    const calls = stubJobs();
+    renderWithProviders(<TranscriptionJobsScreen />);
+
+    expect(await screen.findByText('job-9f2ka7c3')).toBeDefined();
+    const callsBeforeSearch = calls.length;
+
+    // Neither loaded job matches this needle — the gateway list endpoint has
+    // no `search` param, so this can only prove the client filter narrowed
+    // the ALREADY-loaded page, never that the server searched the tenant.
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'no-such-job-id' } });
+
+    expect(await screen.findByText(/only scans the 25 jobs on this page/i)).toBeDefined();
+    // No new /admin/audio/transcription-jobs read was fired for the search —
+    // it stayed entirely client-side over the page already in memory.
+    expect(calls.length).toBe(callsBeforeSearch);
+  });
+
   it('opens the stream panel on row click: detail loads and the SSE connects with a scoped ticket', async () => {
     const calls = stubJobs();
     renderWithProviders(<TranscriptionJobsScreen />);

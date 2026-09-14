@@ -263,6 +263,27 @@ describe('ConsultationsScreen', () => {
     expect(params.has('patientId')).toBe(false);
   });
 
+  it('RC-2: the type facet names its page-only scope when it empties the loaded page, and the header count tracks what is actually shown', async () => {
+    // Both loaded rows are 'new' visits (no parentConsultationId) — filtering
+    // to 'revisit' finds nothing on THIS page, though the server total (1842)
+    // says the tenant has plenty of consultations overall.
+    const twoNewRows: Consultation[] = [
+      consultation(),
+      consultation({ id: 'c_second_new', doctorId: 'usr-other', doctor: { id: 'usr-other', username: 'dr.other' } }),
+    ];
+    stubConsultations((call, parsed) => {
+      if (call.method === 'GET' && parsed.pathname === '/api/hope/admin/consultations') return listResponse(twoNewRows, 1842);
+      return undefined;
+    });
+    const f = encodeURIComponent(JSON.stringify([['type', 'eq', 'select', 'revisit']]));
+    renderWithProviders(<ConsultationsScreen />, { searchParams: `?f=${f}` });
+
+    expect(await screen.findByText(/only scans the current page/i)).toBeDefined();
+    // Header count reflects the zero rows actually shown, never the unfiltered server total.
+    expect(await screen.findByText('0 consultations')).toBeDefined();
+    expect(screen.queryByText(/1,842 consultations/)).toBeNull();
+  });
+
   it('opens the read-only detail panel on row click: GET :id, masked patient, relations summary', async () => {
     const calls = stubConsultations();
     renderWithProviders(<ConsultationsScreen />);
