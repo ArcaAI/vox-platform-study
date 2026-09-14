@@ -136,3 +136,12 @@ export type {
   TranscribeSource,
   TranscriptionJobHandle,
 } from './agent';
+
+/** DNA writing-style ingest — `hope.dnaWritingStyle.*` (TASK-974). */
+export type {
+  DnaIngestJobResponse,
+  DnaIngestJobStatus,
+  DnaWritingSample,
+  DnaWritingSampleKind,
+  DnaWritingSamplesIngestRequest,
+} from './dna-writing-style';

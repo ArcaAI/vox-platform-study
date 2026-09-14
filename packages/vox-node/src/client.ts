@@ -19,6 +19,7 @@ import {
   AdminNamespace,
   AgentsResource,
   ConsultationsResource,
+  DnaWritingStyleResource,
   JobsResource,
   SttResource,
   SummarizationResource,
@@ -146,6 +147,16 @@ export class HopeClient {
    */
   readonly agents: AgentsResource;
   /**
+   * `hope.dnaWritingStyle` (TASK-974) — submit a clinician's time-ordered
+   * writing samples so the platform's hidden `dna-writing-style-analyst`
+   * agent can regenerate their writing-style report, and track the
+   * resulting job (`ingest` / `getIngestJob` / `waitForIngestJob`).
+   *
+   * Business plane, reachable by BOTH machine credential classes — unlike
+   * {@link workflows}/{@link agents}, no credential class is refused here.
+   */
+  readonly dnaWritingStyle: DnaWritingStyleResource;
+  /**
    * The `/api/v1/admin/**` administration plane — 49 areas, one property per
    * `svc:admin:*` scope.
    *
@@ -223,6 +234,7 @@ export class HopeClient {
     this.tenants = new TenantsResource(transport);
     this.workflows = new WorkflowsResource(transport, isServiceAccount);
     this.agents = new AgentsResource(transport);
+    this.dnaWritingStyle = new DnaWritingStyleResource(transport);
     this.admin = new AdminNamespace(transport);
   }
 }

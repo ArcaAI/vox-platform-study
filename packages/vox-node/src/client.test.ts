@@ -5,6 +5,23 @@ import { ConsultationsResource } from './resources/consultations';
 import { ConsultationSummariesResource } from './resources/consultation-summaries';
 import { JobsResource } from './resources/jobs';
 import { SummarizationResource } from './resources/summarization';
+// Root-barrel reachability: a package consumer imports from `@arcaai/vox-node`
+// (this package's `.`), never from a resource/type's own module path — this
+// proves the DNA writing-style surface (TASK-974) is actually reachable from
+// `./index.ts`, not merely present under `src/`.
+import { DnaWritingStyleResource } from './index';
+import type { DnaIngestJobResponse, DnaIngestJobStatus, DnaWritingSample, DnaWritingSampleKind, DnaWritingSamplesIngestRequest } from './index';
+
+// Compile-time-only proof that every DNA writing-style type re-exports from
+// the root barrel with the exact shape `types/dna-writing-style.ts` declares.
+const _typeReachabilityCheck: {
+  response: DnaIngestJobResponse;
+  status: DnaIngestJobStatus;
+  sample: DnaWritingSample;
+  kind: DnaWritingSampleKind;
+  request: DnaWritingSamplesIngestRequest;
+} = undefined as never;
+void _typeReachabilityCheck;
 
 function okResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -37,6 +54,7 @@ describe('HopeClient — construction', () => {
     expect(client.consultations).toBeInstanceOf(ConsultationsResource);
     expect(client.consultations.summaries).toBeInstanceOf(ConsultationSummariesResource);
     expect(client.jobs).toBeInstanceOf(JobsResource);
+    expect(client.dnaWritingStyle).toBeInstanceOf(DnaWritingStyleResource);
   });
 });
 
