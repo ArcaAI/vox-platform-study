@@ -244,8 +244,15 @@ function rangeTokens(id: string, value: unknown): string[] {
  *   lt/lte/gt/gte -> field[<op>]:v
  *   inArray/notInArray -> field[in|notIn]:a|b   (omit if any value contains `|`)
  *   isBetween     -> field[gte]:X;field[lte]:Y  (omit a blank bound)
- * Operators with no v1 server token (ne, notILike, isEmpty, isNotEmpty,
- * isRelativeToToday) are omitted; blank scalar/list values are omitted.
+ *   isRelativeToToday -> field[gte]:X;field[lte]:Y  (the control already stores
+ *                    the preset as an ISO [start, end] tuple, so it serializes
+ *                    exactly like isBetween)
+ *   ne            -> field[not]:v   (`not` is in the gateway's
+ *                    SCALAR_FILTER_OPERATORS set)
+ * Operators with no v1 server token (notILike, isEmpty, isNotEmpty) are
+ * omitted; blank scalar/list values are omitted. Those three are no longer
+ * OFFERED by the filter controls either (`@arcaai/ui` `dataTableConfig`), so a
+ * user cannot pick one and watch nothing happen.
  */
 function filterToTokens(rule: FilterRule): string[] {
   const { id, operator, variant, value } = rule;
@@ -255,6 +262,8 @@ function filterToTokens(rule: FilterRule): string[] {
       return variant === 'text' ? scalarToken(id, 'icontains', value) : [];
     case 'eq':
       return scalarToken(id, variant === 'text' ? 'iequals' : 'equals', value);
+    case 'ne':
+      return scalarToken(id, 'not', value);
     case 'lt':
     case 'lte':
     case 'gt':
@@ -265,9 +274,15 @@ function filterToTokens(rule: FilterRule): string[] {
     case 'notInArray':
       return listToken(id, 'notIn', value);
     case 'isBetween':
+    // The relative-date control commits `relativePresetToRange(preset)`, an ISO
+    // [start, end] tuple — the same shape `isBetween` carries, so it takes the
+    // same branch. Previously it fell through to `default` and serialized to
+    // NOTHING: the chip and the URL updated while the server returned every row.
+    case 'isRelativeToToday':
       return rangeTokens(id, value);
     default:
-      // ne / notILike / isEmpty / isNotEmpty / isRelativeToToday: unsupported by the v1 grammar.
+      // notILike / isEmpty / isNotEmpty: no v1 server token exists (the grammar
+      // has no negated-insensitive-contains and no null predicate).
       return [];
   }
 }

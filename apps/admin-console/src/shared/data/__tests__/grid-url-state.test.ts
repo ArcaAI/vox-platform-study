@@ -186,12 +186,32 @@ describe('grid-url-state — toListParams filters bracket grammar', () => {
     expect(filtersOf([{ id: 'score', operator: 'isBetween', variant: 'range', value: ['', 20] }])).toBe('score[lte]:20');
   });
 
-  it('drops operators unsupported by the v1 server grammar (ne / notILike / isEmpty / isNotEmpty / isRelativeToToday)', () => {
-    expect(filtersOf([{ id: 'name', operator: 'ne', variant: 'text', value: 'x' }])).toBeUndefined();
+  // `ne` and `isRelativeToToday` used to be dropped here, and this test pinned
+  // that as intended behaviour — which is why the defect survived: the filter
+  // controls OFFERED both, so picking "Is not" or "Last 7 days" updated the chip
+  // and the URL while the server returned every row.
+  it('maps ne -> the gateway `not` scalar operator', () => {
+    expect(filtersOf([{ id: 'name', operator: 'ne', variant: 'text', value: 'x' }])).toBe('name[not]:x');
+    expect(filtersOf([{ id: 'score', operator: 'ne', variant: 'number', value: 3 }])).toBe('score[not]:3');
+  });
+
+  it('serializes isRelativeToToday as a range — the control commits an ISO [start, end] tuple', () => {
+    expect(filtersOf([{ id: 'createdAt', operator: 'isRelativeToToday', variant: 'date', value: ['2026-09-07', '2026-09-14'] }])).toBe(
+      'createdAt[gte]:2026-09-07;createdAt[lte]:2026-09-14',
+    );
+  });
+
+  it('drops an isRelativeToToday whose value is not a range (defensive — a stale URL preset string)', () => {
+    expect(filtersOf([{ id: 'createdAt', operator: 'isRelativeToToday', variant: 'date', value: '7d' }])).toBeUndefined();
+  });
+
+  it('drops the operators with no v1 server token (notILike / isEmpty / isNotEmpty)', () => {
+    // These are no longer OFFERED by the filter controls either — see the note
+    // on `dataTableConfig` in `packages/ui/src/config/data-table.ts`. A stale
+    // shared URL can still carry one, so the serializer stays defensive.
     expect(filtersOf([{ id: 'name', operator: 'notILike', variant: 'text', value: 'x' }])).toBeUndefined();
     expect(filtersOf([{ id: 'name', operator: 'isEmpty', variant: 'text', value: '' }])).toBeUndefined();
     expect(filtersOf([{ id: 'name', operator: 'isNotEmpty', variant: 'text', value: '' }])).toBeUndefined();
-    expect(filtersOf([{ id: 'createdAt', operator: 'isRelativeToToday', variant: 'date', value: '7d' }])).toBeUndefined();
   });
 
   it('never emits an i-op on a non-text column (guards the enum/number/date rule)', () => {
