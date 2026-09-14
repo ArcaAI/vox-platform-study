@@ -7,6 +7,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PLATFORM_HIDDEN_AGENT_SLUGS } from '@arcaai/domains';
+// Relative, not through the package root: `@arcaai/database`'s barrel boots a Prisma client,
+// and `00-constants.ts` is pure literals with no imports of its own — the same reach
+// `tenant-ability.regression.test.ts` uses for `SEED_ROLE_IDS`.
+import { PLATFORM_HIDDEN_AGENT_SLUGS as SEED_PLATFORM_HIDDEN_AGENT_SLUGS } from '../../../../../database/src/prisma/db_main/seed/00-constants';
 import { DNA_WRITING_STYLE_ANALYST_SLUG, PLATFORM_HIDDEN_AGENTS, isPlatformHiddenAgentSlug } from '../platform-hidden-agents';
 
 describe('PLATFORM_HIDDEN_AGENTS', () => {
@@ -42,6 +46,20 @@ describe('PLATFORM_HIDDEN_AGENTS', () => {
    */
   it('is the same set as the allow-list the domains-tier read enforces', () => {
     expect(Object.keys(PLATFORM_HIDDEN_AGENTS).sort()).toEqual([...PLATFORM_HIDDEN_AGENT_SLUGS].sort());
+  });
+
+  /**
+   * L5/F6 — and a THIRD list, in the seed.
+   *
+   * `packages/database` cannot import this registry either, and phase 26 is a second
+   * implementation of the reference-set copy for the tenants the seed writes directly. Before
+   * this parity check the seed had no skip at all, so `pnpm db:seed` handed every seeded tenant
+   * an editable clone of the platform analyst — carrying the platform admin's model, and a
+   * `sourceAgentId` pointing back at the SYSTEM row — while the runtime copier correctly refused
+   * to make one. Three lists, one meaning; drift in any of them fails here.
+   */
+  it('is the same set as the allow-list the SEED`s reference-set copy skips', () => {
+    expect(Object.keys(PLATFORM_HIDDEN_AGENTS).sort()).toEqual([...SEED_PLATFORM_HIDDEN_AGENT_SLUGS].sort());
   });
 
   it('narrows the slug type so a caller can index the registry after the check', () => {

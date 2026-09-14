@@ -47,9 +47,20 @@ function isTerminal(status: DnaIngestJobStatus['status']): boolean {
 export interface DnaWritingStyleIngestOptions {
   signal?: AbortSignal;
   /**
-   * Sent as the `Idempotency-Key` header. Reuse the same value to retry a
-   * submission safely — the request the header protects joins the original
-   * enqueue instead of creating a second job.
+   * Sent as the `Idempotency-Key` header (at most 200 characters; a longer one
+   * is a 400). Reuse the same value to retry a submission safely.
+   *
+   * The gateway DERIVES the job id from `(tenant, credential, key)`, so a retry
+   * joins the job the first attempt enqueued and answers that job's handle —
+   * the same `jobId`, `clinicianUserId`, `acceptedItems` and `window`, whatever
+   * the retry's own body says. The dedupe holds for as long as the queue
+   * RETAINS that job; once it is evicted, the same key starts a new analysis.
+   *
+   * Scoped to the calling credential: two callers reusing the same string never
+   * join each other's batch, and a key never reaches across tenants.
+   *
+   * Sending one also makes this POST retryable by the SDK's own transport — an
+   * idempotent request is safe to repeat after a 5xx, and a bare one is not.
    */
   idempotencyKey?: string;
   /** Mint an `Idempotency-Key` (UUIDv7) for this call when you have no natural key of your own. Ignored when {@link idempotencyKey} is set. */

@@ -72,6 +72,26 @@ export const SEEDED_API_KEY_DOCTOR2 = 'hope_sk_test_b7d8f67y65d5548gce8df8eef0_7
 export const SEEDED_API_KEY_SERVICE_ACCOUNT = 'hope_sa_test_d9f0h89a87f7760ieg0fh0ggh2_964571';
 
 /**
+ * The seeded ArcaAI SERVICE ACCOUNT (`00-constants.ts`), exchanged at
+ * `POST /api/v1/auth/service-token` for the opaque `X-Service-Account-Token` the third credential
+ * class presents. It is bound to the ARCAAI tenant, so every clinician it may name is an ArcaAI
+ * clinician — which is what makes a cross-tenant case against it real rather than contrived.
+ *
+ * Here rather than in each spec because rule 05 §API Test Standard says credentials come only
+ * from this file: half a dozen specs had pasted the same pair, so rotating the dev fixture meant
+ * finding every copy.
+ */
+export const SEEDED_SERVICE_ACCOUNT_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
+export const SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
+
+/**
+ * A seeded clinician of the ARCAAI tenant (`91-user.ts`), which `SEEDED_USERS` does not surface:
+ * every user there belongs to Global. The cross-tenant half of an authorization test needs a real
+ * id in another tenant, and this is it.
+ */
+export const SEEDED_ARCAAI_DOCTOR_ID = '70000000-0000-0000-0000-000000000040';
+
+/**
  * Well-known seeded user credentials.
  * These users are created by 91-user.ts and should always exist after pnpm test:db:seed.
  */

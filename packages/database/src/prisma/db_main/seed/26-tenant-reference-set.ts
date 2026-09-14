@@ -42,7 +42,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
-import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { PLATFORM_HIDDEN_AGENT_SLUGS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { NOTE_CONTEXT_SCHEMA_SLUG, canonicalJson } from './07e-consultation-note-context-schema';
 
 /** Per-tenant, per-kind counts — the same shape the service's summary reports. */
@@ -274,14 +274,23 @@ export function repointInstructionTemplates(
  * prevent. `compiledConfig` travels verbatim (see the file header for why that is sound); every
  * prompt binding in `instruction` — the single template, or each template fragment of a
  * composite (TASK-947) — is re-pointed at the tenant's own clone when it has one.
+ *
+ * EXCEPT a PLATFORM HIDDEN agent (TASK-974 D-1), which is deliberately not part of any tenant's
+ * content: it is CONFIGURATION the platform admin owns, resolved for every tenant from the one
+ * SYSTEM row by an explicit allow-listed read. Cloning it would let a tenant edit the model of
+ * its copy and would strand the platform admin's next model change in SYSTEM. Exported so the
+ * skip is testable without a database — the same reason `boundTemplateIdsOf` is.
  */
-async function copyAgents(client: CorePrismaClient, tenantId: string): Promise<number> {
+export async function copyAgents(client: CorePrismaClient, tenantId: string): Promise<number> {
   const sources = await client.agent.findMany({
     where: { tenantId: SYSTEM_TENANT_ID, status: 'PUBLISHED', isActive: true, resourceStatus: 'ENABLED' },
     orderBy: { slug: 'asc' },
   });
   let added = 0;
   for (const source of sources) {
+    // The runtime copier (`TenantReferenceSetService.copyAgents`) skips these; so must this one,
+    // or `pnpm db:seed` reintroduces by hand the clone the service refuses to make.
+    if (PLATFORM_HIDDEN_AGENT_SLUGS.includes(source.slug)) continue;
     const existing = await client.agent.findFirst({ where: { tenantId, slug: source.slug }, select: { id: true } });
     if (existing) continue;
 

@@ -921,3 +921,27 @@ export const SEED_CONSENT_GRANT_IDS = {
   ARCAAI_PAT_101_STYLE_LEARNING: 'F0000000-0000-0000-0001-000000000002',
   ARCAAI_PAT_101_QUALITY_REVIEW: 'F0000000-0000-0000-0001-000000000003',
 } as const;
+
+// =============================================================================
+// PLATFORM HIDDEN AGENTS (TASK-974 D-1)
+// =============================================================================
+
+/**
+ * The lineage keys of the SYSTEM-tenant agents that serve a PLATFORM CAPABILITY for every tenant
+ * and are therefore never cloned into one.
+ *
+ * MIRRORED, not imported. The authority is `PLATFORM_HIDDEN_AGENTS`
+ * (`packages/applications/src/services/agent/platform-hidden-agents.ts`), which also records each
+ * slug's task and why it is platform-owned — but `packages/applications` sits ABOVE this package
+ * in the dependency graph, so it cannot be read from here. The same shape
+ * `AgentRepository.PLATFORM_HIDDEN_AGENT_SLUGS` uses one tier down, for the same reason.
+ *
+ * Parity is PROVEN, not trusted: `platform-hidden-agents.test.ts` in the applications package
+ * asserts all three lists are the same set. Adding a slug in one place and not here would hand
+ * every seeded tenant an editable copy of a platform agent — with the platform admin's model in
+ * it — which is exactly the drift that made this constant necessary.
+ *
+ * Read by `26-tenant-reference-set.ts`. It does NOT stop the agent being SEEDED: `25-agents.ts`
+ * writes the Global authored row and the SYSTEM promoted copy exactly as it does for the others.
+ */
+export const PLATFORM_HIDDEN_AGENT_SLUGS: readonly string[] = ['dna-writing-style-analyst'] as const;

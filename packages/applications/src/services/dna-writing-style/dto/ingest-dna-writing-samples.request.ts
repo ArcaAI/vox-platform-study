@@ -32,7 +32,13 @@ export class DnaWritingSampleDto {
       'When the clinician wrote it (ISO-8601 date-time). The time-series key: the corpus is ordered by it, and the oldest items are dropped first when the batch exceeds the context budget.',
     example: '2026-09-01T09:30:00.000Z',
   })
-  @IsISO8601()
+  // L5/F3 — `strict` checks the CALENDAR (`2026-02-30` would otherwise pass here and silently
+  // roll into March), and `strictSeparator` requires the `T` (a space-separated stamp is not
+  // ISO-8601 and reads differently in different runtimes). Neither option rejects the week
+  // (`2026-W01`) and basic (`20260901`) spellings, which are valid ISO-8601 that `Date.parse`
+  // answers `NaN` for: those are refused by `DnaWritingStyleService.assertParsableWrittenAt`,
+  // before anything is queued. One contract, pinned from both ends.
+  @IsISO8601({ strict: true, strictSeparator: true })
   writtenAt!: string;
 
   @ApiPropertyOptional({

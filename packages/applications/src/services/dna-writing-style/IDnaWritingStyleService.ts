@@ -46,8 +46,12 @@ export abstract class IDnaWritingStyleService {
    * API-key principal from a JWT one — the key path publishes `{ id, tenantId }` with no roles).
    * It decides the clinician-resolution rule AND is what the job-status route later compares a
    * machine reader against, so a machine reads back only the jobs it enqueued.
+   *
+   * `idempotencyKey` is the caller's `Idempotency-Key` header. When present the job id is DERIVED
+   * from it (scoped to this tenant and this credential), so a retried submission joins the job the
+   * first attempt enqueued rather than starting a second analysis.
    */
-  abstract ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy): Promise<DnaIngestJobResponse>;
+  abstract ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy, idempotencyKey?: string): Promise<DnaIngestJobResponse>;
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
   abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**
