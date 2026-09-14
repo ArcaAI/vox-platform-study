@@ -34,6 +34,18 @@ function toProgress(progress: Job['progress'], status: DnaJobStatusResponseDto['
 export interface DnaJobAccess {
   tenantId: string | null;
   doctorId?: string | null;
+  /**
+   * TASK-974 §4.1 — the CREDENTIAL, when the caller is a machine (API key / service account).
+   *
+   * Present (even as `null`) DECLARES the caller a machine and selects the machine gate, which
+   * is why it is checked before the admin branch: a machine caller has no `doctorId`, and
+   * falling through to `doctorId === undefined` would hand it the tenant-wide admin reach.
+   *
+   * The comparison is against `requestedBy.principalId` on the job, not against the bound user:
+   * a machine acts "as" a user, so two service accounts in one tenant both resolve to clinicians
+   * of that tenant and the doctor rule could not tell their jobs apart.
+   */
+  machinePrincipalId?: string | null;
 }
 
 /** Owner fields stamped onto the job payload at enqueue time (`GenerateDnaReportJobPayload`). */
@@ -41,6 +53,7 @@ interface DnaJobOwnerFields {
   tenantId?: unknown;
   doctorId?: unknown;
   userId?: unknown;
+  requestedBy?: { credentialClass?: unknown; principalId?: unknown };
 }
 
 /**
@@ -74,6 +87,18 @@ function assertDnaJobAccess(payload: DnaJobOwnerFields | undefined | null, jobId
   // No active tenant can own any job.
   if (!access.tenantId || jobTenantId !== access.tenantId) {
     throw notFound();
+  }
+
+  // TASK-974 — MACHINE surface. FAIL CLOSED in both directions: a machine with no principal
+  // reads nothing, and a job with no `requestedBy` (a human's, or one enqueued by an older
+  // build) is not a machine's to read. Deliberately BEFORE the admin branch — see
+  // `DnaJobAccess.machinePrincipalId`.
+  if (access.machinePrincipalId !== undefined) {
+    const jobPrincipalId = typeof payload?.requestedBy?.principalId === 'string' ? payload.requestedBy.principalId : null;
+    if (!access.machinePrincipalId || jobPrincipalId !== access.machinePrincipalId) {
+      throw notFound();
+    }
+    return;
   }
 
   // Admin surface: tenant match is the whole gate (ability is tenant-scoped).
