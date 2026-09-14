@@ -21,13 +21,7 @@
  * opaque 409.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import {
-  DEFAULT_TENANT_KEY,
-  SEEDED_API_KEY,
-  SEEDED_API_KEY_SERVICE_ACCOUNT,
-  SEEDED_USERS,
-  loginUser,
-} from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_API_KEY, SEEDED_API_KEY_SERVICE_ACCOUNT, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const INGEST = '/api/v1/dna-writing-styles/ingest';
 const INGEST_JOB = (jobId: string) => `/api/v1/dna-writing-styles/ingest/jobs/${jobId}`;
@@ -47,7 +41,10 @@ const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9
 /** Seeded users (`91-user.ts`) the helper does not surface by id. */
 const USER_ARCAAI_DOCTOR = '70000000-0000-0000-0000-000000000040';
 
-const sample = (writtenAt: string, text = 'Patient seen for follow-up. Symptoms improved on current regimen. Continue and review in four weeks.') => ({
+const sample = (
+  writtenAt: string,
+  text = 'Patient seen for follow-up. Symptoms improved on current regimen. Continue and review in four weeks.',
+) => ({
   text,
   writtenAt,
   kind: 'CASE_NOTE' as const,

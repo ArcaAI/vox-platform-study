@@ -83,10 +83,22 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
   it('SYSTEM rows are the promoted copy: provenance points at the Global row of the same slug; Global rows carry none', () => {
     for (const system of PLATFORM_AGENT_SPECS) {
       const global = GLOBAL_AGENT_SPECS.find((spec) => spec.slug === system.slug)!;
-      expect(system.provenance).toEqual({ sourceAgentId: global.id, sourceTenantId: SEED_TENANT_ID, sourceSlug: global.slug, sourceVersionNumber: 1 });
+      expect(system.provenance).toEqual({
+        sourceAgentId: global.id,
+        sourceTenantId: SEED_TENANT_ID,
+        sourceSlug: global.slug,
+        sourceVersionNumber: 1,
+      });
       expect(global.provenance).toBeNull();
       // identical configuration apart from the template id each tenant owns and the tier tag
-      const strip = (spec: SeedAgentSpec) => ({ ...spec, id: '', tenantId: '', provenance: null, instruction: null, tags: spec.tags.filter((tag) => !tag.startsWith('tier:')) });
+      const strip = (spec: SeedAgentSpec) => ({
+        ...spec,
+        id: '',
+        tenantId: '',
+        provenance: null,
+        instruction: null,
+        tags: spec.tags.filter((tag) => !tag.startsWith('tier:')),
+      });
       expect(strip(system)).toEqual(strip(global));
     }
   });
@@ -99,10 +111,25 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       for (const fallback of spec.fallbackModelSlugs) expect(reg(fallback).taskType).toBe(model.taskType);
       if (!contractKnows(spec.task)) return;
       const problems = agentConfigProblems(
-        { task: spec.task, instruction: spec.instruction, parameters: spec.parameters, inputSchema: null, outputSchema: spec.outputSchema ?? null, tools: null, contextSchemaId: null, contextSchemaVersionNumber: null },
-        { model: { slug: spec.modelSlug, taskType: model.taskType, provider: model.provider ?? undefined }, fallbackModels: spec.fallbackModelSlugs.map((slug) => ({ slug, taskType: reg(slug).taskType })) },
+        {
+          task: spec.task,
+          instruction: spec.instruction,
+          parameters: spec.parameters,
+          inputSchema: null,
+          outputSchema: spec.outputSchema ?? null,
+          tools: null,
+          contextSchemaId: null,
+          contextSchemaVersionNumber: null,
+        },
+        {
+          model: { slug: spec.modelSlug, taskType: model.taskType, provider: model.provider ?? undefined },
+          fallbackModels: spec.fallbackModelSlugs.map((slug) => ({ slug, taskType: reg(slug).taskType })),
+        },
       );
-      expect(problems.filter((p: { severity: string }) => p.severity === 'ERROR'), JSON.stringify(problems)).toEqual([]);
+      expect(
+        problems.filter((p: { severity: string }) => p.severity === 'ERROR'),
+        JSON.stringify(problems),
+      ).toEqual([]);
       const declared = Object.keys(AGENT_PARAMETER_SCHEMAS[spec.task].properties);
       for (const key of Object.keys(spec.parameters)) expect(declared).toContain(key);
     },
@@ -116,7 +143,12 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       expect(compiled.protocols).toEqual(['http']);
       expect(compiled.inputSchema).toEqual(NER_IO_DEFAULTS.inputSchema);
       expect(compiled.outputSchema).toEqual(NER_IO_DEFAULTS.outputSchema);
-      expect(compiled.inputSchema).toEqual({ type: 'object', properties: { text: { type: 'string' }, language: { type: 'string' } }, required: ['text'], additionalProperties: false });
+      expect(compiled.inputSchema).toEqual({
+        type: 'object',
+        properties: { text: { type: 'string' }, language: { type: 'string' } },
+        required: ['text'],
+        additionalProperties: false,
+      });
       expect(compiled.outputSchema.properties.entities.items.required).toEqual(['text', 'label', 'start', 'end']);
     }
   });
@@ -124,10 +156,22 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
   it('general-medicine-summarization binds the tenant`s own General Medicine template and populates EVERY declared variable (F6)', () => {
     for (const spec of ALL_SPECS.filter((s) => s.slug === 'general-medicine-summarization')) {
       const instruction = spec.instruction as Record<string, any>;
-      expect(instruction.promptTemplateId).toBe(spec.tenantId === SYSTEM_TENANT_ID ? SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID : TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY);
+      expect(instruction.promptTemplateId).toBe(
+        spec.tenantId === SYSTEM_TENANT_ID ? SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID : TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY,
+      );
       expect(instruction.promptVersionNumber).toBe(1);
       expect(Object.keys(instruction.variables).sort()).toEqual([...GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES].sort());
-      for (const name of ['visit_type', 'current_department', 'language', 'safe_age', 'safe_dob', 'safe_gender', 'chief_complaint', 'formatted_vitals', 'formatted_previous_visits']) {
+      for (const name of [
+        'visit_type',
+        'current_department',
+        'language',
+        'safe_age',
+        'safe_dob',
+        'safe_gender',
+        'chief_complaint',
+        'formatted_vitals',
+        'formatted_previous_visits',
+      ]) {
         expect(instruction.variables[name]).toEqual({ path: `trigger.context.${name}` });
       }
       // the document template SHAPES ride as constants (no document-template binding kind exists)
@@ -179,7 +223,12 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
 
   it('the checksum is sha256 over the contract`s canonicalJson', () => {
     const llm = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === 'general-medicine-summarization')!;
-    const compiled = buildCompiledConfig(llm, modelRef(llm.modelSlug), [], { source: 'template', promptTemplateId: 't', promptVersionNumber: 1, content: 'Summarise.' });
+    const compiled = buildCompiledConfig(llm, modelRef(llm.modelSlug), [], {
+      source: 'template',
+      promptTemplateId: 't',
+      promptVersionNumber: 1,
+      content: 'Summarise.',
+    });
     expect(canonicalJson(compiled)).toBe(contractCanonicalJson(compiled));
     expect(checksumOf(compiled)).toBe(`sha256:${createHash('sha256').update(contractCanonicalJson(compiled)).digest('hex')}`);
     expect(compiled).toMatchObject({ guardrail: { enabled: true }, contextSchema: null, model: { wireModelId: 'gemma-4-e2b-it-qat' } });
@@ -188,13 +237,27 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
 
 describe('TASK-930 — seedAgents against an in-memory client', () => {
   function fakeClient(options: { models?: string[]; approvedTemplates?: boolean } = {}) {
-    const models = (options.models ?? Object.keys(REGISTRY)).map((slug) => ({ id: `model-${slug}`, slug, taskType: reg(slug).taskType, provider: reg(slug).provider, wireModelId: reg(slug).wireModelId }));
+    const models = (options.models ?? Object.keys(REGISTRY)).map((slug) => ({
+      id: `model-${slug}`,
+      slug,
+      taskType: reg(slug).taskType,
+      provider: reg(slug).provider,
+      wireModelId: reg(slug).wireModelId,
+    }));
     const agents = new Map<string, any>();
     const fallbacks: any[] = [];
     const assignments = new Map<string, any>();
     const client: SeedAgentsClient = {
       aiModel: { findMany: vi.fn(async () => models) },
-      promptTemplate: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, status: options.approvedTemplates === false ? 'DRAFT' : 'APPROVED', content: `body of ${where.id}`, approvedVersionNumber: 1, currentVersionNumber: 1 })) },
+      promptTemplate: {
+        findUnique: vi.fn(async ({ where }) => ({
+          id: where.id,
+          status: options.approvedTemplates === false ? 'DRAFT' : 'APPROVED',
+          content: `body of ${where.id}`,
+          approvedVersionNumber: 1,
+          currentVersionNumber: 1,
+        })),
+      },
       promptVersion: { findFirst: vi.fn(async ({ where }) => ({ content: `v${where.versionNumber} of ${where.promptTemplateId}` })) },
       agent: {
         findUnique: vi.fn(async ({ where }) => (agents.has(where.id) ? { id: where.id } : null)),
@@ -222,7 +285,11 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     // and NER/TTS/STT/TEXT_GENERATION plus the one qualified pre-summary row make five per tenant.
     expect(first).toEqual({ created: 14, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 10 });
     const system = agents.get(PLATFORM_AGENT_SPECS.find((s) => s.slug === 'general-medicine-summarization')!.id);
-    expect(system.compiledConfig.resolvedPrompt).toMatchObject({ source: 'template', promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, promptVersionNumber: 1 });
+    expect(system.compiledConfig.resolvedPrompt).toMatchObject({
+      source: 'template',
+      promptTemplateId: SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+      promptVersionNumber: 1,
+    });
     expect(system).toMatchObject({ sourceTenantId: SEED_TENANT_ID, sourceSlug: 'general-medicine-summarization', sourceVersionNumber: 1 });
     expect(fallbacks.filter((f) => f.agentId === PLATFORM_AGENT_SPECS.find((s) => s.slug === 'realtime-transcription')!.id)).toHaveLength(2);
     expect(new Set(fallbacks.map((f) => f.id)).size).toBe(fallbacks.length);

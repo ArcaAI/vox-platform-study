@@ -53,7 +53,15 @@ const DNA_PROFILE = {
 const DNA_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sentenceStructure', 'verbosity', 'listVsNarrative', 'sectionOrderPreference', 'abbreviationFrequency', 'toneFormality', 'confidenceScores'],
+  required: [
+    'sentenceStructure',
+    'verbosity',
+    'listVsNarrative',
+    'sectionOrderPreference',
+    'abbreviationFrequency',
+    'toneFormality',
+    'confidenceScores',
+  ],
   properties: {
     sentenceStructure: { type: 'string', enum: ['active', 'passive', 'mixed'] },
     verbosity: { type: 'string', enum: ['terse', 'moderate', 'verbose'] },
@@ -163,7 +171,7 @@ function build(options: BuildOptions = {}) {
   const processor = new DnaWritingStyleProcessor(
     { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed } as never,
     {
-      getValueWithDefault: vi.fn(<T,>(key: string, fallback: T): T => (key === 'dna-regen.max-context-chars' ? (maxContextChars as T) : fallback)),
+      getValueWithDefault: vi.fn(<T>(key: string, fallback: T): T => (key === 'dna-regen.max-context-chars' ? (maxContextChars as T) : fallback)),
     } as never,
     { findAll: vi.fn() } as never,
     { getVersionsByChangeReason: vi.fn().mockResolvedValue([]) } as never,
@@ -207,7 +215,8 @@ const job = (data: Record<string, unknown> = {}) =>
     data: { jobId: 'job-1', doctorId: 'doctor-1', tenantId: TENANT, userId: 'user-1', textSamples: ['Chest pain, resolved.'], ...data },
   }) as never;
 
-const body = (httpService: { axiosRef: { post: ReturnType<typeof vi.fn> } }) => httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
+const body = (httpService: { axiosRef: { post: ReturnType<typeof vi.fn> } }) =>
+  httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
 
 beforeEach(() => vi.clearAllMocks());
 

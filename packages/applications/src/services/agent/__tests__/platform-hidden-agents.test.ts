@@ -7,11 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PLATFORM_HIDDEN_AGENT_SLUGS } from '@arcaai/domains';
-import {
-  DNA_WRITING_STYLE_ANALYST_SLUG,
-  PLATFORM_HIDDEN_AGENTS,
-  isPlatformHiddenAgentSlug,
-} from '../platform-hidden-agents';
+import { DNA_WRITING_STYLE_ANALYST_SLUG, PLATFORM_HIDDEN_AGENTS, isPlatformHiddenAgentSlug } from '../platform-hidden-agents';
 
 describe('PLATFORM_HIDDEN_AGENTS', () => {
   it('declares exactly the DNA writing-style analyst today', () => {

@@ -68,7 +68,12 @@ const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = {
 
 /** INTERFACES §2.3, verbatim. */
 export const NER_IO_DEFAULTS = {
-  inputSchema: { type: 'object', properties: { text: { type: 'string' }, language: { type: 'string' } }, required: ['text'], additionalProperties: false },
+  inputSchema: {
+    type: 'object',
+    properties: { text: { type: 'string' }, language: { type: 'string' } },
+    required: ['text'],
+    additionalProperties: false,
+  },
   outputSchema: {
     type: 'object',
     properties: {
@@ -76,7 +81,13 @@ export const NER_IO_DEFAULTS = {
         type: 'array',
         items: {
           type: 'object',
-          properties: { text: { type: 'string' }, label: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' }, score: { type: 'number' } },
+          properties: {
+            text: { type: 'string' },
+            label: { type: 'string' },
+            start: { type: 'integer' },
+            end: { type: 'integer' },
+            score: { type: 'number' },
+          },
           required: ['text', 'label', 'start', 'end'],
           additionalProperties: false,
         },
@@ -90,7 +101,12 @@ export const NER_IO_DEFAULTS = {
 /** The task defaults of AGENT_IO_DEFAULTS, compiled verbatim so the runtime never reads a null schema. */
 const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown> }> = {
   TEXT_GENERATION: {
-    inputSchema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1 }, variables: { type: 'object', additionalProperties: { type: 'string' } } } },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['text'],
+      properties: { text: { type: 'string', minLength: 1 }, variables: { type: 'object', additionalProperties: { type: 'string' } } },
+    },
     outputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
   },
   SPEECH_TO_TEXT: {
@@ -99,7 +115,12 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
       additionalProperties: false,
       required: ['audio'],
       properties: {
-        audio: { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { type: 'string', enum: ['artifact', 'stream'] }, mediaId: { type: 'string' }, sessionId: { type: 'string' } } },
+        audio: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind'],
+          properties: { kind: { type: 'string', enum: ['artifact', 'stream'] }, mediaId: { type: 'string' }, sessionId: { type: 'string' } },
+        },
         language: { type: 'string', minLength: 2, maxLength: 16 },
       },
     },
@@ -107,14 +128,43 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
       type: 'object',
       required: ['transcript'],
       properties: {
-        transcript: { type: 'array', items: { type: 'object', required: ['text', 'start', 'end'], properties: { text: { type: 'string' }, start: { type: 'number', minimum: 0 }, end: { type: 'number', minimum: 0 }, speaker: { type: 'string' }, isFinal: { type: 'boolean' } } } },
+        transcript: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['text', 'start', 'end'],
+            properties: {
+              text: { type: 'string' },
+              start: { type: 'number', minimum: 0 },
+              end: { type: 'number', minimum: 0 },
+              speaker: { type: 'string' },
+              isFinal: { type: 'boolean' },
+            },
+          },
+        },
         language: { type: 'string' },
       },
     },
   },
   TEXT_TO_SPEECH: {
-    inputSchema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } }, anyOf: [{ required: ['text'] }, { required: ['ssml'] }] },
-    outputSchema: { type: 'object', required: ['audio'], properties: { audio: { type: 'object', required: ['mediaId', 'format'], properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } } }, durationMs: { type: 'integer', minimum: 0 } } },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } },
+      anyOf: [{ required: ['text'] }, { required: ['ssml'] }],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['audio'],
+      properties: {
+        audio: {
+          type: 'object',
+          required: ['mediaId', 'format'],
+          properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } },
+        },
+        durationMs: { type: 'integer', minimum: 0 },
+      },
+    },
   },
   NAMED_ENTITY_RECOGNITION: NER_IO_DEFAULTS,
 };
@@ -222,7 +272,10 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
  * `apps/audio-stream-svc/docs/tenant-config-runbook.md` (ALaaS repo) section F2.
  */
 export const ASR_PARAMETERS = {
-  audioFrontEnd: { vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 }, diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 } },
+  audioFrontEnd: {
+    vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 },
+    diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 },
+  },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
   // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
   // TASK-938 (owner directive 2026-09-09): `wordTimestamps` back to true. It is no longer the
@@ -239,7 +292,10 @@ export const ASR_PARAMETERS = {
   streaming: { partialIntervalMs: 300, partialWindowSec: 3, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
-export const ASR_INSTRUCTION = { initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.', hotwords: [] as string[] };
+export const ASR_INSTRUCTION = {
+  initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.',
+  hotwords: [] as string[],
+};
 
 /**
  * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
@@ -265,7 +321,8 @@ export const SUMMARIZATION_PARAMETERS = {
 };
 
 /** `NEW_VISIT_NOTE_SHAPE` / `REVISIT_NOTE_SHAPE` headings, as the text constant the prompt reads. */
-export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> }): string => shape.sections.map((section) => section.title).join(' | ');
+export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> }): string =>
+  shape.sections.map((section) => section.title).join(' | ');
 
 /**
  * F6 — a binding for EVERY variable the General Medicine template declares. The nine §8.2 fields
@@ -274,9 +331,15 @@ export const headingList = (shape: { sections: ReadonlyArray<{ title: string }> 
  * `{ value }` | `{ path }` — there is no document-template binding kind (reported).
  */
 export function generalMedicinePromptVariables(): Record<string, { value: string } | { path: string }> {
-  const constants: Record<string, string> = { new_visit_headings: headingList(NEW_VISIT_NOTE_SHAPE), revisit_headings: headingList(REVISIT_NOTE_SHAPE) };
+  const constants: Record<string, string> = {
+    new_visit_headings: headingList(NEW_VISIT_NOTE_SHAPE),
+    revisit_headings: headingList(REVISIT_NOTE_SHAPE),
+  };
   return Object.fromEntries(
-    GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [name, name in constants ? { value: constants[name]! } : { path: `trigger.context.${name}` }]),
+    GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES.map((name) => [
+      name,
+      name in constants ? { value: constants[name]! } : { path: `trigger.context.${name}` },
+    ]),
   );
 }
 
@@ -357,7 +420,7 @@ export const PRE_SUMMARY_PARAMETERS = {
  * finalize rather than live (TASK-891 F-1 / D-10): the clinician reads the note before signing it.
  */
 export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician\'s work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. THE FINALIZED NOTE IS ENTIRELY IN ENGLISH: the partials reach you already translated, so should any Malayalam script or romanised Malayalam have survived into them, translate it into the standard English clinical term here rather than copying it forward — translating carries the meaning across and adds nothing, and drug names, doses, numbers, units, dates, values and proper names are reproduced, never translated.\n\n' +
+  "You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician's work notes. Produce ONE finalized case note that keeps the document template headings exactly as they appear in the partial summaries (same names, same order), merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. THE FINALIZED NOTE IS ENTIRELY IN ENGLISH: the partials reach you already translated, so should any Malayalam script or romanised Malayalam have survived into them, translate it into the standard English clinical term here rather than copying it forward — translating carries the meaning across and adds nothing, and drug names, doses, numbers, units, dates, values and proper names are reproduced, never translated.\n\n" +
   '=== WRITING STYLE ===\n' +
   'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
   'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +
@@ -373,7 +436,12 @@ export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
     case_note: { type: 'string' },
     redactions: {
       type: 'array',
-      items: { type: 'object', additionalProperties: false, required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' } } },
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text', 'label'],
+        properties: { text: { type: 'string' }, label: { type: 'string' } },
+      },
     },
   },
 };
@@ -394,7 +462,8 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       tenantId,
       slug: 'realtime-transcription',
       name: 'Realtime transcription (whisper.cpp ML/EN)',
-      description: 'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (F16), Silero VAD gating, Cadence punctuation; the Q8_0 GGUF and the CTranslate2 turbo as fallbacks.',
+      description:
+        'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (F16), Silero VAD gating, Cadence punctuation; the Q8_0 GGUF and the CTranslate2 turbo as fallbacks.',
       task: 'SPEECH_TO_TEXT',
       // TASK-938 (owner directive 2026-09-09): back to the F16 row, reverting TASK-930's move to
       // Q8_0. The two measured within 0.005 CER of each other (TASK-934), so this is not an
@@ -450,7 +519,8 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       tenantId,
       slug: 'general-medicine-summarization',
       name: 'General Medicine summarization (partial)',
-      description: 'The running per-turn consultation note for General Medicine, bound to the approved General Medicine consultation summary template; guardrail screening ON.',
+      description:
+        'The running per-turn consultation note for General Medicine, bound to the approved General Medicine consultation summary template; guardrail screening ON.',
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
@@ -467,7 +537,8 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       tenantId,
       slug: 'casenote-finalization',
       name: 'Case note finalization',
-      description: 'Finalizes the case note from the partial summaries and the work notes, redacts residual PII, keeps the document template headings. Structured output: { case_note, redactions }.',
+      description:
+        'Finalizes the case note from the partial summaries and the work notes, redacts residual PII, keeps the document template headings. Structured output: { case_note, redactions }.',
       task: 'TEXT_GENERATION',
       modelSlug: 'lms-gemma-4-e2b-it-qat',
       fallbackModelSlugs: [],
@@ -545,10 +616,20 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
 }
 
 /** Global authors. */
-export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(SEED_TENANT_ID, glob, TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY, TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
+export const GLOBAL_AGENT_SPECS: SeedAgentSpec[] = catalogue(
+  SEED_TENANT_ID,
+  glob,
+  TEMPLATE_IDS.GENERAL_MEDICINE_CONSULTATION_SUMMARY,
+  TEMPLATE_IDS.PRE_SUMMARY_DEFAULT,
+);
 
 /** SYSTEM is the promoted copy — provenance → the Global row of the same slug. */
-export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(SYSTEM_TENANT_ID, sys, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS.PRE_SUMMARY_DEFAULT).map((spec) => {
+export const PLATFORM_AGENT_SPECS: SeedAgentSpec[] = catalogue(
+  SYSTEM_TENANT_ID,
+  sys,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+  TEMPLATE_IDS.PRE_SUMMARY_DEFAULT,
+).map((spec) => {
   const source = GLOBAL_AGENT_SPECS.find((global) => global.slug === spec.slug);
   if (!source) throw new Error(`SYSTEM agent ${spec.slug} has no Global source`);
   return { ...spec, provenance: { sourceAgentId: source.id, sourceTenantId: source.tenantId, sourceSlug: source.slug, sourceVersionNumber: 1 } };
@@ -600,9 +681,7 @@ export interface SeedModelRef {
 }
 
 export type SeedResolvedPrompt =
-  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
-  | { source: 'inline'; content: string }
-  | null;
+  { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string } | { source: 'inline'; content: string } | null;
 
 /** `canonicalJson` of @arcaai/workflow-contract, verbatim (sorted keys, `undefined` dropped, no whitespace). */
 export function canonicalJson(value: unknown): string {
@@ -618,7 +697,12 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
-export function buildCompiledConfig(spec: SeedAgentSpec, model: SeedModelRef, fallbacks: SeedModelRef[], resolvedPrompt: SeedResolvedPrompt): Record<string, unknown> {
+export function buildCompiledConfig(
+  spec: SeedAgentSpec,
+  model: SeedModelRef,
+  fallbacks: SeedModelRef[],
+  resolvedPrompt: SeedResolvedPrompt,
+): Record<string, unknown> {
   return {
     task: spec.task,
     service: AGENT_TASK_SERVICE[spec.task],
@@ -702,15 +786,38 @@ export interface SeedAgentsResult {
 
 /** The slice of the Prisma client the seed touches — typed narrowly so the test can hand in a fake. */
 export interface SeedAgentsClient {
-  aiModel: { findMany(args: { where: { tenantId: string } }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null; wireModelId: string | null }>> };
-  promptTemplate: { findUnique(args: { where: { id: string } }): Promise<{ id: string; status: string | null; content: string | null; approvedVersionNumber: number | null; currentVersionNumber: number | null } | null> };
+  aiModel: {
+    findMany(args: {
+      where: { tenantId: string };
+    }): Promise<Array<{ id: string; slug: string; taskType: string; provider: string | null; wireModelId: string | null }>>;
+  };
+  promptTemplate: {
+    findUnique(args: {
+      where: { id: string };
+    }): Promise<{
+      id: string;
+      status: string | null;
+      content: string | null;
+      approvedVersionNumber: number | null;
+      currentVersionNumber: number | null;
+    } | null>;
+  };
   promptVersion: { findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null } | null> };
-  agent: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  agent: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
   agentModelFallback: { create(args: { data: unknown }): Promise<unknown> };
-  agentAssignment: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  agentAssignment: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
 }
 
-async function resolvePrompt(client: SeedAgentsClient, spec: SeedAgentSpec): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
+async function resolvePrompt(
+  client: SeedAgentsClient,
+  spec: SeedAgentSpec,
+): Promise<{ ok: true; resolvedPrompt: SeedResolvedPrompt } | { ok: false; reason: string }> {
   if (spec.task !== 'TEXT_GENERATION' || !spec.instruction) return { ok: true, resolvedPrompt: null };
   const systemPrompt = spec.instruction.systemPrompt;
   if (typeof systemPrompt === 'string') return { ok: true, resolvedPrompt: { source: 'inline', content: systemPrompt } };
@@ -719,16 +826,32 @@ async function resolvePrompt(client: SeedAgentsClient, spec: SeedAgentSpec): Pro
   const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
   if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
   if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
-  const versionNumber = typeof spec.instruction.promptVersionNumber === 'number' ? spec.instruction.promptVersionNumber : (template.approvedVersionNumber ?? template.currentVersionNumber ?? 1);
+  const versionNumber =
+    typeof spec.instruction.promptVersionNumber === 'number'
+      ? spec.instruction.promptVersionNumber
+      : (template.approvedVersionNumber ?? template.currentVersionNumber ?? 1);
   const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
-  return { ok: true, resolvedPrompt: { source: 'template', promptTemplateId: templateId, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' } };
+  return {
+    ok: true,
+    resolvedPrompt: {
+      source: 'template',
+      promptTemplateId: templateId,
+      promptVersionNumber: versionNumber,
+      content: version?.content ?? template.content ?? '',
+    },
+  };
 }
 
 /**
  * Seed one spec list. `fallbackSeqStart` numbers this list's `AgentModelFallback` ids so two
  * lists never collide: SYSTEM starts at 1, Global at 100, ArcaAI (phase 29) at 200.
  */
-export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentSpec[], label: string, fallbackSeqStart: number): Promise<SeedAgentsResult> {
+export async function seedAgentSpecs(
+  client: SeedAgentsClient,
+  specs: SeedAgentSpec[],
+  label: string,
+  fallbackSeqStart: number,
+): Promise<SeedAgentsResult> {
   console.log(`Seeding ${label} agents ...`);
   const result: SeedAgentsResult = { created: 0, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 0 };
   const models = await client.aiModel.findMany({ where: { tenantId: SYSTEM_TENANT_ID } });
@@ -784,7 +907,15 @@ export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentS
     await client.agent.create({ data: row });
     for (const [priority, fallback] of fallbacks.entries()) {
       await client.agentModelFallback.create({
-        data: { id: fallbackId(fallbackSeq++), tenantId: spec.tenantId, agentId: spec.id, priority, modelId: fallback.id, enabled: true, createdBy: SYSTEM_USER_ID },
+        data: {
+          id: fallbackId(fallbackSeq++),
+          tenantId: spec.tenantId,
+          agentId: spec.id,
+          priority,
+          modelId: fallback.id,
+          enabled: true,
+          createdBy: SYSTEM_USER_ID,
+        },
       });
     }
     result.created += 1;
@@ -794,12 +925,20 @@ export async function seedAgentSpecs(client: SeedAgentsClient, specs: SeedAgentS
 }
 
 /** TENANT-scope assignments for one tenant; a row is written only when its agent was seeded. */
-export async function seedAgentAssignments(client: SeedAgentsClient, assignments: SeedAgentAssignment[], specs: SeedAgentSpec[], label: string): Promise<number> {
+export async function seedAgentAssignments(
+  client: SeedAgentsClient,
+  assignments: SeedAgentAssignment[],
+  specs: SeedAgentSpec[],
+  label: string,
+): Promise<number> {
   let created = 0;
   for (const assignment of assignments) {
     const existing = await client.agentAssignment.findUnique({ where: { id: assignment.id }, select: { id: true } });
     if (existing) continue;
-    const agent = await client.agent.findUnique({ where: { id: specs.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' }, select: { id: true } });
+    const agent = await client.agent.findUnique({
+      where: { id: specs.find((spec) => spec.slug === assignment.agentSlug)?.id ?? '' },
+      select: { id: true },
+    });
     if (!agent) {
       console.warn(`  ! ${label} assignment ${assignment.task} → ${assignment.agentSlug}: the agent was not seeded — skipped`);
       continue;

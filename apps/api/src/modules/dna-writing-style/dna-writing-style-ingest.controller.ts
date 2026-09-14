@@ -3,12 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { JobQueue } from '@arcaai/domains';
-import {
-  DnaIngestJobResponse,
-  IDnaWritingStyleService,
-  IngestDnaWritingSamplesRequest,
-  type DnaJobRequestedBy,
-} from '@arcaai/applications';
+import { DnaIngestJobResponse, IDnaWritingStyleService, IngestDnaWritingSamplesRequest, type DnaJobRequestedBy } from '@arcaai/applications';
 import { Authorize, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 import { DnaJobStatusResponseDto } from './dna-writing-style.dto';
@@ -72,9 +67,7 @@ export class DnaWritingStyleIngestController {
   private jobAccessOf(req: RequestWithAuth): DnaJobAccess {
     const caller = this.callerOf(req);
     const tenantId = req.serviceAccount?.workingTenantId ?? req.apiKey?.tenantId ?? req.user?.tenantId ?? req.tenantId ?? null;
-    return caller.credentialClass === 'jwt'
-      ? { tenantId, doctorId: caller.principalId }
-      : { tenantId, machinePrincipalId: caller.principalId };
+    return caller.credentialClass === 'jwt' ? { tenantId, doctorId: caller.principalId } : { tenantId, machinePrincipalId: caller.principalId };
   }
 
   // AUTH-NOTE: the class-level bare `@Authorize()` UNDERSTATES this gate, deliberately, and the
@@ -97,13 +90,13 @@ export class DnaWritingStyleIngestController {
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: "Ingest a time series of writing samples for a clinician and queue their DNA writing-style analysis",
+    summary: 'Ingest a time series of writing samples for a clinician and queue their DNA writing-style analysis',
     description:
       'Submits writing the platform has not seen — case notes, work notes, any prose the clinician authored — as a ' +
       'TIME SERIES, and queues the platform analyst over it. Each sample carries a `writtenAt`, which is what orders ' +
       'the corpus and what decides which samples survive when a batch exceeds the analysis budget (the oldest are ' +
       'dropped, whole). The response is a job handle, not a profile: poll `GET ingest/jobs/{jobId}`, then read the ' +
-      "profile from the clinician's own DNA surfaces.\\n\\n" +
+      "profile from the clinician's own DNA surfaces.\n\n" +
       'A machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest ' +
       'their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are ' +
       'PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary — ' +
@@ -117,7 +110,10 @@ export class DnaWritingStyleIngestController {
       'not name this clinician (`DNA_INGEST_CLINICIAN_NOT_ALLOWED`), or a machine caller named none ' +
       '(`DNA_INGEST_CLINICIAN_REQUIRED`).',
   })
-  @ApiResponse({ status: 403, description: 'Scope violation, or an administrator not acting as a clinician tried to ingest under their own account.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Scope violation, or an administrator not acting as a clinician tried to ingest under their own account.',
+  })
   @ApiResponse({ status: 404, description: 'The named clinician is not a member of this tenant (also returned for a clinician of another tenant).' })
   @ApiResponse({
     status: 409,
