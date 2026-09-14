@@ -416,6 +416,13 @@ export interface AgentOption {
    */
   compiledConfig?: Record<string, unknown> | null;
   validationReport?: { blocking?: boolean; findings?: Array<{ severity?: string; code?: string; path?: string; message: string }> } | null;
+  /**
+   * TASK-974 §4.7 (D-1) — a platform service agent (e.g. the DNA writing-style analyst):
+   * present only so `listAgentOptions` can filter it out before this type's consumers ever see
+   * it. A `core.agent` node must never reference a hidden agent, so no row with `hidden: true`
+   * survives past the client function below.
+   */
+  hidden?: boolean;
 }
 
 /** `GET admin/consultation-context-schemas/:id/versions` row — only what the version pin picker needs.
