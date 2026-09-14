@@ -94,9 +94,17 @@ function TranscriptionJobsBody() {
   const loaded: TranscriptionJob[] = status !== null ? (statusQuery.data ?? []) : listRows;
   const filtered = search ? loaded.filter((job) => job.id.toLowerCase().includes(search)) : loaded;
 
-  // Status mode loads EVERY row for the status → client-paginate here; list mode
-  // is already server-paged, so its (search-narrowed) page is shown as-is.
-  const total = status !== null ? filtered.length : (listTotal ?? 0);
+  // RC-2: `GET /admin/audio/transcription-jobs` (list mode, no status filter)
+  // takes only page/limit — no `search` param — so id search here can only
+  // scan the ONE server page already loaded, never the whole tenant. Status
+  // mode loads EVERY row for that status, so it client-paginates over the
+  // full, honest result set. `total` must track which case is live: the
+  // server's page total is meaningless once search has narrowed what's
+  // actually shown (house pattern: `harness-workflows-screen.tsx`'s
+  // `rowCount={rows.length}` for the same "search over the loaded page only"
+  // shape) — and the empty state below says so explicitly.
+  const searchScopedToLoadedPage = status === null && Boolean(search);
+  const total = status !== null || searchScopedToLoadedPage ? filtered.length : (listTotal ?? 0);
   const rows = status !== null ? filtered.slice(page * limit, page * limit + limit) : filtered;
   const hasFilters = Boolean(search || status);
 
@@ -168,7 +176,11 @@ function TranscriptionJobsBody() {
     <EmptyState
       icon={IconFilterOff}
       title="No jobs in range"
-      description="Filter mismatch — try a different search or clear the filters."
+      description={
+        searchScopedToLoadedPage
+          ? `No match on the loaded page. Job-id search has no server-side endpoint here, so it only scans the ${limit} jobs on this page — page through, filter by status (loads every matching job), or clear the search.`
+          : 'Filter mismatch — try a different search or clear the filters.'
+      }
       action={
         <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
           <IconFilterOff aria-hidden />
