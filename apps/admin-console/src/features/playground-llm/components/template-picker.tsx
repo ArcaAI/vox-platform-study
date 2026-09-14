@@ -35,8 +35,16 @@ function templateLabel(template: PromptTemplateOption): string {
 export function TemplatePicker({ id, value, onChange }: { id?: string; value: string; onChange: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // Debounced (300ms, house value) — the query hits the server on every
+  // change (GET admin/prompt-templates?search=…), so an un-debounced value
+  // would fire a request per keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const templatesQuery = usePromptTemplates({ search: query.trim() || undefined, limit: 20 }, { enabled: open });
+  const templatesQuery = usePromptTemplates({ search: debouncedQuery.trim() || undefined, limit: 20 }, { enabled: open });
   const failed = templatesQuery.isError;
 
   // The toast is a one-shot notification, not derived render state — a ref

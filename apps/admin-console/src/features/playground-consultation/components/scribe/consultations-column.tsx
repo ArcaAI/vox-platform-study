@@ -266,6 +266,20 @@ export function ConsultationsColumn({
     setShowNewForm((previous) => !previous);
   }
 
+  /**
+   * TASK-973 RC-2 — client-side filter over the ONE page the SDK loaded
+   * (`sdkSession.listConsultations({ limit: 50 })` in
+   * `consultation-demo-screen.tsx`), not a server search. This is the
+   * documented exception, not an oversight: the gateway's `GET
+   * /consultations` list (`ConsultationController#list`) only reads
+   * `page`/`limit`/`patientId` off its `PaginatedQuery & { patientId? }`
+   * query — `search`/`searchFields`/`filters`/`sort` are accepted by the
+   * DTO's shape but never forwarded to `consultationService.listConsultations`,
+   * so there is no server search to move this to without an `apps/api`
+   * change (out of this lane's scope — flagged as a follow-up). The search
+   * box and empty state below say so explicitly rather than silently
+   * missing rows beyond the loaded 50.
+   */
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return rows;
@@ -582,15 +596,24 @@ export function ConsultationsColumn({
             </p>
           </form>
         ) : (
-          <div className="relative flex items-center">
-            <IconSearch aria-hidden className="text-muted-foreground absolute left-2.5 size-4" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search consultations"
-              aria-label="Search consultations"
-              className="pl-8"
-            />
+          <div className="flex flex-col gap-1">
+            <div className="relative flex items-center">
+              <IconSearch aria-hidden className="text-muted-foreground absolute left-2.5 size-4" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search loaded consultations"
+                aria-label="Search consultations"
+                aria-describedby="scribe-consultations-search-scope"
+                className="pl-8"
+              />
+            </div>
+            {/* TASK-973 RC-2 — honest about scope: this filters the loaded
+                page only (see the `filtered` memo above for why it cannot
+                be a server search yet). */}
+            <p id="scribe-consultations-search-scope" className="text-muted-foreground text-xs">
+              Searches the {rows.length} most recently loaded consultations, not your full history.
+            </p>
           </div>
         )}
       </div>
@@ -619,7 +642,11 @@ export function ConsultationsColumn({
           <EmptyState
             icon={IconInbox}
             title={query ? 'No matches' : 'No consultations yet'}
-            description={query ? 'Try a different search.' : 'Open one with New to start a session.'}
+            description={
+              query
+                ? 'No match among the loaded consultations. It may exist further back than this list searches.'
+                : 'Open one with New to start a session.'
+            }
           />
         ) : (
           <ul className="flex list-none flex-col gap-0.5">

@@ -58,6 +58,23 @@ describe('ConsultationsColumn', () => {
     expect(screen.getByText('P-702')).toBeTruthy();
   });
 
+  /**
+   * TASK-973 RC-2 — the search box has no server to hit (the gateway's `GET
+   * /consultations` list drops `search`/`searchFields`; see the `filtered`
+   * memo's doc comment in the component). Names its own scope honestly
+   * instead of silently missing consultations past the loaded page.
+   */
+  it('says plainly that search only covers the loaded consultations, not the full history', () => {
+    setup();
+    expect(screen.getByText(/searches the 2 most recently loaded consultations, not your full history/i)).toBeTruthy();
+  });
+
+  it('the no-match empty state also names the loaded-page scope', () => {
+    setup();
+    fireEvent.change(screen.getByLabelText(/search consultations/i), { target: { value: 'no-such-patient' } });
+    expect(screen.getByText(/no match among the loaded consultations/i)).toBeTruthy();
+  });
+
   it('calls onSelect with the row when a consultation is clicked', () => {
     const { props } = setup({ selectedId: null, activeIsRecording: false });
     fireEvent.click(screen.getByText('P-702'));
