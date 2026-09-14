@@ -6,3 +6,5 @@ export * from './dna-dashboard.response';
 export * from './dna-settings.response';
 export * from './update-dna-settings.request';
 export * from './dna-erasure.response';
+export * from './ingest-dna-writing-samples.request';
+export * from './dna-ingest-job.response';

@@ -22,6 +22,7 @@ import {
   AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
   CONSULTATION_REALTIME_SCOPE_SOURCES,
   CONSULTATION_REALTIME_SVC_SCOPES,
+  DNA_WRITING_STYLE_SVC_SCOPES,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   STANDALONE_FEATURE_SCOPE_SOURCES,
   STANDALONE_FEATURE_SVC_SCOPES,
@@ -45,15 +46,16 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     for (const adminScope of adminScopes) {
       expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(adminScope)], `no svc:* scope covers ${adminScope}`).toBeDefined();
     }
-    // …and nothing beyond them, apart from the two wildcards, the
-    // standalone-feature family and the pre-convention family.
+    // …and nothing beyond them, apart from the two wildcards and the five declared
+    // non-admin source families.
     const nonWildcard = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
     expect(nonWildcard.length).toBe(
       adminScopes.length +
         STANDALONE_FEATURE_SVC_SCOPES.length +
         ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length +
         AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES.length +
-        CONSULTATION_REALTIME_SVC_SCOPES.length,
+        CONSULTATION_REALTIME_SVC_SCOPES.length +
+        DNA_WRITING_STYLE_SVC_SCOPES.length,
     );
   });
 

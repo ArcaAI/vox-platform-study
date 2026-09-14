@@ -1,6 +1,7 @@
 import { AgentEntity, AgentModelFallbackEntity } from '@arcaai/domains';
 import { AGENT_IO_DEFAULTS, AGENT_PROTOCOLS } from '@arcaai/workflow-contract';
 import { AgentResponse, AgentSummaryResponse, AgentValidationReportResponse } from './dto';
+import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -55,6 +56,11 @@ export class AgentDtoMapper {
       publishedAt: entity.publishedAt ? entity.publishedAt.toISOString() : null,
       deprecatedAt: entity.deprecatedAt ? entity.deprecatedAt.toISOString() : null,
       resourceStatus: entity.resourceStatus,
+      // TASK-974 D-1 — DERIVED from the allow-list, never read off the row: `Agent` carries no
+      // visibility column, and one would make "hidden" a data edit rather than a platform
+      // decision. Only the ADMIN projection carries it; the business-plane summary below never
+      // describes a hidden agent because it is never returned one.
+      hidden: isPlatformHiddenAgentSlug(entity.slug),
       tags: entity.tags ?? [],
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),

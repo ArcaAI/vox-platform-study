@@ -27,6 +27,47 @@ function queueWith(data: unknown) {
 
 const OWNED = { tenantId: 't-1', doctorId: 'd-1', userId: 'd-1' };
 
+/** TASK-974 — a job a MACHINE enqueued, stamped with the credential that did it. */
+const MACHINE_OWNED = { tenantId: 't-1', doctorId: 'd-1', userId: 'd-1', requestedBy: { credentialClass: 'service-account', principalId: 'svc-1' } };
+
+/**
+ * TASK-974 §4.1 — the MACHINE reader's gate.
+ *
+ * A machine acts "as" a bound user, so the user id cannot tell one credential's job from
+ * another's: two service accounts in a tenant both resolve to clinicians of that tenant, and the
+ * doctor rule would let either read the other's results. The gate is therefore the CREDENTIAL
+ * that enqueued the job, compared by id — the only fact that distinguishes them.
+ */
+describe('getDnaJobStatus — a machine reads back only what IT enqueued', () => {
+  it('serves the job to the credential that enqueued it', async () => {
+    const res = await getDnaJobStatus(queueWith(MACHINE_OWNED), '1', { tenantId: 't-1', machinePrincipalId: 'svc-1' });
+    expect(res.status).toBe('completed');
+  });
+
+  it('404s for a DIFFERENT credential of the same tenant', async () => {
+    await expect(getDnaJobStatus(queueWith(MACHINE_OWNED), '1', { tenantId: 't-1', machinePrincipalId: 'svc-2' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('404s (fail closed) for a job with no `requestedBy` — a human`s job is not a machine`s to read', async () => {
+    await expect(getDnaJobStatus(queueWith(OWNED), '1', { tenantId: 't-1', machinePrincipalId: 'svc-1' })).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('does NOT fall through to the tenant-only admin branch when the principal is absent', async () => {
+    // `machinePrincipalId` present-but-empty must never read as "no machine gate declared".
+    await expect(getDnaJobStatus(queueWith(MACHINE_OWNED), '1', { tenantId: 't-1', machinePrincipalId: null })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('still requires the tenant to match', async () => {
+    await expect(getDnaJobStatus(queueWith(MACHINE_OWNED), '1', { tenantId: 't-2', machinePrincipalId: 'svc-1' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
+
 describe('getDnaJobStatus ownership gate', () => {
   it('returns the result when tenant and doctor both match', async () => {
     const res = await getDnaJobStatus(queueWith(OWNED), '1', { tenantId: 't-1', doctorId: 'd-1' });

@@ -64,6 +64,7 @@ import {
   type AgentProviderCapabilities,
 } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
+import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
 import { IActiveUserContext } from '../../interfaces';
@@ -289,9 +290,18 @@ export class AgentService extends BaseService implements IAgentService {
     return this.respondMany(versions);
   }
 
+  /**
+   * TASK-974 D-1 — the BUSINESS plane, so a platform hidden agent is filtered OUT.
+   *
+   * For every ordinary tenant the row is simply absent (it lives in SYSTEM and is never cloned),
+   * so this filter exists for the ONE tenant that owns a copy: the Global playground, where the
+   * platform admin AUTHORS it before promotion. Without it, Global's integrators would see — and
+   * be able to invoke — an agent that is not part of any tenant's product surface.
+   */
   async listPublished(task?: AgentTask): Promise<AgentSummaryResponse[]> {
     const tenantId = this.requireTenant();
-    const rows = await this.agentRepository.findPublishedActiveVisible(tenantId, task);
+    const visible = await this.agentRepository.findPublishedActiveVisible(tenantId, task);
+    const rows = visible.filter((row) => !isPlatformHiddenAgentSlug(row.slug));
     const defaults = await this.tenantDefaultSlugs(tenantId, [...new Set(rows.map((row) => row.task))]);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { action: 'listPublished', task: task ?? null, count: rows.length } });
     return rows.map((row) => AgentDtoMapper.toSummary(row, defaults.get(row.task) === row.slug));
@@ -299,6 +309,9 @@ export class AgentService extends BaseService implements IAgentService {
 
   async getPublishedBySlug(slug: string): Promise<AgentSummaryResponse> {
     const tenantId = this.requireTenant();
+    // TASK-974 D-1 — the same 404 an unknown slug gets, raised BEFORE the read so a hidden agent
+    // is indistinguishable from one that does not exist (404-over-403, applied to visibility).
+    if (isPlatformHiddenAgentSlug(slug)) throw new NotFoundException('Agent not found');
     const row = await this.agentRepository.findPublishedActiveBySlug(tenantId, slug);
     if (!row) throw new NotFoundException('Agent not found');
     const defaults = await this.tenantDefaultSlugs(tenantId, [row.task]);

@@ -240,6 +240,14 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:consultation:report:read', // → read:Consultation (summary/latest, async job reads)
   'svc:tenant:context-schema:read', // → read:ConsultationContextSchema (discovery bundle)
   'svc:workflows:execute', // → execute:ConsultationWorkflow, create:WorkflowRun
+  // TASK-974 §4.2 — the DNA writing-sample INGEST plane. A back-office integration submits a
+  // clinician's notes in batch (typically out of an EMR) so the platform can build their writing
+  // style. It implies `create:DnaWritingStyleReport`, which TENANT_ADMIN holds through
+  // `manage:DnaWritingStyleReport`, so the derivation rule above still admits it. Renamespaced
+  // from the API-key scope of the same name (`DNA_WRITING_STYLE_SCOPE_SOURCES`).
+  //
+  // It does NOT reach a clinician's profile: the personal DNA controller stays JWT-only.
+  'svc:dna-writing-style:ingest', // → create:DnaWritingStyleReport
 ] as const;
 
 /**

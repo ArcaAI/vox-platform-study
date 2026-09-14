@@ -1,6 +1,7 @@
 export * from './dto';
 export * from './IAgentService';
 export * from './agent-findings';
+export * from './platform-hidden-agents';
 // TASK-891 C1 (OD-4) — the per-agent reasoning posture: its shape, its write-time
 // validation and its mapping onto `GenerateRequest.extra`.
 export * from './agent-reasoning';

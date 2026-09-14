@@ -22,6 +22,7 @@ import {
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
   CONSULTATION_REALTIME_SVC_SCOPES,
+  DNA_WRITING_STYLE_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
@@ -154,7 +155,8 @@ describe('D — svc:* scope coverage', () => {
   // as at boot.
   // TASK-930 §3 added a THIRD non-admin family — the agent/workflow business plane.
   // TASK-933 §3.1 added a FOURTH — the realtime consultation plane.
-  it('the non-admin svc: scopes are exactly the four declared source families', () => {
+  // TASK-974 §4.2 added a FIFTH — the DNA writing-sample ingest plane.
+  it('the non-admin svc: scopes are exactly the declared source families', () => {
     const nonAdmin = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)
       .filter((s) => !s.endsWith(':*') && !s.startsWith('svc:admin:'))
       .sort();
@@ -164,11 +166,12 @@ describe('D — svc:* scope coverage', () => {
         ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
         ...AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES,
         ...CONSULTATION_REALTIME_SVC_SCOPES,
+        ...DNA_WRITING_STYLE_SVC_SCOPES,
       ].sort(),
     );
   });
 
-  it('the four non-admin families are disjoint — every scope has exactly one justification', () => {
+  it('the non-admin families are disjoint — every scope has exactly one justification', () => {
     for (const scope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
       expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
     }
@@ -180,6 +183,12 @@ describe('D — svc:* scope coverage', () => {
       expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
       expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(scope);
       expect(AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES).not.toContain(scope);
+    }
+    for (const scope of DNA_WRITING_STYLE_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
+      expect(ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES).not.toContain(scope);
+      expect(AGENT_WORKFLOW_BUSINESS_PLANE_SVC_SCOPES).not.toContain(scope);
+      expect(CONSULTATION_REALTIME_SVC_SCOPES).not.toContain(scope);
     }
   });
 

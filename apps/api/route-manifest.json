@@ -13257,6 +13257,46 @@
       "apiExcluded": false
     },
     {
+      "controller": "DnaWritingStyleIngestController",
+      "handler": "ingest",
+      "method": "POST",
+      "path": "/api/v1/dna-writing-styles/ingest",
+      "routePath": "/dna-writing-styles/ingest",
+      "svcScopes": [
+        "svc:dna-writing-style:ingest"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "dna-writing-style:ingest"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleIngestController",
+      "handler": "getIngestJob",
+      "method": "GET",
+      "path": "/api/v1/dna-writing-styles/ingest/jobs/{jobId}",
+      "routePath": "/dna-writing-styles/ingest/jobs/:jobId",
+      "svcScopes": [
+        "svc:dna-writing-style:ingest"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "dna-writing-style:ingest"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "DnaWritingStyleController",
       "handler": "getJobStatus",
       "method": "GET",

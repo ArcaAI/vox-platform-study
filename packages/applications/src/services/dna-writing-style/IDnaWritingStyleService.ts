@@ -7,7 +7,10 @@ import {
   DnaSettingsResponse,
   UpdateDnaSettingsRequest,
   DnaErasureResponse,
+  DnaIngestJobResponse,
+  IngestDnaWritingSamplesRequest,
 } from './dto';
+import type { DnaJobRequestedBy } from './dna-writing-style.service';
 import { RedactionRuleSet } from './redaction-rules';
 
 export interface DnaJobResponse {
@@ -35,6 +38,16 @@ export interface PaginatedDnaReports {
 
 export abstract class IDnaWritingStyleService {
   abstract generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse>;
+  /**
+   * TASK-974 §4.1 — ingest a TIME SERIES of writing samples for a clinician and queue the
+   * platform analyst over it.
+   *
+   * `caller` is the CREDENTIAL, resolved by the controller from the request (CLS cannot tell an
+   * API-key principal from a JWT one — the key path publishes `{ id, tenantId }` with no roles).
+   * It decides the clinician-resolution rule AND is what the job-status route later compares a
+   * machine reader against, so a machine reads back only the jobs it enqueued.
+   */
+  abstract ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy): Promise<DnaIngestJobResponse>;
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
   abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**
