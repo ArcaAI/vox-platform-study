@@ -19,7 +19,7 @@
  * tab is convenience, never the boundary.
  */
 
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { IconCircleCheck, IconFileText, IconFlask, IconPlayerPlay, IconSearch } from '@tabler/icons-react';
 import { toast } from 'sonner';
@@ -45,8 +45,19 @@ import { VersionsPanel } from './versions-panel';
 
 /** Governance-focused list: filter by approval status, select to inspect. */
 function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
+  const [searchDraft, setSearchDraft] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | PromptTemplateStatus>('');
+
+  // Debounced (300ms) draft before it hits the server — house pattern, see
+  // departments-screen.tsx:60-70. This search already goes server-side
+  // (GET admin/prompt-templates?search=…, applied as a `name` contains match
+  // in prompt-management.service.ts) — only the debounce was missing.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchDraft), 300);
+    return () => clearTimeout(timer);
+  }, [searchDraft]);
+
   const query = useTemplates({
     ...(search.trim() ? { search: search.trim() } : {}),
     ...(status ? { status } : {}),
@@ -60,8 +71,8 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
           <IconSearch aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
           <Input
             aria-label="Search templates"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
             placeholder={'Search templates…'}
             className="h-8 pl-8 text-sm"
           />
