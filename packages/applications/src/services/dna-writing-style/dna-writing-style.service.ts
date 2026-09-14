@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -73,6 +74,19 @@ export interface DnaJobRequestedBy {
   credentialClass: 'jwt' | 'api-key' | 'service-account';
   /** The CREDENTIAL's id — a `ServiceAccount.id` or an `ApiKey.id`, never the bound user's. */
   principalId: string;
+  /**
+   * The HUMAN an API key is bound to (`ApiKey.userId`), or `null` for an unbound key.
+   *
+   * Carried ONLY for the API-key class, and only as an authorization INPUT: rule 05 says scopes
+   * bind the credential while abilities bind the bound human, and the two compose as AND — so a
+   * key must not be able to ingest for a clinician its own human could not. It is deliberately
+   * absent for a service account, which is bound to a WORKING TENANT rather than to a person
+   * (TASK-933), and for a JWT, whose human IS `principalId`.
+   *
+   * Never persisted on the job: `requestedBy.principalId` is the credential, which is what the
+   * job-status gate compares, and the job's `userId` is the CLINICIAN.
+   */
+  boundUserId?: string | null;
 }
 
 export interface GenerateDnaReportJobPayload {
@@ -192,6 +206,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       // Only carry sourceIds when the caller seeded from history;
       // keeps the legacy payload shape unchanged for plain generations.
       ...(dto.sourceIds && dto.sourceIds.length > 0 ? { sourceIds: dto.sourceIds } : {}),
+      // L5/F7 — which surface asked. `GenerateDnaReportJobPayload` declares three origins and
+      // only `ingest` was stamped, so a profile a clinician asked for themselves carried no
+      // provenance at all.
+      origin: 'generate',
     };
 
     await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, {
@@ -203,7 +221,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // DNA (PHI-derived) generation for a doctor must appear on the audit trail.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: doctorId,
-      data: { jobId, doctorId, kind: 'dna-generation-requested' },
+      data: { jobId, doctorId, kind: 'dna-generation-requested', origin: 'generate' },
     });
 
     return { jobId, status: 'PENDING' };
@@ -243,14 +261,16 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * polling a job that was always going to fail; the processor re-checks it anyway, because the
    * toggle may flip between enqueue and run.
    */
-  async ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy): Promise<DnaIngestJobResponse> {
+  async ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy, idempotencyKey?: string): Promise<DnaIngestJobResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const doctorId = this.resolveIngestClinician(dto.clinicianUserId, caller);
+    const doctorId = await this.resolveIngestClinician(dto.clinicianUserId, caller, tenantId);
     await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
+
+    this.assertParsableWrittenAt(dto.items);
 
     const totalChars = dto.items.reduce((sum, item) => sum + item.text.length, 0);
     if (totalChars > DNA_INGEST_LIMITS.maxTotalChars) {
@@ -280,21 +300,37 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       kind: item.kind ?? 'OTHER',
       ...(item.sourceRef ? { sourceRef: item.sourceRef } : {}),
     }));
-    const writtenAtMs = samples.map((sample) => Date.parse(sample.writtenAt));
 
-    const jobId = uuidv7();
+    // L5/F5 — an `Idempotency-Key` DERIVES the job id, so a retry addresses the job the first
+    // attempt created instead of starting a second analysis. Scoped to (tenant, principal, key):
+    // a key is the CALLER's name for an operation, so two callers reusing the same string must
+    // not collide, and a key can never reach across tenants. No key ⇒ a fresh id, as before.
+    const jobId = idempotencyKey ? DnaWritingStyleService.derivedJobId(tenantId, caller.principalId, idempotencyKey) : uuidv7();
+    if (idempotencyKey) {
+      // BullMQ's own `add` with an existing custom id is a no-op, but it answers with the EXISTING
+      // job rather than telling the caller so; reading first lets the join answer the original
+      // window and item count, which is what "joins the original enqueue" means to an integrator.
+      // Dedupe holds for as long as the queue RETAINS the job; once it is evicted, the same key
+      // starts a new analysis.
+      const existing = await this.dnaQueue.getJob(jobId);
+      const joined = DnaWritingStyleService.ingestResponseOf(jobId, existing?.data as GenerateDnaReportJobPayload | undefined);
+      if (joined) return joined;
+    }
+
     const payload: GenerateDnaReportJobPayload = {
       jobId,
       doctorId,
       tenantId,
-      // The CLINICIAN, not the machine. This becomes `createdBy` on the report, and a profile
-      // attributed to a service account would be attributed to nobody. For a human caller
+      // The CLINICIAN, not the machine — for EVERY machine class (L5/F1). This becomes `createdBy`
+      // on the report, and it is also one half of the PERSONAL job route's owner disjunct
+      // (`dna-writing-style-job-stream.ts`), so stamping the credential's bound human here would
+      // hand that human a read of a profile they are not the subject of. For a human caller
       // `requestUserId` IS the clinician (or the admin acting for them, which is the record the
       // audit event keeps); the credential itself is in `requestedBy`.
-      userId: this.requestUserId ?? doctorId,
+      userId: caller.credentialClass === 'jwt' ? (this.requestUserId ?? doctorId) : doctorId,
       samples,
       origin: 'ingest',
-      requestedBy: caller,
+      requestedBy: { credentialClass: caller.credentialClass, principalId: caller.principalId },
     };
 
     await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, { jobId });
@@ -314,10 +350,25 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       },
     });
 
+    return DnaWritingStyleService.ingestResponseOf(jobId, payload)!;
+  }
+
+  /**
+   * The 202 body of an ingest, built from the job PAYLOAD — so a fresh enqueue and an
+   * idempotent JOIN answer the same shape from the same source of truth.
+   *
+   * `null` when the payload is not an ingest job (absent, or a `generate`/`scheduler` job that
+   * happens to carry the derived id): a caller must never be handed another surface's job as
+   * though it were their batch.
+   */
+  private static ingestResponseOf(jobId: string, payload: GenerateDnaReportJobPayload | undefined): DnaIngestJobResponse | null {
+    const samples = payload?.samples;
+    if (!payload?.doctorId || !samples || samples.length === 0) return null;
+    const writtenAtMs = samples.map((sample) => Date.parse(sample.writtenAt));
     return {
       jobId,
       status: 'PENDING',
-      clinicianUserId: doctorId,
+      clinicianUserId: payload.doctorId,
       acceptedItems: samples.length,
       window: {
         from: new Date(Math.min(...writtenAtMs)).toISOString(),
@@ -326,8 +377,40 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     };
   }
 
+  /**
+   * A BullMQ job id derived from the caller's `Idempotency-Key`.
+   *
+   * SHA-256 hex rather than the key itself: a job id ends up in Redis keys and in logs, and a
+   * caller's key may carry their own record locator (an EMR batch id). Hashing the tenant and the
+   * principal in with it is what scopes the dedupe — see the call site.
+   */
+  private static derivedJobId(tenantId: string, principalId: string, idempotencyKey: string): string {
+    return createHash('sha256').update(`${tenantId}|${principalId}|${idempotencyKey}`).digest('hex');
+  }
+
+  /**
+   * L5/F3 — every `writtenAt` must be a MOMENT, not merely ISO-8601-shaped.
+   *
+   * `@IsISO8601()` accepts ordinal, week and basic-format dates (`2026-W01`, `20260901`) that
+   * `Date.parse` answers `NaN` for. Those reached the queue, and the failure surfaced as a 500
+   * from `new Date(NaN).toISOString()` AFTER the job was enqueued — an accepted request with an
+   * un-runnable job behind it. Checked here, before anything is queued, and named per item so the
+   * caller can fix the right one.
+   */
+  private assertParsableWrittenAt(items: ReadonlyArray<{ writtenAt: string }>): void {
+    const index = items.findIndex((item) => Number.isNaN(Date.parse(item.writtenAt)));
+    if (index === -1) return;
+    throw new BadRequestException({
+      code: 'DNA_INGEST_WRITTEN_AT_INVALID',
+      message:
+        `items[${index}].writtenAt is '${items[index]!.writtenAt}', which is not a date-time this platform can order a ` +
+        'time series by. Send a calendar date or an ISO-8601 date-time (e.g. `2026-09-01T09:30:00.000Z`); week (`2026-W01`) ' +
+        'and basic-format (`20260901`) spellings are not accepted.',
+    });
+  }
+
   /** @see ingestWritingSamples — the four-way rule, stated once. */
-  private resolveIngestClinician(named: string | undefined, caller: DnaJobRequestedBy): string {
+  private async resolveIngestClinician(named: string | undefined, caller: DnaJobRequestedBy, tenantId: string): Promise<string> {
     if (caller.credentialClass !== 'jwt') {
       if (!named) {
         throw new BadRequestException({
@@ -335,7 +418,25 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
           message: 'A machine credential must name the clinician these samples belong to (`clinicianUserId`); it is never the clinician itself.',
         });
       }
-      return named;
+      // A SERVICE ACCOUNT names any clinician of its tenant. It is the platform's machine
+      // identity, bound to a WORKING TENANT rather than to a person (TASK-933), and back-office
+      // integration for a whole tenant is precisely its remit; the tenant boundary is still
+      // enforced by `assertUserBelongsToTenant` at the call site.
+      if (caller.credentialClass === 'service-account') return named;
+
+      // An API KEY is bound to a PERSON, and rule 05 is that a credential can never exceed the
+      // human it belongs to: scopes bind the credential, abilities bind the bound human, and the
+      // two compose as AND. `dna-writing-style:ingest` says the key may ingest — it does not say
+      // WHOSE writing, and without this check a key minted for one clinician could build (and
+      // then read back) another clinician's writing-style profile.
+      if (named === caller.boundUserId) return named;
+      if (caller.boundUserId && (await this.boundUserIsIngestAdmin(caller.boundUserId, tenantId))) return named;
+      throw new BadRequestException({
+        code: 'DNA_INGEST_CLINICIAN_NOT_ALLOWED',
+        message:
+          'This API key may ingest only for the clinician it is bound to. A key bound to a tenant or super administrator ' +
+          'may name any clinician of its tenant; mint the key against that principal, or submit under the clinician`s own key.',
+      });
     }
 
     const user = this.requestUser;
@@ -358,6 +459,31 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       });
     }
     return named;
+  }
+
+  /**
+   * Does the human an API key is bound to hold an administrative role IN THIS TENANT?
+   *
+   * The role read is TENANT-SCOPED on purpose: a user who administers tenant B is nobody in
+   * tenant A, and `findActiveRolesForUser` (which answers across every tenant) would have made
+   * this a cross-tenant widening. `UserRoleAssignmentRepository` eager-loads `Role`, so the role
+   * NAMES come back with the assignments and no second read is needed.
+   *
+   * FAILS CLOSED, in both directions: an unreadable role list is not an administrative one, and
+   * an unbound key (no human at all) never reaches here. Consulted only when the key names
+   * somebody other than its own human, so the ordinary path costs no read.
+   */
+  private async boundUserIsIngestAdmin(boundUserId: string, tenantId: string): Promise<boolean> {
+    let assignments: Array<{ Roles?: Array<{ name: string }> | null }>;
+    try {
+      assignments = await this.userRoleAssignmentRepository.findAll({
+        where: { userId: boundUserId, tenantId, resourceStatus: ResourceStatusType.ENABLED },
+      });
+    } catch (error) {
+      this.logger.warn(`Could not read the roles of API-key principal ${boundUserId}; refusing the named clinician: ${error}`);
+      return false;
+    }
+    return assignments.some((assignment) => (assignment.Roles ?? []).some((role) => DNA_INGEST_ADMIN_ROLES.includes(role.name)));
   }
 
   /**

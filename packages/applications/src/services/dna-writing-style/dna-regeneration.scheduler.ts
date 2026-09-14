@@ -154,6 +154,10 @@ export class DnaRegenerationScheduler implements OnModuleInit, OnModuleDestroy {
             tenantId,
             userId: 'system-scheduler',
             isRegeneration: true,
+            // L5/F7 — the shared provenance field every DNA enqueue stamps (`isRegeneration` is
+            // this scheduler's own flag and is read nowhere else). Without it a scheduled
+            // rebuild was indistinguishable from one nobody asked for.
+            origin: 'scheduler',
           },
           {
             jobId,
