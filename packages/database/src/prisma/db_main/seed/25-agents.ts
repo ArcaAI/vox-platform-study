@@ -33,7 +33,13 @@
 import { createHash } from 'node:crypto';
 import type { CorePrismaClient } from '../../../client';
 import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
-import { GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES, SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, TEMPLATE_IDS } from './07-prompt-template';
+import {
+  DNA_ANALYSIS_CONTENT_V3,
+  DNA_OUTPUT_SCHEMA,
+  GENERAL_MEDICINE_SUMMARY_VARIABLE_NAMES,
+  SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
+  TEMPLATE_IDS,
+} from './07-prompt-template';
 import { NEW_VISIT_NOTE_SHAPE, REVISIT_NOTE_SHAPE } from './27-document-template-library';
 
 export const COMPILED_AT = '2026-09-08T00:00:00.000Z';
@@ -148,7 +154,7 @@ export const fallbackId = (n: number) => `9c000000-0000-0000-0003-${String(n).pa
 export const assignmentId = (n: number) => `9c000000-0000-0000-0004-${String(n).padStart(12, '0')}`;
 export const arcaaiAgentId = (n: number) => `9c000000-0000-0000-0005-${String(n).padStart(12, '0')}`;
 
-/** The five lineage keys, in seed order. */
+/** The lineage keys, in seed order. */
 export const SEEDED_AGENT_SLUGS = [
   'realtime-transcription',
   'medical-ner',
@@ -156,7 +162,23 @@ export const SEEDED_AGENT_SLUGS = [
   'general-medicine-summarization',
   'casenote-finalization',
   'text-to-speech',
+  'dna-writing-style-analyst',
 ] as const;
+
+/**
+ * TASK-974 D-1 — the PLATFORM HIDDEN analyst's lineage key.
+ *
+ * Declared beside the others and seeded exactly like them (Global authors, SYSTEM is the promoted
+ * copy), with two deliberate differences:
+ *
+ *  · it carries `visibility:hidden`, the tag the console reads to label it. The tag is a LABEL,
+ *    not the gate — the gate is `PLATFORM_HIDDEN_AGENTS` in code, so editing tags cannot expose
+ *    or conceal an agent;
+ *  · it has NO `AgentAssignment`. An assignment is a tenant choosing which agent serves a task;
+ *    this one is reached by the platform's own SYSTEM-pinned read, and `AgentAssignmentService`
+ *    refuses the slug outright (409).
+ */
+export const DNA_WRITING_STYLE_ANALYST_SLUG = 'dna-writing-style-analyst';
 
 /**
  * TASK-932 D-9 — the WARM-START agent's lineage key.
@@ -468,6 +490,38 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       status: 'PUBLISHED',
       isActive: true,
       tags: [tier, 'task:llm', 'capability:finalization'],
+      provenance: null,
+    },
+    {
+      id: ids(7),
+      tenantId,
+      slug: DNA_WRITING_STYLE_ANALYST_SLUG,
+      name: 'DNA writing-style analyst',
+      description:
+        "Extracts a clinician's writing style — sentence structure, verbosity, abbreviation habit, tone — from a time series of their own notes, as a closed-vocabulary profile. PLATFORM-OWNED: never cloned into a tenant, never listed or invokable on the business plane, never assignable. A tenant overrides only the INSTRUCTION, through its own DNA_ANALYSIS prompt template.",
+      task: 'TEXT_GENERATION',
+      // The same model as `casenote-finalization`: both produce a bounded, structured artifact
+      // from clinical prose, and the platform funds both.
+      modelSlug: 'lms-gemma-4-e2b-it-qat',
+      fallbackModelSlugs: [],
+      // The GENERAL instruction every tenant inherits — the same body the Global playground's
+      // DNA_ANALYSIS template carries, inline here because a SYSTEM PromptTemplate would be
+      // CLONED into every tenant by the reference set and so would hand each of them an
+      // "override" on day one, defeating the cascade this agent exists to provide (D-2).
+      instruction: { systemPrompt: DNA_ANALYSIS_CONTENT_V3 },
+      // Temperature 0 for the reason every seeded LLM agent carries it, and doubly here: this is
+      // a CLASSIFICATION into a closed vocabulary, so sampling entropy can only invent a style
+      // the clinician does not write. Reasoning OFF (TASK-968 measured 92% of the completion
+      // spent on reasoning tokens on this model) — a style extraction does not need deliberation.
+      parameters: { generation: { temperature: 0, maxTokens: 2048, reasoning: { enabled: false } } },
+      // The closed vocabulary IS the PHI containment (owner directive D-A, 2026-08-17): a field
+      // whose only valid values are `'active' | 'passive' | 'mixed'` cannot smuggle a quoted
+      // clinical sentence out of the corpus. Stated on the AGENT so a tenant that authors no
+      // template of its own still gets it.
+      outputSchema: DNA_OUTPUT_SCHEMA,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:llm', 'capability:dna-writing-style', 'visibility:hidden'],
       provenance: null,
     },
     {
