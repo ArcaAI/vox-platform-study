@@ -535,6 +535,40 @@ gateway's `/ws/stt/stream` protocol, not an inference stack; see
 Administration of agents (CRUD, versions, publish, assignments) is the generated
 admin plane, `hope.admin.agent.*` — service account only.
 
+## DNA writing style — `hope.dnaWritingStyle.*`
+
+Submit a clinician's time-ordered writing samples (case notes, work notes, …)
+so the platform's hidden `dna-writing-style-analyst` agent can regenerate
+their writing-style report and long-term memory (TASK-974). Recall and
+redaction into summarization output are automatic once a report exists — this
+surface is only the ingest trigger and the resulting job.
+
+Unlike `hope.workflows`/`hope.agents`, **both machine credential classes reach
+this plane** — an API key holding scope `dna-writing-style:ingest`, or a
+service account holding `svc:dna-writing-style:ingest` — so there is no
+credential-class refusal to work around here.
+
+```ts
+const { jobId } = await hope.dnaWritingStyle.ingest({
+  clinicianUserId: doctorId, // required for an API key / service account; omit as a doctor acting for yourself
+  items: [
+    { text: 'Pt c/o SOB x2d…', writtenAt: '2026-09-01T09:00:00Z', kind: 'CASE_NOTE' },
+    { text: 'f/u call re: meds', writtenAt: '2026-09-03T14:00:00Z', kind: 'WORK_NOTE' },
+  ],
+});
+
+const finished = await hope.dnaWritingStyle.waitForIngestJob(jobId);
+console.log(finished.status); // 'completed' | 'failed' — waitForIngestJob resolves on either
+```
+
+`ingest` accepts 1–200 items (submission order does not matter — the job
+sorts by `writtenAt`) and takes the same `idempotencyKey`/`idempotent` options
+as `hope.agents.invoke`. `waitForIngestJob` polls `getIngestJob` — **there is
+no SSE stream on this route**, so unlike `hope.jobs.waitFor` it never attempts
+one, and it throws `DnaIngestJobTimeoutError` once `timeoutMs` (default
+`120_000`) elapses without a terminal status. A **failed** job resolves
+normally rather than throwing — check `finished.status`/`finished.error`.
+
 ## Realtime consultations
 
 Drive a consultation end to end from a backend service: open it, stream audio,
