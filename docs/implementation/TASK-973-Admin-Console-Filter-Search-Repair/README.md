@@ -1,6 +1,6 @@
 # TASK-973 — Admin Console Filter & Search Repair
 
-**Status:** In Progress
+**Status:** Completed
 **Type:** bugfix
 **Branch:** `dev-2.2`
 **Owner directive (2026-09-14):** "investigate and fix all filter and search in all admin-console screens, most of them are not working"
@@ -130,9 +130,55 @@ tests pass.
 
 ### Lane results
 
+#### Correction to §2's RC-1 list (important)
+
+The "9 canonical-grid screens missing `searchFields`" list in §2 was derived by grepping for the
+`useAdminGridParams({ searchFields })` option. **Most of those turned out NOT to be defects**, and
+the lanes were right to push back. Three distinct reasons, each verified:
+
+- **The endpoint is unpaginated**, so filtering the full client-side set is correct by design —
+  `GET admin/agents` takes only `task` and returns the tenant's whole list (`agent.controller.ts:237`
+  → `findAllForTenant`); likewise `admin/settings/catalog`, `admin/departments`,
+  `admin/rate-limit`, `admin/entitlements/plans`, and the bucket lists.
+- **The endpoint is bespoke and applies search itself**, ignoring `searchFields` entirely —
+  `admin/rbac/policies` and `admin/rbac/roles` hardcode `OR: [{name:{contains}},{description:{contains}}]`
+  (`policy.service.ts:178`, `role.service.ts:182`); `admin/prompt-templates` sets
+  `where.name = {contains}` (`prompt-management.service.ts:813`).
+- **The screen never sends `listParams`** — it hand-builds its own query (`templates-tab.tsx`), or
+  has no search box at all (`dna-writing-styles`, `globalSearch: false`).
+
+RC-1 as a *mechanism* is real and is documented above; it simply had far fewer live instances than
+the grep suggested. The one genuine RC-1 instance found was worse than a no-op — see L5.
+
+### Lane results
+
 | Lane | Outcome |
 |---|---|
-| L4 — storage, storage-browser, knowledge, ai-operations-runs, ai-models | **No change required.** Every search surface in scope filters over an UNPAGINATED endpoint, so client-side filtering is correct, not RC-2. Verified independently: `formatFindAllProps` sets `take: limit`, and the bucket list endpoints call `findAll` with no `limit`, so Prisma returns every row. `ai-models-screen.tsx` already passes `searchFields: ['name','slug']` (`ai-model.prisma:42-43`, both scalar `String`). Scoped suite: 21 files / 195 tests pass. |
+| **L1** — audit-logs, rbac, settings-registry, agents, transcription-jobs, consultations, dna-writing-styles | **3 fixed.** `roles-screen` fetched a bounded 100-row page and filtered names client-side; search moved server-side, URL-bound, debounced. `transcription-jobs` + `consultations` keep client-side filters (their endpoints accept no matching param) but now report the FILTERED count instead of the misleading server total and say so in the empty state. 4 screens verified already correct. |
+| **L2** — queues, prompt-templates, tenants, users, departments, identity-providers, allowed-origins | **2 fixed** (missing 300ms debounce in `governance-tab` + `user-picker`; both already searched server-side). Most flagged offenders were false positives — see the correction above. **Found the queue-detail backend defect** (below). |
+| **L3** — harness-ops, workflow-runs, workflow-studio, releases, changelog, rate-limits, entitlements | **1 fixed.** `workflow-switcher` fetched `limit:100` once and let cmdk re-filter that page; the file's own comment wrongly claimed the endpoint took no search filter. Now server-side with `searchFields: 'name,slug'` (`workflow-definition.prisma:66-67`, both scalar `String`; the enum `status` deliberately excluded) and `shouldFilter={false}`. 5 client-side filters verified correct. |
+| **L4** — storage, storage-browser, knowledge, ai-operations-runs, ai-models | **No change required.** Every search surface filters over an UNPAGINATED endpoint. Verified independently: `formatFindAllProps` sets `take: limit`, and the bucket endpoints call `findAll` with no `limit`, so Prisma returns every row. Found FU-1. |
+| **L5** — playground-*, settings, consent, api-keys | **3 fixed**, including the worst bug of the sweep: `persona-control` sent `searchFields: 'username,email'`, but **`email` is not a column on `User`** (it lives on `UserProfile` — `user.prisma`), and `formatFindAllProps` builds a per-field Prisma `contains` from that list, so the picker **threw at runtime the moment anyone typed**. Now `'username,externalId'`. Plus a debounce on `template-picker` and an honest limitation notice on `consultations-column`. |
+
+### Orchestrator — queue-detail search (commit after L2's report)
+
+`jobName` was declared on `ListJobsOptions` and accepted+validated by the controller DTO, but
+`listJobs` never referenced it — only `status` narrowed the BullMQ query, so the queue-detail
+search box returned every job. BullMQ has no name predicate, so the filter is applied in process
+and **must scan from the head of the queue**: paginating the range first and filtering after would
+only search the requested page — the same defect one layer down. `JOB_NAME_SCAN_LIMIT` (1000)
+bounds the cost; the unfiltered path is untouched. The reported total describes the filtered set.
+
+### Post-merge verification (all five lanes merged into `dev-2.2`)
+
+```
+pnpm --filter @arcaai/admin-console typecheck   -> clean
+pnpm --filter @arcaai/admin-console lint        -> clean (--max-warnings 0)
+pnpm --filter @arcaai/admin-console test        -> Test Files 338 passed (338) | Tests 3226 passed (3226)
+pnpm --filter @arcaai/ui test                   -> Test Files 255 passed (255) | Tests 756 passed (756)
+pnpm --filter @arcaai/applications test         -> 13870 passed (only the live-DB integration
+                                                   suite fails: Vault sealed locally, pre-existing)
+```
 
 ## 5a. Confirmed follow-ups (out of scope — require `apps/api` changes)
 
@@ -146,6 +192,19 @@ that more exist — and the object search box, which filters the returned listin
 never see the rest. Verified by the orchestrator, 2026-09-14. Needs a DTO + controller change plus
 a "load more" in `ObjectBrowserPanel`.
 
+**FU-3 — `ConsultationController#list` drops the query params it declares.**
+`apps/api/src/modules/consultation/consultation.controller.ts:650` declares
+`@Query() query: PaginatedQuery & { patientId?: string }` but reads only `page`/`limit`/`patientId`
+— `search`, `searchFields`, `filters` and `sort` are silently discarded before reaching
+`ConsultationService.listConsultations`. This is why `consultations-column.tsx` can only filter the
+loaded page. Same shape as FU-1: a DTO that promises more than the handler delivers.
+
+**FU-4 — two flaky tests under full-suite parallelism.**
+`ai-providers-screen.test.tsx` (axe, light theme) and `settings-registry-screen.test.tsx` each
+failed once under full-suite concurrency and passed in isolation and on re-run (both were seen by
+two independent lanes). Neither is caused by this ticket; they are order/concurrency-sensitive and
+should be stabilised.
+
 **FU-2 — no repository declares `_defaultSearchFields`.**
 All 107 repositories omit it, so `search` without an explicit `searchFields` is a silent no-op
 server-side. This ticket fixes the console side (every screen now sends `searchFields`), which is
@@ -158,3 +217,5 @@ surface and would have collided across lanes.
 | Date | Change |
 |---|---|
 | 2026-09-14 | Ticket opened. Root causes RC-1 / RC-2 identified and quantified; fix contract fixed; 5 lanes defined. |
+| 2026-09-14 | RC-3 found and fixed in the shared layer (six of ten offered filter operators serialized to nothing). |
+| 2026-09-14 | All 5 lanes merged into `dev-2.2`; post-merge gates green. §2's RC-1 list corrected — most entries were false positives. Queue-detail `jobName` defect fixed. Four follow-ups recorded. Status -> Completed. |
