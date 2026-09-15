@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending — exploration complete (six read-only lanes, 2026-09-15); Implementation Plan blocked on OD-1..OD-5 below |
+| **Status** | Review — all six code lanes merged to `dev-2.2`; verified end to end against a live gateway (§5). ALaaS-side work (Lane 6) is a documented change list for the other repo, not yet built |
 | **Type** | feature (+ one bugfix: TASK-933 H3-6) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-15 |
@@ -396,7 +396,89 @@ the PRIMARY checkout, not on the writer's report.
 
 ## 5. Implementation Summary
 
-Not started.
+All six code lanes merged to `dev-2.2`. No schema change, no migration. Every merge was re-verified
+in the PRIMARY checkout; the evidence below is the orchestrator's own runs, not a writer's report.
+
+| Lane | What shipped |
+|---|---|
+| 1 | Machine sign-off attribution on `updateSummary` / `approveSummary` / `closeConsultation`. A machine MUST name `clinicianUserId`; the clinician lands on `approvedBy`/`attestedBy` and the `SIGNED_NOTE` version, the credential is recorded beside them as ACTOR. An API key may name only its own bound human unless that human is an admin. |
+| 2 | Training-capture opt-out: tenant descriptor `consultation.feedback.trainingCapture.enabled` (`global-kv`, default ENABLED) × doctor `UserSettings` toggle `trainingCapture:enabled` (three-state). Checked at the mining enqueue AND re-checked in the processor, fail-closed. Suppresses CAPTURE only — never the clinical action. |
+| 3 | TASK-933 **H3-6 closed**: the sign-off now also releases the governing Substrate-B run's review child through the existing decide path. Best-effort by construction. |
+| 4 | Three `svc:` scope grants + `caller` read off the REQUEST (so an API key is never misclassified as a human JWT) + `clinicianUserId` declared on the approve/close DTOs + all five artifacts regenerated. |
+| 5 | `@arcaai/vox-node` 3.5.0: `summaries.approve()` and `close()`, both requiring `If-Match`. |
+| 7 | `OPEN → CLOSED_INCOMPLETE` — `OPEN` was structurally unclosable. |
+| 8 | Two sweep legs: `PENDING_REVIEW` → **`TIMED_OUT`** (recoverable) and `OPEN` → `CLOSED_INCOMPLETE`, both 120 min, live-tunable. `OPEN` needs two signals: idle age AND no `ContextItem` created in the window. |
+| 9 | Seed fixtures onto the typed `status` column. |
+
+### Evidence
+
+**Unit / integration (orchestrator-run, primary checkout)**
+```
+CI=true npx vitest run packages/applications packages/domains
+  Test Files  1043 passed | 2 skipped (1045)
+  Tests       16047 passed | 4 skipped | 9 todo (16060)
+
+npx vitest run apps/api --project workspace      → 318 files / 4620 tests passed
+pnpm --filter @arcaai/vox-node test              → 37 files / 543 tests passed
+pnpm --filter @arcaai/database test              → 92 files / 1825 tests passed
+```
+
+**Artifact gates**
+```
+pnpm api:openapi:check   → OK — every served route documented or deliberately excluded
+pnpm api:portal:check    → no drift (admin 667 ops, business 202 ops)
+gen:admin:check          → no drift (49 areas, 425 routes, 438 schemas)
+```
+
+**The grant, from the merged manifest** — exactly three routes moved from `svc=[]`; all 749 routes diffed, no other `svcScopes` changed:
+```
+POST  /consultations/{id}/close                           svc=['svc:consultation:session:write']
+POST  /consultations/{id}/summary/{contextItemId}/approve svc=['svc:consultation:session:write']
+PATCH /consultations/{id}/summary/{summaryId}             svc=['svc:consultation:report:write']
+```
+
+**End to end, against a live gateway on 8968** (test infra on 5433/6380, DB reset + `RUN_SEED=all`, gateway healthy):
+```
+npx playwright test task-972-consultation-finish-plane        → 10 passed (3.1s)
+  ✓ close: naming a clinician OF ITS OWN TENANT closes the row, and the machine is not the actor
+  ✓ close: a machine that names NO clinician is 400 CLINICIAN_REQUIRED — never the account itself
+  ✓ close: a clinician in ANOTHER tenant is 404
+  ✓ close: naming ANOTHER clinician is 400 CLINICIAN_NOT_ALLOWED           (API key)
+  ✓ close: naming its OWN bound human is allowed                            (API key)
+  ✓ approve / PATCH summary: the grant landed — 404, not the old deny-by-default 403
+  ✓ close: a doctor closes their own consultation, naming nobody            (human JWT)
+```
+
+**Lane 9 against a real database** — 8 distinct statuses across 12 seeded consultations, where every
+fixture previously read `OPEN`:
+```
+OPEN 3 | CLOSED_COMPLETE 2 | PENDING_REVIEW 2 | DRAFT_PENDING_SENSORS 1
+DRAINING 1 | REOPENED 1 | RECORDING 1 | CLOSED 1
+```
+
+**Lane 2 live in the running gateway**
+```
+GET admin/settings/registry/consultation.feedback.trainingCapture.enabled
+{ "tier": "global-kv", "value": true, "sourceScope": "code-default", "version": 0 }
+```
+
+**Lane 8 predicates against real data (read-only, dev DB)** — 1 `PENDING_REVIEW` row (idle 29.4 h)
+would move to `TIMED_OUT`; 11 `OPEN` rows would move to `CLOSED_INCOMPLETE`, unchanged by the
+two-signal guard because none has a recent `ContextItem`.
+
+### Two pre-existing reds, verified as NOT caused by this ticket
+
+| Red | Proof it predates the ticket |
+|---|---|
+| `npm-publish-policy.contract.test.ts` — vox family lockstep | The family is 7 packages; before this ticket `vox`+`vox-node` were 3.4.0 and the other five 3.3.0 — **two** versions, and the contract asserts exactly one. It was already failing. Lane 5's bump makes it three. Fixing it means bumping the family, which is the release decision this ticket deliberately did not take. |
+| `task-776-route-authz-matrix` A5b — `@Public() /internal/*` inventory pinned at 34 | The manifest carries **35 such routes both before and after** this ticket; total routes unchanged at 749. We added scopes, not routes. |
+
+### Not done, and why
+
+**Lane 6 (ALaaS) is documented but not built.** Until those calls land, lanes 1-5 create the
+capability and nothing exercises it in production: the clinician's edit still stops at ALaaS's
+database. The close-signal half, however, is self-healing from HOPE's side as of Lane 8 — a stranded
+consultation now times out rather than sitting open forever, which is the half the owner observed.
 
 ## 6. Change History
 
