@@ -16,6 +16,8 @@ import {
   CONSULTATION_RECORDING_STALE_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
+  CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
+  CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
 } from '../consultation-gates.constants';
 
 const JOB_NAME = 'consultation-timeout-sweep';
@@ -36,6 +38,10 @@ export interface ConsultationTimeoutSweepConfig {
   cron: string;
   timeoutMinutes: number;
   recordingStaleMinutes: number;
+  /** TASK-972 Lane 8 (OD-6) — the PENDING_REVIEW leg's window. */
+  reviewTimeoutMinutes: number;
+  /** TASK-972 Lane 8 (OD-7) — the OPEN leg's window. */
+  openTimeoutMinutes: number;
 }
 
 export interface ConsultationTimeoutSweepResult {
@@ -51,10 +57,23 @@ export interface ConsultationTimeoutSweepResult {
  * (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `REOPENED`)
  * with no clinician activity past `consultation.state.sessionTimeoutMinutes`
  * to `CLOSED_INCOMPLETE` — the record closed with no human sign-off ever
- * recorded. `OPEN` and `PENDING_REVIEW` are deliberately never swept here
- * (; `PENDING_REVIEW` has its own narrower gate-SLA path,
- * `HarnessInternalService.recordEscalation` → `PENDING_REVIEW → TIMED_OUT`,
- * which this sweep leaves untouched).
+ * recorded.
+ *
+ * ⚠️ AMENDED 2026-09-15 — TASK-972 Lane 8, owner decisions OD-6 and OD-7.
+ * This comment used to say `OPEN` and `PENDING_REVIEW` "are deliberately never
+ * swept here". THAT DECISION IS REVERSED, on evidence: measured on the live
+ * `hope-v2-dev` cluster, one real consultation had been stranded in
+ * `PENDING_REVIEW` for 29.4 hours with nothing in the platform able to clear
+ * it, while this sweep logged `eligible: 0` every 15 minutes — behaving exactly
+ * as designed, because the two states that actually strand were the two it
+ * excluded. Temporal reported `Running = 0`, so the durable executions had
+ * already ended: the leak is ROWS, not workflows, which is why the fix belongs
+ * here. Each stranding state now has its OWN leg, its OWN threshold descriptor
+ * and its OWN target — see {@link sweepIdlePendingReview} and
+ * {@link sweepIdleOpen}. The narrower gate-SLA path
+ * (`HarnessInternalService.recordEscalation` → `PENDING_REVIEW → TIMED_OUT`)
+ * still exists and is unchanged; the new leg is its backstop for the
+ * Substrate-B consultations it never fires for.
  *
  * TASK-932 OD-9 added a SECOND leg, {@link sweepStaleRecordings}: a
  * `RECORDING` row whose `updatedAt` is older than
@@ -81,8 +100,8 @@ export interface ConsultationTimeoutSweepResult {
  * on by default (project posture: pre-production, no prod data, ship
  * complete rather than flag-gated).
  *
- * Per eligible row: `ConsultationEntity.transitionTo(CLOSED_INCOMPLETE,
- * 'system', 'session-timeout-sweep')` → `ConsultationRepository.updateWithVersion`
+ * Per eligible row: `ConsultationEntity.transitionTo(<target>, 'system',
+ * <reason>)` → `ConsultationRepository.updateWithVersion`
  * → `ResourceUpdated` sys-event → WORM `SESSION_CLOSED_INCOMPLETE` append —
  * exactly the persistence chain `ConsultationService.closeConsultation`
  * already uses for a manual close ( matrix rows).
@@ -152,6 +171,14 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         CONSULTATION_RECORDING_STALE_MINUTES_KEY,
         CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
       ),
+      reviewTimeoutMinutes: this.appSettingsService.getValueWithDefault<number>(
+        CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
+        CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY],
+      ),
+      openTimeoutMinutes: this.appSettingsService.getValueWithDefault<number>(
+        CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
+        CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
+      ),
     };
   }
 
@@ -171,11 +198,21 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
   }
 
   /**
-   * The callback executed by the cron job on each tick. Runs BOTH legs —
-   * the RECORDING leg first (so a row it stops has a chance to age into the
-   * DRAINING leg on a LATER tick, never the same one), then the existing
-   * five-state sweep — each in its own try/catch so one leg's failure never
-   * blocks the other.
+   * The callback executed by the cron job on each tick. Runs FOUR legs, each
+   * in its own try/catch so one leg's failure never blocks the others.
+   *
+   * THE ORDER IS LOAD-BEARING, in two places:
+   *
+   * 1. The RECORDING leg runs FIRST, so a row it stops has a chance to age
+   *    into the DRAINING leg on a LATER tick, never the same one.
+   * 2. The PENDING_REVIEW leg (TASK-972 OD-6) runs AFTER the five-state leg,
+   *    not before. Its target, `TIMED_OUT`, is itself a member of
+   *    `findTimeoutSweepEligible`'s eligible set, so the other ordering would
+   *    let ONE tick carry a consultation from `PENDING_REVIEW` all the way to
+   *    `CLOSED_INCOMPLETE` — destroying the very recovery path OD-6 exists to
+   *    preserve. In practice the write refreshes `updatedAt` and the
+   *    1440-minute cutoff would exclude it anyway; ordering it last means the
+   *    guarantee does not DEPEND on that.
    */
   async handleScheduledSweep(): Promise<void> {
     this.logger.log('Starting scheduled session-timeout sweep');
@@ -192,6 +229,20 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
       this.logger.log({ message: 'Session-timeout sweep completed', ...result });
     } catch (error) {
       this.logger.error(`Session-timeout sweep failed: ${error}`);
+    }
+
+    try {
+      const reviewResult = await this.sweepIdlePendingReview();
+      this.logger.log({ message: 'Review-timeout sweep completed', ...reviewResult });
+    } catch (error) {
+      this.logger.error(`Review-timeout sweep failed: ${error}`);
+    }
+
+    try {
+      const openResult = await this.sweepIdleOpen();
+      this.logger.log({ message: 'Open-timeout sweep completed', ...openResult });
+    } catch (error) {
+      this.logger.error(`Open-timeout sweep failed: ${error}`);
     }
   }
 
@@ -256,15 +307,26 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
    * `cls.run(...)` + `createWorkerSession(...)` pattern for a
    * system-initiated transition.
    */
-  private async transitionOneConsultation(consultation: ConsultationEntity): Promise<void> {
+  private async transitionOneConsultation(
+    consultation: ConsultationEntity,
+    // TASK-972 Lane 8 — parameterised so the three transition legs share ONE
+    // persistence chain. The defaults reproduce the original single-leg
+    // behaviour exactly, so `sweepOnce`'s call site is unchanged.
+    target: ConsultationStatus = ConsultationStatus.CLOSED_INCOMPLETE,
+    reason = 'session-timeout-sweep',
+    wormAction: HarnessAuditAction = HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
+  ): Promise<void> {
     await this.clsService.run(async () => {
       this.clsService.set('tenantId', consultation.tenantId);
       this.clsService.set('user', createWorkerSession({ tenantId: consultation.tenantId, kind: 'session-timeout-sweep' }));
 
       const expectedVersion = consultation.version;
-      const applied = consultation.transitionTo(ConsultationStatus.CLOSED_INCOMPLETE, 'system', 'session-timeout-sweep');
-      // Defensive only: `findTimeoutSweepEligible` returns just the five
-      // legal predecessor states, so `applied` is always true in practice.
+      // `transitionTo` THROWS on an illegal pair and returns false only for a
+      // self-transition — so a row that raced into a state this leg cannot
+      // legally leave is REFUSED here and counted `failed` by the caller's
+      // per-row catch. The sweep can never force a transition the state
+      // machine forbids.
+      const applied = consultation.transitionTo(target, 'system', reason);
       if (!applied) {
         return;
       }
@@ -273,7 +335,7 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
 
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
         resourceId: consultation.id,
-        data: { action: 'session-timeout-sweep', status: ConsultationStatus.CLOSED_INCOMPLETE },
+        data: { action: reason, status: target },
       });
 
       if (!this.harnessAuditService) {
@@ -284,7 +346,7 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         await this.harnessAuditService.append({
           tenantId: consultation.tenantId,
           consultationId: consultation.id,
-          action: HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
+          action: wormAction,
           modelName: 'session-lifecycle',
           modelVersion: 'v1',
           sensorScores: {},
@@ -302,6 +364,127 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         });
       }
     });
+  }
+
+  /**
+   * TASK-972 Lane 8, owner decision OD-6 — the PENDING_REVIEW leg.
+   *
+   * A consultation idle in `PENDING_REVIEW` past
+   * `consultation.state.reviewTimeoutMinutes` (default 120) is transitioned to
+   * **`TIMED_OUT`, deliberately NOT `CLOSED_INCOMPLETE`**, and that choice is
+   * the whole point of the leg rather than an implementation detail:
+   *
+   *   • `TIMED_OUT → SIGNED` is a legal edge, and
+   *     `SummaryService.approveSummary` already accepts `TIMED_OUT` as a
+   *     predecessor of `SIGNED` — "the clock never signs, a human still can".
+   *     So a clinician who reviews and submits hours after the timeout still
+   *     signs the note, still closes the consultation, and still yields the
+   *     `(AI draft, clinician-edited)` training pair.
+   *   • `CLOSED_INCOMPLETE` reaches only `REOPENED` and would destroy that.
+   *
+   * This is the state a genuinely stranded consultation was measured in on the
+   * live cluster (29.4 h) and the one state nothing could clear. The narrower
+   * gate-SLA path (`HarnessInternalService.recordEscalation`) only fires on a
+   * terminal harness gate abandon, which a Substrate-B (interpreter)
+   * consultation never reports; this leg is its backstop.
+   *
+   * Age is the whole eligibility predicate here — unlike {@link sweepIdleOpen}
+   * below — precisely because the target is recoverable: a false positive
+   * costs a status label, not a record.
+   *
+   * A single row's failure never aborts the batch, mirroring {@link sweepOnce}.
+   */
+  async sweepIdlePendingReview(overrides?: { reviewTimeoutMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
+    const reviewTimeoutMinutes = overrides?.reviewTimeoutMinutes ?? this.getConfig().reviewTimeoutMinutes;
+
+    // Same non-positive guard as the other legs: a window <= 0 would put the
+    // cutoff at or after "now" and time out every PENDING_REVIEW row in the
+    // platform in one tick.
+    if (reviewTimeoutMinutes < 1) {
+      this.logger.warn({
+        message: 'Review-timeout sweep window is non-positive — refusing to sweep',
+        reviewTimeoutMinutes,
+      });
+      return { eligible: 0, transitioned: 0, failed: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - reviewTimeoutMinutes * MS_PER_MINUTE);
+    const eligible = await this.consultationRepository.findIdlePendingReview(cutoff);
+
+    return this.transitionEach(eligible, ConsultationStatus.TIMED_OUT, 'review-timeout-sweep', HarnessAuditAction.SESSION_TIMED_OUT);
+  }
+
+  /**
+   * TASK-972 Lane 8, owner decision OD-7 — the OPEN leg.
+   *
+   * `OPEN` was STRUCTURALLY UNCLOSABLE until Lane 7 added the
+   * `OPEN → CLOSED_INCOMPLETE` matrix edge: its only outgoing edge was
+   * `OPEN → PRIMED`, so neither a manual `POST :id/close` nor any sweep could
+   * clear a consultation abandoned before recording ever began — which is
+   * exactly the orphan path ALaaS leaves behind when a browser disappears
+   * without sending `stop`.
+   *
+   * THE ELIGIBILITY TEST CARRIES TWO SIGNALS, NOT ONE, and the second lives in
+   * `ConsultationRepository.findIdleOpen`: no `ContextItem` may have been
+   * created inside the window either. `ContextService` only ever READS the
+   * consultation row, so adding a case note or an attachment does NOT bump
+   * `Consultation.updatedAt` — age alone would close a consultation a
+   * clinician is still loading context into, and this leg's target reaches
+   * only `REOPENED`. Same two-signal rule the RECORDING leg already applies
+   * (age AND an absent live-summary lock), applied here for the same reason:
+   * the irreversible legs are the ones that need corroboration.
+   *
+   * A single row's failure never aborts the batch.
+   */
+  async sweepIdleOpen(overrides?: { openTimeoutMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
+    const openTimeoutMinutes = overrides?.openTimeoutMinutes ?? this.getConfig().openTimeoutMinutes;
+
+    if (openTimeoutMinutes < 1) {
+      this.logger.warn({
+        message: 'Open-timeout sweep window is non-positive — refusing to sweep',
+        openTimeoutMinutes,
+      });
+      return { eligible: 0, transitioned: 0, failed: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - openTimeoutMinutes * MS_PER_MINUTE);
+    const eligible = await this.consultationRepository.findIdleOpen(cutoff);
+
+    return this.transitionEach(eligible, ConsultationStatus.CLOSED_INCOMPLETE, 'open-timeout-sweep', HarnessAuditAction.SESSION_CLOSED_INCOMPLETE);
+  }
+
+  /**
+   * TASK-972 Lane 8 — the per-row loop the two new legs share: transition each
+   * row, count it, and isolate its failure. Identical in shape to
+   * {@link sweepOnce}'s own loop, which is left alone (it carries a public
+   * `overrides` contract and its own dev-cleanup documentation).
+   */
+  private async transitionEach(
+    rows: ConsultationEntity[],
+    target: ConsultationStatus,
+    reason: string,
+    wormAction: HarnessAuditAction,
+  ): Promise<ConsultationTimeoutSweepResult> {
+    let transitioned = 0;
+    let failed = 0;
+
+    for (const consultation of rows) {
+      try {
+        await this.transitionOneConsultation(consultation, target, reason, wormAction);
+        transitioned++;
+      } catch (error) {
+        failed++;
+        this.logger.warn({
+          message: `${reason}: failed to transition a consultation (non-fatal — the sweep continues with the next row)`,
+          consultationId: consultation.id,
+          tenantId: consultation.tenantId,
+          target,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { eligible: rows.length, transitioned, failed };
   }
 
   /**
