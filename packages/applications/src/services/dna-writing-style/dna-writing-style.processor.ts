@@ -506,11 +506,13 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         this.dnaReportRepository.encryptFieldsIntoEntity(reportEntity, this.secretsService!),
       );
 
-      const saved = await this.persistReportWithUsage(
-        { reportEntity, reportData, styleText, resolvedTemplate },
-        textResponse,
-        { tenantId, doctorId, userId, jobId: job.data.jobId, origin: job.data.origin },
-      );
+      const saved = await this.persistReportWithUsage({ reportEntity, reportData, styleText, resolvedTemplate }, textResponse, {
+        tenantId,
+        doctorId,
+        userId,
+        jobId: job.data.jobId,
+        origin: job.data.origin,
+      });
 
       const duration = endTimer();
       this.jobMetrics.recordJobComplete(JobQueue.GenerateDnaReport, 'DnaWritingStyleProcessor', duration);

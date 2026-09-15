@@ -95,7 +95,12 @@ beforeEach(() => {
   queue.add.mockResolvedValue({ id: 'job' });
   userDepartmentRepo.findFirst.mockResolvedValue({ id: 'ud', userId: CLINICIAN, tenantId: TENANT, resourceStatus: ResourceStatusType.ENABLED });
   userRepo.findFirst.mockResolvedValue({ id: CLINICIAN, isServiceAccount: false });
-  configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 });
+  configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({
+    effective: true,
+    tenantEnabled: true,
+    doctorToggle: null,
+    doctorPreferenceVersion: 0,
+  });
   entitlements.assertMeterQuota.mockResolvedValue(undefined);
   billing.assertSpendLimit.mockResolvedValue(undefined);
   usageLedger.recordUsage.mockResolvedValue({ outboxIds: ['o1'], events: 3 });
@@ -199,7 +204,13 @@ describe('an accepted ingest is recorded as `dna.ingest`', () => {
 
   it('emits NOTHING when a retry JOINS an existing job — one submitted batch, one row', async () => {
     queue.getJob.mockResolvedValue({
-      data: { jobId: 'joined-1', doctorId: CLINICIAN, tenantId: TENANT, userId: CLINICIAN, samples: [{ text: 'x', writtenAt: '2026-09-01T09:00:00.000Z', kind: 'OTHER' }] },
+      data: {
+        jobId: 'joined-1',
+        doctorId: CLINICIAN,
+        tenantId: TENANT,
+        userId: CLINICIAN,
+        samples: [{ text: 'x', writtenAt: '2026-09-01T09:00:00.000Z', kind: 'OTHER' }],
+      },
     });
 
     const joined = await make().ingestWritingSamples({ clinicianUserId: CLINICIAN, items } as never, serviceAccount, 'batch-42');
@@ -224,7 +235,9 @@ describe('an accepted ingest is recorded as `dna.ingest`', () => {
   });
 
   it('records nothing when no ledger is composed', async () => {
-    await expect(make({ metered: false }).ingestWritingSamples({ clinicianUserId: CLINICIAN, items } as never, serviceAccount)).resolves.toMatchObject({
+    await expect(
+      make({ metered: false }).ingestWritingSamples({ clinicianUserId: CLINICIAN, items } as never, serviceAccount),
+    ).resolves.toMatchObject({
       status: 'PENDING',
     });
     await settle();
