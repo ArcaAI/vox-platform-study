@@ -46,6 +46,7 @@ const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
  * | Embeddings          | `embed:<requestId>`          | `embed:<requestId>:INPUT_TOKEN`           |
  * | Harness step        | `harness:step:<stepId>`      | `harness:step:<stepId>:OUTPUT_TOKEN`      |
  * | Worker CPU          | `harness:cpu:<s>:<r>:<a>:<n>`| `harness:cpu:<s>:<r>:<a>:<n>:CPU_SECOND`  |
+ * | DNA ingest          | `dna-ingest:<jobId>`         | `dna-ingest:<jobId>:REQUEST`              |
  *
  * NOTE on the NLP recipe: batches NLP to CONSULTATION granularity, so the
  * `<requestId>` a emitter passes is the per-consultation batch id, not a
@@ -88,6 +89,23 @@ export const UsageIdempotencyKey = {
    */
   harnessComputeSample: (sessionId: string, runId: string, activityId: string, attempt: number): string =>
     `harness:cpu:${requireId(sessionId, 'sessionId')}:${requireId(runId, 'runId')}:${requireId(activityId, 'activityId')}:${requireAttempt(attempt)}`,
+
+  /**
+   * One accepted batch of DNA writing samples (`dna.ingest`, TASK-974 §9.2).
+   *
+   * The JOB id, not a fresh uuid — and that is the whole point on this surface.
+   * An ingest carrying an `Idempotency-Key` DERIVES its job id from
+   * `(tenant, principal, key)`, so a client retry JOINS the original job; the
+   * emitter runs only on a FRESH enqueue, but keying on the job id means that
+   * even if a retry ever did reach here it would converge on the one row rather
+   * than counting the same submitted batch twice.
+   *
+   * NOTE this names the INGEST, not the analysis the job goes on to perform:
+   * that call is an `llm:<task_id>` key like every other TEXT generation
+   * ({@link llmRequest}), because a BullMQ retry really does re-run the model
+   * and really does cost again.
+   */
+  dnaIngest: (jobId: string): string => `dna-ingest:${requireId(jobId, 'jobId')}`,
 
   /**
    * Append the unit to a base key to get the per-row key.

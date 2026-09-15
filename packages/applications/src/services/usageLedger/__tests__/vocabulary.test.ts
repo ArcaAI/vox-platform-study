@@ -21,7 +21,7 @@ import {
 import { UsageIdempotencyKey, validateIdempotencyKey } from '../idempotency-keys';
 
 describe('operation vocabulary', () => {
-  it('freezes exactly the thirteen operations the emitters may use', () => {
+  it('freezes exactly the fifteen operations the emitters may use', () => {
     expect([...USAGE_OPERATIONS].sort()).toEqual(
       [
         'transcribe.stream',
@@ -46,6 +46,10 @@ describe('operation vocabulary', () => {
         // from `ner.extract` because they are different work at different
         // prices and "spend by activity" cannot separate them afterwards.
         'nlp.classify',
+        // TASK-974 §9.2 (D-5) — the DNA writing-style plane: the analyst's own
+        // LLM call, and the ingest API call that decides whether one happens.
+        'dna.analyze',
+        'dna.ingest',
       ].sort(),
     );
   });

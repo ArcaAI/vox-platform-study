@@ -135,6 +135,10 @@ describe('validateUsageAttributes — the allow-list', () => {
         // TASK-957 F-8 — node identity on the workflow lane.
         'nodeId',
         'workflowVersionId',
+        // TASK-974 §9.2 — the DNA plane's two dimensions, both closed
+        // vocabularies (see `dna-vocabulary.task974.test.ts`).
+        'origin',
+        'credentialClass',
       ].sort(),
     );
   });

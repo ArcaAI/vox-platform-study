@@ -173,6 +173,17 @@ export class DnaWritingStyleIngestController {
     status: 409,
     description: '`DNA_STYLE_DISABLED` — DNA writing style is off for this clinician (tenant setting or their own opt-out), so nothing was queued.',
   })
+  // TASK-974 §9.2 — the two allowance gates, checked BEFORE anything is queued so an integration
+  // is refused now rather than by a job that fails hours later. Both are enforced in the service
+  // (`assertMaySpend`), which is where the tenant is known.
+  @ApiResponse({
+    status: 402,
+    description: 'The tenant has reached the monthly spend ceiling it set; nothing was queued.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'The tenant is over its monthly LLM-token allowance (DNA draws on the same allowance as every other text call); nothing was queued.',
+  })
   async ingest(
     @Body() dto: IngestDnaWritingSamplesRequest,
     @Req() req: RequestWithAuth,
