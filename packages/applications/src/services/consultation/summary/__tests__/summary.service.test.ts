@@ -1621,7 +1621,12 @@ describe('SummaryService', () => {
       );
     });
 
-    it('should use "system" as changedBy when requestUserId is null', async () => {
+    // TASK-972 Lane 1 — these two used to pin `changedBy: 'system'` and an untouched
+    // `updatedBy` for a request with no user context. That contract is retired: an edit to a
+    // clinical note must be attributable, so a caller with no identifiable author is now a 400,
+    // and a MACHINE caller says whose note it is with `clinicianUserId`. The only caller of
+    // `updateSummary` is the authenticated HTTP route, so nothing in-process relied on 'system'.
+    it('REFUSES an edit with no identifiable author (TASK-972 Lane 1 — was: changedBy "system")', async () => {
       const clsWithNoUser = createMockClsService();
       clsWithNoUser.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-1';
@@ -1669,19 +1674,12 @@ describe('SummaryService', () => {
         updatedAt: new Date(),
       });
 
-      await serviceNoUser.updateSummary('ctx-no-user', { content: 'Edited' });
+      await expect(serviceNoUser.updateSummary('ctx-no-user', { content: 'Edited' } as never)).rejects.toThrow('User ID is required');
 
-      expect(mockedFactory.CreateFromContextItem).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(Number),
-        expect.any(String),
-        'system',
-        expect.any(String),
-        undefined,
-      );
+      expect(mockedFactory.CreateFromContextItem).not.toHaveBeenCalled();
     });
 
-    it('should not update updatedBy when requestUserId is null', async () => {
+    it('writes nothing at all when there is no identifiable author (TASK-972 Lane 1)', async () => {
       const clsWithNoUser = createMockClsService();
       clsWithNoUser.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-1';
@@ -1733,9 +1731,10 @@ describe('SummaryService', () => {
         updatedAt: new Date(),
       });
 
-      await serviceNoUser.updateSummary('ctx-no-user-2', { content: 'Edited' });
+      await expect(serviceNoUser.updateSummary('ctx-no-user-2', { content: 'Edited' } as never)).rejects.toThrow('User ID is required');
 
       expect(mockItem.updatedBy).toBeNull();
+      expect(mockContextItemVersionRepository.create).not.toHaveBeenCalled();
     });
 
     it('should not modify content when request.content is undefined', async () => {

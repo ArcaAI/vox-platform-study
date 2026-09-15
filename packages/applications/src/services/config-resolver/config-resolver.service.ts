@@ -4,6 +4,9 @@ import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract
 import { CORE_PALETTE_KEY, classesOf } from '@arcaai/workflow-contract';
 import { IWorkflowAssignmentService } from '../workflow-assignment/IWorkflowAssignmentService';
 import { DNA_STYLE_PREFERENCE, parseDnaStylePreference } from './dna-style-preference';
+import { TRAINING_CAPTURE_PREFERENCE, parseTrainingCapturePreference } from './training-capture-preference';
+import { TRAINING_CAPTURE_ENABLED_DEFAULT, TRAINING_CAPTURE_ENABLED_KEY } from '../settings-registry/descriptors/training-capture.descriptors';
+import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 
 /**
  * The graph-node config resolver (TASK-882).
@@ -43,6 +46,20 @@ export interface ResolvedDnaStyle {
   doctorToggle: boolean | null;
   /** The preference row's OCC version (0 when no row exists) — `PUT dna-writing-styles/settings` echoes it. */
   doctorPreferenceVersion: number;
+}
+
+/**
+ * TASK-972 Lane 2 — the resolved per-consultation TRAINING-CAPTURE decision.
+ * `effective = tenantEnabled && (doctorToggle ?? true)`, the same composition DNA uses, with a
+ * deliberately different DEGRADED direction — see `resolveEffectiveTrainingCaptureEnabled`.
+ */
+export interface ResolvedTrainingCapture {
+  /** Final decision: may this sign-off be captured as a training exemplar? */
+  effective: boolean;
+  /** The tenant's gate (`consultation.feedback.trainingCapture.enabled`, tenant → SYSTEM). */
+  tenantEnabled: boolean;
+  /** The doctor's explicit preference, or null when unset (implicit opt-in). */
+  doctorToggle: boolean | null;
 }
 
 /** The doctor's stored DNA preference, as the write lane and the readers both see it. */
@@ -148,6 +165,16 @@ export class ConfigResolver {
     @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
     @Optional() @Inject(UserSettingsRepository) private readonly userSettingsRepository?: UserSettingsRepository,
+    // TASK-972 Lane 2 — the tenant half of the training-capture gate, read through the registry's
+    // own tenant → SYSTEM cascade rather than off a graph node. That difference from the DNA gate
+    // beside it is deliberate: DNA is a property of the WORKFLOW a consultation runs (the tenant
+    // enables it by placing the node), whereas whether clinical text may be retained for model
+    // training is a tenant POLICY that holds regardless of which graph is assigned.
+    //
+    // Optional + trailing like every collaborator above it: this resolver is constructed
+    // positionally in background processors and a long tail of fixtures, and an unwired settings
+    // graph must degrade rather than throw on a clinical path.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
 
   /**
@@ -259,6 +286,80 @@ export class ConfigResolver {
     const graph = await this.resolveGoverningGraph(ctx, 'carry-forward');
     if (!graph) return false;
     return graph.nodes.some(declaresCarryForward);
+  }
+
+  /**
+   * TASK-972 Lane 2 — the doctor's own training-capture preference (`UserSettings`
+   * `trainingCapture` / `enabled`). `null` = no row = no opinion, which every reader treats as
+   * an implicit opt-in. Total: no doctor, no repository, a malformed value or a failed read all
+   * read as no opinion — never as a silent opt-OUT, which would quietly empty a corpus the
+   * platform is expected to build.
+   */
+  async resolveDoctorTrainingCapturePreference(doctorId: string | null | undefined): Promise<boolean | null> {
+    if (!doctorId || !this.userSettingsRepository) return null;
+    try {
+      const row = await this.userSettingsRepository.findByUserKeyNamespace(
+        doctorId,
+        TRAINING_CAPTURE_PREFERENCE.key,
+        TRAINING_CAPTURE_PREFERENCE.namespace,
+      );
+      return row ? parseTrainingCapturePreference(row.value) : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Doctor training-capture preference lookup failed — treating as no opinion',
+        doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-972 Lane 2 (OD-4) — may this sign-off be captured as a training exemplar?
+   *
+   * `effective = tenantEnabled && (doctorToggle ?? true)`, mirroring
+   * {@link resolveEffectiveDnaStyleEnabled}'s composition exactly — and mirroring its DEGRADED
+   * direction not at all, which is the one thing to read carefully here.
+   *
+   * DNA fails CLOSED because an unreadable gate must never cause a doctor's writing to be
+   * learned from. This one degrades to ENABLED, for a reason that is about the CURRENT state of
+   * the code rather than about the relative sensitivity of the two features: gate-edit mining
+   * runs UNCONDITIONALLY today, with no gate at all, so "off on a failed read" would make a
+   * transient settings outage silently retire a shipped pipeline — and the resulting gap in the
+   * corpus is invisible, because nothing errors. The descriptor declares that direction
+   * (`open-to-default`, `default: true`); this method only honours it.
+   *
+   * An EXPLICIT opt-out is a different matter and is never degraded away: it is read from the
+   * doctor's own row, and a failed read of that row answers "no opinion", never "opted in by
+   * accident" — the preference simply cannot be observed as `false` unless a human set it.
+   *
+   * `doctorId` is optional: the enqueue side has the consultation in hand and passes it, while a
+   * caller that only knows the tenant gets the tenant gate alone.
+   */
+  async resolveEffectiveTrainingCaptureEnabled(ctx: { tenantId: string; doctorId?: string | null }): Promise<ResolvedTrainingCapture> {
+    const [tenantEnabled, doctorToggle] = await Promise.all([
+      this.resolveTenantTrainingCaptureGate(ctx.tenantId),
+      this.resolveDoctorTrainingCapturePreference(ctx.doctorId),
+    ]);
+    return { effective: tenantEnabled && (doctorToggle ?? true), tenantEnabled, doctorToggle };
+  }
+
+  /** The tenant gate alone, degrading to the descriptor default on every failure path. */
+  private async resolveTenantTrainingCaptureGate(tenantId: string): Promise<boolean> {
+    if (!this.effectiveSettings) return TRAINING_CAPTURE_ENABLED_DEFAULT;
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(TRAINING_CAPTURE_ENABLED_KEY, { tenantId });
+      if (resolved.value === true || resolved.value === 'true') return true;
+      if (resolved.value === false || resolved.value === 'false') return false;
+      return TRAINING_CAPTURE_ENABLED_DEFAULT;
+    } catch (error) {
+      this.logger.warn({
+        message: `${TRAINING_CAPTURE_ENABLED_KEY} lookup failed — degrading to the declared default (capture stays on)`,
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return TRAINING_CAPTURE_ENABLED_DEFAULT;
+    }
   }
 
   /**
