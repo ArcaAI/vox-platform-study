@@ -302,6 +302,27 @@ Every other text caller (text proxy, comprehensive-summary processor, agent invo
 - **Reporting**: `GET admin/usage/summary|timeseries` already break down by `operation`; `dna.analyze` and `dna.ingest` appear with no console change (the console renders the operation string). `AiUsageRollup*` carry `operation` since TASK-959.
 - **Pricing**: `AiPriceBook` rates on `(capability, provider, model, unit)`, so DNA tokens are rated like any other LLM call on that model; a DNA-specific SELL price is owner item O-2.
 
+### 9.4 Implementation (lane L6, merged `3575dee23`)
+
+| Item | Where | Pinned by |
+|---|---|---|
+| Vocabulary: `dna.analyze`, `dna.ingest` in `USAGE_OPERATIONS` (13 → 15); `UsageIdempotencyKey.dnaIngest(jobId)`; `origin` + `credentialClass` as CLOSED attribute vocabularies; provider `hope-api` (listed in `KNOWN_PROVIDERS` and `SELF_HOSTED_PROVIDER_IDS`) for the model-less ingest rows so they never pollute a real connection's token rollup | `packages/applications/src/services/usageLedger/{vocabulary,idempotency-keys,usage-attributes}.ts` | `__tests__/dna-vocabulary.task974.test.ts` (13) |
+| Processor: `callText` now returns `usage_detail` / `guardrail_usage` / `task_id`; `persistReportWithUsage` runs the four business creates AND every `recordUsage(input, tx)` in ONE `runInTransaction` (`dna.analyze` + guardrail batch, `sessionId = jobId`, `attributesJson.origin`, compute device for self-hosted, fail-open); metering failure ⇒ roll back, re-persist unmetered, `hope_usage_emission_failed_total`; the `isLatest` demotion deliberately stays OUTSIDE the transaction | `dna-writing-style.processor.ts` (+ four `@Optional()` trailing deps; `MetricsServiceModule` added to the DNA module) | `dna-writing-style.processor.usage.task974.test.ts` (11) |
+| Service: `assertMaySpend` = `assertMeterQuota(tenantId,'monthlyLlmTokens')` then `billing.assertSpendLimit(tenantId)` before `queue.add` in `generateDnaReport` and `ingestWritingSamples` (after the DNA-enabled gate, before the idempotency JOIN — a join re-runs nothing and emits nothing); `emitIngestUsage` fire-and-forget: `REQUEST 1`, `CHARACTER Σ text`, `INGRESS_BYTE`, `requestId = sessionId = jobId`, `attributesJson.credentialClass` | `dna-writing-style.service.ts` | `dna-writing-style.billing.task974.test.ts` (16 + module-wiring) |
+| Scheduler: per-tenant precheck, memoised; a refused tenant is skipped with a warn and listed on `result.errors` | `dna-regeneration.scheduler.ts` | same file |
+| API docs: 402 / 429 documented on the ingest route and BOTH generate routes; `openapi.json` + portal regenerated (additive); route manifest + vox-node admin unchanged | `apps/api/src/modules/dna-writing-style/*.controller.ts` | `api:openapi:check`, `api:portal:check`, `gen:admin:check` |
+
+All 302 pre-existing DNA tests green with zero fixture changes. Lane gates: applications targeted 957 passed; api dna module 106 passed; wider sweep applications 1912 / api 603 passed; lint 0 errors, no new warnings.
+
+**Live evidence (2026-09-15, gateway `0.0.0-dev-2-2.3575dee2` on :8968, seeded test DB):** e2e
+`task-974-dna-ingest.spec.ts` 21 passed (13.7s). `core."AiUsageOutbox"`: 7 rows, all `DISPATCHED` (payload
+shape `{ "events": [...] }`); drained `core."AiUsageEvent"` rows for `dna.ingest` per live ingest — `REQUEST 1`,
+`CHARACTER 200`, `INGRESS_BYTE 351/408`, `provider hope-api`, `doctorId` = the clinician, `requestId = sessionId =
+jobId`, `attributesJson {origin: ingest, credentialClass: jwt | api-key | service-account}`; the idempotent
+retry (sha256 jobId) produced ONE set of rows. `dna.analyze` rows cannot be produced in the test env (the job
+stops at the PHI-redaction hop, guardrail :8963 not running) — proven by
+`dna-writing-style.processor.usage.task974.test.ts`. Verification SQL is in the L6 lane notes above.
+
 ### 9.3 Owner items opened by (d)
 
 - O-1: a DNA-specific meter (`monthlyDnaGenerations`) needs `MeterCapabilityKey` + `ResolvedLimits` + a `PlanEntitlement` column + the plan-matrix UI — not built; DNA draws on `monthlyLlmTokens`.
@@ -325,4 +346,5 @@ Every other text caller (text proxy, comprehensive-summary processor, agent invo
 | 2026-09-14 | Ticket opened; exploration (3 read-only lanes); design D-1..D-4; contract §4 frozen; lanes spawned. |
 | 2026-09-15 | Four lanes merged (`--no-ff`); post-merge gates + artifacts green; test DB reseeded; e2e 18/18 live; rules 00/05/08 updated; worktrees removed; adversarial review run. |
 | 2026-09-15 | Owner CONFIRMED D-1 and added requirement (d): DNA usage must be COUNTED and MEASURED for billing — scoped as §9 below. |
+| 2026-09-15 | Requirement (d) billing: lane L6 merged `3575dee23` — `dna.analyze` + `dna.ingest` on the usage ledger, prechecks, scheduler skip, 402/429 documented; rebuilt; e2e 21/21; `dna.ingest` rows verified end to end in `AiUsageEvent`. Owner items O-1..O-3 open. |
 | 2026-09-15 | Review findings R-1..R-8 + the seed-clone defect fixed in lane L5 (merged `fcbda23ea`); test DB recreated from the fixed seed; e2e 21/21 live; rule 05 row refined (API key binds to its human); fix worktree removed. Status: Review — awaiting owner confirmation; dev DB still needs `RUN_SEED=all pnpm db:seed` (or `pnpm db:all`). |
