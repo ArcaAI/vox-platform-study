@@ -1,53 +1,49 @@
-# Webhook Service
+# Webhook Service — `Webhook` CRUD + outbound delivery
 
-Application-layer service for the `Webhook` model — outbound HTTP callbacks
-that fire on `SysEvent` types subscribed per row. The service owns CRUD of
-the webhook registration; the actual HTTP delivery lives in
-`webhook-delivery.processor.ts` in this same folder (a `@Processor(JobQueue.SysEvent)`
-BullMQ consumer — see its header for the match/sign/POST/record contract).
+Application-layer service for the `Webhook` model — outbound HTTP callbacks that fire on `SysEvent`
+types subscribed per row. Public surface: `apps/api/src/modules/webhook/webhook.controller.ts`
+(`@Controller('admin/webhooks')`).
 
-**As of TASK-727**: the pointer above used to name
-`@arcaai/applications/src/services/notification/` as the delivery path. That
-was wrong — `NotificationService` is a plain CRUD service over the unrelated
-`Notification` model, with no queue processor and no reference to `Webhook`
-anywhere in its file. Verified by grep across `packages/applications/src`
-before this ticket's diff landed; corrected here so the next reader doesn't
-repeat the investigation.
+## Layout
 
-## Concurrency Model
+| Path | What it holds |
+|---|---|
+| `webhook.service.ts` | `WebhookService extends BaseService` — CRUD over `Webhook` |
+| `IWebhookService.ts` | Interface + `Symbol` token |
+| `webhook.dto.mapper.ts` | Entity to Response DTO mapping |
+| `webhook-delivery.processor.ts` | `@Processor(JobQueue.SysEvent)` BullMQ consumer — matches subscribed events, signs, POSTs, and records the delivery in `WebhookRunHistory` |
+| `dto/` | Request/response DTOs, including `UpdateWebhookRequest` |
+| `__tests__/` | Vitest unit tests |
 
-This service uses **optimistic concurrency control** (TASK-302 Stream D). Every
-write to a row's mutable fields goes through
-`updateWithVersion(id, entity, expectedVersion)` on the repository, which issues
-a Postgres CAS via
-`prisma.webhook.updateMany({ where: { id, version: expectedVersion }, data: { ..., version: { increment: 1 } } })`.
-When `count === 0` we re-fetch to disambiguate `DataNotFoundException` from
-`OptimisticConcurrencyException`.
+## How it works
 
-### Inbound contract
+### CRUD vs delivery
 
-- **HTTP**: clients must send `If-Match: "<n>"` (RFC 7232) on PATCH. The
-  response carries `ETag: "<n+1>"`. Missing `If-Match` → 428; drifted version
-  → 412 with `{ currentVersion }`.
-- **Service-to-service / Bull jobs**: pass `expectedVersion` in the request
-  body (`UpdateWebhookRequest.expectedVersion`). Wrap in
-  `pRetry({ retries: 3, factor: 2 })` with a re-fetch between attempts.
-  **Never auto-retry human writes.**
+This service owns CRUD of the webhook registration only. Actual HTTP delivery — matching an
+incoming `SysEvent` against subscribed `Webhook` rows, HMAC-signing the payload, POSTing it, and
+recording the attempt — happens in `webhook-delivery.processor.ts`'s BullMQ consumer, not in
+`webhook.service.ts`. Read that file's header for the match/sign/POST/record contract before
+changing delivery behavior.
 
-### Out of scope
+### Concurrency model
 
-- Single-row writes only. There is no bulk PATCH for webhooks today.
-- `WebhookRunHistory` is append-only and is not version-guarded — it is
-  write-once.
-- Soft-delete bumps `_version` automatically; calls that race a soft-delete
-  get a 412 (correct — prevents resurrecting a disabled webhook).
+Writes go through `updateWithVersion(id, entity, expectedVersion)` on the repository, issuing a
+Postgres CAS (`prisma.webhook.updateMany({ where: { id, version: expectedVersion }, ... })`). HTTP
+clients send `If-Match: "<n>"` on PATCH; missing `If-Match` is 428, a drifted version is 412 with
+`{ currentVersion }`. Service-to-service callers pass `expectedVersion` in `UpdateWebhookRequest`
+instead and should re-fetch and retry with backoff — never auto-retry a human-initiated write.
 
-### Observability
+## Gotchas
 
-`optimistic_lock_conflict_total{model="Webhook", route="<method path>"}` on
-the `/metrics` endpoint. Alert threshold: > 0.5 % of PATCHes.
+- `services/notification/` is an UNRELATED plain CRUD service over the `Notification` model — it
+  has no queue processor and no reference to `Webhook` anywhere in its file. Do not confuse it with
+  the delivery path above.
+- Single-row writes only — there is no bulk PATCH for webhooks.
+- `WebhookRunHistory` is append-only and is not version-guarded — it is write-once.
+- Soft-delete bumps `_version` automatically; a write that races a soft-delete gets a 412 (correct
+  — it prevents resurrecting a disabled webhook).
 
-### References
+## Related
 
-- [TASK-302 Stream D plan](../../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md)
-- [Research doc](../../../../../research/architecture/system-config-multi-tenancy/04-optimistic-locking.md)
+- [`@arcaai/applications` README](../../../README.md) — `BaseService`, sys-event fan-out
+- [`05-nestjs-api.md`](../../../../../.claude/rules/05-nestjs-api.md) — ETag/If-Match OCC pattern
