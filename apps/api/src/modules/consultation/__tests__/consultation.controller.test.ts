@@ -6,6 +6,16 @@ import { ConsultationController } from '../consultation.controller';
 // ─── Test Fixtures ──────────────────────────────────────────────────────────
 
 const DOCTOR_A = 'doctor-a-id';
+
+/**
+ * TASK-972 Lane 4 — the three finish-half handlers take the Express request so they can tell an
+ * API key from a human JWT (`ConsultationController.callerOf`). These fixtures exercise the
+ * HUMAN path, so the stand-in carries no principal and `callerOf` falls back to CLS, which is
+ * what the in-process/no-HTTP-layer path does. The API-key and service-account classes are
+ * covered by `consultation.controller.finish-plane.task972.test.ts`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a bare Express stand-in; the handlers read only the three auth fields
+const NO_PRINCIPAL_REQ = {} as any;
 const DOCTOR_B = 'doctor-b-id';
 const TENANT_ID = 'tenant-1';
 const PATIENT_SHARED = 'patient-shared';
@@ -803,7 +813,7 @@ describe('ConsultationController', () => {
     });
 
     it('updateSummary should enforce ownership', async () => {
-      await expect(controller.updateSummary(CONSULTATION_OWN, 'sum-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
+      await expect(controller.updateSummary(CONSULTATION_OWN, 'sum-1', {} as any, undefined, NO_PRINCIPAL_REQ)).rejects.toThrow(ForbiddenException);
     });
 
     it('extractEntities should enforce ownership', async () => {
@@ -827,11 +837,11 @@ describe('ConsultationController', () => {
     });
 
     it('approveSummary should enforce ownership', async () => {
-      await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
+      await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined, NO_PRINCIPAL_REQ)).rejects.toThrow(ForbiddenException);
     });
 
     it('close should enforce ownership', async () => {
-      await expect(controller.close(CONSULTATION_OWN, undefined)).rejects.toThrow(ForbiddenException);
+      await expect(controller.close(CONSULTATION_OWN, undefined, undefined, NO_PRINCIPAL_REQ)).rejects.toThrow(ForbiddenException);
     });
 
     it('reopen should enforce ownership', async () => {
@@ -855,9 +865,17 @@ describe('ConsultationController', () => {
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
       summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true } as any, undefined);
+      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true } as any, undefined, NO_PRINCIPAL_REQ);
 
-      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: true });
+      // TASK-972 Lane 4 — the sign-off now carries WHO it is attested by and WHICH credential
+      // submitted it. These fixtures call the handler with no `req`, which is the in-process
+      // path: `callerOf` falls back to CLS, and CLS says this is a human JWT.
+      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', {
+        overrideSafetyFlag: true,
+        expectedVersion: undefined,
+        clinicianUserId: undefined,
+        caller: { credentialClass: 'jwt', principalId: DOCTOR_A },
+      });
     });
 
     it('passes overrideSafetyFlag undefined when no body is supplied (default sign)', async () => {
@@ -865,9 +883,14 @@ describe('ConsultationController', () => {
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
       summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined);
+      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined, NO_PRINCIPAL_REQ);
 
-      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: undefined });
+      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', {
+        overrideSafetyFlag: undefined,
+        expectedVersion: undefined,
+        clinicianUserId: undefined,
+        caller: { credentialClass: 'jwt', principalId: DOCTOR_A },
+      });
     });
   });
 
@@ -882,9 +905,14 @@ describe('ConsultationController', () => {
       const closed = makeConsultation({ status: 'CLOSED_COMPLETE' });
       consultationService.closeConsultation.mockResolvedValue(closed);
 
-      const result = await controller.close(CONSULTATION_OWN, 3);
+      const result = await controller.close(CONSULTATION_OWN, 3, undefined, NO_PRINCIPAL_REQ);
 
-      expect(consultationService.closeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, 3);
+      // TASK-972 Lane 4 — close now names the attributed clinician (absent for a human closing
+      // their own consultation) and the submitting credential.
+      expect(consultationService.closeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, 3, {
+        clinicianUserId: undefined,
+        caller: { credentialClass: 'jwt', principalId: DOCTOR_A },
+      });
       expect(result).toEqual(closed);
     });
 
@@ -934,11 +962,7 @@ describe('ConsultationController', () => {
       const body = { departmentId: 'dept-1', metadata: { note: 'x' } };
       const result = await controller.update(CONSULTATION_OWN, body as any, undefined);
 
-      expect(consultationService.updateConsultation).toHaveBeenCalledWith(
-        CONSULTATION_OWN,
-        body,
-        undefined,
-      );
+      expect(consultationService.updateConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, body, undefined);
       expect(result).toEqual(updated);
     });
 
@@ -951,7 +975,7 @@ describe('ConsultationController', () => {
       const closed = makeConsultation({ status: 'CLOSED' });
       consultationService.closeConsultation.mockResolvedValue(closed);
 
-      const result = await controller.close(CONSULTATION_OWN, undefined);
+      const result = await controller.close(CONSULTATION_OWN, undefined, undefined, NO_PRINCIPAL_REQ);
 
       expect(result).toEqual(closed);
     });
