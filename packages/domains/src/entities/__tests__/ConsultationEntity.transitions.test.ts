@@ -36,6 +36,7 @@ const ALL_STATUSES: ConsultationStatus[] = [
 // one row per legal, non-reflexive transition.
 const LEGAL_TRANSITIONS: Array<[ConsultationStatus, ConsultationStatus]> = [
   [ConsultationStatus.OPEN, ConsultationStatus.PRIMED],
+  [ConsultationStatus.OPEN, ConsultationStatus.CLOSED_INCOMPLETE],
   [ConsultationStatus.PRIMED, ConsultationStatus.RECORDING],
   [ConsultationStatus.RECORDING, ConsultationStatus.DRAINING],
   [ConsultationStatus.DRAINING, ConsultationStatus.RECORDING],
@@ -150,8 +151,8 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
     }
   }
 
-  it('the count of legal transitions equals the matrix row count (22)', () => {
-    expect(LEGAL_TRANSITIONS.length).toBe(22);
+  it('the count of legal transitions equals the matrix row count (23)', () => {
+    expect(LEGAL_TRANSITIONS.length).toBe(23);
 
     let legalCount = 0;
     for (const from of ALL_STATUSES) {
