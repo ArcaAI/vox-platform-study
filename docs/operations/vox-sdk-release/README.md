@@ -1,25 +1,36 @@
-# Vox SDK Release — Operator Runbook
+# Vox SDK Release — publishing `@arcaai/vox` and its family to GitHub Packages
 
-> How to build and publish the `@arcaai/vox` SDK family to GitHub Packages.
-> This is a **manual, ad hoc** release path — the scaffolded GitLab CI pipeline
-> (`.gitlab/ci/publish.yml`) targets the GitLab Package Registry instead, and is
-> not wired up (Changesets isn't installed; see "Known gaps" below). Until one
-> pipeline is finished and adopted, this page is the source of truth for cutting
-> a release.
+How the `@arcaai/vox` SDK family is versioned and published to GitHub Packages. As of TASK-931
+this is **CI-only**: pushing a protected `SDK-<ver>` or `ALL-<ver>` tag runs the `publish-sdk`
+GitLab CI job (`.gitlab/ci/publish.yml`), which runs `pnpm changeset version` then
+`pnpm changeset publish`, authenticated by a masked `GITHUB_PACKAGES_TOKEN` CI variable. The manual,
+operator's-machine steps below this point are kept as a documented fallback, not the primary path —
+the last several releases (through 3.5.0) were cut via CI.
+
+## Layout
+
+This directory holds only this file.
 
 ## Package inventory
 
+Nine packages move together in one Changesets `fixed` group (`.changeset/config.json`):
+
 | Package | Path | Role |
 |---|---|---|
-| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on all four packages below |
+| `@arcaai/vox` | `packages/agentic-sdk-v2/` | The SDK itself — depends on all the packages below except `pipeline` |
+| `@arcaai/vox-node` | `packages/vox-node/` | Non-browser server SDK sibling |
+| `@arcaai/vox-codegen` | `packages/vox-codegen/` | Build-time CLI, published alongside the family |
 | `@arcaai/room` | `packages/room/` | Audio capture / `AudioTrack` / processor pipeline |
 | `@arcaai/stt` | `packages/stt/` | Whisper STT plugin for `@arcaai/room` |
 | `@arcaai/vad` | `packages/vad/` | Silero VAD plugin |
 | `@arcaai/noise-filter` | `packages/noise-filter/` | RNNoise WASM plugin |
 | `@arcaai/med-ner` | `packages/med-ner/` | Optional peer — browser medical NER |
-| `@arcaai/pipeline` | `packages/pipeline/` | Sequential/parallel processing primitives — **not** a `vox` dependency; build/publish separately if needed |
+| `@arcaai/pipeline` | `packages/pipeline/` | Sequential/parallel processing primitives — not a `vox` runtime dependency, but versioned with the family |
 
-All seven carry matching `publishConfig` and `repository` fields:
+`@arcaai/vox-node-codegen` is `private: true` and is deliberately in the Changesets `ignore` list —
+it is never published, only version-aligned by hand alongside the rest.
+
+All publishable packages carry matching `publishConfig`/`repository` fields:
 
 ```json
 "publishConfig": {
@@ -32,36 +43,46 @@ All seven carry matching `publishConfig` and `repository` fields:
 }
 ```
 
-`registry` is the GitHub Packages npm endpoint (same for every package regardless of
-which repo owns it). `repository.url` is what actually ties a published package to a
-GitHub repo/org for permission checks — it must point at a repo the publishing token
-has write access to. This has changed twice already this release cycle (previously
-`Arca-AgenticSDK`, briefly `packages` from an unrelated concurrent edit) — **confirm
-it still reads `ArcaAI/project-hope` before publishing** if it's been a while.
+`registry` is the GitHub Packages npm endpoint. `repository.url` is what ties a published package
+to a GitHub repo/org for permission checks — it must point at a repo the publishing token has write
+access to.
 
-## One-time setup (per machine)
+## How it works
 
-1. Create a GitHub PAT (classic) with `write:packages` + `read:packages` scopes,
-   with write access to `ArcaAI/project-hope`.
-2. Add the auth line to your **global** `~/.npmrc` (never commit a token to the repo):
-   ```
-   //npm.pkg.github.com/:_authToken=YOUR_TOKEN_HERE
-   ```
-
-## Release steps
+### The CI path (current)
 
 ```bash
-# Bump all SDK packages together (recommended so workspace:* rewrites stay aligned)
-for p in agentic-sdk-v2 room stt vad noise-filter med-ner pipeline vox-codegen vox-node vox-node-codegen; do
-  node -e "
-    const fs = require('fs');
-    const path = 'packages/$p/package.json';
-    const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-    pkg.version = '3.0.1';
-    fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(pkg.name + ' -> ' + pkg.version);
-  "
-done
+pnpm changeset               # author a changeset for your change
+# commit the generated .changeset/<name>.md with your code change
+```
+
+On release: bump versions locally with `pnpm changeset:version` (or let CI's own `pnpm changeset
+version` step do it), push a protected `SDK-<ver>` or `ALL-<ver>` tag (or land on the legacy
+`release-sdk` branch, still supported for back-compat). The `publish-sdk` job then:
+
+1. Writes a `.npmrc` authenticating `@arcaai:registry` against `npm.pkg.github.com` with
+   `GITHUB_PACKAGES_TOKEN` — and fails loudly, before publishing anything, if that variable is
+   unset (rather than letting `changeset publish` hit an anonymous registry and 401 per package).
+2. Builds every publishable package's dependency chain via `turbo build`, INCLUDING
+   `@arcaai/json-schema-subset` and `@arcaai/vox-codegen` — both were missing from this build list
+   before TASK-931, which would have shipped a broken install or silently skipped `vox-codegen`.
+3. Runs `pnpm changeset publish`, which honors each package's own `publishConfig.registry` — so
+   only `npm.pkg.github.com` is ever addressed, never a GitLab registry.
+4. Commits the version bump back to the `release-sdk` branch.
+
+The `publish` stage runs after `test`, so the full test suite gates every SDK release.
+
+### The manual fallback (operator's machine)
+
+Use only when CI cannot run. One-time setup: a GitHub PAT (classic) with `write:packages` +
+`read:packages`, write access to `ArcaAI/project-hope`, added to your global `~/.npmrc`:
+
+```
+//npm.pkg.github.com/:_authToken=YOUR_TOKEN_HERE
+```
+
+```bash
+# Bump every package in the fixed group to the same version first (see Versioning below).
 
 # 1. Build vox + its workspace deps (room, stt, vad, noise-filter, med-ner)
 pnpm sdk:build
@@ -73,66 +94,62 @@ pnpm --filter @arcaai/noise-filter publish --no-git-checks
 pnpm --filter @arcaai/stt publish --no-git-checks
 pnpm --filter @arcaai/med-ner publish --no-git-checks
 
-# 3. Publish vox last
+# 3. Publish vox and its siblings last
 pnpm --filter @arcaai/vox publish --no-git-checks
 pnpm --filter @arcaai/vox-codegen publish --no-git-checks
 pnpm --filter @arcaai/vox-node publish --no-git-checks
-pnpm --filter @arcaai/vox-node-codegen publish --no-git-checks
 
-# 4. (Optional, separate — not a vox dependency)
+# 4. Pipeline (not a vox dependency, but part of the fixed group)
 pnpm --filter @arcaai/pipeline build
 pnpm --filter @arcaai/pipeline publish --no-git-checks
 ```
 
-`pnpm sdk:build` is `turbo run build --filter=@arcaai/vox...` (root `package.json`) —
-the `...` suffix builds `vox` plus everything it depends on.
+`pnpm sdk:build` is `turbo run build --filter=@arcaai/vox...` (root `package.json`) — the `...`
+suffix builds `vox` plus everything it depends on.
 
 ### Versioning
 
-All seven packages are currently pinned to `2.0.0` for this release. Bump the
-`version` field in the relevant `package.json` before re-publishing — the registry
+Prefer `pnpm changeset` + `pnpm changeset:version` over hand-editing `package.json` — the whole
+`fixed` group moves together, and `changeset version` also generates CHANGELOGs. The registry
 rejects re-publishing an existing version with a 409.
 
 ### `--no-git-checks`
 
-`pnpm publish` normally refuses to run on a dirty working tree or an unpushed
-branch. `--no-git-checks` bypasses that. It does **not** affect auth or the
-published artifact — it's purely a workflow gate. Prefer committing first and
-dropping the flag when the tree is clean.
+`pnpm publish` normally refuses to run on a dirty working tree or an unpushed branch.
+`--no-git-checks` bypasses that. It does not affect auth or the published artifact — it is purely
+a workflow gate. Prefer committing first and dropping the flag when the tree is clean.
 
 ### `workspace:*` dependencies
 
-`@arcaai/vox`'s `dependencies`/`peerDependencies` reference the other six packages
-as `workspace:*`. `pnpm publish` rewrites these to the real version being published
-automatically — no manual edit needed. But it means **publish order matters**:
-a consumer installing `@arcaai/vox` needs the referenced versions of `room`, `stt`,
-`vad`, `noise-filter`, and `med-ner` to already exist on the registry.
+`@arcaai/vox`'s `dependencies`/`peerDependencies` reference the other packages as `workspace:*`.
+`pnpm publish` (and `changeset publish`) rewrites these to the real version being published
+automatically. This means publish order matters in the manual path: a consumer installing
+`@arcaai/vox` needs the referenced versions of `room`, `stt`, `vad`, `noise-filter`, and `med-ner`
+to already exist on the registry.
 
-### `files` field
+## Gotchas
 
-`@arcaai/vox` and `@arcaai/stt` didn't originally carry a `files` allowlist (unlike
-`room`/`vad`/`noise-filter`/`med-ner`, which ship `dist` + `src` + `README.md`).
-Both now have `files: ["dist", "src", "README.md"]` added for consistency — without
-it, `npm pack` includes everything not `.gitignore`d, bloating the tarball.
+- **`GIT_LFS_SKIP_SMUDGE` must stay `"0"` for this job.** `@arcaai/noise-filter`'s `files` allowlist
+  ships `assets/rnnoise.wasm`, an LFS object — an LFS pointer stub would publish a broken package.
+- **A GitLab-registry `.npmrc` can never authenticate this publish.** `changeset publish` honors
+  each package's own `publishConfig.registry` (`npm.pkg.github.com`), so writing GitLab registry
+  credentials into `.npmrc` — an earlier version of this pipeline's mistake — authenticates a
+  registry that is never addressed.
+- **`@arcaai/vox-node-codegen` refuses `pnpm publish`** (it is `private: true`) — bump its version
+  for alignment only, never try to publish it.
+- **Nine packages move together**; publishing a subset out of the `fixed` group risks a version
+  skew that breaks `workspace:*` resolution for whichever package didn't move.
 
-## Known gaps
+## Related
 
-- **CI publish pipeline targets the wrong registry.** `.gitlab/ci/publish.yml` is
-  fully scaffolded (Changesets version/publish flow, triggered by a `SDK-*`/`ALL-*`
-  git tag) but publishes to the **GitLab** Package Registry, not GitHub Packages —
-  despite five of the seven package.jsons declaring `publishConfig.registry:
-  npm.pkg.github.com`. `@changesets/cli` isn't installed and `.changeset/` doesn't
-  exist, so the pipeline isn't actually runnable yet.
-- **Decide one path**: either finish the GitLab CI pipeline as documented (GitLab
-  registry, Changesets), or rework it to push to GitHub Packages instead (matching
-  the package.json declarations) — but not both, and not this manual path
-  indefinitely.
-- `@arcaai/pipeline` isn't part of `@arcaai/vox`'s dependency graph despite living
-  alongside the other SDK packages — it needs its own build + publish step if a
-  release should include it.
+- [`../../development-patterns-and-standards.md`](../../development-patterns-and-standards.md) — verified code patterns, including SDK conventions
+- [`../../../.claude/rules/08-vox-sdk.md`](../../../.claude/rules/08-vox-sdk.md) — SDK package map, entry points, and the browser/node boundary
+- `.gitlab/ci/publish.yml` — the `publish-sdk` job this page describes
+- `.changeset/config.json` — the fixed version group and ignore list
 
 ## Release log
 
 | Date | Version | How | Notes |
 |---|---|---|---|
-| 2026-09-11 | 3.3.0 | This runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in the order above under the global `~/.npmrc` token (`npm whoami` → `dohuta`); every `npm view <pkg>@3.3.0` answers `3.3.0`. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — it is bumped for alignment only. The CI `publish-sdk` jobs on the `SDK-3.3.0` / `ALL-2.2.0` tag pipelines were cancelled so they could not race this path. Two of the "Known gaps" above are now stale: `@changesets/cli` IS installed (`.changeset/config.json`, nine-package `fixed` group) and `.gitlab/ci/publish.yml` DOES target GitHub Packages (`GITHUB_PACKAGES_TOKEN`); the `SDK-` tag pipeline itself was un-creatable until `a6e16b075` (image scans needed builds an SDK tag never runs). Until the owner adopts the CI path, this runbook stays the source of truth. |
+| 2026-09-11 | 3.3.0 | Manual runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in dependency order under the operator's global `~/.npmrc` token. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — bumped for alignment only. |
+| current | 3.5.0 | CI `publish-sdk` job, protected `SDK-3.5.0` tag, `pnpm changeset publish` | All nine fixed-group packages at `3.5.0` (`@arcaai/vox-node-codegen` stayed at `3.3.0`, aligned by hand). Fixed alongside this release (TASK-931): `@arcaai/json-schema-subset` and `@arcaai/vox-codegen` were missing from the CI build list; the manual path's registry confusion (a GitLab-targeted `.npmrc` that no publish ever addressed) is resolved. The CI path is now the one actually used to cut a release — treat the manual steps above as the fallback, not the default. |
