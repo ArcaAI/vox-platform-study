@@ -127,6 +127,39 @@ export const BYTE_SOURCES = ['wire', 'app'] as const;
 export type ByteSource = (typeof BYTE_SOURCES)[number];
 
 /**
+ * `origin` — WHICH SURFACE asked for this DNA job (TASK-974 §9.2).
+ *
+ * `trigger` above answers the same question for the inference planes, and this
+ * is deliberately NOT a fourth value on it: `trigger` names a PRODUCT ACTIVITY
+ * shared across capabilities (an agent invocation, a consultation), whereas
+ * these three are the three entry points of ONE plane — a clinician asking for
+ * their own profile, a machine submitting a batch, and the monthly rebuild
+ * nobody asked for. Widening `trigger` would make every other lane's facet
+ * carry a value only DNA can produce.
+ *
+ * It is a DIMENSION and not a description: "did this tenant's DNA spend come
+ * from integrations or from the scheduler" is the first question a doubled bill
+ * raises, and `GenerateDnaReportJobPayload.origin` already carries exactly
+ * these three.
+ */
+export const USAGE_ORIGINS = ['generate', 'ingest', 'scheduler'] as const;
+
+export type UsageOrigin = (typeof USAGE_ORIGINS)[number];
+
+/**
+ * `credentialClass` — WHICH CLASS OF CREDENTIAL submitted the work (TASK-974 §9.2).
+ *
+ * The platform's three machine/human classes, spelled as
+ * `DnaJobRequestedBy.credentialClass` spells them. It records the SHAPE of the
+ * caller, never the caller: a credential id is an opaque id that would pass the
+ * shape check and has no business in the billing plane, which is exactly why
+ * this key is a closed three-value vocabulary rather than an open id slot.
+ */
+export const USAGE_CREDENTIAL_CLASSES = ['jwt', 'api-key', 'service-account'] as const;
+
+export type UsageCredentialClass = (typeof USAGE_CREDENTIAL_CLASSES)[number];
+
+/**
  * The keys whose VALUE vocabulary is closed, not merely shaped.
  *
  * The shape check (`ENUM_ISH_VALUE`) is a PHI control — it stops prose. This is
@@ -141,6 +174,11 @@ const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
   leg: USAGE_LEGS,
   storageClass: STORAGE_CLASSES,
   byteSource: BYTE_SOURCES,
+  // TASK-974 — both closed on arrival rather than pinned by a test later:
+  // `ingestion` for `ingest` and `apikey` for `api-key` are the near-misses
+  // that would otherwise fork the facet silently.
+  origin: USAGE_ORIGINS,
+  credentialClass: USAGE_CREDENTIAL_CLASSES,
 };
 
 /**
@@ -167,6 +205,8 @@ const CLOSED_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
  * | `byteSource` | whether a byte count is the wire or an app-level proxy ({@link BYTE_SOURCES}) |
  * | `nodeId` | WHICH NODE of a workflow graph spent this (open — the author names it) |
  * | `workflowVersionId` | WHICH PUBLISHED VERSION of the definition that node belongs to |
+ * | `origin` | WHICH SURFACE asked for a DNA job ({@link USAGE_ORIGINS}) |
+ * | `credentialClass` | WHICH CLASS OF CREDENTIAL submitted it ({@link USAGE_CREDENTIAL_CLASSES}) |
  */
 export const USAGE_ATTRIBUTE_KEYS = {
   channelCount: 'number',
@@ -190,6 +230,9 @@ export const USAGE_ATTRIBUTE_KEYS = {
   // TASK-957 F-8 — node identity on the workflow lane.
   nodeId: 'string',
   workflowVersionId: 'string',
+  // TASK-974 §9.2 — the DNA plane's two dimensions.
+  origin: 'string',
+  credentialClass: 'string',
 } as const satisfies Record<string, UsageAttributeType>;
 
 /** The typed attribute bag emitters build. */
@@ -236,6 +279,10 @@ export interface UsageAttributes {
    * reconstruction from timestamps.
    */
   workflowVersionId?: string | null;
+  /** Closed vocabulary, ENFORCED — see {@link USAGE_ORIGINS}. */
+  origin?: UsageOrigin | null;
+  /** Closed vocabulary, ENFORCED — see {@link USAGE_CREDENTIAL_CLASSES}. */
+  credentialClass?: UsageCredentialClass | null;
 }
 
 /**

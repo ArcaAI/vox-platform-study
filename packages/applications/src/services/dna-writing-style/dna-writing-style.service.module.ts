@@ -15,6 +15,10 @@ import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.ser
 import { ConfigResolverModule } from '../config-resolver';
 import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.service.module';
 import { TextRequestServiceModule } from '../text-request/text-request.service.module';
+import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
+import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
+import { BillingServiceModule } from '../billing/billing.service.module';
+import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
 
 @Module({
   imports: [
@@ -39,6 +43,24 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
     // `UserSettings` repository the self-service write goes through.
     ConfigResolverModule,
     PhiRedactionServiceModule, // hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-TEXT call
+    // TASK-974 §9.2 (D-5) — the billing plane.
+    //
+    // `UsageLedgerServiceModule` supplies `IUsageLedgerService` (the processor's `dna.analyze`
+    // batch and the service's `dna.ingest` row) and `IComputeDeviceResolver` (which device a
+    // self-hosted engine ran on, so the occupancy seconds are a GPU second rather than a CPU
+    // one — they are priced an order of magnitude apart). `CoreUnitOfWorkService` comes from
+    // `CoreDatabaseModule` above: it is what lets the outbox row commit WITH the report.
+    UsageLedgerServiceModule,
+    // The two PRE-checks, run before `dnaQueue.add` rather than after the model has already
+    // spent: `assertMeterQuota(…, 'monthlyLlmTokens')` (429) and `assertSpendLimit` (402).
+    EntitlementsServiceModule,
+    BillingServiceModule,
+    // `IMetricsService` for the `hope_usage_emission_failed_total` counter (TASK-957 F-5).
+    // Imported EXPLICITLY — it is not a `@Global()` module and `CommonServiceModule` does not
+    // re-export it, so without this line the counter would silently be `null` in production and
+    // a lost DNA emission would be visible only in a log line, which is the exact finding that
+    // counter exists to answer.
+    MetricsServiceModule,
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [

@@ -1,3 +1,4 @@
+import { Counter } from 'prom-client';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -5,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { Job } from 'bullmq';
 import {
+  AiDeploymentKind,
   DnaWritingStyleReportRepository,
   DnaWritingStyleVersionRepository,
   DnaUsageRecordRepository,
@@ -19,6 +21,8 @@ import {
   AgentRepository,
   AgentTask,
   CoreDatabaseService,
+  CorePrisma,
+  CoreUnitOfWorkService,
   JobQueue,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
@@ -38,6 +42,19 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { GenerateDnaReportJobPayload, DnaReportJobResult } from './dna-writing-style.service';
 import { JobMetricsService } from '../baseServices/observability/job-metrics.service';
+import { IMetricsService } from '../baseServices/metrics/IMetricsService';
+import { USAGE_EMISSION_FAILED_METRIC } from '../agent-trajectory/agent-trajectory.service';
+import {
+  buildGuardrailUsageBatches,
+  buildLlmUsageBatches,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from '../consultation/summary/text-usage';
+import { IComputeDeviceResolver, IUsageLedgerService, type ComputeAugmentedBatch, type ComputeDevice } from '../usageLedger';
+import type { UsageEventBatchInput } from '../usageLedger/dto';
+import type { UsageOrigin } from '../usageLedger/usage-attributes';
 import { IActiveUserContext } from '../../interfaces';
 
 const CONTEXT_DEFAULTS = {
@@ -68,6 +85,15 @@ function stripProvider(override: Record<string, unknown>): Record<string, unknow
 export class DnaWritingStyleProcessor extends WorkerHost {
   private readonly logger = new Logger(DnaWritingStyleProcessor.name);
   private readonly textServiceUrl: string;
+  /**
+   * TASK-974 §9.2 — the ALERTABLE half of "this DNA analysis was not billed".
+   *
+   * A `warn` line alone is what TASK-957 F-5 found to be invisible; this is the counter that
+   * lane registered (`AgentTrajectoryService`, same name and same label set, so the two are one
+   * `sum by (reason)`). `null` when no metrics service is composed — the warn line beside every
+   * increment is then the only record, which is the pre-metering situation and not a regression.
+   */
+  private readonly emissionFailedCounter: Counter<string> | null;
 
   constructor(
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
@@ -137,8 +163,25 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Optional() @Inject(AgentResolverService) private readonly agentResolver?: AgentResolverService,
     @Optional() @Inject(TextAgentResolverService) private readonly textAgents?: TextAgentResolverService,
     @Optional() @Inject('CORE_DATABASE_SERVICE') private readonly databaseService?: CoreDatabaseService,
+    // ─── TASK-974 §9.2 (D-5): the METERING seam ───────────────────────────────────────────
+    //
+    // The analyst call is the most expensive single LLM call the platform makes — a whole
+    // learning corpus in — and it recorded nothing at all before this ticket. These four are
+    // `@Optional()` and TRAILING for the same reason everything above them is: the positional
+    // `new DnaWritingStyleProcessor(...)` fixtures keep their arity, and with none of them wired
+    // the persistence path is byte-identical to what it was (four plain creates, no transaction).
+    // Production DI supplies all four — `DnaWritingStyleServiceModule` imports
+    // `UsageLedgerServiceModule`, and `CoreUnitOfWorkService` comes from `CoreDatabaseModule`.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // The DOMAINS unit of work — `runInTransaction` is the form production callers actually use
+    // (the outbox drainer, `sttInternal.service.ts`, `AgentTrajectoryService`), NOT the
+    // identically-named unwired class under `services/baseServices`.
+    @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    @Optional() @Inject(IMetricsService) metrics?: IMetricsService,
   ) {
     super();
+    this.emissionFailedCounter = DnaWritingStyleProcessor.registerEmissionFailedCounter(metrics, this.logger);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
@@ -442,6 +485,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         previousLatest.isLatest = false;
         await this.dnaReportRepository.update(previousLatest.id, previousLatest);
       }
+      // NOTE the demotion above stays OUTSIDE the transaction below, deliberately. The
+      // metering-failure path re-persists the four rows on their own, and if the demotion had
+      // rolled back with them nothing would re-issue it — leaving two `isLatest` reports for one
+      // doctor, which is worse than either problem it would have solved.
 
       const reportEntity = DnaWritingStyleReportFactory.CreateDnaWritingStyleReport({
         tenantId,
@@ -459,42 +506,13 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         this.dnaReportRepository.encryptFieldsIntoEntity(reportEntity, this.secretsService!),
       );
 
-      const saved = await this.dnaReportRepository.create(reportEntity);
-
-      const versionEntity = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
-        tenantId,
-        dnaReportId: saved.id,
-        versionNumber: 1,
-        reportData,
-        styleText,
-        changeReason: 'AI-generated initial analysis',
-        changedBy: userId,
-      });
-
-      await this.encryptBestEffort('DnaWritingStyleVersion', () =>
-        this.dnaVersionRepository.encryptFieldsIntoEntity(versionEntity, this.secretsService!),
-      );
-
-      await this.dnaVersionRepository.create(versionEntity);
-
-      const usageEntity = DnaUsageRecordFactory.CreateDnaUsageRecord({
+      const saved = await this.persistReportWithUsage({ reportEntity, reportData, styleText, resolvedTemplate }, textResponse, {
         tenantId,
         doctorId,
-        dnaReportId: saved.id,
-        dnaVersionNumber: 1,
+        userId,
+        jobId: job.data.jobId,
+        origin: job.data.origin,
       });
-
-      await this.dnaUsageRecordRepository.create(usageEntity);
-
-      if (resolvedTemplate) {
-        const promptUsageEntity = PromptUsageRecordFactory.CreatePromptUsageRecord({
-          tenantId,
-          doctorId,
-          promptTemplateId: resolvedTemplate.id,
-          promptVersionNumber: resolvedTemplate.currentVersionNumber ?? 1,
-        });
-        await this.promptUsageRecordRepository.create(promptUsageEntity);
-      }
 
       const duration = endTimer();
       this.jobMetrics.recordJobComplete(JobQueue.GenerateDnaReport, 'DnaWritingStyleProcessor', duration);
@@ -518,6 +536,204 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       this.logger.error(`DNA report generation failed: ${error}`);
       this.jobService.notifyFailed(job.data.jobId, `DNA generation failed: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Persist the report, its first version and the two explainability rows — and, in the SAME
+   * transaction, record what the analyst call consumed (TASK-974 §9.2, design D-5).
+   *
+   * ============================================================================
+   * WHY ONE TRANSACTION, AND WHY IT DEGRADES IN TWO DIRECTIONS
+   * ============================================================================
+   * `recordUsage(input, tx)` writes an outbox row, and passing `tx` is the whole reason the
+   * ledger has that parameter: usage can then never be lost by a crash between "the model ran"
+   * and "the usage was recorded", and can never be recorded for a report that rolled back. Both
+   * halves are money — the first is a revenue leak, the second is a charge for something that
+   * never happened. The four business writes were four separate `create` calls before this
+   * ticket; they are one unit of work now so the outbox row has something to commit WITH.
+   *
+   * TWO deliberate degradations, both copied from `ComprehensiveSummaryProcessor`:
+   *   - **Nothing to meter, or no ledger composed** ⇒ four plain creates, no transaction,
+   *     byte-identical to the pre-metering path. Metering is additive; it must never become a
+   *     precondition for saving a clinician's profile.
+   *   - **A metering failure is SWALLOWED**, the transaction rolls back, and the four rows are
+   *     re-persisted on their own. The model already ran and the job is about to notify
+   *     completion: "not metered" is recoverable from the provider's own usage API and is
+   *     counted on {@link USAGE_EMISSION_FAILED_METRIC}; a failed job over a delivered profile
+   *     is not recoverable at all.
+   */
+  private async persistReportWithUsage(
+    content: {
+      reportEntity: Parameters<DnaWritingStyleReportRepository['create']>[0];
+      reportData: Record<string, unknown>;
+      styleText: string;
+      resolvedTemplate: { id: string; currentVersionNumber?: number | null } | null;
+    },
+    textResponse: { usageDetail: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
+    attribution: { tenantId: string; doctorId: string; userId: string; jobId: string; origin?: UsageOrigin },
+  ): Promise<{ id: string }> {
+    // The `*Batches` siblings, not the single-batch forms: the BUILDER appends the compute and
+    // byte rows, and only these hand back the platform CPU leg of a BYOK call (the SYSTEM
+    // analyst served through a tenant's own key is exactly that case). `device` is resolved
+    // here because the builders are pure modules and the cascade is asynchronous.
+    const analyzePair = textResponse.usageDetail
+      ? buildLlmUsageBatches({
+          usage: textResponse.usageDetail,
+          tenantId: attribution.tenantId,
+          operation: 'dna.analyze',
+          doctorId: attribution.doctorId,
+          device: await this.llmDevice(attribution.tenantId, textResponse.usageDetail),
+        })
+      : null;
+    const guardrailPair = textResponse.guardrailUsage
+      ? buildGuardrailUsageBatches({
+          usage: textResponse.guardrailUsage,
+          tenantId: attribution.tenantId,
+          doctorId: attribution.doctorId,
+          fallbackRequestId: textResponse.usageDetail?.taskId ?? null,
+          // The guard call is its OWN provider call: a tenant may screen on one engine and
+          // analyse on another, so its device is resolved from ITS provider.
+          device: await this.llmDevice(attribution.tenantId, textResponse.guardrailUsage),
+        })
+      : null;
+
+    // The two dimensions the builders know nothing about, because they belong to the JOB rather
+    // than to the provider call: which DNA job produced these rows, and which surface asked for
+    // it. `buildLlmUsageBatches` takes neither, so they are stamped on `common` afterwards —
+    // the shape `withUsageAttributes` uses for `trigger` on the other lanes.
+    const inputs = [
+      ...DnaWritingStyleProcessor.stampJob(analyzePair, attribution.jobId, attribution.origin),
+      ...DnaWritingStyleProcessor.stampJob(guardrailPair, attribution.jobId, attribution.origin),
+    ];
+
+    const persist = async (tx?: CorePrisma.TransactionClient): Promise<{ id: string }> => {
+      const saved = await this.dnaReportRepository.create(content.reportEntity, tx);
+
+      const versionEntity = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
+        tenantId: attribution.tenantId,
+        dnaReportId: saved.id,
+        versionNumber: 1,
+        reportData: content.reportData,
+        styleText: content.styleText,
+        changeReason: 'AI-generated initial analysis',
+        changedBy: attribution.userId,
+      });
+      await this.encryptBestEffort('DnaWritingStyleVersion', () =>
+        this.dnaVersionRepository.encryptFieldsIntoEntity(versionEntity, this.secretsService!),
+      );
+      await this.dnaVersionRepository.create(versionEntity, tx);
+
+      const usageEntity = DnaUsageRecordFactory.CreateDnaUsageRecord({
+        tenantId: attribution.tenantId,
+        doctorId: attribution.doctorId,
+        dnaReportId: saved.id,
+        dnaVersionNumber: 1,
+      });
+      await this.dnaUsageRecordRepository.create(usageEntity, tx);
+
+      if (content.resolvedTemplate) {
+        const promptUsageEntity = PromptUsageRecordFactory.CreatePromptUsageRecord({
+          tenantId: attribution.tenantId,
+          doctorId: attribution.doctorId,
+          promptTemplateId: content.resolvedTemplate.id,
+          promptVersionNumber: content.resolvedTemplate.currentVersionNumber ?? 1,
+        });
+        await this.promptUsageRecordRepository.create(promptUsageEntity, tx);
+      }
+
+      return saved;
+    };
+
+    if (!this.usageLedgerService || !this.unitOfWorkService || inputs.length === 0) {
+      return persist();
+    }
+
+    try {
+      return await this.unitOfWorkService.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
+        const saved = await persist(tx);
+        for (const input of inputs) {
+          await this.usageLedgerService!.recordUsage(input, tx);
+        }
+        return saved;
+      });
+    } catch (error) {
+      this.emissionFailedCounter?.inc({ operation: 'dna.analyze', trigger: attribution.origin ?? 'none', reason: 'dropped' });
+      this.logger.warn({
+        message: 'Usage metering failed for a generated DNA writing-style report; persisting the report unmetered',
+        jobId: attribution.jobId,
+        doctorId: attribution.doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // The transaction rolled back, so NOTHING was written. Re-persist on its own — losing a
+      // clinician's profile over a metering problem is strictly worse than losing the meter.
+      return persist();
+    }
+  }
+
+  /**
+   * Stamp the JOB's own dimensions onto both halves of a built pair.
+   *
+   * `sessionId` is the DNA job, which is what lets every row one job produced — the analysis,
+   * its compute leg, and the guardrail call TEXT forwarded — be read back together;
+   * `attributesJson.origin` is which surface asked, the first facet a doubled DNA bill is
+   * grouped by. `platformBatch` is the BYOK split (`ComputeAugmentedBatch`): a caller that
+   * recorded only `batch` would lose the platform CPU leg of a tenant-funded call.
+   */
+  private static stampJob(pair: ComputeAugmentedBatch | null, jobId: string, origin?: UsageOrigin): UsageEventBatchInput[] {
+    if (!pair) return [];
+    const stamp = (batch: UsageEventBatchInput): UsageEventBatchInput => ({
+      ...batch,
+      common: {
+        ...batch.common,
+        sessionId: jobId,
+        attributesJson: { ...(batch.common.attributesJson ?? {}), ...(origin ? { origin } : {}) },
+      },
+    });
+    return pair.platformBatch ? [stamp(pair.batch), stamp(pair.platformBatch)] : [stamp(pair.batch)];
+  }
+
+  /**
+   * Which device this analysis's seconds were spent on — `null` when this job has no business
+   * naming one.
+   *
+   * A CLOUD or BYOK call is not the vendor's hardware: those seconds are the platform's own CPU
+   * spent CALLING the vendor, which the appender meters as `cpu` whatever is passed. The
+   * provider is read off TEXT's OWN usage block — the engine that actually served.
+   *
+   * Never raises: an unresolvable device costs one compute row, and losing the whole batch —
+   * tokens included — to protect a device label is the expensive direction to be wrong in.
+   */
+  private async llmDevice(tenantId: string, usage: TextUsageDetail): Promise<ComputeDevice | null> {
+    const provider = toLedgerProvider(usage.textProvider);
+    if (resolveDeployment(provider, usage.byok) !== AiDeploymentKind.SELF_HOSTED) return null;
+    try {
+      return (await this.computeDevice?.resolve(tenantId, provider)) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Compute device unresolved; metering this DNA analysis without a compute row',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /** See {@link USAGE_EMISSION_FAILED_METRIC} — the same name and label set the trajectory lane registers. */
+  private static registerEmissionFailedCounter(metrics: IMetricsService | undefined, logger: Logger): Counter<string> | null {
+    if (!metrics) return null;
+    try {
+      return metrics.createCounter({
+        name: USAGE_EMISSION_FAILED_METRIC,
+        help: 'Usage-ledger emissions that never reached the ledger. Non-zero means metered work was NOT billed.',
+        labelNames: ['operation', 'trigger', 'reason'],
+      });
+    } catch (error) {
+      logger.warn({
+        message: 'Could not register the usage-emission failure counter — lost DNA emissions will only be visible in logs',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -548,6 +764,19 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     content: string;
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     latency_ms?: number;
+    /** TEXT's stable per-generation id — the ledger's idempotency key is derived from it. */
+    task_id?: string;
+    /**
+     * TASK-974 §9.2 — TEXT's OWN usage blocks, parsed.
+     *
+     * They were DROPPED here before this ticket: the response was typed as `{ content, usage?,
+     * latency_ms? }`, so the most expensive LLM call on the platform recorded nothing. `null`
+     * means TEXT reported no block (an older service, or an `endpoint_kind` the normalizer does
+     * not know) — nothing is guessed, because choosing between inclusive and exclusive input
+     * arithmetic on a hunch is a coin flip that lands on an invoice.
+     */
+    usageDetail: TextUsageDetail | null;
+    guardrailUsage: TextUsageDetail | null;
   }> {
     const textStart = Date.now();
     // TEXT is a stateless gateway with no model default; resolve the
@@ -627,7 +856,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       }),
     });
     this.jobMetrics.recordTextCallDuration(JobQueue.GenerateDnaReport, 'text', (Date.now() - textStart) / 1000);
-    return response.data;
+    // TASK-974 §9.2 — read the usage blocks HERE, in the one place that sees the raw response,
+    // exactly as `ComprehensiveSummaryProcessor` does. The rest of `response.data` is unchanged.
+    const data = (response.data ?? {}) as { usage_detail?: unknown; guardrail_usage?: unknown };
+    return {
+      ...response.data,
+      usageDetail: parseTextUsageDetail(data.usage_detail),
+      guardrailUsage: parseTextUsageDetail(data.guardrail_usage),
+    };
   }
 
   /**

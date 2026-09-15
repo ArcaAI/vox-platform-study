@@ -111,6 +111,10 @@ export class DnaWritingStyleController {
     path: 'generate',
   })
   @ApiResponse({ status: 400, description: 'Bad request — invalid input' })
+  // TASK-974 §9.2 — DNA draws on the tenant's LLM allowance like every other text call, and is
+  // pre-checked before the job is queued rather than after the model has spent.
+  @ApiResponse({ status: 402, description: 'The tenant has reached the monthly spend ceiling it set; nothing was queued.' })
+  @ApiResponse({ status: 429, description: 'The tenant is over its monthly LLM-token allowance; nothing was queued.' })
   async generate(@Body() dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
     // Block a non-impersonating admin from self-generating.
     this.assertActingAsDoctor();
