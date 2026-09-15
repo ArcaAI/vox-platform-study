@@ -1,21 +1,21 @@
-# k6 Application-Shape Load (Task 1.15 — Optional)
+# k6 Application-Shape Load (optional)
 
-This directory holds the k6 load-test script for Phase 1 Task 1.15 (the
-**optional** application-shape load test that complements `pgbench`).
+This directory holds the k6 load-test script for the optional application-shape load test that
+complements the `pgbench` baseline in `../pgbench/`.
 
-## Status
+## Layout
 
-**Not executed in this rig run.** Justification:
+| Path | What it holds |
+|---|---|
+| `hope-shape.js` | The k6 script simulating a HOPE-style request mix against the pooler |
 
-- Task 1.15 is explicitly marked optional in
-  [03-pgbouncer-rollout.md §1.15](../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
-- The headline pgbench rubric (Task 1.14) was comfortably exceeded
-  (pooled / direct = **0.999**, target ≥ 0.85).
-- k6 with PostgreSQL requires the `xk6-sql` extension; the developer
-  workstation that ran Phase 1 does not have a pre-built `k6` with this
-  extension on `$PATH`.
+### Status
+Not executed as part of the standard rig run. The headline `pgbench` result (pooled/direct =
+0.999, comfortably above the >= 0.85 target recorded in `../README.md`) already answers the
+pooling GO/NO-GO question; k6 with PostgreSQL requires the `xk6-sql` extension, which is not a
+standard part of `k6`.
 
-If/when the orchestrator (or a follow-up ticket) wants to run this:
+If a future pass wants to run this:
 
 ```zsh
 # 1. Build a k6 binary with the SQL extension (once):
@@ -30,23 +30,25 @@ docker run --rm -u "$(id -u):$(id -g)" \
 ./k6-sql run packages/database/tests/pgbouncer-validation/k6/hope-shape.js
 ```
 
-## What `hope-shape.js` simulates
+## How it works
 
-A simplified HOPE-style request mix per virtual user:
+`hope-shape.js` simulates a simplified HOPE-style request mix per virtual user:
 
-| Step | Description                                                               | Frequency            |
-| ---- | ------------------------------------------------------------------------- | -------------------- |
-| 1    | `BEGIN; set_config('app.tenant_id', …, true); SELECT … LIMIT 20; COMMIT;` | every iteration      |
-| 2    | `BEGIN; UPDATE … SET resourceStatus = …; COMMIT;`                         | every 10th iteration |
-| 3    | `BEGIN; INSERT INTO audit … ; COMMIT;`                                    | every 5th iteration  |
+| Step | Description | Frequency |
+|---|---|---|
+| 1 | `BEGIN; set_config('app.tenant_id', ..., true); SELECT ... LIMIT 20; COMMIT;` | every iteration |
+| 2 | `BEGIN; UPDATE ... SET resourceStatus = ...; COMMIT;` | every 10th iteration |
+| 3 | `BEGIN; INSERT INTO audit ...; COMMIT;` | every 5th iteration |
 
-The script targets `DATABASE_URL` (port 6532 — the pooler) by default.
+The script targets `DATABASE_URL` (port 6532, the pooler) by default.
 
-## Why pgbench is sufficient for now
+## Gotchas
 
-The PgBouncer-specific failure modes (DISCARD ALL, prepared-statement
-collision, advisory-lock survival, GUC leak) are already exhaustively
-covered by the Vitest suite (Tasks 1.7 – 1.13) and the pgbench TPC-B
-workload (Task 1.14). The k6 script's marginal value is realistic
-HOPE-shape transaction mix, which would tighten the latency numbers
-but cannot flip the GO/NO-GO verdict on its own.
+- The PgBouncer-specific failure modes (`DISCARD ALL`, prepared-statement collision, advisory-lock
+  survival, GUC leak) are already covered by the Vitest suite in `../__tests__/` and the pgbench
+  workload — this script's marginal value is a more realistic HOPE-shape transaction mix, which
+  tightens latency numbers but does not change a GO/NO-GO verdict on its own.
+
+## Related
+
+- [PgBouncer validation rig README](../README.md)

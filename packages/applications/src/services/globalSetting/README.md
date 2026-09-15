@@ -1,62 +1,61 @@
-# GlobalSetting Service
+# GlobalSetting Service — the `GlobalSetting` table CRUD + secret handling
 
-Application-layer service for the `__GLOBAL__`-tenant configuration rows
-(SUPER_ADMIN-edited platform-wide flags) and the per-tenant overlay rows
-(`tenantId != '__GLOBAL__'`). Reads are layered (per-tenant row → `__GLOBAL__`
-row → env default), and the in-process cache is invalidated by SysEvents when
-a row mutates.
+Application-layer service for the `GlobalSetting` model: platform-tier rows (`tenantId` = the
+reserved SYSTEM tenant, `00000000-0000-0000-0000-000000000000`) and per-tenant override rows.
+Platform-tier writes AND reads are SUPER_ADMIN-only (`assertPlatformTierWrite` /
+`assertPlatformTierRead`); a tenant's own rows stay ability-gated (`manage:GlobalSetting`). This is
+the CRUD + secret-reveal/rotate service underneath the descriptor-driven settings registry — see
+`settings-registry/` for the tenant-first resolution cascade and `TenantService.updateTenantConfigs`
+for the bulk per-tenant write path.
 
-The HTTP surface for SUPER_ADMIN edits is the play-studio area
-(`apps/api/src/modules/pstudio/`); per-tenant edits flow through
-`TenantService.updateTenantConfigs` (`PATCH /api/v1/tenants/me/config`).
+The HTTP surface is `apps/api/src/modules/global-setting/global-setting.controller.ts`
+(`@Controller('admin/settings')`): `POST /`, `GET /`, `GET /tenant/:tenantId`, `GET /:id`,
+`PATCH /:id`, `DELETE /:id`, `POST /:id/reveal`, `POST /:id/rotate`.
 
-## Concurrency Model
+## Layout
 
-This service uses **optimistic concurrency control** (TASK-302 Stream D). Every
-write to a row's mutable fields goes through
-`updateWithVersion(id, entity, expectedVersion)` on the repository, which issues
-a Postgres CAS via
-`prisma.globalSetting.updateMany({ where: { id, version: expectedVersion }, data: { ..., version: { increment: 1 } } })`.
-When `count === 0` we re-fetch to disambiguate `DataNotFoundException` from
-`OptimisticConcurrencyException`.
+| Path | What it holds |
+|---|---|
+| `globalSetting.service.ts` | `GlobalSettingService extends BaseService` — CRUD, `assertPlatformTierWrite`/`assertPlatformTierRead`, secret reveal/rotate |
+| `IGlobalSettingService.ts` | Interface + `Symbol` token: `create`, `fetchAll`, `fetchAllByTenantId`, `fetchAllCreatedByUser`, `fetchById`, `update`, `deleteById`, `revealSecret`, `rotateSecret` |
+| `globalSetting.dto.mapper.ts` | Entity to Response DTO mapping |
+| `dto/` | `createGlobalSetting.request.ts`, `updateGlobalSetting.request.ts`, `listGlobalSetting.query.ts`, `revealGlobalSetting.request/response.ts`, `rotateGlobalSetting.request.ts`, `globalSetting.response.ts`, `paginatedGlobalSetting.response.ts` |
+| `__tests__/` | Vitest unit tests |
 
-### Inbound contract
+## How it works
 
-- **HTTP**: clients must send `If-Match: "<n>"` (RFC 7232) on PATCH. The
-  response carries `ETag: "<n+1>"`. Missing `If-Match` → 428; drifted version
-  → 412 with `{ currentVersion }`. The SDK's `ConfigManager` captures the
-  `ETag` on read and replays it on the next write.
-- **Service-to-service / Bull jobs**: pass `expectedVersion` in the request
-  body (`UpdateGlobalSettingRequest.expectedVersion`). Wrap in
-  `pRetry({ retries: 3, factor: 2 })` with a re-fetch between attempts.
-  **Never auto-retry human writes.**
+### Platform-tier split
 
-### Bulk writes
+`assertPlatformTierWrite(targetTenantId)` and `assertPlatformTierRead(targetTenantId)` both throw
+unless the caller is a super admin OR the target row's `tenantId` is not the SYSTEM tenant. This is
+the one place in the codebase where the 404-over-403 cross-tenant posture does NOT apply: the
+platform tier has no per-tenant existence to hide, so a non-super-admin caller gets 403, not 404.
+See [`05-nestjs-api.md`](../../../../../.claude/rules/05-nestjs-api.md)'s platform-tier settings row for the exact routes this governs.
 
-`TenantService.updateTenantConfigs` is the canonical bulk-edit path and wraps
-the whole batch in a single `$transaction`. Any single 412 rolls every row
-back; the caller re-fetches all rows before re-submitting. See the Tenant
-service README for the full bulk-write semantics.
+### Concurrency model
 
-### Audit-log correlation
+Writes go through `updateWithVersion(id, entity, expectedVersion)` on the repository, issuing a
+Postgres CAS (`prisma.globalSetting.updateMany({ where: { id, version: expectedVersion }, ... })`).
+Clients send `If-Match: "<n>"` on PATCH (RFC 7232); missing `If-Match` is 428, a drifted version is
+412 with `{ currentVersion }`. Service-to-service callers pass `expectedVersion` in
+`UpdateGlobalSettingRequest` instead and should re-fetch and retry with backoff — never
+auto-retry a human-initiated write.
 
-Every successful CAS broadcasts `SysEvent.ResourceUpdated` with
-`previousVersion` and `newVersion` in the payload. Investigators reconstruct
-history via `SELECT … FROM "sysEvent" WHERE metadata->>'newVersion' = ?`.
+### Secrets
 
-### Out of scope
+`revealSecret(id, password)` and `rotateSecret(id, request)` are separate, audited operations from
+plain `update` — a secret-typed `GlobalSetting` value is never returned by the normal read path.
 
-- Append-only siblings (`GlobalSettingHistory` when TASK-3XX lands,
-  `AuditLog`) are not version-guarded — they are write-once.
-- Soft-delete bumps `_version` automatically; calls that race a soft-delete
-  get a 412.
+## Gotchas
 
-### Observability
+- `apps/api/src/modules/pstudio/` is an UNRELATED Prisma Studio admin-database proxy — it does not
+  read or write `GlobalSetting` rows. Do not confuse it with this service's admin surface.
+- Every successful CAS broadcasts `SysEvent.ResourceUpdated` with `previousVersion`/`newVersion` in
+  the payload — that is the audit trail for a settings change, not a separate history table.
 
-`optimistic_lock_conflict_total{model="GlobalSetting", route="<method path>"}`
-on the `/metrics` endpoint. Alert threshold: > 0.5 % of PATCHes.
+## Related
 
-### References
-
-- [TASK-302 Stream D plan](../../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md)
-- [Research doc](../../../../../research/architecture/system-config-multi-tenancy/04-optimistic-locking.md)
+- [`@arcaai/applications` README](../../../README.md) — `BaseService`, sys-event fan-out
+- [`05-nestjs-api.md`](../../../../../.claude/rules/05-nestjs-api.md) — platform-tier read/write gate
+- [`09-infrastructure-devops.md`](../../../../../.claude/rules/09-infrastructure-devops.md) — Configuration Tiers, tenant-first resolution
+- [Tenant service README](../tenant/README.md) — `updateTenantConfigs` bulk per-tenant write path

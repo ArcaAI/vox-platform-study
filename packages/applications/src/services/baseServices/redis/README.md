@@ -1,120 +1,53 @@
-# Redis Service Module
+# Redis Services — BullMQ job queue and a general-purpose cache
 
-The Redis Service Module provides Redis-based job queue functionality using BullMQ. It integrates with the configuration service to manage Redis connection settings.
+Two independent, separately-registered Redis modules under `@arcaai/applications`: `RedisServiceModule`
+(BullMQ job queues, injectable as `IRedisService`) and `RedisCacheModule` (a plain get/set/del cache,
+injectable as `IRedisCacheService`). Both read connection config from `IConfigService`.
 
-## Configuration
+## Layout
 
-The Redis service requires the following environment variables:
+| Path | What it holds |
+|---|---|
+| `IRedisService.ts` | `IRedisService.addJob<T>({ queueName, jobType, data, options })` — the BullMQ job-enqueue surface |
+| `redis.service.ts` / `redis.service.module.ts` | `RedisServiceModule.register(queueNames: string[])` — registers a `BullModule` queue per name and wires the connection |
+| `redis-cache.service.ts` / `redis-cache.module.ts` | `IRedisCacheService` (`get`/`set`/`setex`/`del`, multi-key variants) — `RedisCacheModule.register()`, `@Global()` |
+| `redis-config.exception.ts` | `RedisConfigurationException` — thrown when Redis config is missing/invalid |
 
-### Required Configuration
+## How it works
 
-- `REDIS_HOST`: Redis server hostname (default: 'localhost')
-- `REDIS_PORT`: Redis server port (default: 6379, must be between 1-65535)
+### Job queue (`RedisServiceModule`)
 
-### Optional Configuration
-
-- `REDIS_PASS`: Redis server password (optional, leave empty if no password)
-
-### Example .env Configuration
-
-```bash
-# Redis Configuration
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASS=your_redis_password
-```
-
-## Usage
-
-### Module Registration
+`RedisServiceModule.register(queueNames)` registers a `BullModule.registerQueue({ name })` per queue
+and configures `BullModule.forRootAsync` from `IConfigService`. It throws `RedisConfigurationException`
+via `configService.isRedisConfigured()` before attempting a connection if `REDIS_HOST`/`REDIS_PORT`
+are missing or invalid (port must be 1-65535). Default job options: 3 attempts, exponential backoff
+(1000ms initial delay), keep 100 completed / 200 failed jobs.
 
 ```typescript
 import { RedisServiceModule } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 
 @Module({
-  imports: [
-    RedisServiceModule.register([
-      JobQueue.AuditLog,
-      JobQueue.UserActivity,
-      JobQueue.SendEmail,
-      // ... other queues
-    ]),
-  ],
+  imports: [RedisServiceModule.register([JobQueue.AuditLog, JobQueue.SendEmail])],
 })
 export class AppModule {}
 ```
 
-### Service Injection
+### Cache (`RedisCacheModule`)
 
-```typescript
-import { Inject, Injectable } from '@nestjs/common';
-import { IRedisService } from '@arcaai/applications';
+`RedisCacheModule.register()` is `@Global()` and independent of the BullMQ connection above — it
+exists so caching operations don't compete with, or get torn down alongside, job-queue Redis state.
+Inject `IRedisCacheService` for `get`/`set`/`setex`/`del` and multi-key variants.
 
-@Injectable()
-export class MyService {
-  constructor(@Inject(IRedisService) private redisService: IRedisService) {}
+### Configuration
 
-  async addJob() {
-    await this.redisService.addJob({
-      queueName: JobQueue.SendEmail,
-      jobType: 'send-welcome-email',
-      data: { userId: '123', email: 'user@example.com' },
-      options: {
-        delay: 5000, // 5 second delay
-        attempts: 3,
-      },
-    });
-  }
-}
-```
+Job-queue connection settings come from `IConfigService`, not read directly from `process.env` in
+this module: `REDIS_HOST` (default `localhost`), `REDIS_PORT` (default `6379`), `REDIS_PASS`
+(optional). The cache connection is independent: `RedisCacheModule.registerAsync({ useFactory })`
+supplies `{ host, port, password? }` via the `REDIS_CACHE_CONFIG` DI token instead of reading env
+directly, so a consumer can source it from `IConfigService`, Vault, or elsewhere.
 
-## Error Handling
+## Related
 
-The Redis service provides comprehensive error handling:
-
-### Configuration Errors
-
-- `RedisConfigurationException`: Thrown when Redis configuration is missing or invalid
-  - Missing `REDIS_HOST` or `REDIS_PORT`
-  - Invalid port range (not between 1-65535)
-  - Connection failures
-
-### Runtime Errors
-
-- Queue not found errors with helpful messages listing available queues
-- Connection errors with specific Redis server details
-- Job addition failures with detailed error information
-
-## Features
-
-- **Configuration Integration**: Uses the ConfigService for centralized configuration management
-- **Validation**: Comprehensive validation of Redis configuration at startup
-- **Error Handling**: Detailed error messages with configuration hints
-- **Logging**: Extensive logging for debugging and monitoring
-- **Queue Management**: Dynamic queue registration and management
-- **Connection Resilience**: Automatic retry logic with exponential backoff
-
-## Queue Configuration
-
-Default job options:
-
-- **Attempts**: 3 retries
-- **Backoff**: Exponential with 1000ms initial delay
-- **Cleanup**: Keep 100 completed jobs, 200 failed jobs
-
-## Health Monitoring
-
-The service logs:
-
-- Redis connection details (without password)
-- Queue initialization status
-- Job processing results
-- Connection errors and recovery attempts
-
-## Dependencies
-
-- `@nestjs/bullmq`: BullMQ integration for NestJS
-- `bullmq`: Redis-based job queue
-- `ConfigService`: Application configuration management
-- `Redis`: Redis client connection
+- [`_meta` README](../_meta/README.md) — `ConfigService` / `IConfigService`
+- [`@arcaai/applications` README](../../../../README.md) — `SysEventService` and other BullMQ consumers

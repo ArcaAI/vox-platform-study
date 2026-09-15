@@ -1,59 +1,64 @@
-# Prompt Management Service
+# Prompt Management Service — `PromptTemplate` + `PromptVersion`
 
-Application-layer service for `PromptTemplate` and the per-template
-versioning chain (a separate, application-domain concept from the
-database-owned `_version` OCC token — see below). Public surface lives at
-`apps/api/src/modules/prompt-management/`
-(`@Controller('prompt-templates')`):
+Application-layer service for `PromptTemplate` and its versioning chain (`PromptVersion`) — a
+separate, application-domain concept from the database-owned `_version` OCC token (see below).
+Public surface is split across two controllers in `apps/api/src/modules/prompt-management/`:
 
-- `PATCH /api/v1/prompt-templates/:id` — edit template metadata / latest draft.
-- `POST /api/v1/prompt-templates/:id/versions/:n/activate` — promote a
-  historical version to `currentVersionNumber`.
+- `prompt-template.controller.ts` (`@Controller('prompt-templates')`) — `PATCH /api/v1/prompt-templates/:id`
+  edits template metadata / latest draft.
+- `prompt-management.controller.ts` (`@Controller('admin/prompt-templates')`) — version history,
+  diff, approval and `POST /api/v1/admin/prompt-templates/:id/versions/:versionNumber/activate`
+  (promotes a historical version to `currentVersionNumber`).
 
-> **Two "version" concepts.** `PromptTemplate.currentVersionNumber` is a
-> _domain_ notion: which historical revision is currently published. The
-> database-owned `_version` exposed on the response as `version: number` is
-> the OCC token. The two are independent and update on different events.
+> **Two "version" concepts.** `PromptTemplate.currentVersionNumber` is a _domain_ notion: which
+> historical `PromptVersion` row is currently published. The database-owned `_version` exposed on
+> the response as `version: number` is the OCC token. The two are independent and update on
+> different events.
 
-## Concurrency Model
+## Layout
 
-This service uses **optimistic concurrency control** (TASK-302 Stream D). Every
-write to a row's mutable fields goes through
-`updateWithVersion(id, entity, expectedVersion)` on the repository, which issues
-a Postgres CAS via
-`prisma.promptTemplate.updateMany({ where: { id, version: expectedVersion }, data: { ..., version: { increment: 1 } } })`.
-When `count === 0` we re-fetch to disambiguate `DataNotFoundException` from
-`OptimisticConcurrencyException`.
+| Path | What it holds |
+|---|---|
+| `prompt-management.service.ts` | Service implementation — CRUD, versioning, approval, testing |
+| `IPromptManagementService.ts` | Interface + `Symbol` token |
+| `prompt-management.dto.mapper.ts` | Entity to Response DTO mapping |
+| `dto/` | 16 request/response DTOs: create/update/approve templates, version diff, prompt testing, usage analytics, department assignment |
+| `__tests__/` | Vitest unit tests |
 
-### Inbound contract
+## How it works
 
-- **HTTP**: clients must send `If-Match: "<n>"` (RFC 7232) on PATCH. The
-  response carries `ETag: "<n+1>"`. Missing `If-Match` → 428; drifted version
-  → 412 with `{ currentVersion }`.
-- **`activateVersion` (server-driven OCC)**: the controller fetches the
-  current template, reads its `_version`, and feeds it to
-  `updatePromptTemplate(..., { expectedVersion })`. Callers do **not** pass
-  `expectedVersion` for this endpoint — the operation is read-modify-write
-  on the server side.
-- **Service-to-service / Bull jobs**: pass `expectedVersion` in the request
-  body (`UpdatePromptTemplateRequest.expectedVersion`). Wrap in
-  `pRetry({ retries: 3, factor: 2 })` with a re-fetch between attempts.
-  **Never auto-retry human writes.**
+### Concurrency model
 
-### Out of scope
+Writes go through `updateWithVersion(id, entity, expectedVersion)` on the repository, issuing a
+Postgres CAS (`prisma.promptTemplate.updateMany({ where: { id, version: expectedVersion }, ... })`).
 
-- Single-row writes only. There is no bulk PATCH for templates today.
-- Append-only siblings (`PromptTemplateVersion`, `AuditLog`) are not
-  version-guarded — they are write-once.
-- Soft-delete bumps `_version` automatically; calls that race a soft-delete
-  get a 412 (correct — resurrection is prevented).
+- **`PATCH .../prompt-templates/:id`**: clients send `If-Match: "<n>"` (RFC 7232); missing
+  `If-Match` is 428, a drifted version is 412 with `{ currentVersion }`.
+- **`activateVersion` (server-driven OCC)**: the controller fetches the current template, reads its
+  `_version`, and feeds it to the service's update path. Callers do NOT pass `expectedVersion` for
+  this endpoint — the read-modify-write happens server-side.
+- **Service-to-service / Bull jobs**: pass `expectedVersion` in the request body and wrap in
+  `pRetry({ retries: 3, factor: 2 })` with a re-fetch between attempts. Never auto-retry a
+  human-initiated write.
 
-### Observability
+### SYSTEM-vs-tenant-owned approval split
 
-`optimistic_lock_conflict_total{model="PromptTemplate", route="<method path>"}`
-on the `/metrics` endpoint. Alert threshold: > 0.5 % of PATCHes.
+`POST admin/prompt-templates/:id/approve` gates differently depending on which row is targeted: a
+SYSTEM/library template (`tenantId` = the reserved SYSTEM tenant) stays SUPER_ADMIN-only, while a
+tenant-owned template devolves to any caller holding `manage:PromptTemplate` for that tenant. See
+[`05-nestjs-api.md`](../../../../../.claude/rules/05-nestjs-api.md)'s imperative-privilege-checks table (`assertCanApprove`) for the
+full rule and why a single `@Authorize` decorator cannot express it.
 
-### References
+## Gotchas
 
-- [TASK-302 Stream D plan](../../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md)
-- [Research doc](../../../../../research/architecture/system-config-multi-tenancy/04-optimistic-locking.md)
+- Do not confuse `PromptTemplate.currentVersionNumber` (which `PromptVersion` is published) with
+  the response's `version` field (the OCC token) — they change independently.
+- `PromptTemplate` and `PromptVersion` are CONTENT: cloned into a tenant from the SYSTEM reference
+  set at tenant creation, never read cross-tenant at runtime. See
+  [`00-project-context.md`](../../../../../.claude/rules/00-project-context.md) "Content is cloned; configuration cascades".
+
+## Related
+
+- [`@arcaai/applications` README](../../../README.md) — `BaseService`, sys-event fan-out
+- [`05-nestjs-api.md`](../../../../../.claude/rules/05-nestjs-api.md) — OCC pattern, the SYSTEM-vs-tenant-owned split-gate table
+- [`00-project-context.md`](../../../../../.claude/rules/00-project-context.md) — content-is-cloned rule for `PromptTemplate`/`PromptVersion`

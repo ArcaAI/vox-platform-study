@@ -1,62 +1,73 @@
-# @arcaai/applications
+# @arcaai/applications — the application service layer
 
-Application service layer of the HOPE platform: NestJS services, request/response DTOs, service modules, authorization (policy engine, guards, decorators), system-event fan-out, and platform infrastructure services (Redis/BullMQ, blob storage, secrets, observability). The API gateway (`apps/api`) composes its controllers exclusively from modules exported here.
-
-Last updated: 2026-07-04
-
-## Position in the stack
-
-```
-packages/database  →  packages/domains  →  packages/applications  →  apps/api
-```
-
-Depends on `@arcaai/domains` (repositories, factories, enums), `@arcaai/exceptions`, `@arcaai/logger`, `@arcaai/types`, and — as peer dependencies — the NestJS 11 family, `bullmq`, `class-validator`/`class-transformer`, `nestjs-cls`, and `ioredis`. Sole workspace consumer: `@arcaai/api`.
-
-Rule of thumb enforced across the layer: services use domain repositories and factories, never Prisma directly; controllers hold no business logic.
-
-## Directory structure
+NestJS application services, request/response DTOs, service modules, authorization (CASL policy
+engine, guards, decorators), sys-event fan-out, and platform infrastructure services (Redis/BullMQ,
+blob storage, secrets, observability) for the HOPE platform. Depends on `@arcaai/domains`
+(repositories, factories, enums) and never imports Prisma runtime code directly. Sole workspace
+consumer: `apps/api`, which composes its controllers exclusively from modules exported here.
 
 ```
-src/
-├── common/            # BaseService, applyChangesToEntity, tenant guards, pagination,
-│                      # PHI field encryption, DTO bases, env helpers
-├── interfaces/        # IActiveUserContext (CLS shape), IBaseService, IClsContext, IOidcUserProfile
-├── decorators/        # Gateway decorators, @InjectActiveUser, swagger/transform/validation helpers
-├── authorization/     # PolicyEngine (CASL), AuthorizationGuard, UnifiedAuthGuard,
-│                      # @Public/@Authorize/@Can* decorators
-└── services/          # One folder per service domain (see table below)
-    └── baseServices/  # CommonServiceModule: config, secrets, Redis/BullMQ, S3/blob storage,
-                       # health checks, logging (pino-based transports), metrics, MQTT,
-                       # observability (OpenTelemetry), rate limiting, units of work
+packages/database  ->  packages/domains  ->  packages/applications  ->  apps/api
 ```
 
-Service domains under `src/services/`: apiKey, audit, audit-retention, auditLog, auth (JWT/OIDC), config-resolver, consultation, crypto, department, dna-writing-style, entitlements, eval, globalSetting, harness-audit, harness-observability, harness-policy, knowledge, media, metering, notification, pipeline-policy, platform-metrics, prompt-management, pstudio, queue-admin, rate-limit, rbac, resourceSubscription, security, text, storage-access-key, stt, sysEvent, tag, tenant, tenant-bucket, tenant-frontend-config, tenant-storage-config, user, webhook.
+## Layout
 
-## Service anatomy
+| Path | What it holds |
+|---|---|
+| `src/common/` | `BaseService`, `applyChangesToEntity`, tenant guards, pagination, PHI field encryption/scrubbing, DTO bases, cursor pagination, env/egress helpers |
+| `src/interfaces/` | `IActiveUserContext` (CLS shape), `IBaseService`, `IClsContext`, `IServiceAccountPrincipal` |
+| `src/decorators/` | `@InjectActiveUser`, swagger/transform/validation helpers |
+| `src/authorization/` | `PolicyEngine` (CASL), `AuthorizationGuard`, `UnifiedAuthGuard`, `@Public`/`@Authorize`/`@Can*` decorators |
+| `src/services/` | One folder per service domain (84 domains as of this pass; see below) |
+| `src/services/baseServices/` | `CommonServiceModule`: config, secrets, Redis/BullMQ, S3/blob storage, health checks, logging, metrics, MQTT, observability, rate limiting, units of work |
 
-Each service folder follows the same shape (using `services/department/` as the reference implementation):
+`src/services/` covers CRUD services (`department`, `tenant`, `user`, `globalSetting`, ...),
+AI-platform configuration (`agent`, `ai-model`, `ai-provider-connection`, `ai-routing-policy`,
+`settings-registry`, `mcp-server`, ...), workflow/agent execution (`workflow-run`,
+`workflow-definition`, `agent-trajectory`, `agentPromotion`, ...), and platform operations
+(`metering`, `usageLedger`, `billing`, `audit`, `sysEvent`, ...). Browse the directory for the full
+list rather than trusting an enumerated one here — it grows every sprint.
 
-```
-department/
-├── department.service.ts          # DepartmentService extends BaseService
-├── department.service.module.ts   # DepartmentServiceModule (DI wiring)
-├── IDepartmentService.ts          # Interface + Symbol injection token
-├── department.dto.mapper.ts       # Entity → Response DTO mapping
-├── dto/                           # create/update requests, response DTOs
-├── __tests__/                     # Vitest unit tests
-└── index.ts                       # Barrel export
-```
+### Service anatomy
+Each service folder follows the same shape (reference implementation: `services/department/`):
+
+| Path | What it holds |
+|---|---|
+| `department.service.ts` | `DepartmentService extends BaseService` |
+| `department.service.module.ts` | `DepartmentServiceModule` (DI wiring) |
+| `IDepartmentService.ts` | Interface + `Symbol` injection token |
+| `department.dto.mapper.ts` | Entity to Response DTO mapping |
+| `dto/` | create/update requests, response DTOs |
+| `__tests__/` | Vitest unit tests |
+| `index.ts` | Barrel export |
+
+## Commands
+
+| Command | package.json script | From repo root |
+|---|---|---|
+| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` |
+| Watch | `tsc --watch` | `pnpm --filter @arcaai/applications dev` |
+| Test | `vitest run --passWithNoTests` | `pnpm --filter @arcaai/applications test` |
+| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/applications typecheck` |
+| Lint | `eslint .` | `pnpm --filter @arcaai/applications lint` |
+
+Unit tests live in `__tests__/` folders beside each service and mock repositories, `EventEmitter2`,
+and `ClsService`; they verify factory usage, change tracking, and `broadcastSysEvent` calls. A
+scaffold generator for a new service folder exists: root `pnpm gen:service` (`@arcaai/tools`,
+`generate-service-module`).
+
+## How it works
 
 ### BaseService
 
-All services extend `BaseService` (`src/common/base.service.ts`), which provides:
+All services extend `BaseService` (`src/common/base.service.ts`):
 
-| Member                                                                | Purpose                                                                                                                                                                                                                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `broadcastSysEvent(type, data)`                                       | Emits a `SysEvent` for audit logging, user-activity tracking, and webhooks. `tenantId` is always taken from CLS and cannot be overridden by the payload; impersonation provenance (`impersonatedBy`) is threaded into `metaData` automatically |
-| `updateEntity(entity, changes, customHandlers?)`                      | Sets `updatedBy` from the request context and applies DTO fields through entity setters via `applyChangesToEntity` (triggers change tracking; supports custom field handlers, e.g. password hashing)                                           |
-| `requestUser`, `requestUserId`, `requestUserName`, `requestUserEmail` | Current session from CLS                                                                                                                                                                                                                       |
-| `tenantId`, `tenantCode`, `correlationId`, `requestIp`                | Request context from CLS                                                                                                                                                                                                                       |
+| Member | Purpose |
+|---|---|
+| `broadcastSysEvent(type, data)` | Emits a `SysEvent` for audit logging, user-activity tracking, and webhooks. `tenantId` is ALWAYS taken from CLS and cannot be overridden by the payload (falls back to the reserved SYSTEM tenant when CLS carries none); a service-account caller is recorded via `responsibleServiceAccountId` instead of a human `responsibleEntityId`; impersonation provenance (`impersonatedBy`) is threaded into `metaData` automatically |
+| `updateEntity(entity, changes, customHandlers?)` | Applies DTO fields through entity setters (`applyChangesToEntity`, triggers change tracking) FIRST, then stamps `updatedBy` from the request context only if something was actually staged — so a semantically empty request never manufactures a change |
+| `requestUser`, `requestUserId`, `requestUserName`, `requestUserEmail`, `requestServiceAccount` | Current session/machine-principal from CLS |
+| `tenantId`, `tenantCode`, `correlationId`, `requestIp` | Request context from CLS |
 
 ### CRUD flow with events (real pattern from `DepartmentService`)
 
@@ -79,63 +90,92 @@ export class DepartmentService extends BaseService implements IDepartmentService
 }
 ```
 
-Create/update/delete follow `Factory.CreateXxx()` → `repository.create()` → `broadcastSysEvent(ResourceCreated)`, `repository.findById()` → `this.updateEntity()` → `repository.update()` → `broadcastSysEvent(ResourceUpdated)`, and `repository.softDelete()` → `broadcastSysEvent(ResourceDeleted)`. Public service methods return response DTOs, never raw entities.
+(Simplified — the real `DepartmentService` constructor carries additional optional, append-only
+dependencies for later features; see Gotchas.)
+
+Create/update/delete follow `Factory.CreateXxx()` -> `repository.create()` -> `broadcastSysEvent(ResourceCreated)`,
+`repository.findById()` -> `this.updateEntity()` -> `repository.update()` -> `broadcastSysEvent(ResourceUpdated)`,
+and `repository.softDelete()` -> `broadcastSysEvent(ResourceDeleted)`. Public service methods return
+response DTOs, never raw entities.
 
 ### Module registration
 
-Modules bind the interface token to the implementation and import `CommonServiceModule` + `CoreDatabaseModule` (real file: `services/department/department.service.module.ts`):
+Modules bind the interface token to the implementation and import `CommonServiceModule` +
+`CoreDatabaseModule` (real file: `services/department/department.service.module.ts`):
 
 ```typescript
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
-  providers: [{ provide: IDepartmentService, useClass: DepartmentService }, DepartmentService],
+  providers: [
+    DepartmentService,
+    // useExisting, not useClass — useClass would construct a second
+    // DepartmentService instance instead of aliasing the one above.
+    { provide: IDepartmentService, useExisting: DepartmentService },
+  ],
   exports: [IDepartmentService, DepartmentService],
 })
 export class DepartmentServiceModule {}
 ```
 
-`CommonServiceModule` (`services/baseServices/common.service.module.ts`) bundles config, the secrets service (with JWT/S3/OIDC key warm-up), Redis/BullMQ queue registration, S3 blob storage, health checks, and observability.
+`CommonServiceModule` (`services/baseServices/common.service.module.ts`) bundles config, the
+secrets service (with JWT/S3/OIDC key warm-up), Redis/BullMQ queue registration, S3 blob storage,
+health checks, and observability. See `services/baseServices/_meta/README.md` for `ConfigService`
+vs `AppSettingsService` vs `SecretsService`.
 
 ### DTOs
 
-Request DTOs use `class-validator` + Swagger decorators (see `services/department/dto/create-department.request.ts`); response DTOs are plain shapes produced by each service's `*.dto.mapper.ts`. Responses include `version` so SDK clients can echo it back for optimistic-concurrency updates (`If-Match` / `expectedVersion`).
+Request DTOs use `class-validator` + Swagger decorators (see
+`services/department/dto/create-department.request.ts`); response DTOs are plain shapes produced by
+each service's `*.dto.mapper.ts`. Responses include `version` so callers can echo it back for
+optimistic-concurrency updates (`If-Match` / `expectedVersion`).
 
 ### SysEvent fan-out
 
-`services/sysEvent/sysEvent.service.ts` subscribes to `SysEventType.*` via `@OnEvent` and enqueues BullMQ jobs (audit log, user activity, webhooks) with retry/backoff, so audit persistence is asynchronous and non-blocking. Every mutating service method must call `broadcastSysEvent` after a successful write — the audit trail depends on it.
+`services/sysEvent/sysEvent.service.ts` subscribes to `SysEventType.*` via `@OnEvent` and enqueues
+BullMQ jobs (audit log, user activity, webhooks) with retry/backoff, so audit persistence is
+asynchronous and non-blocking. Every mutating service method must call `broadcastSysEvent` after a
+successful write, and the model must be registered in `ResourceType` (both
+`packages/database/src/prisma/db_main/audit.prisma` and
+`packages/domains/src/enums/generated/ResourceType.ts`) or the audit INSERT throws and rolls the
+mutation into a 500.
 
 ### Tenant guards
 
-Cross-aggregate isolation checks that the database tenant-scope extension cannot express live in `src/common/tenant-guards.ts`:
+Cross-aggregate isolation checks that the database tenant-scope extension cannot express live in
+`src/common/tenant-guards.ts`:
 
 - `assertEqualTenants(parent, child)` — parent/child rows must share a tenant; throws `NotFoundException` on mismatch (no existence leak).
-- `assertUserBelongsToTenant(roleRepo, deptRepo, userRepo, userId, tenantId)` — verifies enabled `UserRoleAssignment` + `UserDepartment` membership before referencing a user in tenant-scoped rows.
+- `assertUserBelongsToTenant(roleRepo, deptRepo, userRepo, userId, tenantId)` — verifies an enabled `UserRoleAssignment` (and, for a non-exempt user, `UserDepartment` membership) before referencing a user in tenant-scoped rows.
 - `assertParentInScope(repo, parentId, callerTenantId)` — load-and-assert sugar for the common parent lookup.
-- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`SUPER_ADMIN`). JWT aliases such as `GLOBAL_ADMIN` are not accepted.
+- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`SUPER_ADMIN`).
 
 ### Authorization
 
-`src/authorization/` provides the CASL-based `PolicyEngine`, `AuthorizationGuard`/`UnifiedAuthGuard`, and controller decorators: `@Public()`, `@Authorize(['action', 'subject'])`, `@AuthorizeAny(...)`, and the shorthands `@CanRead`, `@CanList`, `@CanCreate`, `@CanUpdate`, `@CanDelete`, `@CanManage`, `@CanAny`, `@CanAll`, plus the `@UserAbility()` param decorator. Authorization is enforced at controllers/guards — never inside service business logic.
+`src/authorization/` provides the CASL-based `PolicyEngine`, `AuthorizationGuard`/`UnifiedAuthGuard`,
+and controller decorators: `@Public()`, `@Authorize(['action', 'subject'])`, `@AuthorizeAny(...)`,
+the shorthands `@CanRead`, `@CanList`, `@CanCreate`, `@CanUpdate`, `@CanDelete`, `@CanManage`,
+`@CanAny`, `@CanAll`, plus `@ForbidApiKey`, `@ForbidServiceAccount`, `@RequiredScopes`,
+`@RequiredSvcScopes`, and the `@UserAbility()` param decorator. Authorization is enforced at
+controllers/guards — never inside service business logic.
 
-## Commands
+## Gotchas
 
-| Command   | package.json script                       | From repo root                                                    |
-| --------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| Build     | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` (or `pnpm build:core`) |
-| Watch     | `tsc --watch`                             | `pnpm --filter @arcaai/applications dev`                          |
-| Test      | `vitest run --passWithNoTests`            | `pnpm --filter @arcaai/applications test`                         |
-| Typecheck | `tsc --noEmit`                            | `pnpm --filter @arcaai/applications typecheck`                    |
-| Lint      | `eslint .`                                | `pnpm --filter @arcaai/applications lint`                         |
+- `this.databaseService.client` is lint-banned in `services/**/*.service.ts` (`no-restricted-syntax`,
+  `packages/config-eslint/flat/core.js`) — route through a domain-layer repository instead. The only
+  standing exclusions are `services/audit/**`, `services/tenant/**`,
+  `services/user/userRoleAssignment/**`, and `services/baseServices/**` (which legitimately hosts
+  the unit-of-work plumbing). In `packages/*` this surfaces as an ESLint WARNING
+  (`eslint-plugin-only-warn`) — treat it as an error anyway.
+- Cross-tenant access throws `NotFoundException` (404-over-403), never `ForbiddenException` — the
+  house posture hides resource existence rather than leaking it via a 403.
+- New constructor dependencies are appended LAST and marked `@Optional()` (append-only DI) so
+  existing positional test constructors keep compiling — see `department.service.ts` for the
+  pattern repeated across several optional, later-added repositories.
 
-Unit tests live in `__tests__/` folders beside each service and mock repositories, `EventEmitter2`, and `ClsService`; they verify factory usage, change tracking, and `broadcastSysEvent` calls. `scripts/` holds operational one-offs (media seed/backfill used by root `pnpm test:db:seed`).
+## Related
 
-## Adding a new service — checklist
-
-1. Request/response DTOs in `dto/` (`class-validator` + `@nestjs/swagger`).
-2. `IXxxService.ts` interface with a `Symbol` token.
-3. `xxx.service.ts` extending `BaseService`; inject repositories from `@arcaai/domains`.
-4. `xxx.dto.mapper.ts` for entity-to-response mapping.
-5. `xxx.service.module.ts` importing `CommonServiceModule` + `CoreDatabaseModule`, providing the token.
-6. Barrel exports in `index.ts`; unit tests in `__tests__/`.
-
-A scaffold generator exists: root `pnpm gen:service` (see `@arcaai/tools`).
+- [`04-application-services.md`](../../.claude/rules/04-application-services.md) — the rule this README mirrors
+- [`03-domain-layer.md`](../../.claude/rules/03-domain-layer.md) — the repository/factory/entity layer this package consumes
+- [`05-nestjs-api.md`](../../.claude/rules/05-nestjs-api.md) — how `apps/api` composes these modules
+- [`baseServices/_meta` README](src/services/baseServices/_meta/README.md) — `ConfigService`/`AppSettingsService`/`SecretsService`
+- [Department service README](src/services/department/README.md) — the CRUD + OCC exemplar

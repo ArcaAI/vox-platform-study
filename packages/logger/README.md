@@ -1,38 +1,48 @@
-# @arcaai/logger
+# @arcaai/logger — standalone Winston logging library
 
-Standalone Winston-based logging library for HOPE backend services. It wraps `winston` behind a small `Logger` class with typed options, seven log levels, and console/file/rotating-file transports, plus an `addTransport()` escape hatch for custom transports (for example S3-compatible storage via `winston-s3-transport`).
+A standalone Winston-based logging library for HOPE backend services. It wraps `winston` behind a
+small `Logger` class with typed options, seven log levels, and console/file/rotating-file
+transports, plus an `addTransport()` escape hatch for custom transports (for example S3-compatible
+storage via `winston-s3-transport`). A leaf utility package with no HOPE-internal dependencies.
 
-Last updated: 2026-07-04
+The API gateway's runtime request logging is currently implemented by the `LoggingService` inside
+`@arcaai/applications` (`src/services/baseServices/logging/`), not by this package. `@arcaai/logger`
+has no direct imports in workspace source today; it remains available as a self-contained Winston
+wrapper for scripts and services that need one.
 
-## Position in the stack
+## Layout
 
-`@arcaai/logger` is a leaf utility package with no HOPE-internal dependencies. It is declared as a dependency of `@arcaai/applications` and `apps/api` and is built by the `build:packages` pipeline (`pnpm build:core` at the repo root).
+| Path | What it holds |
+|---|---|
+| `src/index.ts` | `Logger` class, `LogLevel` enum, `LoggerOptions`/`S3Config` types, `createLogger` factory, default logger instance, legacy `log()` |
+| `src/__tests__/log.test.ts` | Vitest unit tests |
 
-Note: the API gateway's runtime request logging is currently implemented by the `LoggingService` inside `@arcaai/applications` (`src/services/baseServices/logging/`), not by this package. `@arcaai/logger` has no direct imports in workspace source today; it remains available as a self-contained Winston wrapper for scripts and services that need one.
+## Commands
 
-## Directory structure
+| Command | package.json script | From repo root |
+|---|---|---|
+| Build | `tsc` | `pnpm --filter @arcaai/logger build` |
+| Watch | `tsc -w` | `pnpm --filter @arcaai/logger dev` |
+| Test | `vitest run` | `pnpm --filter @arcaai/logger test` |
+| Test (watch) | `vitest --watch` | `pnpm --filter @arcaai/logger test:watch` |
+| Coverage | `vitest run --coverage` | `pnpm --filter @arcaai/logger test:cov` |
+| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/logger typecheck` |
+| Lint | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/logger lint` |
+| Clean | `rimraf dist tsconfig.tsbuildinfo` | `pnpm --filter @arcaai/logger clean` |
 
-```
-src/
-├── index.ts          # Logger class, LogLevel enum, LoggerOptions/S3Config types,
-│                     # createLogger factory, default logger instance, legacy log()
-└── __tests__/
-    └── log.test.ts   # Vitest unit tests
-```
-
-## API
+## How it works
 
 ### Exports
 
-| Export                   | Kind              | Purpose                                                      |
-| ------------------------ | ----------------- | ------------------------------------------------------------ |
-| `default`                | `Logger` instance | Pre-configured logger (console transport, INFO level)        |
-| `Logger`                 | class             | Configurable logger wrapping a `winston.Logger`              |
-| `createLogger(options?)` | factory           | `new Logger(options)` shorthand                              |
-| `LogLevel`               | enum              | `ERROR`, `WARN`, `INFO`, `HTTP`, `DEBUG`, `VERBOSE`, `SILLY` |
-| `LoggerOptions`          | type              | Constructor options (level, service, transports, format)     |
-| `S3Config`               | type              | Configuration shape for an S3/MinIO transport                |
-| `log(msg, meta?)`        | function          | Legacy helper; logs at INFO via the default logger           |
+| Export | Kind | Purpose |
+|---|---|---|
+| `default` | `Logger` instance | Pre-configured logger (console transport, INFO level) |
+| `Logger` | class | Configurable logger wrapping a `winston.Logger` |
+| `createLogger(options?)` | factory | `new Logger(options)` shorthand |
+| `LogLevel` | enum | `ERROR`, `WARN`, `INFO`, `HTTP`, `DEBUG`, `VERBOSE`, `SILLY` |
+| `LoggerOptions` | type | Constructor options (level, service, transports, format) |
+| `S3Config` | type | Configuration shape for an S3/MinIO transport |
+| `log(msg, meta?)` | function | Legacy helper; logs at INFO via the default logger |
 
 ### Basic usage
 
@@ -64,14 +74,16 @@ logger.debug('Detailed debug information');
 
 ### Transports
 
-| Transport     | Enabled via                 | Implementation                                                                                        |
-| ------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Console       | `transports.console: true`  | `winston.transports.Console`                                                                          |
-| File          | `transports.file.enabled`   | `winston.transports.File` (`filename`, `dirname`, `maxSize`, `maxFiles`)                              |
-| Rotating file | `transports.rotate.enabled` | `winston-daily-rotate-file` (`datePattern`, `maxSize`, `maxFiles`)                                    |
-| S3 / MinIO    | `logger.addTransport(...)`  | Not constructed by the factory; consumers instantiate `winston-s3-transport` themselves and attach it |
+| Transport | Enabled via | Implementation |
+|---|---|---|
+| Console | `transports.console: true` | `winston.transports.Console` |
+| File | `transports.file.enabled` | `winston.transports.File` (`filename`, `dirname`, `maxSize`, `maxFiles`) |
+| Rotating file | `transports.rotate.enabled` | `winston-daily-rotate-file` (`datePattern`, `maxSize`, `maxFiles`) |
+| S3 / MinIO | `logger.addTransport(...)` | Not constructed by the factory; consumers instantiate `winston-s3-transport` themselves and attach it |
 
-The `Logger` constructor only builds console, file, and rotate transports. The `transports.s3` option block and the `S3Config` type describe the configuration shape, but the S3 transport itself must be added by the consumer:
+The `Logger` constructor only builds console, file, and rotate transports. The `transports.s3`
+option block and the `S3Config` type describe the configuration shape, but the S3 transport itself
+must be added by the consumer:
 
 ```typescript
 import { createLogger } from '@arcaai/logger';
@@ -83,21 +95,16 @@ logger.addTransport(new S3Transport({/* bucket, credentials, ... */}));
 
 ### Formatting
 
-`format` options: `timestamp` (prefix each line), `colorize` (console colors), `json` (structured JSON output; recommended for shipping to object storage or log aggregators). Non-JSON output renders as `<timestamp> <level>: [<service>] <message> <meta-json>`.
+`format` options: `timestamp` (prefix each line), `colorize` (console colors), `json` (structured
+JSON output; recommended for shipping to object storage or log aggregators). Non-JSON output
+renders as `<timestamp> <level>: [<service>] <message> <meta-json>`.
 
-## Commands
+## Gotchas
 
-| Command      | package.json script                      | From repo root                            |
-| ------------ | ---------------------------------------- | ----------------------------------------- |
-| Build        | `tsc`                                    | `pnpm --filter @arcaai/logger build`      |
-| Watch        | `tsc -w`                                 | `pnpm --filter @arcaai/logger dev`        |
-| Test         | `vitest run`                             | `pnpm --filter @arcaai/logger test`       |
-| Test (watch) | `vitest --watch`                         | `pnpm --filter @arcaai/logger test:watch` |
-| Lint         | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/logger lint`       |
-| Clean        | `rimraf dist tsconfig.tsbuildinfo`       | `pnpm --filter @arcaai/logger clean`      |
+- This package is dependency-free of the rest of the monorepo but has zero real import call sites
+  today — `@arcaai/applications`'s own `LoggingService` (see its README) is the one every NestJS
+  service actually injects. Confirm which logger a new call site should use before wiring one in.
 
-## Dependencies
+## Related
 
-- `winston` — core logging engine
-- `winston-daily-rotate-file` — time-based file rotation transport
-- `winston-s3-transport` — S3-compatible transport (consumer-attached, see above)
+- [`@arcaai/applications` baseServices logging README](../applications/src/services/baseServices/logging/README.md) — the logger actually used by NestJS services
