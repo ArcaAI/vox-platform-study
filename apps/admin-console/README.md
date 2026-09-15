@@ -15,7 +15,7 @@ Dev server on port 5176; the production server (`next start`) listens on port 30
 | `src/app/api/auth/*` | Route handlers: `login`, `logout`, `session`, `refresh`, `register`, `forgot-password`, `reset-password`, `sso`, `working-tenant`, `stream-ticket`, `impersonate`, `revoke-impersonation` |
 | `src/app/api/hope/[...path]/route.ts` | The catch-all BFF proxy to `${API_URL}/api/v1/<path>` |
 | `src/proxy.ts` | The Next 16 request proxy (replaces the old `middleware.ts`) — session-cookie presence gate only |
-| `src/shared/navigation/nav-config.ts` | The authoritative route inventory: 58 entries in `NAV_ENTRIES` + 3 in `USER_MENU_ENTRIES` across the four tiers |
+| `src/shared/navigation/nav-config.ts` | The authoritative route inventory: 57 entries in `NAV_ENTRIES` + 2 in `USER_MENU_ENTRIES` across the four tiers |
 | `src/shared/auth/` | `useSession`/`usePermissions` hooks, CASL-mirror `can`/`canAny`/`isElevated`, `<RequirePermission>` |
 | `src/shared/api/` | The typed HTTP client core: `request()` through the BFF proxy, `Paginated`/`CursorPaginated` envelopes, `GatewayError`, ETag/`versionFromEtag()` OCC plumbing |
 | `src/shared/streams/` | `useEventStream` — SSE client that mints a single-use ticket via the BFF then connects directly to the gateway |
@@ -38,7 +38,9 @@ Dev server on port 5176; the production server (`next start`) listens on port 30
 | `pnpm admin:format` / `admin:format:check` | Prettier over `apps/admin-console/src/**/*.{ts,tsx}` |
 | `pnpm admin:clean` | Remove `.next` and the TS build-info cache |
 
-## Environment
+## How it works
+
+### Environment
 
 Development loads the monorepo-root `.env.dev` (host env wins); CI/production use host env only.
 
@@ -47,8 +49,6 @@ Development loads the monorepo-root `.env.dev` (host env wins); CI/production us
 | `API_URL` | Gateway origin the BFF proxies to (default `http://localhost:8868`) |
 | `ADMIN_SESSION_SECRET` | Session-cookie encryption secret |
 | `NEXT_PUBLIC_API_HOST` | Gateway origin the browser connects to directly for SSE streams |
-
-## How it works
 
 **Auth is BFF-mandatory.** Tokens never reach a client-readable store. `src/server/session.ts`
 seals the gateway JWT + refresh token into an encrypted httpOnly cookie; `src/proxy.ts` (the
