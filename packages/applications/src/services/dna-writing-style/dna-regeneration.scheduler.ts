@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -7,6 +7,8 @@ import { CronJob } from 'cron';
 import { uuidv7 } from 'uuidv7';
 import { DnaWritingStyleReportRepository, DnaWritingStyleReportEntityMapper, JobQueue, ResourceStatusType } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { IBillingService } from '../billing/IBillingService';
 
 const JOB_NAME = 'dna-regeneration';
 
@@ -38,6 +40,12 @@ export class DnaRegenerationScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
+    // TASK-974 §9.2 — the two gates the interactive surfaces apply, applied here too. A monthly
+    // rebuild NOBODY ASKED FOR must not spend an allowance a tenant needs for clinical work.
+    // `@Optional()` and trailing so the positional fixtures keep their arity; absent ⇒ the sweep
+    // is exactly what it was.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -142,9 +150,16 @@ export class DnaRegenerationScheduler implements OnModuleInit, OnModuleDestroy {
       errors: [],
     };
 
+    // TASK-974 §9.2 — checked ONCE per tenant, not once per doctor: the answer cannot change
+    // within a sweep that queues nothing until it has decided, and a tenant with fifty
+    // clinicians would otherwise pay fifty rollup reads for one answer.
+    const spendable = new Map<string, boolean>();
+
     let index = 0;
     for (const [, { doctorId, tenantId }] of doctorTenantPairs) {
       try {
+        if (!(await this.tenantMaySpend(tenantId, spendable, result))) continue;
+
         const jobId = uuidv7();
         await this.dnaQueue.add(
           JobQueue.GenerateDnaReport,
@@ -174,6 +189,36 @@ export class DnaRegenerationScheduler implements OnModuleInit, OnModuleDestroy {
     }
 
     return result;
+  }
+
+  /**
+   * May this tenant afford one more scheduled rebuild?
+   *
+   * A tenant over its allowance is SKIPPED with a warn and the sweep CONTINUES — the single
+   * most important property here. One tenant's ceiling must never stop every other tenant's
+   * monthly rebuild, and a sweep that aborted on the first 429 would do exactly that. The
+   * refusal is recorded on `result.errors` alongside the enqueue failures, because to an
+   * operator reading the tick summary "doctor X was not rebuilt, and here is why" is one
+   * question with two possible answers, not two questions.
+   *
+   * Memoised per tenant for the life of one sweep (see the call site).
+   */
+  private async tenantMaySpend(tenantId: string, cache: Map<string, boolean>, result: DnaRegenerationResult): Promise<boolean> {
+    const cached = cache.get(tenantId);
+    if (cached !== undefined) return cached;
+
+    try {
+      await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
+      await this.billing?.assertSpendLimit(tenantId);
+      cache.set(tenantId, true);
+      return true;
+    } catch (error) {
+      const msg = `Skipping DNA re-generation for tenant ${tenantId}: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger.warn(msg);
+      result.errors.push(msg);
+      cache.set(tenantId, false);
+      return false;
+    }
   }
 
   // ── Private helpers ──────────────────────────────────────────
