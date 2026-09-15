@@ -151,8 +151,7 @@ with warm-up, the RSS numbers at the very first swept concurrency level run
 noisier than later levels — `ps`'s RSS is a high-water mark, not a live-set
 size — so prefer the trend across levels over any single level's number.
 
-## Interpreting a report
-
+### Interpreting a report
 ```
 --- concurrency=25 (ran 4.7s) ---
   requests=98 errors=0
