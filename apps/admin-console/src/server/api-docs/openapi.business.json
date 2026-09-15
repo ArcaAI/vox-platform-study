@@ -3805,6 +3805,15 @@
         ],
         "type": "object"
       },
+      "CloseConsultationRequest": {
+        "properties": {
+          "clinicianUserId": {
+            "description": "The clinician this close is attributed to. REQUIRED for a machine credential (API key / service account) — a machine is never the clinician; a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to act as themselves.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CompletePasswordResetRequest": {
         "properties": {
           "newPassword": {
@@ -19368,6 +19377,10 @@
       },
       "SummaryApprovalRequest": {
         "properties": {
+          "clinicianUserId": {
+            "description": "The clinician this sign-off is attested by. REQUIRED for a machine credential (API key / service account); a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to sign as themselves.",
+            "type": "string"
+          },
           "expectedVersion": {
             "description": "Current version of the summary row (from the prior GET). The approval fails with 412 if the version drifted.",
             "example": 7,
@@ -23060,6 +23073,10 @@
           },
           "changeSummary": {
             "description": "Summary of what changed",
+            "type": "string"
+          },
+          "clinicianUserId": {
+            "description": "The clinician this edit is attributed to. Required for a machine credential (API key / service account); a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN.",
             "type": "string"
           },
           "content": {
@@ -30370,7 +30387,7 @@
     },
     "/api/v1/consultations/{id}/close": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Terminal transition of the consultation row, and the last call of the `update -> approve -> close` sequence a machine integration makes when a clinician submits their note. `PENDING_REVIEW -> CLOSED_*` is NOT a legal edge, so the sign-off must precede this call.\n\n`clinicianUserId` names the clinician this close is attributed to. A SERVICE ACCOUNT or API KEY MUST supply it — a machine is never the clinician — and an API key may name only the human it is bound to unless that human holds `SUPER_ADMIN` or `TENANT_ADMIN`. A human caller omits it to act as themselves and may name another clinician only while holding one of those roles. A clinician outside the caller`s tenant is 404, never 403.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_close",
         "parameters": [
           {
@@ -30393,6 +30410,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseConsultationRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -30404,8 +30431,11 @@
             },
             "description": "Creating a ConsultationResponse by id"
           },
+          "400": {
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without an administrative role, or an API key named someone other than the human it is bound to."
+          },
           "404": {
-            "description": "Consultation not found"
+            "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
           },
           "409": {
             "description": "Illegal state transition — the consultation is not SIGNED or TIMED_OUT."
@@ -30423,6 +30453,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -30435,12 +30468,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/context": {
@@ -33022,7 +33058,7 @@
     },
     "/api/v1/consultations/{id}/summary/{contextItemId}/approve": {
       "post": {
-        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the summary row's `_version`. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the summary row's `_version`. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_approveSummary",
         "parameters": [
           {
@@ -33075,6 +33111,12 @@
             },
             "description": "Creating a SummaryApprovalResponseDto by id and contextItemId"
           },
+          "400": {
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician (a machine is never the attesting clinician; it is recorded as the ACTOR beside them in the WORM `ATTEST` row); `CLINICIAN_NOT_ALLOWED` — a human named another clinician without `SUPER_ADMIN`/`TENANT_ADMIN`, or an API key named someone other than the human it is bound to."
+          },
+          "404": {
+            "description": "Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
           },
@@ -33088,6 +33130,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a SummaryApprovalResponseDto by id and contextItemId",
@@ -33100,12 +33145,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/{contextItemId}/diff": {
@@ -33617,7 +33665,7 @@
     },
     "/api/v1/consultations/{id}/summary/{summaryId}": {
       "patch": {
-        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version`. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version`. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_updateSummary",
         "parameters": [
           {
@@ -33670,6 +33718,12 @@
             },
             "description": "Updating a SummaryResponse by id and summaryId"
           },
+          "400": {
+            "description": "Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without an administrative role, or an API key named someone other than the human it is bound to."
+          },
+          "404": {
+            "description": "Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
           },
@@ -33683,6 +33737,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Updating a SummaryResponse by id and summaryId",
@@ -33695,12 +33752,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/timeline": {
