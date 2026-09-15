@@ -157,8 +157,7 @@ shown only at creation time.
   entity/factory/mapper/repository first, then run these to reconcile barrels and prove coverage.
 - Do not insert a `--` separator before flags on any `gen:*` alias — see Commands above.
 
-## Adding a new tool
-
+### Adding a new tool
 1. Create a folder under `src/` with an `index.ts` entry point (commander-based CLIs are the convention).
 2. Add a script to `package.json` (`ts-node src/<tool>/index.ts`).
 3. Optionally add a root-level `gen:*` alias in the repo root `package.json`.

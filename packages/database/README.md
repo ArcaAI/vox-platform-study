@@ -114,7 +114,7 @@ are used — no file is read.
 
 **Tenant scope.** `src/extensions/tenant-scope.ts` enforces tenant isolation at the client layer:
 
-- `TENANT_SCOPED_MODELS` — allow-list of tenant-scoped models (88 as of this pass — verify with
+- `TENANT_SCOPED_MODELS` — allow-list of tenant-scoped models (90 as of this pass — verify with
   `rg "^export const TENANT_SCOPED_MODELS"` before citing a count elsewhere, it changes every
   sprint). `User`/`UserProfile`/`UserSettings` are deliberately absent: user identity is global,
   and tenant membership is modeled via the scoped join tables `UserRoleAssignment` and

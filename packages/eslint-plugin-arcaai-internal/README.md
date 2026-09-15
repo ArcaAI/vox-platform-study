@@ -162,8 +162,7 @@ In `packages/*` these surface as warnings (`flat/library.js` loads `eslint-plugi
 `apps/api` (`flat/nestjs.js`) they are hard errors. `apps/api` also declares the plugin directly in
 its devDependencies.
 
-## Adding a rule
-
+### Adding a rule
 1. Create the rule in `rules/<rule-name>.js` (CommonJS, standard ESLint rule shape with `meta` + `create`).
 2. Register it in the `rules` map of `index.js`.
 3. Add RuleTester coverage in `__tests__/<rule-name>.test.js`.
