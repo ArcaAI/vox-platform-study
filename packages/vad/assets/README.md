@@ -1,25 +1,28 @@
-# VAD Assets
+# VAD assets — model notes
 
-This directory contains or will contain the Silero VAD model files.
+`packages/vad/assets`. This directory holds no model files. The Silero VAD ONNX models are loaded
+from the `@ricky0123/vad-web` package's CDN distribution, or from a self-hosted path you
+configure — nothing is bundled here.
 
-## Model Files
+## Layout
 
-The VAD package uses the Silero VAD models which are automatically loaded from the `@ricky0123/vad-web` package or from a configured CDN path.
+| Path | What it holds |
+|---|---|
+| `README.md` | This file — nothing else lives in this directory |
 
-### Available Models
+## How it works
 
-1. **silero_vad_v5.onnx** - Silero VAD version 5 (recommended)
-   - Frame size: 512 samples
-   - Supports 6000+ languages
-   - Better performance in noisy environments
+### Available models
 
-2. **silero_vad_legacy.onnx** - Legacy Silero VAD model
-   - Frame size: 1536 samples
-   - Broader browser compatibility
+| Model | Frame size | Notes |
+|---|---|---|
+| `silero_vad_v5.onnx` (recommended) | 512 samples | Supports 6000+ languages, better performance in noisy environments |
+| `silero_vad_legacy.onnx` | 1536 samples | Broader browser compatibility |
 
-## Asset Configuration
+### Asset configuration
 
-By default, assets are loaded from the jsDelivr CDN. For self-hosting, configure the paths:
+By default, assets are loaded from the jsDelivr CDN (version-pinned via `VAD_WEB_VERSION` /
+`ORT_WEB_VERSION` in `../src/constants.ts`). For self-hosting, configure the paths:
 
 ```typescript
 const vad = new VADProcessor({
@@ -28,24 +31,16 @@ const vad = new VADProcessor({
 });
 ```
 
-## Required Files for Self-Hosting
-
-When self-hosting, ensure the following files are available:
+### Required files for self-hosting
 
 - `silero_vad_v5.onnx` (or `silero_vad_legacy.onnx`)
 - `vad.worklet.bundle.min.js`
 - ONNX Runtime WASM files from `onnxruntime-web`
 
-## Download Models
+## Gotchas
 
-To download the Silero VAD models:
+- The package this feeds is deprecated (TASK-865, removed in R4) — do not add new consumers.
 
-```bash
-# From npm package
-npx @ricky0123/vad-web
-```
+## Related
 
-Or download directly from:
-
-- https://cdn.jsdelivr.net/npm/@ricky0123/vad-web/dist/silero_vad_v5.onnx
-- https://cdn.jsdelivr.net/npm/@ricky0123/vad-web/dist/silero_vad_legacy.onnx
+- [`../README.md`](../README.md) — the `@arcaai/vad` package.

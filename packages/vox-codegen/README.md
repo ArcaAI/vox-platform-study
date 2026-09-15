@@ -1,93 +1,58 @@
-# @arcaai/vox-codegen
+# @arcaai/vox-codegen — tenant type generator
 
-Build-time TypeScript codegen CLI for a tenant's HOPE configuration. **Two
-modes, mutually exclusive:**
+`packages/vox-codegen`, npm package `@arcaai/vox-codegen` (version 3.5.0), bin `vox-codegen`. A
+Node >= 22 build-time CLI that emits TypeScript types from a tenant's live HOPE configuration. Two
+mutually exclusive modes:
 
 | Mode | Credential | Emits |
 |---|---|---|
-| `--tenant <id> --token <jwt>` | SUPER_ADMIN JWT | the tenant's consultation CONTEXT SCHEMA (TASK-668) |
-| `--tenant <id> --client-id <id> --client-secret <secret>` | SERVICE ACCOUNT (TASK-933) | the same context schema, with a MACHINE credential |
-| `--api-key <key> [--agents] [--workflows]` | tenant API key | what the tenant PUBLISHES: `Agent_<Slug>_Input` / `_Output`, `Workflow_<Slug>_Input` / `_Output` (TASK-931) |
+| `--tenant <id> --token <jwt>` | SUPER_ADMIN JWT | the tenant's consultation context schema |
+| `--tenant <id> --client-id <id> --client-secret <secret>` | service account | the same context schema, with a machine credential |
+| `--api-key <key> [--agents] [--workflows]` | tenant API key | what the tenant publishes: `Agent_<Slug>_Input`/`_Output`, `Workflow_<Slug>_Input`/`_Output` |
 
-Both emit named TS types from the SAME data the runtime reads, and both are an
-**accessory to runtime discovery, never a replacement**. A tenant can publish a
-new kind, agent version or workflow between two runs of this generator; the
-SDK's `useConsultationSchema()` / `hope.agents.list()` remain the wire contract,
-and a generated file will not know about the change until regenerated.
+Both families emit named TS types from the same data the runtime reads, and both are an accessory
+to runtime discovery, never a replacement — a tenant can publish a new kind, agent version or
+workflow between two runs of this generator, and a generated file will not know about the change
+until regenerated. Mixing credential classes across a single run is a refusal, not a guess: they
+authenticate differently, read different routes and answer different questions.
 
-Mixing the two is a refusal, not a guess: they authenticate differently, read
-different routes and answer different questions, so "which did you mean" has no
-safe default.
+It is a standalone package (not a `@arcaai/vox` subpath) because `@arcaai/vox` ships only
+browser-`platform` tsup bundles and carries no `bin` field; a Node CLI does not belong in a bundle
+every consultation tab downloads. It follows `@arcaai/vox-node`'s "same brand, different runtime"
+precedent and has no workspace dependencies of its own.
 
-## Placement decision (recorded per the ticket)
+## Layout
 
-`packages/agentic-sdk-v2` (`@arcaai/vox`) has no `bin` field, and every tsup
-entry is `platform: 'browser'` (`tsup.config.ts`'s `sharedOptions.esbuildOptions`
-sets `options.platform = 'browser'` for all five entries — main, core, compat,
-plugins, plugins-med-ner). Two options existed:
+| Path | What it holds |
+|---|---|
+| `src/cli.ts` | Argument parsing and the two-mode dispatch |
+| `src/fetch-schema.ts` / `src/generate.ts` | Context-schema mode: fetch + emit |
+| `src/fetch-catalogue.ts` / `src/generate-catalogue.ts` | Business-plane mode: fetch published agents/workflows + emit |
+| `src/schema-to-ts.ts` | Hand-written JSON-Schema-subset -> TypeScript renderer (mirrors the server's authoring-time subset; no shared package exists yet) |
+| `src/run.ts` / `src/run-catalogue.ts` / `src/watch.ts` | One-shot and polling-watch orchestration |
+| `src/exchange-service-token.ts` | Service-account token exchange for the context-schema mode |
+| `src/errors.ts` | `CodegenError` — thrown on untrusted wire JSON this generator cannot safely render |
+| `src/types.ts` | Hand-typed discovery-bundle envelope (kept independent of `@arcaai/vox`'s types on purpose) |
+| `src/index.ts` | Programmatic entry point — see below |
 
-1. Add a sixth, Node-platform tsup entry to `@arcaai/vox` that overrides
-   `sharedOptions`, plus a `bin` field on that package.
-2. Put the generator in its own workspace package — the repo's existing
-   `packages/tools` generator convention (and, more recently,
-   `packages/vox-node`'s "same brand, different runtime" precedent).
+## Commands
 
-**Chose option 2**, per the ticket's own recommendation, and did not find a
-reason to override it:
+| Command | Effect |
+|---|---|
+| `pnpm --filter @arcaai/vox-codegen build` / root `pnpm sdk-codegen:build` | tsup build |
+| `pnpm --filter @arcaai/vox-codegen dev` / root `pnpm sdk-codegen:dev` | tsup watch mode |
+| `pnpm --filter @arcaai/vox-codegen test` / root `pnpm sdk-codegen:test` | Vitest |
+| `pnpm sdk-codegen:test:cov` | Vitest with coverage |
+| `pnpm --filter @arcaai/vox-codegen lint` / root `pnpm sdk-codegen:lint` | ESLint |
+| `pnpm --filter @arcaai/vox-codegen typecheck` / root `pnpm sdk-codegen:typecheck` | `tsc --noEmit` |
+| `npx @arcaai/vox-codegen --tenant <id> [--token <jwt> \| --client-id <id> --client-secret <secret>] [--watch] [--out <path>]` | Run the context-schema mode |
+| `npx @arcaai/vox-codegen --api-key <key> [--agents] [--workflows] [--out <dir>]` | Run the business-plane mode |
 
-- A Node CLI does not belong in a browser bundle that ships to every
-  consultation tab and whose size is actively policed (`tsup.config.ts`'s own
-  header in `@arcaai/vox` documents per-entry bundle-size budgets).
-- `@arcaai/vox`'s `sharedOptions.esbuildOptions` sets `platform: 'browser'`
-  identically across every entry specifically so nothing Node-only (like
-  `node:fs`, `node:util`'s `parseArgs`, or a `#!/usr/bin/env node` shebang)
-  ends up in a bundle a browser has to parse. A sixth entry would need its
-  own divergent `esbuildOptions`/`platform`/`banner` inside a config file
-  whose entire structure currently assumes "everything here is browser code"
-  — more incidental complexity than a second package.
-- `@arcaai/vox-node` (TASK-632) already established the pattern this repo
-  uses for "same brand, different runtime": a sibling package, zero runtime
-  dependencies, Node-only tsup config (`platform: 'node'`, `target: 'node22'`).
-  This package follows that template almost verbatim.
+## How it works
 
-**Consequence for the CLI invocation.** The ticket's objective line reads
-`npx @arcaai/vox codegen --tenant <id>`, written before the placement
-decision was made. With the generator in its own package, the actual command
-is:
-
-```bash
-npx @arcaai/vox-codegen --tenant <tenantId> [--watch] [--out <path>]
-```
-
-No `codegen` subcommand is needed — the package itself IS the codegen tool,
-so there is nothing else it could mean.
-
-## Why the JSON-Schema-subset → TS logic is hand-written, not imported
-
-TASK-665 hand-ported the server's JSON-Schema-subset VALUE evaluator
-(`json-schema-subset.ts`, TASK-658) into `@arcaai/vox` rather than importing a
-shared package, because `@arcaai/json-schema-subset` did not exist yet at
-that baseline. It still does not exist at this baseline (`dev-2.1` @
-`d5c43c033` — confirmed by `find packages/json-schema-subset` returning
-nothing in this worktree) and this ticket's hard constraints forbid touching
-it (a refactor is in flight elsewhere). `schema-to-ts.ts` is therefore a
-**fresh, independent implementation** of the same subset semantics —
-`type`/`properties`/`required`/`additionalProperties`/`items`/`enum`/`const`/
-`anyOf`/`allOf`/discriminated `oneOf` — mirroring the same keyword set for
-the same reason TASK-665 did: nothing to share against yet. `src/types.ts`
-hand-types the discovery bundle envelope for the identical reason, rather
-than a type-only import of `@arcaai/vox`'s types, to keep this package a
-standalone Node tool with zero workspace dependencies (matching
-`@arcaai/vox-node`'s posture) instead of coupling its build graph to a
-browser package's `dist/` existing first, for a handful of interfaces. If a
-shared types/subset package is ever extracted, this is the first candidate to
-migrate onto it.
-
-## CLI
+### CLI flags
 
 ```
-vox-codegen — emit TypeScript types from a tenant's HOPE configuration
-
 CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   vox-codegen --tenant <id> --token <jwt> [options]
   vox-codegen --tenant <id> --client-id <id> --client-secret <secret> [options]
@@ -95,15 +60,15 @@ CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   --tenant <id>          Tenant id to generate types for (required)
   --token <jwt>          Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
   --client-id <id>       Service-account client id (or set HOPE_SVC_CLIENT_ID)
-  --client-secret <s>    Service-account secret (or set HOPE_SVC_CLIENT_SECRET). Prefer the
-                         environment variable: an argv secret is visible in `ps`.
+  --client-secret <s>    Service-account secret (or set HOPE_SVC_CLIENT_SECRET) - prefer the
+                         env var, an argv secret is visible in `ps`
   --working-tenant <id>  Tenant to bind the service-account token to (default: --tenant)
   --department <id>      Prefer this department's schema default, falling back to the tenant default
   --out <path>           Output FILE path (default: ./consultation-context-schema.generated.ts)
-  --watch                Keep polling and regenerate whenever the schema changes
+  --watch                Keep polling and regenerate whenever the schema's etag changes
   --interval <ms>        Poll interval in watch mode (default: 5000)
 
-PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
+PUBLISHED AGENTS AND WORKFLOWS (API key - the business plane)
   vox-codegen --api-key <key> [--agents] [--workflows] [options]
 
   --api-key <key>      Tenant API key (or set HOPE_API_KEY). Never reaches an admin route.
@@ -113,168 +78,74 @@ PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
 
 COMMON
   --base-url <url>     Gateway origin (default: http://localhost:8868, or HOPE_API_BASE_URL)
-  -h, --help           Show this help
 ```
 
-### The business-plane mode (`--agents` / `--workflows`)
+### Context-schema mode auth
 
-```bash
-npx @arcaai/vox-codegen --api-key "$HOPE_API_KEY" --base-url http://localhost:8868 \
-  --agents --workflows --out ./src/generated
-```
+The CLI calls `GET /tenants/me/context-schema`; what differs is the header. A super-admin JWT
+sends `Authorization: Bearer <token>` plus `X-Tenant-Id: <tenantId>` (the "manage as tenant"
+elevation path). A service account exchanges `--client-id`/`--client-secret` at
+`POST /auth/service-token` and sends the result as `X-Service-Account-Token` with NO
+`X-Tenant-Id` — the token carries its working tenant, bound at exchange via `--working-tenant`
+(default: `--tenant`). This is the mode a build pipeline wants: the service account is a
+revocable machine identity holding `svc:tenant:context-schema:read`, not a human's expiring JWT.
 
-Writes one file per requested plane — `agents.generated.ts`,
-`workflows.generated.ts` — so a workflow edit does not dirty the agents another
-team imports. Each carries a type pair per entry plus a map keyed by the **slug**,
-because the slug is what a call site actually passes:
+`--watch` does not refresh a service-account token: it is minted once before the loop, and the
+gateway's default TTL is 15 minutes, so a long watch in service-account mode eventually 401s and
+stops. `--watch` is a local authoring affordance; a pipeline runs the one-shot form. It is also
+polling, not streaming — no server-side `listChanged` notification exists yet, so it polls the
+discovery endpoint on `--interval` and rewrites the output only when the response `etag` changes.
+
+### Business-plane mode
+
+Reads four routes and no admin route: `GET /agents`, `GET /agents/{slug}`, `GET /workflows`,
+`GET /workflows/{slug}/schema`, all with `X-API-Key` — structural, since an API key can never
+reach `/admin/*`. Writes one file per requested plane (`agents.generated.ts`,
+`workflows.generated.ts`) plus a map keyed by slug:
 
 ```ts
-import type { Agent_NoteWriter_Input, AgentContractMap, AgentSlug } from './generated/agents.generated';
+import type { Agent_NoteWriter_Input, AgentContractMap } from './generated/agents.generated';
 
 const input: Agent_NoteWriter_Input = { text: note };
 const { output } = await hope.agents.invoke<AgentContractMap['note-writer']['output']>('note-writer', input);
 ```
 
-**It reads four routes and no admin route:** `GET /agents`, `GET /agents/{slug}`,
-`GET /workflows`, `GET /workflows/{slug}/schema`, all with `X-API-Key`. That
-restriction is structural rather than a rule to remember — an API key can never
-reach `/admin/*` — and it is the right restriction: what a tenant PUBLISHES is
-exactly what an integrator needs to type.
+An entry whose definition declares no schema renders `unknown`, not `Record<string, unknown>` —
+"no declared contract" and "any contract is fine" are different facts. `--watch` is not available
+in this mode: the context-schema mode polls one endpoint and compares an etag, while a published
+catalogue is N definitions with no aggregate validator.
 
-An entry whose schema the definition does not declare renders **`unknown`**, not
-`Record<string, unknown>`. "No declared contract" and "any contract is fine" are
-different facts, and generating the second from the first produces code that
-compiles and then 400s.
+### Fail loudly, don't guess
 
-`--watch` is **not** available here: the context-schema mode polls one endpoint
-and compares its `etag`, while a published catalogue is N definitions with no
-aggregate validator, so a watch would be an N-request poll that cannot tell
-"unchanged" from "not read yet".
+The server's authoring gate rejects `if`/`then`/`else` and `oneOf` without a sibling
+`discriminator.propertyName` at publish time, so a legitimately published schema never carries
+either. `schema-to-ts.ts` still reads untrusted wire JSON, so on either construct — or an
+unrecognized JSON Schema `type` — it throws `CodegenError` rather than emitting a type that lies
+about the payload shape; the CLI prints `error.message` to stderr with exit code 1 and lets any
+other error crash with its full stack. A discriminated `oneOf` renders as a real TypeScript union,
+one member per branch, never a merged "property soup" object.
 
-**Auth — two credential classes, exactly one per run.**
+### Documentation-only annotations
 
-The CLI calls `GET /tenants/me/context-schema` either way; what differs is the
-header, and the difference is not cosmetic.
+Five markers on a `STRUCTURED` context kind's declaration render as JSDoc hints on the generated
+type — never a type constraint or an authorization signal: `userIdentity` (`@identity`),
+`department`/`visitType`/`externalRef` (`@role ...`, one per marked property), and
+`materializeAs`/`streamContext` (attached at the type level, above the kind's `export type`). A
+marker naming a property absent from the kind's own fields is ignored rather than thrown on.
 
-- **Super-admin JWT** (`--token` / `HOPE_API_TOKEN`) — a "manage as tenant"
-  request: `Authorization: Bearer <token>` for a SUPER_ADMIN whose JWT carries an
-  empty tenant binding, plus `X-Tenant-Id: <tenantId>`, the same elevation path
-  `resolve-active-tenant.ts` implements for the admin-console BFF's "working
-  tenant" header. Mint one via `packages/tools/src/gen-dev-token` locally, or a
-  real login in CI.
-- **Service account** (`--client-id` + `--client-secret`, TASK-933) — the CLI
-  exchanges the pair at `POST /auth/service-token` for a short-lived opaque token
-  and sends it as `X-Service-Account-Token`. It sends **no `X-Tenant-Id`**: a
-  service-account token carries its working tenant, bound at the exchange, so a
-  per-request header would be a second and conflicting statement of tenancy.
-  `--working-tenant` defaults to `--tenant`; `--tenant` itself then only names
-  the subject of the generated file.
+### Known limitations
 
-This is the mode a BUILD PIPELINE wants. A super-admin JWT is a human's token
-with a human's expiry, and the account behind it is a person; the service account
-is the platform's machine identity, holds `svc:tenant:context-schema:read`, and
-is revocable on its own. Supplying both classes is a refusal, not a preference —
-the gateway rejects a request carrying two.
+- Constraint keywords with no TypeScript representation (`minLength`, `pattern`, `minimum`,
+  `minItems`, etc.) are not consulted — they stay runtime-only, enforced by the server and the
+  SDK at write time. Generated types narrow shape, not those bounds.
+- `additionalProperties: false` alongside named properties renders as the plain named-properties
+  object (no index signature), not a sealed/exact type — TypeScript has no clean built-in for
+  that outside literal-assignment contexts. A fully closed empty object still renders as
+  `Record<string, never>`.
+- Non-`STRUCTURED` kinds (`STREAM_AUDIO`, `TEXT`, `DOCUMENT`, `IMAGE`) get a one-line comment
+  instead of a payload type — `addContext()` never validates a payload for them.
 
-The client secret never appears in an error message this tool emits. Pass it
-through `HOPE_SVC_CLIENT_SECRET` rather than argv where you can: an argv secret
-is visible in `ps` to every process on the machine for as long as the run lasts.
-
-**`--watch` does not refresh a service-account token.** It is minted once, before
-the loop, and the gateway's default TTL is 15 minutes — so a long watch in
-service-account mode will eventually 401 and stop. `--watch` is a local authoring
-affordance; a pipeline runs the one-shot form.
-
-**Committed output, not fetched at boot.** The generated file is meant to be
-committed by the integrator, like any other source file, and regenerated
-when the tenant's schema changes — never fetched or generated at application
-boot.
-
-**`--watch` is polling, not streaming.** TASK-654 §4.7 named an eventual
-"MCP-style `listChanged` notification riding the SSE plane" as the client
-contract, but nothing implements it at this baseline: TASK-661 explicitly
-deferred a response-level version-skew signal, and the loop event stream
-TASK-660/665 shipped (`consultation:loop:{id}` / `useConsultationEvents`)
-carries per-consultation AGENT actions, not a schema-change notification —
-there is no `listChanged` channel to subscribe to yet. `--watch` therefore
-polls the same discovery endpoint on `--interval` (default 5000ms),
-comparing the response `etag`, and only rewrites the output file when it
-changes. If a `listChanged` SSE notification ships later, `src/watch.ts` is
-the function to point at it instead.
-
-## Fail loudly, don't guess
-
-The server's authoring gate (TASK-658 AC-8) rejects `if`/`then`/`else` at
-publish, and rejects `oneOf` without a sibling `discriminator.propertyName` —
-so a legitimately published schema never carries either. `schema-to-ts.ts`
-reads untrusted wire JSON, though, so on either construct — or an
-unrecognized JSON Schema `type` value — it throws `CodegenError` rather than
-silently emitting a type that lies about the payload shape. The CLI catches
-`CodegenError` specifically and prints `error.message` to stderr with exit
-code 1; anything else (a genuine bug) is left to crash with its full stack.
-
-A discriminated `oneOf` renders as a real TypeScript union, one member per
-branch (e.g. `{ kind: "internal"; department: string } | { kind: "external";
-providerName: string }`) — never a single object with every branch's
-properties merged together as optional siblings ("property soup"), which is
-what a naive generator would emit.
-
-## The `@identity` annotation (TASK-950)
-
-A tenant admin may mark ONE property of a `STRUCTURED` context kind as the
-clinician's staff-identifier field (`ContextKindDeclaration.userIdentity`).
-When `generate.ts` renders that kind's payload type, the marked property
-carries a `/** @identity … */` JSDoc — a documentation hint only, not a type
-constraint — noting that a service-account caller's `open()` resolves (or
-provisions) the HOPE user from that value. A marker naming a property absent
-from the kind's own `fields` is ignored rather than thrown on: the annotation
-is best-effort, exactly like the rest of this generator's stance on
-untrusted wire JSON.
-
-## The `@role`, `@materializeAs` and `@streamContext` annotations (TASK-951)
-
-Four more markers beside `userIdentity` document the mapping roles a tenant's
-schema may declare, all documentation hints only — never a type constraint,
-and never authorization:
-
-- `ContextKindDeclaration.department` / `.visitType` / `.externalRef` each
-  name ONE property of a `STRUCTURED` kind's `fields`. `generate.ts` renders
-  the marked property with a `/** @role department (by code|name) … */`,
-  `/** @role visitType … */` or `/** @role externalRef … */` JSDoc,
-  alongside — and using the identical field-level mechanism as — the
-  `@identity` annotation above. A marker naming an absent property is
-  ignored, exactly like `@identity`'s own dangling-marker behaviour.
-- `ContextKindDeclaration.materializeAs: 'CASE_NOTE'` and `.streamContext:
-  true` mark the KIND itself rather than one property, so `generate.ts`
-  attaches `@materializeAs CASE_NOTE` / `@streamContext` at the TYPE level —
-  the JSDoc block directly above the kind's `export type` declaration —
-  instead of on a member.
-
-An unmarked bundle's generated output is byte-identical to a run of this
-generator from before TASK-951; the annotation machinery is a no-op unless a
-kind actually declares one of these five markers.
-
-## Known limitations
-
-- Constraint keywords with no TypeScript representation
-  (`minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems`)
-  are intentionally not consulted by the type generator — they remain
-  runtime-only concerns, enforced by the server (`json-schema-subset.ts`) and
-  the SDK (`contextPayloadValidation.ts`) at write time. Generated types
-  narrow *shape*, not those bounds.
-- `additionalProperties: false` on an object that also declares named
-  properties is rendered as the plain object type (named properties only, no
-  index signature) rather than an exact/sealed type — TypeScript's structural
-  typing does not have a clean built-in "no excess properties" type outside
-  literal-assignment contexts, so this under-states strictness rather than
-  fabricate one. A fully closed empty object (`additionalProperties: false`,
-  no properties) still renders as `Record<string, never>`.
-- Non-`STRUCTURED` kinds (`STREAM_AUDIO`, `TEXT`, `DOCUMENT`, `IMAGE`) get a
-  one-line comment instead of a payload type — `addContext()` never
-  validates a `payload` for them (TASK-665 §4.2), so there is nothing to
-  type.
-
-## Programmatic use
+### Programmatic use
 
 ```ts
 import { fetchConsultationSchemaBundle, generateConsultationSchemaTypes } from '@arcaai/vox-codegen';
@@ -283,12 +154,24 @@ const bundle = await fetchConsultationSchemaBundle({ baseUrl, tenantId, token })
 const { contents } = generateConsultationSchemaTypes(bundle, { tenantId });
 ```
 
-See `src/index.ts` for the full exported surface (`runCodegenOnce`,
-`watchCodegen`, `jsonSchemaSubsetToTs`, `CodegenError`, and the bundle
-types).
+Full exported surface: `src/index.ts` (`runCodegenOnce`, `runCatalogueCodegenOnce`,
+`watchCodegen`, `jsonSchemaSubsetToTs`, `CodegenError`, and the bundle/catalogue types).
 
-## Commands
+## Gotchas
 
-`pnpm --filter @arcaai/vox-codegen build test lint typecheck` (root
-shortcuts: `pnpm sdk-codegen:build`, `sdk-codegen:test`, `sdk-codegen:lint`,
-`sdk-codegen:typecheck`).
+- The generated file is meant to be committed, like any other source file, and regenerated when
+  the tenant's schema or catalogue changes — never fetched or generated at application boot.
+- Pass a service-account secret through `HOPE_SVC_CLIENT_SECRET`, not argv — an argv secret is
+  visible in `ps` to every process on the machine for the run's duration.
+- `CodegenError` on an `if`/`then`/`else` or discriminator-less `oneOf` means the upstream schema
+  was published in a shape this generator (and the server's own authoring gate) should never
+  have allowed through — treat it as a signal to check the source schema, not a generator bug.
+
+## Related
+
+- [`@arcaai/vox`](../agentic-sdk-v2/README.md) — the runtime discovery this generator is an
+  accessory to (`useConsultationSchema()`, `hope.agents.list()` never go stale; a generated file
+  can).
+- [`@arcaai/vox-node`](../vox-node/README.md) — the server SDK a generated `agents.generated.ts`
+  / `workflows.generated.ts` pairs with.
+- `.claude/rules/08-vox-sdk.md` — SDK architecture rules.

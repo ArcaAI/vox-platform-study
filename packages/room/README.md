@@ -1,46 +1,48 @@
-# @arcaai/room
+# @arcaai/room — browser audio capture foundation
 
-Browser audio capture and processing foundation for the ARCAAI audio stack. Provides microphone capture (`Room`, `AudioTrack`), a shared `AudioContext` manager, a chainable processor pipeline, and React hooks/components on top. Every audio plugin in this monorepo (`@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt`, `@arcaai/med-ner`) builds on the `BaseProcessor` / `TrackProcessor` contract defined here.
+`packages/room`, npm package `@arcaai/room` (version 3.5.0). Browser microphone capture (`Room`,
+`AudioTrack`), a shared `AudioContext` manager, a chainable processor pipeline, and React
+hooks/components on top. Every audio plugin in this monorepo builds on the `BaseProcessor` /
+`TrackProcessor` contract defined here. Runtime dependency: `eventemitter3`. Peer dependency:
+`react` `^18.3.0 || ^19.0.4`.
 
-Last updated: 2026-07-04
+Consumed by `@arcaai/vox` (`packages/agentic-sdk-v2`), whose `TranscriptionPipeline` wires
+processors onto room tracks, and by `@arcaai/med-ner` type-only. `@arcaai/noise-filter` and
+`@arcaai/vad` implement `BaseProcessor` against this package but are deprecated for removal (see
+[The browser never runs a model](#the-browser-never-runs-a-model)); `@arcaai/stt`'s in-browser
+processor is likewise deprecated, though the package's PCM capture helpers are not.
 
-## Where it fits
+## Layout
 
-| Direction   | Package                                              | Relationship                                              |
-| ----------- | ---------------------------------------------------- | --------------------------------------------------------- |
-| Consumed by | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Implement `BaseProcessor` and attach to an `AudioTrack`   |
-| Consumed by | `@arcaai/med-ner`                                    | Type-only (`TrackProcessor`, `ProcessorOptions`)          |
-| Consumed by | `@arcaai/vox` (`packages/agentic-sdk-v2`)            | `TranscriptionPipeline` wires processors onto room tracks |
-| Consumed by | `apps/admin-console`                                 | Via `@arcaai/vox`                                         |
+| Path | What it holds |
+|---|---|
+| `src/core/` | `Room`, `AudioTrack`, `AudioContextManager`, `ProcessorPipeline`, `AudioMixer`, typed `RoomErrors` |
+| `src/processors/` | `BaseProcessor`, `BaseTextProcessor`, `NativeProcessor`, the `TrackProcessor` interface |
+| `src/components/` | `RoomProvider`, `AudioTrackRenderer` |
+| `src/hooks/` | `useRoom`, `useAudioTrack`, `useAudioLevel`, `useDevices`, `useProcessors`, `useAudioMixer`, `useBrowserCapabilities` |
+| `src/events/` | `TypedEventEmitter`, `TrackEvent`, `ProcessorEvent` maps |
+| `src/types/` | `AudioFeature`, `TrackState`, `RoomOptions`, `RoomError` |
+| `src/utils/` | Browser support/compat, constraints, worklet loader, audio level math, debug logger |
+| `src/index.ts` | Public barrel export |
+| `src/react-server-stub.ts` | Served under the `react-server` exports condition |
+| `e2e/` | Playwright browser tests (fixtures + specs) |
 
-Runtime dependency: `eventemitter3`. Peer dependency: `react` `^18.3.0 || ^19.0.4`.
+## Commands
 
-## Directory structure
+Run from this directory, or `pnpm --filter @arcaai/room <script>` from the repo root.
 
-```
-packages/room/
-├── src/
-│   ├── core/          # Room, AudioTrack, AudioContextManager, ProcessorPipeline,
-│   │                  # AudioMixer, typed Room errors (RoomErrors.ts)
-│   ├── processors/    # BaseProcessor, BaseTextProcessor, NativeProcessor,
-│   │                  # TrackProcessor interface + processor types
-│   ├── components/    # RoomProvider, AudioTrackRenderer
-│   ├── hooks/         # useRoom, useAudioTrack, useAudioLevel, useDevices,
-│   │                  # useProcessors, useAudioMixer, useBrowserCapabilities
-│   ├── events/        # TypedEventEmitter, TrackEvent, ProcessorEvent maps
-│   ├── types/         # AudioFeature, TrackState, RoomOptions, RoomError
-│   ├── utils/         # browser support/compat, constraints, worklet loader,
-│   │                  # audio level math, debug logger
-│   ├── __tests__/     # Vitest unit tests
-│   ├── index.ts       # Public barrel export
-│   └── react-server-stub.ts  # Served under the "react-server" exports condition
-├── e2e/               # Playwright browser tests (fixtures + specs)
-└── tsup.config.ts     # ESM (.mjs) + CJS (.cjs) build
-```
+| Command | Effect |
+|---|---|
+| `pnpm build` | tsup build (ESM `.mjs` + CJS `.cjs` + types) |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:cov` | Vitest unit tests |
+| `pnpm test:e2e` | Playwright browser tests (`e2e/`); `:headed`, `:debug`, `:chromium`, `:firefox`, `:webkit` variants exist |
+| `pnpm lint` | ESLint (`--max-warnings 0`) |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (`nuke` also removes `node_modules`) |
 
-## Public API overview
+## How it works
 
-### React usage (from `src/index.ts`)
+### React usage
 
 ```tsx
 import { RoomProvider, useAudioTrack, useAudioLevel } from '@arcaai/room';
@@ -70,42 +72,28 @@ function AudioRecorder() {
 }
 ```
 
-### Imperative usage
-
-```typescript
-import { Room, AudioFeature } from '@arcaai/room';
-
-const room = new Room({ webAudioMix: true });
-await room.connect(); // initializes the AudioContext
-
-const track = await room.createLocalTrack({
-  noiseSuppression: true,
-  echoCancellation: true,
-});
-
-await track.setFeature(AudioFeature.NOISE_SUPPRESSION, false);
-track.on('audioLevelUpdate', (info) => console.log(info.level, info.isSpeaking));
-
-await room.disconnect();
-```
+`noiseSuppression`/`echoCancellation` here are native `getUserMedia` constraints handled by the
+browser/OS — not a model this package loads. See
+[The browser never runs a model](#the-browser-never-runs-a-model).
 
 ### Key exports
 
-| Group        | Exports                                                                                                                                                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core classes | `Room`, `AudioTrack`, `AudioContextManager`, `ProcessorPipeline`, `AudioMixer`                                                                                      |
-| Processors   | `BaseProcessor`, `BaseTextProcessor`, `NativeProcessor`, `TrackProcessor` (interface)                                                                               |
-| Components   | `RoomProvider`, `AudioTrackRenderer`                                                                                                                                |
-| Hooks        | `useRoom`, `useRoomSafe`, `useAudioTrack`, `useAudioLevel`, `useMediaStreamAudioLevel`, `useDevices`, `useProcessors`, `useAudioMixer`, `useBrowserCapabilities`    |
-| Events       | `TrackEvent`, `ProcessorEvent`, `TypedEventEmitter`                                                                                                                 |
-| Errors       | `RoomError`, `RoomPermissionError`, `RoomDeviceError`, `RoomSampleRateMismatchError`, `mapGetUserMediaError`, ...                                                   |
-| Utils        | `getBrowserSupport`, `getBrowserCapabilities`, `buildAudioConstraints`, `createWorkletLoader`, `debugLog`, `debugLogConfig`, `debugLogTranscript`, audio level math |
+| Group | Exports |
+|---|---|
+| Core classes | `Room`, `AudioTrack`, `AudioContextManager`, `ProcessorPipeline`, `AudioMixer` |
+| Processors | `BaseProcessor`, `BaseTextProcessor`, `NativeProcessor`, `TrackProcessor` (interface) |
+| Components | `RoomProvider`, `AudioTrackRenderer` |
+| Hooks | `useRoom`, `useRoomSafe`, `useAudioTrack`, `useAudioLevel`, `useMediaStreamAudioLevel`, `useDevices`, `useProcessors`, `useAudioMixer`, `useBrowserCapabilities` |
+| Events | `TrackEvent`, `ProcessorEvent`, `TypedEventEmitter` |
+| Errors | `RoomError`, `RoomPermissionError`, `RoomDeviceError`, `RoomSampleRateMismatchError`, `mapGetUserMediaError` |
 
-`AudioMixer` merges multiple `MediaStream` inputs into one output via Web Audio `GainNode` summation with `1/sqrt(N)` master-gain normalization; pair it with `useAudioMixer`.
+`AudioMixer` merges multiple `MediaStream` inputs into one output via Web Audio `GainNode`
+summation with `1/sqrt(N)` master-gain normalization; pair it with `useAudioMixer`.
 
-## Writing a processor plugin
+### Writing a processor plugin
 
-Custom audio stages implement `TrackProcessor` or extend `BaseProcessor` (which adds lifecycle, event emission, and a `protected debugMode` flag):
+Custom audio stages implement `TrackProcessor` or extend `BaseProcessor` (adds lifecycle, event
+emission, a `protected debugMode` flag):
 
 ```typescript
 import { BaseProcessor, type AudioProcessorOptions } from '@arcaai/room';
@@ -126,7 +114,7 @@ class MyProcessor extends BaseProcessor {
 }
 ```
 
-Chain several processors with `ProcessorPipeline`:
+Chain several with `ProcessorPipeline`:
 
 ```typescript
 const pipeline = new ProcessorPipeline([noiseFilter, vad, stt]);
@@ -134,53 +122,43 @@ await audioTrack.setProcessor(pipeline);
 await pipeline.setEnabled('vad-processor', false);
 ```
 
-Real implementations to reference: `NoiseFilterProcessor` (`packages/noise-filter`), `VADProcessor` (`packages/vad`), `STTProcessor` (`packages/stt`).
+### Sample-rate enforcement
 
-## Sample-rate enforcement
+Downstream processors are sample-rate sensitive: RNNoise (`@arcaai/noise-filter`) requires
+48000 Hz; Silero VAD resamples internally to 16000 Hz. macOS commonly locks devices to
+44100 Hz, which silently degrades RNNoise quality. `AudioContextManager.acquire(opts)` supports
+opt-in enforcement:
 
-Downstream processors are sample-rate sensitive: RNNoise (`@arcaai/noise-filter`) requires 48 000 Hz; Silero VAD resamples internally to 16 000 Hz. macOS commonly locks devices to 44 100 Hz, which silently degrades RNNoise quality. `AudioContextManager.acquire(opts)` supports opt-in enforcement:
+| `requireSampleRate` | `allowMismatch` | Behavior on mismatch |
+|---|---|---|
+| unset | - | no-op (backwards-compatible default) |
+| `48000` | `false` (default) | throws `RoomSampleRateMismatchError` (`code: 'sample_rate_mismatch'`) |
+| `48000` | `true` | logs a `console.warn` and resolves with the context |
 
-```typescript
-import { AudioContextManager, RoomSampleRateMismatchError } from '@arcaai/room';
+### The browser never runs a model
 
-const manager = AudioContextManager.getInstance({ sampleRate: 48000 });
-try {
-  await manager.acquire({ requireSampleRate: 48000 });
-} catch (err) {
-  if (err instanceof RoomSampleRateMismatchError) {
-    // accept the mismatch explicitly, or fall back to device-default processors
-    await manager.acquire({ requireSampleRate: 48000, allowMismatch: true });
-  }
-}
-```
+`@arcaai/room` itself never runs a model — it is pure capture and Web Audio plumbing. The
+deprecated downstream processors (`@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt`'s local
+Whisper, `@arcaai/med-ner`) that attach to it via `TrackProcessor` are retired by owner directive
+(TASK-865): VAD, denoise, diarization, ASR and NER are server-side decisions of the tenant's
+Agents. Native `getUserMedia` constraints (`noiseSuppression`, `echoCancellation`,
+`autoGainControl`) are not models and stay on by default.
 
-| `requireSampleRate` | `allowMismatch`   | Behaviour on mismatch                                                 |
-| ------------------- | ----------------- | --------------------------------------------------------------------- |
-| unset               | —                 | no-op (backwards-compatible default)                                  |
-| `48000`             | `false` (default) | throws `RoomSampleRateMismatchError` (`code: 'sample_rate_mismatch'`) |
-| `48000`             | `true`            | logs a `console.warn` and resolves with the context                   |
+### Runtime requirements
 
-## Runtime requirements
+- Browser only. Microphone capture requires a secure context (HTTPS or localhost) and the user
+  granting `getUserMedia` permission; failures map to typed errors via `mapGetUserMediaError`.
+- AudioWorklet is used where available; check at runtime with `getBrowserSupport()` /
+  `isAdvancedAudioSupported()`.
+- React Server Components: the package ships a `react-server` exports-condition stub, so
+  importing it in an RSC context fails loudly instead of executing browser code. All real entry
+  points carry `"use client"`.
 
-- Browser only. Microphone capture requires a secure context (HTTPS or localhost) and the user granting `getUserMedia` permission; failures map to typed errors via `mapGetUserMediaError`.
-- AudioWorklet is used where available (Chrome 66+, Firefox 76+, Safari 17.4+, Edge 79+); older Safari falls back where possible. Check at runtime with `getBrowserSupport()` / `isAdvancedAudioSupported()`.
-- React Server Components: the package ships a `react-server` exports-condition stub, so importing it in an RSC context fails loudly instead of executing browser code. All real entry points carry `"use client"`.
+## Related
 
-## Commands
-
-From this directory:
-
-| Command                                                | Action                                                                                                    |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `pnpm build`                                           | tsup build (ESM `.mjs` + CJS `.cjs` + types)                                                              |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                                                         |
-| `pnpm test:e2e`                                        | Playwright browser tests (`e2e/`); `:headed`, `:debug`, `:chromium`, `:firefox`, `:webkit` variants exist |
-| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                                                               |
-| `pnpm typecheck`                                       | `tsc --noEmit`                                                                                            |
-| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)                                                    |
-
-From the repo root: `pnpm --filter @arcaai/room build` (same pattern for `test`, `lint`, etc.).
-
-## License
-
-MIT
+- [`@arcaai/vox`](../agentic-sdk-v2/README.md) — the browser SDK that wires this package's tracks
+  into its capture graph.
+- [`@arcaai/noise-filter`](../noise-filter/README.md), [`@arcaai/vad`](../vad/README.md),
+  [`@arcaai/stt`](../stt/README.md), [`@arcaai/med-ner`](../med-ner/README.md) — deprecated
+  processor implementations built on this package.
+- `.claude/rules/08-vox-sdk.md` — the owner directive that the browser never runs a model.
