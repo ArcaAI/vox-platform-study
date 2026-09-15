@@ -35,17 +35,58 @@
  * plane's body is FLAT and the workflow plane's is ENVELOPED (mixing them is a 400 on every
  * call), and a workflow run over a USER JWT additionally needs a CASL ability that the agent
  * routes do not require — so the same person who can invoke an agent may get a 403 here.
+ *
+ * ## TASK-975 lanes A, B, C — the socket lane, and being findable
+ *
+ * **Lane A.** The panel linked exactly ONE destination, `/api-keys`, so `/developer/invoke`,
+ * `/developer/reference` and `/developer/sdk` — three good REST surfaces that already existed —
+ * were reported as missing. They are now a footer row on EVERY state, the three workflow early
+ * returns included: a developer told their workflow is not exposable is precisely the one who
+ * needs an onward path, and used to be handed an alert and nothing else.
+ *
+ * **Lane B.** A fifth lane, **Socket**, for the two places a socket is a real transport: a
+ * workflow run (`transport: 'socket'`, an OPTION on the methods the Node tab already shows) and
+ * a realtime STT session (`hope.stt.*` + `RealtimeSttSocket`). Four WebSocket gateways and two
+ * SDK socket clients shipped with zero mention anywhere in this console. Its two constants are
+ * rendered from `shared/docs/socket-snippets` rather than restated here, so the SSE tab and the
+ * Socket tab can never give a developer two different explanations of the same choice.
+ *
+ * The same ticket also closes the Browser lane's one honest-but-codeless cell: `SPEECH_TO_TEXT`
+ * keeps its "no browser path by slug" framing — there genuinely is no `invoke()` for it — and
+ * gains the capture snippet that framing names. `TEXT_TO_SPEECH` keeps prose ALONE, because
+ * `@arcaai/vox` really has no agent-slug path for synthesis and inventing one would be the worst
+ * failure this panel can have: it carries the authority of the product.
+ *
+ * **Lane C.** The Postman lane leads with a request MANIFEST derived from the same
+ * `collection.item` array the file is serialized from (so the two cannot drift), and the raw JSON
+ * moves behind a collapsed disclosure — present and complete, because reading it before importing
+ * is the only way to see for yourself that no credential travels with it.
  */
-import { useMemo, type ReactNode } from 'react';
+import { useId, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { IconAlertTriangle, IconDownload, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
-import { Alert, AlertDescription, AlertTitle, Badge, Button, FieldDescription, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui';
+import { IconAlertTriangle, IconChevronDown, IconDownload, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  FieldDescription,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@arcaai/ui';
 import { GatewayError, getJson } from '@/shared/api';
 import { CopyButton } from '@/shared/copy-button';
 import { publicEnv } from '@/config/public-env';
 import { agentContextExample, exampleBodyFromJsonSchema } from '@/shared/docs/example-body';
-import { buildPostmanCollection, type PostmanCollection } from '@/shared/docs/postman-collection';
+import { buildPostmanCollection, type PostmanCollection, type PostmanItem } from '@/shared/docs/postman-collection';
 import {
   agentCurlSnippet,
   agentVoxNodeSnippet,
@@ -56,8 +97,28 @@ import {
   type AgentSnippetOptions,
   type SdkSnippetAgentTask,
 } from '@/shared/docs/sdk-snippets';
+import {
+  SOCKET_LANE_RATIONALE,
+  SOCKET_RUNTIME_FLOOR,
+  sttBrowserCaptureSnippet,
+  sttRealtimeVoxNodeSnippet,
+  workflowSocketCurlSnippet,
+  workflowSocketVoxNodeSnippet,
+  workflowSocketVoxSnippet,
+} from '@/shared/docs/socket-snippets';
 
 const API_KEYS_HREF = '/api-keys';
+const INVOKE_GUIDE_HREF = '/developer/invoke';
+/**
+ * TASK-975 B5 — `socket` is a LANE, not a `?mode=` value, and filtering it out of the badges and
+ * the Postman requests below is CORRECT: `POST /workflows/{slug}/runs?mode=socket` is not a
+ * route. A socket run starts exactly like any other (`?mode=async`) and is then FOLLOWED over a
+ * run-scoped ticket, so the transport is chosen at the watch, never on the start.
+ *
+ * The defect this ticket fixed was never the filter — it was filtering the mode and then
+ * documenting the lane nowhere. The lane now lives in the **Socket** tab of this panel and in
+ * `shared/docs/socket-snippets.ts`; do not "fix" one by breaking the other.
+ */
 const SOCKET_MODE = 'socket';
 /** The flat minimum the invocations route always accepts, when the schema yields nothing usable. */
 const FLAT_MINIMUM_BODY: Record<string, unknown> = { text: '…' };
@@ -69,6 +130,10 @@ const BROWSER_LABEL = 'Browser (@arcaai/vox) snippet';
 const BROWSER_KEY_LABEL = 'Browser (@arcaai/vox) API-key variant';
 const CURL_LABEL = 'curl snippet';
 const POSTMAN_LABEL = 'Postman collection JSON';
+const SOCKET_NODE_LABEL = 'Socket (@arcaai/vox-node) snippet';
+const SOCKET_BROWSER_LABEL = 'Socket (@arcaai/vox) snippet';
+const SOCKET_SHELL_LABEL = 'Socket handshake (websocat) snippet';
+const STT_SOCKET_LABEL = 'Realtime STT (@arcaai/vox-node) snippet';
 
 export type IntegrationAgentTask = 'TEXT_GENERATION' | 'SPEECH_TO_TEXT' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
 
@@ -101,6 +166,52 @@ function ApiKeysLink() {
   );
 }
 
+/**
+ * TASK-975 A1 — the other half of the integration story.
+ *
+ * The REST documentation was never missing; nothing pointed at it. Each label says what the
+ * destination ANSWERS rather than naming the screen, because a developer standing on this panel
+ * is choosing between questions, not between pages.
+ */
+const DEVELOPER_LINKS: ReadonlyArray<{ href: string; label: string }> = [
+  { href: INVOKE_GUIDE_HREF, label: 'How to invoke (the direct HTTP contract)' },
+  { href: '/developer/reference', label: 'API reference (every route)' },
+  { href: '/developer/sdk', label: 'SDK guides (both SDKs)' },
+];
+
+/**
+ * The footer of every panel state — including the three workflow early returns (A2), where an
+ * alert used to be the entire answer.
+ */
+function IntegrationLinks() {
+  return (
+    <div className="flex flex-col gap-1.5 border-t pt-3">
+      <ApiKeysLink />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {DEVELOPER_LINKS.map((link) => (
+          <Link key={link.href} href={link.href} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs hover:underline">
+            <IconExternalLink aria-hidden className="size-3" />
+            {link.label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A2 — a state the panel cannot offer lanes for is still an integration surface. Whatever the
+ * explanation is, it is followed by the same way out.
+ */
+function PanelState({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {children}
+      <IntegrationLinks />
+    </div>
+  );
+}
+
 function CodeBlock({ label, caption, code }: { label: string; caption?: string; code: string }) {
   return (
     <div>
@@ -128,13 +239,31 @@ function Callout({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function LaneTabs({ node, browser, http, postman }: { node: ReactNode; browser: ReactNode; http: ReactNode; postman: ReactNode }) {
+/**
+ * `socket` is OPTIONAL and sits between HTTP and Postman: a socket is a real transport for a
+ * workflow run and for a realtime STT session, and for nothing else this panel describes. An
+ * always-present tab would have had to explain its own emptiness on three tasks out of four.
+ */
+function LaneTabs({
+  node,
+  browser,
+  http,
+  socket,
+  postman,
+}: {
+  node: ReactNode;
+  browser: ReactNode;
+  http: ReactNode;
+  socket?: ReactNode;
+  postman: ReactNode;
+}) {
   return (
     <Tabs defaultValue="node" className="gap-3">
       <TabsList variant="line">
         <TabsTrigger value="node">Node</TabsTrigger>
         <TabsTrigger value="browser">Browser</TabsTrigger>
         <TabsTrigger value="http">HTTP</TabsTrigger>
+        {socket ? <TabsTrigger value="socket">Socket</TabsTrigger> : null}
         <TabsTrigger value="postman">Postman</TabsTrigger>
       </TabsList>
       <TabsContent value="node" className="flex flex-col gap-3">
@@ -146,6 +275,11 @@ function LaneTabs({ node, browser, http, postman }: { node: ReactNode; browser: 
       <TabsContent value="http" className="flex flex-col gap-3">
         {http}
       </TabsContent>
+      {socket ? (
+        <TabsContent value="socket" className="flex flex-col gap-3">
+          {socket}
+        </TabsContent>
+      ) : null}
       <TabsContent value="postman" className="flex flex-col gap-3">
         {postman}
       </TabsContent>
@@ -154,15 +288,68 @@ function LaneTabs({ node, browser, http, postman }: { node: ReactNode; browser: 
 }
 
 /**
+ * TASK-975 B3 — the two facts no socket snippet can state for itself, rendered VERBATIM from the
+ * shared constants rather than restated here. A developer comparing the HTTP tab with this one is
+ * then comparing transports, not two different explanations of the same choice.
+ */
+function WorkflowSocketRationale() {
+  return (
+    <Callout title="SSE is still the default">
+      <p>{SOCKET_LANE_RATIONALE}</p>
+      <p>{SOCKET_RUNTIME_FLOOR}</p>
+    </Callout>
+  );
+}
+
+/**
+ * The STT lane states the runtime FLOOR — which applies wherever a socket is offered — but not
+ * the workflow rationale above, which would be false here: a live session has no SSE lane to
+ * prefer. `/ws/stt/stream` is the transport, not an alternative to one.
+ */
+function SttSocketNote() {
+  return (
+    <Callout title="Here the socket IS the transport">
+      <p>
+        A live session has no SSE lane to fall back to — <code className="font-mono">/ws/stt/stream</code> is how realtime audio is carried, so the choice the
+        workflow lane offers does not arise. Recorded audio goes to{' '}
+        <code className="font-mono">{'POST /agents/{slug}/transcriptions'}</code> instead, which answers an <code className="font-mono">sseUrl</code> for
+        progress.
+      </p>
+      <p>{SOCKET_RUNTIME_FLOOR}</p>
+    </Callout>
+  );
+}
+
+/**
+ * One manifest row's path, rebuilt the way the collection's own `buildUrl` builds `raw` — from
+ * `url.path` and `url.query`, never from a second copy of the route. C1's whole point is that the
+ * manifest cannot drift from the file it sits above.
+ */
+function requestPathOf(item: PostmanItem): string {
+  const query = item.request.url.query ?? [];
+  const search = query.length > 0 ? `?${query.map((entry) => `${entry.key}=${entry.value}`).join('&')}` : '';
+  return `/${item.request.url.path.join('/')}${search}`;
+}
+
+/**
  * Download the collection as a file the developer imports into their own Postman.
  *
- * The JSON is rendered in full beside the button on purpose: a downloadable file that a developer
- * is about to run against their own tenant should be readable BEFORE it is imported, and it is the
- * only way to see for yourself that no credential travels with it.
+ * TASK-975 lane C. The file was always correct and always unreadable: ~200 lines of raw JSON with
+ * nothing saying what was inside it. It now leads with a MANIFEST — one row per request, derived
+ * from the same `collection.item` array the JSON is serialized from — and the file itself moves
+ * behind a disclosure.
+ *
+ * The JSON stays present and complete rather than being summarised away: a downloadable file a
+ * developer is about to run against their own tenant should be readable BEFORE it is imported, and
+ * it is the only way to see for yourself that no credential travels with it.
  */
 function PostmanLane({ collection, slug }: { collection: PostmanCollection; slug: string }) {
   const json = useMemo(() => JSON.stringify(collection, null, 2), [collection]);
+  const manifestId = useId();
   const fileName = `hope-${slug}.postman_collection.json`;
+  // C3 — the origin the downloaded file will carry, read off the collection rather than re-derived,
+  // so what this line promises is what the file does.
+  const baseUrl = collection.variable.find((entry) => entry.key === 'baseUrl')?.value ?? '';
 
   function download() {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
@@ -178,17 +365,47 @@ function PostmanLane({ collection, slug }: { collection: PostmanCollection; slug
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">
-        Import this, then fill the <code className="font-mono">apiKey</code> collection variable in your own Postman environment. It ships EMPTY — the console
-        never holds your key, and a downloaded file travels through chat threads and tickets.
-      </p>
       <div>
+        <FieldDescription id={manifestId}>Requests in this collection ({collection.item.length})</FieldDescription>
+        <ul aria-labelledby={manifestId} className="mt-1 flex flex-col gap-1.5 rounded-md border p-2">
+          {collection.item.map((item) => (
+            <li key={item.name} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+              <Badge variant="outline" className="font-mono">
+                {item.request.method}
+              </Badge>
+              <code className="text-muted-foreground font-mono break-all">{requestPathOf(item)}</code>
+              <span className="text-foreground">{item.name}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <p className="text-muted-foreground text-xs">
+        Every request resolves against <code className="font-mono">{baseUrl}</code>, the gateway origin this console is configured for. Import the file, then
+        fill the <code className="font-mono">apiKey</code> collection variable in your own Postman environment: it ships EMPTY, because the console never holds
+        your key and a downloaded file travels through chat threads and tickets.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="outline" size="sm" onClick={download}>
           <IconDownload aria-hidden />
           Download the Postman collection
         </Button>
+        <Link href={INVOKE_GUIDE_HREF} className="text-foreground inline-flex items-center gap-1 text-xs hover:underline">
+          <IconExternalLink aria-hidden className="size-3.5" />
+          Import walkthrough
+        </Link>
       </div>
-      <CodeBlock label={POSTMAN_LABEL} code={json} />
+
+      <Collapsible className="rounded-md border">
+        <CollapsibleTrigger className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-xs font-medium outline-none focus-visible:ring-[3px]">
+          Read the raw collection JSON
+          <IconChevronDown aria-hidden className="size-3.5" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="px-2 pb-2">
+          <CodeBlock label={POSTMAN_LABEL} code={json} />
+        </CollapsibleContent>
+      </Collapsible>
     </>
   );
 }
@@ -232,7 +449,15 @@ export interface AgentIntegrationProps {
   compiledConfig?: Record<string, unknown> | null;
 }
 
-/** The two agent tasks `@arcaai/vox` cannot reach BY SLUG, and what it does instead. */
+/**
+ * The two agent tasks `@arcaai/vox` cannot reach BY SLUG, and what it does instead.
+ *
+ * TASK-975 B4 keeps this framing word for word and adds the snippet BENEATH it for
+ * `SPEECH_TO_TEXT` (see `AgentIntegration`) — there is no `invoke()` for realtime speech because
+ * it is a capture session, which is a fact about the shape of the integration, not a gap in the
+ * docs. `TEXT_TO_SPEECH` gets no snippet at any point: `@arcaai/vox` genuinely has no agent-slug
+ * path for synthesis.
+ */
 function BrowserAbsence({ task }: { task: IntegrationAgentTask }) {
   return (
     <Alert role="note">
@@ -280,7 +505,10 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
   const schemaExample = invocable ? exampleBodyFromJsonSchema(inputSchema) : null;
   const exampleBody = contextExample ? { ...(schemaExample ?? FLAT_MINIMUM_BODY), context: contextExample } : schemaExample;
   // NER shares the route but is one-shot: `?mode=stream` on it is a 400 `MODE_UNSUPPORTED`.
-  const options: AgentSnippetOptions = { exampleBody, streamable: task === 'TEXT_GENERATION' };
+  // `baseUrl` (TASK-975 C4): the HTTP lane used to print `https://your-gateway.example.com`
+  // while the Postman tab two clicks away injected the console's real origin — two answers to
+  // one question, in one panel.
+  const options: AgentSnippetOptions = { exampleBody, streamable: task === 'TEXT_GENERATION', baseUrl: publicEnv.apiHost };
 
   const collection = buildPostmanCollection({
     kind: 'agent',
@@ -351,7 +579,14 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
               </p>
             </>
           ) : (
-            <BrowserAbsence task={task} />
+            <>
+              <BrowserAbsence task={task} />
+              {/* The absence note NAMES this call; printing it is what turns an accurate sentence
+                  into something a developer can run. TTS deliberately gets no equivalent. */}
+              {task === 'SPEECH_TO_TEXT' ? (
+                <CodeBlock label={BROWSER_LABEL} caption="The capture session that path names, with @arcaai/vox" code={sttBrowserCaptureSnippet(slug)} />
+              ) : null}
+            </>
           )
         }
         http={
@@ -359,9 +594,21 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
             <CodeBlock label={CURL_LABEL} caption="Any HTTP client — the same body, on the api/v1 prefix" code={agentCurlSnippet(slug, snippetTask, options)} />
           </>
         }
+        socket={
+          task === 'SPEECH_TO_TEXT' ? (
+            <>
+              <SttSocketNote />
+              <CodeBlock
+                label={STT_SOCKET_LABEL}
+                caption="Drive a live session from a server that ALREADY has audio — a telephony bridge, a recording relay"
+                code={sttRealtimeVoxNodeSnippet(slug)}
+              />
+            </>
+          ) : undefined
+        }
         postman={<PostmanLane collection={collection} slug={slug} />}
       />
-      <ApiKeysLink />
+      <IntegrationLinks />
     </div>
   );
 }
@@ -407,28 +654,32 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
 
   if (!isActive) {
     return (
-      <Alert role="status">
-        <IconInfoCircle aria-hidden />
-        <AlertTitle>Published, not active</AlertTitle>
-        <AlertDescription>
-          This version is frozen, but the public endpoint keeps resolving the ACTIVE version of <code className="font-mono">{slug}</code>. Activate it from
-          the version list when it should serve; the endpoint details appear here once it does.
-        </AlertDescription>
-      </Alert>
+      <PanelState>
+        <Alert role="status">
+          <IconInfoCircle aria-hidden />
+          <AlertTitle>Published, not active</AlertTitle>
+          <AlertDescription>
+            This version is frozen, but the public endpoint keeps resolving the ACTIVE version of <code className="font-mono">{slug}</code>. Activate it from
+            the version list when it should serve; the endpoint details appear here once it does.
+          </AlertDescription>
+        </Alert>
+      </PanelState>
     );
   }
 
   if (!exposable) {
     return (
-      <Alert role="status">
-        <IconInfoCircle aria-hidden />
-        <AlertTitle>Published — not exposable on the public invoke surface</AlertTitle>
-        <AlertDescription>
-          Only the <code className="font-mono">{EXPOSABLE_PALETTE_KEY}</code> palette is exposable; this workflow&apos;s palette is{' '}
-          <code className="font-mono">{paletteKey ?? 'not core'}</code>, so there is no <code className="font-mono">POST /workflows/{slug}/runs</code> to offer. It
-          runs through consultations and assignments instead.
-        </AlertDescription>
-      </Alert>
+      <PanelState>
+        <Alert role="status">
+          <IconInfoCircle aria-hidden />
+          <AlertTitle>Published — not exposable on the public invoke surface</AlertTitle>
+          <AlertDescription>
+            Only the <code className="font-mono">{EXPOSABLE_PALETTE_KEY}</code> palette is exposable; this workflow&apos;s palette is{' '}
+            <code className="font-mono">{paletteKey ?? 'not core'}</code>, so there is no <code className="font-mono">POST /workflows/{slug}/runs</code> to
+            offer. It runs through consultations and assignments instead.
+          </AlertDescription>
+        </Alert>
+      </PanelState>
     );
   }
 
@@ -446,24 +697,28 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
     const notExposed = schema.error instanceof GatewayError && schema.error.isNotFound;
     if (notExposed) {
       return (
-        <Alert role="status">
-          <IconInfoCircle aria-hidden />
-          <AlertTitle>Published, but not exposed to the public plane</AlertTitle>
-          <AlertDescription>
-            The gateway answers 404 for this slug on the public invoke surface. Either the tenant&apos;s <strong>Workflow exposure plane</strong> feature is off
-            (Feature availability) or the published version is not visible there yet. Once it is on, the endpoint details appear here.
-          </AlertDescription>
-        </Alert>
+        <PanelState>
+          <Alert role="status">
+            <IconInfoCircle aria-hidden />
+            <AlertTitle>Published, but not exposed to the public plane</AlertTitle>
+            <AlertDescription>
+              The gateway answers 404 for this slug on the public invoke surface. Either the tenant&apos;s <strong>Workflow exposure plane</strong> feature is
+              off (Feature availability) or the published version is not visible there yet. Once it is on, the endpoint details appear here.
+            </AlertDescription>
+          </Alert>
+        </PanelState>
       );
     }
     return (
-      <Alert variant="destructive">
-        <IconAlertTriangle aria-hidden />
-        <AlertTitle>Couldn&apos;t resolve this workflow&apos;s endpoints</AlertTitle>
-        <AlertDescription>
-          The run contract could not be read back{schema.error instanceof GatewayError ? `: ${schema.error.message}` : ''}. Reopen this panel to retry.
-        </AlertDescription>
-      </Alert>
+      <PanelState>
+        <Alert variant="destructive">
+          <IconAlertTriangle aria-hidden />
+          <AlertTitle>Couldn&apos;t resolve this workflow&apos;s endpoints</AlertTitle>
+          <AlertDescription>
+            The run contract could not be read back{schema.error instanceof GatewayError ? `: ${schema.error.message}` : ''}. Reopen this panel to retry.
+          </AlertDescription>
+        </Alert>
+      </PanelState>
     );
   }
 
@@ -518,10 +773,28 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
             </p>
           </>
         }
-        http={<CodeBlock label={CURL_LABEL} caption="Any HTTP client — start, read, follow" code={workflowCurlSnippet(slug, exampleBody, modes)} />}
+        http={
+          <CodeBlock label={CURL_LABEL} caption="Any HTTP client — start, read, follow" code={workflowCurlSnippet(slug, exampleBody, modes, publicEnv.apiHost)} />
+        }
+        socket={
+          <>
+            <WorkflowSocketRationale />
+            <CodeBlock
+              label={SOCKET_NODE_LABEL}
+              caption="One option on the methods the Node tab already shows — @arcaai/vox-node"
+              code={workflowSocketVoxNodeSnippet(slug)}
+            />
+            <CodeBlock label={SOCKET_BROWSER_LABEL} caption="The same option in a React app — @arcaai/vox" code={workflowSocketVoxSnippet(slug)} />
+            <CodeBlock
+              label={SOCKET_SHELL_LABEL}
+              caption="Without an SDK: mint the RUN-SCOPED ticket, then open the url it answers"
+              code={workflowSocketCurlSnippet(slug, publicEnv.apiHost)}
+            />
+          </>
+        }
         postman={<PostmanLane collection={collection} slug={slug} />}
       />
-      <ApiKeysLink />
+      <IntegrationLinks />
     </div>
   );
 }
