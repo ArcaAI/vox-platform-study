@@ -176,7 +176,11 @@ function build(options: BuildOptions = {}) {
     task: AgentTask.TEXT_GENERATION,
     tenantId: SYSTEM_TENANT_ID,
     source: 'explicit',
-    compiledConfig: { resolvedPrompt: { source: 'inline', content: 'PLATFORM DNA INSTRUCTION' }, parameters: { generation: {} }, outputSchema: DNA_SCHEMA },
+    compiledConfig: {
+      resolvedPrompt: { source: 'inline', content: 'PLATFORM DNA INSTRUCTION' },
+      parameters: { generation: {} },
+      outputSchema: DNA_SCHEMA,
+    },
     models: [],
   };
 
@@ -186,11 +190,16 @@ function build(options: BuildOptions = {}) {
     update: vi.fn(),
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
   };
-  const dnaVersionRepository = { create: vi.fn().mockResolvedValue({ id: 'version-1' }), encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined) };
+  const dnaVersionRepository = {
+    create: vi.fn().mockResolvedValue({ id: 'version-1' }),
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
+  };
   const dnaUsageRecordRepository = { create: vi.fn().mockResolvedValue({ id: 'usage-1' }) };
   const promptUsageRecordRepository = { create: vi.fn().mockResolvedValue({ id: 'prompt-usage-1' }) };
 
-  const recordUsage = ledgerThrows ? vi.fn().mockRejectedValue(new Error('outbox unavailable')) : vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 3 });
+  const recordUsage = ledgerThrows
+    ? vi.fn().mockRejectedValue(new Error('outbox unavailable'))
+    : vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 3 });
   const usageLedgerService = { recordUsage };
   const computeDevice = { resolve: vi.fn().mockResolvedValue(device) };
   const unitOfWorkService = {
@@ -223,7 +232,11 @@ function build(options: BuildOptions = {}) {
     { findById: vi.fn().mockResolvedValue(templateEntity) } as never,
     { redact: vi.fn(async (text: string) => text) } as never,
     new TextRequestEnrichmentService({ get: vi.fn().mockReturnValue(TENANT) } as never, undefined, undefined) as never,
-    { findPlatformHiddenBySlug: vi.fn().mockResolvedValue({ id: 'sys-agent-1', tenantId: SYSTEM_TENANT_ID, slug: DNA_WRITING_STYLE_ANALYST_SLUG, outputSchema: DNA_SCHEMA }) } as never,
+    {
+      findPlatformHiddenBySlug: vi
+        .fn()
+        .mockResolvedValue({ id: 'sys-agent-1', tenantId: SYSTEM_TENANT_ID, slug: DNA_WRITING_STYLE_ANALYST_SLUG, outputSchema: DNA_SCHEMA }),
+    } as never,
     { resolve: vi.fn().mockResolvedValue(resolvedAgent) } as never,
     {
       resolveFromAgent: vi.fn().mockResolvedValue({
@@ -334,7 +347,10 @@ describe('the analyst`s own call is metered as `dna.analyze`', () => {
   });
 
   it('never asks for a device on a CLOUD call — those seconds are HOPE`s own CPU', async () => {
-    const { processor, computeDevice } = build({ usageDetail: usageDetail({ provider: 'openai', model: 'gpt-4o', endpoint_kind: 'openai.chat' }), guardrailUsage: null });
+    const { processor, computeDevice } = build({
+      usageDetail: usageDetail({ provider: 'openai', model: 'gpt-4o', endpoint_kind: 'openai.chat' }),
+      guardrailUsage: null,
+    });
 
     await processor.process(job());
 
