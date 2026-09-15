@@ -191,6 +191,11 @@ describe('an accepted ingest is recorded as `dna.ingest`', () => {
     expect(batch.common.doctorId).toBe(CLINICIAN);
     const jobId = (queue.add.mock.calls[0]![1] as { jobId: string }).jobId;
     expect(batch.common.requestId).toBe(jobId);
+    // The SAME column `dna.analyze` stamps, so both halves of one DNA job — what a caller
+    // submitted and what the analyst then spent — are one `group by sessionId`. Without it the
+    // two halves join on different columns and "what did this job cost end to end" becomes a
+    // reconstruction rather than a query.
+    expect(batch.common.sessionId).toBe(jobId);
     expect(batch.common.idempotencyKey).toBe(`dna-ingest:${jobId}`);
     expect(batch.common.attributesJson).toMatchObject({ credentialClass: 'service-account', origin: 'ingest' });
   });

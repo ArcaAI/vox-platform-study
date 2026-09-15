@@ -457,6 +457,11 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
         // The clinician the profile is ABOUT — never the machine that submitted for them.
         doctorId: attribution.doctorId,
         requestId: attribution.jobId,
+        // The SAME column `dna.analyze` stamps in the processor, so the two halves of one DNA
+        // job — what a caller submitted, and what the analyst then spent reading it — are one
+        // `group by sessionId`. They would otherwise join on different columns, and "what did
+        // this job cost end to end" would be a reconstruction rather than a query.
+        sessionId: attribution.jobId,
         attributesJson: { origin: 'ingest', credentialClass: attribution.credentialClass },
       },
       units: [
