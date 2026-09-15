@@ -29,7 +29,7 @@ docs/
 `-- archive/                               Historical tickets — read-only record, off-limits this sprint
 ```
 
-## Architecture — `architecture/`
+### Architecture — `architecture/`
 
 | Document | Contents |
 |---|---|
@@ -40,7 +40,7 @@ docs/
 | [architecture/environment-configuration-reference.md](./architecture/environment-configuration-reference.md) | Full env-var reference: how `.env.sample`/`.env.dev`/`.env.test` relate, per-service variable tables |
 | [traceability/index.md](./traceability/index.md) | Roll-up index over the per-domain traceability files (auth, AI models, TTS, tenancy, consultation, transcription, summarization, harness, storage, platform-ops, admin-console, SDK, workflows) |
 
-## Development
+### Development
 
 | Document | Contents |
 |---|---|
@@ -49,7 +49,7 @@ docs/
 | [consultation-context-schema-integration-guide.md](./consultation-context-schema-integration-guide.md) | Building against a tenant-declared consultation context schema: declaration + discovery contract, `@arcaai/vox-codegen` type generation, the `@arcaai/vox-node` and `@arcaai/vox` integration lanes |
 | [section-syntax.md](./section-syntax.md) | Optional `<!-- @section -->` / `<!-- @example -->` / `<!-- @tabs -->` markers for docs that render with Content/Example tabs |
 
-## Programs — `programs/`
+### Programs — `programs/`
 
 Workspaces for multi-ticket programs: the planning artifacts a program needs while it runs —
 design, decision records, ticket backlog, execution log, and conformance reviews measuring the
@@ -65,7 +65,7 @@ A program workspace is deliberately NOT in [`architecture/`](./architecture/): a
 documents are code-verified descriptions of what exists, while these record what is planned,
 decided and in flight.
 
-## Implementation Tickets — `implementation/`
+### Implementation Tickets — `implementation/`
 
 Active, ticket-based implementation documentation. One folder per ticket:
 `[TICKET]-[Short-Name]/README.md`, updated throughout the ticket lifecycle (single main document
@@ -80,7 +80,7 @@ per ticket — no per-fix files).
 - **Status values**: `Pending | In Progress | Completed | Blocked | Review`.
 - Completed/historical tickets are periodically moved to `archive/`.
 
-## Backlog — `backlog/`
+### Backlog — `backlog/`
 
 Deliberately parked work items with context and pickup instructions:
 
@@ -90,7 +90,7 @@ Deliberately parked work items with context and pickup instructions:
 | [2026-07-04-FEDL-MLFLOW-LEGACY.md](./backlog/2026-07-04-FEDL-MLFLOW-LEGACY.md) | Parked legacy federated-learning schema models + MinIO `mlflow` bucket (removal deferred — data-destructive) |
 | [2026-07-21-TODO-HARVEST.md](./backlog/2026-07-21-TODO-HARVEST.md) | Live register of every inline code marker found during the code-comment cleanup sweep, each with a disposition |
 
-## Operations — `operations/`
+### Operations — `operations/`
 
 Day-2 operator runbooks and reference material — a large directory; the table below is not
 exhaustive. Notable documents:
@@ -111,7 +111,7 @@ Other subdirectories present: `consultation/`, `deployment/`, `observability/`, 
 (`day-one-deployment.md`, `jwt-secret-rotation.md`, `rate-limiting.md`, `release-runbook.md`,
 `telemetry-phi-guardrails.md`, `build-info.schema.json`).
 
-## Research — `research/`
+### Research — `research/`
 
 Technical research, homelab infrastructure guides, and architecture prior art. See
 [research/README.md](./research/README.md) for the full index.
@@ -126,7 +126,7 @@ Technical research, homelab infrastructure guides, and architecture prior art. S
 | [research/clinical-harness/](./research/clinical-harness/) | Medical-AI research backing the clinical documentation harness |
 | [research/configs/](./research/configs/) | Ready-to-deploy config files (GitLab, MinIO, Postgres HA, Redis, Langfuse) |
 
-## Archive — `archive/`
+### Archive — `archive/`
 
 Historical ticket documentation. Kept as an immutable record of past decisions. **Off-limits this
 sprint** — do not read from or write to `archive/`, and never link into it from other docs;

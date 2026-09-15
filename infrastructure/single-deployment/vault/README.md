@@ -69,99 +69,6 @@ Verified against the tree; the `AC` column is the original acceptance-criteria i
 
 ---
 
-## How it works
-
-### Architecture
-
-```
-                 +-------------------------------------------------+
-                 |  vault-system namespace                          |
-                 |                                                  |
-   Shamir 5/3 -->|  +------------+   transit/encrypt|decrypt        |
-   (ops, offline)|  | vault-seal |<--------------------------+      |
-                 |  | (1 node,   |                            |     |
-                 |  |  file store)|   auto-unseal token       |     |
-                 |  +------------+   (Secret vault-seal-      |     |
-                 |                     transit)               |     |
-                 |  +----------+  +----------+  +----------+  |     |
-                 |  | vault-0  |  | vault-1  |  | vault-2  |--+     |
-                 |  | (leader) |<>|(follower)|<>|(follower)|        |
-                 |  +----+-----+  +----------+  +----------+        |
-                 |       | Raft (integrated storage, :8201)         |
-                 |  +----v--------------+                           |
-                 |  | agent-injector    |                           |
-                 |  +-------------------+                           |
-                 +---------------------------------------------------+
-            ^                                   ^
-            | AppRole login (role_id +          | k8s-auth (other workloads)
-            | wrapped secret_id, as FILES)      | -> /vault/secrets/*
-   +--------+--------+                 +--------+--------+
-   | HOPE API (hope) |                 | annotated pods  |
-   +-----------------+                 +-----------------+
-```
-
-- **3-node Raft** integrated storage (no Consul). Quorum tolerates one node down.
-- **Transit auto-unseal**: a separate single-node `vault-seal` holds one Transit
-  key. The HA cluster unseals itself on every restart — no manual keys, so k8s
-  self-healing actually works. The seal Vault is the _only_ Vault sealed by
-  Shamir key-shares (held offline by ops).
-- **TLS** is mesh-terminated (Linkerd/Istio). If you don't run a mesh, enable
-  chart-native TLS before exposing Vault beyond the pod network.
-
-#### Pinned versions
-
-| Component | Version |
-| ---------------------------- | ---------- |
-| `hashicorp/vault` Helm chart | **0.32.0** |
-| Vault | **1.21.4** |
-| `vault-k8s` injector | **1.7.6** |
-
-Bump deliberately: Raft on-disk format + seal migration are version-sensitive.
-
----
-
-### Credential delivery (how the HOPE app authenticates)
-
-HOPE's API authenticates to Vault with **AppRole**, reading its `role_id` and a
-one-shot **wrapped `secret_id`** from **files** (`VAULT_ROLE_ID_FILE` /
-`VAULT_WRAPPED_SECRET_ID_FILE`, shipped in `apps/api/.env.prod` — TASK-312
-B.9/B.10). It then does its own login + token self-renewal (B.1-B.4).
-
-`bootstrap/configure-app-auth.sh` mints those creds into a k8s Secret
-(`hope/hope-vault-approle`, keys `role_id` + `wrapped_secret_id`). Mount it into
-the API Deployment as files:
-
-```yaml
-# apps/api Deployment (excerpt)
-volumes:
-  - name: vault-approle
-    secret:
-      secretName: hope-vault-approle
-containers:
-  - name: api
-    volumeMounts:
-      - name: vault-approle
-        mountPath: /run/secrets/vault
-        readOnly: true
-    env:
-      - name: VAULT_ROLE_ID_FILE
-        value: /run/secrets/vault/role_id
-      - name: VAULT_WRAPPED_SECRET_ID_FILE
-        value: /run/secrets/vault/wrapped_secret_id
-```
-
-The wrapped `secret_id` is single-use with a short TTL, so **CI mints a fresh
-one per rollout** (re-run `configure-app-auth.sh`, or script the
-`secret-id` write into the deploy pipeline) immediately before the pod boots.
-
-> **Why not full agent-injection for HOPE?** The injector is enabled and proven
-> (see E2E / AC-C4) for _generic_ workloads via k8s-auth, but HOPE deliberately
-> keeps a single, unit-tested secrets path (`SecretsService`) across local dev,
-> Docker, and every cloud. The injector only ever delivers the two bootstrap
-> files for us; the app does the rest.
-
----
-
 ## Commands
 
 ### Install order
@@ -291,6 +198,99 @@ The seal Vault is the cluster's **root of trust** — its blast radius must be t
 
 Restore from the latest Raft snapshot onto a fresh single node, then re-scale.
 See the Phase E runbook (`docs/operations/vault/README.md`).
+
+## How it works
+
+### Architecture
+
+```
+                 +-------------------------------------------------+
+                 |  vault-system namespace                          |
+                 |                                                  |
+   Shamir 5/3 -->|  +------------+   transit/encrypt|decrypt        |
+   (ops, offline)|  | vault-seal |<--------------------------+      |
+                 |  | (1 node,   |                            |     |
+                 |  |  file store)|   auto-unseal token       |     |
+                 |  +------------+   (Secret vault-seal-      |     |
+                 |                     transit)               |     |
+                 |  +----------+  +----------+  +----------+  |     |
+                 |  | vault-0  |  | vault-1  |  | vault-2  |--+     |
+                 |  | (leader) |<>|(follower)|<>|(follower)|        |
+                 |  +----+-----+  +----------+  +----------+        |
+                 |       | Raft (integrated storage, :8201)         |
+                 |  +----v--------------+                           |
+                 |  | agent-injector    |                           |
+                 |  +-------------------+                           |
+                 +---------------------------------------------------+
+            ^                                   ^
+            | AppRole login (role_id +          | k8s-auth (other workloads)
+            | wrapped secret_id, as FILES)      | -> /vault/secrets/*
+   +--------+--------+                 +--------+--------+
+   | HOPE API (hope) |                 | annotated pods  |
+   +-----------------+                 +-----------------+
+```
+
+- **3-node Raft** integrated storage (no Consul). Quorum tolerates one node down.
+- **Transit auto-unseal**: a separate single-node `vault-seal` holds one Transit
+  key. The HA cluster unseals itself on every restart — no manual keys, so k8s
+  self-healing actually works. The seal Vault is the _only_ Vault sealed by
+  Shamir key-shares (held offline by ops).
+- **TLS** is mesh-terminated (Linkerd/Istio). If you don't run a mesh, enable
+  chart-native TLS before exposing Vault beyond the pod network.
+
+#### Pinned versions
+
+| Component | Version |
+| ---------------------------- | ---------- |
+| `hashicorp/vault` Helm chart | **0.32.0** |
+| Vault | **1.21.4** |
+| `vault-k8s` injector | **1.7.6** |
+
+Bump deliberately: Raft on-disk format + seal migration are version-sensitive.
+
+---
+
+### Credential delivery (how the HOPE app authenticates)
+
+HOPE's API authenticates to Vault with **AppRole**, reading its `role_id` and a
+one-shot **wrapped `secret_id`** from **files** (`VAULT_ROLE_ID_FILE` /
+`VAULT_WRAPPED_SECRET_ID_FILE`, shipped in `apps/api/.env.prod` — TASK-312
+B.9/B.10). It then does its own login + token self-renewal (B.1-B.4).
+
+`bootstrap/configure-app-auth.sh` mints those creds into a k8s Secret
+(`hope/hope-vault-approle`, keys `role_id` + `wrapped_secret_id`). Mount it into
+the API Deployment as files:
+
+```yaml
+# apps/api Deployment (excerpt)
+volumes:
+  - name: vault-approle
+    secret:
+      secretName: hope-vault-approle
+containers:
+  - name: api
+    volumeMounts:
+      - name: vault-approle
+        mountPath: /run/secrets/vault
+        readOnly: true
+    env:
+      - name: VAULT_ROLE_ID_FILE
+        value: /run/secrets/vault/role_id
+      - name: VAULT_WRAPPED_SECRET_ID_FILE
+        value: /run/secrets/vault/wrapped_secret_id
+```
+
+The wrapped `secret_id` is single-use with a short TTL, so **CI mints a fresh
+one per rollout** (re-run `configure-app-auth.sh`, or script the
+`secret-id` write into the deploy pipeline) immediately before the pod boots.
+
+> **Why not full agent-injection for HOPE?** The injector is enabled and proven
+> (see E2E / AC-C4) for _generic_ workloads via k8s-auth, but HOPE deliberately
+> keeps a single, unit-tested secrets path (`SecretsService`) across local dev,
+> Docker, and every cloud. The injector only ever delivers the two bootstrap
+> files for us; the app does the rest.
+
+---
 
 ## Gotchas
 
