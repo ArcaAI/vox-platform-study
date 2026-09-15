@@ -1,5 +1,16 @@
 # @arcaai/vox-node — Changelog
 
+## 3.5.0
+
+### Minor Changes
+
+- **The finish half of the consultation plane — `hope.consultations.summaries.approve()` and `hope.consultations.close()` (TASK-972).** The realtime plane (TASK-933) opened `open`/`recording.*`/the live SSE streams to machines, but the sign-off and the close were never wrapped, so a machine integration could run a consultation end to end and then had no way to submit the clinician's reviewed note or finish the session — `close` was always real and OCC-guarded at the gateway (the browser SDK's `useArcaSession().close()` already calls it); only the SDK surface was missing.
+
+  - **`hope.consultations.summaries.approve(consultationId, contextItemId, request, options)`** — `POST consultations/{id}/summary/{contextItemId}/approve`. Signs and locks the summary under optimistic concurrency; `options.ifMatch` is **required** (the route carries `@RequiresIfMatch()` — a 428 otherwise). `request.clinicianUserId` names the clinician the approval is attested for: required for a service-account caller, refused for a non-admin human, 404 for a clinician outside the tenant.
+  - **`hope.consultations.close(consultationId, request, options)`** — `POST consultations/{id}/close`, the bookend to `open()`. Legal only from `SIGNED`/`TIMED_OUT` (409 otherwise — `summaries.approve()` must succeed first from `PENDING_REVIEW`). Same required `options.ifMatch` and optional `request.clinicianUserId` shape as `approve()`.
+  - Both methods are reachable by **either** machine credential class — an API key or a service account — matching `ConsultationWorkflowsResource`'s `assertCredentialClass()` pattern (a no-op override here too, since neither route refuses a credential class client-side).
+  - `hope.consultations.summaries.update()` is unchanged — it already reaches both machine classes once the gateway grants the scope; this release adds no client code for it.
+
 ## 3.4.0
 
 ### Minor Changes
