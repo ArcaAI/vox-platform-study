@@ -11,8 +11,7 @@ the last several releases (through 3.5.0) were cut via CI.
 
 This directory holds only this file.
 
-## Package inventory
-
+### Package inventory
 Nine packages move together in one Changesets `fixed` group (`.changeset/config.json`):
 
 | Package | Path | Role |
@@ -147,8 +146,7 @@ to already exist on the registry.
 - `.gitlab/ci/publish.yml` — the `publish-sdk` job this page describes
 - `.changeset/config.json` — the fixed version group and ignore list
 
-## Release log
-
+### Release log
 | Date | Version | How | Notes |
 |---|---|---|---|
 | 2026-09-11 | 3.3.0 | Manual runbook, from `dev-2.2` at `a6e16b075` (versions committed in `9b3183ffc` via `pnpm changeset:version`; the private `@arcaai/vox-node-codegen` aligned by hand in `66c50d8ac`) | Nine packages published in dependency order under the operator's global `~/.npmrc` token. `@arcaai/vox-node-codegen` is `private: true`, so `pnpm publish` refuses it — bumped for alignment only. |

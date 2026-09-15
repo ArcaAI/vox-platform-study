@@ -11,6 +11,9 @@ This directory holds only this file.
 
 ## How it works
 
+No SLOs are defined for any HOPE service today. An SLI added later should be sourced
+from a metric Prometheus already collects for that service, not a new bespoke measurement.
+
 Prometheus, Loki, Tempo, the OTel Collector, and Grafana are deployed in `hope-v2-dev`. All
 manifests live in the separate `arca/hope-v2-deployment` repo, not here.
 
@@ -52,8 +55,7 @@ placeholder — "Incident commander rota: `<on-call schedule link>`" — in
 doing operational work is the de facto on-call: no handoff process, no rotation calendar, and — per
 the no-op receivers above — no automated page even though the alerts themselves already fire.
 
-## Alert response procedure
-
+### Alert response procedure
 Written to stay correct regardless of which alerts currently exist or fire:
 
 1. **Acknowledge** in Alertmanager (or whatever tool eventually delivers the page) before
@@ -81,24 +83,6 @@ Written to stay correct regardless of which alerts currently exist or fire:
    `docs/implementation/` per this repo's normal ticket workflow
    (`.claude/rules/00-project-context.md` §Ticket Workflow) — an incident fixed live and never
    documented tends to recur.
-
-## SLO definitions — placeholder
-
-No SLOs are currently defined for any HOPE service. This is a placeholder shape to fill in once
-ownership and targets are decided — do not treat the example row as a real commitment.
-
-| Service | SLI | Target (placeholder) | Error budget window | Owner |
-|---|---|---|---|---|
-| _e.g._ `hope-api` | _e.g._ request success rate | _not yet set_ | _not yet set_ | _not yet set_ |
-| `hope-stt` | | | | |
-| `hope-text` | | | | |
-| `hope-guardrail` | | | | |
-| `hope-nlp` | | | | |
-| `hope-harness` | | | | |
-| `hope-tts` | | | | |
-
-When this gets filled in, the SLI should be sourced from a metric that already exists in
-Prometheus for that service, not a new bespoke measurement.
 
 ## Gotchas
 

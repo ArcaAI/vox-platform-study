@@ -98,6 +98,5 @@ flips.
 - [`../../../.claude/rules/06-python-services.md`](../../../.claude/rules/06-python-services.md) — the harness/Temporal and per-tenant config rules governing this surface
 - [`../../architecture/consultation-session-workflow/assessment/README.md`](../../architecture/consultation-session-workflow/assessment/README.md) — the consultation-vertical codebase assessment, including the harness/retrieval path
 
-## Change History
-
+### Change History
 - 2026-07-19 — Initial runbook (this doc plus the flag-flip matrix). Corpus licensing, ingestion execution, and per-tenant enablement remain owner-run.
