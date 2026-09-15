@@ -1,5 +1,9 @@
 # @arcaai/room
 
+## 3.5.0
+
+No changes in this release.
+
 ## 3.3.0
 
 ### Minor Changes

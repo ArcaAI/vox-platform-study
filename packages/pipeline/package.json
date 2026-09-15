@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/pipeline",
-  "version": "3.3.0",
+  "version": "3.5.0",
   "description": "Pipeline infrastructure for sequential and parallel processing with state management",
   "private": false,
   "main": "./dist/index.cjs",

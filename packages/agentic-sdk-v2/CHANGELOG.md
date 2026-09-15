@@ -1,5 +1,15 @@
 # @arcaai/vox — Changelog
 
+## 3.5.0
+
+### Patch Changes
+
+- @arcaai/med-ner@3.5.0
+  - @arcaai/noise-filter@3.5.0
+  - @arcaai/room@3.5.0
+  - @arcaai/stt@3.5.0
+  - @arcaai/vad@3.5.0
+
 ## 3.4.0
 
 ### Minor Changes

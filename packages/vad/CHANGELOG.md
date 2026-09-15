@@ -1,5 +1,11 @@
 # @arcaai/vad
 
+## 3.5.0
+
+### Patch Changes
+
+- @arcaai/room@3.5.0
+
 ## 3.3.0
 
 ### Minor Changes
