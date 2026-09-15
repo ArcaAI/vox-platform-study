@@ -6,6 +6,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { uuidv7 } from 'uuidv7';
 import {
+  AiCapability,
+  AiCostBasis,
+  AiDeploymentKind,
+  AiUsageUnit,
   DnaWritingStyleReportRepository,
   DnaWritingStyleVersionRepository,
   DnaUsageRecordRepository,
@@ -45,6 +49,11 @@ import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
 // `ConfigResolver` reads it together with the tenant's `agent.dna_style` node.
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ConfigResolver, DNA_STYLE_PREFERENCE } from '../config-resolver';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { IBillingService } from '../billing/IBillingService';
+import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
+import { UsageIdempotencyKey } from '../usageLedger/idempotency-keys';
+import type { UsageEventBatchInput } from '../usageLedger/dto';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { BaseService, encryptPhiFields } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
@@ -164,6 +173,15 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // TASK-882 — the doctor's DNA preference row. Optional + trailing so positional fixtures
     // keep their arity; production DI supplies it via CoreDatabaseModule.
     @Optional() @Inject(UserSettingsRepository) private readonly userSettingsRepository?: UserSettingsRepository,
+    // ─── TASK-974 §9.2 (D-5): the BILLING seam ────────────────────────────────────────────
+    //
+    // Two PRE-checks and one emitter, all `@Optional()` and TRAILING so the positional unit
+    // fixtures keep their arity. An ABSENT service means "this composition enforces no
+    // allowance", which is the pre-metering behaviour and not a defect — the same posture every
+    // other `assertMeterQuota` call site takes (`summary.service.ts`, `agent.controller.ts`).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -193,6 +211,9 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     }
 
     await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
+
+    // TASK-974 §9.2 — the allowance and the ceiling, BEFORE anything is queued.
+    await this.assertMaySpend(tenantId);
 
     const userId = this.requestUserId ?? '';
     const jobId = uuidv7();
@@ -294,6 +315,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       }
     }
 
+    // TASK-974 §9.2 — the allowance and the ceiling, BEFORE anything is queued. Placed AFTER
+    // the DNA-enabled gate on purpose: a tenant with DNA switched off is told that, not billed
+    // at. Placed BEFORE the idempotency JOIN below for the opposite reason — a retry that joins
+    // an existing job starts no new work, so re-checking it would refuse a caller a 202 it has
+    // already been given once.
+    await this.assertMaySpend(tenantId);
+
     const samples: DnaWritingSample[] = dto.items.map((item) => ({
       text: item.text,
       writtenAt: item.writtenAt,
@@ -335,6 +363,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, { jobId });
 
+    // TASK-974 §9.2 — what this caller SUBMITTED, recorded on the FRESH enqueue only. A retry
+    // that joined above returned before reaching here, so one submitted batch is one row.
+    this.emitIngestUsage(dto, { tenantId, doctorId, jobId, credentialClass: caller.credentialClass, characters: totalChars });
+
     // Audit the REQUEST. COUNTS and IDS only: the samples are PHI and `sourceRef` is the caller's
     // own record locator, so neither belongs on an audit row that outlives the job.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -351,6 +383,100 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     });
 
     return DnaWritingStyleService.ingestResponseOf(jobId, payload)!;
+  }
+
+  /**
+   * TASK-974 §9.2 — may this tenant start one more DNA job?
+   *
+   * TWO gates, in this order, and both OUTSIDE any try/catch so neither can be disguised as a
+   * queued job:
+   *
+   *  · `assertMeterQuota(tenantId, 'monthlyLlmTokens')` → 429. DNA draws on the tenant's LLM
+   *    allowance like every other text call; a DNA-specific meter is owner item O-1 and does
+   *    not exist. The debit is POST-HOC (D6) — this job's token count is unknowable until TEXT
+   *    answers — so this compares month-to-date rollups against the allowance rather than
+   *    predicting the call. What it buys is refusing to start one more expensive job for a
+   *    tenant already over, instead of surfacing a 429 hours later as a failed job.
+   *  · `assertSpendLimit(tenantId)` → 402. The question a meter cannot answer: a meter caps a
+   *    QUANTITY of one unit, the ceiling caps MONEY across all of them. Opt-in and cheap — a
+   *    tenant with no limit set returns without computing a draft.
+   *
+   * A composition that wires neither enforces neither, which is what every other call site
+   * means by `@Optional()` here.
+   */
+  private async assertMaySpend(tenantId: string): Promise<void> {
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
+    await this.billing?.assertSpendLimit(tenantId);
+  }
+
+  /**
+   * Record the ACCEPTED batch as one `dna.ingest` event (TASK-974 §9.2).
+   *
+   * ============================================================================
+   * WHY THIS ROW EXISTS AT ALL, AND WHY IT IS FIRE-AND-FORGET
+   * ============================================================================
+   * Every other row in the ledger says "an inference call landed". This one says "a caller
+   * submitted work", and it is the ONLY measure of the ingest surface that exists before the
+   * job runs — which matters because the job may be hours away, may be retried, and may fail
+   * without the platform ever learning how much an integration was pushing at it. Three units
+   * answer the three questions a support conversation actually asks: how often (`REQUEST`), how
+   * much writing (`CHARACTER`), and how many bytes crossed the boundary (`INGRESS_BYTE`).
+   *
+   * NONE of them is billable: `BILLABLE_UNITS[LLM]` is the five token kinds, so these rows are
+   * VISIBLE on the consumption surfaces and never reach an invoice line. That is deliberate —
+   * a DNA-specific SELL price is not expressible on the current price book (owner item O-2).
+   *
+   * It is fire-and-forget with a swallowed rejection because the job is already queued and the
+   * caller already has its 202: a metering problem degrades to "not metered", never to a
+   * request that failed after the work was accepted.
+   */
+  private emitIngestUsage(
+    dto: IngestDnaWritingSamplesRequest,
+    attribution: { tenantId: string; doctorId: string; jobId: string; credentialClass: DnaJobRequestedBy['credentialClass']; characters: number },
+  ): void {
+    const ledger = this.usageLedgerService;
+    if (!ledger) return;
+
+    const batch: UsageEventBatchInput = {
+      common: {
+        tenantId: attribution.tenantId,
+        // Derived from the JOB, which is itself derived from the caller's `Idempotency-Key`
+        // when they sent one — so even a retry that somehow reached here converges on one row
+        // rather than counting the same submitted batch twice.
+        idempotencyKey: UsageIdempotencyKey.dnaIngest(attribution.jobId),
+        occurredAt: new Date(),
+        capability: AiCapability.LLM,
+        operation: 'dna.ingest',
+        // The GATEWAY accepted this; no vendor ran a model. `hope-api` is a provider in the
+        // sense `harness` is — platform hardware, no `AiProviderConnection` row behind it.
+        provider: 'hope-api',
+        model: null,
+        deployment: AiDeploymentKind.SELF_HOSTED,
+        // Stated, never derived: nothing about an accepted batch is tenant-funded.
+        costBasis: AiCostBasis.INTERNAL,
+        // The clinician the profile is ABOUT — never the machine that submitted for them.
+        doctorId: attribution.doctorId,
+        requestId: attribution.jobId,
+        attributesJson: { origin: 'ingest', credentialClass: attribution.credentialClass },
+      },
+      units: [
+        { unit: AiUsageUnit.REQUEST, quantity: 1 },
+        { unit: AiUsageUnit.CHARACTER, quantity: attribution.characters },
+        // The serialized batch, which is what actually crossed the boundary — framing and all.
+        { unit: AiUsageUnit.INGRESS_BYTE, quantity: Buffer.byteLength(JSON.stringify(dto)) },
+      ],
+    };
+
+    // No `tx`: the job is on the queue already, so there is no business transaction left to
+    // join. `recordUsage` is safe to call twice — the key is intent-derived.
+    void ledger.recordUsage(batch).catch((error: unknown) => {
+      this.logger.warn({
+        message: 'Usage metering failed for an accepted DNA ingest; the batch was queued but is not metered',
+        jobId: attribution.jobId,
+        doctorId: attribution.doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   /**
