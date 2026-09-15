@@ -1,5 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
+import { ConsultationStatus } from '../../../generated/core-prisma-client/enums';
 import type { TranscriptionJobStatus, TranscriptionJobType } from '../../../generated/core-prisma-client/enums';
 import {
   SEED_TENANT_ID,
@@ -28,7 +29,10 @@ import { encryptSeedRow } from './phi-encryption';
  * exercise the full clinical workflow without additional setup.
  *
  * Seeded entities:
- *   9 Consultations — full lifecycle coverage across 6 statuses and 6 departments
+ *   9 Consultations — full lifecycle coverage across 7 `ConsultationStatus` values
+ *     (the typed `status` column — TASK-972 OD-8; previously miswritten into the
+ *     retired `metadata.status` JSON key, which the column default (`OPEN`) then
+ *     silently masked) and 6 departments
  *   +2 Consultations — customer-tenant (ArcaAI) NEW + REVISIT pair (doc-08 F1)
  *   21 ContextItems — transcripts, summaries, audio, worknotes, pre-summaries, case notes
  *   +2 ContextItems — one transcript per customer-tenant consultation (doc-08 F1)
@@ -70,9 +74,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
+    status: ConsultationStatus.CLOSED_COMPLETE,
     metadata: {
       visitType: 'NEW_PATIENT',
-      status: 'CLOSED',
       chiefComplaint: 'Persistent cough and low-grade fever for 5 days',
       language: 'en',
       closedAt: '2025-12-15T11:00:00Z',
@@ -88,9 +92,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR2,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
+    status: ConsultationStatus.PENDING_REVIEW,
     metadata: {
       visitType: 'REVISIT',
-      status: 'REVIEW',
       chiefComplaint: 'Follow-up for hypertension management and chest tightness',
       language: 'en',
     },
@@ -104,9 +108,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
     departmentId: SEED_DEPARTMENT_IDS.PERI,
     parentConsultationId: null,
+    status: ConsultationStatus.DRAFT_PENDING_SENSORS,
     metadata: {
       visitType: 'NEW_PATIENT',
-      status: 'SUMMARIZING',
       chiefComplaint: 'Right iliac fossa pain for 2 days with nausea and fever',
       language: 'en',
     },
@@ -120,9 +124,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
     departmentId: SEED_DEPARTMENT_IDS.PERI,
     parentConsultationId: SEED_CONSULTATION_IDS.SURG_NEW,
+    status: ConsultationStatus.OPEN,
     metadata: {
       visitType: 'REVISIT',
-      status: 'OPEN',
       chiefComplaint: 'Post-appendectomy follow-up — wound review and recovery assessment',
       language: 'en',
     },
@@ -136,9 +140,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_NEURO,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
+    status: ConsultationStatus.DRAINING,
     metadata: {
       visitType: 'REFERRAL',
-      status: 'TRANSCRIBING',
       chiefComplaint: 'Recurrent headaches with visual disturbance — referred from General Practice',
       language: 'en',
       referredFrom: 'General Practice',
@@ -154,9 +158,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_PEDS,
     departmentId: SEED_DEPARTMENT_IDS.PEDS,
     parentConsultationId: null,
+    status: ConsultationStatus.CLOSED_COMPLETE,
     metadata: {
       visitType: 'NEW_PATIENT',
-      status: 'CLOSED',
       chiefComplaint: 'Right ear pain and fever for 3 days — 4-year-old male',
       language: 'en',
       closedAt: '2026-02-10T15:30:00Z',
@@ -172,9 +176,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_ER,
     departmentId: SEED_DEPARTMENT_IDS.ER,
     parentConsultationId: null,
+    status: ConsultationStatus.RECORDING,
     metadata: {
       visitType: 'NEW_PATIENT',
-      status: 'RECORDING',
       chiefComplaint: 'Acute chest pain radiating to left arm — onset 45 minutes ago',
       language: 'en',
       triageCategory: 'RED',
@@ -189,9 +193,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    status: ConsultationStatus.REOPENED,
     metadata: {
       visitType: 'REVISIT',
-      status: 'OPEN',
       chiefComplaint: 'Follow-up after pneumonia treatment — persistent mild cough',
       language: 'en',
       reopenReason: 'addendum',
@@ -208,9 +212,9 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR2,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    status: ConsultationStatus.OPEN,
     metadata: {
       visitType: 'REFERRAL',
-      status: 'OPEN',
       chiefComplaint: 'Neurology referral for recurrent syncope during hypertension follow-up',
       language: 'en',
       referredFrom: 'Cardiology',
@@ -241,9 +245,9 @@ export const CUSTOMER_TENANT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     parentConsultationId: null,
+    status: ConsultationStatus.OPEN,
     metadata: {
       visitType: 'NEW_PATIENT',
-      status: 'OPEN',
       chiefComplaint: 'Sore throat and mild fever for 3 days',
       language: 'en',
     },
@@ -257,9 +261,9 @@ export const CUSTOMER_TENANT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     parentConsultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+    status: ConsultationStatus.PENDING_REVIEW,
     metadata: {
       visitType: 'REVISIT',
-      status: 'REVIEW',
       chiefComplaint: 'Follow-up: persistent sore throat, review of throat swab results',
       language: 'en',
     },
