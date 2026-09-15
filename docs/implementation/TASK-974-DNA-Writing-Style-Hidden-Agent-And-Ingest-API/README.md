@@ -44,7 +44,7 @@ What exists (all on `dev-2.2`):
 
 ## 3. Design decisions
 
-### D-1 (owner decision, 2026-09-14) — the DNA analyst is a PLATFORM SERVICE AGENT, i.e. CONFIGURATION, not tenant content
+### D-1 (owner decision, 2026-09-14; CONFIRMED by the owner 2026-09-15) — the DNA analyst is a PLATFORM SERVICE AGENT, i.e. CONFIGURATION, not tenant content
 
 The request asks for one agent whose model/hyper-parameters the PLATFORM admin owns, shared by all tenants, with a general prompt as default/fallback and a per-tenant prompt override. That is the semantics of rule 2 (tenant → SYSTEM on absence) applied to an agent — the same shape `AiRoutingPolicy` gives guardrail / NLP / judge tasks — not the clone-and-own semantics of tenant content. Cloning (the TASK-890 OD-M default for `Agent`) would (i) let every tenant change the model of its copy and (ii) leave a platform admin's model change stranded in SYSTEM because `resync` is `missing-only` and `refresh-locked` is unimplemented. So:
 
@@ -277,6 +277,37 @@ Pre-existing reds on `dev-2.2` NOT caused here: `tests/contracts/npm-publish-pol
   optionally give it `metaData.promptConfig.outputSchema`.
 - The `visibility:hidden` tag on the seeded rows is a label; the gate is the code allow-list.
 
+## 9. Requirement (d) — count and measure DNA usage for billing (owner, 2026-09-15)
+
+### 9.1 Current state (verified 2026-09-15)
+
+The DNA path records NOTHING in the AI usage ledger: `DnaWritingStyleProcessor.callText` types the text
+response as `{ content, usage?, latency_ms? }` and discards `usage_detail` / `guardrail_usage` / `task_id`;
+the processor injects no `IUsageLedgerService`, `IComputeDeviceResolver`, `IEntitlementsService` or
+`IBillingService`; `DnaWritingStyleService` runs no `assertMeterQuota` / `assertSpendLimit` before
+`queue.add`. `DnaUsageRecord` / `PromptUsageRecord` are explainability rows (ids only, no tokens, no cost).
+Every other text caller (text proxy, comprehensive-summary processor, agent invocations) parses
+`usage_detail` and calls `IUsageLedgerService.recordUsage` itself — nothing meters automatically.
+
+### 9.2 Design D-5 — two closed operations on the existing ledger, no schema change
+
+| Event | Emitted where | `capability` / `operation` | Units | Attribution |
+|---|---|---|---|---|
+| **DNA analysis** (the analyst LLM call) | `DnaWritingStyleProcessor`, after the text call, INSIDE the same `runInTransaction` as the report / version / usage-record writes (the `persistSummaryMetaWithUsage` shape: metering failure ⇒ roll back, re-persist unmetered, count `hope_usage_emission_failed_total`) | `LLM` / **`dna.analyze`** (+ the guardrail COGS batch exactly as `buildGuardrailUsageBatches` emits it) | `INPUT_TOKEN`, `OUTPUT_TOKEN` (+ reasoning/cache tokens when reported), `REQUEST` 1, plus the compute / byte rows `buildLlmUsageBatches` appends (`GPU_SECOND`/`CPU_SECOND` for self-hosted via `IComputeDeviceResolver`, `INGRESS/EGRESS_BYTE`) | `tenantId`, `doctorId`, `requestId = text task_id`, `sessionId = dna job id`; `consultationId`/`departmentId` null; `attributesJson.origin ∈ generate\|ingest\|scheduler` (allow-listed) |
+| **DNA ingest** (the API call that feeds the learning) | `DnaWritingStyleService.ingestWritingSamples`, right after the job is enqueued (fire-and-forget with the emission-failure metric; a retry that JOINS an existing job emits nothing — same idempotency key) | `LLM` / **`dna.ingest`** | `REQUEST` 1, `CHARACTER` = Σ item text length, `INGRESS_BYTE` = serialized batch bytes | `tenantId`, `doctorId = clinician`, `requestId = job id`, `attributesJson.credentialClass` |
+
+- **Idempotency**: analysis rows `llm:<task_id>:<UNIT>` (`UsageIdempotencyKey.llmRequest`); ingest rows `dna-ingest:<jobId>:<UNIT>` (new recipe). A BullMQ retry re-runs the LLM and costs again — it gets its own text `task_id`, so it is a second event, correctly.
+- **Provider / model / deployment / costBasis** come from `usage_detail` through `toLedgerProvider` + `resolveDeployment` + `BYOK_NOTIONAL` iff `byok` — never hand-rolled; the SYSTEM analyst served through a tenant's BYO key therefore rates as BYOK for that tenant, through the platform key as CLOUD/SELF_HOSTED — funding is DERIVED from the row that served the credential (rule 09).
+- **Precheck** (mirrors `summary.service.ts` and `agent.controller.ts`): `assertMeterQuota(tenantId, 'monthlyLlmTokens')` then `billing.assertSpendLimit(tenantId)` BEFORE `queue.add` in `generateDnaReport` AND `ingestWritingSamples` (429 / 402, outside any try/catch so they are never disguised), and per tenant inside `DnaRegenerationScheduler.regenerateAllDoctors` (a tenant over its allowance is SKIPPED with a warn, never fails the sweep). No new meter key: DNA draws on the tenant's LLM allowance like every other text call (a DNA-specific cap is owner item O-1 below).
+- **Reporting**: `GET admin/usage/summary|timeseries` already break down by `operation`; `dna.analyze` and `dna.ingest` appear with no console change (the console renders the operation string). `AiUsageRollup*` carry `operation` since TASK-959.
+- **Pricing**: `AiPriceBook` rates on `(capability, provider, model, unit)`, so DNA tokens are rated like any other LLM call on that model; a DNA-specific SELL price is owner item O-2.
+
+### 9.3 Owner items opened by (d)
+
+- O-1: a DNA-specific meter (`monthlyDnaGenerations`) needs `MeterCapabilityKey` + `ResolvedLimits` + a `PlanEntitlement` column + the plan-matrix UI — not built; DNA draws on `monthlyLlmTokens`.
+- O-2: a DNA-specific SELL price is not expressible on the current price book (keyed by capability/provider/model/unit, not operation).
+- O-3: billing per DNA-personalised SUMMARY (style recall) is not emitted; the style text is already inside the summarisation call's `INPUT_TOKEN`s and `DnaUsageRecord` counts recalls for explainability. Decide whether recall is a SELL feature.
+
 ## 7. Follow-ups (not in scope)
 
 - F-1: SSE on the ingest job route with `@StreamScope` so machine callers can subscribe instead of polling.
@@ -293,4 +324,5 @@ Pre-existing reds on `dev-2.2` NOT caused here: `tests/contracts/npm-publish-pol
 |---|---|
 | 2026-09-14 | Ticket opened; exploration (3 read-only lanes); design D-1..D-4; contract §4 frozen; lanes spawned. |
 | 2026-09-15 | Four lanes merged (`--no-ff`); post-merge gates + artifacts green; test DB reseeded; e2e 18/18 live; rules 00/05/08 updated; worktrees removed; adversarial review run. |
+| 2026-09-15 | Owner CONFIRMED D-1 and added requirement (d): DNA usage must be COUNTED and MEASURED for billing — scoped as §9 below. |
 | 2026-09-15 | Review findings R-1..R-8 + the seed-clone defect fixed in lane L5 (merged `fcbda23ea`); test DB recreated from the fixed seed; e2e 21/21 live; rule 05 row refined (API key binds to its human); fix worktree removed. Status: Review — awaiting owner confirmation; dev DB still needs `RUN_SEED=all pnpm db:seed` (or `pnpm db:all`). |
