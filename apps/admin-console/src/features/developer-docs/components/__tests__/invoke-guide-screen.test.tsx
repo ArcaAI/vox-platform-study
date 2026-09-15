@@ -113,10 +113,61 @@ describe('InvokeGuideScreen', () => {
   it('walks the Postman import flow and states no credential is ever embedded', () => {
     renderWithProviders(<InvokeGuideScreen />);
 
-    expect(screen.getByText(/Integration panel/i)).toBeDefined();
     expect(screen.getByText(/never contains a credential/i)).toBeDefined();
     expect(screen.getByText(/run request captures its/i)).toBeDefined();
     expect(screen.getAllByText('runId').length).toBeGreaterThan(0);
+  });
+
+  // A3 — the reverse pointer: a developer reading the Postman-import walkthrough
+  // must be told WHERE the collection it imports comes from, in the same
+  // vocabulary the Integration tab itself uses (a Tabs "Integration" trigger,
+  // not an internal "panel" name).
+  it('points to the Integration tab as the source of the Postman collection (A3)', () => {
+    renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getAllByText(/Integration tab/i).length).toBeGreaterThan(0);
+  });
+
+  // D1 — the stream ticket authenticates SSE AND WebSocket, minted by two
+  // routes that take different credential classes. Documenting only the SSE
+  // half was worse than omitting the WebSocket half entirely (F-3).
+  it('states the stream ticket authenticates SSE and WebSocket, minted by two routes with different credentials (D1/T9)', () => {
+    renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getAllByText(/WebSocket/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/SSE/i).length).toBeGreaterThan(0);
+    // Named once in the code example and once in the credentials prose — assert
+    // presence, not a single element, since both are true and load-bearing.
+    expect(screen.getAllByText(/auth\/stream-ticket/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/workflows\/\{slug\}\/runs\/\{runId\}\/stream-ticket/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/user JWT only/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/API key or a service account/i).length).toBeGreaterThan(0);
+  });
+
+  // D2 — a companion table for the WebSocket surfaces a developer can reach:
+  // /ws/workflows and /ws/stt/stream, with their query-param handshake and
+  // scope shape. The legacy compat gateway (`/stt`) is deliberately omitted
+  // (OQ-2) — it is a compat surface and documenting it invites new consumers.
+  it('lists /ws/workflows and /ws/stt/stream, and never the legacy /stt compat gateway (D2)', () => {
+    const { container } = renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getByText('/ws/workflows')).toBeDefined();
+    expect(screen.getByText('/ws/stt/stream')).toBeDefined();
+    expect(screen.getAllByText(/workflow_run:/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/stt_session:/)).toBeDefined();
+
+    // Strip every legitimate "/ws/stt/stream" occurrence out of the rendered
+    // text; whatever is left must not still contain a bare "/stt" — proving
+    // the legacy compat path was never named on its own.
+    const textWithoutModernRoute = (container.textContent ?? '').replaceAll('/ws/stt/stream', '');
+    expect(textWithoutModernRoute).not.toMatch(/\/stt(?![a-zA-Z-])/);
+  });
+
+  it('states the ticket is single-use and consumed on first open, so SSE is the only lane that resumes', () => {
+    renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getAllByText(/single-use/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/only lane that resumes/i)).toBeDefined();
   });
 
   it('links onward to the reference, the SDKs, and API keys', () => {
