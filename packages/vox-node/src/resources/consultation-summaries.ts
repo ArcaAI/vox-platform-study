@@ -215,17 +215,6 @@ export class ConsultationSummariesResource {
   }
 
   /**
-   * No-op guard, mirroring `ConsultationWorkflowsResource.assertCredentialClass()`
-   * (`./workflows.ts`): both machine credential classes reach `approve()` —
-   * an API key holding `consultation:session:write` and, since TASK-972 Lane
-   * 4, a service account holding `svc:consultation:session:write` — so there
-   * is nothing to refuse client-side. Kept as an explicit hook rather than
-   * omitted, so a future credential-class restriction on this plane has an
-   * obvious place to land instead of being bolted on ad hoc.
-   */
-  protected assertCredentialClass(): void {}
-
-  /**
    * `POST /api/v1/consultations/:id/summary/:contextItemId/approve` — sign
    * and lock the summary under optimistic concurrency (TASK-972).
    *
@@ -243,7 +232,6 @@ export class ConsultationSummariesResource {
     request: ApproveSummaryRequest = {},
     options: ApproveSummaryOptions,
   ): Promise<SummaryApprovalResponse> {
-    this.assertCredentialClass();
     return this.transport.request<SummaryApprovalResponse>({
       method: 'POST',
       path: `${consultationSummaryPath(consultationId)}/${encodePathSegment(contextItemId)}/approve`,
