@@ -1,29 +1,37 @@
-# STT Assets
+# STT assets — model notes
 
-This directory is reserved for any static assets required by the STT package.
+`packages/stt/assets`. This directory holds no model files. `@arcaai/stt`'s deprecated local
+provider uses `@huggingface/transformers`, which downloads and caches Whisper models from the
+Hugging Face Hub at runtime — no manual model download is required, and nothing is bundled here.
 
-## Model Files
+## Layout
 
-The `@arcaai/stt` package uses `@huggingface/transformers` which automatically downloads and caches Whisper models from Hugging Face Hub. No manual model download is required.
+| Path | What it holds |
+|---|---|
+| `README.md` | This file — nothing else lives in this directory |
 
-### Supported Models
+## How it works
 
-| Model ID                          | Size   | Description                 |
-| --------------------------------- | ------ | --------------------------- |
-| `onnx-community/whisper-tiny.en`  | ~40MB  | English-only, fastest       |
-| `onnx-community/whisper-base.en`  | ~75MB  | English-only, balanced      |
+### Supported models
+
+| Model ID | Size | Description |
+|---|---|---|
+| `onnx-community/whisper-tiny.en` | ~40MB | English-only, fastest |
+| `onnx-community/whisper-base.en` | ~75MB | English-only, balanced |
 | `onnx-community/whisper-small.en` | ~240MB | English-only, high accuracy |
-| `Xenova/whisper-tiny`             | ~40MB  | Multilingual, fastest       |
-| `Xenova/whisper-base`             | ~75MB  | Multilingual, balanced      |
-| `Xenova/whisper-small`            | ~240MB | Multilingual, high accuracy |
+| `Xenova/whisper-tiny` | ~40MB | Multilingual, fastest |
+| `Xenova/whisper-base` | ~75MB | Multilingual, balanced |
+| `Xenova/whisper-small` | ~240MB | Multilingual, high accuracy |
 
-### Model Caching
+### Model caching
 
-Models are cached in the browser's IndexedDB storage via the Transformers.js library. The first load may take a few seconds depending on network speed, but subsequent loads will be instant.
+Models are cached in the browser's IndexedDB storage via Transformers.js. The first load may take
+a few seconds depending on network speed; subsequent loads are instant.
 
-### Custom Models
+### Custom models
 
-Local models are selected via `features.modelId`, which accepts either a Whisper size (`tiny`, `base`, `small`, ...) or a full Hugging Face repo id:
+Local models are selected via `features.modelId`, which accepts either a Whisper size (`tiny`,
+`base`, `small`, ...) or a full Hugging Face repo id:
 
 ```typescript
 import { createSTT } from '@arcaai/stt';
@@ -36,4 +44,14 @@ const stt = createSTT({
 });
 ```
 
-Namespaced repo ids are loaded verbatim; bare sizes resolve to `onnx-community/whisper-<size>` (see `resolveLocalWhisperModel` in `../src/types/index.ts`).
+Namespaced repo ids are loaded verbatim; bare sizes resolve to
+`onnx-community/whisper-<size>` (see `resolveLocalWhisperModel` in `../src/types/index.ts`).
+
+## Gotchas
+
+- The local provider this feeds is deprecated (TASK-865, removed in R4) — do not add new
+  consumers of `provider: 'local'`.
+
+## Related
+
+- [`../README.md`](../README.md) — the `@arcaai/stt` package.
