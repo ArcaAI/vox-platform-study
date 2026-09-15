@@ -1,110 +1,101 @@
-# Live Transcription Example (raw-WebSocket demo)
+# example — raw-WebSocket live-transcription demo
 
-> **This app is a standalone raw-WebSocket + `fetch` demonstration. It is NOT a
-> `@arcaai/vox` SDK consumer.** See [Multi-tenancy note](#multi-tenancy-note-task-317--ac-17--e-3) below.
+Package name `live-transcription-example`. A minimal Vite + React app (dev port 5173) with two
+independent entry points: a raw-WebSocket microphone demo, and a `@arcaai/vox/compat` migration
+example. It deliberately is NOT an SDK consumer for its primary demo — see How it works.
 
-A minimal browser demo that streams microphone audio to the HOPE streaming
-transcription API over a raw `WebSocket` and renders partial/final transcripts.
-It opens the connection itself (`new WebSocket(...)`), captures audio via
-`getUserMedia` + a `ScriptProcessorNode`, downsamples to 16 kHz PCM16, and POSTs
-to / DELETEs the streaming-session endpoints directly.
+## Layout
 
-It depends only on `react` / `react-dom` — it does **not** import
-`@arcaai/vox`, `<AgenticProvider>`, the agentic store, or any of the audio
-packages (`@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`).
+| Path | What it holds |
+|---|---|
+| `index.html` / `src/main.tsx` / `src/App.tsx` / `src/LiveTranscriptionDemo.tsx` | The raw-WebSocket demo entry |
+| `compat.html` / `src/compat-main.tsx` / `src/compat-consultation.tsx` | The `@arcaai/vox/compat` consultation example entry |
+| `Dockerfile`, `.gitlab-ci.example.yml` | This app's own container build and CI job definition |
 
-## Multi-tenancy note (TASK-317 / AC-17 / E-3)
+## Commands
 
-The 2026-05-25 vox-SDK audit (finding **E-3**) flagged that this app sits next to
-the SDK examples but does not use the SDK, which is misleading. The recorded
-decision for **TASK-317 AC-17** is to **document** that distinction here rather
-than port the app onto `<AgenticProvider>` or rename the directory:
+| Command | Effect |
+|---|---|
+| `pnpm --filter live-transcription-example dev` | Vite dev server on port 5173 (both `index.html` and `compat.html` are served) |
+| `pnpm --filter live-transcription-example build` | Production build |
+| `pnpm --filter live-transcription-example preview` | Preview the production build |
+| `pnpm --filter live-transcription-example typecheck` | `tsc --noEmit` |
 
-- **Not bound by the SDK multi-tenant contract.** The `@arcaai/vox`
-  browser-side multi-tenant hardening (per-tenant/user storage namespacing,
-  store-per-provider isolation, cross-tab/WS tenant scoping, tenant-scoped
-  Transformers.js caches, etc.) applies to **SDK consumers**. This demo bypasses
-  the SDK entirely, so those guarantees are **intentionally out of scope** for it.
-- **It still does the right thing at the transport level.** Requests carry
-  `Authorization: Bearer <token>` and `X-Tenant-ID: <tenantId>`; the server-side
-  tenant boundary (TASK-305/306/307) remains authoritative.
-- **A directory rename to `apps/raw-ws-demo` was considered and declined.** The
-  package is referenced by `apps/example/Dockerfile`, `.gitlab/ci/build.yml`,
-  `apps/example/.gitlab-ci.example.yml`, and `pnpm-lock.yaml`; a rename is not
-  trivially safe (AC-17 only permits a rename when it is). This README note is
-  the recorded decision.
+There are no root-level `pnpm example:*` aliases — always invoke this package's scripts with
+`--filter live-transcription-example`.
 
-**If you need the SDK's multi-tenant guarantees, use `@arcaai/vox` via
-`<AgenticProvider>`** (see `apps/compat-playground` and
-`packages/agentic-sdk-v2/`) instead of this raw demo.
+## How it works
 
-## `@arcaai/vox/compat` consultation example (TASK-563)
+**The raw-WebSocket demo is not an SDK consumer, on purpose.** It streams microphone audio to
+the HOPE streaming transcription API over a plain `WebSocket` it opens itself (`new
+WebSocket(...)`), captures audio via `getUserMedia` + a `ScriptProcessorNode`, downsamples to
+16 kHz PCM16, and POSTs/DELETEs the streaming-session endpoints directly. It depends only on
+`react`/`react-dom` — it does not import `@arcaai/vox`, `<AgenticProvider>`, the agentic store, or
+any audio package (`@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`, `@arcaai/noise-filter`).
 
-A **second, separate** entry in this app — `compat.html` / `src/compat-main.tsx`
-/ `src/compat-consultation.tsx` — is the migration example for the HOPE v1 → v2
-compatibility layer. Unlike the raw-WebSocket demo above, it **is** a
-`@arcaai/vox` consumer: it wraps the tree in a single `<ArcaCompatProvider>` and
-drives the full session → record → live-transcript → stop → summary workflow with
-the v1-named compat hooks (`useArcaSessionManager`, `useAudioCapture`,
-`useArcaSpeechToText`, `useText`).
+That means the `@arcaai/vox` browser-side multi-tenant hardening (per-tenant/user storage
+namespacing, store-per-provider isolation, cross-tab/WS tenant scoping, tenant-scoped
+Transformers.js caches) is intentionally out of scope for this demo — those guarantees apply only
+to SDK consumers. It still does the right thing at the transport level: requests carry
+`Authorization: Bearer <token>` and `X-Tenant-ID: <tenantId>`, and the server-side tenant boundary
+remains authoritative regardless of which client bypasses the SDK. This distinction was a
+deliberate, recorded decision rather than an oversight — a directory rename (to something like
+`apps/raw-ws-demo`) was considered and declined because the package name `live-transcription-example`
+is referenced by this app's own `Dockerfile`, `.gitlab-ci.example.yml`, `.gitlab/ci/build.yml`,
+and `pnpm-lock.yaml`. If you need the SDK's multi-tenant guarantees, use `@arcaai/vox` via
+`<AgenticProvider>` (see `apps/compat-playground` or `packages/agentic-sdk-v2/`) instead of this
+raw demo.
 
-It is the runnable companion to
-[`docs/…/TASK-560-…/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md).
+Configure the raw-WebSocket demo via Vite env vars (e.g. `.env.local` in this folder):
+
+| Var | Purpose |
+|---|---|
+| `VITE_API_BASE_URL` | Base URL of the HOPE API |
+| `VITE_PIPELINE_ID` | Streaming transcription pipeline id |
+| `VITE_API_KEY` | API key sent as `X-API-Key` |
+| `VITE_TENANT_ID` | Tenant id sent as `X-Tenant-ID` |
+
+**The compat entry (`compat.html` / `src/compat-main.tsx` / `src/compat-consultation.tsx`) is a
+separate, second demo and IS a `@arcaai/vox` consumer.** It wraps the tree in a single
+`<ArcaCompatProvider>` and drives the full session -> record -> live-transcript -> stop -> summary
+workflow with the v1-named compat hooks (`useArcaSessionManager`, `useAudioCapture`,
+`useArcaSpeechToText`, `useText`). It hardcodes the department and visit type and skips the
+pre-summary step — `apps/compat-playground`'s Summarization tab is a superset of this example.
 
 Run it against a local gateway:
 
 ```bash
-# 1. Bring up the stack (gateway :8868 + STT + Text) — see infrastructure/README.md
+# 1. Bring up the stack (gateway :8868 + STT + Text) - see infrastructure/README.md
 pnpm setup:dev && pnpm stack:dev -- api stt text
 
 # 2. Point the example at it (apps/example/.env.local):
 #   VITE_API_BASE_URL=http://localhost:8868
 #   VITE_WS_BASE_URL=ws://localhost:8868
-#   VITE_API_KEY=<an SDK-type tenant api key>   # REQUIRED — no default key
-#   VITE_PIPELINE_ID=<streaming pipeline id>          # enables live backend STT
+#   VITE_API_KEY=<an SDK-type tenant api key>   # required, no default key
+#   VITE_PIPELINE_ID=<streaming pipeline id>    # enables live backend STT
 
 # 3. Start the dev server and open the compat page:
 pnpm --filter live-transcription-example dev
-#   → http://localhost:5173/compat.html
-
-# Typecheck / build both entries:
-pnpm --filter live-transcription-example typecheck
-pnpm --filter live-transcription-example build
+#   -> http://localhost:5173/compat.html
 ```
 
-| Var                 | Purpose (compat example)                                                     |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `VITE_API_BASE_URL` | REST origin of the v2 gateway (e.g. `http://localhost:8868`)                 |
-| `VITE_WS_BASE_URL`  | WebSocket origin (e.g. `ws://localhost:8868`)                                |
-| `VITE_API_KEY`       | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
-| `VITE_PIPELINE_ID`  | Streaming STT pipeline id — enables live backend transcription               |
+| Var | Purpose (compat example) |
+|---|---|
+| `VITE_API_BASE_URL` | REST origin of the v2 gateway |
+| `VITE_WS_BASE_URL` | WebSocket origin |
+| `VITE_API_KEY` | Required tenant SDK api key (`x-api-key` parity); no default is baked in |
+| `VITE_PIPELINE_ID` | Streaming STT pipeline id, enables live backend transcription |
 
-### Per-chunk metadata passthrough (TASK-564)
+**Per-chunk metadata passthrough.** The compat page demonstrates the v1 "tag each turn, read the
+tag back off the transcript" feature: the Tag turn (Clinician / Patient) buttons while recording
+each call `stt.sendAudioData(new ArrayBuffer(0), { device_id, role, chunk_id, consultationId })`.
+In v2 this is client-side only and the PCM payload is ignored (the hook is a metadata sink), so
+the tag round-trips locally onto the next `onTranscript(text, isFinal, metadata)` call; the
+transcript list renders `[device_id . chunk_id . speaker_id]` beside each line (`device_id`/
+`chunk_id` are yours; `speaker_id` is derived from diarization).
 
-The compat page also demonstrates the v1 _"tag each turn → read the tag back off
-the transcript"_ feature. Use the **Tag turn: Clinician / Patient** buttons while
-recording — each calls `stt.sendAudioData(new ArrayBuffer(0), { device_id, role,
-chunk_id, consultationId })`. In v2 this is **client-side only** and PCM is
-ignored (the hook is a metadata sink), so the tag round-trips locally onto the
-next `onTranscript(text, isFinal, metadata)` call; the transcript list renders
-`[device_id · chunk_id · speaker_id]` beside each line (`device_id`/`chunk_id`
-are yours; `speaker_id` is derived from diarization). See
-[`METADATA_PASSTHROUGH.md`](../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md)
-for the full contract and its honest limitations.
+## Related
 
-## Running (raw-WebSocket demo)
-
-```bash
-pnpm --filter live-transcription-example dev      # vite dev server
-pnpm --filter live-transcription-example build    # production build
-pnpm --filter live-transcription-example preview  # preview the build
-```
-
-Configure via Vite env vars (e.g. an `.env.local` in this folder):
-
-| Var                 | Purpose                                                   |
-| ------------------- | --------------------------------------------------------- |
-| `VITE_API_BASE_URL` | Base URL of the HOPE API (e.g. `https://api.example.com`) |
-| `VITE_PIPELINE_ID` | Streaming transcription pipeline id |
-| `VITE_API_KEY` | API key sent as `X-API-Key` |
-| `VITE_TENANT_ID` | Tenant id sent as `X-Tenant-ID` |
+- `apps/compat-playground/README.md` — the fuller compat-surface console this app's compat entry is a stripped-down companion to
+- `packages/agentic-sdk-v2/docs/Compat-API-Reference.md` — the `@arcaai/vox/compat` surface both apps exercise
+- `.claude/rules/08-vox-sdk.md` — SDK entry points and the browser-never-runs-a-model posture
