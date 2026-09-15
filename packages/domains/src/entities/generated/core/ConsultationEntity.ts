@@ -21,12 +21,19 @@ import * as Entities from '../../../entities';
 // and split into `CLOSED_COMPLETE` (human signed before closing) and
 // `CLOSED_INCOMPLETE` (timeout/manual close with no clinician sign-off,
 // including the settings-registry sweep's five eligible source states).
-// 22 legal, non-reflexive transitions — is the source.
+// (continued, 2026-09-15) — TASK-972 OD-7: `OPEN` was structurally
+// unclosable (its only edge was `OPEN → PRIMED`), so neither a manual close
+// nor a timeout sweep could ever clear a consultation abandoned before
+// recording. Added `OPEN → CLOSED_INCOMPLETE`.
+// 23 legal, non-reflexive transitions — is the source.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
 >([
-  [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.PRIMED])],
+  [
+    Enums.ConsultationStatus.OPEN,
+    new Set([Enums.ConsultationStatus.PRIMED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
+  ],
   [
     Enums.ConsultationStatus.PRIMED,
     new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
