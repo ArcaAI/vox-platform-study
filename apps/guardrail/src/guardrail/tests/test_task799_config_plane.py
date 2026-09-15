@@ -375,6 +375,13 @@ async def test_boot_call_sites_present_the_shared_internal_token(
     monkeypatch.setenv("GUARDRAIL_SERVICE_TOKEN", "")
     # No DB engine, no job processor, no pubsub — this test is about two tokens.
     monkeypatch.setenv("GUARDRAIL_DB_CONFIG_ENABLED", "false")
+    # Booting `main` constructs the Redis client, which rejects an empty URL with
+    # "Redis URL must specify one of the following schemes". This job provisions no
+    # test Redis (`GUARDRAIL_REDIS_URL: $CI_REDIS_URL`, and the job's own comment
+    # records that a dedicated Redis is not provisioned), so the URL has to come
+    # from the test. Nothing here connects — per the docstring above, this test is
+    # about the two outbound tokens.
+    monkeypatch.setenv("GUARDRAIL_REDIS_URL", "redis://localhost:6379/0")
 
     seen: dict[str, str] = {}
 
