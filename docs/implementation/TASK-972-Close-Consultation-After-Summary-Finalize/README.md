@@ -260,9 +260,37 @@ exists and needs only the server-side scope. Override `assertCredentialClass()` 
 
 ### Lane 6 — ALaaS change list (documented here; NOT edited from this repo)
 
-1. On submit (after saving to ALaaS's own DB): `update` → `approve({ clinicianUserId })` → `close`, **in that order** — `PENDING_REVIEW → CLOSED_*` is not a legal edge, so the sign-off is what makes the close possible.
-2. Retire the dead `POST /api/v1/summary/feedback` call and its three duplicate call sites.
-3. Stamp the HOPE `consultationId` on `updated_summary` / `generated_summary` so ALaaS's record joins the platform's.
+Verified against `ALaaSv3.0` on 2026-09-15. **The order below is forced by two constraints, not style.**
+
+**Constraint A — the edit and the consultation id live in different paths.** `audio-stream-svc` runs
+two disconnected summarization paths. The REALTIME path (`src/consultation/`) holds the HOPE
+`consultationId`; the BATCH path (`src/medical_summary/`) is where the clinician's edit actually
+arrives (`POST update_summary_by_session/:sessionId/:eventId`,
+`medical-summary.controller.ts:239` → append-only row in `updated_summary`). Neither
+`generated_summary` nor `updated_summary` carries a HOPE `consultationId`. **At edit time ALaaS does
+not know which HOPE consultation the note belongs to**, so step 1 is a prerequisite for steps 2-3,
+not a cleanup.
+
+**Constraint B — `PENDING_REVIEW → CLOSED_*` is not a legal transition.** The sign-off is what makes
+the close legal, so `approve` must precede `close`.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **Carry the HOPE `consultationId` onto the batch tables.** Add the column to `generated_summary` (and expose it through `updated_summary`'s FK) and populate it when the realtime path opens the consultation, so an edit can be resolved back to a HOPE consultation. | `src/medical_summary/entities/*.entity.ts`; note the tables are `synchronize: true`-managed in dev with no dedicated TypeORM migration |
+| 2 | **On submit, after saving locally, call HOPE in order:** `summaries.update(...)` → `summaries.approve({ clinicianUserId })` → `close()`. The two existing "clinician is done" flags — `POST mark_copied_to_emr/:sessionId/:eventId` (`:265`) and `POST mark_updated_summary_copied/:id` (`:293`) — are the natural trigger points; they are local-only DB flags today with no HOPE call. | `medical-summary.controller.ts` + `updated-summary.service.ts` |
+| 3 | **Extend the port and adapter.** `HopeRealtimePort` (`hope-realtime.port.ts:354-443`) and the pinned `VoxNodeRealtimeSurface` (`hope-realtime.vox-node.adapter.ts:148-210`) declare no `close`/`approve` — both must gain them once the SDK ships 3.5.0. | `src/consultation/` |
+| 4 | **Retire the dead feedback route.** `POST /api/v1/summary/feedback` (`medical-summary.controller.ts:158-179`) forwards to a HOPE v1-compat path that 404s, and has live `web_ui` callers. Its own comment block already records that "HOPE v2 has no route that records a clinician's correction of a summary" — this ticket is what makes that false. Repoint it at step 2 or delete it with its callers. | `medical-summary.controller.ts`, `web_ui/utils/feedbackHelper.js` |
+
+**Not requested, recorded as a consequence:** `stop()` (`consultation-broker.service.ts:577`) already
+auto-approves HOPE's `n_review` gate with **no edited content**, though that gate is authored
+`allowEdit: true` in all 11 ArcaAI graphs and was designed to carry exactly this. Under OD-2 that
+stays. Once step 2 ships, the clinician's real edit arrives by the `approve` route instead, and the
+gate release remains the no-op Lane 3 already tolerates.
+
+**Out of scope here (FU-1):** `teardown()` (`:649-663`) tears down a vanished browser's session
+locally after a 60 s grace and calls **no** HOPE endpoint, so an abandoned recording is never
+reported. HOPE now self-heals this via the Lane 8 `OPEN`/`PENDING_REVIEW` timeouts; a proactive ALaaS
+notification is still the better fix.
 
 ### Lane 7 — The unclosable `OPEN` state (`packages/domains`) — OD-7
 
