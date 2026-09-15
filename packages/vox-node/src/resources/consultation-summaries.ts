@@ -9,10 +9,12 @@ import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';
 import { generateUuidV7 } from '../core/idempotency';
 import type {
+  ApproveSummaryRequest,
   AsyncJobResponse,
   ConsultationSummaryResponse,
   GeneratePreSummaryRequest,
   GenerateSummaryRequest,
+  SummaryApprovalResponse,
   UpdateSummaryRequest,
 } from '../types/consultation';
 
@@ -71,6 +73,17 @@ export interface UpdateSummaryOptions extends ConsultationSummaryRequestOptions 
    * other versioned resource in the meantime.
    */
   ifMatch?: string;
+}
+
+/** Options for {@link ConsultationSummariesResource.approve}. */
+export interface ApproveSummaryOptions extends ConsultationSummaryRequestOptions {
+  /**
+   * Sent as `If-Match`. **REQUIRED** — unlike `update()`'s route, this one
+   * carries `@RequiresIfMatch()` on the gateway, so an omitted header is a
+   * guaranteed 428, not a silently-skipped precondition. Pass the strong
+   * validator you read the summary at (e.g. `'"7"'`).
+   */
+  ifMatch: string;
 }
 
 function consultationSummaryPath(consultationId: string): string {
@@ -197,6 +210,45 @@ export class ConsultationSummariesResource {
       path: `${consultationSummaryPath(consultationId)}/${encodePathSegment(summaryId)}`,
       body: request,
       headers,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * No-op guard, mirroring `ConsultationWorkflowsResource.assertCredentialClass()`
+   * (`./workflows.ts`): both machine credential classes reach `approve()` —
+   * an API key holding `consultation:session:write` and, since TASK-972 Lane
+   * 4, a service account holding `svc:consultation:session:write` — so there
+   * is nothing to refuse client-side. Kept as an explicit hook rather than
+   * omitted, so a future credential-class restriction on this plane has an
+   * obvious place to land instead of being bolted on ad hoc.
+   */
+  protected assertCredentialClass(): void {}
+
+  /**
+   * `POST /api/v1/consultations/:id/summary/:contextItemId/approve` — sign
+   * and lock the summary under optimistic concurrency (TASK-972).
+   *
+   * `contextItemId` is the summary's context-item id (the same id
+   * {@link ConsultationSummariesResource.generate}/`list`/`latest` return as
+   * `id`), **not** the consultation id.
+   *
+   * Reachable from `PENDING_REVIEW` only; a summary that is not pending
+   * review is a 409. The gateway compare-and-sets against the summary row's
+   * `_version` — see {@link ApproveSummaryOptions.ifMatch}.
+   */
+  async approve(
+    consultationId: string,
+    contextItemId: string,
+    request: ApproveSummaryRequest = {},
+    options: ApproveSummaryOptions,
+  ): Promise<SummaryApprovalResponse> {
+    this.assertCredentialClass();
+    return this.transport.request<SummaryApprovalResponse>({
+      method: 'POST',
+      path: `${consultationSummaryPath(consultationId)}/${encodePathSegment(contextItemId)}/approve`,
+      body: request,
+      headers: { 'If-Match': options.ifMatch },
       signal: options.signal,
     });
   }
