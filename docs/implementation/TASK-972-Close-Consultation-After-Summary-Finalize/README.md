@@ -330,6 +330,7 @@ make those tests flaky.
 | FU-2 | A first-class durable consultation↔run link; today only the client-writable `metadata.governingEngine.workflowRunId` exists and `WorkflowRun` has no `consultationId` |
 | FU-3 | `DocumentSection` version history → section-aligned training pairs (OD-5) |
 | FU-4 | Full `ConsentGrant` binding for mining (OD-4) |
+| FU-6 | Notify the clinician when the sweep times a review out, mirroring `recordEscalation`'s "A later approval still commits" |
 | FU-5 | Whether `n_output` should wait for the real sign-off — under OD-2 it publishes the UNEDITED note downstream |
 
 ### Verification criteria
@@ -347,6 +348,51 @@ make those tests flaky.
 | V9 | An `OPEN` row idle > 120 min becomes `CLOSED_INCOMPLETE`; the matrix test pins the new edge |
 | V10 | Seeded consultations carry their intended `status` on the column; no suite depends on a seeded row being `OPEN` |
 | V11 | Gates green: `@arcaai/domains`, `@arcaai/applications`, `apps/api` build/test/lint; five artifacts regenerated; `task-776-route-authz-matrix` green; e2e suite |
+
+## 4b. Execution log (2026-09-15)
+
+Six writers, one worktree each, merged into `dev-2.2` in dependency order. Every merge re-verified in
+the PRIMARY checkout, not on the writer's report.
+
+| Lane | Branch | Merge | Post-merge gate (orchestrator-run) |
+|---|---|---|---|
+| 7 — matrix edge | `task-972/w1-domains` | `ea8c117e6` | domains build clean; transitions 152/152 |
+| 5 — vox-node 3.5.0 | `task-972/w5-voxnode` | `d7d9f8e76` | 543/543; 3 builds; lint clean |
+| 9 — seed status column | `task-972/w6-seed` | `d615f3dff` | database 1825/1825 |
+| 8 — sweep legs | `task-972/w3-sweep` | (merged) | domains 1986 passed; applications 14008 passed, **1 known red** (below) |
+
+### Findings from execution that change the record
+
+1. **A regression the orchestrator's own gate missed.** Merging lane 7, only `@arcaai/domains` was
+   re-run. The matrix edge also invalidates a DOWNSTREAM assertion:
+   `consultation.service.test.ts:1606` pins "closing a still-`OPEN` consultation throws 409", which
+   OD-7 deliberately made legal. Writer W3 found it, proved it pre-existed its own branch by
+   reverting and re-running at base, and correctly declined to edit a file another writer owned.
+   **Fix belongs to the lane-1 integration step: the assertion is wrong, not the code.**
+2. **A no-op guard was removed before merge.** Lane 5 shipped `assertCredentialClass()` as a no-op on
+   two resources, citing `workflows.ts:279` — which is a REAL guard (`assertApiKeyPlane`) overriding
+   an abstract base those resources do not have. It ran on every call and read like a check that did
+   not exist. Removed (`bdb9c64b2`); 543/543 still green.
+3. **Stale `dist/` fails a gate that passed in the worktree.** vox-node asserts its BUILT bundle
+   carries the version literal, so the primary's pre-3.5.0 bundle failed on merge and passed after a
+   rebuild. Not a regression — but it is invisible unless gates are re-run after merging.
+4. **Lane 9 newly exposes seeded rows to the EXISTING sweep.** With fixtures on real statuses,
+   `ER_RECORDING` becomes eligible for the already-shipped 30-minute stale-recording leg and moves to
+   `DRAINING`; three more become eligible for the 1440-minute leg. Pre-existing behaviour, newly
+   reachable. Seeded consultations now decay unless reseeded.
+5. **Lane 8's `OPEN` predicate is stronger than the plan specified.** Eligibility requires idle age
+   **AND** no `ContextItem` created in the window, because `ContextService` only READS the
+   consultation row — age alone would close a consultation a clinician was actively loading context
+   into, and `CLOSED_INCOMPLETE` reaches only `REOPENED`.
+6. **Residual risks accepted, recorded (lane 8):** editing an EXISTING `ContextItem` does not protect
+   an `OPEN` row (only `createdAt` is checked); and a clinician reviewing for >2 h WILL be timed out,
+   because reviewing writes the summary/section plane rather than the consultation row. Tolerable
+   only because OD-6 made the target recoverable.
+7. **No clinician notification on the sweep-driven `TIMED_OUT`**, unlike the sibling
+   `HarnessInternalService.recordEscalation` path which notifies with "A later approval still
+   commits." Deliberately not added (new DI dependency, unsanctioned by the plan) — filed as FU-6.
+8. **`@arcaai/database` has no `lint` script** and sits outside the lint graph; `build` + `typecheck`
+   + `test` are the real gates for lane 9.
 
 ## 5. Implementation Summary
 
