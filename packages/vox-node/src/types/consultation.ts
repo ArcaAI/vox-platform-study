@@ -168,6 +168,14 @@ export interface ConsultationGetResponse {
     | 'CLOSED_INCOMPLETE';
   createdAt: string;
   updatedAt: string;
+  /**
+   * Optimistic-concurrency row version (`_version`), returned by the gateway
+   * (`ConsultationResponse.version`, documented there as "Read this to build the
+   * `If-Match` header"). It is the operand {@link ConsultationsResource.close}
+   * and the state-machine transition routes require — pass it straight through as
+   * `options.ifMatch` and the SDK renders the strong validator for you.
+   */
+  version?: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -212,6 +220,13 @@ export interface ConsultationSummaryResponse {
   structuredData?: ConsultationSummaryStructuredData;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Row version for optimistic concurrency, as the gateway's `SummaryResponse`
+   * returns it ("Echo back as `If-Match: \"<version>\"` or `expectedVersion` on
+   * PATCH"). Pass it as `options.ifMatch` to {@link ConsultationSummariesResource.approve}
+   * or `summaries.update`; the SDK quotes it.
+   */
+  version?: number;
 }
 
 // -----------------------------------------------------------------------------

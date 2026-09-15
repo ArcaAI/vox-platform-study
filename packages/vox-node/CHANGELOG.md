@@ -9,6 +9,7 @@
   - **`hope.consultations.close(consultationId, request, options)`** — `POST consultations/{id}/close`, the bookend to `open()`. Legal only from `SIGNED`/`TIMED_OUT` (409 otherwise — `summaries.approve()` must succeed first from `PENDING_REVIEW`). Same required `options.ifMatch` and optional `request.clinicianUserId` shape as `approve()`.
   - Both methods are reachable by **either** machine credential class — an API key or a service account — — neither route refuses a credential class client-side, so no client-side guard is applied.
   - **`options.ifMatch` accepts a version NUMBER or a raw `ETag`.** The gateway accepts only a strong validator (`/^"(0|[1-9][0-9]*)"$/`), and the only version a consumer can read is `ConsultationGetResponse.version` — a number — so `String(c.version)` would send the one form the gateway rejects. Pass `ifMatch: consultation.version` and the SDK quotes it; a raw `"7"` or `W/"7"` passes through untouched.
+  - **`ConsultationGetResponse.version` and `ConsultationSummaryResponse.version` are now declared.** The gateway returns both (`ConsultationResponse.version` is documented as "Read this to build the `If-Match` header"), but neither SDK type carried the field — so the one value the new methods require could not be read without a cast.
   - `hope.consultations.summaries.update()` is unchanged — it already reaches both machine classes once the gateway grants the scope; this release adds no client code for it.
 
 ## 3.4.0
