@@ -758,6 +758,12 @@ test-harness:
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    # `apps/harness` declares hope-async-contract as a workspace dependency
+    # (pyproject.toml:70,76). It is not on PyPI, so pip resolves it only when it is
+    # installed from the workspace first — exactly as `test-text` already does for
+    # the same package. Without this the job dies at install with
+    # "No matching distribution found for hope-async-contract".
+    - pip install --quiet --retries 5 --timeout 120 packages/py-async-contract
     - cd apps/harness
     - pip install --quiet --retries 5 --timeout 120 ".[test,eval,rag,guardrails]"
     - PYTHONPATH=src python -m pytest src/harness/tests/ -v --tb=short --junitxml=../../junit-harness.xml -x
@@ -933,6 +939,12 @@ harness-eval-gate:
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    # `apps/harness` declares hope-async-contract as a workspace dependency
+    # (pyproject.toml:70,76). It is not on PyPI, so pip resolves it only when it is
+    # installed from the workspace first — exactly as `test-text` already does for
+    # the same package. Without this the job dies at install with
+    # "No matching distribution found for hope-async-contract".
+    - pip install --quiet --retries 5 --timeout 120 packages/py-async-contract
     - cd apps/harness
     - pip install --quiet --retries 5 --timeout 120 ".[test,eval]"
     - echo "── checking judge backend reachability (LM Studio, $HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL) ──"
