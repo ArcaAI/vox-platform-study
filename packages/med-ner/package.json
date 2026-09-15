@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/med-ner",
-  "version": "3.3.0",
+  "version": "3.5.0",
   "description": "Medical Named Entity Recognition plugin for @arcaai/room using Transformers.js",
   "deprecated": "DEPRECATED (TASK-865) — removed in R4, two releases after R2. In-browser medical NER is retired; entity extraction runs in apps/nlp through the realtime lane. The browser never runs a model. See docs/operations/deprecation-register.md.",
   "private": false,
