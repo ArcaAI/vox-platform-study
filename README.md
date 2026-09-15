@@ -109,7 +109,7 @@ See [scripts/README.md](scripts/README.md) for the complete script reference.
 | Ticket workflow, doc locations, monorepo map | `.claude/rules/00-project-context.md` |
 | Per-domain coding standards | `.claude/rules/02-*.md` through `13-*.md`, indexed in `.claude/rules/README.md` |
 
-## Documentation
+### Documentation
 
 | Resource | Description |
 |---|---|
@@ -119,7 +119,7 @@ See [scripts/README.md](scripts/README.md) for the complete script reference.
 | [docs/development-patterns-and-standards.md](docs/development-patterns-and-standards.md) | Coding patterns and layer standards (code-verified) |
 | [docs/implementation/](docs/implementation/) | Active ticket-based implementation documentation |
 
-## Tech Stack
+### Tech stack
 
 | Layer | Technology |
 |---|---|
