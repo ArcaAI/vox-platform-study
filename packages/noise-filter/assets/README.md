@@ -1,37 +1,36 @@
-# Assets
+# noise-filter assets — bundled WASM binary
 
-This directory is reserved for static assets used by the noise filter package.
+`packages/noise-filter/assets`. Holds `rnnoise.wasm`, copied here from `@jitsi/rnnoise-wasm`
+during `pnpm build`. It ships with the package — there is no runtime CDN fetch.
 
-## WASM Files
+## Layout
 
-The RNNoise WASM file is loaded from the `@jitsi/rnnoise-wasm` npm package by default. If you need to self-host the WASM file:
+| Path | What it holds |
+|---|---|
+| `rnnoise.wasm` | The bundled RNNoise WebAssembly binary, copied from `@jitsi/rnnoise-wasm` at build time |
 
-1. Download the WASM file from the npm package or build from source
-2. Place it in your application's public/assets directory
-3. Configure the `wasmPath` option when creating the processor:
+## How it works
+
+The default `wasmPath` resolves this file via `new URL('../assets/rnnoise.wasm', import.meta.url)`
+(`../src/wasmAsset.ts`). To self-host instead, copy this file to your own server and pass
+`wasmPath` when creating the processor:
 
 ```typescript
-const noiseFilter = new NoiseFilterProcessor({
+const noiseFilter = createNoiseFilter({
   wasmPath: '/assets/rnnoise.wasm',
   noiseCancellation: true,
 });
 ```
 
-## Building RNNoise WASM from Source
+## Gotchas
 
-If you need to build the WASM file from source:
+- The bundled binary is pinned to `@jitsi/rnnoise-wasm@0.2.1`'s exact export names and import
+  object shape — the hand-ported worklet loaders in `../src/worklets/` and
+  `../src/processors/workletRnnoiseLoader.ts` depend on that exact ABI. Do not substitute a
+  differently-built `rnnoise.wasm` here without re-verifying those three files against it (see
+  the parent README's "Worklet source is manually duplicated in three places" gotcha).
+- The package this feeds is deprecated (TASK-865, removed in R4) — do not add new consumers.
 
-1. Clone the RNNoise repository: https://github.com/xiph/rnnoise
-2. Install Emscripten SDK
-3. Build with:
+## Related
 
-```bash
-emcc -O3 \
-  -s WASM=1 \
-  -s EXPORTED_FUNCTIONS='["_rnnoise_create","_rnnoise_destroy","_rnnoise_process_frame","_malloc","_free"]' \
-  -s MODULARIZE=1 \
-  -s EXPORT_NAME="RNNoise" \
-  src/*.c -o rnnoise.js
-```
-
-The resulting `rnnoise.wasm` file can be used with this package.
+- [`../README.md`](../README.md) — the `@arcaai/noise-filter` package.
