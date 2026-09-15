@@ -27,6 +27,8 @@ export type {
   GenerateSummaryRequest,
   GeneratePreSummaryRequest,
   UpdateSummaryRequest,
+  ApproveSummaryRequest,
+  SummaryApprovalResponse,
   AddContextRequest,
   ContextItemResponse,
   ContextItemType,
@@ -44,6 +46,7 @@ export type {
 /** The consultation REALTIME lifecycle — open, recording, and the live planes (TASK-933). */
 export type {
   AcceptedCorrectionProposal,
+  CloseConsultationRequest,
   ConsultationOpenResponse,
   DocumentSection,
   HarnessProgressEvent,

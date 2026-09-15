@@ -76,6 +76,49 @@ export interface UpdateSummaryRequest {
   changeSource?: 'doctor_edit' | 'ai_regeneration' | 'system';
 }
 
+/**
+ * Body of `POST /api/v1/consultations/:id/summary/:contextItemId/approve` (OCC
+ * — requires `If-Match`; see {@link ApproveSummaryOptions.ifMatch} on
+ * `ConsultationSummariesResource.approve`). Mirrors `SummaryApprovalRequest`
+ * (`packages/applications/.../summary-approval.request.ts`), plus the
+ * TASK-972 `clinicianUserId` field the server-side lane of this same ticket
+ * adds to that DTO.
+ */
+export interface ApproveSummaryRequest {
+  /**
+   * One-click clinician acknowledgement to sign past a safety FLAG. Recorded
+   * as a `SAFETY_OVERRIDE` WORM audit event; no free-text justification
+   * required.
+   */
+  overrideSafetyFlag?: boolean;
+  /**
+   * The clinician the approval is attested for — same rule as
+   * {@link OpenConsultationRequest.clinicianUserId}: REQUIRED when this
+   * client authenticates as a SERVICE ACCOUNT (400 `CLINICIAN_REQUIRED`
+   * otherwise), and refused for a human caller who is not `SUPER_ADMIN` /
+   * `TENANT_ADMIN` (400 otherwise; omit it to sign as yourself). A clinician
+   * outside the tenant is a 404, not a 403 (`assertUserBelongsToTenant`).
+   * The named clinician lands on `approvedBy`/the `SIGNED_NOTE` version; the
+   * calling credential is recorded beside them as ACTOR in the WORM `ATTEST`
+   * row (TASK-972 Lane 1).
+   */
+  clinicianUserId?: string;
+}
+
+/**
+ * Response of `POST /api/v1/consultations/:id/summary/:contextItemId/approve`.
+ * Mirrors the controller's inline `SummaryApprovalResponseDto`
+ * (`apps/api/src/modules/consultation/consultation.controller.ts`).
+ */
+export interface SummaryApprovalResponse {
+  /** Context item id of the approved summary. */
+  contextItemId: string;
+  approvalStatus: string;
+  /** The clinician who approved — see {@link ApproveSummaryRequest.clinicianUserId}. */
+  approvedBy: string;
+  approvedAt: string;
+}
+
 // -----------------------------------------------------------------------------
 // Consultation (minimal read — id validation for the P0.5 flow, NOT CRUD)
 // -----------------------------------------------------------------------------

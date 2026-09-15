@@ -15,13 +15,18 @@ export * from './admin';
 export type { SummarizationRequestOptions, SummarizationStream } from './summarization';
 export { SummarizationResource } from './summarization';
 
-export type { ConsultationSummaryRequestOptions, GenerateSummaryOptions, UpdateSummaryOptions } from './consultation-summaries';
+export type {
+  ApproveSummaryOptions,
+  ConsultationSummaryRequestOptions,
+  GenerateSummaryOptions,
+  UpdateSummaryOptions,
+} from './consultation-summaries';
 export { ConsultationSummariesResource, SYNC_GENERATION_TIMEOUT_MS } from './consultation-summaries';
 
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';
 
-export type { AddContextOptions, ConsultationRequestOptions } from './consultations';
+export type { AddContextOptions, CloseConsultationOptions, ConsultationRequestOptions } from './consultations';
 export { ConsultationsResource } from './consultations';
 
 /** The consultation REALTIME lifecycle (TASK-933): recording, the live SSE planes, and the STT session. */

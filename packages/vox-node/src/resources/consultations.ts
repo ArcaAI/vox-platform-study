@@ -15,7 +15,7 @@
 import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
-import type { ConsultationOpenResponse, DocumentSection, OpenConsultationRequest } from '../types/consultation-realtime';
+import type { CloseConsultationRequest, ConsultationOpenResponse, DocumentSection, OpenConsultationRequest } from '../types/consultation-realtime';
 import { ConsultationRecordingResource } from './consultation-recording';
 import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
@@ -24,6 +24,17 @@ import { ConsultationWorkflowsResource } from './workflows';
 /** Per-call options for {@link ConsultationsResource.get}. */
 export interface ConsultationRequestOptions {
   signal?: AbortSignal;
+}
+
+/** Options for {@link ConsultationsResource.close}. */
+export interface CloseConsultationOptions extends ConsultationRequestOptions {
+  /**
+   * Sent as `If-Match`. **REQUIRED** — `POST :id/close` carries
+   * `@RequiresIfMatch()` on the gateway, so an omitted header is a
+   * guaranteed 428. Pass the strong validator you read the consultation at
+   * (e.g. `'"7"'`).
+   */
+  ifMatch: string;
 }
 
 /** Options for {@link ConsultationsResource.addContext}. */
@@ -234,6 +245,41 @@ export class ConsultationsResource {
       path: `consultations/${encodePathSegment(consultationId)}/context`,
       body: request,
       headers: options.contextSchemaVersionId ? { 'X-Context-Schema-Version': options.contextSchemaVersionId } : undefined,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * No-op guard, mirroring `ConsultationWorkflowsResource.assertCredentialClass()`
+   * (`./workflows.ts`): both machine credential classes reach `close()` — an
+   * API key holding `consultation:session:write` and, since TASK-972 Lane 4,
+   * a service account holding `svc:consultation:session:write` — so there is
+   * nothing to refuse client-side. Kept as an explicit hook rather than
+   * omitted, so a future credential-class restriction on this plane has an
+   * obvious place to land instead of being bolted on ad hoc.
+   */
+  protected assertCredentialClass(): void {}
+
+  /**
+   * `POST /api/v1/consultations/:id/close` — the bookend to {@link open}
+   * (TASK-972).
+   *
+   * Legal only from `SIGNED` or `TIMED_OUT` — `summaries.approve()` must
+   * succeed first on a `PENDING_REVIEW` consultation; a state with no direct
+   * edge to a closed state is a 409. The gateway compare-and-sets against
+   * the consultation row's `_version` — see {@link CloseConsultationOptions.ifMatch}.
+   *
+   * `close` is real and OCC-guarded at the gateway today — the **browser**
+   * SDK's `useArcaSession().close()` already calls it. What was missing was
+   * this wrapper, not the capability.
+   */
+  async close(consultationId: string, request: CloseConsultationRequest = {}, options: CloseConsultationOptions): Promise<ConsultationGetResponse> {
+    this.assertCredentialClass();
+    return this.transport.request<ConsultationGetResponse>({
+      method: 'POST',
+      path: `consultations/${encodePathSegment(consultationId)}/close`,
+      body: request,
+      headers: { 'If-Match': options.ifMatch },
       signal: options.signal,
     });
   }
