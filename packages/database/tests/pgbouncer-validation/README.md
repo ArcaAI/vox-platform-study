@@ -1,85 +1,72 @@
 # PgBouncer Validation Rig
 
-> **Stream C / Phase 1 of [TASK-302 — System Config Implementation Roadmap](../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).**
-> Single-node PostgreSQL + PgBouncer (transaction mode) for verifying Prisma 7's compatibility with the pooler under HOPE's workload.
+A single-node PostgreSQL + PgBouncer (transaction mode) stack for verifying Prisma 7's
+compatibility with a connection pooler under HOPE's workload. It is intentionally **isolated**
+from `infrastructure/docker/` (dev) and the E2E test compose file so it can be brought up and torn
+down independently of the rest of the local stack.
 
-The rig is intentionally **isolated** from `infrastructure/docker/` (dev) and
-`docker-compose.test.yml` (E2E test) infra so it can be brought up and torn down
-independently while other agents iterate on the rest of the monorepo.
+The rig predates, and is independent of, the current cluster's storage posture: the k3s deployment
+today runs Postgres in-cluster with NO pooler in front of it (`.claude/rules/09-infrastructure-devops.md`).
+This rig stays useful for any FUTURE pooled deployment, or for testing Prisma/pooler interaction in
+isolation; it is not evidence of what the current cluster runs.
 
----
+## Layout
 
-## What this validates
+| Path | What it holds |
+|---|---|
+| `docker-compose.yml` | The isolated Postgres + PgBouncer stack |
+| `.env.example` | Template for `.env` (copy it; `dotenv-cli` loads the copy for `pgbv:*` scripts) |
+| `vitest.config.ts` | Config for the `pgbv:test` Vitest suite |
+| `__tests__/` | 8 numbered Vitest specs — basic select, RLS/GUC leak, soft-delete extension, prepared statements, `DISCARD ALL`, Prisma Migrate through the pooler, concurrent RLS, `SHOW POOLS` under load |
+| `_helpers/clients.ts` | Shared pooled/direct client factories for the specs |
+| `pgbench/` | `run-baseline.sh` and recorded `.out` baseline results (TPC-B-style pooled-vs-direct comparison) |
+| `k6/` | Optional application-shape load test — see its own README |
 
-| Concern                                                                                                          | How                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Prisma 7 + `@prisma/adapter-pg` survives transaction-mode pooling                                                | `pgbv:test` runs Vitest cases that exercise pooled connections                       |
-| `$transaction` + `set_config('app.tenant_id', …, true)` (transaction-scoped, i.e. RLS) leaks across transactions | Soft-delete extension still applies, RLS GUC does not leak (Task 1.8, 1.13)          |
-| Long-running prepared-statement budget under load                                                                | 100× concurrent prepared statements within `MAX_PREPARED_STATEMENTS=200` (Task 1.10) |
-| `DISCARD ALL` reset between txns is observable                                                                   | `SHOW STATS` snapshot before/after (Task 1.11)                                       |
-| Prisma Migrate (advisory locks) fails through pooler, succeeds through `DIRECT_URL`                              | Task 1.12                                                                            |
-| Performance: pooled TPS within 10–15% of direct on read/write mix                                                | `pgbench` baseline (Task 1.14)                                                       |
+## Commands
 
-A PASS/FAIL verdict against the rubric in
-[03-pgbouncer-rollout.md §1 — Validation Rig](../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md)
-is recorded in Task 1.19 and determines whether Phase 2A (transaction-mode
-rollout, preferred) or Phase 2B (session-mode fallback) is executed.
+All are root `pnpm` aliases:
 
----
+| Command | Effect |
+|---|---|
+| `pnpm pgbv:up` | Boot the stack (`docker compose up -d`) |
+| `pnpm pgbv:push` | One-off: push the Prisma schema through the pooler |
+| `pnpm pgbv:test` | Run the Vitest validation suite |
+| `pnpm pgbv:show:config` / `:pools` / `:stats` | `psql` against PgBouncer's admin database (`SHOW CONFIG`/`SHOW POOLS`/`SHOW STATS`) |
+| `pnpm pgbv:pgbench` | Run the pgbench baseline (`pgbench/run-baseline.sh`) |
+| `pnpm pgbv:down` | Tear down and remove the named volume — next `:up` starts from an empty database |
+| `pnpm pgbv:logs` / `pnpm pgbv:ps` | Compose log/status helpers |
 
-## Image pinning notes
+## How it works
 
-| Component                           | Tag                        | Why                                                                                                                                                                   |
-| ----------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timescale/timescaledb-ha:pg18-all` | multi-arch (arm64 + amd64) | Matches the HA blueprint at `research/configs/postgres-ha/`                                                                                                           |
-| `edoburu/pgbouncer:v1.25.2-p0`      | latest 1.25.x              | The originally-spec'd `1.25.0` tag is not published; `v1.25.2-p0` is the current 1.25.x patch and satisfies `max_prepared_statements` (PgBouncer ≥ 1.21) |
+### What this validates
 
-The plan referred to `edoburu/pgbouncer:1.25.0`; the actual published tag we
-pin to is documented here for traceability.
+| Concern | How |
+|---|---|
+| Prisma 7 + `@prisma/adapter-pg` survives transaction-mode pooling | `pgbv:test` exercises pooled connections |
+| `$transaction` + `set_config('app.tenant_id', ..., true)` (transaction-scoped RLS GUC) does not leak across transactions | Soft-delete extension still applies; the GUC does not leak |
+| Long-running prepared-statement budget under load | Concurrent prepared statements within `MAX_PREPARED_STATEMENTS=200` |
+| `DISCARD ALL` reset between transactions is observable | `SHOW STATS` snapshot before/after |
+| Prisma Migrate (advisory locks) fails through the pooler, succeeds through `DIRECT_URL` | Dedicated spec |
+| Performance: pooled TPS within the target ratio of direct on a read/write mix | `pgbench` baseline — recorded result: pooled/direct = 0.999 against a >= 0.85 target |
 
----
+### Networking and ports
 
-## Networking + ports
+| Port | Service | Connection string env var |
+|---|---|---|
+| `5532` (host) -> `5432` (container) | PostgreSQL, direct | `DIRECT_URL` |
+| `6532` (host) -> `6432` (container) | PgBouncer, pooled | `DATABASE_URL` |
 
-| Port                               | Service             | Connection string env var |
-| ---------------------------------- | ------------------- | ------------------------- |
-| `5532` (host) → `5432` (container) | PostgreSQL — direct | `DIRECT_URL`              |
-| `6532` (host) → `6432` (container) | PgBouncer — pooled  | `DATABASE_URL`            |
+Both ports are intentionally offset from the dev (`5432`) and E2E test (`5433`) ports so the rig can
+co-exist with those stacks.
 
-Both ports are intentionally offset from the dev (`5432`) and E2E test (`5433`)
-ports so the rig can co-exist with those stacks.
+### Image pinning
 
----
+| Component | Tag | Why |
+|---|---|---|
+| `timescale/timescaledb-ha:pg18-all` | multi-arch (arm64 + amd64) | |
+| `edoburu/pgbouncer:v1.25.2-p0` | latest 1.25.x | Satisfies `max_prepared_statements` (PgBouncer >= 1.21). Configured via the image's URL-form `DATABASE_URL` env var for the upstream, not individual `DB_HOST`/`DB_PORT` vars |
 
-## Workflow
-
-```zsh
-# 1. Boot the stack
-pnpm pgbv:up
-
-# 2. (one-off) Push the Prisma schema through the pooler
-pnpm pgbv:push
-
-# 3. Run the Vitest validation suite (once it exists — Task 1.6+)
-pnpm pgbv:test
-
-# 4. Inspect PgBouncer state ad-hoc
-pnpm pgbv:show:config
-pnpm pgbv:show:pools
-pnpm pgbv:show:stats
-
-# 5. Tear down (drops volume so next `:up` is clean)
-pnpm pgbv:down
-```
-
-The connection strings live in `./.env` (copy `./.env.example`); `dotenv-cli`
-loads them when `pnpm pgbv:test` runs.
-
----
-
-## `pgbouncer.ini` keys (effective config)
-
-Captured from `SHOW CONFIG;` after `pgbv:up`:
+### Effective PgBouncer config (`SHOW CONFIG` after `pgbv:up`)
 
 ```text
 pool_mode                 = transaction
@@ -93,38 +80,31 @@ server_reset_query        = DISCARD ALL
 server_reset_query_always = 1
 ignore_startup_parameters = extra_float_digits,search_path
 auth_type                 = scram-sha-256
-admin_users               = hope_app
-stats_users               = hope_app
 listen_addr               = 0.0.0.0
 listen_port               = 6432
-log_connections           = 1
-log_disconnections        = 1
-log_pooler_errors         = 1
 ```
 
-These are set via the `edoburu` image's env-var schema (URL-form
-`DATABASE_URL` for upstream, NOT individual `DB_HOST`/`DB_PORT`/etc. — that
-was a misread of the image in the original plan).
+### PostgreSQL GUCs applied
 
----
-
-## PostgreSQL GUCs applied
-
-The rig mirrors the defensive timeouts shipped in Phase 0 (Task 0.4) so that
-the validation surface matches production behaviour:
+Set via `command:` overrides on the `postgres` compose service (the rig is single-node by design,
+not via a Patroni entrypoint):
 
 ```text
-idle_in_transaction_session_timeout = 30s   (PG GUC; kills sticky txns)
-statement_timeout                   = 1min  (PG GUC; bounds runaway queries)
-max_connections                     = 200   (matches Patroni blueprint)
+idle_in_transaction_session_timeout = 30s
+statement_timeout                   = 1min
+max_connections                     = 200
 ```
 
-These are set via `command:` overrides on the `postgres` service, not via the
-Patroni entrypoint (the rig is single-node by design).
+## Gotchas
 
----
+- `pnpm pgbv:down` removes the named volume — the next `pnpm pgbv:up` always starts from an empty
+  database.
+- Connection strings live in `./.env` (copy `.env.example` first); `dotenv-cli` loads them for
+  `pgbv:push`/`pgbv:test`.
 
-## Cleanup
+## Related
 
-`pnpm pgbv:down` removes the named volume `pg-data`, so subsequent
-`pnpm pgbv:up` always starts from an empty database.
+- [`@arcaai/database` README](../../README.md) — connection pooling section, `PRISMA_PG_MAX`
+- [`02-database-prisma.md`](../../../../.claude/rules/02-database-prisma.md) — migration workflow
+- [`09-infrastructure-devops.md`](../../../../.claude/rules/09-infrastructure-devops.md) — current cluster storage posture (no pooler)
+- [k6 load test README](k6/README.md)
