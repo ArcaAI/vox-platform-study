@@ -1,6 +1,6 @@
 # TASK-975 — Integration Surface: the Socket Lane & Discoverability
 
-**Status:** In Progress — plan approved 2026-09-14; three lanes in flight (§3.3)
+**Status:** In Progress — all lanes merged to `dev-2.2` 2026-09-15; the §3.2 runtime pass is the one step outstanding
 **Type:** `feature` (+ two `bugfix` steps, C4 and D1)
 **Branch:** `dev-2.2`
 **Owner directive (2026-09-14):** *"review the agents and workflow integration, i can see there are
@@ -236,9 +236,8 @@ runtime pass. No worker merges its own branch or removes its own worktree.
 
 ## 5. Implementation Summary
 
-All three lanes landed and were verified by the orchestrator against the artifacts — not accepted
-on report (rule 14 §2). **Not yet merged**: the merge target is awaiting an explicit answer
-(rule 14 §5.1).
+All three lanes landed, were verified against the artifacts rather than accepted on report
+(rule 14 §2), and are **merged into `dev-2.2`** on the owner's explicit instruction (rule 14 §5.1).
 
 | Lane | Branch | Commit | Files | Boundary held? | Gates |
 |---|---|---|---|---|---|
@@ -289,16 +288,51 @@ does not arise here — and points RECORDED audio at `POST /agents/{slug}/transc
 
 This is the brief being wrong, not the lane: B3 generalised from the workflow case.
 
+### Merge record (2026-09-15)
+
+Merged from the PRIMARY checkout, `--no-ff` each, in lane order, after the owner named `dev-2.2`
+as the target:
+
+| Merge commit | Branch | Conflicts |
+|---|---|---|
+| `c2c53360a` | `task-975-panel` | none |
+| `51bd8d6a4` | `task-975-guide` | none |
+| `1af3752c7` | `task-975-sdk-screen` | none |
+
+Every lane commit re-verified as an ancestor of `dev-2.2` (`83c637cae`, `ac9bead26`, `bf8bfa3a9`)
+BEFORE anything was destroyed.
+
+**Gates re-run AFTER the merge** — a clean merge is not a passing build:
+
+```
+pnpm admin:typecheck        12 successful, 12 total
+pnpm admin:lint             12 successful, 12 total
+CI=true npx vitest run      Test Files 340 passed (340) · Tests 3261 passed (3261)
+```
+
+Base was 338 files / 3226 tests, so the three lanes contributed exactly the +2 files and +35 tests
+they reported.
+
+Worktrees removed and branches deleted only after that: `task-975-panel` and its worktree (the
+other two the harness had already reclaimed), plus the three `worktree-agent-*` scaffolding
+branches, all with `git branch -d` so an unmerged branch would have been refused rather than lost.
+The four `hope-v2-t974-*` worktrees belonged to a concurrent session and were never touched.
+
+Note for the record: `dev-2.2` advanced under this ticket (a peer session merged TASK-974 at
+`b8d680af9`). All three TASK-975 base commits were confirmed still present before merging — this
+checkout is shared, and a peer's history rewrite has swallowed commits here before.
+
 ### Outstanding
 
-- The §3.2 **runtime pass** (`next-dev-loop`, live stack, actually opening a socket run). No lane
-  could do it — each owns one file and none owns a running stack. Orchestrator work, after merge.
-- The merge itself, pending the target confirmation.
+- The §3.2 **runtime pass** (`next-dev-loop` against a live stack, actually opening a socket run).
+  No lane could do it — each owns one file and none owns a running stack. This is the step that
+  found FU-1 on TASK-971 after its tests were green, so the ticket is NOT Completed without it.
 
 ## 6. Change History
 
 | Date | Entry |
 |---|---|
+| 2026-09-15 | Merged all three lanes into `dev-2.2` (`c2c53360a`, `51bd8d6a4`, `1af3752c7`), no conflicts. Post-merge gates green: typecheck 12/12, lint 12/12, `CI=true` suite 340 files / 3261 tests. Worktrees and branches removed after the merge was committed and verified, per rule 14 §5. Runtime pass still outstanding. |
 | 2026-09-15 | All three lanes complete and verified; none merged (target awaiting confirmation). Boundaries held, bases correct, two cross-lane factual claims independently re-checked against `route-manifest.json` and the SDK barrels. OD-1 recorded: the STT Socket lane omits the SSE rationale because realtime STT has no SSE lane. Console suite flakiness diagnosed as the `CI ? 20_000 : 5_000` timeout, not a regression — `CI=true` is green on base at 338/338. |
 | 2026-09-14 | Plan approved. Keystone committed (`94d4275e3`): `socket-snippets.ts` + the `curlEnvLines` baseUrl parameter. Three worktree workers dispatched per §3.3 — `task-975-panel` (opus-5), `task-975-guide` (sonnet-5), `task-975-sdk-screen` (sonnet-5). Status → In Progress. |
 | 2026-09-14 | Ticket opened. Review completed against `dev-2.2` @ `b33e1c24a`: four reported symptoms measured, three confirmed real (one as discoverability, one as presentation, one as a true absence), one partly real. Socket inventory mapped across gateway + both SDKs. Three would-be findings checked and dismissed (the `?mode=` socket filter, the `tts_session:` ticket branch, workflow-studio "socket"). Plan drafted; status Pending pending approval of the plan and OQ-1..OQ-3. |
