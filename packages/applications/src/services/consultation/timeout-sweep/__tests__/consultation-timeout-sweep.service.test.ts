@@ -25,6 +25,8 @@ import {
   CONSULTATION_RECORDING_STALE_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
+  CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
+  CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
 } from '../../consultation-gates.constants';
 
 vi.mock('cron', () => {
@@ -105,6 +107,9 @@ const createMockClsService = () => {
 const createMockConsultationRepository = () => ({
   findTimeoutSweepEligible: vi.fn().mockResolvedValue([]),
   findStaleRecording: vi.fn().mockResolvedValue([]),
+  // TASK-972 Lane 8 — the two stranding-state legs.
+  findIdlePendingReview: vi.fn().mockResolvedValue([]),
+  findIdleOpen: vi.fn().mockResolvedValue([]),
   updateWithVersion: vi.fn().mockImplementation(async (_id: string, entity: ConsultationEntity) => entity),
 });
 
@@ -178,7 +183,7 @@ describe('ConsultationTimeoutSweepService', () => {
         }),
       });
 
-      expect(service.getConfig()).toEqual({ cron: '0 * * * *', timeoutMinutes: 60, recordingStaleMinutes: 45 });
+      expect(service.getConfig()).toMatchObject({ cron: '0 * * * *', timeoutMinutes: 60, recordingStaleMinutes: 45 });
     });
 
     it('falls back to the documented code defaults when settings are missing', () => {
@@ -188,6 +193,8 @@ describe('ConsultationTimeoutSweepService', () => {
         cron: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
         timeoutMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
         recordingStaleMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
+        reviewTimeoutMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY],
+        openTimeoutMinutes: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
       });
     });
 
@@ -534,6 +541,216 @@ describe('ConsultationTimeoutSweepService', () => {
     });
   });
 
+  // ── TASK-972 Lane 8 (OD-6 / OD-7) — the two stranding-state legs ──
+  //
+  // These exist because the two states a consultation ACTUALLY strands in were
+  // the two the sweep deliberately excluded. Measured on `hope-v2-dev`
+  // 2026-09-15: one real consultation idle 29.4 h in PENDING_REVIEW, the sweep
+  // reporting `eligible: 0` every 15 minutes, Temporal `Running = 0` — a row
+  // leak, not a workflow leak.
+
+  describe('sweepIdlePendingReview (OD-6)', () => {
+    it('reads the window from the descriptor (default 120), never a literal', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service } = buildService({ consultationRepository });
+
+      const before = Date.now();
+      await service.sweepIdlePendingReview();
+
+      expect(CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]).toBe(120);
+      const [cutoff] = consultationRepository.findIdlePendingReview.mock.calls[0];
+      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 120 * 60_000);
+      expect(cutoff.getTime()).toBeGreaterThan(before - 121 * 60_000);
+    });
+
+    it('honours an operator-tuned window from AppSettingsService', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service } = buildService({
+        consultationRepository,
+        appSettingsService: createMockAppSettingsService({ [CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]: 600 }),
+      });
+
+      const before = Date.now();
+      await service.sweepIdlePendingReview();
+
+      const [cutoff] = consultationRepository.findIdlePendingReview.mock.calls[0];
+      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 600 * 60_000);
+    });
+
+    it('transitions an idle PENDING_REVIEW row to TIMED_OUT — NOT CLOSED_INCOMPLETE', async () => {
+      const row = makeEntity({ id: 'c-pr', tenantId: 'tenant-7', status: ConsultationStatus.PENDING_REVIEW, version: 11 });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdlePendingReview.mockResolvedValue([row]);
+
+      const { service, eventEmitter, harnessAuditService } = buildService({ consultationRepository });
+
+      const result = await service.sweepIdlePendingReview();
+
+      expect(result).toEqual({ eligible: 1, transitioned: 1, failed: 0 });
+      expect(row.status).toBe(ConsultationStatus.TIMED_OUT);
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith('c-pr', row, 11);
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({ resourceId: 'c-pr', data: expect.objectContaining({ status: ConsultationStatus.TIMED_OUT }) }),
+      );
+      expect(harnessAuditService!.append).toHaveBeenCalledWith(
+        expect.objectContaining({ consultationId: 'c-pr', tenantId: 'tenant-7', action: HarnessAuditAction.SESSION_TIMED_OUT }),
+      );
+    });
+
+    it("binds the ROW's own tenant on CLS for the write, not an ambient one", async () => {
+      const row = makeEntity({ id: 'c-pr', tenantId: 'tenant-42', status: ConsultationStatus.PENDING_REVIEW });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdlePendingReview.mockResolvedValue([row]);
+
+      const { service, clsService } = buildService({ consultationRepository });
+
+      await service.sweepIdlePendingReview();
+
+      expect(clsService.run).toHaveBeenCalled();
+      expect(clsService.set).toHaveBeenCalledWith('tenantId', 'tenant-42');
+    });
+
+    /**
+     * OD-6's whole point: the target is RECOVERABLE. A clinician who reviews
+     * and submits AFTER the sweep still signs, which is what keeps the note
+     * closable and the training pair harvestable.
+     */
+    it('leaves the row able to reach SIGNED afterwards (the OD-6 recovery path)', async () => {
+      const row = makeEntity({ id: 'c-pr', status: ConsultationStatus.PENDING_REVIEW });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdlePendingReview.mockResolvedValue([row]);
+
+      const { service } = buildService({ consultationRepository });
+      await service.sweepIdlePendingReview();
+
+      expect(row.status).toBe(ConsultationStatus.TIMED_OUT);
+      expect(row.canTransitionTo(ConsultationStatus.SIGNED)).toBe(true);
+      expect(row.transitionTo(ConsultationStatus.SIGNED, 'user-1', 'late-submit')).toBe(true);
+      expect(row.status).toBe(ConsultationStatus.SIGNED);
+    });
+
+    it('refuses to sweep on a non-positive window', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service } = buildService({
+        consultationRepository,
+        appSettingsService: createMockAppSettingsService({ [CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]: 0 }),
+      });
+
+      expect(await service.sweepIdlePendingReview()).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+      expect(consultationRepository.findIdlePendingReview).not.toHaveBeenCalled();
+    });
+
+    it('never forces an illegal transition — a raced row is refused and counted failed, not written', async () => {
+      const raced = makeEntity({ id: 'c-signed', status: ConsultationStatus.SIGNED });
+      const good = makeEntity({ id: 'c-ok', status: ConsultationStatus.PENDING_REVIEW });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdlePendingReview.mockResolvedValue([raced, good]);
+
+      const { service } = buildService({ consultationRepository });
+
+      const result = await service.sweepIdlePendingReview();
+
+      expect(result).toEqual({ eligible: 2, transitioned: 1, failed: 1 });
+      expect(raced.status).toBe(ConsultationStatus.SIGNED);
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith('c-ok', good, expect.any(Number));
+    });
+
+    it('one failing row never aborts the batch', async () => {
+      const first = makeEntity({ id: 'c-1', status: ConsultationStatus.PENDING_REVIEW });
+      const second = makeEntity({ id: 'c-2', status: ConsultationStatus.PENDING_REVIEW });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdlePendingReview.mockResolvedValue([first, second]);
+      consultationRepository.updateWithVersion.mockRejectedValueOnce(new Error('OptimisticConcurrencyException'));
+
+      const { service } = buildService({ consultationRepository });
+
+      expect(await service.sweepIdlePendingReview()).toEqual({ eligible: 2, transitioned: 1, failed: 1 });
+    });
+  });
+
+  describe('sweepIdleOpen (OD-7)', () => {
+    it('reads the window from the descriptor (default 120), never a literal', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service } = buildService({ consultationRepository });
+
+      const before = Date.now();
+      await service.sweepIdleOpen();
+
+      expect(CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY]).toBe(120);
+      const [cutoff] = consultationRepository.findIdleOpen.mock.calls[0];
+      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 120 * 60_000);
+      expect(cutoff.getTime()).toBeGreaterThan(before - 121 * 60_000);
+    });
+
+    it('transitions an idle OPEN row to CLOSED_INCOMPLETE with the SESSION_CLOSED_INCOMPLETE WORM row', async () => {
+      const row = makeEntity({ id: 'c-open', tenantId: 'tenant-3', status: ConsultationStatus.OPEN, version: 2 });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdleOpen.mockResolvedValue([row]);
+
+      const { service, eventEmitter, harnessAuditService, clsService } = buildService({ consultationRepository });
+
+      const result = await service.sweepIdleOpen();
+
+      expect(result).toEqual({ eligible: 1, transitioned: 1, failed: 0 });
+      expect(row.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith('c-open', row, 2);
+      expect(clsService.set).toHaveBeenCalledWith('tenantId', 'tenant-3');
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({ resourceId: 'c-open', data: expect.objectContaining({ status: ConsultationStatus.CLOSED_INCOMPLETE }) }),
+      );
+      expect(harnessAuditService!.append).toHaveBeenCalledWith(
+        expect.objectContaining({ consultationId: 'c-open', tenantId: 'tenant-3', action: HarnessAuditAction.SESSION_CLOSED_INCOMPLETE }),
+      );
+    });
+
+    it('writes nothing when no row is past its threshold', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service, eventEmitter } = buildService({ consultationRepository });
+
+      expect(await service.sweepIdleOpen()).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('never forces an illegal transition — a RECORDING row raced into the batch is refused, not closed', async () => {
+      const raced = makeEntity({ id: 'c-rec', status: ConsultationStatus.RECORDING });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdleOpen.mockResolvedValue([raced]);
+
+      const { service } = buildService({ consultationRepository });
+
+      expect(await service.sweepIdleOpen()).toEqual({ eligible: 1, transitioned: 0, failed: 1 });
+      expect(raced.status).toBe(ConsultationStatus.RECORDING);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('refuses to sweep on a non-positive window', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      const { service } = buildService({
+        consultationRepository,
+        appSettingsService: createMockAppSettingsService({ [CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY]: 0 }),
+      });
+
+      expect(await service.sweepIdleOpen()).toEqual({ eligible: 0, transitioned: 0, failed: 0 });
+      expect(consultationRepository.findIdleOpen).not.toHaveBeenCalled();
+    });
+
+    it('one failing row never aborts the batch', async () => {
+      const first = makeEntity({ id: 'c-1', status: ConsultationStatus.OPEN });
+      const second = makeEntity({ id: 'c-2', status: ConsultationStatus.OPEN });
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findIdleOpen.mockResolvedValue([first, second]);
+      consultationRepository.updateWithVersion.mockRejectedValueOnce(new Error('OptimisticConcurrencyException'));
+
+      const { service } = buildService({ consultationRepository });
+
+      expect(await service.sweepIdleOpen()).toEqual({ eligible: 2, transitioned: 1, failed: 1 });
+    });
+  });
+
   describe('handleScheduledSweep', () => {
     it('runs sweepOnce and never throws even when the sweep itself fails', async () => {
       const consultationRepository = createMockConsultationRepository();
@@ -554,6 +771,50 @@ describe('ConsultationTimeoutSweepService', () => {
 
       expect(consultationRepository.findStaleRecording).toHaveBeenCalled();
       expect(consultationRepository.findTimeoutSweepEligible).toHaveBeenCalled();
+    });
+
+    it('runs all FOUR legs, each isolated from the others failing', async () => {
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findStaleRecording.mockRejectedValue(new Error('db unavailable'));
+      consultationRepository.findTimeoutSweepEligible.mockRejectedValue(new Error('db unavailable'));
+      consultationRepository.findIdlePendingReview.mockRejectedValue(new Error('db unavailable'));
+
+      const { service } = buildService({ consultationRepository });
+
+      await expect(service.handleScheduledSweep()).resolves.toBeUndefined();
+
+      expect(consultationRepository.findStaleRecording).toHaveBeenCalled();
+      expect(consultationRepository.findTimeoutSweepEligible).toHaveBeenCalled();
+      expect(consultationRepository.findIdlePendingReview).toHaveBeenCalled();
+      expect(consultationRepository.findIdleOpen).toHaveBeenCalled();
+    });
+
+    /**
+     * The PENDING_REVIEW leg runs AFTER the five-state leg, deliberately: a row
+     * it moves to TIMED_OUT becomes a member of `findTimeoutSweepEligible`'s
+     * own eligible set, so running it first would let a single tick carry a
+     * consultation from PENDING_REVIEW all the way to CLOSED_INCOMPLETE and
+     * silently destroy the recovery path OD-6 exists to preserve. (The write
+     * refreshes `updatedAt`, so in practice the 1440-minute cutoff would
+     * exclude it anyway — this ordering means the guarantee does not depend on
+     * that.)
+     */
+    it('runs the PENDING_REVIEW leg after the five-state leg, so one tick can never chain them', async () => {
+      const order: string[] = [];
+      const consultationRepository = createMockConsultationRepository();
+      consultationRepository.findTimeoutSweepEligible.mockImplementation(async () => {
+        order.push('sweepOnce');
+        return [];
+      });
+      consultationRepository.findIdlePendingReview.mockImplementation(async () => {
+        order.push('pendingReview');
+        return [];
+      });
+
+      const { service } = buildService({ consultationRepository });
+      await service.handleScheduledSweep();
+
+      expect(order).toEqual(['sweepOnce', 'pendingReview']);
     });
   });
 });
