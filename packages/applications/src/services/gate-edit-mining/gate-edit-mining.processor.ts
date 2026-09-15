@@ -8,6 +8,7 @@ import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { GateEditMiningService } from './gate-edit-mining.service';
 import { GateEditMiningJob, IGateEditMiningQueue } from './IGateEditMiningQueue';
+import { ConfigResolver } from '../config-resolver/config-resolver.service';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/consultation/open-markers';
 
@@ -21,9 +22,31 @@ import { readRecordedVisitType } from '../consultation/consultation/open-markers
 export class GateEditMiningQueue implements IGateEditMiningQueue {
   private readonly logger = new Logger(GateEditMiningQueue.name);
 
-  constructor(@InjectQueue(JobQueue.MineGateEditExemplar) private readonly queue: Queue) {}
+  constructor(
+    @InjectQueue(JobQueue.MineGateEditExemplar) private readonly queue: Queue,
+    // TASK-972 Lane 2 (OD-4) — the training-capture gate (tenant AND doctor). Optional +
+    // trailing so existing positional fixtures keep their arity; absent ⇒ no such gate in this
+    // composition, which is byte-identical to the pre-ticket behaviour (mining was
+    // unconditional). Wired in production by `GateEditMiningServiceModule`.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+  ) {}
 
+  /**
+   * Hand one signed encounter to the miner — unless this clinician's tenant, or the clinician
+   * themselves, has opted out of training capture (TASK-972 Lane 2).
+   *
+   * **The gate suppresses CAPTURE ONLY.** This method is called from a sign-off that has already
+   * committed, so an opted-out encounter must return NORMALLY with nothing queued. Failing here
+   * would fail a clinical action for a training-data reason, which is the one thing this gate
+   * must never do.
+   *
+   * The check lives on this side of the port rather than in `approveSummary` deliberately: the
+   * sign-off path's `@Optional() ConfigResolver` is not supplied by `SummaryServiceModule`, so a
+   * check there would be dead in production, while the gate-edit module owns both halves of this
+   * loop and can wire the resolver without changing what DNA style does at generation time.
+   */
   async enqueue(job: GateEditMiningJob): Promise<void> {
+    if (!(await this.captureAllowed(job))) return;
     await this.queue.add(JobQueue.MineGateEditExemplar, job, {
       // Deduped on the encounter: a repeat sign-off event collapses to one job.
       // The miner is idempotent anyway (unique on tenant+consultation), so this
@@ -41,6 +64,36 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       removeOnComplete: true,
       removeOnFail: 100,
     });
+  }
+
+  /**
+   * The effective training-capture decision for this encounter, degrading to ALLOWED on every
+   * failure path — the descriptor's declared `open-to-default` direction, and the only one under
+   * which an unconfigured deployment keeps mining exactly as it does today. An explicit opt-out
+   * is never degraded away: it can only be observed as `false` because a human set it.
+   */
+  private async captureAllowed(job: GateEditMiningJob): Promise<boolean> {
+    if (!this.configResolver) return true;
+    try {
+      const { effective } = await this.configResolver.resolveEffectiveTrainingCaptureEnabled({
+        tenantId: job.tenantId,
+        doctorId: job.doctorId ?? null,
+      });
+      if (!effective) {
+        this.logger.log({
+          message: 'Gate-edit mining skipped — training capture is disabled for this clinician or tenant (the sign-off is unaffected)',
+          consultationId: job.consultationId,
+        });
+      }
+      return effective;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Training-capture gate lookup failed — capture proceeds (open-to-default)',
+        consultationId: job.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return true;
+    }
   }
 }
 
@@ -71,6 +124,10 @@ export class GateEditMiningProcessor extends WorkerHost {
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
     @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
+    // TASK-972 Lane 2 (OD-4) — the SECOND half of the double check. The enqueue side already
+    // asked, but a toggle flipped between enqueue and drain must be honoured, and this read runs
+    // immediately before anything is persisted. Optional + trailing like the resolver above it.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super();
   }
@@ -88,6 +145,15 @@ export class GateEditMiningProcessor extends WorkerHost {
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'gate-edit-mining' }));
 
       const consultation = await this.consultationRepository.findById(consultationId).catch(() => null);
+
+      // TASK-972 Lane 2 — RE-CHECK the training-capture gate, before anything is read
+      // transiently and long before anything is persisted. The clinician comes off the job when
+      // the enqueue side put one there, and off the consultation otherwise (a job queued before
+      // this field existed). Degrades to ALLOWED on a failed read, matching the enqueue side and
+      // the descriptor's declared direction.
+      if (!(await this.captureStillAllowed(tenantId, job.data.doctorId ?? consultation?.doctorId ?? null, consultationId))) {
+        return;
+      }
 
       // The delivered AI draft is version 1 (`ai_draft_v1`); the signed note is
       // the latest. Both are read TRANSIENTLY — only their redacted forms are
@@ -119,6 +185,25 @@ export class GateEditMiningProcessor extends WorkerHost {
         contextItemId: contextItemId ?? null,
       });
     });
+  }
+
+  /** @see GateEditMiningQueue.captureAllowed — the same gate, read again at drain time. */
+  private async captureStillAllowed(tenantId: string, doctorId: string | null, consultationId: string): Promise<boolean> {
+    if (!this.configResolver) return true;
+    try {
+      const { effective } = await this.configResolver.resolveEffectiveTrainingCaptureEnabled({ tenantId, doctorId });
+      if (!effective) {
+        this.logger.log({ message: 'Gate-edit mining job dropped — training capture is disabled for this clinician or tenant', consultationId });
+      }
+      return effective;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Training-capture gate lookup failed at drain — mining proceeds (open-to-default)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return true;
+    }
   }
 
   /** The immutable `ai_draft_v1` snapshot, or null when it was never captured. */

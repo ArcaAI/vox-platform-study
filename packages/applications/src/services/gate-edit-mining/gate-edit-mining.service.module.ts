@@ -8,6 +8,7 @@ import { GateEditMiningProcessor, GateEditMiningQueue } from './gate-edit-mining
 import { IGateEditExemplarRetriever } from './IGateEditExemplarRetriever';
 import { IGateEditMiningQueue } from './IGateEditMiningQueue';
 import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.service.module';
+import { ConfigResolver } from '../config-resolver/config-resolver.service';
 
 /**
  * GateEditMiningService DI module.
@@ -49,6 +50,17 @@ import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.se
     BullModule.registerQueue({ name: JobQueue.MineGateEditExemplar }),
   ],
   providers: [
+    // TASK-972 Lane 2 (OD-4) — the training-capture gate (tenant setting AND the clinician's own
+    // `UserSettings` toggle), read by BOTH halves of this loop. Declared as a LOCAL provider
+    // rather than imported from `ConfigResolverModule`, because that module deliberately does
+    // not import `EffectiveSettingsModule` (it would close a cycle through the package-wide
+    // `services` barrel — see `config-resolver.module.ts`). Every collaborator `ConfigResolver`
+    // takes is `@Optional()` and comes from the two modules already imported above, so the
+    // instance built here is the FULL resolver: `CoreDatabaseModule` supplies `UserSettings`,
+    // and `EffectiveSettingsModule` supplies the tenant-gate cascade. Without it the
+    // `@Optional()` injections in the queue and the processor are undefined and the gate is a
+    // no-op — an opted-out clinician would still be mined.
+    ConfigResolver,
     GateEditMiningService,
     { provide: IGateEditExemplarRetriever, useExisting: GateEditMiningService },
     GateEditMiningQueue,

@@ -21,6 +21,7 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { WorkflowExposureServiceModule } from '../../workflow-exposure/workflow-exposure.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -80,6 +81,13 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // import the token resolves to `undefined` and every edit/sign delta
     // silently degrades to the whole-document fallback.
     DocumentTemplateServiceModule,
+    // TASK-972 Lane 3 (TASK-933 H3-6) — supplies `IWorkflowExposureService`, through which the
+    // sign-off releases the review gate of the run GOVERNING the consultation. Without this
+    // import the `@Optional()` injection is undefined and a Substrate-B consultation's sign-off
+    // reaches nothing at all, which is the defect. No cycle: nothing under
+    // `WorkflowExposureServiceModule` imports this module — its only importer anywhere is
+    // `live-pre-summary.module.ts`.
+    WorkflowExposureServiceModule,
   ],
   providers: [
     PromptAssemblyService,

@@ -1,4 +1,5 @@
 import { ConsultationStatus } from '@arcaai/domains';
+import type { ClinicalCaller } from '../summary/clinician-attribution';
 import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
@@ -139,7 +140,13 @@ export abstract class IConsultationService {
    * Idempotent: a no-op when already terminal. `expectedVersion` — see
    * `primeConsultation`.
    */
-  abstract closeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
+  abstract closeConsultation(
+    id: string,
+    expectedVersion?: number,
+    // TASK-972 Lane 1 — the same named-clinician rule the sign-off carries; see
+    // `consultation/summary/clinician-attribution.ts`.
+    options?: { clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse>;
 
   /**
    * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
