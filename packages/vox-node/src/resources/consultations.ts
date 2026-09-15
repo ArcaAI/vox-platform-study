@@ -250,17 +250,6 @@ export class ConsultationsResource {
   }
 
   /**
-   * No-op guard, mirroring `ConsultationWorkflowsResource.assertCredentialClass()`
-   * (`./workflows.ts`): both machine credential classes reach `close()` — an
-   * API key holding `consultation:session:write` and, since TASK-972 Lane 4,
-   * a service account holding `svc:consultation:session:write` — so there is
-   * nothing to refuse client-side. Kept as an explicit hook rather than
-   * omitted, so a future credential-class restriction on this plane has an
-   * obvious place to land instead of being bolted on ad hoc.
-   */
-  protected assertCredentialClass(): void {}
-
-  /**
    * `POST /api/v1/consultations/:id/close` — the bookend to {@link open}
    * (TASK-972).
    *
@@ -274,7 +263,6 @@ export class ConsultationsResource {
    * this wrapper, not the capability.
    */
   async close(consultationId: string, request: CloseConsultationRequest = {}, options: CloseConsultationOptions): Promise<ConsultationGetResponse> {
-    this.assertCredentialClass();
     return this.transport.request<ConsultationGetResponse>({
       method: 'POST',
       path: `consultations/${encodePathSegment(consultationId)}/close`,
