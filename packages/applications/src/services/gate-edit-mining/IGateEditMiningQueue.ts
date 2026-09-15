@@ -10,6 +10,12 @@ export interface GateEditMiningJob {
   tenantId: string;
   consultationId: string;
   contextItemId?: string | null;
+  /**
+   * TASK-972 Lane 2 — the clinician the training-capture gate is resolved for. Optional because
+   * a job queued before this field existed carries none; the processor then falls back to the
+   * consultation's own `doctorId`, so an older job is gated identically rather than ungated.
+   */
+  doctorId?: string | null;
   gateDecision: string;
   signedAt?: string | null;
 }

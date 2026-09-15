@@ -38,6 +38,7 @@ import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
+import { TRAINING_CAPTURE_SETTINGS } from './descriptors/training-capture.descriptors';
 import { USER_IDENTITY_SETTINGS } from './descriptors/user-identity.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -233,6 +234,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // them. Registering them is what makes them reachable from an admin surface —
   // there is no per-key allow-list anywhere else.
   ...AI_READINESS_SETTINGS,
+
+  // ── Training capture ─────────────────────────────────────────────────────
+  // TASK-972 Lane 2 (OD-4) — the TENANT half of the gate-edit training-capture
+  // gate; the clinician's own half is a `UserSettings` row. Appended LAST on
+  // purpose: a sibling lane appending its own block conflicts here trivially
+  // rather than by re-indenting the whole array.
+  ...TRAINING_CAPTURE_SETTINGS,
 ]);
 
 // TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog

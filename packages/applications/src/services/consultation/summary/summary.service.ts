@@ -32,6 +32,10 @@ import {
   AgentStepType,
   TranscriptSegmentRepository,
   AiModelRepository,
+  UserDepartmentRepository,
+  UserRepository,
+  UserRoleAssignmentRepository,
+  WorkflowDefinitionRepository,
   generateId,
 } from '@arcaai/domains';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
@@ -39,6 +43,7 @@ import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto'
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
+import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
 import { readSummaryLanguage } from '../consultation/summary-language';
 import { ISummaryService } from './ISummaryService';
 import {
@@ -84,6 +89,8 @@ import { buildNerUsageEvent } from '../shared/nerUsageEvent';
 import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolicyService';
+import { IWorkflowExposureService } from '../../workflow-exposure/IWorkflowExposureService';
+import { readGoverningEngineMarker } from '../governing-engine';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
@@ -121,6 +128,15 @@ interface TextRepairCall extends JsonRepairCall {
   /** The guardrail call this generation triggered, forwarded by TEXT. */
   guardrailUsage: TextUsageDetail | null;
 }
+
+/**
+ * TASK-972 Lane 3 — the `core` vocabulary's durable human wait. A VOCABULARY key, not
+ * configuration: it names an entry of `WORKFLOW_NODE_REGISTRY`, the same way
+ * `config-resolver.service.ts` names `agent.dna_style` and `core.agent`. A `core.action`
+ * delegating to a review is deliberately not matched — the action catalogue carries no review
+ * capability, so there is nothing to delegate to.
+ */
+const HUMAN_REVIEW_NODE_TYPE = 'core.humanReview';
 
 /** Everything an emission needs that is NOT already on the usage block. */
 interface SummaryUsageAttribution {
@@ -345,6 +361,31 @@ export class SummaryService extends BaseService implements ISummaryService {
     // `@Optional()` and TRAILING like the ledger beside it: absent ⇒ no compute row, never a
     // failed generation.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // ── TASK-972 Lane 1: machine sign-off attribution ────────────────────────────────────────
+    //
+    // The three repositories the named-clinician rule needs, optional + TRAILING like every
+    // dependency above them (the positional `new SummaryService(...)` fixtures keep their arity).
+    // Production DI supplies all three through `CoreDatabaseModule`, which this module already
+    // imports.
+    //
+    // `userRoleAssignmentRepository` answers the TENANT-SCOPED admin-role question ("may this
+    // caller act for somebody else?"); the other two complete `assertUserBelongsToTenant`, whose
+    // absence is a 404 rather than a pass — a composition that cannot prove membership must not
+    // attribute a clinical attestation on an unverified id. Only the NAMED path reaches them, so
+    // every caller acting as itself is unaffected.
+    @Optional() @Inject(UserRoleAssignmentRepository) private readonly userRoleAssignmentRepository?: UserRoleAssignmentRepository,
+    @Optional() @Inject(UserDepartmentRepository) private readonly userDepartmentRepository?: UserDepartmentRepository,
+    @Optional() @Inject(UserRepository) private readonly userRepository?: UserRepository,
+    // ── TASK-972 Lane 3: route the sign-off to the GOVERNING run ────────────────────────────
+    //
+    // `signalApproval` targets `harness-doc-<consultationId>` (Substrate A). A consultation
+    // governed by a tenant workflow runs on Substrate B, where that execution does not exist, so
+    // the sign-off reached nothing and the run stayed parked on its review gate (TASK-933 H3-6).
+    // These two resolve the run's review node(s) and release them through the EXISTING decide
+    // path. Both optional + trailing, and the whole release is best-effort: a gate that cannot be
+    // released must never fail a signature.
+    @Optional() @Inject(IWorkflowExposureService) private readonly workflowExposure?: IWorkflowExposureService,
+    @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -965,7 +1006,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   /**
    * Update existing summary content
    */
-  async updateSummary(contextItemId: string, request: UpdateSummaryRequest): Promise<SummaryResponse> {
+  async updateSummary(contextItemId: string, request: UpdateSummaryRequest, options?: { caller?: ClinicalCaller }): Promise<SummaryResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
@@ -985,6 +1026,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException(`Context item ${contextItemId} is not a summary`);
     }
 
+    // TASK-972 Lane 1 — WHOSE edit this is. Resolved AFTER the tenant assertion above so an
+    // unknown or foreign summary is still a 404 first: existence, then the rule.
+    const { clinicianId: editedBy } = await this.resolveActingClinician(tenantId, request.clinicianUserId, options?.caller);
+
     const previousData = contextItem.toObject();
 
     const versionNumber = ((contextItem.currentVersionNumber as number) ?? 0) + 1;
@@ -992,7 +1037,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       contextItem,
       versionNumber,
       request.changeReason ?? 'Manual edit',
-      this.requestUserId ?? 'system',
+      editedBy,
       request.changeSource ?? 'doctor_edit',
       request.changeSummary,
     );
@@ -1019,9 +1064,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       contextItem.content = request.content;
     }
 
-    if (this.requestUserId) {
-      contextItem.updatedBy = this.requestUserId;
-    }
+    contextItem.updatedBy = editedBy;
 
     // Encrypt the edited content into `encryptedContent` before
     // persistence — the plaintext `content` column was dropped by the PHI
@@ -1074,7 +1117,7 @@ export class SummaryService extends BaseService implements ISummaryService {
         await this.harnessGatewayService?.signalEdit(contextItem.consultationId, {
           content: contextItem.content ?? '',
           contextItemVersionId: savedVersion?.id ?? version.id,
-          editedBy: this.requestUserId ?? undefined,
+          editedBy,
         });
       }
     } catch (error) {
@@ -1114,7 +1157,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   async approveSummary(
     contextItemId: string,
-    options?: { overrideSafetyFlag?: boolean; expectedVersion?: number },
+    options?: { overrideSafetyFlag?: boolean; expectedVersion?: number; clinicianUserId?: string; caller?: ClinicalCaller },
   ): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
     const tenantId = this.tenantId;
     if (!tenantId) {
@@ -1163,10 +1206,14 @@ export class SummaryService extends BaseService implements ISummaryService {
       );
     }
 
-    const approvedBy = this.requestUserId;
-    if (!approvedBy) {
-      throw new BadRequestException('User ID is required');
-    }
+    // TASK-972 Lane 1 — WHO attested, and WHICH credential submitted it.
+    //
+    // This used to be `this.requestUserId`, which threw for a machine caller and would have
+    // recorded the MACHINE as the attesting clinician had it not. `approvedBy` is now the
+    // resolved CLINICIAN (the rule lives in `clinician-attribution.ts`), and `actor` is the
+    // credential that submitted the attestation — recorded BESIDE them on the WORM rows and the
+    // sys-event, never instead of them.
+    const { clinicianId: approvedBy, caller: actor } = await this.resolveActingClinician(tenantId, options?.clinicianUserId, options?.caller);
 
     const versionNumber = ((contextItem.currentVersionNumber as number) ?? 0) + 1;
     const attestedAt = new Date();
@@ -1224,7 +1271,8 @@ export class SummaryService extends BaseService implements ISummaryService {
         citations: [],
         clinicianId: approvedBy,
         attestationHash,
-        createdBy: approvedBy,
+        // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
+        createdBy: actor.principalId || approvedBy,
       });
     }
 
@@ -1241,7 +1289,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       citations: [],
       clinicianId: approvedBy,
       attestationHash,
-      createdBy: approvedBy,
+      // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
+      createdBy: actor.principalId || approvedBy,
     });
 
     // 2b. Q2a — annotate that this sign preceded assurance completion so the
@@ -1259,7 +1308,8 @@ export class SummaryService extends BaseService implements ISummaryService {
         citations: [],
         clinicianId: approvedBy,
         attestationHash,
-        createdBy: approvedBy,
+        // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
+        createdBy: actor.principalId || approvedBy,
       });
     }
 
@@ -1330,7 +1380,16 @@ export class SummaryService extends BaseService implements ISummaryService {
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: contextItemId,
       responsibleEntityId: approvedBy,
-      data: { approvalStatus: 'APPROVED', consultationStatus: ConsultationStatus.SIGNED, attested: true },
+      data: {
+        approvalStatus: 'APPROVED',
+        consultationStatus: ConsultationStatus.SIGNED,
+        attested: true,
+        // TASK-972 Lane 1 — the credential, named beside the clinician. `broadcastSysEvent`
+        // already stamps `responsibleServiceAccountId` from CLS for a service account; these two
+        // cover the API-key class as well, and say in one place which of the three signed.
+        actorPrincipalId: actor.principalId,
+        actorCredentialClass: actor.credentialClass,
+      },
     });
 
     // 4. Best-effort: forward the sign-off to the
@@ -1352,6 +1411,14 @@ export class SummaryService extends BaseService implements ISummaryService {
       });
     }
 
+    // 4b. TASK-972 Lane 3 (TASK-933 H3-6) — ALSO release the GOVERNING run's review.
+    //
+    //     Step 4 above targets `harness-doc-<consultationId>`, which only exists on Substrate A.
+    //     A consultation governed by a tenant workflow runs on Substrate B, where the sign-off
+    //     reached nothing at all and the run stayed parked. This releases that run's review
+    //     child through the existing decide path. Never throws — see the method.
+    await this.releaseGoverningWorkflowReview(tenantId, consultation ?? null);
+
     // 5. — hand the sign-off to the gate-edit learning loop.
     //
     //    This is the ONLY live writer of `GateEditExemplar`: the miner compares
@@ -1372,6 +1439,11 @@ export class SummaryService extends BaseService implements ISummaryService {
         tenantId,
         consultationId: contextItem.consultationId,
         contextItemId,
+        // TASK-972 Lane 2 — WHOSE writing this is, so the enqueue side can resolve the
+        // training-capture gate (tenant AND clinician) without a second consultation read. The
+        // consultation's own `doctorId`, not the signer: an administrator signing on a
+        // clinician's behalf does not make the note theirs.
+        doctorId: consultation?.doctorId ?? null,
         // A clinician sign-off, not a harness gate verdict. 'SIGNED' is a
         // CLEAN_DECISIONS token in `edit-burden.ts`, so a clean signature is
         // never miscounted as a deferral.
@@ -1392,6 +1464,144 @@ export class SummaryService extends BaseService implements ISummaryService {
       approvedBy,
       approvedAt: version.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * TASK-972 Lane 3 (TASK-933 defect H3-6) — release the review gate of the run that is actually
+   * GOVERNING this consultation.
+   *
+   * ## The defect
+   *
+   * `signalApproval` posts to `/internal/workflows/{consultationId}/signal/approve`, which the
+   * harness documents as forwarding to that consultation's `harness-doc-<consultationId>`
+   * workflow — Substrate A. A consultation governed by a tenant-authored graph runs under the
+   * `WorkflowInterpreter` (Substrate B), where that execution does not exist: the POST fails, the
+   * failure is swallowed because the signal is best-effort by design, and the run sits on its
+   * review gate indefinitely. That is the mode behind the one genuinely stranded session measured
+   * on the dev cluster (§2b).
+   *
+   * ## Why the decide path, and not a new signal
+   *
+   * `WorkflowExposureService.decideReview` already exists, already addresses the review CHILD by
+   * `(runId, nodeId)`, and already re-proves that the run belongs to this tenant and to this
+   * slug. That last part is not incidental: `Consultation.metadata` is client-writable, so the
+   * pointer this method reads is FORGEABLE — routing through `decideReview` means a forged
+   * `workflowRunId` meets the same 404-over-403 ownership check any other caller would, instead
+   * of being signalled by the platform's own credentials. No new harness endpoint and no change
+   * to `review_workflow.py`, so there is no replay exposure either.
+   *
+   * ## Why every failure here is NORMAL
+   *
+   * Under OD-2 the external consumer keeps its blind auto-approve, so by the time a clinician
+   * signs, the gate has usually been released already. *Pointer absent* (Substrate A governs),
+   * *gate already closed* and *run already completed* are therefore expected outcomes, not
+   * errors — each is logged and the sign-off continues. The WORM `ATTEST` row is the clinical
+   * system-of-record; a graph gate that cannot be released must never fail a signature, exactly
+   * as `signalApproval` before it must not.
+   *
+   * The reviewer recorded on the decision is whatever CLS holds, because `ReviewDecisionRequest`
+   * deliberately refuses a `reviewerId` from its caller (a decision is an attribution). For a
+   * machine sign-off that is nobody — which is correct: the clinician's attestation lives on the
+   * WORM row, and this is the graph resuming, not a second clinical act.
+   */
+  private async releaseGoverningWorkflowReview(tenantId: string, consultation: { metadata?: unknown } | null): Promise<void> {
+    const marker = readGoverningEngineMarker(consultation?.metadata);
+    if (!marker) return;
+    if (!this.workflowExposure || !this.workflowDefinitionRepository || !marker.workflowDefinitionSlug) {
+      this.logger.log({
+        message: 'Governing-run review not released — no exposure/definition resolver wired, or the marker names no definition',
+        runId: marker.workflowRunId,
+      });
+      return;
+    }
+
+    let nodeIds: string[];
+    try {
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, marker.workflowDefinitionSlug);
+      const graph = definition?.graph as unknown as { nodes?: Array<{ id?: string; type?: string }> } | null | undefined;
+      nodeIds = (graph?.nodes ?? []).filter((node) => node?.type === HUMAN_REVIEW_NODE_TYPE && node.id).map((node) => node.id as string);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Governing-run review not released — the governing definition could not be read (sign-off not rolled back)',
+        runId: marker.workflowRunId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (nodeIds.length === 0) return;
+
+    for (const nodeId of nodeIds) {
+      try {
+        const result = await this.workflowExposure.decideReview(marker.workflowDefinitionSlug, marker.workflowRunId, nodeId, {
+          decision: 'approved',
+        });
+        this.logger.log({
+          message: 'Governing-run review released on sign-off',
+          runId: marker.workflowRunId,
+          nodeId,
+          signaled: result?.signaled === true,
+        });
+      } catch (error) {
+        // Already closed, already completed, not exposed, or unreachable — all NORMAL here.
+        this.logger.log({
+          message: 'Governing-run review not released (gate already closed, run finished, or unreachable) — the sign-off stands',
+          runId: marker.workflowRunId,
+          nodeId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * TASK-972 Lane 1 — the clinician a write is attributed to, and the credential that submitted it.
+   *
+   * Three steps, in this order and for this reason:
+   *
+   *  1. classify the CREDENTIAL. A controller that has one passes it (the API-key class is the
+   *     only one CLS cannot answer for, because there is no `apiKey` CLS key). Absent, it is
+   *     derived: a service account has its own CLS principal, anything else is a human JWT — so
+   *     every pre-existing in-process and fixture call site keeps its behaviour byte-identically.
+   *  2. apply the RULE (`resolveAttributedClinician`) — a 400 naming what is wrong, never a 403:
+   *     the request is refused on WHO it names, and there is no row to protect.
+   *  3. assert MEMBERSHIP for a named third party — a 404, the house cross-tenant posture, and
+   *     doubly right here because a clinical note is PHI. Skipped when the resolved clinician IS
+   *     the caller, who proved membership by authenticating.
+   */
+  private async resolveActingClinician(
+    tenantId: string,
+    named: string | undefined,
+    caller: ClinicalCaller | undefined,
+  ): Promise<{ clinicianId: string; caller: ClinicalCaller }> {
+    const serviceAccount = this.requestServiceAccount;
+    const effectiveCaller: ClinicalCaller =
+      caller ??
+      (serviceAccount
+        ? { credentialClass: 'service-account', principalId: serviceAccount.id }
+        : { credentialClass: 'jwt', principalId: this.requestUserId ?? '' });
+
+    const clinicianId = await resolveAttributedClinician({
+      named,
+      caller: effectiveCaller,
+      tenantId,
+      requestUser: this.requestUser,
+      readTenantRoles: tenantRoleReaderFor(this.userRoleAssignmentRepository),
+    });
+
+    if (clinicianId !== this.requestUserId) {
+      await assertAttributedClinicianInTenant(
+        {
+          userRoleAssignmentRepository: this.userRoleAssignmentRepository,
+          userDepartmentRepository: this.userDepartmentRepository,
+          userRepository: this.userRepository,
+        },
+        clinicianId,
+        tenantId,
+      );
+    }
+
+    return { clinicianId, caller: effectiveCaller };
   }
 
   /**

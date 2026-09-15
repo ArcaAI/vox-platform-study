@@ -39,4 +39,22 @@ export class UpdateSummaryRequest {
   @IsInt()
   @Min(1)
   expectedVersion!: number;
+
+  /**
+   * TASK-972 Lane 1 — the clinician this edit belongs to.
+   *
+   * REQUIRED for a machine credential (a machine is never a clinician) and refused for a human
+   * who is not a tenant/super administrator. See
+   * `consultation/summary/clinician-attribution.ts` for the whole rule; the field is declared
+   * here because the global pipe runs `forbidNonWhitelisted`, so an undeclared field is rejected
+   * before any service sees it.
+   */
+  @ApiPropertyOptional({
+    description:
+      'The clinician this edit is attributed to. Required for a machine credential (API key / service account); a human may name ' +
+      'another clinician only while holding SUPER_ADMIN or TENANT_ADMIN.',
+  })
+  @IsOptional()
+  @IsString()
+  clinicianUserId?: string;
 }
