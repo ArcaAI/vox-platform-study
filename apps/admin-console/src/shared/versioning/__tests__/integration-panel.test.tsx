@@ -12,13 +12,29 @@
  *   2. two browser cells do not exist (`SPEECH_TO_TEXT`, `TEXT_TO_SPEECH` by slug), so they are
  *      rendered as absences naming the real path — never as an invented snippet;
  *   3. NER shares the invocations route but is one-shot, so no lane may offer it a stream.
+ *
+ * TASK-975 lanes A, B, C — three more things that were absent rather than wrong:
+ *
+ *   4. the panel linked exactly ONE destination (`/api-keys`), so the three REST surfaces that
+ *      already existed were reported as "missing" — including from the three workflow early
+ *      returns, which rendered an alert and no onward path at all;
+ *   5. the socket lane was undocumented everywhere in the console, while shipping in both SDKs;
+ *   6. the Postman lane was a correct file dumped as ~200 lines of raw JSON with no manifest.
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PostmanCollection, PostmanItem } from '@/shared/docs/postman-collection';
+import { SOCKET_LANE_RATIONALE, SOCKET_RUNTIME_FLOOR } from '@/shared/docs/socket-snippets';
 import { IntegrationPanel } from '../integration-panel';
+
+/** The three developer-portal screens the panel must hand a developer on its way out (lane A). */
+const DEVELOPER_HREFS = ['/developer/invoke', '/developer/reference', '/developer/sdk'];
+
+function renderedHrefs(): string[] {
+  return screen.getAllByRole('link').map((link) => link.getAttribute('href') ?? '');
+}
 
 /** The agent's own declared input — the example body in every lane must come from HERE. */
 const AGENT_INPUT_SCHEMA = {
@@ -61,6 +77,15 @@ function selectTab(name: string): void {
 
 function codeOf(label: string): string {
   return screen.getByRole('group', { name: label }).textContent ?? '';
+}
+
+/**
+ * TASK-975 C2 — the raw file now sits behind a COLLAPSED disclosure, so every assertion about its
+ * contents opens it first. It stays complete and unabridged once opened: reading it before
+ * importing is the only way a developer can see for themselves that no credential travels with it.
+ */
+function openRawCollection(): void {
+  fireEvent.click(screen.getByRole('button', { name: /raw collection/i }));
 }
 
 /** The rendered Postman tab, parsed — assertions about REQUESTS must not be substring matches. */
@@ -112,6 +137,7 @@ describe('IntegrationPanel — agent', () => {
   it('a NER agent gets no ?mode=stream REQUEST in its Postman collection, only the warning', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="ner" task="NAMED_ENTITY_RECOGNITION" inputSchema={AGENT_INPUT_SCHEMA} />);
     selectTab('Postman');
+    openRawCollection();
 
     const collection = collectionOf();
     expect(streamRequestsIn(collection)).toHaveLength(0);
@@ -126,6 +152,7 @@ describe('IntegrationPanel — agent', () => {
   it('a TEXT_GENERATION agent still gets one', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
     selectTab('Postman');
+    openRawCollection();
     expect(streamRequestsIn(collectionOf())).toHaveLength(1);
   });
 
@@ -230,14 +257,24 @@ describe('IntegrationPanel — the four lanes', () => {
     expect(screen.getByText(/agent:invocation:write/)).toBeTruthy();
   });
 
-  it('the browser lane for SPEECH_TO_TEXT states the absence and names the real path — no snippet', () => {
+  /**
+   * TASK-975 B4 AMENDS this test rather than replacing it. The absence framing was never wrong —
+   * there is no `invoke()` by slug for realtime speech — but leaving it at prose meant the one
+   * non-invocable task WITH a real browser path was the lane with no code in it. Every original
+   * assertion still stands below; what changed is that the named path now arrives as a snippet.
+   */
+  it('the browser lane for SPEECH_TO_TEXT keeps the absence framing AND now carries the capture snippet', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
     selectTab('Browser');
 
-    expect(screen.queryAllByRole('group')).toHaveLength(0);
     expect(screen.getByText(/no browser path by slug/i)).toBeTruthy();
-    expect(screen.getByText(/audio\.start/)).toBeTruthy();
-    expect(screen.getByText(/audio\/transcription-jobs\/transcribe/)).toBeTruthy();
+    // Scoped to the NOTE itself: `audio.start` now appears twice on this lane — once in the
+    // sentence that explains the absence, and once in the snippet that sentence names. The
+    // original assertion was about the sentence, and still is.
+    const absence = screen.getAllByRole('note').find((note) => /no browser path by slug/i.test(note.textContent ?? ''));
+    expect(absence?.textContent).toContain('audio.start({ agentSlug })');
+    expect(absence?.textContent).toContain('audio/transcription-jobs/transcribe');
+    expect(screen.queryAllByRole('group')).toHaveLength(1);
   });
 
   it('the browser lane for TEXT_TO_SPEECH states the absence and names the voice-selected route — no snippet', () => {
@@ -385,6 +422,7 @@ describe('IntegrationPanel — the Postman lane', () => {
   it('renders an importable collection that embeds NO credential', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
     selectTab('Postman');
+    openRawCollection();
 
     const collection = JSON.parse(codeOf('Postman collection JSON')) as {
       info: { schema: string };
@@ -417,8 +455,297 @@ describe('IntegrationPanel — the Postman lane', () => {
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
     selectTab('Postman');
+    openRawCollection();
     const collection = JSON.parse(codeOf('Postman collection JSON')) as { item: Array<{ request: { body?: { raw: string } } }> };
     expect(collection.item[0]?.request.body?.raw).toContain('"input"');
     expect(collection.item[0]?.request.body?.raw).toContain('"dischargeDate"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-975 lane A — the two halves of the integration story link to each other
+// ---------------------------------------------------------------------------
+
+describe('IntegrationPanel — the developer portal is one link away', () => {
+  it('an agent panel links all three developer screens beside the API-keys link', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+
+    expect(renderedHrefs()).toEqual(expect.arrayContaining([...DEVELOPER_HREFS, '/api-keys']));
+  });
+
+  it('a workflow panel links them too', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    expect(renderedHrefs()).toEqual(expect.arrayContaining([...DEVELOPER_HREFS, '/api-keys']));
+  });
+
+  /**
+   * The sharpest half of lane A. These three states used to render an Alert and NOTHING else, so
+   * the developer with the least idea what to do next — told their workflow is not exposable, or
+   * not active, or not exposed — was the one handed no onward path at all.
+   */
+  it('not active: the alert is not the whole answer', () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" isActive={false} />);
+
+    expect(screen.getByText(/published, not active/i)).toBeTruthy();
+    expect(renderedHrefs()).toEqual(expect.arrayContaining(DEVELOPER_HREFS));
+  });
+
+  it('not exposable: the alert is not the whole answer', () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" exposable={false} paletteKey="stt" />);
+
+    expect(screen.getByText(/not exposable/i)).toBeTruthy();
+    expect(renderedHrefs()).toEqual(expect.arrayContaining(DEVELOPER_HREFS));
+  });
+
+  it('a 404 from the run contract: the alert is not the whole answer', async () => {
+    stubSchemaFetch(404);
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText(/workflow exposure/i);
+    expect(renderedHrefs()).toEqual(expect.arrayContaining(DEVELOPER_HREFS));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-975 lane B — the socket lane
+// ---------------------------------------------------------------------------
+
+describe('IntegrationPanel — the Socket lane', () => {
+  it('the workflow panel gains a fifth tab, between HTTP and Postman', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Socket', 'Postman']);
+  });
+
+  it('names transport: socket and the RUN-SCOPED stream-ticket route in all three snippets', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('Socket');
+
+    // `transport` is an OPTION on the methods already shown in the Node tab, never a new method.
+    expect(codeOf('Socket (@arcaai/vox-node) snippet')).toContain("transport: 'socket'");
+    expect(codeOf('Socket (@arcaai/vox) snippet')).toContain("useWorkflowRun({ transport: 'socket' })");
+    // The RUN-SCOPED route, not the JWT-only POST /auth/stream-ticket: this one takes an API key
+    // and derives the scope server-side.
+    const shell = codeOf('Socket handshake (websocat) snippet');
+    expect(shell).toContain('/runs/$RUN_ID/stream-ticket');
+    expect(shell).toContain('websocat');
+  });
+
+  it('states the runtime floor and that SSE is the only lane that resumes', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('Socket');
+
+    const lane = screen.getByRole('tabpanel').textContent ?? '';
+    // Rendered from the shared constants, never paraphrased: the SSE tab and this one must not
+    // give a developer two different explanations of the same choice.
+    expect(lane).toContain(SOCKET_LANE_RATIONALE);
+    expect(lane).toContain(SOCKET_RUNTIME_FLOOR);
+    // …and the two FACTS, asserted independently of the constants' current wording.
+    expect(lane).toMatch(/only lane that resumes/i);
+    expect(lane).toMatch(/Node 22\+/);
+  });
+
+  it("an STT agent's Browser lane carries a real capture snippet, and its Socket lane drives hope.stt", () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Socket', 'Postman']);
+
+    selectTab('Browser');
+    const browser = codeOf('Browser (@arcaai/vox) snippet');
+    // Realtime STT is a CAPTURE session, not an invocation — which is exactly why there is no
+    // `invoke()` for it, and exactly why the panel can still print working code.
+    expect(browser).toContain("audio.start({ agentSlug: 'asr' })");
+    expect(browser).toContain('useArcaAudio');
+
+    selectTab('Socket');
+    const node = codeOf('Realtime STT (@arcaai/vox-node) snippet');
+    expect(node).toContain("hope.stt.createStreamSession({ agentSlug: 'asr' })");
+    expect(node).toContain("socket.on('transcript'");
+    // The runtime floor applies wherever a socket is offered.
+    expect(screen.getByRole('tabpanel').textContent ?? '').toContain(SOCKET_RUNTIME_FLOOR);
+  });
+
+  /**
+   * The absence note for TTS is the load-bearing one: `@arcaai/vox` genuinely has no agent-slug
+   * path for synthesis, and inventing one would be the worst failure this panel can have — it
+   * carries the authority of the product.
+   */
+  it('a TTS agent still gets prose, no snippet, and no Socket lane', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="voice" task="TEXT_TO_SPEECH" />);
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Postman']);
+    selectTab('Browser');
+    expect(screen.queryAllByRole('group')).toHaveLength(0);
+    expect(screen.getByText(/no browser path by slug/i)).toBeTruthy();
+  });
+
+  /**
+   * REGRESSION GUARD. `socket` was filtered out of the `?mode=` badges and the Postman modes long
+   * before this ticket, and that was always RIGHT: socket is a LANE, not a delivery mode —
+   * `POST /workflows/{slug}/runs?mode=socket` is not a route. The defect was never the filter; it
+   * was filtering the mode and then never documenting the lane. Both halves are pinned here so a
+   * future reader cannot "fix" one by breaking the other.
+   */
+  it('socket is a lane, not a ?mode= value: a tab, never a badge and never a request', async () => {
+    stubSchemaFetch(); // `modes` deliberately includes `socket`
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    expect(screen.getByRole('tab', { name: 'Socket' })).toBeTruthy();
+    // The badges print the gateway's own lowercase spelling; the tab is `Socket`.
+    expect(screen.queryByText('socket')).toBeNull();
+
+    selectTab('Postman');
+    openRawCollection();
+    const collection = collectionOf();
+    expect(collection.item.flatMap((entry) => entry.request.url.query ?? []).filter((q) => q.key === 'mode' && q.value === 'socket')).toHaveLength(0);
+    expect(JSON.stringify(collection)).not.toContain('mode=socket');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-975 lane C — the Postman lane becomes legible
+// ---------------------------------------------------------------------------
+
+describe('IntegrationPanel — the Postman manifest', () => {
+  it('renders one row per request, derived from the same item array', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('Postman');
+
+    const manifest = screen.getByRole('list', { name: /requests/i });
+    openRawCollection();
+    const collection = collectionOf();
+
+    const rows = within(manifest).getAllByRole('listitem');
+    expect(rows).toHaveLength(collection.item.length);
+    // Name AND the method + path it will fire — the point is to learn what is inside the file
+    // without reading 200 lines of JSON.
+    collection.item.forEach((item, index) => {
+      const row = rows[index]?.textContent ?? '';
+      expect(row).toContain(item.name);
+      expect(row).toContain(item.request.method);
+    });
+    expect(rows[0]?.textContent).toContain('/api/v1/workflows/discharge-summary/runs?mode=async');
+    // Unchanged by the new presentation: the file still ships no credential.
+    expect(collection.variable.find((entry) => entry.key === 'apiKey')?.value).toBe('');
+  });
+
+  it('keeps the raw file behind a disclosure — collapsed, and complete when opened', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    selectTab('Postman');
+
+    expect(screen.queryByRole('group', { name: 'Postman collection JSON' })).toBeNull();
+    openRawCollection();
+    expect(collectionOf().info.schema).toContain('collection/v2.1.0');
+    expect(collectionOf().item.length).toBeGreaterThan(0);
+  });
+
+  it('names the import walkthrough and the base URL the downloaded file will carry', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    selectTab('Postman');
+
+    const walkthrough = screen.getByRole('link', { name: /import walkthrough/i }) as HTMLAnchorElement;
+    expect(walkthrough.getAttribute('href')).toBe('/developer/invoke');
+
+    openRawCollection();
+    const baseUrl = collectionOf().variable.find((entry) => entry.key === 'baseUrl')?.value ?? '';
+    expect(baseUrl).toBeTruthy();
+    expect(screen.getByText(baseUrl)).toBeTruthy();
+  });
+
+  /**
+   * TASK-975 C4 — the Postman lane injected the console's real gateway origin while the HTTP lane
+   * two tabs away printed `https://your-gateway.example.com`. Two answers to one question made a
+   * developer comparing them doubt both.
+   */
+  it('the curl lane and the collection agree on the base URL', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+
+    selectTab('HTTP');
+    const curl = codeOf('curl snippet');
+
+    selectTab('Postman');
+    openRawCollection();
+    const baseUrl = collectionOf().variable.find((entry) => entry.key === 'baseUrl')?.value ?? '';
+
+    expect(baseUrl).toBeTruthy();
+    expect(curl).toContain(`export HOPE_API_URL=${JSON.stringify(baseUrl)}`);
+    expect(curl).not.toContain('your-gateway.example.com');
+  });
+
+  it('a workflow curl lane agrees with its collection too', async () => {
+    stubSchemaFetch();
+    renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('HTTP');
+    const curl = codeOf('curl snippet');
+
+    selectTab('Postman');
+    openRawCollection();
+    const baseUrl = collectionOf().variable.find((entry) => entry.key === 'baseUrl')?.value ?? '';
+
+    expect(curl).toContain(`export HOPE_API_URL=${JSON.stringify(baseUrl)}`);
+    expect(curl).not.toContain('your-gateway.example.com');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-975 T10 — the now five-tab panel
+// ---------------------------------------------------------------------------
+
+describe('IntegrationPanel — accessibility of the five-lane panel', () => {
+  it('has no axe violations on the Socket lane', async () => {
+    stubSchemaFetch();
+    renderWithProviders(
+      <main>
+        <IntegrationPanel kind="workflow" slug="discharge-summary" />
+      </main>,
+    );
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('Socket');
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
+  });
+
+  it('has no axe violations on the Postman lane, collapsed and expanded', async () => {
+    stubSchemaFetch();
+    renderWithProviders(
+      <main>
+        <IntegrationPanel kind="workflow" slug="discharge-summary" />
+      </main>,
+    );
+
+    await screen.findByText('POST /workflows/discharge-summary/runs');
+    selectTab('Postman');
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
+    openRawCollection();
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
+  });
+
+  it('has no axe violations on a workflow early return, which now carries links', async () => {
+    renderWithProviders(
+      <main>
+        <IntegrationPanel kind="workflow" slug="discharge-summary" exposable={false} paletteKey="stt" />
+      </main>,
+    );
+
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
 });
