@@ -1,6 +1,6 @@
 # HOPE — Vault HA on Self-Hosted k3s (TASK-312 Phase C)
 
-> # ⛔ RETIRED — SUPERSEDED, AND THE HARDWARE IS BEING DESTROYED (TASK-833, 2026-08-30)
+> # RETIRED — SUPERSEDED, AND THE HARDWARE IS BEING DESTROYED (TASK-833, 2026-08-30)
 >
 > **Do not follow this blueprint. Nothing in HOPE runs on it any more, and after the
 > VM teardown nothing can.**
@@ -16,7 +16,7 @@
 > **What replaces it.** One Vault, in-cluster, with no dependency outside the cluster:
 > `hope-vault` in `hope-v2-dev`, `storage "file"` on a PVC, a **Shamir seal unsealed by
 > an in-pod `vault-bootstrap` sidecar**. Manifest and rationale:
-> `arca/hope-v2-deployment` → `deployment/k8s/base/vault.yaml`. Operator procedure:
+> `arca/hope-v2-deployment` -> `deployment/k8s/base/vault.yaml`. Operator procedure:
 > `docs/vault-seal-migration.md` in that same repo.
 >
 > **Why this tree is kept rather than deleted.** It is the only written record of a
@@ -24,7 +24,7 @@
 >
 > | Still used | Where |
 > |---|---|
-> | `bootstrap/configure-app-auth.sh` | the reference for the KV-v2 + Transit + AppRole surface `hope-api` needs — the in-cluster rebuild re-provisions exactly this (runbook §5) |
+> | `bootstrap/configure-app-auth.sh` | the reference for the KV-v2 + Transit + AppRole surface `hope-api` needs — the in-cluster rebuild re-provisions exactly this (runbook section 5) |
 > | the per-service Vault policies it binds | mirrored by `infrastructure/docker/configs/vault/policies/` |
 > | `monitoring/`, `manifests/service-monitor.yaml` | never applied; the in-cluster Vault still has **no** seal alerting, which is why the August outage ran for two days |
 >
@@ -40,40 +40,64 @@
 Production blueprint for running HashiCorp Vault as a 3-node, highly-available,
 auto-unsealing secrets backend on HOPE's self-hosted Proxmox **k3s** cluster.
 
-> Cloud customers (AWS EKS / Azure AKS) reuse this same chart with a per-cloud
-> overlay — see Phase D (`aws/`, `azure/`). The **only** thing that changes per
-> platform is auto-unseal (KMS vs. Transit) and `role_id` delivery; the app code
-> path is identical everywhere.
+---
+
+## Layout
+
+Verified against the tree; the `AC` column is the original acceptance-criteria id and is historical, not a live tracker.
+
+| Path | Purpose | AC |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------- |
+| `helm/values.yaml` | HA Raft + transit seal + injector + audit storage + probes | C.2, C.3, C.4 |
+| `seal-vault/seal-vault.yaml` | single-node seal Vault (Transit root of trust) | C.3 |
+| `seal-vault/kustomization.yaml` | PROD digest-pin overlay for the seal Vault (`apply -k`) | E |
+| `seal-vault/seal-bootstrap.sh` | init/unseal seal Vault, transit key, scoped token -> Secret | C.3 |
+| `bootstrap/init-job.yaml` | `operator init` (recovery keys -> Secret) + enable audit | C.5 |
+| `bootstrap/kustomization.yaml` | PROD digest-pin overlay for the init Job (`apply -k`) | E |
+| `bootstrap/configure-app-auth.sh` | kv-v2 + transit + AppRole + `hope-app` policy/role + secret_id-issuer token -> app Secret | C.4, E |
+| `bootstrap/rotate-secret-id.sh` | per-(re)deploy `secret_id` rotation via issuer token (NO root) | E |
+| `manifests/network-policy.yaml` | restrict Vault server ingress | C.6 |
+| `manifests/seal-network-policy.yaml` | lock seal Vault ingress to HA server pods only | C.6 |
+| `manifests/service-monitor.yaml` | Prometheus scrape of `/v1/sys/metrics` (all nodes) | C.7 |
+| `manifests/audit-sidecar.values.yaml` | audit log-shipper + copytruncate rotator sidecars (values overlay) | C.8, E |
+| `helm/values.digests.yaml` | production image digest pins (overlay) | E |
+| `monitoring/{alerts,recording-rules,alerts-app}.yaml` | PrometheusRules (server-side + app-side) | E |
+| `monitoring/grafana-dashboard.json` | Grafana dashboard ("HOPE — Vault HA") | E |
+| `test/kind-e2e.sh` | full local E2E on kind | C.9 |
+| `../../../scripts/chaos/vault-drill.sh` | chaos drill (leader kill, follower auto-unseal, transit outage) | E.2 |
+| `../../../docs/operations/vault/README.md` | **operator runbook** (day-2: rotate, fail over, recover, monitor) | E.1 |
 
 ---
 
-## Architecture
+## How it works
+
+### Architecture
 
 ```
-                 ┌─────────────────────────────────────────────┐
-                 │  vault-system namespace                       │
-                 │                                               │
-   Shamir 5/3 ──▶│  ┌────────────┐   transit/encrypt│decrypt    │
-   (ops, offline)│  │ vault-seal  │◀─────────────────────────┐  │
-                 │  │ (1 node,    │                           │  │
-                 │  │  file store)│   auto-unseal token       │  │
-                 │  └────────────┘   (Secret vault-seal-      │  │
-                 │                     transit)               │  │
-                 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  │  │
-                 │  │ vault-0  │  │ vault-1  │  │ vault-2  │──┘  │
-                 │  │ (leader) │◀▶│(follower)│◀▶│(follower)│     │
-                 │  └────┬─────┘  └──────────┘  └──────────┘     │
-                 │       │ Raft (integrated storage, :8201)      │
-                 │  ┌────▼──────────────┐                        │
-                 │  │ agent-injector    │                        │
-                 │  └───────────────────┘                        │
-                 └───────────────────────────────────────────────┘
-            ▲                                   ▲
-            │ AppRole login (role_id +          │ k8s-auth (other workloads)
-            │ wrapped secret_id, as FILES)      │ → /vault/secrets/*
-   ┌────────┴────────┐                 ┌────────┴────────┐
-   │ HOPE API (hope) │                 │ annotated pods  │
-   └─────────────────┘                 └─────────────────┘
+                 +-------------------------------------------------+
+                 |  vault-system namespace                          |
+                 |                                                  |
+   Shamir 5/3 -->|  +------------+   transit/encrypt|decrypt        |
+   (ops, offline)|  | vault-seal |<--------------------------+      |
+                 |  | (1 node,   |                            |     |
+                 |  |  file store)|   auto-unseal token       |     |
+                 |  +------------+   (Secret vault-seal-      |     |
+                 |                     transit)               |     |
+                 |  +----------+  +----------+  +----------+  |     |
+                 |  | vault-0  |  | vault-1  |  | vault-2  |--+     |
+                 |  | (leader) |<>|(follower)|<>|(follower)|        |
+                 |  +----+-----+  +----------+  +----------+        |
+                 |       | Raft (integrated storage, :8201)         |
+                 |  +----v--------------+                           |
+                 |  | agent-injector    |                           |
+                 |  +-------------------+                           |
+                 +---------------------------------------------------+
+            ^                                   ^
+            | AppRole login (role_id +          | k8s-auth (other workloads)
+            | wrapped secret_id, as FILES)      | -> /vault/secrets/*
+   +--------+--------+                 +--------+--------+
+   | HOPE API (hope) |                 | annotated pods  |
+   +-----------------+                 +-----------------+
 ```
 
 - **3-node Raft** integrated storage (no Consul). Quorum tolerates one node down.
@@ -84,24 +108,24 @@ auto-unsealing secrets backend on HOPE's self-hosted Proxmox **k3s** cluster.
 - **TLS** is mesh-terminated (Linkerd/Istio). If you don't run a mesh, enable
   chart-native TLS before exposing Vault beyond the pod network.
 
-### Pinned versions
+#### Pinned versions
 
-| Component                    | Version    |
+| Component | Version |
 | ---------------------------- | ---------- |
 | `hashicorp/vault` Helm chart | **0.32.0** |
-| Vault                        | **1.21.4** |
-| `vault-k8s` injector         | **1.7.6**  |
+| Vault | **1.21.4** |
+| `vault-k8s` injector | **1.7.6** |
 
 Bump deliberately: Raft on-disk format + seal migration are version-sensitive.
 
 ---
 
-## Credential delivery (how the HOPE app authenticates)
+### Credential delivery (how the HOPE app authenticates)
 
 HOPE's API authenticates to Vault with **AppRole**, reading its `role_id` and a
 one-shot **wrapped `secret_id`** from **files** (`VAULT_ROLE_ID_FILE` /
 `VAULT_WRAPPED_SECRET_ID_FILE`, shipped in `apps/api/.env.prod` — TASK-312
-B.9/B.10). It then does its own login + token self-renewal (B.1–B.4).
+B.9/B.10). It then does its own login + token self-renewal (B.1-B.4).
 
 `bootstrap/configure-app-auth.sh` mints those creds into a k8s Secret
 (`hope/hope-vault-approle`, keys `role_id` + `wrapped_secret_id`). Mount it into
@@ -138,7 +162,9 @@ one per rollout** (re-run `configure-app-auth.sh`, or script the
 
 ---
 
-## Install order
+## Commands
+
+### Install order
 
 > Prereqs: `kubectl`, `helm`, a k3s/k8s cluster with a default StorageClass and a
 > NetworkPolicy-capable CNI (Calico/Cilium — k3s default Flannel does NOT
@@ -161,7 +187,7 @@ helm upgrade --install vault hashicorp/vault --version 0.32.0 \
   -f helm/values.yaml -f manifests/audit-sidecar.values.yaml \
   -f helm/values.digests.yaml
 
-# 3. initialise (recovery keys → Secret) + enable audit
+# 3. initialise (recovery keys -> Secret) + enable audit
 kubectl apply -k bootstrap/           # PROD: digest-pinned (use -f bootstrap/init-job.yaml for unpinned/E2E)
 kubectl -n vault-system wait --for=condition=complete job/vault-init --timeout=240s
 
@@ -187,7 +213,88 @@ kubectl apply -f monitoring/recording-rules.yaml -f monitoring/alerts.yaml  # + 
 **Order matters**: the seal Vault + its transit token Secret must exist _before_
 the HA chart starts, or the HA pods cannot auto-unseal at boot.
 
-### ⚠ Root token lifecycle & break-glass keys
+### Post-install verification
+
+```bash
+# all 3 nodes Ready (auto-unsealed + joined)
+kubectl -n vault-system get pods -l app.kubernetes.io/name=vault,component=server
+
+# Raft quorum: expect 1 leader + 2 followers, all "voter"
+ROOT=$(kubectl -n vault-system get secret vault-init-keys -o jsonpath='{.data.root-token}' | base64 -d)
+kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault operator raft list-peers"
+
+# seal status: sealed=false, type=transit
+kubectl -n vault-system exec vault-0 -- vault status
+
+# audit device enabled
+kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault audit list"
+```
+
+#### Automated E2E (local kind)
+
+```bash
+./test/kind-e2e.sh          # spins a kind cluster, runs the full flow, asserts
+./test/kind-e2e.sh --keep   # keep the cluster for inspection
+```
+
+Asserts: seal+transit, 3/3 auto-unseal, Raft quorum (3 voters), audit device
+enabled (AC-C3), **node-restart auto-unseal + quorum recovery (AC-C2)**, init Job,
+AppRole Secret delivery, agent-injector delivering a secret to `/vault/secrets/*`
+(AC-C4), and bootstrap **root-token revocation** (verified dead afterwards).
+
+---
+
+### Operations
+
+#### Scaling
+
+Raft is a fixed-size voting cluster — **keep it at 3 or 5** (odd, for quorum).
+`helm upgrade ... --set server.ha.replicas=5`, then verify new nodes join via
+`vault operator raft list-peers`. Do not scale to even numbers.
+
+#### Upgrade
+
+Rolling upgrade, **standbys first, leader last** (the chart's `OnDelete`/partition
+strategy). Snapshot before any upgrade:
+
+```bash
+kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault operator raft snapshot save /tmp/snap.snap"
+kubectl -n vault-system cp vault-0:/tmp/snap.snap ./vault-$(date +%F).snap
+```
+
+Bump `image.tag` + chart `--version` together; read both CHANGELOGs.
+
+#### Seal Vault restart
+
+The seal Vault does **not** auto-unseal. After it restarts, the HA cluster stays
+sealed until ops re-unseals the seal Vault:
+
+```bash
+kubectl -n vault-system exec vault-seal-0 -- vault operator unseal <key>   # x threshold
+```
+
+#### Hardening the seal Vault
+
+The seal Vault is the cluster's **root of trust** — its blast radius must be tiny:
+
+- **Shamir 5/3** (the bootstrap script **refuses** `<3/2` unless
+  `ALLOW_INSECURE_KEY_SHARES=true`, which is for throwaway test clusters only).
+- `manifests/seal-network-policy.yaml` default-denies it and allows ingress **only**
+  from the HA server pods on `:8200`.
+- The transit token handed to the HA cluster can **only** encrypt/decrypt the one
+  `autounseal` key — it cannot read any HOPE secret.
+- Prefer running it in its **own namespace + node-pool** (ideally a separate
+  cluster). It shares `vault-system` here only to match the seal address in
+  `helm/values.yaml`; if you split it out, update that address + this NetworkPolicy.
+
+#### Emergency: quorum lost
+
+Restore from the latest Raft snapshot onto a fresh single node, then re-scale.
+See the Phase E runbook (`docs/operations/vault/README.md`).
+
+## Gotchas
+
+### Root token lifecycle & break-glass keys
 
 `bootstrap/init-job.yaml` stores the **recovery keys + initial root token** in the
 **plaintext** Secret `vault-init-keys` (it lands in etcd unencrypted). Run the
@@ -217,7 +324,7 @@ In production, don't store the recovery material in a k8s Secret at all — fron
 
 Because root is revoked, `configure-app-auth.sh` can no longer read it from the
 Secret. When you need privileged access again (mint a fresh wrapped `secret_id`
-before a redeploy, add a policy, …), mint a **temporary** root with the recovery
+before a redeploy, add a policy, ...), mint a **temporary** root with the recovery
 quorum and hand it to the script via `VAULT_TOKEN`:
 
 ```bash
@@ -232,108 +339,10 @@ A dedicated, **narrow** `secret_id`-issuer token (mints `secret-id`s only — no
 root) that removes the generate-root dance from routine redeploys is tracked for
 **Phase E "Day-2 rotation"**.
 
----
+## Related
 
-## Post-install verification
-
-```bash
-# all 3 nodes Ready (auto-unsealed + joined)
-kubectl -n vault-system get pods -l app.kubernetes.io/name=vault,component=server
-
-# Raft quorum: expect 1 leader + 2 followers, all "voter"
-ROOT=$(kubectl -n vault-system get secret vault-init-keys -o jsonpath='{.data.root-token}' | base64 -d)
-kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault operator raft list-peers"
-
-# seal status: sealed=false, type=transit
-kubectl -n vault-system exec vault-0 -- vault status
-
-# audit device enabled
-kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault audit list"
-```
-
-### Automated E2E (local kind)
-
-```bash
-./test/kind-e2e.sh          # spins a kind cluster, runs the full flow, asserts
-./test/kind-e2e.sh --keep   # keep the cluster for inspection
-```
-
-Asserts: seal+transit, 3/3 auto-unseal, Raft quorum (3 voters), audit device
-enabled (AC-C3), **node-restart auto-unseal + quorum recovery (AC-C2)**, init Job,
-AppRole Secret delivery, agent-injector delivering a secret to `/vault/secrets/*`
-(AC-C4), and bootstrap **root-token revocation** (verified dead afterwards).
-
----
-
-## Operations
-
-### Scaling
-
-Raft is a fixed-size voting cluster — **keep it at 3 or 5** (odd, for quorum).
-`helm upgrade ... --set server.ha.replicas=5`, then verify new nodes join via
-`vault operator raft list-peers`. Do not scale to even numbers.
-
-### Upgrade
-
-Rolling upgrade, **standbys first, leader last** (the chart's `OnDelete`/partition
-strategy). Snapshot before any upgrade:
-
-```bash
-kubectl -n vault-system exec vault-0 -- sh -c "VAULT_TOKEN=$ROOT vault operator raft snapshot save /tmp/snap.snap"
-kubectl -n vault-system cp vault-0:/tmp/snap.snap ./vault-$(date +%F).snap
-```
-
-Bump `image.tag` + chart `--version` together; read both CHANGELOGs.
-
-### Seal Vault restart
-
-The seal Vault does **not** auto-unseal. After it restarts, the HA cluster stays
-sealed until ops re-unseals the seal Vault:
-
-```bash
-kubectl -n vault-system exec vault-seal-0 -- vault operator unseal <key>   # x threshold
-```
-
-### Hardening the seal Vault
-
-The seal Vault is the cluster's **root of trust** — its blast radius must be tiny:
-
-- **Shamir 5/3** (the bootstrap script **refuses** `<3/2` unless
-  `ALLOW_INSECURE_KEY_SHARES=true`, which is for throwaway test clusters only).
-- `manifests/seal-network-policy.yaml` default-denies it and allows ingress **only**
-  from the HA server pods on `:8200`.
-- The transit token handed to the HA cluster can **only** encrypt/decrypt the one
-  `autounseal` key — it cannot read any HOPE secret.
-- Prefer running it in its **own namespace + node-pool** (ideally a separate
-  cluster). It shares `vault-system` here only to match the seal address in
-  `helm/values.yaml`; if you split it out, update that address + this NetworkPolicy.
-
-### Emergency: quorum lost
-
-Restore from the latest Raft snapshot onto a fresh single node, then re-scale.
-See the Phase E runbook (`docs/operations/vault/README.md`).
-
----
-
-## Files
-
-| Path                                                  | Purpose                                                                                  | AC            |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------- |
-| `helm/values.yaml`                                    | HA Raft + transit seal + injector + audit storage + probes                               | C.2, C.3, C.4 |
-| `seal-vault/seal-vault.yaml`                          | single-node seal Vault (Transit root of trust)                                           | C.3           |
-| `seal-vault/kustomization.yaml`                       | PROD digest-pin overlay for the seal Vault (`apply -k`)                                  | E             |
-| `seal-vault/seal-bootstrap.sh`                        | init/unseal seal Vault, transit key, scoped token → Secret                               | C.3           |
-| `bootstrap/init-job.yaml`                             | `operator init` (recovery keys → Secret) + enable audit                                  | C.5           |
-| `bootstrap/kustomization.yaml`                        | PROD digest-pin overlay for the init Job (`apply -k`)                                    | E             |
-| `bootstrap/configure-app-auth.sh`                     | kv-v2 + transit + AppRole + `hope-app` policy/role + secret_id-issuer token → app Secret | C.4, E        |
-| `bootstrap/rotate-secret-id.sh`                       | per-(re)deploy `secret_id` rotation via issuer token (NO root)                           | E             |
-| `manifests/network-policy.yaml`                       | restrict Vault server ingress                                                            | C.6           |
-| `manifests/seal-network-policy.yaml`                  | lock seal Vault ingress to HA server pods only                                           | C.6           |
-| `manifests/service-monitor.yaml`                      | Prometheus scrape of `/v1/sys/metrics` (all nodes)                                       | C.7           |
-| `manifests/audit-sidecar.values.yaml`                 | audit log-shipper + copytruncate rotator sidecars (values overlay)                       | C.8, E        |
-| `helm/values.digests.yaml`                            | production image digest pins (overlay)                                                   | E             |
-| `monitoring/{alerts,recording-rules,alerts-app}.yaml` | PrometheusRules (server-side + app-side)                                                 | E             |
-| `monitoring/grafana-dashboard.json`                   | Grafana dashboard ("HOPE — Vault HA")                                                    | E             |
-| `test/kind-e2e.sh`                                    | full local E2E on kind                                                                   | C.9           |
-| `../../../scripts/chaos/vault-drill.sh`               | chaos drill (leader kill, follower auto-unseal, transit outage)                          | E.2           |
-| `../../../docs/operations/vault/README.md`            | **operator runbook** (day-2: rotate, fail over, recover, monitor)                        | E.1           |
+- [../README.md](../README.md) -- the single-deployment directory map and retirement banner
+- [../../README.md](../../README.md) -- the `infrastructure/` directory map
+- [monitoring/README.md](monitoring/README.md) -- applying and interpreting the Vault monitoring rules
+- [../../../docs/operations/vault/README.md](../../../docs/operations/vault/README.md) -- day-2 operator runbook (rotate, fail over, recover, monitor)
+- [../../../scripts/chaos/vault-drill.sh](../../../scripts/chaos/vault-drill.sh) -- chaos drill script
