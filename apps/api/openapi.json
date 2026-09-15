@@ -34392,6 +34392,12 @@
           },
           "400": {
             "description": "Bad request — invalid input"
+          },
+          "402": {
+            "description": "The tenant has reached the monthly spend ceiling it set; nothing was queued."
+          },
+          "429": {
+            "description": "The tenant is over its monthly LLM-token allowance; nothing was queued."
           }
         },
         "security": [
@@ -57708,6 +57714,12 @@
           },
           "400": {
             "description": "Bad request — invalid input"
+          },
+          "402": {
+            "description": "The tenant has reached the monthly spend ceiling it set; nothing was queued."
+          },
+          "429": {
+            "description": "The tenant is over its monthly LLM-token allowance; nothing was queued."
           }
         },
         "security": [
@@ -57760,6 +57772,9 @@
           "400": {
             "description": "Validation failed, or the batch exceeds the total character budget (`DNA_INGEST_TOO_LARGE`), or the caller may not name this clinician (`DNA_INGEST_CLINICIAN_NOT_ALLOWED`), or a machine caller named none (`DNA_INGEST_CLINICIAN_REQUIRED`), or a `writtenAt` is not a date-time this platform can order a series by (`DNA_INGEST_WRITTEN_AT_INVALID`), or the `Idempotency-Key` header is too long."
           },
+          "402": {
+            "description": "The tenant has reached the monthly spend ceiling it set; nothing was queued."
+          },
           "403": {
             "description": "Scope violation, or an administrator not acting as a clinician tried to ingest under their own account."
           },
@@ -57768,6 +57783,9 @@
           },
           "409": {
             "description": "`DNA_STYLE_DISABLED` — DNA writing style is off for this clinician (tenant setting or their own opt-out), so nothing was queued."
+          },
+          "429": {
+            "description": "The tenant is over its monthly LLM-token allowance (DNA draws on the same allowance as every other text call); nothing was queued."
           }
         },
         "security": [
