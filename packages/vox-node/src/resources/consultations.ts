@@ -13,6 +13,7 @@
  */
 
 import { encodePathSegment } from '../core/url';
+import { toStrongValidator } from '../core/if-match';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
 import type { CloseConsultationRequest, ConsultationOpenResponse, DocumentSection, OpenConsultationRequest } from '../types/consultation-realtime';
@@ -34,7 +35,7 @@ export interface CloseConsultationOptions extends ConsultationRequestOptions {
    * guaranteed 428. Pass the strong validator you read the consultation at
    * (e.g. `'"7"'`).
    */
-  ifMatch: string;
+  ifMatch: string | number;
 }
 
 /** Options for {@link ConsultationsResource.addContext}. */
@@ -267,7 +268,7 @@ export class ConsultationsResource {
       method: 'POST',
       path: `consultations/${encodePathSegment(consultationId)}/close`,
       body: request,
-      headers: { 'If-Match': options.ifMatch },
+      headers: { 'If-Match': toStrongValidator(options.ifMatch) },
       signal: options.signal,
     });
   }

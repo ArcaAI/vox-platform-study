@@ -6,6 +6,7 @@
  */
 
 import { encodePathSegment } from '../core/url';
+import { toStrongValidator } from '../core/if-match';
 import type { Transport } from '../core/transport';
 import { generateUuidV7 } from '../core/idempotency';
 import type {
@@ -83,7 +84,7 @@ export interface ApproveSummaryOptions extends ConsultationSummaryRequestOptions
    * guaranteed 428, not a silently-skipped precondition. Pass the strong
    * validator you read the summary at (e.g. `'"7"'`).
    */
-  ifMatch: string;
+  ifMatch: string | number;
 }
 
 function consultationSummaryPath(consultationId: string): string {
@@ -236,7 +237,7 @@ export class ConsultationSummariesResource {
       method: 'POST',
       path: `${consultationSummaryPath(consultationId)}/${encodePathSegment(contextItemId)}/approve`,
       body: request,
-      headers: { 'If-Match': options.ifMatch },
+      headers: { 'If-Match': toStrongValidator(options.ifMatch) },
       signal: options.signal,
     });
   }
