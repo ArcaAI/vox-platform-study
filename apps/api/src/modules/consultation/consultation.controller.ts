@@ -74,6 +74,9 @@ import {
   Sse,
   HttpCode,
   HttpStatus,
+  // TASK-972 Lane 4 — the finish half of this plane has to know WHICH credential is
+  // calling, and only the request object carries all three principals (see `callerOf`).
+  Req,
   type MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
@@ -89,6 +92,20 @@ import { ChainSummaryService, sseFromRedisChannel } from '@arcaai/applications';
 import { IConsultationJobService } from '@arcaai/applications';
 import { INoteGenerationService, GenerationTrigger } from '@arcaai/applications';
 import { ConsentPurpose, ResourceType } from '@arcaai/domains';
+import type { RequestWithAuth } from '../../types/request-with-auth';
+import { CloseConsultationRequest } from './dto';
+
+/**
+ * TASK-972 Lane 4 — `ClinicalCaller` as the applications layer declares it
+ * (`services/consultation/summary/clinician-attribution.ts`).
+ *
+ * DERIVED from the service signature rather than imported, because that module is deliberately
+ * not on the `@arcaai/applications` barrel: it exports the RULE (`resolveAttributedClinician`,
+ * `assertAttributedClinicianInTenant`) plus this type, and the rule belongs to the two services
+ * that own it, not to every consumer of the package. Deriving keeps the controller in lockstep
+ * with the type — a field added there is a type error here — without widening a public surface.
+ */
+type ClinicalCaller = NonNullable<NonNullable<Parameters<ISummaryService['updateSummary']>[2]>['caller']>;
 
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
@@ -248,6 +265,39 @@ export class ConsultationController {
   private getServiceAccountId(): string | undefined {
     const principal = this.cls.get('serviceAccount') as { id?: string } | undefined;
     return typeof principal?.id === 'string' ? principal.id : undefined;
+  }
+
+  /**
+   * TASK-972 Lane 4 — WHICH CREDENTIAL is making this clinical write, read off the REQUEST.
+   *
+   * CLS cannot answer this, and the failure mode of pretending it can is silent. There is no
+   * `apiKey` CLS key at all: `UnifiedAuthGuard.handleApiKeyAuth` publishes `{ id, tenantId }`
+   * into CLS `user` with no roles and no key id (pinned as load-bearing by
+   * `unified-auth.guard.apikey-principal-shape.test.ts`), so an API-key caller is
+   * indistinguishable there from a human whose roles happen to be empty. Leave the caller to be
+   * derived downstream and that key is classified `jwt`, which skips "a credential never
+   * exceeds its human" entirely — a key bound to clinician A could then sign for clinician B on
+   * the strength of A's own admin role never being consulted. The request object carries all
+   * three principals, which is why `DnaWritingStyleIngestController.callerOf` reads it the same
+   * way, and this returns the same shape.
+   *
+   * `principalId` is the CREDENTIAL's id, never the bound human's — it is what the WORM `ATTEST`
+   * row records as the ACTOR beside the attesting clinician.
+   *
+   * `boundUserId` is `null` rather than omitted for an UNBOUND key, so "this key belongs to
+   * nobody" is a value the rule can refuse on, not a missing field it could read as unchecked.
+   *
+   * An ABSENT request is the in-process/fixture path (no HTTP layer): fall back to what CLS can
+   * still tell us, which is a service account or a human — never an API key, by construction.
+   */
+  private callerOf(req: RequestWithAuth | undefined): ClinicalCaller {
+    if (req?.serviceAccount?.id) return { credentialClass: 'service-account', principalId: req.serviceAccount.id };
+    if (req?.apiKey) return { credentialClass: 'api-key', principalId: req.apiKey.id, boundUserId: req.apiKey.userId ?? null };
+    if (req?.user?.id) return { credentialClass: 'jwt', principalId: req.user.id };
+
+    const serviceAccountId = this.getServiceAccountId();
+    if (serviceAccountId) return { credentialClass: 'service-account', principalId: serviceAccountId };
+    return { credentialClass: 'jwt', principalId: this.cls.get('user')?.id ?? '' };
   }
 
   /**
@@ -807,13 +857,45 @@ export class ConsultationController {
     required: true,
     example: '"1"',
   })
-  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @ApiOperation({
+    summary: 'Close a consultation',
+    description:
+      'Terminal transition of the consultation row, and the last call of the `update -> approve -> close` sequence a machine ' +
+      'integration makes when a clinician submits their note. `PENDING_REVIEW -> CLOSED_*` is NOT a legal edge, so the sign-off ' +
+      'must precede this call.\n\n' +
+      '`clinicianUserId` names the clinician this close is attributed to. A SERVICE ACCOUNT or API KEY MUST supply it — a machine ' +
+      'is never the clinician — and an API key may name only the human it is bound to unless that human holds `SUPER_ADMIN` or ' +
+      '`TENANT_ADMIN`. A human caller omits it to act as themselves and may name another clinician only while holding one of ' +
+      'those roles. A clinician outside the caller`s tenant is 404, never 403.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named ' +
+      'another clinician without an administrative role, or an API key named someone other than the human it is bound to.',
+  })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
   @ApiResponse({ status: 409, description: 'Illegal state transition — the consultation is not SIGNED or TIMED_OUT.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async close(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
+  // AUTH-NOTE: TASK-972 Lane 4 — the FINISH half of the realtime consultation plane, opened to
+  // the machine class on the same scope its `open`/`recording` siblings already carry. The
+  // decorator gates the CALLER; WHO the close is attributed to is a rule about a third party the
+  // body names, and no `action + subject` pair can state it — so it is imperative in
+  // `ConsultationService.closeConsultation` (`clinician-attribution.ts`), 400 on the rule and
+  // 404-over-403 on the tenant boundary.
+  @RequiredSvcScopes('svc:consultation:session:write')
+  async close(
+    @Param('id') id: string,
+    @ExpectedVersion() expectedVersion: number | undefined,
+    @Body() body: CloseConsultationRequest | undefined,
+    @Req() req: RequestWithAuth,
+  ): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.consultationService.closeConsultation(id, expectedVersion);
+    return this.consultationService.closeConsultation(id, expectedVersion, {
+      clinicianUserId: body?.clinicianUserId,
+      caller: this.callerOf(req),
+    });
   }
 
   // TASK-869 — the published contract says 200 and Nest's POST default is 201.
@@ -1589,20 +1671,37 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'summaryId', description: 'Summary Context Item ID' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named ' +
+      'another clinician without an administrative role, or an API key named someone other than the human it is bound to.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   @RequiredScopes('consultation:report:write')
+  // AUTH-NOTE: TASK-972 Lane 4 — the clinician's EDIT, opened to the machine class on the
+  // REPORT-tier write scope (the same one the summarization writes carry), because this route
+  // writes note CONTENT rather than driving the session. `clinicianUserId` travels on the body
+  // (`UpdateSummaryRequest`) and is resolved imperatively in `SummaryService.updateSummary` —
+  // see the `close` AUTH-NOTE above for why a decorator cannot state that rule.
+  @RequiredSvcScopes('svc:consultation:report:write')
   async updateSummary(
     @Param('id') id: string,
     @Param('summaryId') summaryId: string,
     @Body() request: UpdateSummaryRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
+    @Req() req: RequestWithAuth,
   ): Promise<SummaryResponse> {
     await this.verifyConsultationOwnership(id);
     // Header takes precedence over body when both are present (house
     // precedence, `department.controller.ts#update`).
     const effectiveRequest: UpdateSummaryRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
-    return this.summaryService.updateSummary(summaryId, effectiveRequest);
+    return this.summaryService.updateSummary(summaryId, effectiveRequest, { caller: this.callerOf(req) });
   }
 
   @ApiEndpoint({
@@ -1946,8 +2045,24 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request. `CLINICIAN_REQUIRED` — a machine credential named no clinician (a machine is never the attesting clinician; ' +
+      'it is recorded as the ACTOR beside them in the WORM `ATTEST` row); `CLINICIAN_NOT_ALLOWED` — a human named another ' +
+      'clinician without `SUPER_ADMIN`/`TENANT_ADMIN`, or an API key named someone other than the human it is bound to.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  // AUTH-NOTE: TASK-972 Lane 4 — the clinical SIGN-OFF, opened to the machine class on the
+  // SESSION-tier write scope (it drives the consultation to `SIGNED`, as `recording/stop` drives
+  // it to `DRAINING`). The attested clinician is NAMED on the body and validated imperatively in
+  // `SummaryService.approveSummary`; see the `close` AUTH-NOTE above.
+  @RequiredSvcScopes('svc:consultation:session:write')
   async approveSummary(
     @Param('id') id: string,
     @Param('contextItemId') contextItemId: string,
@@ -1955,6 +2070,7 @@ export class ConsultationController {
     // REQUIRED (folded from the `If-Match` header below when present).
     @Body() body: SummaryApprovalRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
+    @Req() req: RequestWithAuth,
   ): Promise<SummaryApprovalResponseDto> {
     await this.verifyConsultationOwnership(id);
     // Header takes precedence over body when both are present (house
@@ -1963,6 +2079,8 @@ export class ConsultationController {
     const result = await this.summaryService.approveSummary(contextItemId, {
       overrideSafetyFlag: body?.overrideSafetyFlag,
       expectedVersion,
+      clinicianUserId: body?.clinicianUserId,
+      caller: this.callerOf(req),
     });
     return new SummaryApprovalResponseDto(result);
   }
