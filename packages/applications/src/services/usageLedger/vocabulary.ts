@@ -10,8 +10,8 @@
  *
  * The two halves are governed DIFFERENTLY, and the asymmetry is deliberate:
  *
- *   - **Operations are CLOSED.** Thirteen values, listed below. `recordUsage`
- *     rejects anything else. Adding a fourteenth is a one-line change here plus
+ *   - **Operations are CLOSED.** Fifteen values, listed below. `recordUsage`
+ *     rejects anything else. Adding a sixteenth is a one-line change here plus
  *     a contract-doc line — cheap, reviewed, and visible to every lane.
  *
  *   - **Providers are OPEN but SHAPED.** A tenant admin can create an
@@ -23,7 +23,7 @@
  */
 
 /**
- * The thirteen operations. One per (capability, call shape) that an emitter can
+ * The fifteen operations. One per (capability, call shape) that an emitter can
  * produce.
  *
  * | operation            | emitted by                                   |
@@ -41,6 +41,8 @@
  * | `workflow.step` | — one durable/realtime workflow node, and the durable worker's own CPU for it |
  * | `storage.snapshot` | — the nightly per-(tenant, storage class) GB-day snapshot |
  * | `nlp.classify` | — NLP classification (diagnosis suggestions, topic, intent) |
+ * | `dna.analyze` | — the platform analyst's LLM call that extracts a clinician's writing style |
+ * | `dna.ingest` | — one accepted batch of writing samples (the API call that feeds the learning) |
  *
  * TASK-959 added the last two, and they are the first two that are NOT "an
  * inference call landed". `workflow.step` carries BOTH the inference a node
@@ -64,6 +66,17 @@ export const USAGE_OPERATIONS = [
   'workflow.step',
   'storage.snapshot',
   'nlp.classify',
+  // TASK-974 §9.2 (D-5) — the DNA writing-style plane. `dna.analyze` is the
+  // analyst agent's own `/generate` call; `dna.ingest` is the API call that
+  // decides whether one happens. They are kept APART from `generate` for the
+  // reason `nlp.classify` was kept apart from `ner.extract`: they are different
+  // product activities at different prices, and "spend by activity" cannot
+  // separate them afterwards. `dna.ingest` is the third operation (after
+  // `workflow.step`'s CPU half and `storage.snapshot`) that is not "an
+  // inference call landed" — it records what a caller SUBMITTED, which is the
+  // only measure of the ingest surface that exists before the job runs.
+  'dna.analyze',
+  'dna.ingest',
 ] as const;
 
 export type UsageOperation = (typeof USAGE_OPERATIONS)[number];
@@ -122,6 +135,22 @@ export const KNOWN_PROVIDERS = [
   // scanning "self-hosted server connection ids" for an LLM endpoint must not
   // find it there: there is no `AiProviderConnection` row behind this id.
   'harness',
+  // TASK-974 §9.2 — the GATEWAY itself, and it is a provider in the same sense
+  // `harness` is: it runs on the platform's own hardware, there is no
+  // `AiProviderConnection` row behind it, and it never appears on a token row.
+  // It is the `provider` of the `dna.ingest` rows (`REQUEST` / `CHARACTER` /
+  // `INGRESS_BYTE`) the DNA ingest surface emits, which measure what a caller
+  // SUBMITTED rather than what a model produced.
+  //
+  // Minted rather than borrowed: `built-in` is a real LLM
+  // `AiProviderConnection` ("in-process/bundled models"), so stamping it here
+  // would mix rows that name no model at all into that connection's token
+  // rollup — the silent dimension fork this whole module exists to prevent.
+  // The `storage.snapshot` precedent (`minio` / `postgres`) minted descriptive
+  // ids for the same reason; unlike those, this one is listed because it is
+  // also a SELF_HOSTED member below, and the `tei-embed` note records what
+  // happens when an id lands in one list and not the other.
+  'hope-api',
   // --- self-hosted engine ids ----------------------------------------------
   'whisper_cpp',
   'faster_whisper',
@@ -164,6 +193,11 @@ export const SELF_HOSTED_PROVIDER_IDS: ReadonlySet<string> = new Set([
   'harness',
   // TASK-957 F-9 — the platform's own TEI embeddings server (TASK-952/E).
   'tei-embed',
+  // TASK-974 §9.2 — the gateway's own `dna.ingest` rows. The emitter stamps
+  // `SELF_HOSTED` explicitly, so nothing depends on this today; it is listed
+  // so that the first caller to DERIVE a deployment from the id does not
+  // classify HOPE's own API as a cloud vendor.
+  'hope-api',
 ]);
 
 /**
