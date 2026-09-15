@@ -31,6 +31,8 @@ import {
   CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
+  CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
+  CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
   HARNESS_LOOP_EMERGENCY_STOP_KEY,
   CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
 } from '../../consultation/consultation-gates.constants';
@@ -185,6 +187,40 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     description:
       'Cron expression for how often `ConsultationTimeoutSweepService` checks for sweep-eligible consultations past `consultation.state.sessionTimeoutMinutes`. Default every 15 minutes.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
+  },
+  // TASK-972 Lane 8 (OD-6) — the PENDING_REVIEW leg's window. Same shape as
+  // `..sessionTimeoutMinutes`: a tuning knob, not a kill-switch, so
+  // `killSwitch` is intentionally omitted.
+  {
+    key: CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CONSULTATION_PIPELINE_CATEGORY,
+    label: 'Consultation review idle timeout (minutes)',
+    description:
+      'Minutes a consultation may sit in PENDING_REVIEW with no clinician activity before the scheduled sweep transitions it to TIMED_OUT. Deliberately NOT CLOSED_INCOMPLETE: TIMED_OUT is RECOVERABLE — `TIMED_OUT → SIGNED` is a legal transition and `SummaryService.approveSummary` already accepts it, so a clinician who reviews and submits hours later still signs the note, still closes the consultation, and still yields a training pair. Until this leg existed, PENDING_REVIEW was the one state nothing in the platform could clear (the general sweep excludes it; the gate-SLA escalation path only fires on a terminal harness gate abandon). Default 120 (2h). Consumed by `ConsultationTimeoutSweepService.sweepIdlePendingReview`.',
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY],
+  },
+  // TASK-972 Lane 8 (OD-7) — the OPEN leg's window. Same shape again.
+  {
+    key: CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: CONSULTATION_PIPELINE_CATEGORY,
+    label: 'Consultation open idle timeout (minutes)',
+    description:
+      'Minutes a consultation may sit in OPEN — never primed, never recorded — before the scheduled sweep transitions it to CLOSED_INCOMPLETE. OPEN was structurally unclosable before TASK-972 (its only outgoing edge was OPEN → PRIMED), so an abandoned pre-recording session leaked forever. TWO signals are required, not one: the row must have been untouched for the window AND no ContextItem may have been created inside it, because adding context does not bump `Consultation.updatedAt` and this target reaches only REOPENED. Default 120 (2h), live-tunable with no redeploy. Consumed by `ConsultationTimeoutSweepService.sweepIdleOpen`.',
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
   },
   // The RECORDING leg's own staleness window (TASK-932 OD-9, N). A tuning
   // knob, not a kill-switch: no on/off semantics, so `killSwitch` is
