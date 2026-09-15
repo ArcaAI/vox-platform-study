@@ -118,8 +118,7 @@ the single shared `INTERNAL_ACCESS_TOKEN`; the old per-service
 `TTS_SERVICE_TOKEN` is **retired** — there is now exactly one credential, so
 there is nothing to fall back to.
 
-## Endpoints
-
+### Endpoints
 All under the `/api/v1` prefix (Swagger at `/api/v1/docs`).
 
 | Method | Path | Purpose |

@@ -121,8 +121,7 @@ env wins, and CI/production read no env file at all.
 exempt — the single shared `INTERNAL_ACCESS_TOKEN` (the legacy
 `TEXT_SERVICE_TOKEN` is retired).
 
-## Frozen identifiers
-
+### Frozen identifiers
 These are **live** names, not leftovers to "fix":
 
 | Kind | Value |
@@ -140,8 +139,7 @@ Grafana dashboard **files**: `infrastructure/grafana/dashboards/text-overview.js
 `text-resilience.json`, `text-security.json`, `text-cache-friendliness.json`
 (dashboard **UIDs** match the file stems).
 
-## Gateway
-
+### Gateway
 | Surface | Location |
 |---|---|
 | Raw LLM proxy | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text-generations')`) |

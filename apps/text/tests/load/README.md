@@ -13,8 +13,7 @@ response codes/headers.
 |---|---|
 | `locustfile.py` | Four Locust user classes (`BaselineUser`, `RateLimitUser`, `ConcurrencyUser`, `StreamingUser`) tagged for selective runs |
 
-## Prerequisites
-
+### Prerequisites
 - Locust installed (`pip install locust` or `uv pip install -e ".[load]"` from `apps/text`)
 - `apps/text` running on port 8862 (`pnpm text:dev`)
 - An LLM backend the tenant/connection resolves to (e.g. LM Studio with a model loaded)

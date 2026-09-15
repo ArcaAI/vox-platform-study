@@ -167,8 +167,7 @@ any name other than the exact `cadence-fast` string silently gets no
 punctuation restoration rather than an error. Enable/placement/cache-dir are
 control-plane- or agent-owned, not a single global env flag.
 
-## API endpoints
-
+### API endpoints
 Health lives under `/api/v1`; internal, transcription, streaming and
 voice-profile routers mount their own prefixes.
 
