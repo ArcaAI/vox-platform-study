@@ -289,3 +289,28 @@ describe('the monthly sweep skips a tenant that cannot pay for it', () => {
     await expect(bare.regenerateAllDoctors()).resolves.toMatchObject({ jobsQueued: 2, errors: [] });
   });
 });
+
+/**
+ * The defect class this suite cannot otherwise catch.
+ *
+ * Every dependency this lane added is `@Optional()` — deliberately, so the positional fixtures
+ * keep their arity — which means a module that does not IMPORT the provider composes cleanly,
+ * boots cleanly, passes every unit test above, and meters nothing at all in production. The
+ * `IMetricsService` half is the sharpest version: `CommonServiceModule` does not re-export it,
+ * so the counter that exists to make a lost emission alertable would itself have been silently
+ * absent.
+ */
+describe('the module actually composes what the service optionally injects', () => {
+  it('imports the ledger, the two enforcement modules and the metrics module', async () => {
+    const { DnaWritingStyleServiceModule } = await import('../dna-writing-style.service.module');
+    const imports = ((Reflect.getMetadata('imports', DnaWritingStyleServiceModule) as Array<{ name?: string } | undefined>) ?? []).map(
+      (entry) => entry?.name,
+    );
+
+    expect(imports).toContain('UsageLedgerServiceModule'); // IUsageLedgerService + IComputeDeviceResolver
+    expect(imports).toContain('EntitlementsServiceModule'); // assertMeterQuota -> 429
+    expect(imports).toContain('BillingServiceModule'); // assertSpendLimit -> 402
+    expect(imports).toContain('MetricsServiceModule'); // hope_usage_emission_failed_total
+    expect(imports).toContain('CoreDatabaseModule'); // CoreUnitOfWorkService — the shared transaction
+  });
+});

@@ -18,6 +18,7 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { BillingServiceModule } from '../billing/billing.service.module';
+import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
 
 @Module({
   imports: [
@@ -54,6 +55,12 @@ import { BillingServiceModule } from '../billing/billing.service.module';
     // spent: `assertMeterQuota(…, 'monthlyLlmTokens')` (429) and `assertSpendLimit` (402).
     EntitlementsServiceModule,
     BillingServiceModule,
+    // `IMetricsService` for the `hope_usage_emission_failed_total` counter (TASK-957 F-5).
+    // Imported EXPLICITLY — it is not a `@Global()` module and `CommonServiceModule` does not
+    // re-export it, so without this line the counter would silently be `null` in production and
+    // a lost DNA emission would be visible only in a log line, which is the exact finding that
+    // counter exists to answer.
+    MetricsServiceModule,
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [
