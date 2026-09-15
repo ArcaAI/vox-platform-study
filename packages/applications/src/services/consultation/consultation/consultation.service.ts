@@ -37,6 +37,12 @@ import {
   PaginatedConsultationResponse,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
+import {
+  assertAttributedClinicianInTenant,
+  resolveAttributedClinician,
+  tenantRoleReaderFor,
+  type ClinicalCaller,
+} from '../summary/clinician-attribution';
 import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant, isSuperAdmin } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -1732,7 +1738,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * persisted) status write — only the `SIGNED` write itself
    * (`summary.service.ts#approveSummary`) stays fail-closed.
    */
-  private async appendTransitionAudit(input: { tenantId: string; consultationId: string; action: HarnessAuditAction; actor: string }): Promise<void> {
+  private async appendTransitionAudit(input: {
+    tenantId: string;
+    consultationId: string;
+    action: HarnessAuditAction;
+    actor: string;
+    /** TASK-972 Lane 1 — the CREDENTIAL that submitted the transition, when it is not the actor. */
+    submittedBy?: string | null;
+  }): Promise<void> {
     if (!this.harnessAuditService) return;
     try {
       await this.harnessAuditService.append({
@@ -1744,7 +1757,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
         sensorScores: {},
         citations: [],
         clinicianId: input.actor === 'system' ? null : input.actor,
-        createdBy: input.actor === 'system' ? null : input.actor,
+        // `clinicianId` is WHOSE transition this is; `createdBy` is WHICH credential submitted
+        // it. They differ only when a machine acts for a named clinician (TASK-972 Lane 1).
+        createdBy: input.submittedBy ?? (input.actor === 'system' ? null : input.actor),
       });
     } catch (error) {
       this.logger.warn({
@@ -1816,7 +1831,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` (or the superseded, dead
    * `CLOSED`) short-circuits with no write.
    */
-  async closeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
+  async closeConsultation(
+    id: string,
+    expectedVersion?: number,
+    options?: { clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
@@ -1836,7 +1855,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
       return ConsultationDtoMapper.toResponseWithContext(consultation);
     }
 
-    const actor = this.requestUserId ?? 'system';
+    // TASK-972 Lane 1 — WHOSE close this is, and WHICH credential submitted it. Resolved AFTER
+    // the terminal short-circuit above: an already-closed consultation is answered, not re-ruled.
+    const { clinicianId: actor, caller: submitter } = await this.resolveAttributedActor(tenantId, options?.clinicianUserId, options?.caller);
     const target = consultation.status === ConsultationStatus.SIGNED ? ConsultationStatus.CLOSED_COMPLETE : ConsultationStatus.CLOSED_INCOMPLETE;
     const worm =
       target === ConsultationStatus.CLOSED_COMPLETE ? HarnessAuditAction.SESSION_CLOSED_COMPLETE : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
@@ -1845,22 +1866,71 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // already ruled out every self-pair), so no `applied` guard is needed.
     this.applyTransition(consultation, target, actor, 'closeConsultation');
 
-    if (this.requestUserId) {
-      consultation.updatedBy = this.requestUserId;
-    }
+    consultation.updatedBy = actor;
     const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { action: 'closeConsultation', status: target },
+      responsibleEntityId: actor,
+      data: {
+        action: 'closeConsultation',
+        status: target,
+        actorPrincipalId: submitter.principalId,
+        actorCredentialClass: submitter.credentialClass,
+      },
     });
-    await this.appendTransitionAudit({ tenantId, consultationId: id, action: worm, actor });
+    await this.appendTransitionAudit({ tenantId, consultationId: id, action: worm, actor, submittedBy: submitter.principalId || actor });
 
     // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
     // bumps _version, so returning `consultation` handed the caller version N while the
     // row was already at N+1 — any client chaining If-Match from this response got an
     // immediate 412. Mirrors the house pattern in department.service.ts:318.
     return ConsultationDtoMapper.toResponseWithContext(updated);
+  }
+
+  /**
+   * TASK-972 Lane 1 — the clinician a lifecycle write is attributed to, and the credential that
+   * submitted it. Named `resolveAttributedActor` rather than `resolveActingClinician` because
+   * that name is already taken here by TASK-950's OPEN-time resolver, which answers a different
+   * question (who the consultation BELONGS to, from a context payload). The same three steps as
+   * `SummaryService.resolveActingClinician`, and
+   * deliberately the same implementation (`consultation/summary/clinician-attribution.ts`): a
+   * clinician who may sign a note and a clinician who may close its session are the same person,
+   * and two copies of that rule would drift.
+   */
+  private async resolveAttributedActor(
+    tenantId: string,
+    named: string | undefined,
+    caller: ClinicalCaller | undefined,
+  ): Promise<{ clinicianId: string; caller: ClinicalCaller }> {
+    const serviceAccount = this.requestServiceAccount;
+    const effectiveCaller: ClinicalCaller =
+      caller ??
+      (serviceAccount
+        ? { credentialClass: 'service-account', principalId: serviceAccount.id }
+        : { credentialClass: 'jwt', principalId: this.requestUserId ?? '' });
+
+    const clinicianId = await resolveAttributedClinician({
+      named,
+      caller: effectiveCaller,
+      tenantId,
+      requestUser: this.requestUser,
+      readTenantRoles: tenantRoleReaderFor(this.userRoleAssignmentRepository),
+    });
+
+    if (clinicianId !== this.requestUserId) {
+      await assertAttributedClinicianInTenant(
+        {
+          userRoleAssignmentRepository: this.userRoleAssignmentRepository,
+          userDepartmentRepository: this.userDepartmentRepository,
+          userRepository: this.userRepository,
+        },
+        clinicianId,
+        tenantId,
+      );
+    }
+
+    return { clinicianId, caller: effectiveCaller };
   }
 
   /**
