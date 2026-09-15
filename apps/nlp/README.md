@@ -1,792 +1,198 @@
-# HOPE Natural Language Processing (NLP) Service
+# NLP — medical NLP service
 
-A production-ready medical NLP service built with FastAPI, providing text classification, token classification (NER), medical diagnosis suggestion, and text correction capabilities using state-of-the-art transformer models.
+Python/FastAPI service (port **8864**, package `nlp`) providing text
+classification, token classification (NER), medical diagnosis suggestion,
+text correction, document text extraction, and the guardrail-class inference
+routes (PII detection, safety classification, entailment scoring) for the
+HOPE platform. The gateway (`apps/api`) fronts this service; it is reached by
+the gateway and by peer Python services, never directly by a browser.
 
-## 🚀 Quick Start
+**No model id is hardcoded.** Text/token classification and medical
+suggestion all take their `model_name` from the caller (the gateway's
+resolved agent/model selection) — this service has no compiled-in default
+model, and a request that omits one gets a fail-closed error rather than a
+silently-substituted classifier.
 
-### Using Docker (Recommended)
+## Layout
+
+```
+apps/nlp/
+|-- src/nlp/
+|   |-- main.py                  # entrypoint: uvicorn.run("nlp.app:get_app", factory=True)
+|   |-- app.py                   # get_app() factory: FastAPI app, middleware, routers
+|   |-- lifespan.py              # ASGI lifespan (startup/shutdown)
+|   |-- dependencies.py          # FastAPI DI providers (model cache, batchers, extractors)
+|   |-- torch_runtime.py         # CPU thread config; reads the CONTAINER's CFS quota, not os.cpu_count()
+|   |-- core/
+|   |   |-- config.py            # NLPServiceConfig (env_prefix NLP_) + 6 per-concern sub-configs
+|   |   |-- batching.py          # micro-batching queues (bulk + interactive lanes)
+|   |   |-- concurrency.py       # ResizableSemaphore — bounded concurrent forward passes
+|   |   |-- device.py            # device resolution (cpu/auto/cuda/mps)
+|   |   |-- effective_config.py  # control-plane pull client (nlp.* registry keys)
+|   |   `-- internal_auth.py     # boot-time refusal when no internal token is configured in prod
+|   |-- api/
+|   |   |-- middleware/auth.py   # ServiceAuthMiddleware (X-Service-Token)
+|   |   |-- tenant.py            # X-Tenant-Id header assertion helper
+|   |   `-- v1/
+|   |       |-- rest/            # classify, correct, diagnosis, extract, guard, models, monitoring
+|   |       `-- ws/               # classify (real-time streaming classification)
+|   |-- services/                 # text_classifier, token_classifier, medical_suggester, text_corrector,
+|   |                              #   gliner2_guard, entailment_scorer, document_extractor, model_cache, ...
+|   `-- schemas/                  # request/response pydantic models
+|-- data/dictionaries/{en,ml}/    # SymSpell medical terminology dictionaries
+|-- tests/                        # flat pytest layout (top-level, NOT src/nlp/tests)
+|-- docs/                         # 01-06 numbered guides (see docs/README.md)
+|-- Dockerfile
+`-- pyproject.toml
+```
+
+There is no `env.example` in this directory; the generated env template is
+`.env.sample` (see Configuration below).
+
+## Commands
 
 ```bash
-# 1. Clone and navigate to NLP service
-git clone <repository-url>
-cd apps/nlp
-
-# 2. Configure environment
-cp env.example .env
-# Edit .env with your configuration
-
-# 3. Build and run with Docker
-docker build -t hope-nlp:latest .
-docker run -d \
-  --name hope-nlp \
-  -p 8864:8864 \
-  --env-file .env \
-  hope-nlp:latest
-
-# 4. Verify service is running
-curl http://localhost:8864/api/v1/health
+pnpm nlp:setup            # install this service into arcaenv (or :apple / :gpu / :cpu)
+pnpm nlp:dev              # scripts/dev-service.sh nlp
+pnpm nlp:dev:watch        # scoped reload
+pnpm nlp:test             # pytest apps/nlp/tests/
+pnpm nlp:test:cov         # with coverage
+pnpm nlp:test:managed     # scripts/test-run.sh nlp (infra + app handled)
+pnpm nlp:lint             # ruff
+pnpm nlp:lint:fix
+pnpm nlp:typecheck        # mypy
+pnpm nlp:format           # black
+pnpm nlp:format:check
 ```
 
-### Local Development
-
-```bash
-# 1. Install Python 3.11+ and UV package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. Install dependencies
-cd apps/nlp
-uv sync
-
-# 3. Configure environment variables
-cp env.example .env
-# Edit .env with your settings
-
-# 4. Run the service
-uv run python src/nlp/main.py
-
-# 5. Access the service
-open http://localhost:8864/docs
-```
-
-## 📋 Features
-
-### Core NLP Functionality
-
-- **Text Classification**: Categorize medical documents into 11 emotion categories
-  - Uses `michellejieli/emotion_text_classifier` model
-  - Supports emotion detection: anger, fear, joy, love, sadness, surprise, etc.
-  - Confidence scoring with probability distributions
-
-- **Token Classification (NER)**: Extract medical entities from text
-  - Uses `blaze999/Medical-NER` model
-  - Identifies medical entities: diseases, symptoms, treatments, medications
-  - BIO tagging with position tracking
-
-- **Medical Diagnosis Suggestion**: AI-powered disease prediction
-  - Uses `shanover/symps_disease_bert_v3_c41` model
-  - Analyzes symptoms to suggest possible conditions
-  - Confidence-based ranking
-
-- **Text Correction**: Spelling and terminology correction
-  - SymSpell-based correction engine
-  - Medical terminology dictionaries (English & Malayalam)
-  - Customizable edit distance and suggestion limits
-
-### API Capabilities
-
-- **REST API**: Synchronous processing endpoints
-- **WebSocket API**: Real-time streaming classification
-- **Multi-language Support**: English and Malayalam
-- **Batch Processing**: Process multiple texts efficiently
-- **Configurable Models**: GPU/CPU support with FP16 precision
-
-### Enterprise Features
-
-- **Production Ready**: Docker containerization with multi-stage builds
-- **Observability**: OpenTelemetry tracing, Prometheus metrics, structured logging
-- **Health Monitoring**: Comprehensive health checks and readiness probes
-- **Security**: Non-root containers, distroless production images
-- **Configuration Management**: Comprehensive environment-based configuration
-
-## 🏗️ Architecture
-
-The service follows a clean, modular architecture:
-
-```
-src/nlp/
-├── api/                          # API Layer
-│   └── v1/
-│       ├── rest/                 # REST endpoints
-│       │   ├── classify.py       # Text/Token classification
-│       │   ├── correct.py        # Text correction
-│       │   ├── diagnosis.py      # Medical diagnosis
-│       │   └── monitoring.py     # Health & metrics
-│       └── ws/                   # WebSocket endpoints
-│           └── classify.py       # Real-time classification
-├── core/                         # Core Configuration
-│   ├── config.py                # Configuration management
-│   ├── logging.py               # Structured logging
-│   ├── observability.py         # OpenTelemetry setup
-│   └── websocket_manager.py     # WebSocket management
-├── services/                     # Business Logic
-│   ├── text_classifier.py       # Text classification service
-│   ├── token_classifier.py      # Token classification service
-│   ├── medical_suggester.py     # Medical diagnosis service
-│   └── text_corrector.py        # Text correction service
-├── schemas/                      # Data Models
-│   ├── classification.py        # Classification models
-│   ├── diagnosis.py             # Diagnosis models
-│   ├── correction.py            # Correction models
-│   ├── common.py                # Shared models
-│   └── health.py                # Health check models
-├── infra/                       # Infrastructure
-├── dependencies.py              # Dependency injection
-├── lifespan.py                  # Application lifecycle
-├── utils.py                     # Utility functions
-├── app.py                       # FastAPI app factory
-└── main.py                      # Application entry point
-```
-
-## 🔧 Technology Stack
-
-### Core Technologies
-
-- **Runtime**: Python 3.11+ with UV package manager
-- **Framework**: FastAPI with Uvicorn ASGI server
-- **ML Framework**: Transformers (Hugging Face) + PyTorch
-- **NER Models**: BERT-based token classification
-- **Text Classification**: Emotion classification transformer
-- **Spelling Correction**: SymSpellPy with medical dictionaries
-
-### ML Models
-
-| Feature              | Model                                   | Task                              |
-| -------------------- | --------------------------------------- | --------------------------------- |
-| Text Classification  | `michellejieli/emotion_text_classifier` | 11 emotion categories             |
-| Token Classification | `blaze999/Medical-NER`                  | Medical entity extraction         |
-| Medical Diagnosis    | `shanover/symps_disease_bert_v3_c41`    | Disease suggestion (41 classes)   |
-| Text Correction      | SymSpell + Medical Dictionaries         | Spelling & terminology correction |
-
-### Infrastructure
-
-- **Containerization**: Docker with multi-stage builds (debug + production)
-- **Production Image**: Distroless Python for minimal attack surface
-- **GPU Support**: CUDA-enabled for GPU acceleration
-- **Observability**: OpenTelemetry, Prometheus, Jaeger
-- **Logging**: Structured JSON logging with correlation IDs
-
-## 📊 Performance
-
-### Model Performance
-
-- **Text Classification**: ~100-200ms per text
-- **Token Classification**: ~200-300ms per text
-- **Medical Diagnosis**: ~150-250ms per text
-- **Text Correction**: ~50-100ms per text
-
-### Resource Usage
-
-- **CPU Mode**: 1-2 GB RAM, 500m-1 core
-- **GPU Mode**: 2-4 GB RAM + 2-4 GB VRAM
-- **Disk**: ~2 GB for models (cached from Hugging Face)
-
-### Scalability
-
-- **Concurrent Requests**: 10-50 per instance
-- **Batch Processing**: Up to 100 texts per batch
-- **GPU Acceleration**: 2-5x faster with CUDA support
-
-## 🔗 API Endpoints
-
-### Health & Monitoring
-
-- `GET /` - Service information
-- `GET /api/v1/health` - Health check with model status
-- `GET /metrics` - Prometheus metrics
-- `GET /docs` - Interactive API documentation (Swagger UI)
-- `GET /redoc` - Alternative API documentation (ReDoc)
-
-### Text Classification
-
-- `POST /api/v1/classify/text` - Classify text into emotion categories
-
-**Request:**
-
-```json
-{
-  "text": "The patient is very happy with the treatment results",
-  "language": "en"
-}
-```
-
-**Response:**
-
-```json
-{
-  "predicted_label": "joy",
-  "confidence": 0.92,
-  "probabilities": {
-    "joy": 0.92,
-    "love": 0.05,
-    "surprise": 0.02,
-    "other": 0.01
-  },
-  "model_version": "1.0.0"
-}
-```
-
-### Token Classification (NER)
-
-- `POST /api/v1/classify/tokens` - Extract medical entities from text
-
-**Request:**
-
-```json
-{
-  "text": "Patient has diabetes and hypertension with chest pain",
-  "aggregation_strategy": "simple",
-  "language": "en"
-}
-```
-
-**Response:**
-
-```json
-{
-  "entities": [
-    {
-      "id": "uuid-1",
-      "text": "diabetes",
-      "normalized_text": "diabetes",
-      "entity_type": "DISEASE",
-      "confidence": 0.95,
-      "position": {
-        "start": 12,
-        "end": 20
-      },
-      "model_version": "1.0.0"
-    },
-    {
-      "id": "uuid-2",
-      "text": "hypertension",
-      "entity_type": "DISEASE",
-      "confidence": 0.93,
-      "position": {
-        "start": 25,
-        "end": 37
-      }
-    },
-    {
-      "id": "uuid-3",
-      "text": "chest pain",
-      "entity_type": "SYMPTOM",
-      "confidence": 0.89,
-      "position": {
-        "start": 43,
-        "end": 53
-      }
-    }
-  ],
-  "model_version": "1.0.0"
-}
-```
-
-### Medical Diagnosis Suggestion
-
-- `POST /api/v1/diagnosis/suggest` - Suggest possible medical conditions
-
-**Request:**
-
-```json
-{
-  "text": "Patient complains of fever, cough, and difficulty breathing for 3 days",
-  "min_confidence": 0.1,
-  "language": "en"
-}
-```
-
-**Response:**
-
-```json
-{
-  "suggestions": [
-    {
-      "disease": "Pneumonia",
-      "confidence": 0.78
-    },
-    {
-      "disease": "COVID-19",
-      "confidence": 0.65
-    },
-    {
-      "disease": "Bronchitis",
-      "confidence": 0.52
-    }
-  ],
-  "symptoms_analyzed": ["fever", "cough", "difficulty breathing"],
-  "model_version": "1.0.0"
-}
-```
-
-### Text Correction
-
-- `POST /api/v1/correct/text` - Correct spelling and terminology
-
-**Request:**
-
-```json
-{
-  "type": "spelling",
-  "text": "paracetmol for fver",
-  "language": "en",
-  "min_confidence": 0.7,
-  "include_alternatives": true
-}
-```
-
-**Response:**
-
-```json
-{
-  "original_text": "paracetmol for fver",
-  "corrected_text": "paracetamol for fever",
-  "language": "en",
-  "alternatives": ["paracetamol -> paracetamol", "fver -> fever"]
-}
-```
-
-### WebSocket Endpoints
-
-- `WS /ws/classify/text/{session_id}` - Real-time text classification stream
-
-**WebSocket Message (Incoming):**
-
-```json
-{
-  "text": "Patient is experiencing severe anxiety",
-  "language": "en"
-}
-```
-
-**WebSocket Message (Outgoing):**
-
-```json
-{
-  "predicted_label": "fear",
-  "confidence": 0.88,
-  "probabilities": {
-    "fear": 0.88,
-    "sadness": 0.08,
-    "other": 0.04
-  },
-  "model_version": "1.0.0"
-}
-```
-
-## 📚 Documentation
-
-Comprehensive documentation is available in the `docs/` directory:
-
-### Core Documentation
-
-- **[Architecture Overview](docs/01-architecture.md)** - System architecture and design patterns
-- **[API Reference](docs/02-api-reference.md)** - Complete API documentation with examples
-- **[Model Documentation](docs/03-models.md)** - ML models, capabilities, and performance
-- **[Development Guide](docs/04-development-guide.md)** - Development setup and guidelines
-
-### Configuration & Deployment
-
-- **[Configuration Guide](docs/05-configuration.md)** - Environment variables and settings
-- **[Deployment Guide](docs/06-deployment.md)** - Production deployment instructions
-- **[Docker Guide](docs/07-docker.md)** - Docker build and deployment
-
-### Advanced Topics
-
-- **[WebSocket Guide](docs/08-websocket.md)** - Real-time WebSocket communication
-- **[Observability Guide](docs/09-observability.md)** - Monitoring, metrics, and tracing
-- **[Performance Tuning](docs/10-performance.md)** - Optimization and scaling
-
-## 🔒 Security
-
-### Security Features
-
-- **Non-root Containers**: Runs as user ID 1001 (non-privileged)
-- **Distroless Production**: Minimal attack surface with distroless base image
-- **Read-only Filesystem**: Immutable container filesystem
-- **Security Headers**: CORS, CSP, and other security headers
-- **Input Validation**: Strict Pydantic validation for all inputs
-- **Model Security**: Models loaded from trusted Hugging Face Hub
-
-### Security Best Practices
-
-1. **Environment Variables**: Use secrets management for sensitive data
-2. **HTTPS/WSS**: Enable TLS for all communications in production
-3. **Rate Limiting**: Implement at API Gateway level
-4. **Model Validation**: Verify model checksums and signatures
-5. **Regular Updates**: Keep dependencies and base images updated
-6. **Vulnerability Scanning**: Regular security scans of Docker images
-
-## 🚀 Deployment
-
-### Docker Deployment
-
-```bash
-# Build production image
-docker build --target production -t hope-nlp:1.0.0 .
-
-# Run with environment variables
-docker run -d \
-  --name hope-nlp-prod \
-  -p 8864:8864 \
-  -e NLP_HOST=0.0.0.0 \
-  -e NLP_PORT=8864 \
-  -e NLP_ENVIRONMENT=production \
-  -e TEXT_CLASSIFIER_USE_GPU=true \
-  -e TOKEN_CLASSIFIER_USE_GPU=true \
-  --gpus all \
-  --restart unless-stopped \
-  --memory="4g" \
-  --cpus="2.0" \
-  hope-nlp:1.0.0
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-
-services:
-  nlp:
-    build:
-      context: ./apps/nlp
-      dockerfile: Dockerfile
-      target: production
-    container_name: hope-nlp
-    ports:
-      - '8864:8864'
-    environment:
-      - NLP_ENVIRONMENT=production
-      - TEXT_CLASSIFIER_USE_GPU=true
-      - TOKEN_CLASSIFIER_USE_GPU=true
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:8864/api/v1/health']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-### Production Considerations
-
-1. **GPU Support**: Enable GPU for 2-5x performance improvement
-2. **Resource Limits**: Set appropriate CPU and memory limits
-3. **Health Checks**: Configure health check probes
-4. **Logging**: Configure log aggregation (ELK, Loki, etc.)
-5. **Monitoring**: Set up Prometheus + Grafana dashboards
-6. **Scaling**: Use horizontal pod autoscaling based on CPU/memory
-
-For detailed deployment instructions, see the [Deployment Guide](docs/06-deployment.md).
-
-## 🧪 Testing
-
-### Running Tests
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
-
-# Run specific test file
-uv run pytest tests/test_text_classifier.py -v
-
-# Run integration tests
-uv run pytest tests/integration/ -v
-```
-
-### Test Structure
-
-```
-tests/
-├── unit/                        # Unit tests
-│   ├── test_text_classifier.py
-│   ├── test_token_classifier.py
-│   ├── test_medical_suggester.py
-│   └── test_text_corrector.py
-├── integration/                 # Integration tests
-│   ├── test_api.py
-│   └── test_websocket.py
-├── fixtures/                    # Test fixtures
-│   └── sample_data.py
-└── conftest.py                 # Pytest configuration
-```
-
-### API Testing
-
-```bash
-# Using curl
-curl -X POST http://localhost:8864/api/v1/classify/text \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Patient is very happy", "language": "en"}'
-
-# Using httpie
-http POST localhost:8864/api/v1/classify/tokens \
-  text="Patient has diabetes" \
-  aggregation_strategy=simple \
-  language=en
-```
-
-## 📈 Monitoring & Observability
-
-### Available Metrics
-
-**Service Metrics:**
-
-- `nlp_requests_total` - Total requests by endpoint and status
-- `nlp_request_duration_seconds` - Request processing latency
-- `nlp_active_requests` - Currently processing requests
-- `nlp_model_inference_duration_seconds` - ML model inference time
-
-**Model Metrics:**
-
-- `nlp_text_classification_total` - Text classification requests
-- `nlp_token_classification_total` - Token classification requests
-- `nlp_diagnosis_suggestions_total` - Diagnosis suggestion requests
-- `nlp_text_corrections_total` - Text correction requests
-- `nlp_model_load_duration_seconds` - Model loading time
-
-**Resource Metrics:**
-
-- `nlp_cpu_usage_percent` - CPU usage percentage
-- `nlp_memory_usage_bytes` - Memory usage in bytes
-- `nlp_gpu_memory_usage_bytes` - GPU memory usage (if available)
-
-### Health Monitoring
-
-```bash
-# Basic health check
-curl http://localhost:8864/api/v1/health
-
-# Response
-{
-  "status": "healthy",
-  "service": "nlp",
-  "version": "0.1.0",
-  "models": {
-    "text_classifier": "loaded",
-    "token_classifier": "loaded",
-    "medical_suggester": "loaded",
-    "text_corrector": "loaded"
-  },
-  "timestamp": "2024-01-01T10:00:00Z"
-}
-
-# Prometheus metrics
-curl http://localhost:8864/metrics
-```
-
-### Logging
-
-Structured JSON logging with correlation IDs:
-
-```python
-from nlp.core.logging import get_logger
-
-logger = get_logger(__name__)
-
-logger.info("Processing classification request", extra={
-    "model": "text_classifier",
-    "text_length": 150,
-    "language": "en",
-    "confidence": 0.92
-})
-```
-
-## 🤝 Contributing
-
-### Development Setup
-
-1. Fork and clone the repository
-2. Install dependencies: `uv sync`
-3. Configure environment: `cp env.example .env`
-4. Run tests: `uv run pytest`
-5. Start development server: `uv run python src/nlp/main.py`
-
-### Code Standards
-
-- **Type Hints**: Use type hints for all functions
-- **Docstrings**: Google-style docstrings for all public APIs
-- **Testing**: Maintain >80% code coverage
-- **Linting**: Code must pass ruff and black checks
-- **Async/Await**: Use async patterns for I/O operations
-
-### Pull Request Process
-
-1. Create a feature branch from `main`
-2. Implement changes with tests
-3. Update documentation
-4. Run full test suite
-5. Submit PR with clear description
-
-## 📝 Configuration
-
-### Required Environment Variables
-
-```bash
-# Service Configuration
-NLP_NAME=nlp
-NLP_VERSION=0.1.0
-NLP_NAMESPACE=hope
-NLP_ENVIRONMENT=development  # development, staging, production
-NLP_HOST=0.0.0.0
-NLP_PORT=8864
-NLP_WORKERS=1
-NLP_LOG_LEVEL=INFO
-
-# Text Classification Model
-TEXT_CLASSIFIER_MODEL_NAME=michellejieli/emotion_text_classifier
-TEXT_CLASSIFIER_MODEL_VERSION=1.0.0
-TEXT_CLASSIFIER_MAX_SEQUENCE_LENGTH=512
-TEXT_CLASSIFIER_BATCH_SIZE=16
-TEXT_CLASSIFIER_USE_GPU=true
-TEXT_CLASSIFIER_CONFIDENCE_THRESHOLD=0.6
-
-# Token Classification Model
-TOKEN_CLASSIFIER_MODEL_NAME=blaze999/Medical-NER
-TOKEN_CLASSIFIER_MODEL_VERSION=1.0.0
-TOKEN_CLASSIFIER_MAX_SEQUENCE_LENGTH=512
-TOKEN_CLASSIFIER_BATCH_SIZE=16
-TOKEN_CLASSIFIER_USE_GPU=true
-TOKEN_CLASSIFIER_AGGREGATION_STRATEGY=simple
-TOKEN_CLASSIFIER_CONFIDENCE_THRESHOLD=0.5
-
-# Medical Diagnosis Suggester
-MEDICAL_SUGGESTER_MODEL_NAME=shanover/symps_disease_bert_v3_c41
-MEDICAL_SUGGESTER_MODEL_VERSION=1.0.0
-MEDICAL_SUGGESTER_USE_GPU=true
-MEDICAL_SUGGESTER_CONFIDENCE_THRESHOLD=0.5
-
-# Text Corrector
-SPELLING_CORRECTOR_DICTIONARY_PATH=./data/dictionaries
-SPELLING_CORRECTOR_MAX_EDIT_DISTANCE=2
-SPELLING_CORRECTOR_PREFIX_LENGTH=7
-SPELLING_CORRECTOR_MAX_SUGGESTIONS=5
-
-# Security
-SECURITY_CORS_ORIGINS=["*"]
-SECURITY_CORS_METHODS=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-
-# WebSocket
-WEBSOCKET_MAX_CONNECTIONS=100
-WEBSOCKET_CONNECTION_TIMEOUT=300
-WEBSOCKET_HEARTBEAT_INTERVAL=30
-
-# Observability
-OTEL_SERVICE_NAME=hope-nlp
-OTEL_SERVICE_VERSION=1.0.0
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-OTEL_TRACES_ENABLED=true
-OTEL_METRICS_ENABLED=true
-```
-
-For a complete list of configuration options, see the [Configuration Guide](docs/05-configuration.md).
-
-## ❓ Troubleshooting
-
-### Common Issues
-
-#### Service Won't Start
-
-```bash
-# Check Python version
-python --version  # Must be 3.11+
-
-# Verify dependencies
-uv sync
-
-# Check environment variables
-cat .env
-
-# View logs
-tail -f logs/nlp.log
-```
-
-#### Model Loading Failures
-
-```bash
-# Clear Hugging Face cache
-rm -rf ~/.cache/huggingface/
-
-# Manually download models
-python -c "from transformers import AutoModel; AutoModel.from_pretrained('michellejieli/emotion_text_classifier')"
-
-# Check GPU availability
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-#### Out of Memory Errors
-
-```bash
-# Reduce batch size in .env
-TEXT_CLASSIFIER_BATCH_SIZE=8
-TOKEN_CLASSIFIER_BATCH_SIZE=8
-
-# Disable GPU if needed
-TEXT_CLASSIFIER_USE_GPU=false
-TOKEN_CLASSIFIER_USE_GPU=false
-
-# Use CPU mode
-docker run --memory="2g" ...
-```
-
-#### WebSocket Connection Issues
-
-```bash
-# Test WebSocket connection
-wscat -c ws://localhost:8864/ws/classify/text/test-session
-
-# Check active connections
-curl http://localhost:8864/api/v1/health
-
-# View WebSocket logs
-docker logs hope-nlp | grep websocket
-```
-
-For more troubleshooting help, see the [Development Guide](docs/04-development-guide.md).
-
-## 📄 License
-
-This project is part of the HOPE platform. See the main repository for license information.
-
-## 🔗 Related Projects
-
-- **HOPE API Gateway**: Central API gateway and authentication
-- **HOPE STT Service**: Speech-to-Text companion service
-- **HOPE TTS Service**: Text-to-Speech companion service
-- **HOPE TEXT Service**: Medical summarization service
-- **HOPE Infrastructure**: Shared infrastructure components
-
-## 📞 Support
-
-For support and questions:
-
-- Check the [documentation](docs/) for detailed guides
-- Review the [troubleshooting section](#-troubleshooting) for common issues
-- Open an issue in the repository for bugs or feature requests
-- Contact the development team for enterprise support
-
----
-
-## 📊 Service Status
-
-**Current Status**: Production Ready ✅
-**Version**: 0.1.0
-**Python**: 3.11+
-**Framework**: FastAPI
-**ML Framework**: Transformers (PyTorch)
-**Deployment**: Docker with GPU support
-**Last Updated**: January 2025
-
-## 🎯 Quick Feature Summary
-
-✅ **Text Classification** (11 emotion categories)
-✅ **Token Classification** (Medical NER)
-✅ **Medical Diagnosis Suggestion** (41 disease classes)
-✅ **Text Correction** (Spelling + Medical terminology)
-✅ **REST API** (Synchronous processing)
-✅ **WebSocket API** (Real-time streaming)
-✅ **Multi-language Support** (English + Malayalam)
-✅ **GPU Acceleration** (2-5x performance boost)
-✅ **Production Ready** (Docker + Observability)
-✅ **Comprehensive Documentation** (10 detailed guides)
+There is no `pnpm nlp:test:unit`, `:integration` or `:e2e` — `tests/` is a
+single flat suite (with a `tests/load/` subfolder for a throughput test), run
+in full by `pnpm nlp:test`.
+
+CI jobs: `test-nlp`, `build-nlp`.
+
+## How it works
+
+**Startup is factory-based**, unlike the other Python services here:
+`main.py` calls `uvicorn.run("nlp.app:get_app", factory=True, lifespan="on")`
+rather than importing a built `app` object. `get_app()` (`app.py`) asserts an
+internal access token is configured before doing anything else (refuses to
+start in production with none set; local dev logs an error and continues),
+builds the `FastAPI` instance with `lifespan` from `lifespan.py`, adds
+`ServiceAuthMiddleware` then CORS, mounts Prometheus, and includes
+`api.api_router` (which nests `rest_api_router_v1` at `/api/v1` and
+`ws_api_router_v1` at `/ws`).
+
+**Settings are split into 7 `BaseSettings` classes**, each with its own
+`env_prefix`:
+
+| Class | `env_prefix` | Covers |
+|---|---|---|
+| `NLPServiceConfig` | `NLP_` | Host/port (`NLP_PORT`, default `8864`), OTel, inference batching/concurrency lanes, model cache size/TTL, `HF_HOME` (unprefixed alias) |
+| `TextClassificationConfig` | `TEXT_CLASSIFIER_` | GPU toggle only — no model id |
+| `TokenClassificationConfig` | `TOKEN_CLASSIFIER_` | GPU toggle only — no model id |
+| `MedicalSuggesterConfig` | `MEDICAL_SUGGESTER_` | GPU toggle only — no model id |
+| `SecurityConfig` | `SECURITY_` | CORS origins/methods/credentials |
+| `TextCorrectorConfig` | `SPELLING_CORRECTOR_` | Dictionary path + SymSpell tuning |
+| `ExternalTextConfig` | `NLP_EXTERNAL_TEXT_` | Peer-call timeout/retry to `apps/text`; the base URL itself is the repo-wide `TEXT_URL`, not a second `NLP_EXTERNAL_TEXT_BASE_URL` |
+
+The internal service credential (`INTERNAL_ACCESS_TOKEN`, unprefixed,
+accepted as inbound `X-Service-Token` and presented on outbound peer calls)
+and `API_GATEWAY_KEY` (presented as `X-Internal-Service-Key` on gateway
+`/internal/*` calls) are the same shared credentials every HOPE service uses
+— see `00-project-context.md` §Environment Files.
+
+**Inference is two lanes, not one queue.** A BULK lane
+(`NLP_INFERENCE_BATCH_LINGER_MS` / `NLP_INFERENCE_BATCH_MAX_SIZE`) batches
+async per-utterance classification; a separate INTERACTIVE lane
+(`NLP_INFERENCE_INTERACTIVE_BATCH_LINGER_MS` / `_MAX_SIZE` /
+`_QUEUE_MAX_DEPTH` / `_QUEUE_MAX_WAIT_SECONDS`) serves the synchronous inline
+guard path with its own tighter SLO — the two never share a queue geometry,
+so a slow bulk pass cannot stall a synchronous guard call. Outbound calls to
+`apps/text` (the `/classify/topic` and `/classify/intent` delegation) get
+their own concurrency bound (`NLP_PEER_CALL_MAX_CONCURRENT`), separate from
+`NLP_INFERENCE_MAX_CONCURRENT`, so a slow HTTP round-trip cannot starve local
+GPU/CPU inference or be starved by it. Most of these are bootstrap fallbacks
+only — the runtime value is pulled from the control plane
+(`nlp.*` registry keys) via `core/effective_config.py`.
+
+**Device placement.** `NLP_INFERENCE_DEVICE` is `cpu` (safe everywhere),
+`auto` (best device present), or an explicit `mps`/`cuda` that raises rather
+than silently falling back if absent. `NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES`
+force-pins specific submodules (default: `count_embed.gru`) to CPU even on an
+accelerator — a documented runtime-compatibility fact about the installed
+`gliner2`/torch build on MPS, not a policy choice.
+
+**Guardrail-class inference lives here, not in `apps/guardrail`.**
+`apps/guardrail` holds no resident model weights; it owns policy (label
+taxonomy, thresholds, verdict shape, fail-closed posture) and delegates
+inference to this service, which already owns NER/classification and the
+model cache:
+
+| Route | Backing model | Returns |
+|---|---|---|
+| `POST /api/v1/guard/pii` | GLiNER2 | Entity spans, byte-exact offsets |
+| `POST /api/v1/guard/classify` | GLiNER2 | Multi-task safety moderation |
+| `POST /api/v1/guard/entailment` | MiniCheck | Raw NLI support probabilities |
+
+Every guard route receives its model id AND its label taxonomy from the
+caller. Fail posture: a missing selection or taxonomy is 503 (fail-closed,
+never a substituted default); a runtime failure is 503 (never an empty
+result that reads as "nothing found"); an absent tenant is 428.
+
+**Other REST endpoints**: `POST /api/v1/classify/text` (single-label),
+`/classify/text/multi-label`, `/classify/tokens` (NER), `/classify/topic`,
+`POST /api/v1/correct/text` (SymSpell-based, English + Malayalam
+dictionaries), `POST /api/v1/diagnosis/suggestions`, `POST /api/v1/extract`
+(document text extraction: PyMuPDF for PDF text layers, RapidOCR for scanned
+pages/images — always returns 200, an unsupported/corrupt input yields an
+empty extraction rather than a 5xx), and `GET /api/v1/internal/models/resolvable`
+(the gateway readiness sweep's runtime resolvability probe).
+`WS /ws/classify/token/{session_id}` and `/ws/classify/text/{session_id}`
+serve real-time streaming classification.
+
+**Inbound auth**: `ServiceAuthMiddleware` requires `X-Service-Token` on every
+route except its exempt health/docs/metrics paths, using the same shared
+`INTERNAL_ACCESS_TOKEN` as every other service.
+
+**Health + metrics**: `GET /api/v1/health`, `/health/live`, `/health/ready`;
+`GET /metrics` (Prometheus, gated on `NLP_METRICS_ENABLED`, default on).
+
+## Configuration
+
+`apps/nlp/.env.sample` is generated by `pnpm env:sync` — do not hand-edit it
+or create a separate `env.example`; regenerate after changing a `Field`
+declaration. It documents every knob above (commented out at its code
+default) plus a few not covered here: `NLP_MODEL_CACHE_MAX_MODELS` /
+`_TTL_SECONDS` (LRU model cache), `NLP_TORCH_NUM_THREADS` /
+`_NUM_INTEROP_THREADS`, and `NLP_WARM_MODELS` (a scheduling lever only — a
+request still names and resolves its own model; this only decides that
+those weights are loaded before the first caller asks, and a control-plane
+`warmModels` key wins over it on conflict).
+
+## Gotchas
+
+- `NLP_TORCH_NUM_THREADS=0` (auto) reads the **container's CFS quota**
+  (`hope_env.cpu.effective_cpu_quota`), never `os.cpu_count()` — on a real
+  pod that difference was 2 vs 48 allocatable CPUs and cost an 11.7x
+  slowdown on BERT-base forward passes before this was fixed. This is
+  configured from `nlp/__init__.py`, before any `torch` import, so it cannot
+  be changed later in the process lifetime.
+- `count_embed.gru` (a `gliner2` submodule) trips an MPS assertion that
+  **aborts the process** rather than raising a catchable exception if it
+  runs on `mps` — `NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES` exists specifically
+  to keep it off the accelerator.
+- Text/token classification and medical suggestion have **no default
+  model** — `TextClassificationConfig.model_name` etc. either come from the
+  request or are the sentinel "unconfigured" value, so calling these routes
+  without a resolved `model_name` fails closed rather than picking a model.
+- There is no `pnpm nlp:test:unit`/`:integration`/`:e2e` split; `tests/` is
+  one flat pytest suite.
+
+## Related
+
+- [`06-python-services.md`](../../.claude/rules/06-python-services.md) — FastAPI service conventions, per-tenant config, peer-client rules
+- [`01-development-workflow.md`](../../.claude/rules/01-development-workflow.md) — layer gates, test placement
+- [`docs/README.md`](docs/README.md) — the numbered developer/API/model documentation set for this service
+- [`apps/guardrail` README](../guardrail/README.md) — the policy layer that delegates inference here
+- [`apps/api` README](../api/README.md) — the gateway that resolves models/agents and injects `model_name`
