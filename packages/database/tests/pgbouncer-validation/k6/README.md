@@ -9,8 +9,7 @@ complements the `pgbench` baseline in `../pgbench/`.
 |---|---|
 | `hope-shape.js` | The k6 script simulating a HOPE-style request mix against the pooler |
 
-## Status
-
+### Status
 Not executed as part of the standard rig run. The headline `pgbench` result (pooled/direct =
 0.999, comfortably above the >= 0.85 target recorded in `../README.md`) already answers the
 pooling GO/NO-GO question; k6 with PostgreSQL requires the `xk6-sql` extension, which is not a

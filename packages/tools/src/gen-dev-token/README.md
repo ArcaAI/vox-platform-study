@@ -94,8 +94,7 @@ Defined in `users.ts`, ALL with `tenantId: null`:
 - These tokens are for development only; never use them in production. The `JWT_SECRET_KEY` should
   be different in production. Tokens include user ID, roles, and tenant information.
 
-## Adding new users
-
+### Adding new users
 To add more development users:
 
 1. Add the user to `packages/database/src/prisma/db_main/seed/91-user.ts`.

@@ -102,8 +102,7 @@ bucket cannot: the SERVING PROCESS's own verdict, read-only and network-free. Ru
 The gateway asks each service by `servedBy`; the service answers about ITS OWN filesystem; the
 readiness sweep folds the answer in. An unreachable service stays `unknown`, never guessed.
 
-## Consuming it
-
+### Consuming it
 The package is a `uv` workspace member. Add to a service `pyproject.toml`:
 
 ```toml

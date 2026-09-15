@@ -64,8 +64,7 @@ implementations (this package, the TS twin, and FastAPI's own instrumentation bo
 to the same golden W3C traceparent literal by their respective test suites — a wire-format
 disagreement between any two would silently sever cross-service traces.
 
-## Install
-
+### Install
 A `uv` workspace member (root `pyproject.toml`) and an editable install in the shared conda env
 `arcaenv` (`scripts/setup-python-env.sh`). Consumers declare it as
 `hope-otel = { workspace = true }`.

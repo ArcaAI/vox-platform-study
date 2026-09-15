@@ -85,8 +85,7 @@ parsed = parse_async_envelope(envelope)            # None on ANY conformance pro
 | `assert_async_conformance(producer)` | The reusable conformance suite — the Python mirror of `@arcaai/async-contract`'s `assertAsyncConformance` |
 | `AsyncProducerUnderTest` | The `Protocol` a producer under test implements for `assert_async_conformance` |
 
-## Install
-
+### Install
 A `uv` workspace member (root `pyproject.toml`) and an editable install in the shared conda env
 `arcaenv`. Consumers declare it as `hope-async-contract = { workspace = true }`.
 

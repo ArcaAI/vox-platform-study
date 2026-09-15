@@ -28,8 +28,7 @@ AI-platform configuration (`agent`, `ai-model`, `ai-provider-connection`, `ai-ro
 (`metering`, `usageLedger`, `billing`, `audit`, `sysEvent`, ...). Browse the directory for the full
 list rather than trusting an enumerated one here — it grows every sprint.
 
-## Service anatomy
-
+### Service anatomy
 Each service folder follows the same shape (reference implementation: `services/department/`):
 
 | Path | What it holds |
@@ -41,6 +40,21 @@ Each service folder follows the same shape (reference implementation: `services/
 | `dto/` | create/update requests, response DTOs |
 | `__tests__/` | Vitest unit tests |
 | `index.ts` | Barrel export |
+
+## Commands
+
+| Command | package.json script | From repo root |
+|---|---|---|
+| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` |
+| Watch | `tsc --watch` | `pnpm --filter @arcaai/applications dev` |
+| Test | `vitest run --passWithNoTests` | `pnpm --filter @arcaai/applications test` |
+| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/applications typecheck` |
+| Lint | `eslint .` | `pnpm --filter @arcaai/applications lint` |
+
+Unit tests live in `__tests__/` folders beside each service and mock repositories, `EventEmitter2`,
+and `ClsService`; they verify factory usage, change tracking, and `broadcastSysEvent` calls. A
+scaffold generator for a new service folder exists: root `pnpm gen:service` (`@arcaai/tools`,
+`generate-service-module`).
 
 ## How it works
 
@@ -143,21 +157,6 @@ the shorthands `@CanRead`, `@CanList`, `@CanCreate`, `@CanUpdate`, `@CanDelete`,
 `@CanAny`, `@CanAll`, plus `@ForbidApiKey`, `@ForbidServiceAccount`, `@RequiredScopes`,
 `@RequiredSvcScopes`, and the `@UserAbility()` param decorator. Authorization is enforced at
 controllers/guards — never inside service business logic.
-
-## Commands
-
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` |
-| Watch | `tsc --watch` | `pnpm --filter @arcaai/applications dev` |
-| Test | `vitest run --passWithNoTests` | `pnpm --filter @arcaai/applications test` |
-| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/applications typecheck` |
-| Lint | `eslint .` | `pnpm --filter @arcaai/applications lint` |
-
-Unit tests live in `__tests__/` folders beside each service and mock repositories, `EventEmitter2`,
-and `ClsService`; they verify factory usage, change tracking, and `broadcastSysEvent` calls. A
-scaffold generator for a new service folder exists: root `pnpm gen:service` (`@arcaai/tools`,
-`generate-service-module`).
 
 ## Gotchas
 

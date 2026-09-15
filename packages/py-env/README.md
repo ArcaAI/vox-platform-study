@@ -165,8 +165,7 @@ Every credential-bearing field across the six services is typed `SecretStr`, so 
 - Reading a Vault secret file by the BARE field name instead of the full prefixed env-var name is a
   silent no-op — the file is never found and the field falls through to the next source.
 
-## Install
-
+### Install
 A `uv` workspace member (root `pyproject.toml`) and an editable install in the shared conda env
 `arcaenv` (`scripts/setup-python-env.sh`). Every service declares it as
 `hope-env = { workspace = true }`.
