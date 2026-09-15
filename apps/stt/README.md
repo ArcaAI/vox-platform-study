@@ -1,630 +1,214 @@
-# STT Service
-
-**Owner**: Platform / Speech · **Introduced**: STT-001 · **Last verified**: 2026-07-21
-
-High-availability Speech-to-Text service with multi-model support for the HOPE platform.
-
-## Overview
-
-STT is a Python FastAPI service (port **8861**) that provides:
-
-- **Live streaming transcription** via WebSocket (through API Gateway)
-- **Batch file transcription** via Dramatiq job queue
-- **Multi-engine ASR** via a `(kind, name)` processor registry (TASK-505): Whisper
-  (`faster_whisper`, `onnx`/`onnx_optimum`, `whisper_cpp`/GGUF), NVIDIA NeMo
-  (`nemo` Parakeet + `parakeet_cpp`/ggml), Azure Speech (`azure_speech`), and
-  Azure AI Foundry (`azure_foundry`, MAI). Engines self-declare their
-  `(device, compute, mode)` capability matrix so a pipeline fails fast at load
-  time, not at first inference.
-- **Pipeline schema v2** (TASK-505): YAML pipelines carry declarable
-  normalize/resample/denoise/endpoint/segment-merge stages and a
-  `provider :: model[@rev]` model shorthand; v2 fields also parse under v1.x
-  (forward-tolerant). Registry keys — never import paths — appear in YAML, so
-  tenant-editable configs cannot execute arbitrary code.
-- **Voice Activity Detection (VAD)**: Silero VAD v5 (ONNX) with per-session streaming state
-- **Speaker Diarization**: pluggable embedding extraction (default
-  `pyannote/wespeaker-voxceleb-resnet34-LM`, 256-dim; SpeechBrain **ECAPA-TDNN**,
-  192-dim, selected by a `speechbrain/*` model id — TASK-505 D1 cutover) with
-  in-memory, session-scoped speaker tracking, plus an optional self-hosted
-  **Streaming Sortformer** frame-level backend for the live 2-speaker loop
-  (`DiarizationConfig.backend == "sortformer"`, GPU-only; degrades to "no labels"
-  until weights + NeMo runtime are staged)
-- **On-first-request model loading with idle-TTL eviction** (TASK-529 lifecycle)
-- **Read-only database access** for pipeline configurations and speaker voice profiles
-
-> **Speaker identity & persistence (TASK-330 note).** Speaker diarization is
-> **in-memory and session-scoped**: within a consultation a `SpeakerTracker`
-> assigns and matches speakers with no external vector store. **Cross-session**
-> speaker identity is persisted via **PostgreSQL voice profiles** — at session
-> start `diarization.preseed.preseed_speaker()` loads the doctor's stored voice
-> embedding and registers it so segments are labelled with the real display name.
->
-> The earlier **Qdrant-backed speaker store was removed by design** during the
-> diarization refactor (commit `feat(diarization): implement speaker tracking and
-embedding extraction`). Any provisioned `stt_speaker_embeddings` Qdrant
-> collection is **legacy/unused** by STT — the absence of a `core/vectorstore`
-> module is **intentional, not a regression**.
-
-## Architecture
-
-```
-┌─────────────────────────┐
-│    API Gateway (NestJS) │
-│    - Auth/RBAC          │
-│    - WebSocket proxy    │
-│    - Job management     │
-└───────────┬─────────────┘
-            │
-    ┌───────┴───────┐
-    │ Dramatiq/Redis│
-    └───────┬───────┘
-            │
-┌───────────┴──────────────────────────────────────┐
-│    STT Service                                │
-│    ┌───────────────┐  ┌─────────────────────┐    │
-│    │ Transcription │  │ Speaker Diarize     │    │
-│    │ + VAD (Silero │  │ (Pyannote, in-mem)  │    │
-│    └──────┬────────┘  └────────┬────────────┘    │
-│           │                    │                 │
-│    ┌──────┴────────────────────┴───────┐         │
-│    │ Model Loading (HF, ONNX, Azure)   │         │
-│    └───────────────────────────────────┘         │
-└──────────────────────────────────────────────────┘
-            │                 │
-     ┌──────┴──────┐   ┌──────┴──────┐
-     │ PostgreSQL  │   │   MinIO     │
-     │ (read-only) │   │ (audio blob)│
-     └─────────────┘   └─────────────┘
-```
-
-## Quick Start
-
-### Prerequisites
-
-- **Python 3.11+**
-- **conda** (Anaconda or Miniconda — recommended for managing PyTorch + native deps)
-- **Docker** (for infrastructure: PostgreSQL, Redis, MinIO)
-- **FFmpeg 6.x** (required by torchcodec/pyannote.audio; installed via conda)
-
-### Infrastructure Services
-
-Start the infrastructure services from the **monorepo root**:
-
-```bash
-# Core services: PostgreSQL, Redis, MinIO
-docker compose -f infrastructure/docker/docker-compose.yml up -d
-
-# Extended services: Vault (+ Qdrant, which is NOT used by STT diarization — see Overview note)
-docker compose -f infrastructure/docker/docker-compose.yml \
-               -f infrastructure/docker/docker-compose.dev.yml up -d
-```
-
-Verify services are healthy:
-
-| Service    | Port                       | Health Check                            |
-| ---------- | -------------------------- | --------------------------------------- |
-| PostgreSQL | 5432                       | `pg_isready -U postgres`                |
-| Redis      | 6379                       | `redis-cli ping`                        |
-| MinIO      | 9000 (API), 9001 (Console) | http://localhost:9000/minio/health/live |
-| Vault      | 8200                       | http://localhost:8200/v1/sys/health     |
-
-### Conda Environment Setup
-
-STT uses a **conda environment** for all development platforms. This is required because
-PyTorch, torchaudio, and pyannote.audio have native binary dependencies that conda manages
-correctly across Apple Silicon (MPS), Linux (CUDA), and CPU-only environments.
-
-#### Step 1: Create the conda environment
-
-```bash
-# Create environment with Python 3.11
-conda create -n arcaenv python=3.11 -y
-conda activate arcaenv
-```
-
-#### Step 2: Install FFmpeg (required for pyannote.audio / torchcodec)
-
-```bash
-# FFmpeg 6.x is required — torchcodec links against libavutil.58
-# Do NOT use FFmpeg 7+ or 8+ (incompatible library versions)
-conda install -c conda-forge 'ffmpeg>=6,<7' -y
-```
-
-#### Step 3: Install Python dependencies
-
-```bash
-cd apps/stt
-
-# Install the package in editable mode with ML + dev + test dependencies
-pip install -e ".[ml,dev,test]"
-```
-
-#### Step 4: Verify the environment
-
-```bash
-python -c "
-import torch; print(f'torch {torch.__version__} | MPS: {torch.backends.mps.is_available()} | CUDA: {torch.cuda.is_available()}')
-import torchaudio; print(f'torchaudio {torchaudio.__version__}')
-import pyannote.audio; print(f'pyannote.audio {pyannote.audio.__version__}')
-import azure.cognitiveservices.speech as s; print(f'azure-speech {s.__version__}')
-import onnxruntime; print(f'onnxruntime {onnxruntime.__version__} | providers: {onnxruntime.get_available_providers()}')
-print('All imports OK')
-"
-```
-
-Expected output on Apple Silicon:
-
-```
-torch 2.8.0 | MPS: True | CUDA: False
-torchaudio 2.8.0
-pyannote.audio 4.0.3
-azure-speech 1.48.1
-onnxruntime 1.23.2 | providers: ['CoreMLExecutionProvider', 'AzureExecutionProvider', 'CPUExecutionProvider']
-All imports OK
-```
-
-> **IMPORTANT — Dependency Version Constraints**
->
-> `pyannote.audio 4.x` hard-pins `torch==2.8.0` and `torchaudio==2.8.0`.
-> Do **NOT** upgrade torch past 2.8.x until pyannote releases a compatible version.
-> torch 2.8.0 has full MPS (Apple Silicon) and CUDA support.
->
-> See `pyproject.toml` `[project.optional-dependencies]` for the full constraint rationale.
-
-#### Platform-Specific Notes
-
-**Apple Silicon (M1/M2/M3/M4)**
-
-The conda activation script automatically sets `DYLD_LIBRARY_PATH` so that torchcodec
-(a pyannote.audio dependency) can find the FFmpeg shared libraries installed by conda.
-This is configured in `$CONDA_PREFIX/etc/conda/activate.d/env_vars.sh`.
-
-If you see a `torchcodec: Could not load libtorchcodec` warning, run:
-
-```bash
-# Manual fix (normally done automatically by conda activate)
-export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib:$DYLD_LIBRARY_PATH"
-```
-
-**Linux with NVIDIA CUDA**
-
-```bash
-# Use the ml-gpu extras instead of ml
-pip install -e ".[ml-gpu,dev,test]"
-
-# Verify CUDA is available
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-```
-
-**CPU-only (CI/CD, lightweight development)**
-
-```bash
-# Install without ML dependencies
-pip install -e ".[dev,test]"
-
-# Tests will auto-skip ML-dependent tests
-```
-
-### Configuration
-
-`pnpm setup:dev` creates `.env.dev` for you (from the consolidated `.env.sample` at the repo root — TASK-583), only if it doesn't already exist. Manually: `cp .env.sample .env.dev`.
-
-#### Core Service Configuration
-
-| Variable           | Description                  | Default                                                      |
-| ------------------ | ---------------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`     | PostgreSQL connection string | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` |
-| `REDIS_URL`        | Redis connection string      | `redis://localhost:6379/0`                                   |
-| `MINIO_ENDPOINT`   | MinIO endpoint               | `localhost:9000`                                             |
-| `MINIO_ACCESS_KEY` | MinIO access key             | `minio_admin`                                                |
-| `MINIO_SECRET_KEY` | MinIO secret key             | `minio_admin`                                                |
-| `API_GATEWAY_URL`  | Internal API Gateway URL     | `http://localhost:8868/api/v1`                               |
-| `API_GATEWAY_KEY`  | Internal service auth key    | -                                                            |
-
-#### ASR Engine Configuration
-
-| Variable                | Description                              | Default            |
-| ----------------------- | ---------------------------------------- | ------------------ |
-| `HUGGINGFACE_CACHE_DIR` | Model download cache directory           | `/models/hf-cache` |
-
-> **No cloud ASR engine has an env var** (TASK-880). Azure Speech, Azure AI Foundry,
-> Sarvam and OpenAI are BYOK: the key, the region/endpoint/base URL, and whether the
-> engine is available at all come from the tenant's `AiProviderConnection` row (or the
-> SYSTEM row as the platform default). `HUGGINGFACE_TOKEN` moved the same way, to the
-> `model-registry:huggingface` connection.
-
-#### Voice Activity Detection (Silero VAD v5)
-
-| Variable                      | Description                                          | Default |
-| ----------------------------- | ---------------------------------------------------- | ------- |
-| `VAD_THRESHOLD`               | Speech probability threshold (0.0–1.0)               | `0.5`   |
-| `VAD_MIN_SPEECH_DURATION_MS`  | Min speech segment length                            | `100`   |
-| `VAD_MIN_SILENCE_DURATION_MS` | Min silence to end speech                            | `500`   |
-
-> These three are BOOTSTRAP defaults only: every session and every batch job arrives with
-> a `ResolvedAsrSpec` carrying the agent's own VAD parameters, which override them.
-> `VAD_MODEL_PATH` and `VAD_SPEECH_PAD_MS` are GONE (TASK-880) — the weights are the
-> `AiModel` (`VOICE_ACTIVITY_DETECTION`) row the agent binds, and the padding is the
-> agent's `audioFrontEnd.vad.speechPadMs`.
-
-#### Speaker Diarization (Pyannote)
-
-| Variable                           | Description                                                                                                  | Default                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
-| `DIARIZATION_HF_MODEL_ID`          | Speaker-embedding model (a `speechbrain/*` id selects the ECAPA-TDNN service)                                | `pyannote/wespeaker-voxceleb-resnet34-LM` |
-| `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)                                                                           | `auto`                                    |
-| `VOICE_PROFILE_EMBEDDING_DIM`      | Embedding dimension — must match the `UserVoiceProfile.embedding` column (256 = wespeaker; 192 = ECAPA-TDNN) | `256`                                     |
-
-#### Punctuation Restoration (Cadence)
-
-| Variable                      | Description                                  | Default   |
-| ----------------------------- | -------------------------------------------- | --------- |
-| `PUNCTUATION_ENABLED`         | Global kill-switch for Cadence punctuation   | `false`   |
-| `PUNCTUATION_MODEL_NAME`      | `Cadence` (1B) or `Cadence-Fast` (270M)      | `Cadence` |
-| `PUNCTUATION_MODEL_CACHE_DIR` | Weights cache dir (empty = HF default cache) | -         |
-| `PUNCTUATION_DEVICE`          | Inference device (`cpu`, `cuda`, `auto`)     | `auto`    |
-| `PUNCTUATION_MAX_LENGTH`      | Max sequence length / sliding window width   | `300`     |
-
-`PUNCTUATION_ENABLED` defaults to `false`: the production Whisper pipelines
-already emit punctuation/casing, and `cadence-punctuation 1.1.0` cannot load
-under the pinned transformers 5.x. With the flag off the Cadence model is never
-loaded, keeping the boot log free of its `FATAL` traceback.
-
-**Precedence**: the global flag wins over per-pipeline YAML
-`postprocessing.punctuation.enabled: true`. When the kill-switch is off (or the
-model fails to load at startup), pipelines that request punctuation get their
-text passed through unchanged and the service logs a one-time warning at the
-first suppressed call. Enable the flag only with a transformers/cadence
-combination that is known to load the model.
-
-#### Worker & Inference
-
-| Variable                 | Description                         | Default |
-| ------------------------ | ----------------------------------- | ------- |
-| `WORKER_THREADS`         | Dramatiq worker threads per process | `4`     |
-| `WORKER_POLL_TIMEOUT_MS` | Consumer poll max-backoff in ms     | `1000`  |
-| `WORKER_MAX_RETRIES`     | Max retry attempts                  | `3`     |
-
-### Running the Service
-
-**Prerequisites**: Ensure the conda environment is activated and all infrastructure containers are running.
-
-```bash
-# Activate the environment
-conda activate arcaenv
-
-# Terminal 1: Start the FastAPI server (with hot reload)
-uvicorn stt.main:app --host 0.0.0.0 --port 8861 --reload
-
-# Terminal 2: Start Dramatiq workers
-python -m stt.worker
-```
-
-**Alternative methods (if entrypoints are installed):**
-
-```bash
-# Start server via console_scripts entrypoint
-stt
-
-# Start workers via console_scripts entrypoint
-stt-worker
-```
-
-> The worker process initializes VAD and diarization services on startup
-> and cleans them up on graceful shutdown (SIGTERM/SIGINT).
-
-## Project Structure
+# STT — Speech-to-Text service
+
+Python/FastAPI service (port **8861**, package `stt`) providing live streaming
+transcription, batch transcription, voice activity detection and speaker
+diarization for the HOPE platform. The gateway (`apps/api`) fronts every route;
+browsers reach transcription and streaming only through it. Batch jobs run on a
+separate Dramatiq worker process (`pnpm stt:worker:dev`).
+
+## Layout
 
 ```
 apps/stt/
-├── src/
-│   └── stt/
-│       ├── main.py              # FastAPI entrypoint
-│       ├── worker.py            # Dramatiq worker entrypoint (init/cleanup for all services)
-│       ├── core/                # Shared infrastructure
-│       │   ├── config/          # Settings (Pydantic), constants
-│       │   ├── database/        # SQLAlchemy (read-only)
-│       │   ├── messaging/       # Dramatiq broker setup
-│       │   ├── storage/         # MinIO client
-│       │   ├── api_client/      # API Gateway client
-│       │   └── exceptions.py    # Custom exceptions (DiarizationError, AudioProcessingError, etc.)
-│       ├── transcription/       # Transcription domain (batch_service, preprocessing)
-│       ├── pipeline/            # Pipeline domain (YAML parser, DTOs with DiarizationConfig)
-│       ├── vad/                 # Voice Activity Detection (Silero VAD v5 ONNX)
-│       │   ├── silero_service.py   # ONNX session management, batch + streaming inference
-│       │   ├── session_manager.py  # Per-session state for streaming VAD
-│       │   └── dto.py              # SpeechSegment, VADResult, VADSessionState
-│       ├── processors/          # (kind, name) processor registry + ASR engine specs/adapters (TASK-505)
-│       │   ├── registry.py           # Lazy (kind,name)→ProcessorSpec registry, hardware-binding resolver
-│       │   ├── base.py               # Capability / HardwareBinding / ProcessorSpec, closed STAGE_KINDS
-│       │   ├── asr_capabilities.py   # Import-cheap ASR engine capability declarations
-│       │   └── asr_engines.py        # Delegation adapters (batch + streaming dispatch)
-│       ├── diarization/         # Speaker Diarization (pluggable embeddings + in-memory tracking)
-│       │   ├── embedding_service.py   # Factory: pyannote (wespeaker) or SpeechBrain ECAPA-TDNN by model id
-│       │   ├── pyannote_embedding.py  # Pyannote/wespeaker embedding extraction (256-dim default)
-│       │   ├── speechbrain_embedding.py # SpeechBrain ECAPA-TDNN embedding extraction (192-dim)
-│       │   ├── streaming_sortformer.py # Self-hosted NeMo Streaming Sortformer (live 2-speaker, GPU, gated)
-│       │   ├── speaker_tracker.py     # In-memory, session-scoped speaker store
-│       │   ├── speaker_identifier.py  # Session-scoped identify + register (no external I/O)
-│       │   ├── preseed.py             # Pre-seed tracker from DB voice profile (cross-session identity)
-│       │   └── dto.py                 # DiarizedSegment, DiarizationResult, SpeakerIdentification
-│       ├── models/              # AI model loaders (HF, ONNX, Azure Speech, NeMo, parakeet.cpp, Azure Foundry)
-│       ├── storage/             # Audio storage domain
-│       └── health/              # Health checks
-├── tests/
-│   ├── unit/                    # Fast tests, mocked dependencies
-│   ├── integration/             # Cross-module tests, mocked external services
-│   └── e2e/                     # Real-data tests with actual audio files
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.dev.yml
-└── pyproject.toml               # Dependencies, pytest config, tooling
+|-- src/stt/
+|   |-- main.py                # create_app() + lifespan (FastAPI entrypoint, `stt.main:app`)
+|   |-- worker.py               # Dramatiq worker entrypoint (`stt.worker`)
+|   |-- core/
+|   |   |-- config/settings.py  # Settings (pydantic-settings, no env_prefix)
+|   |   |-- control_plane.py    # Settings field -> control-plane registry key map
+|   |   |-- middleware/auth.py  # ServiceAuthMiddleware (X-Service-Token)
+|   |   |-- database/           # SQLAlchemy, read-only, OFF by default (STT_DATABASE_ENABLED)
+|   |   |-- messaging/           # Dramatiq broker setup
+|   |   `-- storage/            # MinIO / S3 / Azure Blob client
+|   |-- pipeline/spec.py        # ResolvedAsrSpec — the gateway-resolved runtime contract
+|   |-- processors/             # (kind, name) engine registry (registry.py, asr_capabilities.py, asr_engines.py)
+|   |-- vad/                    # Silero VAD v5 (ONNX), streaming + batch
+|   |-- diarization/            # Pluggable speaker embedding + in-memory, session-scoped tracking
+|   |-- punctuation/             # Cadence-Fast punctuation restoration (direct transformers loader)
+|   |-- streaming/               # Session manager, engine switch (fallback), Redis Streams transport
+|   |-- transcription/          # Batch service, Dramatiq workers
+|   |-- voice_profile/           # Cross-session speaker identity (Postgres voice profiles)
+|   `-- models/                 # Model loaders (HF, ONNX, Azure Speech, NeMo, ggml, Azure Foundry)
+|-- tests/{unit,integration,e2e}/
+|-- docker/{Dockerfile,Dockerfile.apple}
+|-- Makefile                    # local conda-based setup/test/lint targets
+`-- pyproject.toml
 ```
 
-## API Endpoints
-
-Health lives under the `/api/v1` prefix; internal, transcription, streaming, and
-voice-profile routers mount their own prefixes. Browsers reach transcription and
-streaming only through the API Gateway.
-
-| Method | Endpoint                                        | Description                   |
-| ------ | ----------------------------------------------- | ----------------------------- |
-| `GET`  | `/api/v1/health` `/health/live` `/health/ready` | Health / liveness / readiness |
-| `GET`  | `/api/v1/ready` `/api/v1/live`                  | Readiness / liveness aliases  |
-| `GET`  | `/metrics`                                      | Prometheus metrics            |
-| `GET`  | `/internal/cache/stats`                         | Model cache statistics        |
-| `POST` | `/internal/cache/clear`                         | Clear model cache             |
-| `GET`  | `/internal/cache/model/{slug}`                  | Per-model cache entry         |
-| `GET`  | `/internal/pipelines/loaded`                    | Loaded pipeline inventory     |
-| `GET`  | `/internal/sessions`                            | Streaming session inventory   |
-| `GET`  | `/internal/streaming/status`                    | Streaming subsystem status    |
-| `POST` | `/internal/sessions/cleanup`                    | Reap stale streaming sessions |
-
-## Development
-
-### Running Tests
-
-STT uses a **platform-aware testing infrastructure** that supports CPU, GPU (NVIDIA CUDA), and Apple Silicon (MPS) environments.
-
-#### Running with conda
-
-```bash
-conda activate arcaenv
-cd apps/stt
-
-# Run all tests
-conda run -n arcaenv pytest tests/ -v
-
-# Run unit tests only
-conda run -n arcaenv pytest tests/unit/ -v
-
-# Run integration tests (requires Docker infrastructure running)
-conda run -n arcaenv pytest tests/integration/ -v
-
-# Run E2E tests (requires real audio test data)
-conda run -n arcaenv pytest tests/e2e/ -v
-
-# Run with coverage
-conda run -n arcaenv pytest tests/ --cov=stt --cov-report=html -v
-```
-
-#### From monorepo root (pnpm scripts)
-
-```bash
-pnpm stt:test:unit       # Unit tests
-pnpm stt:test:cov        # With coverage
-```
-
-> **Note**: Tests marked with `@requires_torch` will be skipped if PyTorch is not installed.
-> Use the full `.[ml,dev,test]` install to run all ML tests.
-
-#### Test Markers
-
-Tests are marked with platform-specific markers for selective execution:
-
-| Marker                     | Description                                   |
-| -------------------------- | --------------------------------------------- |
-| `@pytest.mark.cpu`         | CPU-only tests                                |
-| `@pytest.mark.gpu`         | Tests requiring any GPU (CUDA or MPS)         |
-| `@pytest.mark.cuda`        | Tests requiring NVIDIA CUDA                   |
-| `@pytest.mark.mps`         | Tests requiring Apple Silicon MPS             |
-| `@pytest.mark.ml`          | Tests requiring ML dependencies (torch, etc.) |
-| `@pytest.mark.slow`        | Long-running tests (model loading, etc.)      |
-| `@pytest.mark.integration` | Integration tests (require containers)        |
-
-Example usage:
-
-```bash
-# Run only CPU tests
-conda run -n arcaenv pytest tests/unit -m "cpu"
-
-# Run tests excluding slow ones
-conda run -n arcaenv pytest tests/unit -m "not slow"
-
-# Run GPU tests only
-TEST_PLATFORM=cuda conda run -n arcaenv pytest tests/unit -m "gpu or cuda"
-```
-
-#### Test Infrastructure
-
-Integration and E2E tests use the monorepo's centralized test infrastructure:
-
-```bash
-# Start test services (from monorepo root)
-pnpm infra:test:up
-
-# Stop test services
-pnpm infra:test:down
-```
-
-Test service ports (isolated from development):
-
-- PostgreSQL: `5433` (test) vs `5432` (dev)
-- Redis: `6380` (test) vs `6379` (dev)
-- MinIO: `9002` (test) vs `9000` (dev)
-
-#### CI/CD Pipeline
-
-STT tests run in **GitLab CI** as the `test-stt` job (`.gitlab/ci/test.yml`)
-on a CPU (`ubuntu`) runner — unit tests plus the non-integration/non-e2e suite.
-The `@pytest.mark.gpu` / `.cuda` / `.mps` markers are for **local** selective runs
-on GPU/Apple-Silicon hosts; CI does not provision GPU or macOS runners.
-
-### Code Quality
-
-```bash
-conda activate arcaenv
-
-# Format code (black; ruff owns import order via --select I — isort is NOT used)
-make format          # or: black src tests && ruff check --fix --select I src tests
-
-# Lint
-make lint            # or: ruff check src tests
-
-# Type check
-make type-check      # or: mypy src
-
-# All quality checks at once
-make quality         # lint + format-check + type-check
-```
-
-## Troubleshooting
-
-### `torchcodec: Could not load libtorchcodec` or missing FFmpeg libs
-
-`pyannote.audio` depends on `torchcodec`, which links against FFmpeg 6.x shared libraries
-(`libavutil.58`, `libavcodec.60`, etc.). These must be on the dynamic linker path.
-
-**Fix:**
-
-```bash
-# Ensure FFmpeg 6.x is installed (not 7 or 8)
-conda install -c conda-forge 'ffmpeg>=6,<7' -y
-
-# If the conda activation script is missing, create it:
-mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
-cat > "$CONDA_PREFIX/etc/conda/activate.d/env_vars.sh" << 'EOF'
-#!/bin/sh
-export OLD_DYLD_LIBRARY_PATH="${DYLD_LIBRARY_PATH:-}"
-export DYLD_LIBRARY_PATH="$CONDA_PREFIX/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-EOF
-
-mkdir -p "$CONDA_PREFIX/etc/conda/deactivate.d"
-cat > "$CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh" << 'EOF'
-#!/bin/sh
-export DYLD_LIBRARY_PATH="$OLD_DYLD_LIBRARY_PATH"
-unset OLD_DYLD_LIBRARY_PATH
-EOF
-
-# Reactivate environment
-conda deactivate && conda activate arcaenv
-```
-
-### `pyannote.audio` wants to downgrade torch
-
-`pyannote.audio 4.x` hard-pins `torch==2.8.0`. If pip tries to downgrade or upgrade torch:
-
-```bash
-# Install the exact pinned versions
-pip install torch==2.8.0 torchaudio==2.8.0
-
-# Then install pyannote
-pip install 'pyannote.audio>=3.3.0'
-```
-
-Do NOT upgrade torch past 2.8.x while using pyannote.audio 4.x.
-
-### `ModuleNotFoundError: No module named 'azure'`
-
-`azure-cognitiveservices-speech` is a core dependency (not optional).
-If you see import errors for it, your base install is incomplete:
-
-```bash
-pip install -e "."
-```
-
-### Tests fail with `ModuleNotFoundError` for `pyannote`, `torch`, `soundfile`, etc.
-
-These are ML-only dependencies (in the `[ml]` extra). Unit tests mock them and should work
-without them, but integration/E2E tests need the full stack:
-
-```bash
-pip install -e ".[ml,dev,test]"
-```
-
-### Speaker diarization does not persist across sessions
-
-This is expected. STT speaker diarization is **in-memory and session-scoped**
-(see the Overview note). Cross-session speaker identity comes from **PostgreSQL
-voice profiles** via `diarization.preseed.preseed_speaker()`, not from Qdrant. The
-legacy `stt_speaker_embeddings` Qdrant collection is no longer read or written by
-STT, so a missing collection is **not** an STT error.
-
-### Database errors in tests (`type "core.ModelCategory" does not exist`)
-
-This indicates the PostgreSQL schema is not initialized. Run migrations from the monorepo root:
-
-```bash
-pnpm db:migrate:deploy    # → pnpm --filter @arcaai/database db:migrate:deploy
-```
-
-### HuggingFace gated model access
-
-Pyannote models on HuggingFace are gated. You need to:
-
-1. Create a HuggingFace account at https://huggingface.co
-2. Accept the model license at https://huggingface.co/pyannote/embedding
-3. Create an access token at https://huggingface.co/settings/tokens
-4. Set the token in your environment:
-
-```bash
-export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-## Supported ASR Engines
-
-Registry name → runtime, from `processors/asr_capabilities.py`. Engine names are
-`AiModelFormat` values lowercased, so YAML engine strings and registry keys are
-one vocabulary.
-
-| Registry name           | Model Source                  | Runtime              | Best For                                    |
-| ----------------------- | ----------------------------- | -------------------- | ------------------------------------------- |
-| `faster_whisper`        | HuggingFace                   | CTranslate2          | Fast CPU/CUDA Whisper, batch+stream         |
-| `onnx` / `onnx_optimum` | HuggingFace                   | ONNX Runtime         | Offline CPU/GPU (optimum adds streaming)    |
-| `whisper_cpp`           | GGUF (whisper-large-v3-turbo) | ggml (pywhispercpp)  | CPU/Metal/CUDA offline (TASK-507)           |
-| `safetensor`            | HuggingFace                   | PyTorch/Transformers | CUDA/MPS/CPU HF models                      |
-| `nemo`                  | HuggingFace / NVIDIA NGC      | PyTorch (NeMo)       | High-accuracy Parakeet, CUDA GPUs           |
-| `parakeet_cpp`          | ggml quantized                | ggml                 | CPU/Metal/CUDA Parakeet (TASK-505 P3)       |
-| `azure_speech`          | Azure Cloud API               | REST/WebSocket       | Cloud-hosted, no GPU                        |
-| `azure_foundry`         | Azure AI Foundry (MAI)        | Cloud (batch)        | Cloud batch preview (TASK-505 P3)           |
-| `sarvam`                | Sarvam Cloud API              | REST                 | Indic languages + English, BYOK (TASK-567)  |
-| `openai`                | OpenAI Cloud API              | REST                 | `gpt-4o-transcribe` family, BYOK (TASK-567) |
-
-### Per-tenant BYOK + fallback (TASK-567)
-
-`azure_speech`, `sarvam`, and `openai` accept an optional per-tenant credential
-override (`provider_overrides`, keyed by `azure-speech`/`sarvam`/`openai`) instead
-of the env-only keys above — the gateway resolves a tenant's
-`TenantSttProviderCredential` rows and injects the decrypted override into the
-streaming session-create request (in-memory only, never persisted/logged) or the
-Dramatiq batch worker pulls it via `GET /internal/stt/provider-overrides`. A
-tenant may also configure a `fallbackPipelineId`: `SessionManager`'s
-`EngineSwitchController` swaps the live session's ASR engine to that pipeline
-one-way on a classified outage (auth/quota immediately, transient after N
-consecutive failures) or on a manual `POST
-/internal/streaming/sessions/{id}/switch`, publishing a `status`/
-`provider_switched` result on the session's result stream; `transcribe_file`
-re-dispatches once on the fallback within the same Dramatiq attempt for batch
-jobs. See `docs/implementation/TASK-567-Tenant-STT-Fallback-Provider-BYOK/README.md`.
-
-## Documentation
-
-- [Architecture Design](../../docs/implementation/STT-001-STT-Service-Architecture/README.md)
-- [Architecture Planning](../../docs/implementation/STT-001-STT-Service-Architecture/planning.md)
-- [Worker Architecture Refactor](../../docs/implementation/TASK-007-STT-Worker-Architecture-Refactor/README.md)
-- [Azure Speech ASR Engine](../../docs/implementation/TASK-006-Azure-Speech-ASR-Engine-STT/README.md)
-- [E2E Test Coverage](../../docs/implementation/TASK-005-STT-Real-Data-E2E-Tests/README.md)
-
-## License
-
-MIT License - ARCA AI Team
+> **Speaker identity & persistence.** Diarization is **in-memory and
+> session-scoped**: within a consultation a `SpeakerTracker` assigns and
+> matches speakers with no external vector store. **Cross-session** speaker
+> identity is persisted via **PostgreSQL voice profiles** — at session start
+> `diarization.preseed.preseed_speaker()` loads the doctor's stored voice
+> embedding and registers it. There is no Qdrant-backed speaker store; `stt`
+> has no `core/vectorstore` module by design.
+
+## Commands
+
+| Command | Effect |
+|---|---|
+| `pnpm stt:setup` / `:cpu` / `:apple` / `:gpu` | Install this service into conda env `arcaenv` for the given platform |
+| `pnpm stt:dev` | `scripts/dev-service.sh stt` — uvicorn on `:8861` |
+| `pnpm stt:dev:watch` | Same, with reload |
+| `pnpm stt:worker:dev` | `scripts/dev-service.sh stt-worker` — the Dramatiq worker process |
+| `pnpm stt:test` | `pytest apps/stt/tests/` |
+| `pnpm stt:test:unit` / `:integration` / `:e2e` | Scoped pytest runs |
+| `pnpm stt:test:cov` | With coverage |
+| `pnpm stt:lint` / `:lint:fix` | ruff |
+| `pnpm stt:typecheck` | mypy |
+| `pnpm stt:format` / `:format:check` | black |
+
+Local alternatives (from `apps/stt/`, conda env `arcaenv` active): `make lint`,
+`make format`, `make type-check`, `make quality` (all read `src/` and `tests/`
+directly). The Makefile's `docker-test-*` and `dev-up`/`dev-down` targets
+reference `docker/docker-compose.dev.yml` / `docker/docker-compose.test.yml`,
+neither of which exists in this directory — do not use them. For local
+infrastructure use the monorepo root's `pnpm infra:dev:up` / `pnpm
+infra:test:up` (`09-infrastructure-devops.md`).
+
+Installing ML dependencies: `pip install -e ".[ml,dev,test]"` (CPU/Apple
+Silicon) or `".[ml-gpu,dev,test]"` (NVIDIA CUDA) from `apps/stt/`, inside
+`arcaenv`. `pyannote.audio` 4.x hard-pins `torch==2.8.0`/`torchaudio==2.8.0` —
+do not upgrade torch past 2.8.x while it is installed.
+
+## How it works
+
+**Selection arrives from the gateway, this service reads no Postgres for it
+(TASK-861).** Every streaming session and every batch job carries a
+`ResolvedAsrSpec` (`src/stt/pipeline/spec.py`, the pydantic mirror of
+`packages/types/src/asr-spec.ts`, parity-pinned against the committed fixture
+`tests/contracts/resolved-asr-spec.fixture.json`) with the ASR/VAD/denoise/
+diarization/embedding models already resolved to a local path, format and
+compute type, plus decoding parameters and the fallback chain
+(`AsrSpecFallback`). `session_manager` and the batch worker build their
+callables from the spec; there is no `AsrPipeline`/`AiModel` SQL lookup on this
+path. The read-only SQLAlchemy connection is therefore **optional and off by
+default** (`STT_DATABASE_ENABLED` — a bare, unprefixed name; `Settings` carries
+no `env_prefix`), used only by the deprecated `pipeline_id` readers and the
+voice-profile / initial-prompt readers.
+
+**`Settings` carries no `env_prefix`.** Every field resolves to its bare
+uppercased name (`PORT`, `HOST`, `DEBUG`, `LOG_LEVEL`, `DATABASE_URL`, ...);
+several fields also accept an `STT_`-prefixed alias first (e.g. `STT_PORT`
+before `PORT`). Default port is `8861`.
+
+**Most tuning knobs are control-plane-owned, not real env vars.** VAD
+thresholds, worker thread/retry counts, diarization device, punctuation
+device/cache-dir/max-length, and the model-cache size/TTL are declared as
+`Settings` fields with a `moved_alias(...)` validation alias — a dead name
+like `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE` — so the bare env var no longer
+binds. Their real value is pulled once at boot from the gateway's
+effective-config route (`refresh_settings_from_control_plane`,
+`core/runtime_limits.py`) and kept fresh by a Redis pub/sub invalidation
+listener (`arca:config:invalidate`), not by polling. Bootstrap-only real env
+vars still worth setting locally: `DATABASE_URL`, `REDIS_URL`, `MINIO_*`,
+`API_GATEWAY_URL`, `API_GATEWAY_KEY`, `INTERNAL_ACCESS_TOKEN`,
+`HUGGINGFACE_CACHE_DIR`.
+
+**No cloud ASR engine has an env var.** Azure Speech, Azure AI Foundry, Sarvam
+and OpenAI are BYOK: the key, region/endpoint/base URL, and whether the engine
+is available at all come from the tenant's `AiProviderConnection` row (or the
+SYSTEM row as the platform default). `HUGGINGFACE_TOKEN` moved the same way,
+to the `model-registry:huggingface` connection — its `Settings` field carries
+a dead validation alias and `populate_by_name` off, so no env var can
+re-open it.
+
+**Inbound auth.** `ServiceAuthMiddleware` (`core/middleware/auth.py`) requires
+`X-Service-Token` on every route except `/metrics`, `/api/v1/docs`,
+`/api/v1/redoc`, `/api/v1/openapi.json`, `/api/v1/health(/live|/ready)` and
+`/api/v1/live`, `/api/v1/ready`. The accepted token is the single shared
+`INTERNAL_ACCESS_TOKEN`; empty => auth bypassed, but only in a local/dev
+environment. A deployed process with no token configured logs an error at
+boot and rejects everything non-exempt.
+
+**Engine registry.** Registry name -> runtime, from
+`processors/asr_capabilities.py`. Engine names are `AiModelFormat` values
+lowercased, so YAML/spec engine strings and registry keys are one vocabulary:
+
+| Registry name | Runtime | Notes |
+|---|---|---|
+| `faster_whisper` | CTranslate2 | Fast CPU/CUDA Whisper, batch + stream |
+| `onnx` / `onnx_optimum` | ONNX Runtime | Offline CPU/GPU (`optimum` adds streaming) |
+| `whisper_cpp` | ggml (pywhispercpp) | GGUF, CPU/Metal/CUDA offline |
+| `safetensor` | PyTorch/Transformers | CUDA/MPS/CPU HF models |
+| `nemo` | PyTorch (NeMo) | Parakeet, CUDA GPUs |
+| `parakeet_cpp` | ggml quantized | CPU/Metal/CUDA Parakeet |
+| `azure_speech` | REST/WebSocket | Cloud, BYOK |
+| `azure_foundry` | Cloud (batch) | Azure AI Foundry (MAI), BYOK |
+| `sarvam` | REST | Indic languages + English, BYOK |
+| `openai` | REST | `gpt-4o-transcribe` family, BYOK |
+
+**Per-tenant BYOK + fallback.** `azure_speech`, `sarvam` and `openai` accept a
+per-tenant credential override (`provider_overrides`, keyed by
+`azure-speech`/`sarvam`/`openai`): the streaming session-create request
+carries it in-memory (never persisted/logged), and the Dramatiq batch worker
+pulls it via the gateway's `GET /internal/stt/provider-overrides`
+(`core/effective_config.py`). A tenant's `ResolvedAsrSpec.fallback` names a
+one-way fallback engine; `streaming/engine_switch.py`'s `EngineSwitchController`
+swaps a live session onto it on a classified outage (auth/quota immediately,
+transient after N consecutive failures) or a manual
+`POST /internal/streaming/sessions/{id}/switch`, publishing a `status`/
+`provider_switched` result on the session's result stream. `transcribe_file`
+re-dispatches once onto the fallback within the same Dramatiq attempt.
+
+**Diarization backends.** Default is embedding + in-memory clustering
+(`pyannote/wespeaker-voxceleb-resnet34-LM`, 256-dim, or SpeechBrain
+ECAPA-TDNN, 192-dim, selected by a `speechbrain/*` model id). An optional
+self-hosted **Streaming Sortformer** backend (`DiarizationConfig.backend ==
+"sortformer"`, GPU-only) exists for the live 2-speaker loop and degrades to
+"no labels" until its weights + NeMo runtime are staged.
+
+**Punctuation restoration (Cadence).** `punctuation/cadence_fast.py` loads
+`ai4bharat/Cadence-Fast` directly via `transformers` under the exact model
+name `cadence-fast` — the `cadence-punctuation` wrapper package (selected by
+the legacy names `Cadence` / `Cadence-Fast`) cannot load under the pinned
+transformers 5.x, so a session whose agent binds a punctuation model under
+any name other than the exact `cadence-fast` string silently gets no
+punctuation restoration rather than an error. Enable/placement/cache-dir are
+control-plane- or agent-owned, not a single global env flag.
+
+## API endpoints
+
+Health lives under `/api/v1`; internal, transcription, streaming and
+voice-profile routers mount their own prefixes.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/v1/health` `/health/live` `/health/ready` | Health / liveness / readiness |
+| `GET` | `/api/v1/ready` `/api/v1/live` | Aliases |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET`/`POST` | `/internal/cache/*` | Model cache stats / clear / per-model entry |
+| `GET`/`POST` | `/internal/pipelines/loaded`, `/internal/sessions*`, `/internal/streaming/status` | Runtime inventory (service-token gated) |
+| `GET`/`POST` | `/api/v1/internal/models/resolvable` | Runtime resolvability probe for the gateway readiness sweep |
+| — | `/internal/streaming/*` | Session create/switch (gateway-only) |
+| — | `/internal/voice-profile/*` | Voice profile enrollment (gateway-only) |
+
+## Gotchas
+
+- `pyannote.audio` 4.x hard-pins `torch==2.8.0`/`torchaudio==2.8.0`; do not let
+  pip drift either package past 2.8.x while it is installed.
+- FFmpeg must be `>=6,<7` — `torchcodec` (a `pyannote.audio` dependency) links
+  against `libavutil.58`; FFmpeg 7/8 breaks it. On Apple Silicon the conda
+  activation script sets `DYLD_LIBRARY_PATH`; if `torchcodec: Could not load
+  libtorchcodec` appears, re-run `conda activate arcaenv` or export it by hand.
+- A punctuation model bound under `Cadence` or `Cadence-Fast` (rather than the
+  exact string `cadence-fast`) loads the `cadence-punctuation` wrapper, which
+  cannot load under the pinned transformers 5.x — text passes through
+  unpunctuated with no error surfaced per request.
+- `STT_DATABASE_ENABLED=false` (the default) makes `initialize_database()` a
+  no-op; the deprecated `pipeline_id` readers then fail closed with a named
+  `DatabaseDisabledError` rather than hanging.
+- `HUGGINGFACE_TOKEN` and `DIARIZATION_HF_MODEL_ID`-style env vars are GONE —
+  setting them has no effect; the values now come from the resolved spec's
+  models and the `model-registry:huggingface` `AiProviderConnection`.
+- The legacy Qdrant collection `stt_speaker_embeddings`, if still provisioned
+  in an environment, is unused by this service — its absence is not a defect.
+
+## Related
+
+- [`06-python-services.md`](../../.claude/rules/06-python-services.md) — FastAPI service conventions, env loading, gateway integration
+- [`01-development-workflow.md`](../../.claude/rules/01-development-workflow.md) — layer gates, test placement
+- [TASK-861 README](../../docs/implementation/TASK-861-Audio-Pipeline-Retirement/README.md) — the ResolvedAsrSpec cutover
+- [TASK-880 README](../../docs/implementation/TASK-880-Asr-Remainder-Moves/README.md) — env-to-control-plane/row moves
+- [TASK-887 README](../../docs/implementation/TASK-887-Diarization-Agent-Option/README.md) — diarization as an agent option
+- [`apps/api` README](../api/README.md) — the gateway that resolves and injects the spec
