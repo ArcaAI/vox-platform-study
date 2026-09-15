@@ -1596,15 +1596,26 @@ describe('ConsultationService', () => {
         expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
       });
 
-      // A never-signed, still-active consultation cannot be manually closed
-      // — the A-13 repro this ticket exists to fix. `applyTransition` maps
-      // the domain BusinessException to 409 (ConflictException).
-      it('throws ConflictException (409) closing a still-OPEN, never-recorded consultation', async () => {
+      // REVERSED by TASK-972 OD-7. This previously asserted a 409: `OPEN`'s only
+      // outgoing edge was `PRIMED`, so a never-recorded consultation could not be
+      // closed by anything — not a manual close, not the timeout sweep — and
+      // stranded forever. Measured on the dev cluster 2026-09-15: 11 such rows,
+      // none of them clearable. `OPEN → CLOSED_INCOMPLETE` is now legal.
+      //
+      // Note the scope of that edge: it also permits closing a consultation that
+      // is merely YOUNG rather than abandoned. The automated path guards this with
+      // a second signal (`ConsultationTimeoutSweepService` requires idle age AND no
+      // `ContextItem` created in the window); the manual path is deliberately
+      // unguarded, because an authenticated caller closing their own never-started
+      // consultation is cancelling it, which is a thing they may do.
+      it('closes a still-OPEN, never-recorded consultation as CLOSED_INCOMPLETE (OD-7)', async () => {
         const entity = makeRealEntity({ status: ConsultationStatus.OPEN });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
 
-        await expect(service.closeConsultation('c-1')).rejects.toThrow(ConflictException);
-        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
+        const result = await service.closeConsultation('c-1');
+
+        expect(result.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+        expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalled();
       });
 
       it('throws NotFoundException when consultation not found', async () => {
