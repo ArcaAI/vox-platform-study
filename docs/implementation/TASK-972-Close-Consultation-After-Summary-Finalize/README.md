@@ -480,6 +480,50 @@ capability and nothing exercises it in production: the clinician's edit still st
 database. The close-signal half, however, is self-healing from HOPE's side as of Lane 8 — a stranded
 consultation now times out rather than sitting open forever, which is the half the owner observed.
 
+## 5b. Release — SDK 3.5.0 and the ALaaS integration
+
+### Two defects found only because we went to publish
+
+1. **The version bump used the wrong mechanism.** This repo versions the SDK with **Changesets**, whose
+   config declares a NINE-package `fixed` lockstep group (`vox`, `vox-node`, `vox-codegen`, `room`,
+   `stt`, `vad`, `noise-filter`, `med-ner`, `pipeline`). Lane 5 hand-edited
+   `packages/vox-node/package.json` to 3.5.0, which desynchronised the group — that, not the ticket's
+   own work, is what put `npm-publish-policy.contract.test.ts` red. Corrected: hand bump reverted, the
+   hand-written CHANGELOG section lifted into `.changeset/task-972-consultation-finish-plane.md`, and
+   `changeset version` run. All nine are now 3.5.0, which ALSO resolves the pre-existing 3.4.0/3.3.0
+   split the contract had been failing on before this ticket opened.
+2. **`If-Match` was unusable as shipped.** Both new SDK methods require it; the gateway accepts ONLY a
+   strong validator (`/^"(0|[1-9][0-9]*)"$/`, `expectedVersion.decorator.ts:12`); and the only version
+   an SDK consumer can obtain is `ConsultationGetResponse.version` — a **number**. So the natural call,
+   `String(c.version)`, sends `3` and is refused with a precondition error that never mentions
+   quoting. Every integrator would have hit it on their first `approve`. `options.ifMatch` now accepts
+   `string | number` and `toStrongValidator()` (`packages/vox-node/src/core/if-match.ts`) quotes it;
+   an already-quoted strong or weak validator passes through. Caught while still unpublished.
+
+### Release path
+
+Publishing is CI-only: `pnpm changeset publish` runs in the `publish-sdk` job, gated on a pushed
+`SDK-*` / `ALL-*` tag and authenticated by the masked `GITHUB_PACKAGES_TOKEN`. The registry of record
+is **GitHub Packages**, which is where every consumer — ALaaS included — pulls from.
+
+Owner-authorised 2026-09-15: `dev-2.2` pushed (`af9356ec3..18fb11a09`, 76 commits, fast-forward — it
+carried other tickets' unpushed work, which was stated before pushing), then tag `SDK-3.5.0` pushed.
+Pipelines #1215 (branch) and #1216 (tag) triggered; the tag pipeline runs `test` before `publish`, so
+the suite gates the release.
+
+The family bump republishes six packages with no code change in this ticket. That is what a `fixed`
+group means, it is what the contract test enforces, and it was confirmed with the owner rather than
+assumed.
+
+### ALaaS (Lane 6) — implemented in the OTHER repo
+
+`ALaaSv3.0`, branch `task-972-hope-finish-plane` off `refactor-hope-integaration`. Carries the HOPE
+`consultationId` into the batch path (the prerequisite — the clinician's edit lands in the batch path,
+which had no id), extends the port/adapter with `approve`/`close`, calls `update → approve → close` on
+submit, retires the dead `POST /api/v1/summary/feedback` route, and pins `@arcaai/vox-node@3.5.0`.
+Verified against a local 3.5.0 tarball because the package was not yet on the registry; the lockfile
+must be re-resolved against the PUBLISHED artifact once the pipeline is green.
+
 ## 6. Change History
 
 | Date | Change |
