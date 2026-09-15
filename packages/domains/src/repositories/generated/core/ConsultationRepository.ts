@@ -404,12 +404,18 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * Deliberately cross-tenant, like `findCreatedInRange`: the sweep runs with
    * no CLS tenant context (a platform-wide maintenance tick, not a per-tenant
    * request), so this must see every tenant's stale rows in one query rather
-   * than being called once per tenant. `OPEN` is deliberately NOT in the
-   * eligible set — a consultation never even primed has no clinical content
-   * to be "incomplete" about ( "Sweep-ineligible"); nor is
-   * `PENDING_REVIEW`, which has its own narrower gate-SLA path
-   * (`recordEscalation` → `TIMED_OUT`), or `RECORDING`, an active capture
-   * session that force-terminating live audio would wrongly interrupt.
+   * than being called once per tenant. `OPEN`, `PENDING_REVIEW` and
+   * `RECORDING` are deliberately NOT in THIS query's eligible set — each is
+   * swept, if at all, by its own leg with its own threshold and its own
+   * target:
+   *   • `RECORDING` → {@link findStaleRecording} (TASK-932 OD-9).
+   *   • `PENDING_REVIEW` → {@link findIdlePendingReview} (TASK-972 Lane 8,
+   *     OD-6), landing on the RECOVERABLE `TIMED_OUT` rather than here. It
+   *     also still has the narrower gate-SLA path
+   *     (`HarnessInternalService.recordEscalation` → `TIMED_OUT`).
+   *   • `OPEN` → {@link findIdleOpen} (TASK-972 Lane 8, OD-7).
+   * Folding any of them into the five-state `in` list below would impose ONE
+   * window and ONE target on states whose clinical meanings differ.
    */
   async findTimeoutSweepEligible(cutoff: Date): Promise<ConsultationEntity[]> {
     return this.findAll({
@@ -426,6 +432,69 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
         updatedAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
       },
+      sort: [{ updatedAt: 'asc' }],
+    });
+  }
+
+  /**
+   * TASK-972 Lane 8 (OD-6) — consultations sitting in `PENDING_REVIEW` whose
+   * `updatedAt` is older than `cutoff`, oldest first. Backs the
+   * PENDING_REVIEW leg of `ConsultationTimeoutSweepService`
+   * (`sweepIdlePendingReview`), which transitions each row to the
+   * RECOVERABLE `TIMED_OUT` — never `CLOSED_INCOMPLETE`, because
+   * `TIMED_OUT → SIGNED` is a legal edge that `SummaryService.approveSummary`
+   * already accepts ("the clock never signs, a human still can"), so a
+   * clinician who reviews hours late still signs, still closes, and still
+   * yields a training pair.
+   *
+   * Age alone is the whole predicate here, matching the existing
+   * `recordEscalation` → `TIMED_OUT` path: the target is recoverable, so a
+   * false positive costs a status label, not a record.
+   *
+   * Deliberately cross-tenant, exactly like {@link findTimeoutSweepEligible}.
+   */
+  async findIdlePendingReview(cutoff: Date): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        status: ConsultationStatus.PENDING_REVIEW,
+        updatedAt: { lt: cutoff },
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ updatedAt: 'asc' }],
+    });
+  }
+
+  /**
+   * TASK-972 Lane 8 (OD-7) — consultations abandoned in `OPEN`, the state
+   * that was structurally unclosable until the `OPEN → CLOSED_INCOMPLETE`
+   * matrix edge landed (Lane 7). Backs `ConsultationTimeoutSweepService`'s
+   * `sweepIdleOpen`.
+   *
+   * TWO signals are required, not one — mirroring the RECORDING leg's
+   * "age AND an absent live-summary lock" rule, and for the same reason:
+   * `ContextService` only ever READS the consultation row (`findById` /
+   * `assertParentInScope`), so adding a case note or an attachment to an
+   * OPEN consultation does NOT bump `Consultation.updatedAt`. Age alone
+   * would therefore close a consultation a clinician is still loading
+   * context into, and this leg's target is the IRREVERSIBLE-in-intent
+   * `CLOSED_INCOMPLETE` (whose only outgoing edge is `REOPENED`). So a row
+   * is eligible only when the row itself has been untouched for the window
+   * AND no `ContextItem` was created inside it.
+   *
+   * Deliberately cross-tenant, exactly like {@link findTimeoutSweepEligible}.
+   */
+  async findIdleOpen(cutoff: Date): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        status: ConsultationStatus.OPEN,
+        updatedAt: { lt: cutoff },
+        resourceStatus: ResourceStatusType.ENABLED,
+        // Relation filter — `formatFindAllProps` spreads `filters` verbatim
+        // into Prisma's `where`, so this reaches the query as written and is
+        // served by `ContextItem_consultationId_idx`.
+        ContextItems: { none: { createdAt: { gte: cutoff } } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `DbFilters` describes scalar columns only; Prisma's relation filters have no representation in it
+      } as any,
       sort: [{ updatedAt: 'asc' }],
     });
   }

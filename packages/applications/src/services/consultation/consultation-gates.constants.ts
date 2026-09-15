@@ -127,6 +127,56 @@ export const CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY = 'consultation.state.s
 export const CONSULTATION_RECORDING_STALE_MINUTES_KEY = 'consultation.state.recordingStaleMinutes';
 
 /**
+ * TASK-972 Lane 8 (OD-6) — how long a consultation may sit in `PENDING_REVIEW`
+ * with no clinician activity before the sweep transitions it to `TIMED_OUT`.
+ *
+ * WHY `TIMED_OUT` AND NOT `CLOSED_INCOMPLETE`, which is what every other
+ * timeout leg targets. `TIMED_OUT → SIGNED` is a legal edge and
+ * `SummaryService.approveSummary` already accepts `TIMED_OUT` as a predecessor
+ * of `SIGNED` ("the clock never signs, a human still can"), so a clinician who
+ * comes back hours later still signs, still closes, and still yields the
+ * `(AI draft, clinician-edited)` training pair the ticket exists to capture.
+ * `CLOSED_INCOMPLETE` reaches only `REOPENED` and would destroy that path.
+ *
+ * `PENDING_REVIEW` is the state a real stranded consultation was measured in on
+ * `hope-v2-dev` (29.4 h, README §2b) and it was the one state NOTHING in the
+ * platform could clear: the general sweep excludes it by design, and the
+ * narrower gate-SLA path (`HarnessInternalService.recordEscalation`) only fires
+ * when the harness reports a terminal gate abandon, which a Substrate-B
+ * consultation never does. This leg is the backstop for that.
+ *
+ * NOT a kill-switch (no on/off semantics) — a tuning knob,
+ * `failMode: open-to-default`. Default 120 minutes (2 h, OD-6).
+ */
+export const CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY = 'consultation.state.reviewTimeoutMinutes';
+
+/**
+ * TASK-972 Lane 8 (OD-7) — how long a consultation may sit in `OPEN` before the
+ * sweep transitions it to `CLOSED_INCOMPLETE`.
+ *
+ * `OPEN` was STRUCTURALLY UNCLOSABLE until Lane 7 added the
+ * `OPEN → CLOSED_INCOMPLETE` matrix edge: its only outgoing edge was
+ * `OPEN → PRIMED`, so neither a manual `POST :id/close` nor any sweep could
+ * ever clear a consultation abandoned before recording began (the ALaaS
+ * orphan path — a browser that vanishes without sending `stop` — lands here).
+ *
+ * Unlike the `PENDING_REVIEW` leg above, this target is NOT recoverable
+ * (`CLOSED_INCOMPLETE → REOPENED` only), so the eligibility test carries a
+ * SECOND signal: `ConsultationRepository.findIdleOpen` additionally requires
+ * that no `ContextItem` was created inside the window. `ContextService` only
+ * READS the consultation row, so adding a case note or an attachment does not
+ * bump `Consultation.updatedAt` — age alone would close a consultation a
+ * clinician is still loading context into. Same two-signal rule the RECORDING
+ * leg already applies (age AND an absent live-summary lock).
+ *
+ * NOT a kill-switch — a tuning knob, `failMode: open-to-default`. Default 120
+ * minutes (2 h, OD-6/OD-7), live-tunable: it is a `GlobalSetting`, so the
+ * window can be widened with no redeploy if real abandonment data says 2 h is
+ * too aggressive.
+ */
+export const CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY = 'consultation.state.openTimeoutMinutes';
+
+/**
  * the PER-TENANT rollout flag for the realtime GRAPH EXECUTOR.
  *
  * The live flush historically ran a hardcoded 11-step sequence for every
@@ -162,5 +212,8 @@ export const CONSULTATION_GATE_DEFAULTS = {
   [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,
   [CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY]: '*/15 * * * *',
   [CONSULTATION_RECORDING_STALE_MINUTES_KEY]: 30,
+  // TASK-972 Lane 8 (OD-6 / OD-7) — the two stranding states, each 2 h.
+  [CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]: 120,
+  [CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY]: 120,
   [CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY]: false,
 } as const;
