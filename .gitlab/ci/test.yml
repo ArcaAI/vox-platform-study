@@ -708,6 +708,14 @@ test-guardrail:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - echo "── Test infra → Redis=${CI_REDIS_URL:+set} GLiNER=disabled Ollama=disabled ──"
+    # Several suites boot the app (lifespan / `main`), which CONSTRUCTS the Redis
+    # client; `redis.asyncio.from_url` rejects an empty URL outright with
+    # "Redis URL must specify one of the following schemes". No dedicated test Redis
+    # is provisioned for this job and `ci/REDIS_URL` is not reaching it through
+    # VAULT_SECRETS, so `CI_REDIS_URL` expands to empty and every such test dies at
+    # construction. These tests never CONNECT — a syntactically valid URL is all they
+    # need. A real `CI_REDIS_URL` still wins when one is supplied.
+    - export GUARDRAIL_REDIS_URL="${GUARDRAIL_REDIS_URL:-redis://localhost:6379/0}"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
     - cd apps/guardrail
