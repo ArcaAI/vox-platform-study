@@ -220,3 +220,73 @@ describe('ConsultationsResource#documentSections', () => {
     expect(calls).toBe(3);
   });
 });
+
+// -----------------------------------------------------------------------------
+// close (TASK-972 Lane 5)
+// -----------------------------------------------------------------------------
+
+describe('ConsultationsResource#close', () => {
+  it('POSTs /api/v1/consultations/:id/close and returns the parsed response', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, { ...CONSULTATION, status: 'CLOSED_COMPLETE' as const }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    const result = await resource.close('c1', {}, { ifMatch: '"7"' });
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1/close');
+    expect((init as RequestInit).method).toBe('POST');
+    expect(result).toEqual({ ...CONSULTATION, status: 'CLOSED_COMPLETE' });
+  });
+
+  it('percent-encodes the consultation id', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, CONSULTATION));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.close('c/1', {}, { ifMatch: '"7"' });
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c%2F1/close');
+  });
+
+  it('sends the required If-Match header', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, CONSULTATION));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.close('c1', {}, { ifMatch: '"7"' });
+
+    expect(headerOf(fetchImpl.mock.calls[0]![1], 'if-match')).toBe('"7"');
+  });
+
+  it('sends clinicianUserId in the body when supplied', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, CONSULTATION));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.close('c1', { clinicianUserId: 'clinician-1' }, { ifMatch: '"7"' });
+
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string)).toEqual({ clinicianUserId: 'clinician-1' });
+  });
+
+  it('omits clinicianUserId from the body when not supplied', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, CONSULTATION));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.close('c1', {}, { ifMatch: '"7"' });
+
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string)).toEqual({});
+  });
+
+  it('surfaces a 412 response as VersionConflictError carrying currentVersion', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(412, { message: 'Version conflict', metadata: { currentVersion: 5 } }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, maxRetries: 0 });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.close('c1', {}, { ifMatch: '"3"' })).rejects.toMatchObject({
+      status: 412,
+      currentVersion: 5,
+    });
+  });
+});

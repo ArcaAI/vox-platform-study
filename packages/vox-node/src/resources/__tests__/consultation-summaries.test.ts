@@ -290,3 +290,85 @@ describe('ConsultationSummariesResource — synchronous generation timeouts (TAS
     for (const call of request.mock.calls) expect(call[0]).not.toHaveProperty('timeoutMs');
   });
 });
+
+// -----------------------------------------------------------------------------
+// approve (TASK-972 Lane 5)
+// -----------------------------------------------------------------------------
+
+const APPROVAL = {
+  contextItemId: 'ci1',
+  approvalStatus: 'APPROVED',
+  approvedBy: 'clinician-1',
+  approvedAt: '2026-01-01T00:00:00Z',
+};
+
+describe('ConsultationSummariesResource#approve', () => {
+  it('POSTs /api/v1/consultations/:id/summary/:contextItemId/approve', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, APPROVAL));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    const result = await resource.approve('c1', 'ci1', {}, { ifMatch: '"7"' });
+
+    const [url, init] = callArgs(fetchImpl);
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1/summary/ci1/approve');
+    expect(init.method).toBe('POST');
+    expect(result).toEqual(APPROVAL);
+  });
+
+  it('percent-encodes both the consultation id and the context item id', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, APPROVAL));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await resource.approve('c/1', 'ci/1', {}, { ifMatch: '"7"' });
+
+    const [url] = callArgs(fetchImpl);
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c%2F1/summary/ci%2F1/approve');
+  });
+
+  it('sends the required If-Match header', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, APPROVAL));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await resource.approve('c1', 'ci1', {}, { ifMatch: '"7"' });
+
+    const [, init] = callArgs(fetchImpl);
+    const headers = init.headers as Headers;
+    expect(headers.get('if-match')).toBe('"7"');
+  });
+
+  it('sends overrideSafetyFlag and clinicianUserId in the body when supplied', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, APPROVAL));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await resource.approve('c1', 'ci1', { overrideSafetyFlag: true, clinicianUserId: 'clinician-1' }, { ifMatch: '"7"' });
+
+    const [, init] = callArgs(fetchImpl);
+    expect(JSON.parse(init.body as string)).toEqual({ overrideSafetyFlag: true, clinicianUserId: 'clinician-1' });
+  });
+
+  it('omits clinicianUserId from the body when not supplied', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, APPROVAL));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await resource.approve('c1', 'ci1', {}, { ifMatch: '"7"' });
+
+    const [, init] = callArgs(fetchImpl);
+    expect(JSON.parse(init.body as string).clinicianUserId).toBeUndefined();
+  });
+
+  it('surfaces a 412 response as VersionConflictError carrying currentVersion', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(412, { message: 'Version conflict', metadata: { currentVersion: 5 } }));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, maxRetries: 0 });
+    const resource = new ConsultationSummariesResource(transport);
+
+    await expect(resource.approve('c1', 'ci1', {}, { ifMatch: '"3"' })).rejects.toMatchObject({
+      status: 412,
+      currentVersion: 5,
+    });
+  });
+});

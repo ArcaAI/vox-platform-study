@@ -180,6 +180,32 @@ export interface ConsultationOpenResponse {
 }
 
 // -----------------------------------------------------------------------------
+// close (TASK-972 Lane 5)
+// -----------------------------------------------------------------------------
+
+/**
+ * Body of `POST /api/v1/consultations/:id/close` — the bookend to
+ * {@link OpenConsultationRequest}. OCC — requires `If-Match`; see
+ * `CloseConsultationOptions.ifMatch` on `ConsultationsResource.close`.
+ *
+ * Legal only from `SIGNED` or `TIMED_OUT` (409 otherwise — `PENDING_REVIEW`
+ * has no direct edge to a closed state, so `summaries.approve()` must
+ * succeed first). Reachable by BOTH machine credential classes.
+ */
+export interface CloseConsultationRequest {
+  /**
+   * Same rule as {@link OpenConsultationRequest.clinicianUserId} /
+   * `ApproveSummaryRequest.clinicianUserId`: REQUIRED for a service-account
+   * caller (400 otherwise), refused for a non-admin human caller (400), a
+   * clinician outside the tenant is a 404. Named here only so the finishing
+   * call of a machine-driven consultation carries the same identity as the
+   * `open()`/`approve()` calls that preceded it — closing itself performs no
+   * further attribution.
+   */
+  clinicianUserId?: string;
+}
+
+// -----------------------------------------------------------------------------
 // recording
 // -----------------------------------------------------------------------------
 
