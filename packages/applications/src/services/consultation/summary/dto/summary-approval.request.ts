@@ -1,4 +1,4 @@
-import { IsOptional, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsOptional, IsBoolean, IsInt, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SummaryApprovalRequest {
@@ -27,4 +27,24 @@ export class SummaryApprovalRequest {
   @IsInt()
   @Min(1)
   expectedVersion!: number;
+
+  /**
+   * TASK-972 Lane 1/4 — the clinician this note is ATTESTED BY.
+   *
+   * REQUIRED for a machine credential (`approveSummary` refuses one that names nobody — a
+   * machine is never the attesting clinician, it is recorded as the ACTOR beside them) and
+   * refused for a human who names another clinician without `SUPER_ADMIN` / `TENANT_ADMIN`. The
+   * whole rule is `consultation/summary/clinician-attribution.ts`; the field is declared here
+   * because the global pipe runs `forbidNonWhitelisted`, so an undeclared field REJECTS the
+   * request rather than arriving stripped — and `@arcaai/vox-node` already sends it
+   * (`ApproveSummaryRequest.clinicianUserId`).
+   */
+  @ApiPropertyOptional({
+    description:
+      'The clinician this sign-off is attested by. REQUIRED for a machine credential (API key / service account); a human may ' +
+      'name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to sign as themselves.',
+  })
+  @IsOptional()
+  @IsString()
+  clinicianUserId?: string;
 }

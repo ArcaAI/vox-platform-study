@@ -12082,7 +12082,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/close",
       "routePath": "/consultations/:id/close",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12670,7 +12672,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/summary/{contextItemId}/approve",
       "routePath": "/consultations/:id/summary/:contextItemId/approve",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -12814,7 +12818,9 @@
       "method": "PATCH",
       "path": "/api/v1/consultations/{id}/summary/{summaryId}",
       "routePath": "/consultations/:id/summary/:summaryId",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
