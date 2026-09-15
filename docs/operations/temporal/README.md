@@ -11,44 +11,6 @@ connect to it at `hope-temporal:7233` (`arca/hope-v2-deployment`'s `deployment/k
 
 This directory holds only this file.
 
-## How it works
-
-### Local dev (Docker Compose `temporal` profile)
-
-```
-docker-compose.dev.yml (`temporal` profile)
-  temporal-admin-tools     -> schema setup, one-shot (temporalio/admin-tools, default 1.31.2)
-  temporal                 -> temporalio/server, default 1.31.2, shares hope-postgres
-                              (databases: temporal, temporal_visibility)
-  temporal-create-namespace -> idempotent `default` namespace bootstrap
-  temporal-ui              -> temporalio/ui, default 2.53.1
-```
-
-Local dev is disposable by design (`pnpm infra:dev:up` with `-v` recreates it from empty) — this
-runbook's backup/restore procedures do not apply to it. `scripts/temporal-volume-hop.sh` is the
-only local-dev Temporal runbook that matters, and it is a version-upgrade procedure, not a backup
-one.
-
-### In-cluster (self-hosted, live)
-
-```
-arca/hope-v2-deployment: deployment/k8s/base/temporal.yaml
-  hope-temporal     Deployment (temporalio/auto-setup:1.25.1) + Service (7233 grpc, 8233 http, 9090 metrics)
-  hope-temporal-ui  Deployment (temporalio/ui:2.34.0) + Service (8080 http)
-  Persistence: the SAME in-cluster Postgres server the app database uses — one Postgres server,
-    four logical databases (hope, temporal, temporal_visibility, mlflow); see
-    .claude/rules/09-infrastructure-devops.md "Cluster Deploys"
-  Postgres creds: hope-secrets -> TEMPORAL_DB_HOST / TEMPORAL_DB_USER / TEMPORAL_DB_PASSWORD
-```
-
-Temporal's durable state lives entirely in the `temporal` and `temporal_visibility` databases on
-that shared Postgres instance — there is no separate Temporal-native backup mechanism to learn,
-and no separate external Postgres HA cluster in the picture: back up that Postgres server
-correctly and Temporal's state is backed up. This repo does not yet document that server's own
-backup/restore procedure (there is no Postgres-specific runbook under
-[`../storage/`](../storage/), only [`../storage/minio-phi-backup.md`](../storage/minio-phi-backup.md))
-— confirm what exists before assuming the fallback procedure below is unnecessary.
-
 ## Commands
 
 ### Backup (fallback procedure — confirm the platform Postgres backup story first)
@@ -123,6 +85,44 @@ kubectl -n hope-v2-dev get pod -l app=hope-harness-worker
 #    Requires a reachable Temporal server.
 ~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py --address <TEMPORAL_ADDRESS> --since-days 30
 ```
+
+## How it works
+
+### Local dev (Docker Compose `temporal` profile)
+
+```
+docker-compose.dev.yml (`temporal` profile)
+  temporal-admin-tools     -> schema setup, one-shot (temporalio/admin-tools, default 1.31.2)
+  temporal                 -> temporalio/server, default 1.31.2, shares hope-postgres
+                              (databases: temporal, temporal_visibility)
+  temporal-create-namespace -> idempotent `default` namespace bootstrap
+  temporal-ui              -> temporalio/ui, default 2.53.1
+```
+
+Local dev is disposable by design (`pnpm infra:dev:up` with `-v` recreates it from empty) — this
+runbook's backup/restore procedures do not apply to it. `scripts/temporal-volume-hop.sh` is the
+only local-dev Temporal runbook that matters, and it is a version-upgrade procedure, not a backup
+one.
+
+### In-cluster (self-hosted, live)
+
+```
+arca/hope-v2-deployment: deployment/k8s/base/temporal.yaml
+  hope-temporal     Deployment (temporalio/auto-setup:1.25.1) + Service (7233 grpc, 8233 http, 9090 metrics)
+  hope-temporal-ui  Deployment (temporalio/ui:2.34.0) + Service (8080 http)
+  Persistence: the SAME in-cluster Postgres server the app database uses — one Postgres server,
+    four logical databases (hope, temporal, temporal_visibility, mlflow); see
+    .claude/rules/09-infrastructure-devops.md "Cluster Deploys"
+  Postgres creds: hope-secrets -> TEMPORAL_DB_HOST / TEMPORAL_DB_USER / TEMPORAL_DB_PASSWORD
+```
+
+Temporal's durable state lives entirely in the `temporal` and `temporal_visibility` databases on
+that shared Postgres instance — there is no separate Temporal-native backup mechanism to learn,
+and no separate external Postgres HA cluster in the picture: back up that Postgres server
+correctly and Temporal's state is backed up. This repo does not yet document that server's own
+backup/restore procedure (there is no Postgres-specific runbook under
+[`../storage/`](../storage/), only [`../storage/minio-phi-backup.md`](../storage/minio-phi-backup.md))
+— confirm what exists before assuming the fallback procedure below is unnecessary.
 
 ## Gotchas
 

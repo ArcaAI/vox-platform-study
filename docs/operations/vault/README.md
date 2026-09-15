@@ -28,7 +28,7 @@ single-instance deployment**, and every `kubectl`/`vault` invocation below targe
 | `README.md` | This file |
 | `vm-cluster-seal-unseal.md` | The seal/unseal and disaster-recovery procedure for the retired VM cluster (design #2 above) — also historical, kept for the same reason |
 
-## How it works (retired design — mechanism reference only)
+## How it works
 
 ### Architecture as designed
 

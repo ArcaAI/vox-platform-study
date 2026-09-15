@@ -20,29 +20,6 @@ Last verified: 2026-09-15 against root `package.json`, `tests/docker-compose.tes
 | [`test-strategy.md`](test-strategy.md) | Formal QA/QC plan: scope, test levels, entry/exit criteria, coverage policy, roles, defect handling, release readiness | Leads, QA, auditors |
 | [`ci-gates.md`](ci-gates.md) | CI pipeline traceability — every validate/test gate, what it runs, and what it blocks | CI maintainers, release managers |
 
-## How it works
-
-- **Package manager / task runner**: pnpm 10.31 workspaces + Turborepo. Root `pnpm test` runs
-  `turbo run test` across all packages except `@arcaai/compat-playground`; each package's `test`
-  script is what turbo invokes.
-- **TypeScript tests**: Vitest 4. Unit (colocated `*.test.ts` / `__tests__/`), integration
-  (`integration/**`, live test DB), API E2E (Playwright, `apps/api/tests/e2e/*.spec.ts`).
-- **Python tests**: pytest, run through the shared conda env `arcaenv` via `pnpm <svc>:test`.
-- **Test isolation**: a dedicated Docker stack (`hope-test` compose project,
-  `tests/docker-compose.test.yml`) on non-dev ports — Postgres `5433`, Redis `6380`, MinIO
-  `9002`/`9003` (API/console), Qdrant `6335`/`6336` (gRPC/HTTP) — with tmpfs storage, so nothing
-  persists.
-- **Test env file**: `.env.test` at the repo root; every TS test alias loads it via
-  `dotenv -e .env.test`.
-- **Test application ports are DEV port + 100** (`scripts/start-test-app.sh`): the API gateway
-  runs on `8968` (dev `8868`), and each Python service follows the same offset (e.g. STT `8961`,
-  Text `8962`) — a dev stack can keep running alongside a test stack because the two never share a
-  port.
-- `start-test-app.sh api --isolated` starts a SECOND gateway on `ISOLATED_API_PORT` with
-  throttling on and `TEXT_URL` pointed at the e2e stub — a boot-time-only settings pair
-  (`RATE_LIMIT_ENABLED`, `TEXT_URL`) that the shared test gateway cannot flip per-spec, needed by
-  exactly two e2e specs (`auth-throttle-per-endpoint`, `byo-llm-credentials`).
-
 ## Commands
 
 ### The fast path (fresh checkout to green suite)
@@ -70,6 +47,29 @@ pnpm test:py:managed
 pnpm stack:test:doctor       # read-only health probe of the test stack
 ```
 
+## How it works
+
+- **Package manager / task runner**: pnpm 10.31 workspaces + Turborepo. Root `pnpm test` runs
+  `turbo run test` across all packages except `@arcaai/compat-playground`; each package's `test`
+  script is what turbo invokes.
+- **TypeScript tests**: Vitest 4. Unit (colocated `*.test.ts` / `__tests__/`), integration
+  (`integration/**`, live test DB), API E2E (Playwright, `apps/api/tests/e2e/*.spec.ts`).
+- **Python tests**: pytest, run through the shared conda env `arcaenv` via `pnpm <svc>:test`.
+- **Test isolation**: a dedicated Docker stack (`hope-test` compose project,
+  `tests/docker-compose.test.yml`) on non-dev ports — Postgres `5433`, Redis `6380`, MinIO
+  `9002`/`9003` (API/console), Qdrant `6335`/`6336` (gRPC/HTTP) — with tmpfs storage, so nothing
+  persists.
+- **Test env file**: `.env.test` at the repo root; every TS test alias loads it via
+  `dotenv -e .env.test`.
+- **Test application ports are DEV port + 100** (`scripts/start-test-app.sh`): the API gateway
+  runs on `8968` (dev `8868`), and each Python service follows the same offset (e.g. STT `8961`,
+  Text `8962`) — a dev stack can keep running alongside a test stack because the two never share a
+  port.
+- `start-test-app.sh api --isolated` starts a SECOND gateway on `ISOLATED_API_PORT` with
+  throttling on and `TEXT_URL` pointed at the e2e stub — a boot-time-only settings pair
+  (`RATE_LIMIT_ENABLED`, `TEXT_URL`) that the shared test gateway cannot flip per-spec, needed by
+  exactly two e2e specs (`auth-throttle-per-endpoint`, `byo-llm-credentials`).
+
 ## Gotchas
 
 - **The Playwright `globalSetup` does a DESTRUCTIVE DB reset.** Set `RESET_DB=false` when the test
@@ -80,8 +80,7 @@ pnpm stack:test:doctor       # read-only health probe of the test stack
 - **`pnpm infra:test:down` removes volumes** — the test stack is throwaway by design; do not
   expect data to survive a `down` the way it might on the dev stack.
 
-## Definition of done for any change (quality gate)
-
+### Definition of done for any change (quality gate)
 Mirrors [`.claude/rules/01-development-workflow.md`](../../../.claude/rules/01-development-workflow.md):
 
 - [ ] New/changed tests pass — evidence pasted (actual runner output, not a claim)

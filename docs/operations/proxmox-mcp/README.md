@@ -19,6 +19,47 @@ This directory holds only this file. Every path it references — `config.json`,
 `known_hosts` — lives outside this repo, under `~/.proxmox-mcp/` on the operator's machine; none of
 it is committed anywhere.
 
+## Commands
+
+```bash
+# One-time key provisioning: dedicated key, never reused elsewhere
+ssh-keygen -t ed25519 -f ~/.proxmox-mcp/ssh/proxmox_mcp_tunnel -N "" -C "proxmox-mcp-plus-tunnel"
+
+# Get an interactive root shell via the existing Cloudflare Access identity,
+# then append the PUBLIC key to /root/.ssh/authorized_keys on the Proxmox node
+sudo cloudflared access rdp --hostname remote.taphuynh.dev --url ssh://localhost:22
+ssh root@localhost
+
+# Capture the host key exactly as the container will see it (through
+# host.docker.internal:22, not scanned directly against the Proxmox node)
+docker run --rm ghcr.io/rekklesna/proxmoxmcp-plus:latest \
+  ssh-keyscan -p 22 -T 10 host.docker.internal > ~/.proxmox-mcp/ssh/known_hosts
+
+# Run the container
+docker run -d --name proxmox-mcp-plus --restart unless-stopped -p 8000:8000 \
+  -e PROXMOX_MCP_MODE=mcp-http \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_PORT=8000 \
+  -e MCP_TRANSPORT=STREAMABLE_HTTP \
+  -v "$HOME/.proxmox-mcp/config.json:/app/proxmox-config/config.json:ro" \
+  -v "$HOME/.proxmox-mcp/ssh/proxmox_mcp_tunnel:/run/secrets/proxmox_mcp_tunnel:ro" \
+  -v "$HOME/.proxmox-mcp/ssh/known_hosts:/run/secrets/known_hosts:ro" \
+  ghcr.io/rekklesna/proxmoxmcp-plus:latest
+
+# Register with Claude Code at USER scope (every project, not just hope-v2)
+claude mcp add --transport http proxmox-mcp-plus http://localhost:8000/mcp -s user
+
+# Verify
+docker ps --filter name=proxmox-mcp-plus            # should show "Up", not "Restarting"
+docker logs proxmox-mcp-plus --tail 20               # should end on "Uvicorn running on http://0.0.0.0:8000"
+claude mcp list                                       # proxmox-mcp-plus should show "Connected"
+```
+
+Then, from a Claude Code session with the server loaded, call its `get_nodes` MCP tool and confirm
+it returns real cluster data (node name, uptime, CPU/memory) — that is the only way to confirm the
+full chain (SSH tunnel -> cloudflared -> Cloudflare Access -> Proxmox API) is actually working end
+to end, not just that the container process is alive.
+
 ## How it works
 
 ### Why this was harder than the upstream README suggests
@@ -116,47 +157,6 @@ manually-kept-alive `cloudflared` process.
   there (`127.0.0.1:8006` = pveproxy's own loopback listener), not by anything in between.
 - `ssh.key_file`/`known_hosts_file` are container-internal paths, mounted in from the host at
   container-run time.
-
-## Commands
-
-```bash
-# One-time key provisioning: dedicated key, never reused elsewhere
-ssh-keygen -t ed25519 -f ~/.proxmox-mcp/ssh/proxmox_mcp_tunnel -N "" -C "proxmox-mcp-plus-tunnel"
-
-# Get an interactive root shell via the existing Cloudflare Access identity,
-# then append the PUBLIC key to /root/.ssh/authorized_keys on the Proxmox node
-sudo cloudflared access rdp --hostname remote.taphuynh.dev --url ssh://localhost:22
-ssh root@localhost
-
-# Capture the host key exactly as the container will see it (through
-# host.docker.internal:22, not scanned directly against the Proxmox node)
-docker run --rm ghcr.io/rekklesna/proxmoxmcp-plus:latest \
-  ssh-keyscan -p 22 -T 10 host.docker.internal > ~/.proxmox-mcp/ssh/known_hosts
-
-# Run the container
-docker run -d --name proxmox-mcp-plus --restart unless-stopped -p 8000:8000 \
-  -e PROXMOX_MCP_MODE=mcp-http \
-  -e MCP_HOST=0.0.0.0 \
-  -e MCP_PORT=8000 \
-  -e MCP_TRANSPORT=STREAMABLE_HTTP \
-  -v "$HOME/.proxmox-mcp/config.json:/app/proxmox-config/config.json:ro" \
-  -v "$HOME/.proxmox-mcp/ssh/proxmox_mcp_tunnel:/run/secrets/proxmox_mcp_tunnel:ro" \
-  -v "$HOME/.proxmox-mcp/ssh/known_hosts:/run/secrets/known_hosts:ro" \
-  ghcr.io/rekklesna/proxmoxmcp-plus:latest
-
-# Register with Claude Code at USER scope (every project, not just hope-v2)
-claude mcp add --transport http proxmox-mcp-plus http://localhost:8000/mcp -s user
-
-# Verify
-docker ps --filter name=proxmox-mcp-plus            # should show "Up", not "Restarting"
-docker logs proxmox-mcp-plus --tail 20               # should end on "Uvicorn running on http://0.0.0.0:8000"
-claude mcp list                                       # proxmox-mcp-plus should show "Connected"
-```
-
-Then, from a Claude Code session with the server loaded, call its `get_nodes` MCP tool and confirm
-it returns real cluster data (node name, uptime, CPU/memory) — that is the only way to confirm the
-full chain (SSH tunnel -> cloudflared -> Cloudflare Access -> Proxmox API) is actually working end
-to end, not just that the container process is alive.
 
 ## Gotchas
 

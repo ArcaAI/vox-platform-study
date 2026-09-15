@@ -18,6 +18,39 @@ TTL/Auto-Evict, `*.modelCache.*` settings) is covered in the companion
 | `serving-tier-cluster-deployment.md` | Authoritative runbook for deploying `hope-lmstudio`/`hope-vllm` into the `hope-v2-dev` k3s namespace — MinIO weight staging, network policy, the LM Studio Service cutover |
 | `model-retention.md` | When a model loads, how long it stays resident, and how to change that at runtime without a redeploy |
 
+## Commands
+
+```bash
+# Local dev/test — start vLLM + llama.cpp + TEI embeddings (profile: inference)
+mkdir -p infrastructure/docker/models/llama-cpp   # pre-stage a GGUF here first
+pnpm infra:dev:up -- -e
+#   vLLM        -> :8000  (OpenAI wire /v1, /health, /metrics)
+#   llama.cpp   -> :8080  (/completion, /health, /slots)
+#   TEI bge-m3  -> :8871  (/embed, /health)
+
+# --- Smoke checks ---
+curl -fsS http://localhost:8000/health && echo " vllm healthy"
+curl -fsS http://localhost:8000/v1/models | jq '.data[].id'
+curl -fsS http://localhost:8000/metrics | grep -E 'vllm:.*prefix_cache'
+
+curl -fsS http://localhost:8080/health && echo " llama.cpp healthy"
+curl -fsS http://localhost:8080/slots | jq '.[].state'
+curl -fsS http://localhost:8080/completion \
+  -d '{"prompt":"Say hello in one word.","n_predict":16,"cache_prompt":true}' \
+  | jq '{content, timings}'
+
+# Through Text (engine identity + provider-level stats)
+curl -fsS http://localhost:8862/api/v1/generate \
+  -H 'content-type: application/json' \
+  -d '{"provider":"vllm","model":"Qwen/Qwen3-8B","prompt":"Say hello in one word."}' \
+  | jq '{provider, stats}'
+```
+
+Compose vars (`.env`, all read by `infrastructure/docker/docker-compose.dev.yml`): `VLLM_MODEL`,
+`VLLM_MAX_MODEL_LEN`, `VLLM_GPU_MEM_UTIL`, `HF_TOKEN` (gated HuggingFace downloads),
+`LLAMA_CPP_MODELS_DIR`, `LLAMA_CPP_MODEL`, `LLAMA_CPP_CTX_SIZE`, `HOPE_TEI_EMBED_MODEL`. Images are
+pinned (no `latest`); bump only to a build validated on your own hardware.
+
 ## How it works
 
 **Local dev/test** still defaults to LM Studio and Ollama (`openai_compat`/`lm-studio`,
@@ -54,39 +87,6 @@ routing (vLLM's native `response_format={"type":"json_schema",...}` on vLLM >= 0
 to toggle it, deliberately, so one deployment's vLLM version can't be applied process-wide).
 llama.cpp accepts a `json_schema` field or a raw GBNF grammar via `context.grammar`, and
 `cache_prompt: true` reuses the KV cache of a stable prefix across flushes/regens.
-
-## Commands
-
-```bash
-# Local dev/test — start vLLM + llama.cpp + TEI embeddings (profile: inference)
-mkdir -p infrastructure/docker/models/llama-cpp   # pre-stage a GGUF here first
-pnpm infra:dev:up -- -e
-#   vLLM        -> :8000  (OpenAI wire /v1, /health, /metrics)
-#   llama.cpp   -> :8080  (/completion, /health, /slots)
-#   TEI bge-m3  -> :8871  (/embed, /health)
-
-# --- Smoke checks ---
-curl -fsS http://localhost:8000/health && echo " vllm healthy"
-curl -fsS http://localhost:8000/v1/models | jq '.data[].id'
-curl -fsS http://localhost:8000/metrics | grep -E 'vllm:.*prefix_cache'
-
-curl -fsS http://localhost:8080/health && echo " llama.cpp healthy"
-curl -fsS http://localhost:8080/slots | jq '.[].state'
-curl -fsS http://localhost:8080/completion \
-  -d '{"prompt":"Say hello in one word.","n_predict":16,"cache_prompt":true}' \
-  | jq '{content, timings}'
-
-# Through Text (engine identity + provider-level stats)
-curl -fsS http://localhost:8862/api/v1/generate \
-  -H 'content-type: application/json' \
-  -d '{"provider":"vllm","model":"Qwen/Qwen3-8B","prompt":"Say hello in one word."}' \
-  | jq '{provider, stats}'
-```
-
-Compose vars (`.env`, all read by `infrastructure/docker/docker-compose.dev.yml`): `VLLM_MODEL`,
-`VLLM_MAX_MODEL_LEN`, `VLLM_GPU_MEM_UTIL`, `HF_TOKEN` (gated HuggingFace downloads),
-`LLAMA_CPP_MODELS_DIR`, `LLAMA_CPP_MODEL`, `LLAMA_CPP_CTX_SIZE`, `HOPE_TEI_EMBED_MODEL`. Images are
-pinned (no `latest`); bump only to a build validated on your own hardware.
 
 ## Gotchas
 

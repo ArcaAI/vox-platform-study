@@ -11,51 +11,6 @@ this. Dev/experiments may keep using the gated HF pull with a personal token.
 This directory holds only this file. The mirroring script it documents is
 `apps/tts/scripts/mirror_parler_weights.py`.
 
-## How it works
-
-### What gets mirrored — two repos
-
-| Repo | What | Size | License |
-|---|---|---|---|
-| `ai4bharat/indic-parler-tts` | Full snapshot — model (`model.safetensors` bundles the text encoder + Parler decoder + DAC codec), prompt tokenizer, configs | ~3.76 GB | Apache-2.0 (gated) |
-| `google/flan-t5-large` | Description tokenizer ONLY (tokenizer + config JSONs, not weights) | ~3 MB | Apache-2.0 (ungated) |
-
-**Why the second repo:** Parler bakes `google/flan-t5-large` as a Hub id in its `config.json`
-(`model.config.text_encoder._name_or_path`), so transformers fetches that tokenizer at load even
-when the model is local. Its weights are already inside the Parler safetensors — mirror only the
-tokenizer files. DAC (`parler-tts/dac_44khZ_8kbps`, MIT) is bundled, so no separate mirror is
-needed (verify on the first offline load).
-
-### Where it lands — the shared `hope-models` bucket, not a per-provider hostPath
-
-The platform's self-hosted model surfaces (STT, vLLM, LM Studio, and TTS) share ONE MinIO bucket,
-`hope-models`, mounted read-only into the `hope-tts` pod by an `s3fs` native sidecar at
-`/mnt/models-bucket` (`arca/hope-v2-deployment`'s `deployment/k8s/base/tts-v2.yaml`). There is no
-per-provider init-container that copies files to a node-local `hostPath` — the whole bucket is
-mounted into the pod directly, and there is no manifest-level per-engine enable flag either: the
-five `TTS_*_ENABLED` flags were deleted from the Deployment on 2026-09-07 (dev-2.2) — which engines
-load is entirely a **database** question now (`AiProviderConnection` / registry rows), never a
-manifest one.
-
-`AiModel` no longer carries a `localPath` column (removed; see
-`packages/database/src/prisma/db_main/ai-model.prisma`). Instead:
-
-- `AiModel.bucketPrefix` (relative to the `hope-models` bucket root) and, for a single-file
-  artifact, `AiModel.primaryObject` are what an admin sets on the row.
-- `local_path` is DERIVED from those at request-resolve time
-  (`deriveLocalPath`/`derivedLocalPath` in `packages/applications/src/services/ai-model/constants.ts`),
-  producing `/mnt/models-bucket/<bucketPrefix>[/<primaryObject>]` — the same mount path the s3fs
-  sidecar already exposes, so no separate download step runs inside the pod.
-- `IndicParlerProvider.from_spec` (`apps/tts/src/tts/providers/indic_parler.py`) builds its
-  request-scoped config from the resolved candidate: the gated Hub id (`candidate.model.source_uri`),
-  the ungated mirror (`candidate.model.local_path`), and the description-tokenizer mirror
-  (`candidate.model.artifacts["descEncoderPath"]`, stored under the row's `_metadata`). Leaving
-  `local_path`/the artifact path empty falls back to the gated Hub pull (dev only).
-
-There is no `TTS_PARLER_MODEL_PATH` / `TTS_PARLER_DESC_ENCODER_PATH` environment variable — both
-were retired onto the row (their `validation_alias` is a dead, tombstoned name; setting the env
-var has no effect).
-
 ## Commands
 
 ### One-time sync (operator laptop / jump host — never CI or the cluster)
@@ -112,6 +67,51 @@ Parler may serve at all is a separate question — the SYSTEM `AiProviderConnect
   `text_encoder._name_or_path` is exactly `google/flan-t5-large` (not `-base`).
 - **Dev:** leave the row's `bucketPrefix` / description-artifact path empty and set a personal
   `HF_TOKEN` (after accepting the gate) — the gated pull path is unchanged.
+
+## How it works
+
+### What gets mirrored — two repos
+
+| Repo | What | Size | License |
+|---|---|---|---|
+| `ai4bharat/indic-parler-tts` | Full snapshot — model (`model.safetensors` bundles the text encoder + Parler decoder + DAC codec), prompt tokenizer, configs | ~3.76 GB | Apache-2.0 (gated) |
+| `google/flan-t5-large` | Description tokenizer ONLY (tokenizer + config JSONs, not weights) | ~3 MB | Apache-2.0 (ungated) |
+
+**Why the second repo:** Parler bakes `google/flan-t5-large` as a Hub id in its `config.json`
+(`model.config.text_encoder._name_or_path`), so transformers fetches that tokenizer at load even
+when the model is local. Its weights are already inside the Parler safetensors — mirror only the
+tokenizer files. DAC (`parler-tts/dac_44khZ_8kbps`, MIT) is bundled, so no separate mirror is
+needed (verify on the first offline load).
+
+### Where it lands — the shared `hope-models` bucket, not a per-provider hostPath
+
+The platform's self-hosted model surfaces (STT, vLLM, LM Studio, and TTS) share ONE MinIO bucket,
+`hope-models`, mounted read-only into the `hope-tts` pod by an `s3fs` native sidecar at
+`/mnt/models-bucket` (`arca/hope-v2-deployment`'s `deployment/k8s/base/tts-v2.yaml`). There is no
+per-provider init-container that copies files to a node-local `hostPath` — the whole bucket is
+mounted into the pod directly, and there is no manifest-level per-engine enable flag either: the
+five `TTS_*_ENABLED` flags were deleted from the Deployment on 2026-09-07 (dev-2.2) — which engines
+load is entirely a **database** question now (`AiProviderConnection` / registry rows), never a
+manifest one.
+
+`AiModel` no longer carries a `localPath` column (removed; see
+`packages/database/src/prisma/db_main/ai-model.prisma`). Instead:
+
+- `AiModel.bucketPrefix` (relative to the `hope-models` bucket root) and, for a single-file
+  artifact, `AiModel.primaryObject` are what an admin sets on the row.
+- `local_path` is DERIVED from those at request-resolve time
+  (`deriveLocalPath`/`derivedLocalPath` in `packages/applications/src/services/ai-model/constants.ts`),
+  producing `/mnt/models-bucket/<bucketPrefix>[/<primaryObject>]` — the same mount path the s3fs
+  sidecar already exposes, so no separate download step runs inside the pod.
+- `IndicParlerProvider.from_spec` (`apps/tts/src/tts/providers/indic_parler.py`) builds its
+  request-scoped config from the resolved candidate: the gated Hub id (`candidate.model.source_uri`),
+  the ungated mirror (`candidate.model.local_path`), and the description-tokenizer mirror
+  (`candidate.model.artifacts["descEncoderPath"]`, stored under the row's `_metadata`). Leaving
+  `local_path`/the artifact path empty falls back to the gated Hub pull (dev only).
+
+There is no `TTS_PARLER_MODEL_PATH` / `TTS_PARLER_DESC_ENCODER_PATH` environment variable — both
+were retired onto the row (their `validation_alias` is a dead, tombstoned name; setting the env
+var has no effect).
 
 ## Gotchas
 
