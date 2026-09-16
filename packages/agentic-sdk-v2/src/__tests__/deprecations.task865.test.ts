@@ -78,7 +78,12 @@ const VOX_MARKED = [
   { file: 'src/core/constants.ts', before: 'export const PIPELINE_ENDPOINTS' },
   { file: 'src/core/TranscriptionPipeline.ts', before: 'export class TranscriptionPipeline' },
   { file: 'src/compat/types.ts', before: '  sttPipelineId?: string;' },
-  { file: 'src/plugins.ts', before: "export { useVAD } from '@arcaai/vad';" },
+  // The three raw hooks are re-exported through their GATED wrappers (TASK-977 D-6),
+  // so the marker is anchored on that export and on each wrapper's own declaration.
+  { file: 'src/plugins.ts', before: "export { useVAD, useSTT, useNoiseFilter } from './hooks/useGatedClientStages';" },
+  { file: 'src/hooks/useGatedClientStages.ts', before: 'export function useVAD(' },
+  { file: 'src/hooks/useGatedClientStages.ts', before: 'export function useNoiseFilter(' },
+  { file: 'src/hooks/useGatedClientStages.ts', before: 'export function useSTT(' },
   { file: 'src/plugins-med-ner.ts', before: "export { useMedNER } from '@arcaai/med-ner';" },
 ] as const;
 
