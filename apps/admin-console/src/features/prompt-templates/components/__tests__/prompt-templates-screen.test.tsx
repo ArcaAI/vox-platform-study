@@ -537,6 +537,8 @@ describe('PromptTemplatesScreen', () => {
     renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
 
     const dialog = await screen.findByRole('dialog');
+    // Save is offered only on a dirty form (TASK-978) — make a real content edit.
+    fireEvent.change(await within(dialog).findByLabelText('Prompt content'), { target: { value: 'Edited pre-summary prompt' } });
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => {

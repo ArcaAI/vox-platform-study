@@ -439,6 +439,16 @@ export function EditTemplateForm({
    * form has no honest way to show what the row's status actually is.
    */
   const statusOptions = template.status === 'APPROVED' ? [...STATUS_OPTIONS, { value: 'APPROVED' as const, label: 'Approved' }] : STATUS_OPTIONS;
+  // Save is offered only once a saved field differs from the loaded row: a
+  // pristine PATCH changes nothing, and the service refuses it (400). The change
+  // reason alone is not a change — it annotates the version a real edit creates.
+  const isDirty =
+    name.trim() !== template.name ||
+    (description.trim() || null) !== (template.description || null) ||
+    content !== template.content ||
+    status !== template.status ||
+    JSON.stringify(variables) !== JSON.stringify(template.declaredVariables ?? []) ||
+    JSON.stringify(tags) !== JSON.stringify(template.tags ?? []);
   const occError =
     updateTemplate.error instanceof GatewayError && (updateTemplate.error.isVersionConflict || updateTemplate.error.isMissingPrecondition)
       ? updateTemplate.error
@@ -549,7 +559,8 @@ export function EditTemplateForm({
         />
       </div>
       <FormActions>
-        <Button type="submit" disabled={!name.trim() || !content || !etag || updateTemplate.isPending}>
+        {isDirty ? null : <p className="text-sm text-muted-foreground">No changes to save</p>}
+        <Button type="submit" disabled={!isDirty || !name.trim() || !content || !etag || updateTemplate.isPending}>
           {updateTemplate.isPending ? <Spinner /> : null}
           Save changes
         </Button>
