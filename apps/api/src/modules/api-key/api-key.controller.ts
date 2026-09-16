@@ -1,8 +1,9 @@
 import {
   ApiKeyDtoMapper,
   ApiKeyResponse,
+  ApiKeyScopesCatalogResponse,
   CreateApiKeyRequest,
-  getScopesByCategory,
+  getApiKeyScopesCatalog,
   HttpMethod,
   IActiveUserContext,
   IApiKeyService,
@@ -102,12 +103,15 @@ export class ApiKeyController {
   ) {}
 
   @Get('scopes')
-  @ApiOperation({ summary: 'List available API key scopes' })
-  @ApiResponse({ status: 200, description: 'Available scopes grouped by category' })
+  @ApiOperation({
+    summary: 'List available API key scopes',
+    description: 'Returns the grantable scope catalogue, grouped by category, plus the three scope presets the create-key dialog offers.',
+  })
+  @ApiResponse({ status: 200, description: 'Available scopes grouped by category, plus the scope presets', type: ApiKeyScopesCatalogResponse })
   @CanRead('ApiKey')
   @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
-  getAvailableScopes() {
-    return getScopesByCategory();
+  getAvailableScopes(): ApiKeyScopesCatalogResponse {
+    return getApiKeyScopesCatalog();
   }
 
   /**

@@ -4,11 +4,11 @@
 Node >= 22 build-time CLI that emits TypeScript types from a tenant's live HOPE configuration. Two
 mutually exclusive modes:
 
-| Mode | Credential | Emits |
-|---|---|---|
-| `--tenant <id> --token <jwt>` | SUPER_ADMIN JWT | the tenant's consultation context schema |
-| `--tenant <id> --client-id <id> --client-secret <secret>` | service account | the same context schema, with a machine credential |
-| `--api-key <key> [--agents] [--workflows]` | tenant API key | what the tenant publishes: `Agent_<Slug>_Input`/`_Output`, `Workflow_<Slug>_Input`/`_Output` |
+| Mode                                                      | Credential      | Emits                                                                                        |
+| --------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------- |
+| `--tenant <id> --token <jwt>`                             | SUPER_ADMIN JWT | the tenant's consultation context schema                                                     |
+| `--tenant <id> --client-id <id> --client-secret <secret>` | service account | the same context schema, with a machine credential                                           |
+| `--api-key <key> [--agents] [--workflows]`                | tenant API key  | what the tenant publishes: `Agent_<Slug>_Input`/`_Output`, `Workflow_<Slug>_Input`/`_Output` |
 
 Both families emit named TS types from the same data the runtime reads, and both are an accessory
 to runtime discovery, never a replacement — a tenant can publish a new kind, agent version or
@@ -23,30 +23,31 @@ precedent and has no workspace dependencies of its own.
 
 ## Layout
 
-| Path | What it holds |
-|---|---|
-| `src/cli.ts` | Argument parsing and the two-mode dispatch |
-| `src/fetch-schema.ts` / `src/generate.ts` | Context-schema mode: fetch + emit |
-| `src/fetch-catalogue.ts` / `src/generate-catalogue.ts` | Business-plane mode: fetch published agents/workflows + emit |
-| `src/schema-to-ts.ts` | Hand-written JSON-Schema-subset -> TypeScript renderer (mirrors the server's authoring-time subset; no shared package exists yet) |
-| `src/run.ts` / `src/run-catalogue.ts` / `src/watch.ts` | One-shot and polling-watch orchestration |
-| `src/exchange-service-token.ts` | Service-account token exchange for the context-schema mode |
-| `src/errors.ts` | `CodegenError` — thrown on untrusted wire JSON this generator cannot safely render |
-| `src/types.ts` | Hand-typed discovery-bundle envelope (kept independent of `@arcaai/vox`'s types on purpose) |
-| `src/index.ts` | Programmatic entry point — see below |
+| Path                                                   | What it holds                                                                                                                     |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `src/cli.ts`                                           | Argument parsing and the two-mode dispatch                                                                                        |
+| `src/fetch-schema.ts` / `src/generate.ts`              | Context-schema mode: fetch + emit                                                                                                 |
+| `src/fetch-catalogue.ts` / `src/generate-catalogue.ts` | Business-plane mode: fetch published agents/workflows + emit                                                                      |
+| `src/schema-to-ts.ts`                                  | Hand-written JSON-Schema-subset -> TypeScript renderer (mirrors the server's authoring-time subset; no shared package exists yet) |
+| `src/run.ts` / `src/run-catalogue.ts` / `src/watch.ts` | One-shot and polling-watch orchestration; each `run*.ts` also exports a `check*Once` sibling for `--check`                        |
+| `src/check.ts`                                         | `--check` primitives shared by both modes: timestamp normalization, a unified-style diff, compare-against-disk                    |
+| `src/exchange-service-token.ts`                        | Service-account token exchange for the context-schema mode                                                                        |
+| `src/errors.ts`                                        | `CodegenError` — thrown on untrusted wire JSON this generator cannot safely render                                                |
+| `src/types.ts`                                         | Hand-typed discovery-bundle envelope (kept independent of `@arcaai/vox`'s types on purpose)                                       |
+| `src/index.ts`                                         | Programmatic entry point — see below                                                                                              |
 
 ## Commands
 
-| Command | Effect |
-|---|---|
-| `pnpm --filter @arcaai/vox-codegen build` / root `pnpm sdk-codegen:build` | tsup build |
-| `pnpm --filter @arcaai/vox-codegen dev` / root `pnpm sdk-codegen:dev` | tsup watch mode |
-| `pnpm --filter @arcaai/vox-codegen test` / root `pnpm sdk-codegen:test` | Vitest |
-| `pnpm sdk-codegen:test:cov` | Vitest with coverage |
-| `pnpm --filter @arcaai/vox-codegen lint` / root `pnpm sdk-codegen:lint` | ESLint |
-| `pnpm --filter @arcaai/vox-codegen typecheck` / root `pnpm sdk-codegen:typecheck` | `tsc --noEmit` |
+| Command                                                                                                                       | Effect                      |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `pnpm --filter @arcaai/vox-codegen build` / root `pnpm sdk-codegen:build`                                                     | tsup build                  |
+| `pnpm --filter @arcaai/vox-codegen dev` / root `pnpm sdk-codegen:dev`                                                         | tsup watch mode             |
+| `pnpm --filter @arcaai/vox-codegen test` / root `pnpm sdk-codegen:test`                                                       | Vitest                      |
+| `pnpm sdk-codegen:test:cov`                                                                                                   | Vitest with coverage        |
+| `pnpm --filter @arcaai/vox-codegen lint` / root `pnpm sdk-codegen:lint`                                                       | ESLint                      |
+| `pnpm --filter @arcaai/vox-codegen typecheck` / root `pnpm sdk-codegen:typecheck`                                             | `tsc --noEmit`              |
 | `npx @arcaai/vox-codegen --tenant <id> [--token <jwt> \| --client-id <id> --client-secret <secret>] [--watch] [--out <path>]` | Run the context-schema mode |
-| `npx @arcaai/vox-codegen --api-key <key> [--agents] [--workflows] [--out <dir>]` | Run the business-plane mode |
+| `npx @arcaai/vox-codegen --api-key <key> [--agents] [--workflows] [--out <dir>]`                                              | Run the business-plane mode |
 
 ## How it works
 
@@ -67,6 +68,7 @@ CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   --out <path>           Output FILE path (default: ./consultation-context-schema.generated.ts)
   --watch                Keep polling and regenerate whenever the schema's etag changes
   --interval <ms>        Poll interval in watch mode (default: 5000)
+  --check                Regenerate in memory and compare against --out; exit 1 on drift, without writing
 
 PUBLISHED AGENTS AND WORKFLOWS (API key - the business plane)
   vox-codegen --api-key <key> [--agents] [--workflows] [options]
@@ -75,6 +77,7 @@ PUBLISHED AGENTS AND WORKFLOWS (API key - the business plane)
   --agents             Emit Agent_<Slug>_Input / _Output for every published agent
   --workflows          Emit Workflow_<Slug>_Input / _Output for every published workflow
   --out <dir>          Output DIRECTORY (default: ./generated)
+  --check              Regenerate in memory and compare against --out; exit 1 on drift, without writing
 
 COMMON
   --base-url <url>     Gateway origin (default: http://localhost:8868, or HOPE_API_BASE_URL)
@@ -114,6 +117,49 @@ An entry whose definition declares no schema renders `unknown`, not `Record<stri
 "no declared contract" and "any contract is fine" are different facts. `--watch` is not available
 in this mode: the context-schema mode polls one endpoint and compares an etag, while a published
 catalogue is N definitions with no aggregate validator.
+
+### `--check` — the CI recipe
+
+Both modes accept `--check`: regenerate in memory, compare against whatever is committed at
+`--out`, and exit 1 with a diff on drift — never writing. The `Generated: <timestamp>` header
+line is normalized out first, so two honest runs a moment apart still compare equal; a
+genuinely stale file still fails. `--check` and `--watch` are mutually exclusive on the
+context-schema mode (a check is one snapshot, not a poll); the business-plane mode already
+refuses `--watch` outright, so the same rule holds there without a second message.
+
+```
+vox-codegen --tenant <id> --client-id <id> --client-secret <secret> --out ./generated/schema.ts --check
+vox-codegen --api-key <key> --agents --workflows --out ./generated --check
+```
+
+### `OpenConsultationContext`
+
+The context-schema mode also emits `export type OpenConsultationContext = { <kind>?: <KindPayload> }`
+— one property per STRUCTURED kind with `lifecycle: 'PRE'` whose `producedBy` names `CLIENT`
+(a kind marked `required: true` drops the `?`). Pass it as `open()`'s type parameter instead of
+an untyped `Record<string, unknown>`:
+
+```ts
+import { HopeClient } from '@arcaai/vox-node';
+import type { OpenConsultationContext } from './generated/consultation-context-schema.generated';
+
+await hope.consultations.open<OpenConsultationContext>({
+  patientId: '123',
+  context: { vitals: { systolic: 128, diastolic: 82 } },
+});
+```
+
+The file header also carries a `@schemaVersion <n>` tag — a machine-grep-able twin of the
+human-readable `Schema:` line, present whenever the tenant has a configured version.
+
+### Catalogue mode's workflow tags
+
+Each generated `Workflow_<Slug>_Input` type carries two extra JSDoc tags, read off
+`GET /workflows/{slug}/schema`: `@contextSchema <slug> v<n> (follows latest | pinned)` (or
+`@contextSchema unbound` for a definition with no consultation trigger) names which schema
+version the trigger validates against and whether it tracks the tenant's current pin;
+`@reviewNodes <ids>` lists every `core.humanReview` node id in the graph, when there are any —
+the id `hope.workflows.reviews.get/decide` need, discoverable without a second read.
 
 ### Fail loudly, don't guess
 

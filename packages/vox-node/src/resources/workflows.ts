@@ -699,6 +699,15 @@ export class WorkflowsResource extends WorkflowInvocationBase {
       return this.getRun(slug, runId, { signal: options.signal });
     }
     const payload = last.payload as WorkflowRunEventPayload;
+    // The four node counts ride the interpreter's completion event through
+    // `WorkflowRunEventPayload`'s index signature — read them defensively rather than assuming
+    // every deployed harness has caught up, and derive `degraded` with the same rule the gateway's
+    // own live read uses (`WorkflowExposureService.getRunStatus`), so a caller reading THIS status
+    // via the resumable stream and one read via `getRun` never disagree.
+    const nodeCount = typeof payload.nodeCount === 'number' ? payload.nodeCount : null;
+    const failedNodeCount = typeof payload.failedNodeCount === 'number' ? payload.failedNodeCount : null;
+    const degradedNodeCount = typeof payload.degradedNodeCount === 'number' ? payload.degradedNodeCount : null;
+    const skippedNodeCount = typeof payload.skippedNodeCount === 'number' ? payload.skippedNodeCount : null;
     return {
       runId: payload.runId,
       slug: payload.slug,
@@ -708,6 +717,11 @@ export class WorkflowsResource extends WorkflowInvocationBase {
       startedAt: payload.startedAt ?? null,
       endedAt: payload.endedAt ?? null,
       resultRef: (payload.resultRef as Record<string, unknown> | undefined) ?? null,
+      degraded: (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0 && payload.status === 'COMPLETED',
+      nodeCount,
+      failedNodeCount,
+      degradedNodeCount,
+      skippedNodeCount,
     };
   }
 }

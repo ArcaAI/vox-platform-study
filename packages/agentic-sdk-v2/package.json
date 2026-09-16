@@ -73,6 +73,7 @@
   },
   "dependencies": {
     "@arcaai/json-schema-subset": "workspace:*",
+    "@arcaai/types": "workspace:*",
     "@arcaai/noise-filter": "workspace:*",
     "@arcaai/room": "workspace:*",
     "@arcaai/stt": "workspace:*",

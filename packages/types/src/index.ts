@@ -28,3 +28,10 @@ export * from './asr-model-profile.js';
 
 // TASK-879 — the gateway-resolved TTS runtime contract (gateway → apps/tts), replacing the TenantTtsConfig fold.
 export * from './tts-spec.js';
+
+// The consultation-context contract: open refusal codes and the governing-run summary shape,
+// shared by the gateway, both SDKs, and codegen.
+export * from './consultation-context.js';
+
+// API-key scope presets — the console's "Purpose" radio cards and the seed's day-1 scope set.
+export * from './api-key-presets.js';

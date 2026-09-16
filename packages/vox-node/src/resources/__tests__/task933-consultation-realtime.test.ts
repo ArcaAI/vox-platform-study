@@ -80,6 +80,60 @@ describe('ConsultationsResource#open', () => {
     await expect(resource.open({ patientId: '  ' })).rejects.toBeInstanceOf(TypeError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  /**
+   * `open<TContext>` is generic on the `context` payload shape so a caller who ran
+   * `vox-codegen --tenant` can pass its generated `OpenConsultationContext` and have the object
+   * checked at the call site. The generic changes nothing about the wire — it is a pure TS
+   * narrowing — so this test exercises it as an ordinary caller would: pass a typed shape, confirm
+   * it serializes unchanged.
+   */
+  it('accepts a typed context payload (open<TContext>) and forwards it verbatim', async () => {
+    interface MyContext extends Record<string, unknown> {
+      vitals?: { systolic: number; diastolic: number };
+    }
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(200, CONSULTATION));
+    const resource = new ConsultationsResource(transportWith(fetchImpl));
+
+    await resource.open<MyContext>({
+      patientId: 'p1',
+      context: { vitals: { systolic: 128, diastolic: 82 } },
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      patientId: 'p1',
+      context: { vitals: { systolic: 128, diastolic: 82 } },
+    });
+  });
+
+  it('reads governingRun back on the open() response when the consultation is governed', async () => {
+    const governed = {
+      ...CONSULTATION,
+      governingRun: {
+        workflowDefinitionSlug: 'gen-new-visit',
+        workflowRunId: 'run-1',
+        status: 'RUNNING' as const,
+        degraded: false,
+        decidedAt: '2026-09-09T00:00:00Z',
+        failureReason: null,
+      },
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(200, governed));
+    const resource = new ConsultationsResource(transportWith(fetchImpl));
+
+    const result = await resource.open({ patientId: 'p1' });
+    expect(result.governingRun).toEqual(governed.governingRun);
+  });
+
+  it('reads governingRun as null for an ungoverned consultation', async () => {
+    const ungoverned = { ...CONSULTATION, governingRun: null };
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(200, ungoverned));
+    const resource = new ConsultationsResource(transportWith(fetchImpl));
+
+    const result = await resource.open({ patientId: 'p1' });
+    expect(result.governingRun).toBeNull();
+  });
 });
 
 // -----------------------------------------------------------------------------

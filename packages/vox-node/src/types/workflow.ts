@@ -73,6 +73,18 @@ export interface WorkflowSchemaDescription {
   components: Record<string, Record<string, unknown>>;
   /** An AsyncAPI 3 fragment for the SSE / WebSocket frames of a run. */
   asyncapi: Record<string, unknown>;
+  /**
+   * The consultation context schema this definition's `core.trigger` is bound to, when it is
+   * bound to one at all (`null` for a definition with no consultation trigger). `followsLatest`
+   * tells you whether `versionNumber` tracks the tenant's current pin (`true`) or is frozen to
+   * the version the workflow was published against (`false`, D-1).
+   */
+  contextSchema: { schemaId: string; slug: string; versionNumber: number; followsLatest: boolean } | null;
+  /**
+   * Every `core.humanReview` node in the graph, in graph order — how a caller discovers the
+   * `nodeId` to pass {@link WorkflowsResource.reviews.get} / `.decide` without hardcoding it.
+   */
+  reviewNodes: Array<{ nodeId: string; label: string }>;
 }
 
 /**
@@ -175,6 +187,21 @@ export interface WorkflowRunStatus {
    * no `output.deliver` node.
    */
   resultRef: Record<string, unknown> | null;
+  /**
+   * `true` when the run finished with at least one degraded or skipped-for-cause node.
+   * DEGRADED is a per-run FLAG, never a persisted run STATUS (D-9 — `status` above never carries
+   * the interpreter's own `DEGRADED` word); read this instead of trying to infer degradation from
+   * `status`.
+   */
+  degraded: boolean;
+  /** Total nodes the run scheduled. `null` until the run's completion event has been recorded. */
+  nodeCount: number | null;
+  /** Nodes that ended FAILED. `null` until the run's completion event has been recorded. */
+  failedNodeCount: number | null;
+  /** Nodes that ended DEGRADED. `null` until the run's completion event has been recorded. */
+  degradedNodeCount: number | null;
+  /** Nodes SKIPPED for cause. `null` until the run's completion event has been recorded. */
+  skippedNodeCount: number | null;
 }
 
 /** Response of `POST /api/v1/workflows/:slug/runs/:runId/cancel`. */

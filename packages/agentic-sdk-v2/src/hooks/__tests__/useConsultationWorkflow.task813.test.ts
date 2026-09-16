@@ -43,6 +43,14 @@ const GOVERNED: ConsultationWorkflow = {
   paletteKey: 'consultation',
   activeVersionNumber: 3,
   inputSchema: null,
+  run: {
+    workflowDefinitionSlug: 'caller_picked_v1',
+    workflowRunId: 'run-1',
+    status: 'RUNNING',
+    degraded: false,
+    decidedAt: '2026-08-29T00:00:00.000Z',
+    failureReason: null,
+  },
 };
 
 describe('useConsultationWorkflow', () => {
@@ -87,13 +95,37 @@ describe('useConsultationWorkflow', () => {
   });
 
   it('keeps "unknown" distinct from "the default engine governs"', async () => {
-    get.mockResolvedValue({ ...GOVERNED, governed: false, workflowDefinitionSlug: null, workflowRunId: null });
+    get.mockResolvedValue({ ...GOVERNED, governed: false, workflowDefinitionSlug: null, workflowRunId: null, run: null });
     const { result } = renderHook(() => useConsultationWorkflow('c-1'));
 
     await waitFor(() => expect(result.current.workflow).not.toBeNull());
     // A resolved answer of "the default engine governs" — NOT the same state as a failed read.
     expect(result.current.workflow?.governed).toBe(false);
     expect(result.current.isGoverned).toBe(false);
+  });
+
+  /** `governingRun` is a convenience mirror of `workflow?.run`, exposed alongside `isGoverned`. */
+  it('exposes governingRun as a convenience mirror of workflow.run', async () => {
+    get.mockResolvedValue(GOVERNED);
+    const { result } = renderHook(() => useConsultationWorkflow('c-1'));
+
+    await waitFor(() => expect(result.current.workflow).not.toBeNull());
+    expect(result.current.governingRun).toEqual(GOVERNED.run);
+  });
+
+  it('governingRun is null before the first read resolves, after a failed read, and when ungoverned', async () => {
+    const { result: beforeResolve } = renderHook(() => useConsultationWorkflow());
+    expect(beforeResolve.current.governingRun).toBeNull();
+
+    get.mockRejectedValue(new Error('gateway unreachable'));
+    const { result: afterFailure } = renderHook(() => useConsultationWorkflow('c-1'));
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(afterFailure.current.governingRun).toBeNull();
+
+    get.mockResolvedValue({ ...GOVERNED, governed: false, workflowDefinitionSlug: null, workflowRunId: null, run: null });
+    const { result: ungoverned } = renderHook(() => useConsultationWorkflow('c-1'));
+    await waitFor(() => expect(ungoverned.current.workflow).not.toBeNull());
+    expect(ungoverned.current.governingRun).toBeNull();
   });
 
   it('re-reads when the consultation changes', async () => {

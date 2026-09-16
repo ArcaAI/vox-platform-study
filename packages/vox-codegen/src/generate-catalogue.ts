@@ -65,6 +65,27 @@ interface RenderedEntry {
   declarations: string;
 }
 
+/**
+ * `@contextSchema <slug> v<n> (follows latest | pinned)` / `@reviewNodes <ids>` — the two
+ * workflow-only JSDoc tags a generated `Workflow_<Slug>_Input` type carries beside its
+ * description, so a reader can tell which context schema version the trigger validates against
+ * (and whether that tracks the tenant's pin) and which review-gate node ids exist to release,
+ * without a second read of `hope.workflows.schema(slug)`.
+ */
+function workflowTags(entry: PublishedWorkflow): string[] {
+  const tags: string[] = [];
+  if (entry.contextSchema) {
+    const { slug, versionNumber, followsLatest } = entry.contextSchema;
+    tags.push(`@contextSchema ${slug} v${versionNumber} (${followsLatest ? 'follows latest' : 'pinned'})`);
+  } else {
+    tags.push('@contextSchema unbound');
+  }
+  if (entry.reviewNodes.length > 0) {
+    tags.push(`@reviewNodes ${entry.reviewNodes.map((n) => n.nodeId).join(', ')}`);
+  }
+  return tags;
+}
+
 function renderEntry(prefix: 'Agent' | 'Workflow', entry: PublishedAgent | PublishedWorkflow, taken: Set<string>): RenderedEntry {
   const stem = uniqueName(`${prefix}_${toPascalCase(entry.slug)}`, taken);
   const inputType = `${stem}_Input`;
@@ -80,12 +101,15 @@ function renderEntry(prefix: 'Agent' | 'Workflow', entry: PublishedAgent | Publi
     // `unknown`, never an open object: an undeclared contract is a fact, not a permission.
     schema === null ? 'unknown' : jsonSchemaSubsetToTs(schema, { path });
 
+  const tags = prefix === 'Workflow' ? workflowTags(entry as PublishedWorkflow) : [];
+  const inputDoc = tags.length === 0 ? `/** ${describe()} */` : `/**\n * ${describe()}\n * ${tags.join('\n * ')}\n */`;
+
   return {
     slug: entry.slug,
     inputType,
     outputType,
     declarations: [
-      `/** ${describe()} */`,
+      inputDoc,
       `export type ${inputType} = ${render(entry.inputSchema, `${entry.slug}.inputSchema`)};`,
       '',
       `/** Output of ${describe()} */`,

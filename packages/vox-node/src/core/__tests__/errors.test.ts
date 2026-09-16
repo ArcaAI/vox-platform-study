@@ -110,6 +110,46 @@ describe('fromResponse — status → class mapping', () => {
   });
 });
 
+describe('fromResponse — problems[] (the house { message, code, problems? } shape)', () => {
+  it('lifts problems from a 400 body', () => {
+    const body = { message: 'Incompatible', code: 'WORKFLOW_CONTEXT_INCOMPATIBLE', problems: ['/referral: not declared in the bound version v2'] };
+    const err = fromResponse(jsonResponse(400, body), body);
+    expect(err.problems).toEqual(['/referral: not declared in the bound version v2']);
+  });
+
+  it('lifts problems for every 4xx status, not only 400', () => {
+    for (const status of [401, 403, 404, 409, 412, 428, 429]) {
+      const body = { message: 'refused', problems: ['one problem'] };
+      const err = fromResponse(jsonResponse(status, body), body);
+      expect(err.problems, `status ${status} did not lift problems`).toEqual(['one problem']);
+    }
+  });
+
+  it('is undefined when the body carries no problems array', () => {
+    const body = { message: 'boom' };
+    const err = fromResponse(jsonResponse(400, body), body);
+    expect(err.problems).toBeUndefined();
+  });
+
+  it('is undefined when problems is present but empty', () => {
+    const body = { message: 'boom', problems: [] };
+    const err = fromResponse(jsonResponse(400, body), body);
+    expect(err.problems).toBeUndefined();
+  });
+
+  it('drops non-string entries rather than throwing', () => {
+    const body = { message: 'boom', problems: ['ok', 42, null, 'also ok'] };
+    const err = fromResponse(jsonResponse(400, body), body);
+    expect(err.problems).toEqual(['ok', 'also ok']);
+  });
+
+  it('is undefined when problems is not an array', () => {
+    const body = { message: 'boom', problems: 'not an array' };
+    const err = fromResponse(jsonResponse(400, body), body);
+    expect(err.problems).toBeUndefined();
+  });
+});
+
 describe('NotFoundError — 404-over-403 posture', () => {
   it('mentions the cross-tenant possibility in the error message text', () => {
     const err = new NotFoundError({ message: 'Resource not found' });

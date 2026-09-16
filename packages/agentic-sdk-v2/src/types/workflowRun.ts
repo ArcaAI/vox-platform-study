@@ -59,6 +59,15 @@ export interface WorkflowSchemaDescription {
   modes: string[];
   components: Record<string, Record<string, unknown>>;
   asyncapi: Record<string, unknown>;
+  /**
+   * The consultation context schema this definition's `core.trigger` is bound to, when bound at
+   * all (`null` for a definition with no consultation trigger). `followsLatest` says whether
+   * `versionNumber` tracks the tenant's current pin (`true`) or is frozen to the version the
+   * workflow was published against (`false`, D-1).
+   */
+  contextSchema: { schemaId: string; slug: string; versionNumber: number; followsLatest: boolean } | null;
+  /** Every `core.humanReview` node in the graph, in graph order. */
+  reviewNodes: Array<{ nodeId: string; label: string }>;
 }
 
 /**
@@ -148,6 +157,20 @@ export interface WorkflowRunStatus {
    * no `output.deliver` node.
    */
   resultRef: Record<string, unknown> | null;
+  /**
+   * `true` when the run finished with at least one degraded or skipped-for-cause node. DEGRADED
+   * stays a per-run FLAG, never a persisted run STATUS — `status` above never carries the
+   * interpreter's own `DEGRADED` word.
+   */
+  degraded: boolean;
+  /** Total nodes the run scheduled. `null` until the run's completion event has been recorded. */
+  nodeCount: number | null;
+  /** Nodes that ended FAILED. `null` until the run's completion event has been recorded. */
+  failedNodeCount: number | null;
+  /** Nodes that ended DEGRADED. `null` until the run's completion event has been recorded. */
+  degradedNodeCount: number | null;
+  /** Nodes SKIPPED for cause. `null` until the run's completion event has been recorded. */
+  skippedNodeCount: number | null;
 }
 
 /** Every `event:` type a run stream can carry. */

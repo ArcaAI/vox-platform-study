@@ -165,6 +165,16 @@ export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } f
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
+/**
+ * Re-exported from `@arcaai/types` (D-6): the consultation-context refusal-code union
+ * and the scope presets the tenant console's create-key dialog offers. Declared once in
+ * `@arcaai/types` so the gateway, both SDKs and `vox-codegen` all import the same values —
+ * `@arcaai/types` is a `devDependency` ONLY (see `tsup.config.ts`), so these two constants are
+ * INLINED into the built bundle and this package's zero-runtime-dependency guarantee holds.
+ */
+export { OPEN_REFUSAL_CODES, API_KEY_SCOPE_PRESETS } from '@arcaai/types';
+export type { OpenRefusalCode, GoverningRunSummary, ApiKeyScopePreset, ApiKeyScopePresetKey } from '@arcaai/types';
+
 export type {
   AcceptedCorrectionProposal,
   AddContextRequest,

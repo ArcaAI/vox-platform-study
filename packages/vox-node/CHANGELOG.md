@@ -1,5 +1,59 @@
 # @arcaai/vox-node — Changelog
 
+## Unreleased — 3.6.0
+
+### Minor Changes
+
+- **`consultations.listContext(consultationId)`** — `GET consultations/{id}/context`. Reads back
+  every context item written on the consultation, including `kindKey` and
+  `contextSchemaVersionId`, which `addContext`'s own response never projected. Scope
+  `svc:consultation:session:read`.
+- **`open<TContext>(request)` is now generic** on `context`'s shape. A caller that ran
+  `vox-codegen --tenant` can pass the generated `OpenConsultationContext` type here and have the
+  payload checked at the call site; the default (`Record<string, unknown>`) is unchanged for an
+  untyped caller.
+- **`ContextItemResponse` now carries `kindKey: string | null` and
+  `contextSchemaVersionId: string | null`** (always present, possibly `null`) — the gateway's
+  `ContextDtoMapper` did not project either field before this release, so a caller had to
+  remember what it sent rather than read it back.
+- **`ConsultationGetResponse` gains `language`, `metadata`, `parentConsultationId`, and
+  `governingRun`; `ConsultationOpenResponse` gains `governingRun`.** `governingRun` is
+  `GoverningRunSummary | null` (re-exported from `@arcaai/types`): the consultation's governing
+  workflow run, derived from the persisted `metadata.governingEngine` marker, never a live
+  harness call.
+- **`HopeAPIError.problems?: string[]`**, lifted in `fromResponse` from the house
+  `{ message, code, problems? }` body shape, for every 4xx status. `open()` can now answer 400
+  `WORKFLOW_CONTEXT_INCOMPATIBLE` — read this ticket's full refusal-code union as
+  `OPEN_REFUSAL_CODES` (`OpenRefusalCode`), re-exported from `@arcaai/types`.
+- **`WorkflowSchemaDescription` gains `contextSchema` and `reviewNodes`.** `contextSchema` names
+  the schema (and version) a definition's `core.trigger` is bound to, and whether it tracks the
+  tenant's pin (`followsLatest`) or is frozen to the published version. `reviewNodes` is every
+  `core.humanReview` node in the graph, in graph order — the intended way to discover a review
+  node id rather than hardcoding one.
+- **`WorkflowRunStatus` gains `degraded: boolean` and four node counts** (`nodeCount`,
+  `failedNodeCount`, `degradedNodeCount`, `skippedNodeCount`, each `number | null`). DEGRADED
+  stays a per-run FLAG, never a persisted run STATUS — `status` never carries the interpreter's
+  own `DEGRADED` word; read `degraded` instead.
+- **`API_KEY_SCOPE_PRESETS` / `ApiKeyScopePreset` / `ApiKeyScopePresetKey`** re-exported from
+  `@arcaai/types` — the three scope presets (`consultation-app`, `types-codegen`,
+  `agents-and-workflows`) the tenant console's create-key dialog offers.
+- New example — **`examples/06-realtime-consultation.ts`**: the whole machine-driven consultation
+  journey, open through close, including the review gate and the approve/close finish.
+- `@arcaai/types` is now a **devDependency** (not a runtime dependency) — the two runtime
+  constants it supplies (`OPEN_REFUSAL_CODES`, `API_KEY_SCOPE_PRESETS`) are inlined into the built
+  bundle by `tsup`, so the package's **zero-runtime-dependency guarantee is unchanged**;
+  `pnpm check:exports` (`attw --pack . && publint`) is the gate that would catch it drifting into
+  a real dependency.
+
+### Read this before you upgrade
+
+- `open()`'s new `WORKFLOW_CONTEXT_INCOMPATIBLE` refusal is a NEW way an existing call can fail:
+  a consultation whose context does not match what its governing workflow accepts now refuses
+  synchronously (400) on the CREATE path, rather than opening ungoverned. Catch it alongside the
+  other members of `OPEN_REFUSAL_CODES`.
+- `ContextItemResponse.kindKey` / `.contextSchemaVersionId` and `ConsultationGetResponse.governingRun`
+  / `ConsultationOpenResponse.governingRun` are additive fields — no existing field changed shape.
+
 ## 3.5.0
 
 ### Minor Changes

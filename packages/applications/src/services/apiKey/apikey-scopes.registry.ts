@@ -1,3 +1,14 @@
+import { API_KEY_SCOPE_PRESETS, type ApiKeyScopePreset, type ApiKeyScopePresetKey } from '@arcaai/types';
+
+/**
+ * The three scope presets the console's create-key dialog offers before "Custom" — re-exported
+ * from `@arcaai/types` so this registry stays the single import site for every scope-related
+ * consumer in this package. Declared once in `@arcaai/types` (D-6) so the seed (which cannot
+ * depend on `@arcaai/applications`), this registry, and both SDKs read the same three presets.
+ */
+export { API_KEY_SCOPE_PRESETS };
+export type { ApiKeyScopePreset, ApiKeyScopePresetKey };
+
 /**
  * A CASL permission a scope implies — structurally identical to
  * `RequiredPermission` (`../../authorization/authorization.guard`), restated
@@ -913,4 +924,18 @@ export function getScopesByCategory(): Record<string, Array<{ scope: string; des
     result[def.category].push({ scope, description: def.description });
   }
   return result;
+}
+
+/**
+ * `GET admin/api-keys/scopes` — the grantable catalogue PLUS the three scope presets the
+ * create-key dialog's "Purpose" radio cards offer before "Custom" (D-6). The presets are read
+ * verbatim from `@arcaai/types`; every preset scope is asserted (by
+ * `apikey-scopes.registry.test.ts`) to be a non-reserved registry key, so a preset can never
+ * advertise a scope this catalogue would refuse to grant.
+ */
+export function getApiKeyScopesCatalog(): {
+  categories: Record<string, Array<{ scope: string; description: string }>>;
+  presets: readonly ApiKeyScopePreset[];
+} {
+  return { categories: getScopesByCategory(), presets: API_KEY_SCOPE_PRESETS };
 }

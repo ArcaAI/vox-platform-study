@@ -1,5 +1,30 @@
 # @arcaai/vox — Changelog
 
+## Unreleased — 3.6.0
+
+### Minor Changes
+
+- **`AgenticError.context.problems`** — lifted in `AgenticClient`'s request error handling beside
+  the existing `code` lift, from the house `{ message, code, problems? }` body shape. One
+  human-readable string per validation failure, e.g. a 400 `WORKFLOW_CONTEXT_INCOMPATIBLE`
+  refusal's unmet context-schema requirements.
+- **`governingRun`** on `useArcaSession().consultation` and on `useConsultationWorkflow()`
+  (a new convenience field alongside `isGoverned`, mirroring `workflow?.run`). Both are derived
+  from the persisted `metadata.governingEngine` marker server-side, never a live harness call.
+  `Consultation.governingRun` and `ConsultationWorkflow.run` are `GoverningRunSummary | null`,
+  re-exported type from the new `@arcaai/types` dependency.
+- **`useWorkflowRun().status` gains `degraded: boolean` and four node counts** (`nodeCount`,
+  `failedNodeCount`, `degradedNodeCount`, `skippedNodeCount`, each `number | null`). DEGRADED
+  stays a per-run FLAG, never a persisted run STATUS.
+- **`WorkflowSchemaDescription` gains `contextSchema` and `reviewNodes`** — which schema (and
+  version) a definition's trigger is bound to, and every `core.humanReview` node in the graph.
+- **`useConsultationSchema().validatePayload` JSDoc caveat**: it validates against the
+  SESSION-pinned bundle, which may differ from the governing workflow's BOUND version when that
+  trigger is pinned rather than follow-latest — a locally-valid payload can still be refused
+  server-side with 400 `WORKFLOW_CONTEXT_INCOMPATIBLE`. No behavior change; documentation only.
+- `@arcaai/types` is now a runtime dependency (`GoverningRunSummary` and the other shared
+  consultation-context types).
+
 ## 3.5.0
 
 ### Patch Changes

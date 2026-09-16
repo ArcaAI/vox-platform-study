@@ -30,8 +30,8 @@ import { parseArgs } from 'node:util';
 import process from 'node:process';
 import { CodegenError } from './errors';
 import { exchangeServiceAccountToken } from './exchange-service-token';
-import { runCodegenOnce } from './run';
-import { runCatalogueCodegenOnce } from './run-catalogue';
+import { checkCodegenOnce, runCodegenOnce } from './run';
+import { checkCatalogueCodegenOnce, runCatalogueCodegenOnce } from './run-catalogue';
 import { watchCodegen } from './watch';
 
 const DEFAULT_BASE_URL = 'http://localhost:8868';
@@ -57,6 +57,7 @@ CONSULTATION CONTEXT SCHEMA (super-admin JWT, or a service account)
   --out <path>           Output FILE path (default: ${DEFAULT_OUT_FILE})
   --watch                Keep polling and regenerate whenever the schema changes
   --interval <ms>        Poll interval in watch mode (default: ${DEFAULT_INTERVAL_MS})
+  --check                Regenerate in memory and compare against --out; exit 1 on drift, without writing
 
 PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
   vox-codegen --api-key <key> [--agents] [--workflows] [options]
@@ -65,6 +66,7 @@ PUBLISHED AGENTS AND WORKFLOWS (API key — the business plane)
   --agents             Emit Agent_<Slug>_Input / _Output for every published agent
   --workflows          Emit Workflow_<Slug>_Input / _Output for every published workflow
   --out <dir>          Output DIRECTORY (default: ${DEFAULT_OUT_DIR})
+  --check              Regenerate in memory and compare against --out; exit 1 on drift, without writing
 
 COMMON
   --base-url <url>     Gateway origin (default: ${DEFAULT_BASE_URL}, or HOPE_API_BASE_URL)
@@ -89,6 +91,7 @@ interface ParsedArgs {
   out?: string;
   watch: boolean;
   interval?: string;
+  check: boolean;
   help: boolean;
 }
 
@@ -109,6 +112,7 @@ function readArgs(argv: string[]): ParsedArgs {
       out: { type: 'string' },
       watch: { type: 'boolean', default: false },
       interval: { type: 'string' },
+      check: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
@@ -129,6 +133,7 @@ async function runBusinessPlane(options: {
   workflows: boolean;
   outDir: string;
   watch: boolean;
+  check: boolean;
 }): Promise<number> {
   if (!options.apiKey) {
     process.stderr.write('vox-codegen: --agents / --workflows need a tenant API key — pass --api-key or set HOPE_API_KEY\n');
@@ -141,7 +146,9 @@ async function runBusinessPlane(options: {
   if (options.watch) {
     // Not an omission: the context-schema mode polls one endpoint and compares its `etag`.
     // A published catalogue is N definitions with no aggregate validator, so a watch here
-    // would be an N-request poll that cannot tell "unchanged" from "not read yet".
+    // would be an N-request poll that cannot tell "unchanged" from "not read yet" — which is
+    // also why there is no separate "--check and --watch are mutually exclusive" message here:
+    // --watch is refused on this plane regardless of --check.
     process.stderr.write(
       'vox-codegen: --watch is only supported for the consultation-context mode (--tenant); a published catalogue has no aggregate etag to poll\n',
     );
@@ -149,6 +156,26 @@ async function runBusinessPlane(options: {
   }
 
   try {
+    if (options.check) {
+      const result = await checkCatalogueCodegenOnce({
+        baseUrl: options.baseUrl,
+        apiKey: options.apiKey,
+        agents: options.agents,
+        workflows: options.workflows,
+        outDir: options.outDir,
+      });
+      let drifted = false;
+      for (const file of result.files) {
+        if (file.check.matches) {
+          process.stdout.write(`vox-codegen: ${file.path} is up to date\n`);
+        } else {
+          drifted = true;
+          process.stderr.write(`vox-codegen: ${file.path} is OUT OF DATE — run without --check to regenerate it\n${file.check.diff}\n`);
+        }
+      }
+      return drifted ? 1 : 0;
+    }
+
     const result = await runCatalogueCodegenOnce({
       baseUrl: options.baseUrl,
       apiKey: options.apiKey,
@@ -224,6 +251,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       workflows: args.workflows,
       outDir: args.out ?? DEFAULT_OUT_DIR,
       watch: args.watch,
+      check: args.check,
     });
   }
 
@@ -266,6 +294,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       return 1;
     }
   }
+  if (args.check && args.watch) {
+    process.stderr.write('vox-codegen: --check and --watch are mutually exclusive — check compares one snapshot, it does not poll\n');
+    return 1;
+  }
 
   try {
     // The exchange happens ONCE, before the (possibly long-lived) watch loop.
@@ -287,6 +319,16 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       : undefined;
 
     const common = { tenantId, token, serviceAccountToken, baseUrl, departmentId, outFile };
+
+    if (args.check) {
+      const result = await checkCodegenOnce(common);
+      if (result.check.matches) {
+        process.stdout.write(`vox-codegen: ${outFile} is up to date\n`);
+        return 0;
+      }
+      process.stderr.write(`vox-codegen: ${outFile} is OUT OF DATE — run without --check to regenerate it\n${result.check.diff}\n`);
+      return 1;
+    }
 
     if (args.watch) {
       // A service-account token is minted once, above, and is NOT refreshed by
