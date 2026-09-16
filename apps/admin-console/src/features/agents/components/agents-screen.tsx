@@ -77,6 +77,27 @@ function AgentsBody() {
     if (createParam === '1') void setCreateParam(null);
   }, [createParam, setCreateParam]);
 
+  // TASK-979 — `?task=<value>` deep-links the Task filter: the voice-profile enrollment card and
+  // the three retired `/audio/pipelines`, `/ai-model-defaults`, `/ai-configuration` redirects all
+  // link here with `?task=SPEECH_TO_TEXT`, but the grid's OWN filter state lives entirely in the
+  // `f`-encoded param (`useAdminGridParams`/`grid-url-state.ts`) — `task` was never read, so the
+  // deep link opened the unfiltered list. Consumed exactly ONCE, at the initial navigation (empty
+  // deps, same one-shot shape as `create` above): a valid task is translated into an `f` filter
+  // rule and `task` is dropped from the URL in the same effect, so `f` stays the SINGLE source of
+  // truth for "what is the active filter" — reading `task` reactively would make it un-clearable,
+  // since a lingering `task=` param would re-seed the rule the instant the admin cleared it.
+  const [taskParam, setTaskParam] = useQueryState('task', parseAsString.withDefault(''));
+  useEffect(() => {
+    if (taskParam && (AGENT_TASKS as readonly string[]).includes(taskParam)) {
+      query.setQueryState({
+        ...query.queryState,
+        filters: [...query.queryState.filters.filter((rule) => rule.id !== 'task'), { id: 'task', operator: 'inArray', variant: 'multiSelect', value: [taskParam] }],
+      });
+    }
+    if (taskParam) void setTaskParam(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: a `?task=` deep link is read from the initial URL exactly once.
+  }, []);
+
   const importAgent = useImportAgent();
   const importInputRef = useRef<HTMLInputElement>(null);
 
