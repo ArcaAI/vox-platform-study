@@ -1,0 +1,57 @@
+{
+ "session_id": "wf-01a0ab06-08aa-727e-bc68-84af18fa1f6b",
+ "workflow_version_id": "99000000-0000-0000-0001-000000000001",
+ "config_ref": {
+  "store": "s3",
+  "bucket": "harness-claim-check",
+  "key": "7bfb56f604637afcef48745b7f9ed489e387824a384720aa50bb6fb570fbaa59",
+  "size": 12566,
+  "sha256": "7bfb56f604637afcef48745b7f9ed489e387824a384720aa50bb6fb570fbaa59",
+  "content_type": "text/plain; charset=utf-8"
+ },
+ "tenant_id": "50000000-0000-0000-0000-000000000001",
+ "run_id": "01a0ab06-08aa-727e-bc68-84af18fa1f6b",
+ "sandbox": false,
+ "subject": {
+  "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+  "externalPatientId": "PAT-981-GEN-1789575693",
+  "userId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3"
+ },
+ "payload": {
+  "encounter": {
+   "doctor_id": "DR-981-1789575693",
+   "event_id": "EVT-981-GEN-1789575693",
+   "department_code": "GEN",
+   "department_name": "General Medicine",
+   "visit_type": "new-visit",
+   "chief_complaint": "Exertional shortness of breath and intermittent chest pain for two weeks"
+  },
+  "vitals": {
+   "bloodPressure": "128/82",
+   "heartRate": 88,
+   "temperature": 36.8,
+   "oxygenSaturation": 97,
+   "weightKg": 81.5,
+   "recordedAt": "2026-09-16T16:21:33.913Z"
+  },
+  "previous_case_notes": {
+   "notes": [
+    {
+     "date": "2026-01-14",
+     "department": "General Medicine",
+     "doctor": "Dr. Bren",
+     "title": "Hypertension review",
+     "text": "PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months."
+    },
+    {
+     "date": "2026-03-02",
+     "title": "Lipid panel follow-up",
+     "text": "PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported."
+    }
+   ]
+  },
+  "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+  "externalPatientId": "PAT-981-GEN-1789575693",
+  "userId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3"
+ }
+}

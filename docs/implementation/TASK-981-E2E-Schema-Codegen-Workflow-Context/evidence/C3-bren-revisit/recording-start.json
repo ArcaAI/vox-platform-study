@@ -1,0 +1,8 @@
+{
+  "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+  "status": "RECORDING",
+  "recording": true,
+  "sessionId": "01a0ab0f-692f-7701-a1f6-585114a34a8d",
+  "sseUrl": "/consultations/01a0ab0f-6784-761c-8905-5d4602c5dfbb/live-summary/stream",
+  "updatedAt": "2026-09-16T16:31:49.122Z"
+}

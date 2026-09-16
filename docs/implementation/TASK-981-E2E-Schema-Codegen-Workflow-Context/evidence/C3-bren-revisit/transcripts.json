@@ -1,0 +1,373 @@
+[
+  {
+    "at": "2026-09-16T16:31:52.293Z",
+    "isFinal": false,
+    "text": "EST",
+    "startTime": 0,
+    "endTime": 2.624
+  },
+  {
+    "at": "2026-09-16T16:31:52.900Z",
+    "isFinal": false,
+    "text": "ൽ",
+    "startTime": 0.256,
+    "endTime": 3.232
+  },
+  {
+    "at": "2026-09-16T16:31:53.935Z",
+    "isFinal": false,
+    "text": "the shortness of breath on exertion and intermittent chest pain over",
+    "startTime": 1.248,
+    "endTime": 4.224
+  },
+  {
+    "at": "2026-09-16T16:31:54.495Z",
+    "isFinal": false,
+    "text": "Dr",
+    "startTime": 1.856,
+    "endTime": 4.832
+  },
+  {
+    "at": "2026-09-16T16:31:55.389Z",
+    "isFinal": false,
+    "text": "I'm in the first of the day",
+    "startTime": 2.72,
+    "endTime": 5.696
+  },
+  {
+    "at": "2026-09-16T16:31:56.198Z",
+    "isFinal": false,
+    "text": "ൽ കക്കും",
+    "startTime": 3.552,
+    "endTime": 6.528
+  },
+  {
+    "at": "2026-09-16T16:31:56.767Z",
+    "isFinal": false,
+    "text": "ൽ over the patient",
+    "startTime": 4.128,
+    "endTime": 7.104
+  },
+  {
+    "at": "2026-09-16T16:31:57.109Z",
+    "isFinal": false,
+    "text": "ൽ കക്കും",
+    "startTime": 4.448,
+    "endTime": 7.424
+  },
+  {
+    "at": "2026-09-16T16:31:57.682Z",
+    "isFinal": false,
+    "text": "on examination, the patient is in no acute",
+    "startTime": 5.056,
+    "endTime": 8.032
+  },
+  {
+    "at": "2026-09-16T16:31:57.986Z",
+    "isFinal": false,
+    "text": "on examination the patient is in no acute distress",
+    "startTime": 5.344,
+    "endTime": 8.32
+  },
+  {
+    "at": "2026-09-16T16:31:58.491Z",
+    "isFinal": false,
+    "text": "ൽ, Dr",
+    "startTime": 5.92,
+    "endTime": 8.896
+  },
+  {
+    "at": "2026-09-16T16:31:58.803Z",
+    "isFinal": false,
+    "text": "the patient is in no acute distress. Heart",
+    "startTime": 6.144,
+    "endTime": 9.12
+  },
+  {
+    "at": "2026-09-16T16:31:59.429Z",
+    "isFinal": false,
+    "text": "ൽ patient is in no acute distress. Heart rate is 88",
+    "startTime": 6.752,
+    "endTime": 9.728
+  },
+  {
+    "at": "2026-09-16T16:31:59.790Z",
+    "isFinal": false,
+    "text": "heart is in no acute distress. Heart rate is 88 and",
+    "startTime": 7.136,
+    "endTime": 10.112
+  },
+  {
+    "at": "2026-09-16T16:32:00.098Z",
+    "isFinal": false,
+    "text": "no acute distress. Heart rate is 88 and regular",
+    "startTime": 7.456,
+    "endTime": 10.432
+  },
+  {
+    "at": "2026-09-16T16:32:00.480Z",
+    "isFinal": false,
+    "text": "Dr",
+    "startTime": 7.872,
+    "endTime": 10.848
+  },
+  {
+    "at": "2026-09-16T16:32:00.800Z",
+    "isFinal": false,
+    "text": "stress, stress, heart rate is 88 and regular. lungs",
+    "startTime": 8.128,
+    "endTime": 11.104
+  },
+  {
+    "at": "2026-09-16T16:32:01.098Z",
+    "isFinal": false,
+    "text": "heart rate is 88 and regular. lungs are",
+    "startTime": 8.448,
+    "endTime": 11.424
+  },
+  {
+    "at": "2026-09-16T16:32:01.402Z",
+    "isFinal": false,
+    "text": "heart rate is 88 and regular. lungs are clear to",
+    "startTime": 8.736,
+    "endTime": 11.712
+  },
+  {
+    "at": "2026-09-16T16:32:01.731Z",
+    "isFinal": false,
+    "text": "heart ൽ യൽ നിന്ന്",
+    "startTime": 9.056,
+    "endTime": 12.032
+  },
+  {
+    "at": "2026-09-16T16:32:02.330Z",
+    "isFinal": false,
+    "text": "heart lungs are clear to auscultation by",
+    "startTime": 9.632,
+    "endTime": 12.608
+  },
+  {
+    "at": "2026-09-16T16:32:02.746Z",
+    "isFinal": false,
+    "text": "heart ൽ യൽ നിന്ന്",
+    "startTime": 10.048,
+    "endTime": 13.024
+  },
+  {
+    "at": "2026-09-16T16:32:03.239Z",
+    "isFinal": false,
+    "text": "heart lungs are clear to auscultation bilaterally",
+    "startTime": 10.592,
+    "endTime": 13.568
+  },
+  {
+    "at": "2026-09-16T16:32:03.820Z",
+    "isFinal": false,
+    "text": "heart ൽ, Dr",
+    "startTime": 11.136,
+    "endTime": 14.112
+  },
+  {
+    "at": "2026-09-16T16:32:04.141Z",
+    "isFinal": false,
+    "text": "heart we are to auscultation bilaterally. We are ordering an",
+    "startTime": 11.456,
+    "endTime": 14.432
+  },
+  {
+    "at": "2026-09-16T16:32:04.417Z",
+    "isFinal": false,
+    "text": "heart ൽ",
+    "startTime": 11.744,
+    "endTime": 14.72
+  },
+  {
+    "at": "2026-09-16T16:32:04.723Z",
+    "isFinal": false,
+    "text": "heart ൽ",
+    "startTime": 12.032,
+    "endTime": 15.008
+  },
+  {
+    "at": "2026-09-16T16:32:05.028Z",
+    "isFinal": false,
+    "text": "heart ൽ",
+    "startTime": 12.352,
+    "endTime": 15.328
+  },
+  {
+    "at": "2026-09-16T16:32:05.329Z",
+    "isFinal": false,
+    "text": "heart ൽ",
+    "startTime": 12.64,
+    "endTime": 15.616
+  },
+  {
+    "at": "2026-09-16T16:32:05.645Z",
+    "isFinal": false,
+    "text": "heart we are ordering an electrocardiogram and a",
+    "startTime": 12.928,
+    "endTime": 15.904
+  },
+  {
+    "at": "2026-09-16T16:32:05.959Z",
+    "isFinal": false,
+    "text": "heart ൽ. We are ordering an electrocardiogram and a troponin",
+    "startTime": 13.248,
+    "endTime": 16.224
+  },
+  {
+    "at": "2026-09-16T16:32:06.265Z",
+    "isFinal": false,
+    "text": "heart we are ordering an electrocardiogram and a troponin level",
+    "startTime": 13.536,
+    "endTime": 16.512
+  },
+  {
+    "at": "2026-09-16T16:32:06.652Z",
+    "isFinal": false,
+    "text": "heart the",
+    "startTime": 13.984,
+    "endTime": 16.96
+  },
+  {
+    "at": "2026-09-16T16:32:06.942Z",
+    "isFinal": false,
+    "text": "heart the differential",
+    "startTime": 14.24,
+    "endTime": 17.216
+  },
+  {
+    "at": "2026-09-16T16:32:07.247Z",
+    "isFinal": false,
+    "text": "heart the differential",
+    "startTime": 14.528,
+    "endTime": 17.504
+  },
+  {
+    "at": "2026-09-16T16:32:07.551Z",
+    "isFinal": false,
+    "text": "heart the differential",
+    "startTime": 14.848,
+    "endTime": 17.824
+  },
+  {
+    "at": "2026-09-16T16:32:07.856Z",
+    "isFinal": false,
+    "text": "heart the differential includes",
+    "startTime": 15.136,
+    "endTime": 18.112
+  },
+  {
+    "at": "2026-09-16T16:32:08.161Z",
+    "isFinal": false,
+    "text": "heart the differential includes stable",
+    "startTime": 15.456,
+    "endTime": 18.432
+  },
+  {
+    "at": "2026-09-16T16:32:08.469Z",
+    "isFinal": false,
+    "text": "heart the the differential, the",
+    "startTime": 15.744,
+    "endTime": 18.72
+  },
+  {
+    "at": "2026-09-16T16:32:08.783Z",
+    "isFinal": false,
+    "text": "heart the the differential includes stable angina",
+    "startTime": 16.032,
+    "endTime": 19.008
+  },
+  {
+    "at": "2026-09-16T16:32:09.493Z",
+    "isFinal": false,
+    "text": "heart the The differential includes stable angina, and we will start",
+    "startTime": 16.736,
+    "endTime": 19.712
+  },
+  {
+    "at": "2026-09-16T16:32:09.837Z",
+    "isFinal": false,
+    "text": "heart the The Differential include stable angina, and we will start as",
+    "startTime": 17.056,
+    "endTime": 20.032
+  },
+  {
+    "at": "2026-09-16T16:32:10.440Z",
+    "isFinal": false,
+    "text": "heart the The which includes stable angina, and we will start aspirin 81",
+    "startTime": 17.632,
+    "endTime": 20.608
+  },
+  {
+    "at": "2026-09-16T16:32:11.025Z",
+    "isFinal": false,
+    "text": "heart the The right now, Dr",
+    "startTime": 18.24,
+    "endTime": 21.216
+  },
+  {
+    "at": "2026-09-16T16:32:11.322Z",
+    "isFinal": false,
+    "text": "heart the The Dr",
+    "startTime": 18.528,
+    "endTime": 21.504
+  },
+  {
+    "at": "2026-09-16T16:32:13.500Z",
+    "isFinal": true,
+    "text": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are clear to auscultation bilaterally. We are ordering an electrocardiogram and a troponin level. , the differential includes stable angina and we will start aspirin 81 milligrams daily",
+    "startTime": 0,
+    "endTime": 22.208
+  },
+  {
+    "at": "2026-09-16T16:32:13.961Z",
+    "isFinal": false,
+    "text": "to the patient",
+    "startTime": 23.776,
+    "endTime": 24.096
+  },
+  {
+    "at": "2026-09-16T16:32:14.256Z",
+    "isFinal": false,
+    "text": "on the",
+    "startTime": 23.776,
+    "endTime": 24.416
+  },
+  {
+    "at": "2026-09-16T16:32:14.561Z",
+    "isFinal": false,
+    "text": "至le",
+    "startTime": 23.776,
+    "endTime": 24.704
+  },
+  {
+    "at": "2026-09-16T16:32:14.868Z",
+    "isFinal": false,
+    "text": "to the",
+    "startTime": 23.776,
+    "endTime": 24.992
+  },
+  {
+    "at": "2026-09-16T16:32:19.845Z",
+    "isFinal": false,
+    "text": "至",
+    "startTime": 26.592,
+    "endTime": 29.568
+  },
+  {
+    "at": "2026-09-16T16:32:22.702Z",
+    "isFinal": false,
+    "text": "至le",
+    "startTime": 29.792,
+    "endTime": 32.768
+  },
+  {
+    "at": "2026-09-16T16:32:37.383Z",
+    "isFinal": true,
+    "text": "to the to.",
+    "startTime": 23.776,
+    "endTime": 46.112
+  }
+]

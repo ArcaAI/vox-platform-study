@@ -1,0 +1,4 @@
+DOCTOR|50000000-0000-0000-0000-000000000001
+ERROR:  column p.departmentId does not exist
+LINE 1: select p."staffId", p."departmentId", p."tenantId" from core...
+                            ^

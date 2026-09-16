@@ -1,0 +1,35 @@
+{
+  "id": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+  "patientId": "PAT-981-GEN-1789575693",
+  "doctorId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+  "doctor": {
+    "id": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+    "username": "auto_feff47c83779aa6a",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000001",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000001",
+    "code": "GEN",
+    "name": "General Medicine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "OPEN",
+  "language": "en",
+  "metadata": {
+    "visitType": "new-visit",
+    "externalRef": "EVT-981-GEN-1789575693",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "decidedAt": "2026-09-16T16:21:34.738Z",
+      "workflowRunId": "01a0ab06-08aa-727e-bc68-84af18fa1f6b",
+      "workflowDefinitionSlug": "arcaai-gen-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 1,
+  "createdAt": "2026-09-16T16:21:34.128Z",
+  "updatedAt": "2026-09-16T16:21:34.738Z",
+  "isNew": true
+}

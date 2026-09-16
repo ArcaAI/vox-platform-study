@@ -1,0 +1,151 @@
+[
+  {
+    "at": "2026-09-16T16:21:44.852Z",
+    "kind": "presummary",
+    "event": {
+      "event": "presummary",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "status": "running",
+      "agentSlug": "case-notes-pre-summary",
+      "updatedAt": "2026-09-16T16:21:44.819Z"
+    }
+  },
+  {
+    "at": "2026-09-16T16:21:59.854Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:22:14.854Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:22:15.236Z",
+    "kind": "presummary",
+    "event": {
+      "event": "presummary",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "status": "degraded",
+      "error": "text_unavailable",
+      "agentSlug": "case-notes-pre-summary",
+      "updatedAt": "2026-09-16T16:22:15.234Z"
+    }
+  },
+  {
+    "at": "2026-09-16T16:22:29.855Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:22:36.367Z",
+    "kind": "snapshot",
+    "sections": 10,
+    "entities": 18,
+    "runningSummary": "Shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nAspirin 81 milligrams daily was started for stable angina.\n\nHeart rate is 88 and regular. Lungs are clear to auscu"
+  },
+  {
+    "at": "2026-09-16T16:22:44.855Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:22:44.931Z",
+    "kind": "snapshot",
+    "sections": 10,
+    "entities": 18,
+    "runningSummary": "Shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nAspirin 81 milligrams daily was started for stable angina.\n\nHeart rate is 88 and regular. Lungs are clear to auscu"
+  },
+  {
+    "at": "2026-09-16T16:22:59.856Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:23:14.857Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:23:29.857Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:23:44.858Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:23:59.858Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:24:14.859Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:24:29.858Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:24:44.858Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:24:59.859Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:25:14.860Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:25:26.911Z",
+    "kind": "snapshot",
+    "sections": 10,
+    "entities": 18,
+    "runningSummary": "Shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nAspirin 81 milligrams daily was started for stable angina.\n\nHeart rate is 88 and regular. Lungs are clear to auscu"
+  },
+  {
+    "at": "2026-09-16T16:25:26.970Z",
+    "kind": "snapshot",
+    "sections": 10,
+    "entities": 18,
+    "runningSummary": "Shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nAspirin 81 milligrams daily was started for stable angina.\n\nHeart rate is 88 and regular. Lungs are clear to auscu"
+  }
+]
