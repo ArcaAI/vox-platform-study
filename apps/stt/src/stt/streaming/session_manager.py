@@ -602,16 +602,14 @@ class SessionManager:
         )
 
         denoiser = None
-        if pipeline_config:
-            denoise_enabled = pipeline_config.preprocessing.denoise.enabled
-        else:
-            denoise_enabled = self._profile.denoise_enabled_default
+        # TASK-977 — denoise is the AGENT's to enable, never the machine's. No pipeline
+        # config is no agent opinion, which resolves OFF: the hardware profile used to
+        # switch it on here (`ExecutionProfile.denoise_enabled_default`), and is gone.
+        denoise_enabled = bool(pipeline_config and pipeline_config.preprocessing.denoise.enabled)
         if denoise_enabled:
-            strength = pipeline_config.preprocessing.denoise.strength if pipeline_config else 1.0
-            denoise_engine_name = (
-                getattr(pipeline_config.preprocessing.denoise, "engine", "rnnoise")
-                if pipeline_config
-                else "rnnoise"
+            strength = pipeline_config.preprocessing.denoise.strength
+            denoise_engine_name = getattr(
+                pipeline_config.preprocessing.denoise, "engine", "rnnoise"
             )
             # Engine selector (rnnoise = legacy default). RNNoise degrades to
             # no denoise when its package is absent (returns False);
