@@ -14,7 +14,7 @@ export const REGISTRY_CHECKSUM: string = "e5a5e4844ae5bf48cf002182735b8208065f0b
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "59218e01d613833fd2921ec0a1176bc11af8ac04defc1a0873b012da23f1ab72",
+    "graphChecksum": "f19ffe71af293e5d2f896df3129f644a455133e1ea8d695266e17985a29c7b90",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -49,7 +49,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -330,7 +329,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -770,11 +770,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "b894ef83909eab03f33f2c01284182ff897f6dea123600d9cd19f1783671cd45"
+      "checksum": "d4a224f97eb8be8a4eec4283fb8a8934746d0797ab06aa85d6c0d046b5f2445e"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "a8088c038fdd6d1a098a49bb59054ff4c74950c2fd96ef7d097c9c69730167b4",
+    "graphChecksum": "4162557e1f6e073207bfae4331932dfac4a0603748778bf7bd7a1eac3b6b03c6",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -809,7 +809,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1090,7 +1089,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -1530,11 +1530,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ec2a6c64481a6c4c8d8bfbe8495d0a35eaa08041c46f5d10c8dd5e3db9e301eb"
+      "checksum": "7004ba146e22147b2ed652b771e9e3e3bb824a702c4eacef92f654c493e3e39f"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "18b09f35398a148fc4a65fdce2f99d8e6bb718a9b78999e96754213e3865ee5c",
+    "graphChecksum": "b73f36717e6848b1fe794813160e14531eb9f9c137b0bcb550e74490f9148c1a",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1569,7 +1569,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1850,7 +1849,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -2290,11 +2290,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "cd149d556c4b93a99f49704ba59ac735f1bdc3f33adc8b0aa5be7d6874638fc7"
+      "checksum": "2e56b08a65f649f180c97e839b2eab0af9974cfbca336b2182760635ca37cf9c"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "837d535580b610db83748f717ecca0b2ddf210259008f03a3a9f28f3c14f0b06",
+    "graphChecksum": "677ebede5807e4e55907b74c36dd41a5aca3952527d155a90b0acaf9c83d360d",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -2329,7 +2329,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -2610,7 +2609,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -3050,11 +3050,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "5d0b4b2e3e90658feb5f1c1ee514e55a1be7eeeecf78883b9e601ea9563166c0"
+      "checksum": "392a36ac30ac2c094a21ce364ea51feb0c22a00e1200b9f1d1ff788dafff0acc"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "4342a42d2377909775b186e279974e92e4d05e6ec2f3a0746a0d33de9bdadc89",
+    "graphChecksum": "dfb5f940a685b4177bd25b6606f72a7fc3b82108a5ac27a308c29f4ebfe4fd51",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3089,7 +3089,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -3370,7 +3369,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -3810,11 +3810,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "85beb3f13168696dd3bfa6ce7a77a90d314b342b0e5d45a3f3b2fcf1823f7e24"
+      "checksum": "c266ad68530b21ab36f347b7dd9c9561b9fa8fd5f94c4379ffa73b4341829bff"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "6626b0dabaa3025b704fd741d82449fb0e882d865c239e2d3ef2d5ca9c2c7e35",
+    "graphChecksum": "ad321a552dd7baa112ac1f42ebcdd5c4f47324012f00ec97d82e1063cff36d34",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -3849,7 +3849,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -4130,7 +4129,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -4570,11 +4570,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ab282e213dfc7a38f2cbb692fdfc8338c50073c73bcd39f5d53ede67faf9e321"
+      "checksum": "44f6d57b1913455373eaf774c798ce654ef303134fc4556f6b50f4a800794d5e"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "a005a35fe9c401543ddf46f53ddafac6ca69eb85061d8d7d18fafe173788fbfa",
+    "graphChecksum": "049989fbb8c52f6bd9190cfe99cdfd8bfb0c74651f026145ecc06c03c538bea3",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -4609,7 +4609,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -4890,7 +4889,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -5330,11 +5330,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "0a4542c9fd800ae92d55b86b171d86e869cfe497ef13b10636f86e796752c051"
+      "checksum": "a87c2a5539637fd180da4029731f3a029eb266f958cdc5c50daf6bc2d253a592"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "3d9b4b8a29814b18700bad278496b354b0f8bede58808a94d334df4467e5a698",
+    "graphChecksum": "a59c6e7d1751645abff7b3081d1b42fe4517625835fc9d0265c5bfda71195390",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -5369,7 +5369,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -5650,7 +5649,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -6090,11 +6090,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "0567cd4615b3c8cd9aef1a09882413f448664d16d0202ac42407af45e6866304"
+      "checksum": "6076ba14df3e7e4cc61187cc87d7daa241115ade13d75fe47f8df2c0a4efae0b"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "80761b4a451d70e4ed87fc715c2c822ae0c35593c9badc5b8ac4b48b6b85feb3",
+    "graphChecksum": "5491381398ed8f449e77a63bf5ab75eb352e30efe77efd7d76c9e2b7e32e772b",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -6129,7 +6129,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -6410,7 +6409,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -6850,11 +6850,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "49582c77e230aafef5c6d329fd6ff4083f71cd235a8bcbd9cf89a53f143dd85d"
+      "checksum": "f9fa6613573b430edd63111867b3801775fd6b9f1b82e72889a7536f6dd776c9"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "d482b918dcdc8d0665b7a22cba83e943454b6385306bbf22f28a8169d8f7ec37",
+    "graphChecksum": "b9d7a8276372b9ef688081c8ed1d825d0251efef5b9851ff69e6b20f420a6543",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -6889,7 +6889,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -7170,7 +7169,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -7610,11 +7610,11 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "d3f05b7f55f68c636bd41dd5c515423af7404a05e69556d470bd90f30fa01904"
+      "checksum": "0126f2a02bf7cacbcbd0a47016a5e69c07b3c3de48aa35aa22e6dc54c7a17c80"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "a5d7a54b03447b9e69d74212ad2ebfb465640d5e50832a8f037925cae2030815",
+    "graphChecksum": "0bfde0bdf12b074250de8c0a3221572ffb671c602e88621862564fb2e251b1b1",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -7649,7 +7649,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0001-000000000021",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -7930,7 +7929,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -8370,7 +8370,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "6606a8492fc017d3755361289200d251919bd3494d670ff2a6f2f3a94197d304"
+      "checksum": "a4742f4f00bb5673e845b90f2af44388ed3005b70d08e4a225e097e4731439fa"
     }
   }
 };
