@@ -217,7 +217,9 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
     return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
   }
 
-  const nextVersion = (schema.pinnedVersionNumber ?? versions.length) + 1;
+  // The next version follows the HIGHEST existing version, not the pin: a rolled-back schema
+  // (pinned to v1 with v3 in its history) publishes v4, never "v2" again.
+  const nextVersion = Math.max(0, ...versions.map((version) => version.versionNumber), schema.pinnedVersionNumber ?? 0) + 1;
   const outputCount = draft.outputs?.length ?? 0;
 
   return (
