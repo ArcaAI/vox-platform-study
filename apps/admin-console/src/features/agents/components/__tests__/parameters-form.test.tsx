@@ -21,6 +21,8 @@ const CATALOGUE_MODELS = [
   { id: 'm-1', slug: 'wespeaker-voxceleb-resnet34', name: 'WeSpeaker ResNet34', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-2', slug: 'ecapa-tdnn-voxceleb', name: 'ECAPA-TDNN', taskType: 'SPEAKER_EMBEDDING', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   { id: 'm-3', slug: 'silero-vad', name: 'Silero VAD', taskType: 'VOICE_ACTIVITY_DETECTION', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
+  // TASK-977 follow-up — an AUDIO_TO_AUDIO row, for the denoise model picker.
+  { id: 'm-denoise', slug: 'rnnoise', name: 'RNNoise', taskType: 'AUDIO_TO_AUDIO', providerId: 'hope', provider: 'built-in', providerClass: 'platform-self-host', readiness: 'ready', readinessCheckedAt: null, readinessDetail: null, usable: true, unusableReason: null },
   // TASK-934 — an ASR row carrying a decode profile, for the effective-value hint.
   {
     id: 'm-asr',
@@ -184,6 +186,39 @@ describe('ParametersForm', () => {
       );
 
       await waitFor(() => expect((screen.getByLabelText('Embedding Model Slug') as HTMLInputElement).value).toBe('a-model-that-vanished'));
+    });
+  });
+
+  /**
+   * TASK-977 follow-up — `vad.modelSlug` and `denoise.modelSlug` gain the same `modelTaskType`
+   * annotation `diarization.embeddingModelSlug` carries (TASK-887), so an admin picks the VAD
+   * and noise-suppression models from the tenant's catalogue instead of typing a slug.
+   */
+  describe('SPEECH_TO_TEXT VAD and denoise model pickers (TASK-977 follow-up)', () => {
+    it('renders the VAD model slug as a catalogue picker, not free text', async () => {
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { vad: { modelSlug: 'silero-vad' } } }}
+          onChange={() => undefined}
+        />,
+      );
+      const block = within(screen.getByRole('group', { name: 'Vad' }));
+      await waitFor(() => expect(block.getByLabelText('Model Slug').getAttribute('role')).toBe('combobox'));
+      expect(block.getByLabelText('Model Slug').textContent).toContain('Silero VAD');
+    });
+
+    it('renders the denoise model slug as a catalogue picker, not free text', async () => {
+      render(
+        <ParametersForm
+          task="SPEECH_TO_TEXT"
+          value={{ audioFrontEnd: { denoise: { modelSlug: 'rnnoise' } } }}
+          onChange={() => undefined}
+        />,
+      );
+      const block = within(screen.getByRole('group', { name: 'Denoise' }));
+      await waitFor(() => expect(block.getByLabelText('Model Slug').getAttribute('role')).toBe('combobox'));
+      expect(block.getByLabelText('Model Slug').textContent).toContain('RNNoise');
     });
   });
 
