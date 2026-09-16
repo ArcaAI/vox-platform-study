@@ -273,7 +273,12 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
  */
 export const ASR_PARAMETERS = {
   audioFrontEnd: {
-    vad: { modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 },
+    // TASK-977 (owner decision D-1) — VAD segmentation is OFF until an admin opts in; the
+    // resolver now fails closed on stage selection the same way it already does on models.
+    // `modelSlug` and the tuning numbers stay bound so flipping `enabled` on gets a working
+    // stage immediately, and so the resolver's own guard (409 `ASR_AGENT_VAD_MODEL_MISSING`)
+    // never fires for this agent the moment an admin turns it on.
+    vad: { enabled: false, modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 },
     diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 },
   },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
