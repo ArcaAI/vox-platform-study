@@ -134,13 +134,20 @@ function ScalarField({
     );
   }
   if (type === 'boolean') {
+    // TASK-977 (L4 console half) — the displayed state is the EFFECTIVE value (explicit when
+    // present, else the schema's own `default`, else off), not a bare `=== true`: the gateway
+    // resolver honours `default: true` on `audioFrontEnd.resample`/`normalize`, so a field the
+    // admin never touched must render ON, not OFF. Once touched, the switch writes an explicit
+    // boolean — never `undefined` — so "off" on a default-true field persists as `false` rather
+    // than round-tripping back to the schema default the server applies to an absent key.
+    const effectiveValue = value === undefined ? schema.default === true : value === true;
     return (
       <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
         <div className="flex flex-col">
           <Label htmlFor={id}>{labelOf(name)}</Label>
           {combinedDescription ? <span className="text-muted-foreground text-xs">{combinedDescription}</span> : null}
         </div>
-        <Switch id={id} checked={value === true} onCheckedChange={(checked) => onChange(checked ? true : undefined)} />
+        <Switch id={id} checked={effectiveValue} onCheckedChange={(checked) => onChange(checked)} />
       </div>
     );
   }
