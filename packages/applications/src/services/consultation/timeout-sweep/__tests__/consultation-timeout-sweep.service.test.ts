@@ -17,7 +17,7 @@
  *     lock is left alone; a single row's failure never aborts the batch
  *     either; the window comes from the descriptor, never a literal.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { ConsultationTimeoutSweepService, liveSummaryLockKey } from '../consultation-timeout-sweep.service';
 import {
@@ -173,6 +173,11 @@ const buildService = (
 // ─── Tests ──────────────────────────────────────────────────────────
 
 describe('ConsultationTimeoutSweepService', () => {
+  // A failed assertion skips a test's inline vi.useRealTimers(); never leak fake timers into the next test.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe('getConfig', () => {
     it('reads cron, timeoutMinutes and recordingStaleMinutes from AppSettingsService', () => {
       const { service } = buildService({
@@ -554,13 +559,15 @@ describe('ConsultationTimeoutSweepService', () => {
       const consultationRepository = createMockConsultationRepository();
       const { service } = buildService({ consultationRepository });
 
-      const before = Date.now();
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
       await service.sweepIdlePendingReview();
 
       expect(CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]).toBe(120);
-      const [cutoff] = consultationRepository.findIdlePendingReview.mock.calls[0];
-      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 120 * 60_000);
-      expect(cutoff.getTime()).toBeGreaterThan(before - 121 * 60_000);
+      expect(consultationRepository.findIdlePendingReview.mock.calls[0][0]).toEqual(new Date('2026-09-09T10:00:00.000Z'));
+
+      vi.useRealTimers();
     });
 
     it('honours an operator-tuned window from AppSettingsService', async () => {
@@ -570,11 +577,14 @@ describe('ConsultationTimeoutSweepService', () => {
         appSettingsService: createMockAppSettingsService({ [CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY]: 600 }),
       });
 
-      const before = Date.now();
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
       await service.sweepIdlePendingReview();
 
-      const [cutoff] = consultationRepository.findIdlePendingReview.mock.calls[0];
-      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 600 * 60_000);
+      expect(consultationRepository.findIdlePendingReview.mock.calls[0][0]).toEqual(new Date('2026-09-09T02:00:00.000Z'));
+
+      vi.useRealTimers();
     });
 
     it('transitions an idle PENDING_REVIEW row to TIMED_OUT — NOT CLOSED_INCOMPLETE', async () => {
@@ -675,13 +685,15 @@ describe('ConsultationTimeoutSweepService', () => {
       const consultationRepository = createMockConsultationRepository();
       const { service } = buildService({ consultationRepository });
 
-      const before = Date.now();
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+
       await service.sweepIdleOpen();
 
       expect(CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY]).toBe(120);
-      const [cutoff] = consultationRepository.findIdleOpen.mock.calls[0];
-      expect(cutoff.getTime()).toBeLessThanOrEqual(before - 120 * 60_000);
-      expect(cutoff.getTime()).toBeGreaterThan(before - 121 * 60_000);
+      expect(consultationRepository.findIdleOpen.mock.calls[0][0]).toEqual(new Date('2026-09-09T10:00:00.000Z'));
+
+      vi.useRealTimers();
     });
 
     it('transitions an idle OPEN row to CLOSED_INCOMPLETE with the SESSION_CLOSED_INCOMPLETE WORM row', async () => {
