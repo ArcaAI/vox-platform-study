@@ -279,7 +279,15 @@ export const ASR_PARAMETERS = {
     // stage immediately, and so the resolver's own guard (409 `ASR_AGENT_VAD_MODEL_MISSING`)
     // never fires for this agent the moment an admin turns it on.
     vad: { enabled: false, modelSlug: 'silero-vad', threshold: 0.5, minSpeechMs: 100, minSilenceMs: 350 },
+    // TASK-977 follow-up — all five `audioFrontEnd` controls are declared explicitly here
+    // (`denoise.enabled`, `resample`, `normalize` alongside `vad.enabled` and
+    // `diarization.enabled` above) so this platform agent is self-describing and a future
+    // change to the schema's own defaults can never silently flip its behaviour. No denoise
+    // model is bound — an enabled stage with none runs RNNoise.
+    denoise: { enabled: false },
     diarization: { enabled: false, backend: 'embedding', embeddingModelSlug: 'wespeaker-voxceleb-resnet34', maxSpeakers: 2, matchThreshold: 0.6 },
+    resample: true,
+    normalize: true,
   },
   // The whisper.cpp adapter's per-word timestamp mode is "a lossy, script-corrupting hack" for
   // Malayalam (`whisper_cpp_asr.py:500-505`); nothing downstream consumes per-word timing.
