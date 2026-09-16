@@ -2,8 +2,8 @@
 
 Diarization scoring is a distinct metric owned separately from the streaming
 quality scorecard. The math is pure stdlib (no model, no infra) so it is unit-testable with
-nothing staged — the live capture on real 2-speaker clinical audio is what is
-BLOCKED on the un-staged Sortformer model. These tests lock:
+nothing staged, and it is backend-agnostic — the live capture of the embedding diarizer on
+real 2-speaker clinical audio has not been taken yet. These tests lock:
 
 * DER decomposition (missed / false-alarm / confusion) with the optimal
   2-speaker label mapping (swapped hyp labels still score DER 0),
