@@ -17,7 +17,8 @@
     "build": "tsc --build",
     "clean": "rm -rf dist *.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [
     "arcaai",
