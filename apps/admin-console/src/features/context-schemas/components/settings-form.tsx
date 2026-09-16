@@ -1,9 +1,15 @@
 'use client';
 
 /**
- * Settings tab — schema metadata under OCC (`PATCH :id`, If-Match required).
- * `scope`/`departmentId` are set once at creation and are NOT in
- * `UpdateConsultationContextSchemaRequest` — shown read-only here.
+ * Schema metadata under OCC (`PATCH :id`, If-Match required), rendered inside
+ * the "Rename & settings" dialog reached from the detail page's `⋯` menu.
+ *
+ * `slug` and `scope` are set once at creation and are NOT in
+ * `UpdateConsultationContextSchemaRequest`. They used to render as two DISABLED
+ * inputs, which is a control an admin can tab into, focus, and fail to edit —
+ * six controls where four were editable. They are now a read-only meta line, so
+ * the dialog offers exactly the five things it can actually change: Name,
+ * Description, Status, Default, and Save.
  */
 
 import { useId, useState, type FormEvent } from 'react';
@@ -72,20 +78,19 @@ export function SettingsForm({
         }}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label>Slug</Label>
-          <Input value={schema.slug} disabled className="font-mono" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Scope</Label>
-          <Input value={schema.departmentId ? `DEPARTMENT (${schema.departmentId})` : 'TENANT'} disabled />
-        </div>
-      </div>
+      <p className="text-muted-foreground text-sm">
+        <span className="font-mono">{schema.slug}</span>
+        {' · '}
+        {schema.departmentId ? `Department scope (${schema.departmentId})` : 'Tenant scope'}
+        {' — '}both fixed at creation.
+      </p>
 
       <div className="flex flex-col gap-2">
         <Label htmlFor={`${uid}-name`}>
-          Name <span aria-hidden className="text-destructive">*</span>
+          Name{' '}
+          <span aria-hidden className="text-destructive">
+            *
+          </span>
         </Label>
         <Input id={`${uid}-name`} value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" required />
       </div>
@@ -98,7 +103,7 @@ export function SettingsForm({
       <div className="flex flex-col gap-2">
         <Label htmlFor={`${uid}-status`}>Status</Label>
         <Select value={status} onValueChange={(next) => setStatus(next as ConsultationContextSchemaStatus)}>
-          <SelectTrigger id={`${uid}-status`} className="w-full sm:w-64">
+          <SelectTrigger id={`${uid}-status`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

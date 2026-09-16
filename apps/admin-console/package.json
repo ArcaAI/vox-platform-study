@@ -19,6 +19,7 @@
         "@arcaai/json-schema-subset": "workspace:*",
         "@arcaai/room": "workspace:*",
         "@arcaai/stt": "workspace:*",
+        "@arcaai/types": "workspace:*",
         "@arcaai/ui": "workspace:*",
         "@arcaai/vox": "workspace:*",
         "@scalar/api-reference-react": "^0.9.67",

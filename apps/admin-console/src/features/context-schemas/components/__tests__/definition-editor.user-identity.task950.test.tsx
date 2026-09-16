@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
@@ -32,9 +32,18 @@ afterEach(() => {
   cleanup();
 });
 
-/** Expand a kind's collapsed Accordion item so its fields (and the field-role table) render. */
+/**
+ * Expand a kind's collapsed Accordion item so its fields render, then open that
+ * kind's own "Field roles" disclosure — the roles table moved behind one when
+ * the kind editor adopted progressive disclosure, so reaching it is two clicks
+ * scoped to the same accordion item.
+ */
 async function expandKind(keyPattern: RegExp): Promise<void> {
-  fireEvent.click(await screen.findByRole('button', { name: keyPattern }));
+  const trigger = await screen.findByRole('button', { name: keyPattern });
+  fireEvent.click(trigger);
+  const item = trigger.closest('[data-slot="accordion-item"]');
+  const roles = item ? within(item as HTMLElement).queryByRole('button', { name: /Field roles/ }) : null;
+  if (roles) fireEvent.click(roles);
 }
 
 function structuredOneKind(overrides: Partial<ContextKindDeclaration> = {}): ContextKindDeclaration {
@@ -67,13 +76,12 @@ function Harness({ initial, onDefinition }: { initial: ContextSchemaDefinition; 
   const [definition, setDefinition] = useState(initial);
   return (
     <DefinitionEditor
-      schemaId="s-1"
       definition={definition}
       onDefinitionChange={(next) => {
         setDefinition(next);
         onDefinition?.(next);
       }}
-      onPublished={() => {}}
+      problems={null}
     />
   );
 }

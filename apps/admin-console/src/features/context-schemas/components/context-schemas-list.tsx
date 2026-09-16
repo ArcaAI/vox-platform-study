@@ -5,30 +5,34 @@
  * has no query filters (the controller reads only the caller's tenant off
  * CLS), so this fetches the whole tenant catalog in one page (admin scale),
  * mirroring the Agent Catalog's flat-list pattern.
+ *
+ * A row is a LINK to `/context-schemas/[id]`, not a button that opens a drawer:
+ * a schema's detail is a page an admin works in, so it should be addressable,
+ * bookmarkable, and reachable with the browser's own back button. Create still
+ * opens a dialog — creating one is four fields, and the new schema's page is
+ * where the work actually starts.
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { IconPlus, IconSchema } from '@tabler/icons-react';
-import { parseAsString, useQueryState } from 'nuqs';
-import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { GatewayError } from '@/shared/api';
-import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useContextSchemas, useDeleteContextSchema } from '../api/hooks';
+import { useContextSchemas } from '../api/hooks';
 import type { ConsultationContextSchema } from '../api/types';
-import { ContextSchemaDetailDrawer } from './context-schema-detail-drawer';
+import { CreateSchemaForm } from './create-schema-form';
 
-function SchemaRow({ schema, onSelect }: { schema: ConsultationContextSchema; onSelect: () => void }) {
+function SchemaRow({ schema }: { schema: ConsultationContextSchema }) {
   return (
     <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        className="hover:bg-muted flex w-full cursor-pointer flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-left"
+      <Link
+        href={`/context-schemas/${encodeURIComponent(schema.id)}`}
+        className="hover:bg-muted flex w-full flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-left"
       >
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="flex flex-wrap items-center gap-2">
@@ -39,9 +43,10 @@ function SchemaRow({ schema, onSelect }: { schema: ConsultationContextSchema; on
           <span className="text-muted-foreground truncate font-mono text-xs">{schema.slug}</span>
         </span>
         <span className="text-muted-foreground shrink-0 font-mono text-xs">
-          {schema.departmentId ? `DEPARTMENT` : 'TENANT'} &middot; {schema.pinnedVersionNumber != null ? `v${schema.pinnedVersionNumber}` : 'unpublished'}
+          {schema.departmentId ? `DEPARTMENT` : 'TENANT'} &middot;{' '}
+          {schema.pinnedVersionNumber != null ? `v${schema.pinnedVersionNumber}` : 'unpublished'}
         </span>
-      </button>
+      </Link>
     </li>
   );
 }
@@ -57,30 +62,10 @@ function ContextSchemasListSkeleton() {
 }
 
 export function ContextSchemasList() {
-  const [selectedParam, setSelectedParam] = useQueryState('schema', parseAsString.withDefault(''));
+  const router = useRouter();
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<ConsultationContextSchema | null>(null);
-
   const schemasQuery = useContextSchemas();
-  const deleteSchema = useDeleteContextSchema();
-
   const schemas = schemasQuery.data ?? [];
-  const selected = schemas.find((schema) => schema.id === selectedParam) ?? null;
-
-  function handleDeleteConfirmed() {
-    if (!deleting) return;
-    deleteSchema.mutate(deleting.id, {
-      onSuccess: () => {
-        toast.success('Context schema deleted');
-        if (deleting.id === selectedParam) void setSelectedParam(null);
-        setDeleting(null);
-      },
-      onError: (error) => {
-        toast.error(error instanceof GatewayError ? error.message : 'Could not delete the context schema.');
-        setDeleting(null);
-      },
-    });
-  }
 
   if (schemasQuery.isPending) return <ContextSchemasListSkeleton />;
   if (schemasQuery.error) return <ErrorState error={schemasQuery.error} onRetry={() => void schemasQuery.refetch()} />;
@@ -118,38 +103,28 @@ export function ContextSchemasList() {
       ) : (
         <ul className="flex flex-col gap-2">
           {schemas.map((schema) => (
-            <SchemaRow key={schema.id} schema={schema} onSelect={() => void setSelectedParam(schema.id)} />
+            <SchemaRow key={schema.id} schema={schema} />
           ))}
         </ul>
       )}
 
-      <ContextSchemaDetailDrawer
-        key={creating ? 'create' : selected?.id || 'no-schema'}
-        schemaId={creating ? null : (selected?.id ?? null)}
-        creating={creating}
-        onOpenChange={(open) => {
-          if (open) return;
-          setCreating(false);
-          void setSelectedParam(null);
-        }}
-        onCreated={(schema) => {
-          setCreating(false);
-          void setSelectedParam(schema.id);
-        }}
-        onRequestDelete={setDeleting}
-      />
-
-      <ConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete context schema?"
-        description={deleting ? `Soft-deletes "${deleting.name}". Its published version history is kept — a ContextItem stamped with one must resolve it forever.` : ''}
-        confirmLabel="Delete schema"
-        destructive
-        typeToConfirm={deleting?.name}
-        onConfirm={handleDeleteConfirmed}
-        isPending={deleteSchema.isPending}
-      />
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New context schema</DialogTitle>
+            <DialogDescription>
+              Name it and choose its scope. Kinds are declared on the schema&apos;s own page, then published as a version.
+            </DialogDescription>
+          </DialogHeader>
+          <CreateSchemaForm
+            onCreated={(schema) => {
+              setCreating(false);
+              router.push(`/context-schemas/${encodeURIComponent(schema.id)}`);
+            }}
+            onCancel={() => setCreating(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
