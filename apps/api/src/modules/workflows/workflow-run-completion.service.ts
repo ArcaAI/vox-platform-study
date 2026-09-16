@@ -205,7 +205,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
             runId,
             // ABSENT counts are read as "no warnings", never as unknown: an interpreter build
             // that emits none must not make every run look degraded, or look suspiciously clean.
-            degraded: (counts.degradedNodeCount ?? 0) + (counts.skippedNodeCount ?? 0) > 0,
+            degraded: (counts.degradedNodeCount ?? 0) > 0,
             at: new Date(endedAt),
           });
         } catch (err) {

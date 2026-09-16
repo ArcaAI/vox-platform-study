@@ -47,13 +47,17 @@ describe('a COMPLETED consultation run reaches the governing-engine marker', () 
     expect(harnessInternal.failGovernedRun).not.toHaveBeenCalled();
   });
 
-  it('derives `degraded` from the counts — a degraded OR a skipped node sets it', async () => {
-    for (const counts of [{ degradedNodeCount: 2 }, { skippedNodeCount: 1 }, { degradedNodeCount: 1, skippedNodeCount: 3 }]) {
+  it('derives `degraded` from DEGRADED nodes only — a skipped node is a hand-off, not a warning', async () => {
+    for (const [counts, degraded] of [
+      [{ degradedNodeCount: 2 }, true],
+      [{ skippedNodeCount: 1 }, false],
+      [{ degradedNodeCount: 1, skippedNodeCount: 3 }, true],
+    ] as const) {
       const { service, harnessInternal } = build();
 
       await service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'DEGRADED', ENDED_AT, CONSULTATION, { nodeCount: 5, ...counts });
 
-      expect(harnessInternal.recordGovernedRunCompleted).toHaveBeenCalledWith(CONSULTATION, expect.objectContaining({ degraded: true }));
+      expect(harnessInternal.recordGovernedRunCompleted).toHaveBeenCalledWith(CONSULTATION, expect.objectContaining({ degraded }));
     }
   });
 
