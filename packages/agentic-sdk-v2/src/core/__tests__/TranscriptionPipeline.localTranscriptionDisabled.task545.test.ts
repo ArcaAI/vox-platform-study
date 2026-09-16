@@ -9,10 +9,13 @@
  * `LOCAL_TRANSCRIPTION_DISABLED`) instead of silently transcribing on-device,
  * and the local Whisper processor must never be constructed.
  *
- * VAD and NoiseFilter are explicitly out of scope for this kill switch (they
- * keep running in the browser as preprocessing stages for the backend
- * stream) — a dedicated test below pins that they still initialize and emit
- * events with STT remote-only.
+ * VAD and NoiseFilter are out of scope for THIS kill switch — they have their
+ * own (TASK-865 `clientInference.allow`, which since TASK-865 keeps them off in
+ * the browser by default). The dedicated test below therefore opens that gate
+ * explicitly and pins that the two stages still initialize and emit events with
+ * STT remote-only: the two switches are independent, not one. (Earlier text here
+ * said they "keep running in the browser as preprocessing stages" — that predates
+ * TASK-865; corrected under TASK-977 D-6. The test BODY was already correct.)
  *
  * @vitest-environment jsdom
  */
