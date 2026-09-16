@@ -24,7 +24,13 @@ describe('WorkflowHooksController', () => {
     const controller = new WorkflowHooksController(service as never);
     const raw = '{"text":"chest pain"}';
     const result = await controller.trigger('hook-1', { rawBody: Buffer.from(raw) } as never, 'sha256=abc', '1700000000', 'idem-1');
-    expect(service.triggerByWebhook).toHaveBeenCalledWith('hook-1', { tenantId: '', rawBody: raw, signature: 'sha256=abc', timestamp: '1700000000', idempotencyKey: 'idem-1' });
+    expect(service.triggerByWebhook).toHaveBeenCalledWith('hook-1', {
+      tenantId: '',
+      rawBody: raw,
+      signature: 'sha256=abc',
+      timestamp: '1700000000',
+      idempotencyKey: 'idem-1',
+    });
     expect(result.runId).toBe('run-1');
   });
 

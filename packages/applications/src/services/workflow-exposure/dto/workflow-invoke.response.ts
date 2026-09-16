@@ -46,7 +46,7 @@ export class WorkflowRunStatusResponse {
 
   @ApiProperty({
     description:
-      'RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT — already folded through the same vocabulary the persisted `WorkflowRun` row uses (TASK-982, E6): the interpreter\'s raw SUCCEEDED/DEGRADED/CANCELLED never reach this field.',
+      "RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT — already folded through the same vocabulary the persisted `WorkflowRun` row uses (TASK-982, E6): the interpreter's raw SUCCEEDED/DEGRADED/CANCELLED never reach this field.",
   })
   status: string;
 
@@ -75,7 +75,10 @@ export class WorkflowRunStatusResponse {
   })
   actingUserId?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled node count, sourced from the durable run read model. Null until the run is synced.' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'TASK-982 — settled node count, sourced from the durable run read model. Null until the run is synced.',
+  })
   nodeCount: number | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled FAILED-node count, sourced from the durable run read model.' })
@@ -88,7 +91,8 @@ export class WorkflowRunStatusResponse {
   skippedNodeCount: number | null;
 
   @ApiProperty({
-    description: 'True when `status` is COMPLETED and at least one node degraded or was skipped for cause. A derived flag, never a run status (README pitfall 6).',
+    description:
+      'True when `status` is COMPLETED and at least one node degraded or was skipped for cause. A derived flag, never a run status (README pitfall 6).',
   })
   degraded: boolean;
 }
