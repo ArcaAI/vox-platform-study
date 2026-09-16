@@ -119,7 +119,9 @@ per-run FLAG, never a value `status` itself takes. `useConsultationSchema().vali
 fast-fail UX aid only: it checks the SESSION-pinned schema bundle, which can differ from the
 governing workflow's BOUND version when that trigger is pinned rather than follow-latest, so catch
 400 `WORKFLOW_CONTEXT_INCOMPATIBLE` (on `AgenticError.context.problems`) regardless of what local
-validation said.
+validation said. `ContextItem.kindKey` has been declared for a while and is now actually FILLED by
+the wire — it names which declared kind an item is, so a consumer reads back what it sent instead
+of remembering it.
 
 ### Business plane only — no management surface (TASK-890)
 
@@ -181,6 +183,8 @@ every optimized build including staging.
 - [`@arcaai/room`](../room/README.md), [`@arcaai/stt`](../stt/README.md),
   [`@arcaai/vad`](../vad/README.md), [`@arcaai/noise-filter`](../noise-filter/README.md),
   [`@arcaai/med-ner`](../med-ner/README.md) — dependency and deprecated-plugin packages.
+- [`docs/guides/client-integration-guide.md`](../../docs/guides/client-integration-guide.md) — the
+  end-to-end integration guide; chapter 10 maps every server-side step to its browser equivalent.
 - `docs/API-Reference.md`, `docs/Compat-API-Reference.md` — full generated signatures.
 - `.claude/rules/08-vox-sdk.md` — SDK architecture rules; `.claude/rules/07-react-ui.md` — React
   component conventions.
