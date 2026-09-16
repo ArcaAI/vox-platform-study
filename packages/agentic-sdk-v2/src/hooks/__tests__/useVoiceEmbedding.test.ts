@@ -15,6 +15,7 @@ import { useVoiceEmbedding } from '../useVoiceEmbedding';
 import { useAgenticStore } from '../../store/agenticStore';
 import { createMockLogger } from '../../__tests__/setup';
 import { VOICE_EMBEDDING_ENDPOINTS } from '../../core/constants';
+import { AgenticClient } from '../../core/AgenticClient';
 import { AgenticError } from '../../types/common';
 import { SecureStorage } from '../../utils/secureStorage';
 
@@ -539,6 +540,67 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
       });
 
       expect(mockStore.apiClient.get).toHaveBeenCalledWith(VOICE_EMBEDDING_ENDPOINTS.enrollmentTarget('clinic-asr'));
+    });
+  });
+
+  /**
+   * TASK-977 — the gateway refuses enrollment while the agent's diarization is off with 409
+   * `{ code: 'ASR_AGENT_DIARIZATION_DISABLED', message }`. A consumer must be able to tell that
+   * apart from any other 409 (an unrunnable agent, a vetoed provider) by the gateway's `code`,
+   * so these run through a REAL `AgenticClient` over a stubbed `fetch` — a mocked client would
+   * prove nothing about what the transport keeps.
+   */
+  describe('gateway refusal code survives the transport (TASK-977)', () => {
+    const DISABLED_BODY = {
+      statusCode: 409,
+      code: 'ASR_AGENT_DIARIZATION_DISABLED',
+      message: "Agent 'realtime-transcription' has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false)",
+    };
+
+    function useRealClient() {
+      const fetchMock = vi.fn(
+        async () => new Response(JSON.stringify(DISABLED_BODY), { status: 409, headers: { 'content-type': 'application/json' } }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      (mockStore as unknown as { apiClient: AgenticClient }).apiClient = new AgenticClient({
+        baseUrl: 'https://api.example.com',
+        tenantId: 'tenant-1',
+      });
+      return fetchMock;
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('enrollmentTarget() rejects with the gateway code on the error context', async () => {
+      const fetchMock = useRealClient();
+      const { result } = renderHook(() => useVoiceEmbedding());
+
+      let thrown: unknown;
+      await act(async () => {
+        thrown = await result.current.enrollmentTarget().catch((error: unknown) => error);
+      });
+
+      expect(thrown).toBeInstanceOf(AgenticError);
+      expect((thrown as AgenticError).context).toMatchObject({ status: 409, code: 'ASR_AGENT_DIARIZATION_DISABLED' });
+      expect((thrown as AgenticError).message).toContain('audioFrontEnd.diarization.enabled');
+      // A 409 is an answer, not an outage: it is not retried.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('enroll() rejects with the gateway code on the error context', async () => {
+      useRealClient();
+      const { result } = renderHook(() => useVoiceEmbedding());
+
+      let thrown: unknown;
+      await act(async () => {
+        thrown = await result.current.enroll(new Blob(['audio'], { type: 'audio/wav' })).catch((error: unknown) => error);
+      });
+
+      expect(thrown).toBeInstanceOf(AgenticError);
+      expect((thrown as AgenticError).context).toMatchObject({ status: 409, code: 'ASR_AGENT_DIARIZATION_DISABLED' });
+      expect(result.current.profiles).toEqual([]);
     });
   });
 });
