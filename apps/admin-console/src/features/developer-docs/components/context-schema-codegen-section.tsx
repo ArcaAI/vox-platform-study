@@ -140,13 +140,20 @@ export function ContextSchemaCodegenSection() {
         <div className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">Refusal codes on open</h2>
           <p className="text-muted-foreground text-sm">
-            Every one is a{' '}
+            Each carries <code className="font-mono text-xs">{'{ message, code, problems? }'}</code>. Most are a{' '}
             <Badge variant="outline" className="font-mono">
               400
+            </Badge>
+            ; an unknown department or staff id is a{' '}
+            <Badge variant="outline" className="font-mono">
+              404
             </Badge>{' '}
-            carrying <code className="font-mono text-xs">{'{ message, code, problems? }'}</code>. Branch on{' '}
-            <code className="font-mono text-xs">code</code>; show <code className="font-mono text-xs">problems[]</code> to whoever can fix the
-            payload.
+            and an ambiguous staff id a{' '}
+            <Badge variant="outline" className="font-mono">
+              409
+            </Badge>
+            . Branch on <code className="font-mono text-xs">code</code>; show <code className="font-mono text-xs">problems[]</code> to whoever can fix
+            the payload.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
