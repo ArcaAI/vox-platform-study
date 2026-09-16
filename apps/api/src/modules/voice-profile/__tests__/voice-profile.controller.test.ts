@@ -112,6 +112,26 @@ describe('VoiceProfileController', () => {
     });
   });
 
+  /**
+   * TASK-977 — enrollment is refused while the agent's diarization is off (409
+   * `ASR_AGENT_DIARIZATION_DISABLED`), and the 400 now only means the sortformer backend, which
+   * needs no enrolled profiles. Both routes resolve the same target, so both document both.
+   */
+  describe('documented refusals', () => {
+    const responses = (m: 'enroll' | 'enrollmentTarget') =>
+      Reflect.getMetadata('swagger/apiResponse', VoiceProfileController.prototype[m]) as Record<string, { description?: string }>;
+
+    it.each(['enroll', 'enrollmentTarget'] as const)('%s documents the 409 ASR_AGENT_DIARIZATION_DISABLED refusal', (m) => {
+      expect(responses(m)[409]?.description).toContain('ASR_AGENT_DIARIZATION_DISABLED');
+    });
+
+    it.each(['enroll', 'enrollmentTarget'] as const)('%s documents the 400 as the sortformer case, not a missing model slug', (m) => {
+      const description = responses(m)[400]?.description ?? '';
+      expect(description).toContain('sortformer');
+      expect(description).not.toContain('declares no speaker-embedding model');
+    });
+  });
+
   // CASL permission tuples per method (no more empty @Authorize()).
   describe('CASL permission tuples', () => {
     const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
