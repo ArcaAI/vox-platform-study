@@ -26,16 +26,16 @@ import { EnrollBodyDto, VoiceProfileEnrollmentTargetResponse, VoiceProfileRespon
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES = 3;
 
-// TASK-977 — the two refusals the enrollment target can answer with, documented identically on
-// both routes because `enroll` resolves the very same target before any audio leaves the gateway.
+// TASK-977 — the refusal the enrollment target answers with, documented identically on both routes
+// because `enroll` resolves the very same target before any audio leaves the gateway. TASK-980
+// retired the `sortformer` backend, and with it the 400 both routes used to document for it: an
+// agent still declaring that backend is an agent conflict, answered by the ASR resolver's own 409.
 const DIARIZATION_DISABLED_409 =
   '`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off ' +
   '(`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be ' +
-  'enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable ' +
-  'agent) answer 409 with their own `code`.';
-const SORTFORMER_400 =
-  'The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there ' +
-  'is no speaker-embedding space to enroll into.';
+  'enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts answer 409 with their ' +
+  'own `code` — e.g. `ASR_AGENT_DIARIZATION_MODEL_MISSING` (diarization on, no speaker-embedding model bound) or ' +
+  '`ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED` (the agent declares a retired backend such as `sortformer`).';
 
 @ApiBearerAuth()
 @ApiTags('voice-profile')
@@ -70,7 +70,7 @@ export class VoiceProfileController {
   @ApiResponse({ status: 201, description: 'Voice profile created', type: VoiceProfileResponse })
   @ApiResponse({
     status: 400,
-    description: `Missing, oversized or non-audio samples, samples the embedding model rejected, or: ${SORTFORMER_400}`,
+    description: 'Missing, oversized or non-audio samples, samples the embedding model rejected, or a request with no tenant context.',
   })
   @ApiResponse({ status: 409, description: DIARIZATION_DISABLED_409 })
   @UseInterceptors(FilesInterceptor('files', MAX_FILES))
@@ -117,7 +117,7 @@ export class VoiceProfileController {
   })
   @ApiQuery({ name: 'agentSlug', required: false, type: String })
   @ApiResponse({ status: 200, description: 'The enrollment target', type: VoiceProfileEnrollmentTargetResponse })
-  @ApiResponse({ status: 400, description: SORTFORMER_400 })
+  @ApiResponse({ status: 400, description: 'The request carries no tenant context.' })
   @ApiResponse({ status: 409, description: DIARIZATION_DISABLED_409 })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
   async enrollmentTarget(@Query('agentSlug') agentSlug?: string): Promise<VoiceProfileEnrollmentTargetResponse> {

@@ -114,8 +114,11 @@ describe('VoiceProfileController', () => {
 
   /**
    * TASK-977 — enrollment is refused while the agent's diarization is off (409
-   * `ASR_AGENT_DIARIZATION_DISABLED`), and the 400 now only means the sortformer backend, which
-   * needs no enrolled profiles. Both routes resolve the same target, so both document both.
+   * `ASR_AGENT_DIARIZATION_DISABLED`). Both routes resolve the same target, so both document it.
+   *
+   * TASK-980 — the 400 used to also mean "the agent diarizes with sortformer". That backend is
+   * retired and an agent still declaring it is refused by the ASR resolver as a 409 with its own
+   * code, so no 400 on either route may promise the sortformer case any more.
    */
   describe('documented refusals', () => {
     const responses = (m: 'enroll' | 'enrollmentTarget') =>
@@ -125,10 +128,14 @@ describe('VoiceProfileController', () => {
       expect(responses(m)[409]?.description).toContain('ASR_AGENT_DIARIZATION_DISABLED');
     });
 
-    it.each(['enroll', 'enrollmentTarget'] as const)('%s documents the 400 as the sortformer case, not a missing model slug', (m) => {
+    it.each(['enroll', 'enrollmentTarget'] as const)('%s no longer documents a sortformer 400 (TASK-980)', (m) => {
       const description = responses(m)[400]?.description ?? '';
-      expect(description).toContain('sortformer');
+      expect(description).not.toContain('sortformer');
       expect(description).not.toContain('declares no speaker-embedding model');
+    });
+
+    it.each(['enroll', 'enrollmentTarget'] as const)('%s points other ASR agent refusals at the 409 with their own code', (m) => {
+      expect(responses(m)[409]?.description).toContain('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
     });
   });
 

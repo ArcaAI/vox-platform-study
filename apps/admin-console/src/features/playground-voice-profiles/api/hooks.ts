@@ -20,9 +20,10 @@ export function useVoiceProfiles() {
  * TASK-887 — the speaker-embedding model a new enrollment would land in.
  *
  * `retry: false`: the honest failures here are a 409 `ASR_AGENT_DIARIZATION_DISABLED` (the
- * agent has diarization off, so nothing may be enrolled — TASK-977), a 400 (the agent diarizes
- * with sortformer, which enrolls nothing) and a 404 (a named agent this tenant cannot see). All
- * are answers, not outages, and retrying them only delays the message.
+ * agent has diarization off, so nothing may be enrolled — TASK-977), any other 409 the ASR
+ * resolver refuses the agent with (e.g. `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`, an agent
+ * still declaring the backend TASK-980 retired) and a 404 (a named agent this tenant cannot see).
+ * All are answers, not outages, and retrying them only delays the message.
  */
 export function useVoiceProfileEnrollmentTarget(agentSlug?: string) {
   return useQuery({

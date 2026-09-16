@@ -149,7 +149,13 @@ export interface AsrSpecModels {
 }
 
 export type AsrSpecDenoiseLevel = 'off' | 'low' | 'medium' | 'high';
-export type AsrSpecDiarizationBackend = 'embedding' | 'sortformer';
+/**
+ * TASK-980 (owner decision 2026-09-16) — `embedding` is the only diarization backend. `sortformer`
+ * was RETIRED: its checkpoint was a runtime literal no agent could choose, pin or veto, and no
+ * deployed image can run it. The union stays a named type (and `backend` stays a required wire key)
+ * so a future backend is a vocabulary change, not a shape change.
+ */
+export type AsrSpecDiarizationBackend = 'embedding';
 export type AsrSpecEndpointing = 'fixed' | 'semantic';
 
 /**
@@ -197,6 +203,11 @@ export interface AsrSpecAudioFrontEnd {
   denoise: { enabled: boolean; level: AsrSpecDenoiseLevel };
   diarization: {
     enabled: boolean;
+    /**
+     * Always `embedding` since TASK-980. The gateway REFUSES an enabled stage whose stored agent
+     * declares anything else (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`) rather than coercing
+     * it, and emits `embedding` for a disabled stage whatever the agent stored.
+     */
     backend: AsrSpecDiarizationBackend;
     maxSpeakers: number | null;
     /**
