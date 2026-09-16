@@ -55,7 +55,7 @@ to compare values instead of checking whether a field is present.
 | D-3 | `description`: `''` and `null` are equal. | The console sends a trimmed empty string for a description that is stored as `null`. |
 | D-4 | `tags`: compared as an ordered array. | Postgres `text[]` keeps order. Reordering tags is a real row write, but it never mints a version (D-1). |
 | D-5 | A `status` equal to the stored status is not a change. A PATCH whose values all match the stored row gets the existing `No changes to write to.` 400 (`ArgumentInvalidException`). | This is the house `hasChanges` contract (`04-application-services.md`). Before this fix, the same request silently created an empty version. |
-| D-6 | The console is not changed. | The service fix covers every caller. A console change that sends only changed fields is optional and would not fix API clients. |
+| D-6 | The console still sends every field, but **Save is disabled until the form is dirty** (owner, 2026-09-16). Next to the disabled button, the form shows "No changes to save". Dirty means name or description (trimmed), content, status, variables or tags differ from the loaded row. A change reason on its own does not make the form dirty. | Without this, D-5 would turn a pristine Save click into an error toast. The service fix still covers API clients. |
 
 ## Implementation Summary
 
@@ -84,7 +84,7 @@ Tests added (all under `updatePromptTemplate › change detection (value compari
 | renaming an APPROVED template is not `wasApprovedLiveEdit` | RED |
 | variables-only change to APPROVED IS `wasApprovedLiveEdit` | green (control) |
 
-No migration, no API shape change, no console change. Existing data is not rewritten: the empty v3 / v2
+No migration and no API shape change (the console change is D-6). Existing data is not rewritten: the empty v3 / v2
 rows above stay in the history.
 
 ### Evidence
@@ -124,4 +124,5 @@ Governance version list do not change.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Ticket opened from the live-run defect; value-based change detection landed with 10 unit tests. Status Review. |
+| 2026-09-16 | Ticket opened from the live-run defect; value-based change detection landed with 10 unit tests (`c86cae87f`). Status Review. |
+| 2026-09-16 | Console: `EditTemplateForm` disables Save until the form is dirty, with a visible reason. New `edit-template-form.test.tsx` (5 cases, 4 RED before the change). `prompt-templates-screen.test.tsx` "saves an APPROVED template…" now edits content before saving, since it used to save an unedited form. Gates: `pnpm --filter @arcaai/admin-console test` 341 files / 3279 tests passed; `typecheck` clean; `lint` (`--max-warnings 0`) clean. Not checked in a browser: another chat's `next dev` holds this checkout, and the running API still has the pre-fix service loaded. |
