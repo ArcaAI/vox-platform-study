@@ -239,12 +239,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ("pyannote.audio 4.x hard-pins torch==2.8.0 ... Do NOT upgrade torch past 2.8.x") was
 # correct; this step was quietly violating it at build time.
 #
-# The `nemo` extra is NOT deleted from `apps/stt/pyproject.toml`. Both of its consumers
-# — `models/nemo_loader.py` and `diarization/streaming_sortformer.py` — lazy-import and
-# fail CLOSED with a named error, so the `nemo` engine and Sortformer diarization now
-# degrade honestly instead of appearing installed on a venv whose torch had been swapped
-# under pyannote. A nemo-capable image is a SEPARATE build target on its own venv, which
-# is exactly what the declared conflict means; it must never be layered onto this one.
+# The `nemo` extra is NOT deleted from `apps/stt/pyproject.toml`. Its consumer —
+# `models/nemo_loader.py` (the NeMo ASR engine) — lazy-imports and fails CLOSED with a
+# named error, so the `nemo` engine now degrades honestly instead of appearing installed
+# on a venv whose torch had been swapped under pyannote. (Its other former consumer, the
+# Sortformer diarizer, was retired by TASK-980.) A nemo-capable image is a SEPARATE build
+# target on its own venv, which is exactly what the declared conflict means; it must never
+# be layered onto this one.
 # `apps/stt/tests/unit/test_task944_ml_runtime_extra_conflicts.py` keeps it that way.
 
 # whisper.cpp WITH CUDA — must run AFTER [ml-gpu] so it does not resolve the
