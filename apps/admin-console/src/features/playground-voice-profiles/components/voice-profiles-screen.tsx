@@ -1,13 +1,14 @@
 'use client';
 
-import { useRef } from 'react';
+import { useId, useRef } from 'react';
 import { IconFingerprint, IconPlus } from '@tabler/icons-react';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
-import { useVoiceProfileEnrollmentTarget, useVoiceProfiles } from '../api';
+import { isDiarizationDisabledError, useVoiceProfileEnrollmentTarget, useVoiceProfiles } from '../api';
+import { EnrollmentBlockedCard } from './enrollment-blocked-card';
 import { EnrollmentCard } from './enrollment-card';
 import { ProfileListCard, isStaleForTarget } from './profile-list-card';
 
@@ -31,8 +32,12 @@ export function VoiceProfilesScreen() {
   // run, which is the tenant's assigned one, and the gateway resolves the same cascade.
   const enrollmentTarget = useVoiceProfileEnrollmentTarget();
   const wizardRef = useRef<HTMLDivElement | null>(null);
+  const blockedReasonId = useId();
 
   const target = enrollmentTarget.data;
+  // TASK-977 — the assigned agent has speaker diarization off, so the gateway refuses to enroll.
+  // Any other target failure stays a degraded read: the wizard remains and the gateway decides.
+  const diarizationDisabled = enrollmentTarget.isError && isDiarizationDisabledError(enrollmentTarget.error);
   const activeProfiles = profiles.data?.filter((profile) => profile.isActive) ?? [];
   const activeCount = activeProfiles.length;
   // "Enrolled" and "enrolled for THIS agent" are different questions: a profile from another
@@ -55,10 +60,17 @@ export function VoiceProfilesScreen() {
             description={'Enroll & manage speaker profiles · runs under your own account'}
             badges={<StatusBadge label={'Biometric · user-owned only'} colorRole="info" icon={<IconFingerprint aria-hidden />} />}
             actions={
-              <Button onClick={focusWizard}>
-                <IconPlus aria-hidden />
-                New profile
-              </Button>
+              <>
+                {diarizationDisabled ? (
+                  <span id={blockedReasonId} className="text-muted-foreground text-xs">
+                    Diarization is off for your agent
+                  </span>
+                ) : null}
+                <Button onClick={focusWizard} disabled={diarizationDisabled} aria-describedby={diarizationDisabled ? blockedReasonId : undefined}>
+                  <IconPlus aria-hidden />
+                  New profile
+                </Button>
+              </>
             }
           />
         </div>
@@ -70,11 +82,13 @@ export function VoiceProfilesScreen() {
               ? 'Loading your voice profiles…'
               : profiles.isError
                 ? 'Could not load your voice profiles'
-                : needsReenrollment
-                  ? `Your active profile was enrolled with a different speaker model — re-enroll for ${target?.agentSlug ?? 'your agent'}`
-                  : activeCount > 0
-                    ? `${activeCount} active profile${activeCount === 1 ? '' : 's'} — auto-attached to live sessions`
-                    : 'No active profile — live sessions run without speaker attribution'
+                : diarizationDisabled
+                  ? 'Diarization is off for your speech-to-text agent — voice profiles cannot be enrolled'
+                  : needsReenrollment
+                    ? `Your active profile was enrolled with a different speaker model — re-enroll for ${target?.agentSlug ?? 'your agent'}`
+                    : activeCount > 0
+                      ? `${activeCount} active profile${activeCount === 1 ? '' : 's'} — auto-attached to live sessions`
+                      : 'No active profile — live sessions run without speaker attribution'
           }
           end={
             profiles.data ? (
@@ -87,8 +101,17 @@ export function VoiceProfilesScreen() {
       }
     >
       <PlaygroundCanvas>
-        <EnrollmentCard ref={wizardRef} />
-        <ProfileListCard query={profiles} target={target} onEnroll={focusWizard} />
+        {diarizationDisabled ? (
+          <EnrollmentBlockedCard ref={wizardRef} detail={enrollmentTarget.error?.message} />
+        ) : (
+          <EnrollmentCard ref={wizardRef} />
+        )}
+        <ProfileListCard
+          query={profiles}
+          target={target}
+          onEnroll={focusWizard}
+          enrollBlockedReason={diarizationDisabled ? 'Enrollment is unavailable while diarization is off for your agent.' : undefined}
+        />
       </PlaygroundCanvas>
     </ScreenTemplate>
   );

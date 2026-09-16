@@ -443,11 +443,11 @@ describe('VoiceProfilesScreen', () => {
     });
 
     it('stays quiet when the target cannot be resolved — a degraded read is not a verdict', async () => {
-      // e.g. the assigned agent declares no embedding model (400). Claiming every profile is
-      // stale on the strength of a failed lookup would be worse than saying nothing.
+      // e.g. the assigned agent diarizes with sortformer, which enrolls nothing (400). Claiming
+      // every profile is stale on the strength of a failed lookup would be worse than saying nothing.
       stubFetch((call, parsed) =>
         call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target'
-          ? Response.json({ message: 'no embedding model' }, { status: 400 })
+          ? Response.json({ message: 'sortformer backend' }, { status: 400 })
           : undefined,
       );
       renderWithProviders(<VoiceProfilesScreen />);
@@ -455,6 +455,83 @@ describe('VoiceProfilesScreen', () => {
       await waitFor(() => expect(screen.getByText('Default profile')).toBeTruthy());
       // Nothing is flagged at all: with no target there is no question to answer.
       expect(screen.queryByText('Re-enroll needed')).toBeNull();
+      // Nor is enrollment blocked: only the diarization-disabled 409 is a verdict on that.
+      expect(screen.getByLabelText('Upload audio samples')).toBeDefined();
+    });
+  });
+
+  /**
+   * TASK-977 — enrollment computes a voice embedding, and voice embedding is off unless an admin
+   * enabled diarization on the agent. The gateway refuses with 409
+   * `ASR_AGENT_DIARIZATION_DISABLED`; the screen must say why and where to fix it, not toast a
+   * generic error or leave a wizard that can only fail.
+   */
+  describe('diarization disabled on the agent', () => {
+    const DISABLED_MESSAGE =
+      "Agent 'realtime-transcription' has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled. Enable `audioFrontEnd.diarization.enabled` on the agent first.";
+
+    function stubDiarizationDisabled(profiles: VoiceProfile[] = PROFILES) {
+      return stubFetch((call, parsed) => {
+        if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target') {
+          return Response.json({ statusCode: 409, code: 'ASR_AGENT_DIARIZATION_DISABLED', message: DISABLED_MESSAGE }, { status: 409 });
+        }
+        if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles') return Response.json(profiles);
+        return undefined;
+      });
+    }
+
+    it('replaces the wizard with an explanation and a deep link to the speech-to-text agents', async () => {
+      stubDiarizationDisabled();
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      expect(await screen.findByText(/speaker diarization is off/i)).toBeDefined();
+      expect(screen.getByText(/enable speaker diarization on the agent/i)).toBeDefined();
+      // The gateway's own sentence names the agent and the exact switch.
+      expect(screen.getByText(DISABLED_MESSAGE)).toBeDefined();
+      const link = screen.getByRole('link', { name: /speech-to-text agents/i });
+      expect(link.getAttribute('href')).toBe('/agents?task=SPEECH_TO_TEXT');
+
+      // No way to stage samples for an enrollment that can only be refused.
+      expect(screen.queryByLabelText('Upload audio samples')).toBeNull();
+      expect(screen.queryByRole('button', { name: /record sample/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /enroll profile/i })).toBeNull();
+      // A designed state, not an error toast.
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('disables the header "New profile" action with a visible reason', async () => {
+      stubDiarizationDisabled();
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      await screen.findByText(/speaker diarization is off/i);
+      const newProfile = screen.getByRole('button', { name: /new profile/i }) as HTMLButtonElement;
+      expect(newProfile.disabled).toBe(true);
+      const reasonId = newProfile.getAttribute('aria-describedby');
+      expect(reasonId).toBeTruthy();
+      const reason = document.getElementById(reasonId as string);
+      expect(reason?.textContent).toMatch(/diarization is off/i);
+      expect(screen.getByText(/voice profiles cannot be enrolled/i)).toBeDefined();
+    });
+
+    it('still lists existing profiles, which stay manageable', async () => {
+      stubDiarizationDisabled();
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      expect(await screen.findByText('Default profile')).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Deactivate Default profile' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Delete Default profile' })).toBeDefined();
+    });
+
+    it('disables the empty-state enroll action with a visible reason when there are no profiles', async () => {
+      stubDiarizationDisabled([]);
+      renderWithProviders(<VoiceProfilesScreen />);
+
+      expect(await screen.findByText('No voice profiles yet')).toBeDefined();
+      await screen.findByText(/speaker diarization is off/i);
+      const cta = screen.getByRole('button', { name: /enroll voice profile/i }) as HTMLButtonElement;
+      expect(cta.disabled).toBe(true);
+      const reason = document.getElementById(cta.getAttribute('aria-describedby') as string);
+      expect(reason?.textContent).toMatch(/diarization is off/i);
     });
   });
 });
