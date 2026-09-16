@@ -80,13 +80,14 @@ describe('generateConsultationSchemaTypes — @role annotations (TASK-951)', () 
     expect(contents).toMatch(/\/\*\* @role department \(by code\)[^*]*\*\/ department_code: string;/);
     expect(contents).toMatch(/\/\*\* @role visitType[^*]*\*\/ visit_type: string;/);
     expect(contents).toMatch(/\/\*\* @role externalRef[^*]*\*\/ event_id: string;/);
-    expect(contents).toContain('TASK-951');
+    // Generated customer-facing text never carries an internal ticket number.
+    expect(contents).not.toMatch(/TASK-\d/);
 
     const diagnostics = typeCheckSource(contents);
     expect(diagnostics, formatDiagnostics(diagnostics)).toHaveLength(0);
   });
 
-  it('emits @role department (by name) when the marker says `by: \'name\'`', () => {
+  it("emits @role department (by name) when the marker says `by: 'name'`", () => {
     const kind: ContextKindDeclaration = { ...ENCOUNTER_KIND, department: { field: 'department_code', by: 'name' } };
 
     const { contents } = generate(kind);
@@ -108,11 +109,12 @@ describe('generateConsultationSchemaTypes — @role annotations (TASK-951)', () 
 });
 
 describe('generateConsultationSchemaTypes — @materializeAs / @streamContext (type-level, TASK-951)', () => {
-  it('emits a type-level @materializeAs CASE_NOTE tag directly above the kind\'s `export type`', () => {
+  it("emits a type-level @materializeAs CASE_NOTE tag directly above the kind's `export type`", () => {
     const { contents } = generate({ ...NOTES_KIND, materializeAs: 'CASE_NOTE' });
 
     expect(contents).toMatch(/@materializeAs CASE_NOTE[^\n]*\n \*\/\nexport type PreviousCaseNotesPayload =/);
-    expect(contents).toContain('TASK-951');
+    // Generated customer-facing text never carries an internal ticket number.
+    expect(contents).not.toMatch(/TASK-\d/);
 
     const diagnostics = typeCheckSource(contents);
     expect(diagnostics, formatDiagnostics(diagnostics)).toHaveLength(0);

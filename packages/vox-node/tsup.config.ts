@@ -24,6 +24,13 @@ if (name !== '@arcaai/vox-node') {
  * to be marked external beyond tsup's default (dependencies/peerDependencies
  * in package.json are excluded from the bundle automatically; there are none
  * to bundle here).
+ *
+ * `@arcaai/types` is imported for the `OPEN_REFUSAL_CODES` / `API_KEY_SCOPE_PRESETS` constants and
+ * the `OpenRefusalCode` / `GoverningRunSummary` / `ApiKeyScopePreset*` types re-exported from
+ * `index.ts`. It is declared under `devDependencies` ONLY — never `dependencies` — so
+ * tsup INLINES it: the two runtime arrays are copied byte-for-byte into `dist/index.{js,mjs}` and
+ * the published `package.json` carries no dependency on it. `check:exports` (`attw --pack . && publint`)
+ * is the gate that would catch it drifting into a real dependency.
  */
 export default defineConfig({
   entry: ['src/index.ts'],

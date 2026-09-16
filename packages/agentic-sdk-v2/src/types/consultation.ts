@@ -4,6 +4,7 @@
  * Types for consultation/session management.
  */
 
+import type { GoverningRunSummary } from '@arcaai/types';
 import type { ContextItem, AddContextInput } from './context';
 
 // =============================================================================
@@ -93,6 +94,14 @@ export interface Consultation {
    * rather than inventing one.
    */
   version?: number;
+  /**
+   * The consultation's governing workflow run, derived server-side from the persisted
+   * `metadata.governingEngine` marker — never a live harness call. `null`/`undefined` when the
+   * consultation is ungoverned or the server has not yet populated the field (older gateway
+   * builds). See `useConsultationWorkflow` for the same fact read a second way, and
+   * `GoverningRunSummary` (`@arcaai/types`) for the shape.
+   */
+  governingRun?: GoverningRunSummary | null;
 }
 
 // =============================================================================

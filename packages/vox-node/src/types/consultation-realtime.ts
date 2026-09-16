@@ -19,6 +19,8 @@
  * all, which is why its absence is the discriminator for that arm.
  */
 
+import type { GoverningRunSummary } from '@arcaai/types';
+
 // -----------------------------------------------------------------------------
 // open
 // -----------------------------------------------------------------------------
@@ -31,8 +33,13 @@
  * The gateway validates this body with `whitelist + forbidNonWhitelisted`, so
  * an undeclared field rejects the whole open with a 400 rather than being
  * ignored. This interface is closed on purpose.
+ *
+ * Generic on `TContext` so a caller who ran `vox-codegen --tenant` can pass the
+ * generated `OpenConsultationContext` type and have `context` checked at the call site instead
+ * of accepting an arbitrary `Record<string, unknown>`. Defaults to `Record<string, unknown>`,
+ * so an untyped caller sees no change.
  */
-export interface OpenConsultationRequest {
+export interface OpenConsultationRequest<TContext extends Record<string, unknown> = Record<string, unknown>> {
   /** The tenant's own patient identifier. Required. */
   patientId: string;
   /**
@@ -143,7 +150,7 @@ export interface OpenConsultationRequest {
    * a PRE context item, and the whole payload is threaded into the
    * governing workflow's trigger context (`trigger.context.<kindKey>.*`).
    */
-  context?: Record<string, unknown>;
+  context?: TContext;
   metadata?: Record<string, unknown>;
 }
 
@@ -171,6 +178,14 @@ export interface ConsultationOpenResponse {
   version?: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The consultation's governing workflow run, derived from the persisted
+   * `metadata.governingEngine` marker — never a live call to the harness. `null` when the
+   * consultation is ungoverned (no workflow dispatched, or dispatch could not resolve one).
+   * Read this instead of `metadata.governingEngine` directly: the raw marker's shape is an
+   * implementation detail this field is the stable view of.
+   */
+  governingRun: GoverningRunSummary | null;
   /**
    * `true` when this call CREATED the consultation, `false` when it returned
    * an existing one for the same `(patientId, doctorId, appointmentDate)`.

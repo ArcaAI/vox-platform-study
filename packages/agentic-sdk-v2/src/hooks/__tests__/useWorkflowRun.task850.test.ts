@@ -219,7 +219,15 @@ describe('the live stream', () => {
       await result.current.start('visit-summary', {});
     });
 
-    emit('workflow.run.progress', { runId: 'run-1', slug: 'visit-summary', status: 'RUNNING', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3 });
+    emit('workflow.run.progress', {
+      runId: 'run-1',
+      slug: 'visit-summary',
+      status: 'RUNNING',
+      stages: [],
+      startedAt: null,
+      endedAt: null,
+      workflowVersionNumber: 3,
+    });
     expect(result.current.status!.status).toBe('RUNNING');
     expect(result.current.isRunning).toBe(true);
 
@@ -228,12 +236,80 @@ describe('the live stream', () => {
     expect(result.current.events).toHaveLength(2);
     expect(result.current.events[1]!.resumeToken).toBe('1699-0');
 
-    emit('workflow.run.completed', { runId: 'run-1', slug: 'visit-summary', status: 'COMPLETED', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3, resultRef: { outputs: { text: 'done' } } }, '1699-1');
+    emit(
+      'workflow.run.completed',
+      {
+        runId: 'run-1',
+        slug: 'visit-summary',
+        status: 'COMPLETED',
+        stages: [],
+        startedAt: null,
+        endedAt: null,
+        workflowVersionNumber: 3,
+        resultRef: { outputs: { text: 'done' } },
+      },
+      '1699-1',
+    );
     expect(result.current.isRunning).toBe(false);
     expect(result.current.status!.status).toBe('COMPLETED');
     expect(result.current.status!.resultRef).toEqual({ outputs: { text: 'done' } });
     // A terminal run is not reconnected to.
     expect(disconnectCount).toBeGreaterThan(0);
+  });
+
+  /**
+   * The four node counts ride the completion event's payload; `degraded` is derived
+   * with the same rule the gateway's own live read uses, so this hook and `fetchStatus` never
+   * disagree.
+   */
+  it('reads the node counts and derives degraded=true when any node degraded', async () => {
+    const { result } = renderHook(() => useWorkflowRun({ skipInitialLoad: true }));
+    await act(async () => {
+      await result.current.start('visit-summary', {});
+    });
+
+    emit(
+      'workflow.run.completed',
+      {
+        runId: 'run-1',
+        slug: 'visit-summary',
+        status: 'COMPLETED',
+        stages: [],
+        startedAt: null,
+        endedAt: null,
+        workflowVersionNumber: 3,
+        nodeCount: 5,
+        failedNodeCount: 0,
+        degradedNodeCount: 1,
+        skippedNodeCount: 0,
+      },
+      '1699-2',
+    );
+
+    expect(result.current.status!.degraded).toBe(true);
+    expect(result.current.status!.nodeCount).toBe(5);
+    expect(result.current.status!.failedNodeCount).toBe(0);
+    expect(result.current.status!.degradedNodeCount).toBe(1);
+    expect(result.current.status!.skippedNodeCount).toBe(0);
+  });
+
+  it('derives degraded=false and null counts when the completion event carries none', async () => {
+    const { result } = renderHook(() => useWorkflowRun({ skipInitialLoad: true }));
+    await act(async () => {
+      await result.current.start('visit-summary', {});
+    });
+
+    emit(
+      'workflow.run.completed',
+      { runId: 'run-1', slug: 'visit-summary', status: 'COMPLETED', stages: [], startedAt: null, endedAt: null, workflowVersionNumber: 3 },
+      '1699-3',
+    );
+
+    expect(result.current.status!.degraded).toBe(false);
+    expect(result.current.status!.nodeCount).toBeNull();
+    expect(result.current.status!.failedNodeCount).toBeNull();
+    expect(result.current.status!.degradedNodeCount).toBeNull();
+    expect(result.current.status!.skippedNodeCount).toBeNull();
   });
 
   it('watch() resumes an already-started run from a persisted cursor', () => {
@@ -306,7 +382,16 @@ describe('the live stream', () => {
 
 describe('status and cancel', () => {
   it('reads the run status on the shipped path', async () => {
-    const status = { runId: 'run-1', slug: 'visit-summary', workflowVersionNumber: 3, status: 'RUNNING', stages: [], startedAt: null, endedAt: null, resultRef: null };
+    const status = {
+      runId: 'run-1',
+      slug: 'visit-summary',
+      workflowVersionNumber: 3,
+      status: 'RUNNING',
+      stages: [],
+      startedAt: null,
+      endedAt: null,
+      resultRef: null,
+    };
     apiClient.get.mockResolvedValue(status);
     const { result } = renderHook(() => useWorkflowRun({ skipInitialLoad: true }));
 

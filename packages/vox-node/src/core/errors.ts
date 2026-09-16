@@ -43,6 +43,20 @@ function readCurrentVersion(body: unknown): number | undefined {
 }
 
 /**
+ * The house `{ message, code, problems? }` shape (`.claude/rules/05-nestjs-api.md`) carries
+ * `problems` as an array of human-readable strings — one per validation failure (e.g. a
+ * `WORKFLOW_CONTEXT_INCOMPATIBLE` refusal's unmet context-schema requirements). Read for every
+ * 4xx status, not just 400: the shape is not status-specific.
+ */
+function readProblems(body: unknown): string[] | undefined {
+  if (!isRecord(body)) return undefined;
+  const { problems } = body;
+  if (!Array.isArray(problems)) return undefined;
+  const strings = problems.filter((p): p is string => typeof p === 'string');
+  return strings.length > 0 ? strings : undefined;
+}
+
+/**
  * Parse a `Retry-After` header value (RFC 9110 §10.2.3) into milliseconds.
  * Accepts either form:
  * - delta-seconds: `"30"` → 30_000
@@ -95,6 +109,8 @@ export interface HopeAPIErrorInit {
   status: number;
   message?: string;
   code?: string;
+  /** One human-readable string per validation failure, from the house `{ message, code, problems? }` body shape. */
+  problems?: string[];
   requestId?: string;
   headers?: Headers;
   cause?: unknown;
@@ -113,6 +129,8 @@ export interface HopeAPIErrorInit {
 export class HopeAPIError extends Error {
   readonly status: number;
   readonly code?: string;
+  /** One human-readable string per validation failure, when the body carried `problems`. */
+  readonly problems?: string[];
   readonly requestId?: string;
   readonly headers?: Headers;
 
@@ -123,6 +141,7 @@ export class HopeAPIError extends Error {
     this.name = new.target.name;
     this.status = init.status;
     this.code = init.code;
+    this.problems = init.problems;
     this.requestId = init.requestId;
     // Redact on the way IN, not just on the way out — a caller who forgot
     // to pre-redact (or a debugging proxy that echoes a request header back
@@ -480,10 +499,12 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
   const requestId = extra.requestId ?? response.headers.get('x-request-id') ?? readCorrelationId(body) ?? undefined;
   const code = readCode(body);
   const message = readMessage(body);
+  const problems = readProblems(body);
   const common: HopeAPIErrorInit = {
     status,
     message,
     code,
+    problems,
     requestId,
     headers: response.headers,
     cause: extra.cause,

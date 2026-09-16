@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   API_KEY_SCOPE_REGISTRY,
+  API_KEY_SCOPE_PRESETS,
   isValidScope,
   isReservedScope,
   getAvailableScopes,
+  getApiKeyScopesCatalog,
   getScopesByCategory,
   resolveImpliedPermissions,
 } from '../apikey-scopes.registry';
@@ -240,7 +242,7 @@ describe('API Key Scope Registry', () => {
    * and deleting them would make every already-stored key carrying one fail
    * `isValidScope` and become unreadable. `reserved` marks them un-GRANTABLE
    * while keeping them KNOWN.
- */
+   */
   describe('reserved scopes (policy A2)', () => {
     const reservedKeys = () => Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => API_KEY_SCOPE_REGISTRY[s].reserved === true);
 
@@ -372,6 +374,38 @@ describe('API Key Scope Registry', () => {
       const sttScopes = grouped['STT'].map((s) => s.scope);
       expect(sttScopes).toContain('stt:transcription:read');
       expect(sttScopes).toContain('stt:transcription:write');
+    });
+  });
+
+  /**
+   * D-6 — the presets re-exported from `@arcaai/types` must be a strict subset of what this
+   * registry can actually mint. A preset advertising a scope that is unknown OR reserved would
+   * offer the console a "Purpose" card that 400s (or, worse, silently drops the scope) the moment
+   * an admin clicks Create.
+   */
+  describe('API_KEY_SCOPE_PRESETS (re-exported from @arcaai/types)', () => {
+    it('every preset scope is a known registry key', () => {
+      for (const preset of API_KEY_SCOPE_PRESETS) {
+        for (const scope of preset.scopes) {
+          expect(isValidScope(scope), `preset "${preset.key}" names unknown scope "${scope}"`).toBe(true);
+        }
+      }
+    });
+
+    it('no preset scope is reserved', () => {
+      for (const preset of API_KEY_SCOPE_PRESETS) {
+        for (const scope of preset.scopes) {
+          expect(isReservedScope(scope), `preset "${preset.key}" names reserved scope "${scope}"`).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('getApiKeyScopesCatalog', () => {
+    it('returns the category-grouped catalogue beside the presets', () => {
+      const catalog = getApiKeyScopesCatalog();
+      expect(catalog.categories).toEqual(getScopesByCategory());
+      expect(catalog.presets).toEqual(API_KEY_SCOPE_PRESETS);
     });
   });
 });

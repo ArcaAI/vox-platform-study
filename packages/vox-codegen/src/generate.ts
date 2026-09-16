@@ -49,29 +49,29 @@ function uniqueName(base: string, taken: Set<string>): string {
   return name;
 }
 
-/** JSDoc text `generate.ts` attaches to a kind's marked user-identity property (TASK-950). */
+/** JSDoc text `generate.ts` attaches to a kind's marked user-identity property. */
 const IDENTITY_ANNOTATION =
-  "@identity — the clinician's staff identifier; a service-account caller's `open()` resolves or provisions the HOPE user from it (TASK-950).";
+  "@identity — the clinician's staff identifier; a service-account caller's `open()` resolves or provisions the HOPE user from it.";
 
-/** JSDoc text for a kind's marked `department` property (TASK-951). */
+/** JSDoc text for a kind's marked `department` property. */
 function departmentAnnotation(by: string): string {
-  return `@role department (by ${by}) — selects the consultation's department, resolved against the tenant's own departments (TASK-951).`;
+  return `@role department (by ${by}) — selects the consultation's department, resolved against the tenant's own departments.`;
 }
 
-/** JSDoc text for a kind's marked `visitType` property (TASK-951). */
+/** JSDoc text for a kind's marked `visitType` property. */
 const VISIT_TYPE_ANNOTATION =
-  "@role visitType — matched through the platform's visit-type catalogue and recorded on the consultation, taking precedence over the parent-consultation-derived signal (TASK-951).";
+  "@role visitType — matched through the platform's visit-type catalogue and recorded on the consultation, taking precedence over the parent-consultation-derived signal.";
 
-/** JSDoc text for a kind's marked `externalRef` property (TASK-951). */
+/** JSDoc text for a kind's marked `externalRef` property. */
 const EXTERNAL_REF_ANNOTATION =
-  "@role externalRef — an external system's own identifier for this encounter, persisted on the consultation's metadata (TASK-951).";
+  "@role externalRef — an external system's own identifier for this encounter, persisted on the consultation's metadata.";
 
-/** JSDoc text attached at the TYPE level for a `materializeAs: 'CASE_NOTE'` kind (TASK-951). */
+/** JSDoc text attached at the TYPE level for a `materializeAs: 'CASE_NOTE'` kind. */
 const MATERIALIZE_AS_CASE_NOTE_ANNOTATION =
-  '@materializeAs CASE_NOTE — every array entry of this payload is ALSO written as one CASE_NOTE context item at open() (TASK-951).';
+  '@materializeAs CASE_NOTE — every array entry of this payload is ALSO written as one CASE_NOTE context item at open().';
 
-/** JSDoc text attached at the TYPE level for a `streamContext: true` kind (TASK-951). */
-const STREAM_CONTEXT_ANNOTATION = '@streamContext — echoed verbatim on every transcript segment of the STT session it was submitted to (TASK-951).';
+/** JSDoc text attached at the TYPE level for a `streamContext: true` kind. */
+const STREAM_CONTEXT_ANNOTATION = '@streamContext — echoed verbatim on every transcript segment of the STT session it was submitted to.';
 
 /**
  * `{ [field]: annotation }` for every marker on `entry` (`userIdentity`,
@@ -183,11 +183,47 @@ function renderMap(mapName: string, keyTypeName: string, entries: RenderedEntry[
   return [`export interface ${mapName} {\n${members}\n}`, `export type ${keyTypeName} = keyof ${mapName};`].join('\n');
 }
 
+/** `producedBy` on a kind that a CLIENT may supply at `open()`. Widened matching for forward compat with an array of unknown strings. */
+function producedByClient(kind: ContextKindDeclaration): boolean {
+  return Array.isArray(kind.producedBy) && kind.producedBy.includes('CLIENT');
+}
+
+/**
+ * `export type OpenConsultationContext = { <kind>?: <KindPayload> }` — the shape `open()`'s
+ * `context` accepts, so a caller passes it as `hope.consultations.open<OpenConsultationContext>(...)`
+ * instead of an untyped `Record<string, unknown>`.
+ *
+ * Only STRUCTURED, `lifecycle: 'PRE'` kinds whose `producedBy` names `CLIENT` qualify — an
+ * `AI`/`SYSTEM`-produced kind, a POST-lifecycle kind, or a non-STRUCTURED kind is never something
+ * a client sends at open. A kind marked `required: true` renders its property WITHOUT `?`.
+ */
+function renderOpenConsultationContext(kinds: ContextKindDeclaration[], kindTypes: RenderedEntry[]): string {
+  const typeNameByKey = new Map(kindTypes.map((entry) => [entry.key, entry.typeName]));
+  const members: string[] = [];
+
+  for (const kind of kinds) {
+    if (kind.primitive !== 'STRUCTURED' || kind.lifecycle !== 'PRE' || !producedByClient(kind)) continue;
+    const typeName = typeNameByKey.get(kind.key);
+    if (!typeName) continue; // no rendered payload type for this kind (e.g. missing `fields`) — nothing to reference.
+    const optional = kind.required === true ? '' : '?';
+    members.push(`  ${propertyKeyLiteral(kind.key)}${optional}: ${typeName};`);
+  }
+
+  const doc = '/** The client-produced PRE context kinds accepted by `POST /consultations/open`. */';
+  if (members.length === 0) {
+    return `${doc}\nexport type OpenConsultationContext = {};`;
+  }
+  return `${doc}\nexport type OpenConsultationContext = {\n${members.join('\n')}\n};`;
+}
+
 function header(bundle: ConsultationSchemaBundle, options: GenerateOptions): string {
   const generatedAt = (options.generatedAt ?? new Date()).toISOString();
   const schemaLine = bundle.slug
     ? `Schema: ${bundle.slug} v${bundle.versionNumber ?? '?'} (${bundle.contextSchemaVersionId ?? '?'})`
     : 'Schema: (unconfigured — this tenant has not published a context schema)';
+  // `@schemaVersion` is a machine-grep-able twin of the human-readable `Schema:` line above —
+  // present only when the tenant has one (an unconfigured tenant has no version to pin).
+  const schemaVersionLine = typeof bundle.versionNumber === 'number' ? [` * @schemaVersion ${bundle.versionNumber}`] : [];
   return [
     '/**',
     ' * AUTO-GENERATED by @arcaai/vox-codegen — DO NOT EDIT BY HAND.',
@@ -195,6 +231,7 @@ function header(bundle: ConsultationSchemaBundle, options: GenerateOptions): str
     ` * Tenant: ${options.tenantId}`,
     ` * ${schemaLine}`,
     ` * Generated: ${generatedAt}`,
+    ...schemaVersionLine,
     ' *',
     ' * This file is a BUILD-TIME CONVENIENCE, never a replacement for runtime',
     ' * discovery. `useConsultationSchema()` (`@arcaai/vox`) remains the wire',
@@ -231,6 +268,7 @@ export function generateConsultationSchemaTypes(bundle: ConsultationSchemaBundle
     sections.push(['// ---- Context kinds ----', ...kindNotes, ...kindTypes.map((entry) => entry.declaration)].join('\n\n'));
   }
   sections.push(renderMap('ConsultationContextKindMap', 'ConsultationContextKindKey', kindTypes));
+  sections.push(renderOpenConsultationContext(kinds, kindTypes));
 
   if (outputTypes.length > 0 || outputNotes.length > 0) {
     sections.push(['// ---- Outputs ----', ...outputNotes, ...outputTypes.map((entry) => entry.declaration)].join('\n\n'));

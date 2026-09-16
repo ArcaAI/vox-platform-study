@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { API_KEY_SCOPE_PRESETS } from '@arcaai/types';
 import { DEFAULT_API_KEYS, SDK_DAY_ONE_SCOPES } from '../prisma/db_main/seed/02-apikey';
 import { SEED_API_KEY_IDS } from '../prisma/db_main/seed/00-constants';
 
@@ -136,6 +137,8 @@ const SDK_BUSINESS_PLANE_SCOPES: ReadonlyArray<readonly [scope: string, why: str
   ['tts:speech:write', 'POST /speech/synthesize'],
   ['tts:voice:read', 'GET /speech/voices'],
   ['dna-writing-style:ingest', 'POST /dna-writing-styles/ingest — hope.dnaWritingStyle.ingest / useDnaWritingStyle()'],
+  ['agent:definition:read', 'hope.agents.list / vox-codegen --api-key --agents — the types-codegen preset (D-6)'],
+  ['workflow:definition:read', 'hope.workflows.list / vox-codegen --api-key --workflows — the types-codegen preset (D-6)'],
 ];
 
 describe('seeded SDK keys —  business-plane coverage', () => {
@@ -218,5 +221,44 @@ describe('seeded SDK keys — compat surface (transcription + summarization)', (
     expect(seeded!.userId, 'an unbound key cannot satisfy any CASL-gated route').toBeTruthy();
     expect(seeded!.keyStatus).toBe('ACTIVE');
     expect('expiresAt' in seeded!, 'a seeded dev fixture must not expire out from under a developer').toBe(false);
+  });
+});
+
+/**
+ * D-6 — `SDK_DAY_ONE_SCOPES` is derived from the `@arcaai/types` presets rather than
+ * hand-duplicated, so a preset change is reflected here without a second edit.
+ *
+ * `webhook:event:read` / `webhook:event:write` are DELIBERATELY excluded even though an earlier
+ * draft of this ticket's plan named them alongside `platform:changelog:read` and
+ * `tenant:account:read`: both are `reserved: true` in `apikey-scopes.registry.ts` (policy A2 —
+ * `/admin/*` is JWT-only, `WebhookController` lives at `admin/webhooks`), so seeding them would
+ * both fail the "reserved scopes (policy A2)" describe block above and grant a permanently inert
+ * scope. This is a recorded deviation from the pinned contract, not an oversight — see this
+ * ticket's README for the flagged conflict.
+ */
+describe('SDK_DAY_ONE_SCOPES — derived from @arcaai/types presets (D-6)', () => {
+  it('carries every scope of the consultation-app preset', () => {
+    const preset = API_KEY_SCOPE_PRESETS.find((p) => p.key === 'consultation-app');
+    expect(preset).toBeDefined();
+    for (const scope of preset!.scopes) {
+      expect(SDK_DAY_ONE_SCOPES as readonly string[]).toContain(scope);
+    }
+  });
+
+  it('carries every scope of the types-codegen preset', () => {
+    const preset = API_KEY_SCOPE_PRESETS.find((p) => p.key === 'types-codegen');
+    expect(preset).toBeDefined();
+    for (const scope of preset!.scopes) {
+      expect(SDK_DAY_ONE_SCOPES as readonly string[]).toContain(scope);
+    }
+  });
+
+  it('has no duplicate entries', () => {
+    expect(new Set(SDK_DAY_ONE_SCOPES).size).toBe(SDK_DAY_ONE_SCOPES.length);
+  });
+
+  it('does NOT carry the reserved webhook:event scopes (recorded deviation from the pinned contract)', () => {
+    expect(SDK_DAY_ONE_SCOPES as readonly string[]).not.toContain('webhook:event:read');
+    expect(SDK_DAY_ONE_SCOPES as readonly string[]).not.toContain('webhook:event:write');
   });
 });

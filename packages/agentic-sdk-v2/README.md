@@ -10,43 +10,43 @@ management against the `apps/api` gateway (port 8868), and multi-tenant-safe bro
 
 ## Layout
 
-| Path | What it holds |
-|---|---|
-| `src/index.ts` / `core.ts` / `plugins.ts` / `plugins-med-ner.ts` / `compat.ts` | The five entry points (see below) |
-| `src/providers/` | `AgenticProvider` — owns one Zustand store instance per mount |
-| `src/hooks/` | `useArca` + focused domain hooks (business plane only, no admin surface) |
-| `src/store/` | `createAgenticStore`, `useArcaStore`, `useStoreApi` |
-| `src/core/` | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry`, `LocalVoiceEmbedder`, `logger/` |
-| `src/types/` | Config, consultation, context, summary, STT types |
-| `src/compat/` | v1-compat provider + hooks (entry: `src/compat.ts`) |
-| `docs/API-Reference.md`, `docs/Compat-API-Reference.md`, `docs/Batch-Transcription-Reference.md` | Generated/maintained API references |
-| `e2e/` | Playwright specs + fixtures |
+| Path                                                                                             | What it holds                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts` / `core.ts` / `plugins.ts` / `plugins-med-ner.ts` / `compat.ts`                   | The five entry points (see below)                                                                                                                                                                                                                                                                                            |
+| `src/providers/`                                                                                 | `AgenticProvider` — owns one Zustand store instance per mount                                                                                                                                                                                                                                                                |
+| `src/hooks/`                                                                                     | `useArca` + focused domain hooks (business plane only, no admin surface)                                                                                                                                                                                                                                                     |
+| `src/store/`                                                                                     | `createAgenticStore`, `useArcaStore`, `useStoreApi`                                                                                                                                                                                                                                                                          |
+| `src/core/`                                                                                      | `AgenticClient`, `ConfigManager`/`ConfigSchema` (valibot), `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`, `SttWebSocketClient`, `SSEClient`, `StreamingSessionManager`, `SharedConnectionManager`/`Worker`, `SimpleCrossTabSync`, `PersonalizationManager`, `ModelRegistry`, `LocalVoiceEmbedder`, `logger/` |
+| `src/types/`                                                                                     | Config, consultation, context, summary, STT types                                                                                                                                                                                                                                                                            |
+| `src/compat/`                                                                                    | v1-compat provider + hooks (entry: `src/compat.ts`)                                                                                                                                                                                                                                                                          |
+| `docs/API-Reference.md`, `docs/Compat-API-Reference.md`, `docs/Batch-Transcription-Reference.md` | Generated/maintained API references                                                                                                                                                                                                                                                                                          |
+| `e2e/`                                                                                           | Playwright specs + fixtures                                                                                                                                                                                                                                                                                                  |
 
 ## Commands
 
 Run from this directory, or `pnpm --filter @arcaai/vox <script>` from the repo root.
 
-| Command | Effect |
-|---|---|
-| `pnpm build` | tsup build (`build:dts` runs after, `tsc --emitDeclarationOnly`) for all five entries |
-| `pnpm dev` | tsup watch mode |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` / `pnpm lint:fix` | ESLint on `src` |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` | Remove build output; `pnpm nuke` also removes `node_modules` |
+| Command                                           | Effect                                                                                             |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm build`                                      | tsup build (`build:dts` runs after, `tsc --emitDeclarationOnly`) for all five entries              |
+| `pnpm dev`                                        | tsup watch mode                                                                                    |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:cov` | Vitest unit tests                                                                                  |
+| `pnpm test:e2e`                                   | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` / `pnpm lint:fix`                     | ESLint on `src`                                                                                    |
+| `pnpm typecheck`                                  | `tsc --noEmit`                                                                                     |
+| `pnpm clean`                                      | Remove build output; `pnpm nuke` also removes `node_modules`                                       |
 
 ## How it works
 
 ### Entry points (verified against `package.json#exports`, 5 entries)
 
-| Import | Contents |
-|---|---|
-| `@arcaai/vox` | Everything: core + audio plugin hooks and pipelines |
-| `@arcaai/vox/core` | Provider, hooks, types, client — no audio/ML plugin code. Use for admin/dashboard surfaces that only need API access |
-| `@arcaai/vox/plugins` | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`. Also re-exports the DEPRECATED `useVAD`, `useSTT`, `useNoiseFilter` (removed in R4) |
-| `@arcaai/vox/plugins/med-ner` | DEPRECATED (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency so importing `/plugins` alone never pulls it in |
-| `@arcaai/vox/compat` | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useText`, `useArcaSttProvider`, `useArcaSttLanguageModes`, plus `ArcaCompatProvider` and `mapV1ConfigToV2` |
+| Import                        | Contents                                                                                                                                                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@arcaai/vox`                 | Everything: core + audio plugin hooks and pipelines                                                                                                                                                                                                   |
+| `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code. Use for admin/dashboard surfaces that only need API access                                                                                                                                  |
+| `@arcaai/vox/plugins`         | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, `TranscriptionPipeline`, `KnowledgePipeline`. Also re-exports the DEPRECATED `useVAD`, `useSTT`, `useNoiseFilter` (removed in R4)                                                   |
+| `@arcaai/vox/plugins/med-ner` | DEPRECATED (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency so importing `/plugins` alone never pulls it in                                                                                                     |
+| `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useText`, `useArcaSttProvider`, `useArcaSttLanguageModes`, plus `ArcaCompatProvider` and `mapV1ConfigToV2` |
 
 **Entry bundles don't share a React context.** Each entry is a separate tsup bundle
 (`splitting: false`), so a tree rendered under `<ArcaCompatProvider>` (from `/compat`) must
@@ -101,7 +101,7 @@ calls `store.clearTenantSessionData()` before the new tenant config resolves.
 
 1. `session.open({ patientId, appointmentDate?, workflowDefinitionSlug? })` — get-or-create the
    consultation. Passing `workflowDefinitionSlug` overrides the `department -> tenant ->
-   platform-default` assignment cascade for that one consultation; discover valid slugs with
+platform-default` assignment cascade for that one consultation; discover valid slugs with
    `useSelectableConsultationWorkflows()`, never guess them.
 2. `audio.start({ agentSlug?, language?, deviceId?, secondaryDeviceId? })` — capture + pipeline;
    transcripts land in `context.transcriptions`, entities in `context.entities`. Devices are
@@ -110,6 +110,16 @@ calls `store.clearTenantSessionData()` before the new tenant config resolves.
 4. `summary.generateSummary(...)` (or `generateSummaryAsync` for job-based generation with SSE
    progress).
 5. `audio.stop()`, then `useArcaSession().close()` (or `reopen()`).
+
+`useArcaSession().consultation.governingRun` and `useConsultationWorkflow().governingRun` read
+the consultation's governing workflow run — `GoverningRunSummary | null` (`@arcaai/types`),
+derived server-side from the persisted marker, never a live harness call. `useWorkflowRun().status`
+carries `degraded: boolean` plus four node counts alongside the persisted `status` — DEGRADED is a
+per-run FLAG, never a value `status` itself takes. `useConsultationSchema().validatePayload` is a
+fast-fail UX aid only: it checks the SESSION-pinned schema bundle, which can differ from the
+governing workflow's BOUND version when that trigger is pinned rather than follow-latest, so catch
+400 `WORKFLOW_CONTEXT_INCOMPATIBLE` (on `AgenticError.context.problems`) regardless of what local
+validation said.
 
 ### Business plane only — no management surface (TASK-890)
 
@@ -125,12 +135,12 @@ is self-only (`/users/me/settings`). Administration lives in
 All SSE hooks connect against `apiClient.getStreamBaseUrl()` with a single-use ticket
 (`POST /auth/stream-ticket`, JWT-only — an API key cannot mint one).
 
-| Hook | Stream | Notes |
-|---|---|---|
-| `useArcaLiveSummary` | `GET /consultations/:id/live-summary/stream` | Full-state snapshots; keep only the latest |
-| `useArcaLiveAssist` | `GET /consultations/:id/live-assist/stream` | Full-state snapshots (`suggestions` + `corrections`); no terminal event, you close it |
-| `useConsultationEvents` | `GET /consultations/:id/loop/stream` | Append-only, capped at the last 500, no resume |
-| `useWorkflowRun` | `GET /workflows/:slug/runs/:runId/stream` | Resumes via `Last-Event-ID`; also lists/starts/cancels runs. `transport: 'socket'` reads over a run-scoped single-use-ticket WebSocket instead; SSE stays the default because it is the only lane that resumes |
+| Hook                    | Stream                                       | Notes                                                                                                                                                                                                          |
+| ----------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useArcaLiveSummary`    | `GET /consultations/:id/live-summary/stream` | Full-state snapshots; keep only the latest                                                                                                                                                                     |
+| `useArcaLiveAssist`     | `GET /consultations/:id/live-assist/stream`  | Full-state snapshots (`suggestions` + `corrections`); no terminal event, you close it                                                                                                                          |
+| `useConsultationEvents` | `GET /consultations/:id/loop/stream`         | Append-only, capped at the last 500, no resume                                                                                                                                                                 |
+| `useWorkflowRun`        | `GET /workflows/:slug/runs/:runId/stream`    | Resumes via `Last-Event-ID`; also lists/starts/cancels runs. `transport: 'socket'` reads over a run-scoped single-use-ticket WebSocket instead; SSE stays the default because it is the only lane that resumes |
 
 ### Which credential to use
 

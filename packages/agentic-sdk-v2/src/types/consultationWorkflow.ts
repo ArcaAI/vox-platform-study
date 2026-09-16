@@ -1,3 +1,5 @@
+import type { GoverningRunSummary } from '@arcaai/types';
+
 /**
  * @arcaai/vox — consultation workflow DISCOVERY types.
  *
@@ -35,6 +37,13 @@ export interface ConsultationWorkflow {
   activeVersionNumber: number | null;
   /** Always `null` today — the substrate declares no per-definition input schema. */
   inputSchema: Record<string, unknown> | null;
+  /**
+   * The consultation's governing run, in the persisted vocabulary — beside `workflowRunId` /
+   * `decidedAt` above, which this supersedes as the field to read. `null` when ungoverned, or
+   * when the run's status has not yet been recorded by the completion watcher. See
+   * `GoverningRunSummary` (`@arcaai/types`).
+   */
+  run: GoverningRunSummary | null;
 }
 
 /**

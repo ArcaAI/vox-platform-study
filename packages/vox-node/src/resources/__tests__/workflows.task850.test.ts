@@ -341,6 +341,79 @@ describe('Streaming — snapshot-then-delta, with real resume', () => {
     expect(status.status).toBe('COMPLETED');
     expect(status.runId).toBe('run-1');
   });
+
+  /**
+   * The four node counts ride the completion event's payload; `waitForRun`
+   * derives `degraded` from them with the same rule the gateway's own live read uses
+   * (`degradedNodeCount + skippedNodeCount > 0 && status === 'COMPLETED'`), so a caller watching
+   * the resumable stream sees the same verdict `getRun` would.
+   */
+  it('waitFor reads the node counts and derives degraded=true when any node degraded', async () => {
+    const degradedDone = frame(
+      'workflow.run.completed',
+      {
+        runId: 'run-1',
+        slug: 'visit-summary',
+        status: 'COMPLETED',
+        stages: [],
+        startedAt: null,
+        endedAt: null,
+        workflowVersionNumber: 3,
+        nodeCount: 5,
+        failedNodeCount: 0,
+        degradedNodeCount: 1,
+        skippedNodeCount: 0,
+      },
+      '1699999999-3',
+    );
+    const { fetch } = stubFetch([() => sse([snapshot, degradedDone])]);
+
+    const status = await client(fetch).workflows.waitForRun('visit-summary', 'run-1');
+
+    expect(status.degraded).toBe(true);
+    expect(status.nodeCount).toBe(5);
+    expect(status.failedNodeCount).toBe(0);
+    expect(status.degradedNodeCount).toBe(1);
+    expect(status.skippedNodeCount).toBe(0);
+  });
+
+  it('waitFor derives degraded=false and null counts when the completion event carries none', async () => {
+    const { fetch } = stubFetch([() => sse([snapshot, done])]);
+
+    const status = await client(fetch).workflows.waitForRun('visit-summary', 'run-1');
+
+    expect(status.degraded).toBe(false);
+    expect(status.nodeCount).toBeNull();
+    expect(status.failedNodeCount).toBeNull();
+    expect(status.degradedNodeCount).toBeNull();
+    expect(status.skippedNodeCount).toBeNull();
+  });
+
+  it('waitFor never derives degraded=true for a non-COMPLETED terminal status, even with degraded nodes', async () => {
+    const failedWithDegradedNodes = frame(
+      'workflow.run.completed',
+      {
+        runId: 'run-1',
+        slug: 'visit-summary',
+        status: 'FAILED',
+        stages: [],
+        startedAt: null,
+        endedAt: null,
+        workflowVersionNumber: 3,
+        nodeCount: 5,
+        failedNodeCount: 1,
+        degradedNodeCount: 1,
+        skippedNodeCount: 0,
+      },
+      '1699999999-4',
+    );
+    const { fetch } = stubFetch([() => sse([snapshot, failedWithDegradedNodes])]);
+
+    const status = await client(fetch).workflows.waitForRun('visit-summary', 'run-1');
+
+    expect(status.status).toBe('FAILED');
+    expect(status.degraded).toBe(false);
+  });
 });
 
 describe('Error surfaces a developer actually sees', () => {
