@@ -53,7 +53,8 @@ export { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 /** Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine). */
 export class AsrSpecBuildError extends Error {
   /** Machine-readable cause; the resolver surfaces it as the 409 body's `code`. */
-  readonly code: 'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING' | 'ASR_AGENT_VAD_MODEL_MISSING';
+  readonly code:
+    'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING' | 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED' | 'ASR_AGENT_VAD_MODEL_MISSING';
 
   constructor(message: string, code: AsrSpecBuildError['code'] = 'ASR_AGENT_UNRUNNABLE') {
     super(message);
@@ -242,7 +243,10 @@ function audioFrontEnd(parameters: Rec): AsrSpecAudioFrontEnd {
     denoise: { enabled: level !== 'off', level },
     diarization: {
       enabled: bool(diarization.enabled, false),
-      backend: oneOf(diarization.backend, ['embedding', 'sortformer'] as const, 'embedding'),
+      // TASK-980 — `embedding` is the only backend left. Anything else an ENABLED stage stored was
+      // already refused by `assertDiarizationBackendSupported`; a disabled stage runs nothing, so
+      // whatever it stored there is nothing to honour.
+      backend: 'embedding',
       maxSpeakers: num(diarization.maxSpeakers),
       // TASK-887 — replaces the platform key `stt.voiceProfile.minSimilarity`. OMITTED when the
       // agent said nothing, so `DiarizationConfig.match_threshold` stays the one engine default.
@@ -428,7 +432,33 @@ function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: 
 }
 
 /**
- * TASK-887 — an agent that turns embedding diarization ON must NAME the embedding model.
+ * TASK-980 (owner decision 2026-09-16) — the `sortformer` diarization backend is RETIRED.
+ *
+ * A published agent version is immutable stored content, so one may still declare
+ * `backend: 'sortformer'` (or any other value the schema no longer admits). Coercing that to
+ * `embedding` — which is what `oneOf(…, 'embedding')` did — would silently run a diarizer the agent
+ * never declared, so an ENABLED stage whose stored backend is present and is not `embedding` is
+ * REFUSED. A disabled stage runs nothing and is left alone; an absent backend means `embedding`.
+ *
+ * Read from the RAW parameters, before `audioFrontEnd` normalises them, because that is the only
+ * place the stored value still exists.
+ */
+function assertDiarizationBackendSupported(agent: ResolvedAgent, parameters: Rec): void {
+  const diarization = rec(rec(parameters.audioFrontEnd).diarization);
+  const backend = diarization.backend;
+  if (!bool(diarization.enabled, false) || backend === undefined || backend === 'embedding') return;
+  const stored = typeof backend === 'string' ? `'${backend}'` : JSON.stringify(backend);
+  throw new AsrSpecBuildError(
+    `Agent '${agent.slug}' v${agent.versionNumber} enables speaker diarization with the ${stored} backend, ` +
+      `which this platform cannot run: the \`sortformer\` backend was retired (TASK-980) and \`embedding\` is the only supported ` +
+      `backend. Publish a new version with \`audioFrontEnd.diarization.backend\` set to \`embedding\` (and an ` +
+      `\`embeddingModelSlug\`), or switch diarization off.`,
+    'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
+  );
+}
+
+/**
+ * TASK-887 — an agent that turns diarization ON must NAME the embedding model.
  *
  * This REPLACES TASK-880's `ASR_AGENT_EMBEDDING_SPACE_MISMATCH`. That guard existed because
  * the platform declared one embedding space (`stt.diarization.hfModelId`) and the
@@ -439,14 +469,14 @@ function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: 
  * SAME model. A width mismatch is therefore impossible by construction, and there is nothing
  * left to refuse on that ground.
  *
- * What IS refusable is an agent that asks for embedding diarization and names no model. Model
+ * What IS refusable is an agent that asks for diarization and names no model. Model
  * SELECTION fails closed (rule 09 §Configuration Tiers): substituting a platform default here
  * is exactly the behaviour this ticket removed, and silently diarizing without one would drop
- * every enrolled label without saying so. `backend: 'sortformer'` needs no embedding model —
- * the NeMo diarizer carries its own weights — so it is untouched.
+ * every enrolled label without saying so. Since TASK-980 every enabled stage is an `embedding`
+ * stage (any other stored backend is refused first), so there is no backend left to exempt.
  */
 function assertDiarizationRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontEnd, embedding: AsrSpecModel | undefined): void {
-  if (!afe.diarization.enabled || afe.diarization.backend !== 'embedding' || embedding) return;
+  if (!afe.diarization.enabled || embedding) return;
   throw new AsrSpecBuildError(
     `Agent '${agent.slug}' v${agent.versionNumber} enables embedding diarization but binds no speaker-embedding model. ` +
       `Set \`audioFrontEnd.diarization.embeddingModelSlug\` to a SPEAKER_EMBEDDING model visible to this tenant — ` +
@@ -507,6 +537,9 @@ export function buildAsrSpecCore(
   // TASK-977 — the front end is resolved FIRST and then decides which aux models ship.
   // Before D-2 this ran the other way round (the denoise level was read off the bound
   // model), which is why a disabled stage could not drop its model.
+  // TASK-980 — refused on the STORED backend, before `audioFrontEnd` normalises it away. This core
+  // builds every chain (primary, model-level fallback, fallback agent), so all three are covered.
+  assertDiarizationBackendSupported(agent, parameters);
   const front = audioFrontEnd(parameters);
   const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', specModelMetadata(profile, partialWindowSec)), ...auxModels(agent, front) };
   assertVadRunnable(agent, front, models.vad);
