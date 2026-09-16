@@ -1,0 +1,38 @@
+[
+  {
+    "at": "2026-09-16T20:06:02.759Z",
+    "sectionKey": "presenting_complaints",
+    "state": "provisional",
+    "content": "Shortness of breath on exertion and intermittent chest pain over the past two weeks."
+  },
+  {
+    "at": "2026-09-16T20:06:02.766Z",
+    "sectionKey": "drug_history",
+    "state": "provisional",
+    "content": "Started aspirin 81 milligrams daily for stable angina."
+  },
+  {
+    "at": "2026-09-16T20:06:02.772Z",
+    "sectionKey": "examination_and_vitals",
+    "state": "provisional",
+    "content": "Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally."
+  },
+  {
+    "at": "2026-09-16T20:06:02.778Z",
+    "sectionKey": "previous_diagnosis",
+    "state": "provisional",
+    "content": "Hypertension review on 2026-01-14; blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months."
+  },
+  {
+    "at": "2026-09-16T20:06:02.784Z",
+    "sectionKey": "reports",
+    "state": "provisional",
+    "content": "Ordering of an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T20:06:02.790Z",
+    "sectionKey": "plan_of_care",
+    "state": "provisional",
+    "content": "Ordering of an electrocardiogram and a troponin level."
+  }
+]
