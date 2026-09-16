@@ -110,7 +110,11 @@ export function engineOutputFor(target: WorkflowSeedTarget, currentRegistryCheck
   for (const finding of gate.filter((entry) => entry.severity === 'ERROR')) problems.push(`publish ${finding.code ?? ''}: ${finding.message}`);
 
   const entitlementKeys = [
-    ...new Set(graph.nodes.map((node) => WORKFLOW_NODE_REGISTRY[node.type]?.entitlementKey).filter((key: unknown): key is string => typeof key === 'string' && key.length > 0)),
+    ...new Set(
+      graph.nodes
+        .map((node) => WORKFLOW_NODE_REGISTRY[node.type]?.entitlementKey)
+        .filter((key: unknown): key is string => typeof key === 'string' && key.length > 0),
+    ),
   ].sort();
 
   const result = compile(graph, {
@@ -123,8 +127,21 @@ export function engineOutputFor(target: WorkflowSeedTarget, currentRegistryCheck
     registryChecksum: currentRegistryChecksum,
     ruleSetVersion: RULE_SET_VERSION,
     caps: DEFAULT_CAPS,
-    policyBindings: { ...NON_DERIVABLE_POLICY_BINDINGS, promptTemplateRefs: [], documentTemplateRefs: [], contextSchemaVersionId: target.contextSchemaVersionId, entitlementKeys },
-    triggerContextSchema: contextSchemaId ? { schemaId: contextSchemaId, versionNumber: 1, versionId: target.contextSchemaVersionId, payloadSchema } : null,
+    policyBindings: {
+      ...NON_DERIVABLE_POLICY_BINDINGS,
+      promptTemplateRefs: [],
+      documentTemplateRefs: [],
+      contextSchemaVersionId: target.contextSchemaVersionId,
+      entitlementKeys,
+    },
+    // TASK-982 — every seeded trigger now binds by reference with no authored `versionNumber`
+    // (FOLLOW LATEST), so `followsLatest: true` here is what a real publish would resolve too;
+    // `versionNumber`/`versionId` stay the CONCRETE version resolved at compile time (both
+    // bindings resolve to a concrete version — only the intent differs, and the compiler freezes
+    // `followsLatest` beside `resolved` to record which one it was).
+    triggerContextSchema: contextSchemaId
+      ? { schemaId: contextSchemaId, versionNumber: 1, versionId: target.contextSchemaVersionId, payloadSchema, followsLatest: true }
+      : null,
     compiledAt: COMPILED_AT,
     nodeInfo,
   });
@@ -141,9 +158,18 @@ export function engineOutputFor(target: WorkflowSeedTarget, currentRegistryCheck
   };
 }
 
-function renderModule(fileName: string, exportName: string, values: Record<string, EngineOutput>, currentRegistryChecksum: string, typeImport: string): string {
+function renderModule(
+  fileName: string,
+  exportName: string,
+  values: Record<string, EngineOutput>,
+  currentRegistryChecksum: string,
+  typeImport: string,
+): string {
   const blobs = Object.fromEntries(
-    Object.entries(values).map(([key, output]) => [key, { graphChecksum: output.graphChecksum, validationReport: output.validationReport, compiledConfig: output.compiledConfig }]),
+    Object.entries(values).map(([key, output]) => [
+      key,
+      { graphChecksum: output.graphChecksum, validationReport: output.validationReport, compiledConfig: output.compiledConfig },
+    ]),
   );
   return [
     '/**',
@@ -184,7 +210,9 @@ function main(): void {
         continue;
       }
       outputs[group]![target.key] = output;
-      console.log(`=== ${target.key}: ${(output.compiledConfig.stages as unknown[]).length} stage(s), validate ok, graph ${output.graphChecksum.slice(0, 12)}…`);
+      console.log(
+        `=== ${target.key}: ${(output.compiledConfig.stages as unknown[]).length} stage(s), validate ok, graph ${output.graphChecksum.slice(0, 12)}…`,
+      );
     }
   }
 
@@ -207,7 +235,13 @@ function main(): void {
   );
   writeFileSync(
     path.join(SEED_DIR, '29-arcaai-agents-and-workflows.generated.ts'),
-    renderModule('29-arcaai-agents-and-workflows.ts', 'ARCAAI_GENERATED', outputs.arcaai!, currentRegistryChecksum, "import type { GeneratedWorkflowBlob } from './28-workflow-library.generated';"),
+    renderModule(
+      '29-arcaai-agents-and-workflows.ts',
+      'ARCAAI_GENERATED',
+      outputs.arcaai!,
+      currentRegistryChecksum,
+      "import type { GeneratedWorkflowBlob } from './28-workflow-library.generated';",
+    ),
     'utf8',
   );
   console.log(`\nWrote ${Object.keys(outputs.library!).length} library + ${Object.keys(outputs.arcaai!).length} ArcaAI blobs.`);

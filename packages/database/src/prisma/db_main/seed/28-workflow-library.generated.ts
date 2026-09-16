@@ -18,7 +18,7 @@ export const REGISTRY_CHECKSUM: string = "e5a5e4844ae5bf48cf002182735b8208065f0b
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
-    "graphChecksum": "480fac970613a76b29eadda96648b0c6e2060b86b99c3c9d4261b657deaef25e",
+    "graphChecksum": "a722366c11bc9df739968c892aafcacf34bce968fbede8415a4dd1a0985981b6",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -53,7 +53,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0000-000000000001",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -214,7 +213,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -554,11 +554,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "890c21f6fafedc763f501b541fa0771c971df2e3e0f4230c7b8165a9f0442140"
+      "checksum": "4d1cf7aa09369ba060326b57238211acf97cf513c835d96ae1416c26e4775533"
     }
   },
   "GLOBAL:platform-default-summarization": {
-    "graphChecksum": "87b302676e2927bd17fc563ffb77d7d8263b3c029b5c42eb06713416d08906d0",
+    "graphChecksum": "115386eecbd64b62058da32f7a2dd5bd3ec3aae4272cdc0744c659a5f37da0a7",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -592,7 +592,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0000-000000000001",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -753,7 +752,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -867,11 +867,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "76317e3348e302b0af8b55526b29f13c775b6fa3e5932c7651825f18d8acf11d"
+      "checksum": "6ad3a4e6db9fce82a23a0c695d2465b7bac8f7d4d9467aaf02af929e68f6f210"
     }
   },
   "SYSTEM:general-medicine-consultation": {
-    "graphChecksum": "4886b9f938802b0056b59c1b70ee4ebfb8eb1ca2cc2157b47fb5e208dcfcc1b0",
+    "graphChecksum": "e89f518594bc113708a0054822734f41ec6f0fe89885bddf43b78afb32782fea",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -906,7 +906,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0002-000000000001",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1067,7 +1066,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -1407,11 +1407,11 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "fc8e732fef64292ab000ec07cfa9a0c2c09cf47e7a77c9165c76c8809e9e1ac2"
+      "checksum": "41870125f1218e8b141a816ce807297b19c159507a06d10c1d101841dfb13ac2"
     }
   },
   "SYSTEM:platform-default-summarization": {
-    "graphChecksum": "564756b2cb38ec91a29af791ca1258590a60f3574efd590e8734619da54ae549",
+    "graphChecksum": "13743dbf2327132b20b798016fc85bbc05ebda07345d38acb95ec9f2cc2ed3c6",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
@@ -1445,7 +1445,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 ],
                 "contextSchema": {
                   "contextSchemaId": "79000000-0000-0000-0002-000000000001",
-                  "versionNumber": 1,
                   "resolved": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1606,7 +1605,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                         ]
                       }
                     }
-                  }
+                  },
+                  "followsLatest": true
                 },
                 "guardrail": {
                   "enabled": true
@@ -1720,7 +1720,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "3e08a9ad496a5038f40e902510db2dbf2856702e6451968c305c2d727199b7ce"
+      "checksum": "447489b9b60aa355a791be662b99ab86f06567af71ce3e7b5fb2852d1feaabed"
     }
   }
 };

@@ -28,6 +28,13 @@
  * tenant — never shared from SYSTEM). The compiler freezes the resolved payload schema on the
  * trigger, so the interpreter validates without a database read.
  *
+ * TASK-982 — the trigger names the schema by id with NO `versionNumber`, which is the
+ * FOLLOW-LATEST binding (`authoredTriggerFollowsLatest`'s rule, mirrored server-side by
+ * `WorkflowDefinitionService`): the platform's own reference workflows must keep working
+ * automatically when a tenant evolves its `consultation_note_context` schema, rather than
+ * silently freezing on whatever version happened to be pinned the day this seed last ran. A
+ * PINNED trigger would instead carry an explicit `versionNumber` and never move.
+ *
  * `WorkflowAssignment` (TENANT scope, palette `core`) in both tenants → `general-medicine-consultation`,
  * with its WORM `WorkflowAssignmentChange` row. The retired substrate-exclusivity gate that used
  * to withhold the ArcaAI assignment guarded a legacy dual-writer path (`consultation.persistDraft`)
@@ -151,7 +158,10 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       {
         id: 'n_trigger',
         type: 'core.trigger',
-        config: { kinds: ['consultation', 'api'], contextSchema: { contextSchemaId: options.contextSchemaId, versionNumber: 1 }, guardrail: { enabled: true } },
+        // No `versionNumber` — FOLLOW LATEST (TASK-982): the trigger validates against
+        // whatever this tenant has pinned at dispatch, not a version frozen the day this
+        // seed last ran.
+        config: { kinds: ['consultation', 'api'], contextSchema: { contextSchemaId: options.contextSchemaId }, guardrail: { enabled: true } },
       },
       {
         // TASK-932 D-9 — the WARM START. A sibling of the capture node, not a predecessor: it
@@ -169,7 +179,13 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
       {
         id: 'n_finalize',
         type: 'core.agent',
-        config: { agentRef: { slug: 'casenote-finalization' }, execution: { lane: 'durable', cadence: 'onEnd' }, guardrail: { enabled: true }, dna: { enabled: true }, onError: 'fail' },
+        config: {
+          agentRef: { slug: 'casenote-finalization' },
+          execution: { lane: 'durable', cadence: 'onEnd' },
+          guardrail: { enabled: true },
+          dna: { enabled: true },
+          onError: 'fail',
+        },
       },
       {
         id: 'n_review',
@@ -205,7 +221,10 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
             required: ['case_note'],
             properties: {
               case_note: { type: 'string' },
-              redactions: { type: 'array', items: { type: 'object', required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' } } } },
+              redactions: {
+                type: 'array',
+                items: { type: 'object', required: ['text', 'label'], properties: { text: { type: 'string' }, label: { type: 'string' } } },
+              },
             },
           },
           onSchemaViolation: 'fail',
@@ -261,11 +280,21 @@ export function buildSummarizationGraph(options: { contextSchemaId: string }): S
   return {
     version: 1,
     nodes: [
-      { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'], contextSchema: { contextSchemaId: options.contextSchemaId, versionNumber: 1 }, guardrail: { enabled: true } } },
+      // No `versionNumber` — FOLLOW LATEST (TASK-982), same rule as the consultation graph.
+      {
+        id: 'n_trigger',
+        type: 'core.trigger',
+        config: { kinds: ['api'], contextSchema: { contextSchemaId: options.contextSchemaId }, guardrail: { enabled: true } },
+      },
       {
         id: 'n_summary',
         type: 'core.agent',
-        config: { agentRef: { slug: 'general-medicine-summarization' }, execution: { lane: 'durable', cadence: 'once' }, guardrail: { enabled: true }, onError: 'fail' },
+        config: {
+          agentRef: { slug: 'general-medicine-summarization' },
+          execution: { lane: 'durable', cadence: 'once' },
+          guardrail: { enabled: true },
+          onError: 'fail',
+        },
       },
       { id: 'n_output', type: 'core.output', config: { protocols: ['http', 'http-sse'], onSchemaViolation: 'fail' } },
     ],
@@ -310,8 +339,14 @@ export interface WorkflowSeedTarget {
 
 /** Id blocks: `99000000-…-0000-…` SYSTEM (…001 = the pre-existing platform-default-summarization id), `…-0002-…` Global. */
 const LIBRARY_IDS = {
-  SYSTEM: { [SUMMARIZATION_WORKFLOW_SLUG]: SEED_WORKFLOW_DEFINITION_IDS.PLATFORM_DEFAULT_SUMMARIZATION, [CONSULTATION_WORKFLOW_SLUG]: '99000000-0000-0000-0000-000000000002' },
-  GLOBAL: { [SUMMARIZATION_WORKFLOW_SLUG]: '99000000-0000-0000-0002-000000000001', [CONSULTATION_WORKFLOW_SLUG]: '99000000-0000-0000-0002-000000000002' },
+  SYSTEM: {
+    [SUMMARIZATION_WORKFLOW_SLUG]: SEED_WORKFLOW_DEFINITION_IDS.PLATFORM_DEFAULT_SUMMARIZATION,
+    [CONSULTATION_WORKFLOW_SLUG]: '99000000-0000-0000-0000-000000000002',
+  },
+  GLOBAL: {
+    [SUMMARIZATION_WORKFLOW_SLUG]: '99000000-0000-0000-0002-000000000001',
+    [CONSULTATION_WORKFLOW_SLUG]: '99000000-0000-0000-0002-000000000002',
+  },
 } as const;
 
 export const workflowTargetKey = (tenantKey: string, slug: string): string => `${tenantKey}:${slug}`;
@@ -350,7 +385,10 @@ function libraryTargets(tenantKey: 'GLOBAL' | 'SYSTEM', tenantId: string): Workf
 }
 
 /** Global authors, SYSTEM is the promoted copy — the same two slugs in each. */
-export const WORKFLOW_LIBRARY_TARGETS: WorkflowSeedTarget[] = [...libraryTargets('GLOBAL', SEED_TENANT_ID), ...libraryTargets('SYSTEM', SYSTEM_TENANT_ID)];
+export const WORKFLOW_LIBRARY_TARGETS: WorkflowSeedTarget[] = [
+  ...libraryTargets('GLOBAL', SEED_TENANT_ID),
+  ...libraryTargets('SYSTEM', SYSTEM_TENANT_ID),
+];
 
 // =============================================================================
 // Rows
@@ -363,7 +401,28 @@ export function generatedFor(generated: Readonly<Record<string, GeneratedWorkflo
   return blob;
 }
 
+/**
+ * TASK-982 — a local mirror of `WorkflowDefinitionService`'s `authoredTriggerFollowsLatest`.
+ * `packages/database` cannot import `@arcaai/applications` (that is the dependency direction
+ * inverted — see the file header of `26-tenant-reference-set.ts` for the same constraint), so the
+ * same rule is re-read here from the AUTHORED graph: a trigger that names a schema id with no
+ * `versionNumber` follows the tenant's pin at dispatch; one that names a version keeps it.
+ */
+function authoredTriggerFollowsLatest(graph: SeedGraph): boolean {
+  const trigger = graph.nodes.find((node) => node.type === 'core.trigger');
+  const reference = trigger?.config.contextSchema as { contextSchemaId?: unknown; versionNumber?: unknown } | undefined;
+  if (typeof reference?.contextSchemaId !== 'string' || reference.contextSchemaId.length === 0) return false;
+  return reference.versionNumber == null;
+}
+
 export function definitionRow(target: WorkflowSeedTarget, blob: GeneratedWorkflowBlob, registryChecksum: string) {
+  // TASK-982 — the same binding columns `WorkflowDefinitionService.publish` stamps server-side,
+  // read from the engine's own resolution (`policyBindings.contextSchemaRefs[0]`, ENGINE OUTPUT)
+  // rather than re-derived here: `contextSchemaId`/`contextSchemaVersionNumber` are what the
+  // compiler actually froze, `contextSchemaFollowsLatest` is which binding the AUTHOR chose.
+  const contextSchemaRef =
+    ((blob.compiledConfig as { policyBindings?: { contextSchemaRefs?: Array<{ schemaId: string; versionNumber: number }> } }).policyBindings
+      ?.contextSchemaRefs ?? [])[0] ?? null;
   return {
     id: target.id,
     tenantId: target.tenantId,
@@ -382,6 +441,9 @@ export function definitionRow(target: WorkflowSeedTarget, blob: GeneratedWorkflo
     compiledConfig: blob.compiledConfig,
     compiledConfigChecksum: (blob.compiledConfig as { checksum: string }).checksum,
     registryChecksum,
+    contextSchemaId: contextSchemaRef?.schemaId ?? null,
+    contextSchemaVersionNumber: contextSchemaRef?.versionNumber ?? null,
+    contextSchemaFollowsLatest: contextSchemaRef !== null && authoredTriggerFollowsLatest(target.graph),
     validationReport: blob.validationReport,
     needsReview: false,
     validatedAt: new Date(COMPILED_AT),
@@ -392,7 +454,8 @@ export function definitionRow(target: WorkflowSeedTarget, blob: GeneratedWorkflo
 }
 
 /** LAZY: the regen script imports this module for the GRAPHS before the generated blobs exist. */
-export const workflowLibraryDefinitions = () => WORKFLOW_LIBRARY_TARGETS.map((target) => definitionRow(target, generatedFor(WORKFLOW_LIBRARY_GENERATED, target.key), REGISTRY_CHECKSUM));
+export const workflowLibraryDefinitions = () =>
+  WORKFLOW_LIBRARY_TARGETS.map((target) => definitionRow(target, generatedFor(WORKFLOW_LIBRARY_GENERATED, target.key), REGISTRY_CHECKSUM));
 
 /**
  * `9A000000` block: `…-0000-<slot>-…` assignment rows, `…-0001-<slot>-…` their WORM change rows;
@@ -430,12 +493,21 @@ export const WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES = [assignmentChangeRow('0002', 
 
 /** The slice of the client the two workflow phases touch — narrow so a test can hand in a fake. */
 export interface SeedWorkflowsClient {
-  workflowDefinition: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  workflowDefinition: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
   workflowAssignment: { upsert(args: { where: { id: string }; create: unknown; update: unknown }): Promise<unknown> };
-  workflowAssignmentChange: { findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>; create(args: { data: unknown }): Promise<unknown> };
+  workflowAssignmentChange: {
+    findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
+    create(args: { data: unknown }): Promise<unknown>;
+  };
 }
 
-export async function createWorkflowDefinitions(client: SeedWorkflowsClient, rows: ReadonlyArray<ReturnType<typeof definitionRow>>): Promise<{ created: number; skipped: number }> {
+export async function createWorkflowDefinitions(
+  client: SeedWorkflowsClient,
+  rows: ReadonlyArray<ReturnType<typeof definitionRow>>,
+): Promise<{ created: number; skipped: number }> {
   let created = 0;
   let skipped = 0;
   for (const row of rows) {
