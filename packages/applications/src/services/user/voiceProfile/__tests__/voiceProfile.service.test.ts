@@ -75,9 +75,7 @@ const mockAsrResolver = {
   resolve: vi.fn(),
 };
 
-function asrSpec(
-  overrides: { embedding?: unknown; enabled?: boolean; backend?: 'embedding' | 'sortformer'; matchThreshold?: number | null } = {},
-) {
+function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThreshold?: number | null } = {}) {
   const embedding = 'embedding' in overrides ? overrides.embedding : { slug: EMBEDDING_SLUG, sourceUri: EMBEDDING_SOURCE_URI };
   return {
     spec: {
@@ -86,7 +84,7 @@ function asrSpec(
       audioFrontEnd: {
         diarization: {
           enabled: overrides.enabled ?? true,
-          backend: overrides.backend ?? 'embedding',
+          backend: 'embedding',
           ...(overrides.matchThreshold === undefined ? {} : { matchThreshold: overrides.matchThreshold }),
         },
       },
@@ -386,16 +384,27 @@ describe('VoiceProfileService', () => {
         expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
       });
 
-      it('refuses with a TRUE 400 when diarization is on but the sortformer backend needs no enrolled profiles', async () => {
-        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: true, backend: 'sortformer' }));
+      /**
+       * TASK-980 — the retired `sortformer` backend was the only way a resolved spec could enable
+       * diarization without an embedding model; `buildResolvedAsrSpec` now refuses both that backend
+       * (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`) and embedding-without-a-model (409
+       * `ASR_AGENT_DIARIZATION_MODEL_MISSING`). Should a spec ever arrive in that state anyway, the
+       * service answers the resolver's OWN 409 for it — not the old 400, which blamed the request
+       * for an agent-configuration conflict and named a backend that no longer exists.
+       */
+      it('refuses with the resolver’s 409 ASR_AGENT_DIARIZATION_MODEL_MISSING if a spec enables diarization with no embedding model', async () => {
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: true }));
 
         const thrown = await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }).catch((error: unknown) => error);
 
-        expect(thrown).toBeInstanceOf(BadRequestException);
-        const message = (thrown as BadRequestException).message;
-        expect(message).toContain(`'${AGENT_SLUG}'`);
-        expect(message).toContain('sortformer');
-        expect(message).not.toContain('embeddingModelSlug');
+        expect(thrown).toBeInstanceOf(ConflictException);
+        expect((thrown as ConflictException).getResponse()).toEqual({
+          code: 'ASR_AGENT_DIARIZATION_MODEL_MISSING',
+          message: expect.stringContaining(`'${AGENT_SLUG}'`),
+        });
+        const message = ((thrown as ConflictException).getResponse() as { message: string }).message;
+        expect(message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
+        expect(message).not.toContain('sortformer');
         expect(mockHttpService.post).not.toHaveBeenCalled();
         expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
       });

@@ -148,13 +148,17 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     }
     const embedding = spec.models.embedding;
     if (!embedding) {
-      // Diarization is on with no embedding model. `buildResolvedAsrSpec` refuses that for the
-      // `embedding` backend (409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`), so this is `sortformer`:
-      // it labels speakers with its own weights and never consults an enrolled profile.
-      throw new BadRequestException(
-        `Agent '${spec.agent.slug}' diarizes with the '${diarization.backend}' backend, which labels speakers without ` +
-          `enrolled voice profiles, so there is no speaker-embedding space to enroll into.`,
-      );
+      // Unreachable through `buildResolvedAsrSpec`, which refuses an enabled stage with no
+      // embedding model (409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`) and, since TASK-980, any
+      // backend but `embedding` (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`) — the retired
+      // `sortformer` backend was the only way here. Kept as an invariant guard with the
+      // resolver's OWN answer for this state, never the old 400: the request is fine, the agent is not.
+      throw new ConflictException({
+        code: 'ASR_AGENT_DIARIZATION_MODEL_MISSING',
+        message:
+          `Agent '${spec.agent.slug}' enables speaker diarization but its resolved spec binds no speaker-embedding model, ` +
+          `so there is no space to enroll a voice profile into. Set \`audioFrontEnd.diarization.embeddingModelSlug\` on the agent.`,
+      });
     }
     return {
       agentSlug: spec.agent.slug,

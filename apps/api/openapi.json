@@ -60694,10 +60694,10 @@
             "description": "Voice profile created"
           },
           "400": {
-            "description": "Missing, oversized or non-audio samples, samples the embedding model rejected, or: The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there is no speaker-embedding space to enroll into."
+            "description": "Missing, oversized or non-audio samples, samples the embedding model rejected, or a request with no tenant context."
           },
           "409": {
-            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable agent) answer 409 with their own `code`."
+            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts answer 409 with their own `code` — e.g. `ASR_AGENT_DIARIZATION_MODEL_MISSING` (diarization on, no speaker-embedding model bound) or `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED` (the agent declares a retired backend such as `sortformer`)."
           }
         },
         "security": [
@@ -60737,13 +60737,13 @@
             "description": "The enrollment target"
           },
           "400": {
-            "description": "The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there is no speaker-embedding space to enroll into."
+            "description": "The request carries no tenant context."
           },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent."
           },
           "409": {
-            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable agent) answer 409 with their own `code`."
+            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts answer 409 with their own `code` — e.g. `ASR_AGENT_DIARIZATION_MODEL_MISSING` (diarization on, no speaker-embedding model bound) or `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED` (the agent declares a retired backend such as `sortformer`)."
           }
         },
         "security": [

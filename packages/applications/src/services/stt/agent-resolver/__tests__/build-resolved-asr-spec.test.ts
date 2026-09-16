@@ -11,7 +11,7 @@ import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
 import { AI_MODEL_ASR_PROFILE_DECODING_RANGES, AI_MODEL_ASR_PROFILE_WINDOW_RANGES } from '@arcaai/types';
 import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
 import { describe, expect, it } from 'vitest';
-import { AsrSpecBuildError, buildResolvedAsrSpec } from '../build-resolved-asr-spec';
+import { AsrSpecBuildError, buildAsrSpecCore, buildResolvedAsrSpec } from '../build-resolved-asr-spec';
 
 interface FixtureCase {
   input: { agent: ResolvedAgent; fallbackAgent: ResolvedAgent | null };
@@ -243,10 +243,70 @@ describe('buildResolvedAsrSpec — the agent declares the diarization space', ()
     expect((thrown as AsrSpecBuildError).message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
   });
 
-  it('leaves the sortformer backend alone — it carries its own weights', () => {
-    expect(() =>
+  /**
+   * TASK-980 (owner decision 2026-09-16) — the `sortformer` backend is RETIRED. A published agent
+   * version is immutable stored content and may still say `sortformer`; coercing that to
+   * `embedding` would silently run a diarizer the agent never declared, so it is REFUSED.
+   */
+  const refusalOf = (run: () => unknown): AsrSpecBuildError => {
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof AsrSpecBuildError) return error;
+      throw error;
+    }
+    throw new Error('expected buildResolvedAsrSpec to refuse the agent');
+  };
+
+  it('refuses an ENABLED sortformer stage with a named code — never coerced to embedding', () => {
+    // The embedding model stays bound, so nothing but the backend could be the cause.
+    const error = refusalOf(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'sortformer' }), fallbackAgent: null }));
+    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+    expect(error.message).toContain(`'${base.slug}' v${base.versionNumber}`);
+    expect(error.message).toContain("'sortformer'");
+    expect(error.message).toContain('retired');
+    expect(error.message).toContain('TASK-980');
+  });
+
+  it('reports the retired backend, not a missing model, when a sortformer stage also binds no embedding model', () => {
+    const error = refusalOf(() =>
       buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'sortformer' }, withoutEmbeddingModel()), fallbackAgent: null }),
-    ).not.toThrow();
+    );
+    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+  });
+
+  it('refuses ANY enabled backend other than embedding, naming the stored value', () => {
+    const error = refusalOf(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'pyannote' }), fallbackAgent: null }));
+    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+    expect(error.message).toContain("'pyannote'");
+  });
+
+  it('emits embedding for a DISABLED stage whatever backend it stored — nothing runs, so nothing to refuse', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withDiarization({ enabled: false, backend: 'sortformer' }, withoutEmbeddingModel()),
+      fallbackAgent: null,
+    });
+    expect(spec.audioFrontEnd.diarization).toMatchObject({ enabled: false, backend: 'embedding' });
+    expect(spec.models).not.toHaveProperty('embedding');
+  });
+
+  it('reads an absent backend as embedding', () => {
+    const spec = buildResolvedAsrSpec({ agent: withDiarization({ enabled: true }), fallbackAgent: null });
+    expect(spec.audioFrontEnd.diarization).toMatchObject({ enabled: true, backend: 'embedding' });
+  });
+
+  it('refuses a sortformer FALLBACK AGENT too — the chain it would switch to is just as unrunnable', () => {
+    const fallbackAgent = withDiarization({ enabled: true, backend: 'sortformer' });
+    const error = refusalOf(() => buildResolvedAsrSpec({ agent: base, fallbackAgent }));
+    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+  });
+
+  it('refuses a sortformer agent whose MODEL-level fallback chain is built from the same parameters', () => {
+    // `base` carries a fallback ASR row, so the model chain is built — and it must refuse as well.
+    const agent = withDiarization({ enabled: true, backend: 'sortformer' });
+    const fallbackRow = agent.models.find((m) => m.role === 'fallback');
+    if (!fallbackRow) throw new Error('fixture agent lost its fallback ASR row');
+    expect(refusalOf(() => buildAsrSpecCore(agent, { asr: fallbackRow, runtimeKey: 'k' })).code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
   });
 
   it('says nothing about an agent with diarization off and no embedding model — the OFF default', () => {

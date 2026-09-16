@@ -443,11 +443,19 @@ describe('VoiceProfilesScreen', () => {
     });
 
     it('stays quiet when the target cannot be resolved — a degraded read is not a verdict', async () => {
-      // e.g. the assigned agent diarizes with sortformer, which enrolls nothing (400). Claiming
-      // every profile is stale on the strength of a failed lookup would be worse than saying nothing.
+      // e.g. the assigned agent still declares a diarization backend TASK-980 retired, which the
+      // resolver refuses with its own 409 code. Claiming every profile is stale on the strength of a
+      // failed lookup would be worse than saying nothing.
       stubFetch((call, parsed) =>
         call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles/enrollment-target'
-          ? Response.json({ message: 'sortformer backend' }, { status: 400 })
+          ? Response.json(
+              {
+                statusCode: 409,
+                code: 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
+                message: "Agent 'clinic-asr' v3 enables speaker diarization with the 'sortformer' backend",
+              },
+              { status: 409 },
+            )
           : undefined,
       );
       renderWithProviders(<VoiceProfilesScreen />);

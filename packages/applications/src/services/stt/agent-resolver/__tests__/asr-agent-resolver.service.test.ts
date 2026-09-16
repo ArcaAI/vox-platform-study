@@ -73,6 +73,29 @@ describe('AsrAgentResolverService.resolve — selection', () => {
     agents.resolve.mockResolvedValueOnce({ ...platformAgent, models: platformAgent.models.filter((m) => m.role !== 'primary') });
     await expect(make().resolve({ tenantId: TENANT, agentSlug: 'platform-transcription' })).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('TASK-980 — a stored agent that still enables the retired sortformer backend is a 409 { code, message }, never coerced', async () => {
+    const parameters = platformAgent.compiledConfig.parameters as Record<string, unknown>;
+    const audioFrontEnd = parameters.audioFrontEnd as Record<string, unknown>;
+    agents.resolve.mockResolvedValueOnce({
+      ...platformAgent,
+      compiledConfig: {
+        ...platformAgent.compiledConfig,
+        parameters: { ...parameters, audioFrontEnd: { ...audioFrontEnd, diarization: { enabled: true, backend: 'sortformer' } } },
+      },
+    });
+
+    const thrown = await make()
+      .resolve({ tenantId: TENANT, agentSlug: 'platform-transcription' })
+      .catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(ConflictException);
+    expect((thrown as ConflictException).getStatus()).toBe(409);
+    expect((thrown as ConflictException).getResponse()).toEqual({
+      code: 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
+      message: expect.stringContaining("'sortformer'"),
+    });
+  });
 });
 
 describe('AsrAgentResolverService.resolve — fallback', () => {
