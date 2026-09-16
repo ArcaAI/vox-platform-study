@@ -320,7 +320,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // through the same pure helper, because one plane honouring "follow latest" and the other
     // ignoring it would be a difference no caller could see until a run failed.
     const effective = this.effectiveTriggerSchema
-      ? await this.effectiveTriggerSchema.resolve(tenantId, definition.compiledConfig)
+      ? await this.effectiveTriggerSchema.resolve(tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest)
       : { config: definition.compiledConfig };
     const configRef = await mintCompiledConfigClaimCheckRef(effective.config, bucket, (b, key, data, contentType) =>
       this.s3Service!.putFile(b, key, data, contentType),

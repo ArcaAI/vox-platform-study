@@ -46,12 +46,12 @@ export class EffectiveTriggerSchemaService {
    * A pinned trigger costs no read at all — the binding is answered from the compiled bytes
    * before any repository is touched.
    */
-  async resolve(tenantId: string, compiledConfig: unknown): Promise<EffectiveTriggerConfig> {
-    const binding = triggerContextBinding(compiledConfig);
+  async resolve(tenantId: string, compiledConfig: unknown, followsLatestHint?: boolean | null): Promise<EffectiveTriggerConfig> {
+    const binding = triggerContextBinding(compiledConfig, followsLatestHint);
     if (!binding.followsLatest || binding.schemaId === null) {
-      return effectiveTriggerConfig(compiledConfig, null);
+      return effectiveTriggerConfig(compiledConfig, null, followsLatestHint);
     }
-    return effectiveTriggerConfig(compiledConfig, await this.currentPin(tenantId, binding.schemaId));
+    return effectiveTriggerConfig(compiledConfig, await this.currentPin(tenantId, binding.schemaId), followsLatestHint);
   }
 
   /** The tenant's pinned version of one schema, or `null` for every reason it cannot be read. */
