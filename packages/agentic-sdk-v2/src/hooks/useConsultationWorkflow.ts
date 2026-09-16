@@ -27,6 +27,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import type { GoverningRunSummary } from '@arcaai/types';
 import { useAgenticStore, selectConsultation } from '../store';
 import { useApiOperation } from './useApiOperation';
 import { CONSULTATION_ENDPOINTS } from '../core/constants';
@@ -37,6 +38,8 @@ export interface UseConsultationWorkflowReturn {
   workflow: ConsultationWorkflow | null;
   /** `true` when a tenant-authored workflow governs. `false` while unknown, so never read it as "the default engine governs" — check `workflow !== null` first. */
   isGoverned: boolean;
+  /** Convenience mirror of `workflow?.run` — `null` before the first read resolves, after one fails, or when ungoverned. */
+  governingRun: GoverningRunSummary | null;
   isLoading: boolean;
   /** Why the last read failed, if it did. Never thrown at the caller. */
   error: Error | null;
@@ -79,5 +82,5 @@ export function useConsultationWorkflow(consultationId?: string): UseConsultatio
     void refresh();
   }, [refresh]);
 
-  return { workflow, isGoverned: workflow?.governed ?? false, isLoading, error, refresh };
+  return { workflow, isGoverned: workflow?.governed ?? false, governingRun: workflow?.run ?? null, isLoading, error, refresh };
 }

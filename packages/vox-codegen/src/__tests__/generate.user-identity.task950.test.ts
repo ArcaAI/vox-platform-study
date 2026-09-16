@@ -57,7 +57,8 @@ describe('generateConsultationSchemaTypes — @identity annotation (TASK-950)', 
     const { contents } = generate({ ...BASE_KIND, userIdentity: { field: 'consultant_id' } });
 
     expect(contents).toMatch(/\/\*\* @identity[^*]*\*\/ consultant_id: string;/);
-    expect(contents).toContain('TASK-950');
+    // Generated customer-facing text never carries an internal ticket number.
+    expect(contents).not.toMatch(/TASK-\d/);
     // The unmarked sibling property carries no annotation.
     expect(contents).not.toMatch(/@identity[^*]*\*\/ visit_type/);
 
@@ -73,7 +74,7 @@ describe('generateConsultationSchemaTypes — @identity annotation (TASK-950)', 
     expect(first.contents).not.toContain('@identity');
   });
 
-  it('leaves the shared fixture (no kind marked) byte-identical to today\'s expectation', () => {
+  it("leaves the shared fixture (no kind marked) byte-identical to today's expectation", () => {
     // FIXTURE_SCHEMA_BUNDLE (generate.test.ts's own fixture) declares no
     // `userIdentity` anywhere — the annotation machinery must be a no-op on
     // it, exactly as it was before this ticket.

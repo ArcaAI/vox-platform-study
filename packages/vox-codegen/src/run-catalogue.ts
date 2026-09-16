@@ -2,6 +2,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { checkAgainstDisk, type CheckResult } from './check';
 import { fetchPublishedCatalogue, type FetchPublishedCatalogueOptions } from './fetch-catalogue';
 import { generateCatalogueTypes, type CatalogueSurface } from './generate-catalogue';
 
@@ -45,6 +46,33 @@ export async function runCatalogueCodegenOnce(options: RunCatalogueCodegenOption
     const path = join(outDir, `${surface}.generated.ts`);
     await writeFile(path, file.contents, 'utf8');
     files.push({ surface, path, count: file.count });
+  }
+  return { files };
+}
+
+export interface CheckedCatalogueFile extends WrittenCatalogueFile {
+  check: CheckResult;
+}
+
+export interface CheckCatalogueCodegenResult {
+  files: CheckedCatalogueFile[];
+}
+
+/** Fetch + generate in memory for every requested plane, then compare each against its file in `options.outDir`. Never writes. */
+export async function checkCatalogueCodegenOnce(options: RunCatalogueCodegenOptions): Promise<CheckCatalogueCodegenResult> {
+  const catalogue = await fetchPublishedCatalogue(options);
+  const outDir = resolve(options.outDir);
+
+  const surfaces: CatalogueSurface[] = [];
+  if (options.agents) surfaces.push('agents');
+  if (options.workflows) surfaces.push('workflows');
+
+  const files: CheckedCatalogueFile[] = [];
+  for (const surface of surfaces) {
+    const file = generateCatalogueTypes(catalogue, { surface, baseUrl: options.baseUrl, generatedAt: options.generatedAt });
+    const path = join(outDir, `${surface}.generated.ts`);
+    const check = await checkAgainstDisk(path, file.contents);
+    files.push({ surface, path, count: file.count, check });
   }
   return { files };
 }

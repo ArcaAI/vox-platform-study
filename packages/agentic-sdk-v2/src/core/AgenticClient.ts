@@ -341,6 +341,14 @@ export class AgenticClient {
         if (typeof errorData?.code === 'string') {
           errorContext.code = errorData.code;
         }
+        // The house `{ message, code, problems? }` shape carries one human-readable
+        // string per validation failure — e.g. the unmet requirements of a 400
+        // `WORKFLOW_CONTEXT_INCOMPATIBLE` refusal on `open()`. Lifted beside `code` so a caller
+        // reads `error.context.problems` without re-parsing the response body.
+        if (Array.isArray(errorData?.problems)) {
+          const problems = errorData.problems.filter((p: unknown): p is string => typeof p === 'string');
+          if (problems.length > 0) errorContext.problems = problems;
+        }
         throw new AgenticError(errorCode, errorMessage, { context: errorContext });
       }
 

@@ -1,5 +1,33 @@
 # @arcaai/vox-codegen
 
+## Unreleased — 3.6.0
+
+### Minor Changes
+
+- **`--check`, for both modes.** Regenerates in memory and compares against whatever is
+  committed on disk (the `Generated:` timestamp line is normalized out first, so two honest
+  runs a moment apart still compare equal) — the CI recipe for catching a stale generated
+  file. Matches: prints "is up to date" and exits 0, writing nothing. Drifts (including a
+  missing file): prints a diff and exits 1, still writing nothing. `--check` and `--watch` are
+  mutually exclusive on the consultation-context mode (a check compares one snapshot rather
+  than polling); the business-plane mode already refuses `--watch` outright, so the same rule
+  applies there without a second message.
+- **Tenant-schema mode emits `OpenConsultationContext`** — `{ <kind>?: <KindPayload> }` for
+  every STRUCTURED kind with `lifecycle: 'PRE'` whose `producedBy` includes `CLIENT` (a kind
+  marked `required: true` drops the `?`). Pass it as the type parameter to
+  `hope.consultations.open<OpenConsultationContext>(...)` (`@arcaai/vox-node`) instead of an
+  untyped `Record<string, unknown>`. The file header also gains a `@schemaVersion <n>` tag
+  (machine-grep-able twin of the existing human-readable `Schema:` line), present whenever the
+  tenant has a configured version.
+- **Catalogue mode emits `@contextSchema` and `@reviewNodes`** on each generated
+  `Workflow_<Slug>_Input` type — `@contextSchema <slug> v<n> (follows latest | pinned)` (or
+  `@contextSchema unbound` for a definition with no consultation trigger) and
+  `@reviewNodes <ids>` when the graph carries any `core.humanReview` node, both read off
+  `GET /workflows/{slug}/schema`'s `contextSchema` / `reviewNodes`.
+- **No internal ticket numbers in generated text.** The `@identity` / `@role` / `@materializeAs`
+  / `@streamContext` JSDoc annotations no longer carry a parenthetical ticket reference —
+  customers read generated code, and a ticket id is not part of the contract.
+
 ## 3.5.0
 
 No changes in this release.

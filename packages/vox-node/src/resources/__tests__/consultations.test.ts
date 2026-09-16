@@ -104,11 +104,7 @@ describe('ConsultationsResource#addContext', () => {
     const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
     const resource = new ConsultationsResource(transport);
 
-    await resource.addContext(
-      'c1',
-      { type: 'STRUCTURED', kindKey: 'vitals', payload: { systolic: 128 } },
-      { contextSchemaVersionId: '0199-abc' },
-    );
+    await resource.addContext('c1', { type: 'STRUCTURED', kindKey: 'vitals', payload: { systolic: 128 } }, { contextSchemaVersionId: '0199-abc' });
 
     expect(headerOf(fetchImpl.mock.calls[0]?.[1], 'X-Context-Schema-Version')).toBe('0199-abc');
   });
@@ -139,6 +135,59 @@ describe('ConsultationsResource#addContext', () => {
 
     await expect(resource.addContext('c1', { type: 'CASE_NOTE', content: 'x' })).rejects.toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// listContext
+// -----------------------------------------------------------------------------
+
+const CONTEXT_ITEM_WITH_KIND = {
+  ...CONTEXT_ITEM,
+  id: 'ci2',
+  kindKey: 'vitals',
+  contextSchemaVersionId: 'schema-version-1',
+};
+
+describe('ConsultationsResource#listContext', () => {
+  it('GETs /api/v1/consultations/:id/context and returns the parsed array', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, [CONTEXT_ITEM, CONTEXT_ITEM_WITH_KIND]));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    const result = await resource.listContext('c1');
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://localhost:8868/api/v1/consultations/c1/context');
+    expect((init as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+    expect(result).toEqual([CONTEXT_ITEM, CONTEXT_ITEM_WITH_KIND]);
+  });
+
+  it('reads kindKey and contextSchemaVersionId back on items that declared them', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, [CONTEXT_ITEM_WITH_KIND]));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    const [item] = await resource.listContext('c1');
+    expect(item?.kindKey).toBe('vitals');
+    expect(item?.contextSchemaVersionId).toBe('schema-version-1');
+  });
+
+  it('percent-encodes the consultation id', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, []));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await resource.listContext('c/1');
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:8868/api/v1/consultations/c%2F1/context');
+  });
+
+  it('returns an empty array for a consultation with no context items, not an error', async () => {
+    const fetchImpl = fetchMock(async () => jsonResponse(200, []));
+    const transport = new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl });
+    const resource = new ConsultationsResource(transport);
+
+    await expect(resource.listContext('c1')).resolves.toEqual([]);
   });
 });
 

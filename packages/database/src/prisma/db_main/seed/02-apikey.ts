@@ -1,10 +1,22 @@
 import { createHash, createHmac } from 'crypto';
+import { API_KEY_SCOPE_PRESETS } from '@arcaai/types';
 import type { CorePrismaClient } from '../../../client';
 import { getNodeEnv, type Environment } from '../../../env';
 import { ApiKeyStatus, ApiKeyType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS, SEED_API_KEY_IDS, SEED_API_KEY_RAW, SEED_USER_IDS } from './00-constants';
 import { resolveApiKeyPepper } from './api-key-pepper';
 import { isPhaseEnabled, type SeedMode } from './seed-mode';
+
+/**
+ * `preset.scopes` for one `ApiKeyScopePresetKey` from `@arcaai/types`'s `API_KEY_SCOPE_PRESETS`.
+ * Throws rather than returning `[]` on a missing key — a typo here must fail loudly, not silently
+ * seed a key with fewer scopes than intended.
+ */
+function presetScopes(key: (typeof API_KEY_SCOPE_PRESETS)[number]['key']): readonly string[] {
+  const preset = API_KEY_SCOPE_PRESETS.find((p) => p.key === key);
+  if (!preset) throw new Error(`Unknown API_KEY_SCOPE_PRESETS key: ${key}`);
+  return preset.scopes;
+}
 
 /** This file's phase stem, as `SEED_PHASES_EXCLUDED_FROM_SAFE` spells it. */
 const API_KEY_SEED_PHASE = '02-apikey';
@@ -95,10 +107,13 @@ function extractPrefix(rawKey: string): string {
  * the scope set a seeded SDK key needs to drive the day-1 SDK
  * surface, declared ONCE instead of copy-pasted per key.
  *
- * Every entry is derived from a `@RequiredScopes(...)` a route the browser SDK
- * (`@arcaai/vox`) or the Node SDK (`@arcaai/vox-node`) actually calls — not
- * from what "looks reasonable". The paths were read off the two SDK packages;
- * the scopes off the controllers that serve them:
+ * Derived as the de-duplicated union of the `consultation-app` and `types-codegen`
+ * `API_KEY_SCOPE_PRESETS` (`@arcaai/types`, D-6 — the same presets the console's create-key
+ * dialog offers) plus the self-service reads the day-1 SDK surface also needs but that fall
+ * outside either preset's purpose: `platform:changelog:read` (the What's New dialog) and
+ * `tenant:account:read` (`GET /entitlements/me`). Every entry traces to a `@RequiredScopes(...)`
+ * a route the browser SDK (`@arcaai/vox`) or the Node SDK (`@arcaai/vox-node`) actually calls —
+ * not to what "looks reasonable":
  *
  * | SDK call | Controller | Scope |
  * |-----------------------------------|-------------------------------------|-------|
@@ -114,54 +129,40 @@ function extractPrefix(rawKey: string): string {
  * | `GET /user/me/preferences` | `UserPreferencesController` | `user:preferences:read|write` |
  * | `GET /user/me/departments`, `/rbac/check` | user/rbac `me` reads | `user:profile:read` |
  * | `GET /changelog`, `/changelog/unseen` | `ChangelogController` | `platform:changelog:read` |
+ * | `hope.agents.list` / `vox-codegen --agents` | `AgentBusinessController` | `agent:definition:read` |
+ * | `hope.workflows.list` / `vox-codegen --workflows` | `WorkflowExposureController` | `workflow:definition:read` |
  *
  * NOT included, deliberately:
- * Any `admin:*` or `webhook:*` scope. makes `/api/v1/admin/*` a
- *     JWT-only plane (`@ForbidApiKey()`, checked BEFORE the scope check), and
- * /757 mark all 59 of those strings `reserved: true` — refused at
- *     GRANT time and dropped from the advertised catalog. A seeded key carrying
- *     one would be dead on arrival AND unreproducible through the console.
+ *   - Any `admin:*` scope. Makes `/api/v1/admin/*` a JWT-only plane
+ *     (`@ForbidApiKey()`, checked BEFORE the scope check), and all 59 of those
+ *     strings are `reserved: true` — refused at GRANT time and dropped from
+ *     the advertised catalog. A seeded key carrying one would be dead on
+ *     arrival AND unreproducible through the console.
+ *   - `webhook:event:{read,write}`. Reserved for the identical reason — their
+ *     only consumer, `WebhookController`, lives at `admin/webhooks`, so a
+ *     seeded key can never reach it whatever it carries. A prior draft of
+ *     this list named these two; they are excluded here because including
+ *     them fails `seeded API keys — reserved scopes (policy A2)` in
+ *     `seed-apikey-sdk-scopes.test.ts` and would seed permanently inert
+ *     scopes — see this ticket's README for the flagged conflict.
  *   - `media:file:read`. No route declares it, and `read:Storage` is not an
- * ability any clinical role holds — Decisions.
- * `workflow:*`. The exposure plane ships behind a kill-switch.
+ *     ability any clinical role holds.
+ *   - `agent:invocation:write`, `workflow:run:{read,write}`, `workflows:execute`.
+ *     The `agents-and-workflows` preset's invocation/execution scopes are for a
+ *     server-side integration, not the day-1 clinic-app/codegen surface this
+ *     key drives; a caller that needs them mints an `agents-and-workflows` key.
  */
-export const SDK_DAY_ONE_SCOPES = [
-  // Transcription
-  'stt:transcription:read',
-  'stt:transcription:write',
-  'stt:stream:write',
-  'stt:model:read',
-  // Speech synthesis
-  'tts:speech:write',
-  'tts:voice:read',
-  // Consultation + summarization. `consultation:report:write` is the SDK's
-  // flagship day-1 capability (summary / pre-summary generation) — the seeded
-  // keys 403'd on it once the summarization routes began declaring scopes,
-  // which is why `seed-apikey-sdk-scopes.test.ts` pins it.
-  'consultation:session:read',
-  'consultation:session:write',
-  'consultation:report:read',
-  'consultation:report:write',
-  // Clinician template selector
-  'prompt:template:read',
-  // Tenant self-service reads (resolve to the KEY'S tenant, not its user)
-  'tenant:profile:read',
-  'tenant:context-schema:read',
-  'tenant:account:read',
-  // User self-service (resolve to the key's BOUND USER)
-  'user:profile:read',
-  'user:preferences:read',
-  'user:preferences:write',
-  'user:settings:read',
-  'user:settings:write',
-  // Release notes / What's New
+const SDK_DAY_ONE_SCOPE_SET = new Set<string>([
+  ...presetScopes('consultation-app'),
+  ...presetScopes('types-codegen'),
+  // Self-service reads the day-1 SDK surface needs but that fall outside either preset's
+  // purpose (they are not "open a consultation" and not "generate types").
   'platform:changelog:read',
-  // TASK-974 — `hope.dnaWritingStyle.ingest` (`@arcaai/vox-node`) and `useDnaWritingStyle()`
-  // (`@arcaai/vox`). It gates the INGEST surface only: submitting writing samples for a
-  // clinician, never reading a profile back — `DnaWritingStyleController` keeps its
-  // `@ForbidApiKey()` exemption, so a key still cannot reach a clinician's personal model.
-  'dna-writing-style:ingest',
-] as const;
+  'tenant:account:read',
+]);
+
+/** The de-duplicated union, frozen as a tuple so downstream `as const` usage keeps working. */
+export const SDK_DAY_ONE_SCOPES = [...SDK_DAY_ONE_SCOPE_SET] as const;
 
 export const DEFAULT_API_KEYS = [
   {

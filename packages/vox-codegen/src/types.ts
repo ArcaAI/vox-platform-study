@@ -163,6 +163,14 @@ export interface PublishedWorkflow {
    */
   inputSchema: Record<string, unknown> | null;
   outputSchema: Record<string, unknown> | null;
+  /**
+   * The consultation context schema this definition's trigger is bound to — `null` for a
+   * definition with no consultation trigger. `followsLatest` says whether `versionNumber` tracks
+   * the tenant's current pin or is frozen to the version the workflow was published against.
+   */
+  contextSchema: { schemaId: string; slug: string; versionNumber: number; followsLatest: boolean } | null;
+  /** Every `core.humanReview` node in the graph, in graph order. */
+  reviewNodes: Array<{ nodeId: string; label: string }>;
 }
 
 /** What one business-plane run of the generator read. */

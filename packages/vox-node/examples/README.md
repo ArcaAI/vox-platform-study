@@ -8,22 +8,23 @@ automated coverage see `packages/vox-node/src/**/__tests__/*.test.ts`
 
 ## Layout
 
-| File | Shows |
-|---|---|
-| `01-summary.ts` | Stateless summary from a transcript — the 60-second quickstart |
-| `02-presummary-stream.ts` | Streaming a pre-summary: iterating deltas, then `.result()` |
-| `03-consultation-async.ts` | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts |
-| `04-error-handling.ts` | Catching the typed error hierarchy, including the 404-over-403 nuance |
-| `05-agents-and-workflows.ts` | Invoking a published agent (including NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node |
+| File                          | Shows                                                                                                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-summary.ts`               | Stateless summary from a transcript — the 60-second quickstart                                                                                                                                                                            |
+| `02-presummary-stream.ts`     | Streaming a pre-summary: iterating deltas, then `.result()`                                                                                                                                                                               |
+| `03-consultation-async.ts`    | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts                                                                                                                                                           |
+| `04-error-handling.ts`        | Catching the typed error hierarchy, including the 404-over-403 nuance                                                                                                                                                                     |
+| `05-agents-and-workflows.ts`  | Invoking a published agent (including NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node                                                                                                  |
+| `06-realtime-consultation.ts` | The whole machine-driven consultation journey: open (with a typed `context`) -> record -> live summary -> stop -> release the governing workflow's review gate -> approve the summary -> close -> read the context items and the run back |
 
 ## Commands
 
 Each script reads its config from environment variables — no config file, no CLI flags.
 
-| Command | Effect |
-|---|---|
+| Command                                                                                | Effect                                 |
+| -------------------------------------------------------------------------------------- | -------------------------------------- |
 | `HOPE_API_URL=http://localhost:8868 HOPE_API_KEY=<key> npx tsx examples/01-summary.ts` | Run an example directly, no build step |
-| `pnpm dlx tsx examples/01-summary.ts` | Same, without a local `tsx` install |
+| `pnpm dlx tsx examples/01-summary.ts`                                                  | Same, without a local `tsx` install    |
 
 ## How it works
 
@@ -36,6 +37,12 @@ falls back to the first published entry of each. Its human-review section runs o
 set `HOPE_REVIEW_NODE_ID` — a review is addressed by `(runId, nodeId)`, because one graph may carry
 several. Its socket section needs Node 22 or newer: this SDK has zero runtime dependencies, so the
 socket lane is `globalThis.WebSocket` and nothing else.
+
+`06-realtime-consultation.ts` needs a SERVICE ACCOUNT (`HOPE_SVC_CLIENT_ID` / `HOPE_SVC_CLIENT_SECRET`,
+not an API key — see the package README's "Two credential classes") plus `HOPE_PATIENT_ID` and
+`HOPE_CLINICIAN_USER_ID`. It releases a review gate only when the governing workflow's
+`reviewNodes` names one, and skips the approve/close finish gracefully when the consultation has
+no summary yet.
 
 ### Getting an API key
 

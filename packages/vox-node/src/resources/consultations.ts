@@ -128,7 +128,10 @@ export class ConsultationsResource {
    * `patientId`. The gateway answers that with a 400; it is a programming
    * error, not a server condition.
    */
-  async open(request: OpenConsultationRequest, options: ConsultationRequestOptions = {}): Promise<ConsultationOpenResponse> {
+  async open<TContext extends Record<string, unknown> = Record<string, unknown>>(
+    request: OpenConsultationRequest<TContext>,
+    options: ConsultationRequestOptions = {},
+  ): Promise<ConsultationOpenResponse> {
     if (typeof request.patientId !== 'string' || request.patientId.trim() === '') {
       throw new TypeError('open: `patientId` is required and must be a non-empty string — a consultation is always about a patient.');
     }
@@ -150,6 +153,26 @@ export class ConsultationsResource {
   async get(id: string, options: ConsultationRequestOptions = {}): Promise<ConsultationGetResponse> {
     return this.transport.request<ConsultationGetResponse>({
       path: `consultations/${encodePathSegment(id)}`,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * `GET /api/v1/consultations/:id/context` — read back every context item written on this
+   * consultation, in the order the gateway returns them (`ContextItemRepository.findAll`
+   * ordering — not schema-sorted, not chronologically guaranteed beyond that).
+   *
+   * Pairs with {@link addContext}: `listContext` is how a caller confirms what it sent actually
+   * landed, and reads each item's {@link ContextItemResponse.kindKey} /
+   * {@link ContextItemResponse.contextSchemaVersionId} back — fields `addContext`'s own response
+   * never carried before the gateway's DTO mapper projected them.
+   *
+   * **Scopes.** A service account needs `svc:consultation:session:read` — the same scope
+   * `recording.start`/`stop` require, not the report-tier scope `documentSections` needs.
+   */
+  async listContext(consultationId: string, options: ConsultationRequestOptions = {}): Promise<ContextItemResponse[]> {
+    return this.transport.request<ContextItemResponse[]>({
+      path: `consultations/${encodePathSegment(consultationId)}/context`,
       signal: options.signal,
     });
   }

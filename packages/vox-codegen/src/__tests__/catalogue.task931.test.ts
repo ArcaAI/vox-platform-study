@@ -97,6 +97,8 @@ const TRIAGE_SCHEMA = {
     },
   },
   asyncapi: {},
+  contextSchema: { schemaId: 'schema-1', slug: 'default', versionNumber: 3, followsLatest: true },
+  reviewNodes: [{ nodeId: 'n_review', label: 'Clinician review' }],
 };
 
 /** A fetch double that answers by URL path — so an unexpected route is a loud failure, not a silent default. */
@@ -146,6 +148,36 @@ describe('fetchPublishedCatalogue', () => {
     expect(catalogue.workflows.map((w) => w.slug)).toEqual(['triage']);
   });
 
+  /** Parsed off `GET /workflows/{slug}/schema`'s `contextSchema`/`reviewNodes`. */
+  it('parses contextSchema and reviewNodes off the schema route', async () => {
+    const { fetchImpl } = routedFetch();
+    const catalogue = await fetchPublishedCatalogue({ baseUrl: 'http://localhost:8868', apiKey: 'k', agents: false, workflows: true, fetchImpl });
+
+    expect(catalogue.workflows[0]!.contextSchema).toEqual({ schemaId: 'schema-1', slug: 'default', versionNumber: 3, followsLatest: true });
+    expect(catalogue.workflows[0]!.reviewNodes).toEqual([{ nodeId: 'n_review', label: 'Clinician review' }]);
+  });
+
+  it('defaults contextSchema to null and reviewNodes to [] when the schema route omits them', async () => {
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/workflows')) return jsonResponse({ data: [TRIAGE] });
+      if (url.endsWith('/api/v1/workflows/triage/schema'))
+        return jsonResponse({ ...TRIAGE_SCHEMA, contextSchema: undefined, reviewNodes: undefined });
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const catalogue = await fetchPublishedCatalogue({
+      baseUrl: 'http://localhost:8868',
+      apiKey: 'k',
+      agents: false,
+      workflows: true,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(catalogue.workflows[0]!.contextSchema).toBeNull();
+    expect(catalogue.workflows[0]!.reviewNodes).toEqual([]);
+  });
+
   it('skips the plane that was not asked for', async () => {
     const { fetchImpl, urls } = routedFetch();
 
@@ -192,6 +224,38 @@ describe('generateCatalogueTypes', () => {
     expect(file.contents).toContain('export type Workflow_Triage_Output');
     const diagnostics = typeCheckSource(file.contents);
     expect(diagnostics, formatDiagnostics(diagnostics)).toHaveLength(0);
+  });
+
+  /** The two workflow-only JSDoc tags. */
+  it('emits @contextSchema and @reviewNodes on the workflow input type', async () => {
+    const { fetchImpl } = routedFetch();
+    const catalogue = await fetchPublishedCatalogue({ baseUrl: 'http://h', apiKey: 'k', agents: false, workflows: true, fetchImpl });
+
+    const file = generateCatalogueTypes(catalogue, { surface: 'workflows', baseUrl: 'http://h', generatedAt: FIXED_DATE });
+
+    expect(file.contents).toContain('@contextSchema default v3 (follows latest)');
+    expect(file.contents).toContain('@reviewNodes n_review');
+  });
+
+  it('emits @contextSchema unbound for a definition with no consultation trigger, and omits @reviewNodes when there are none', async () => {
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/workflows')) return jsonResponse({ data: [TRIAGE] });
+      if (url.endsWith('/api/v1/workflows/triage/schema')) return jsonResponse({ ...TRIAGE_SCHEMA, contextSchema: null, reviewNodes: [] });
+      throw new Error(`unexpected URL ${url}`);
+    });
+    const catalogue = await fetchPublishedCatalogue({
+      baseUrl: 'http://h',
+      apiKey: 'k',
+      agents: false,
+      workflows: true,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const file = generateCatalogueTypes(catalogue, { surface: 'workflows', baseUrl: 'http://h', generatedAt: FIXED_DATE });
+
+    expect(file.contents).toContain('@contextSchema unbound');
+    expect(file.contents).not.toContain('@reviewNodes');
   });
 
   it('carries a lookup map keyed by the SLUG, which is what a call site actually passes', async () => {

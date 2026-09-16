@@ -242,6 +242,20 @@ export class ContextItemResponse {
   @ApiPropertyOptional({ description: 'DNA Writing Style ID' })
   dnaWritingStyleId?: string;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The kind key this item satisfies, from the tenant's pinned consultation context schema (e.g. `vitals`, `previous_case_notes`). Null for an item that names no kind — most pre-schema and platform-authored items.",
+    example: 'vitals',
+  })
+  kindKey!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'The `ConsultationContextSchemaVersion` id this item was validated against when `kindKey` is set. Null when `kindKey` is null.',
+  })
+  contextSchemaVersionId!: string | null;
+
   @ApiPropertyOptional({
     description: 'Free-form JSON metadata. Convention: lab/exam ATTACHMENTs carry `{ "subType": "LAB_RESULT" }` (Clinical Workflow Playground WS5).',
   })

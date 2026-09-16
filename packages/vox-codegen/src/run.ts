@@ -2,6 +2,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { checkAgainstDisk, type CheckResult } from './check';
 import { fetchConsultationSchemaBundle, type FetchConsultationSchemaOptions } from './fetch-schema';
 import { generateConsultationSchemaTypes, type GeneratedFile } from './generate';
 import type { ConsultationSchemaBundle } from './types';
@@ -24,4 +25,16 @@ export async function runCodegenOnce(options: RunCodegenOptions): Promise<RunCod
   await mkdir(dirname(resolve(options.outFile)), { recursive: true });
   await writeFile(options.outFile, file.contents, 'utf8');
   return { bundle, file };
+}
+
+export interface CheckCodegenResult extends RunCodegenResult {
+  check: CheckResult;
+}
+
+/** Fetch + generate in memory, then compare against `options.outFile` on disk. Never writes. */
+export async function checkCodegenOnce(options: RunCodegenOptions): Promise<CheckCodegenResult> {
+  const bundle = await fetchConsultationSchemaBundle(options);
+  const file = generateConsultationSchemaTypes(bundle, { tenantId: options.tenantId, generatedAt: options.generatedAt });
+  const check = await checkAgainstDisk(resolve(options.outFile), file.contents);
+  return { bundle, file, check };
 }

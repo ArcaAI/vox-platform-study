@@ -23,44 +23,44 @@ Agent, resolved by the gateway.
 
 ## Layout
 
-| Path | What it holds |
-|---|---|
-| `src/index.ts` | The public entry point — the only supported import surface |
-| `src/client.ts` | `HopeClient` — constructs the transport and every resource namespace |
-| `src/resources/` | Hand-authored resources: `summarization`, `consultations`, `consultation-recording`, `consultation-streams`, `consultation-summaries`, `jobs`, `stt`, `tenants`, `workflows`, `agents`, `dna-writing-style` |
-| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (49 areas) — only `admin-resource.ts` is hand-authored |
-| `src/core/` | Transport, retry, redact, SSE parsing/subscription, realtime STT socket, run-identity guard, webhook signing, service-account token exchange, errors |
-| `src/types/` | Request/response types |
-| `examples/` | Five runnable examples (`01-summary.ts` through `05-agents-and-workflows.ts`), own `examples/README.md` |
+| Path                   | What it holds                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`         | The public entry point — the only supported import surface                                                                                                                                                  |
+| `src/client.ts`        | `HopeClient` — constructs the transport and every resource namespace                                                                                                                                        |
+| `src/resources/`       | Hand-authored resources: `summarization`, `consultations`, `consultation-recording`, `consultation-streams`, `consultation-summaries`, `jobs`, `stt`, `tenants`, `workflows`, `agents`, `dna-writing-style` |
+| `src/resources/admin/` | GENERATED `/api/v1/admin/**` surface (49 areas) — only `admin-resource.ts` is hand-authored                                                                                                                 |
+| `src/core/`            | Transport, retry, redact, SSE parsing/subscription, realtime STT socket, run-identity guard, webhook signing, service-account token exchange, errors                                                        |
+| `src/types/`           | Request/response types                                                                                                                                                                                      |
+| `examples/`            | Six runnable examples (`01-summary.ts` through `06-realtime-consultation.ts`), own `examples/README.md`                                                                                                     |
 
 ## Commands
 
 Run from this directory, or `pnpm --filter @arcaai/vox-node <script>` from the repo root.
 
-| Command | Effect |
-|---|---|
-| `pnpm build` | tsup build |
-| `pnpm dev` | tsup watch mode |
-| `pnpm test` | Vitest (`--passWithNoTests`) |
-| `pnpm test:cov` | Vitest with coverage |
-| `pnpm lint` / `pnpm lint:fix` | ESLint on `src` |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm check:exports` | `attw --pack .` + `publint` — validates the published package's type/export shape |
-| `pnpm gen:admin` | Regenerate `src/resources/admin/**` from the gateway route manifest + OpenAPI doc |
-| `pnpm gen:admin:check` | Fail if the admin surface has drifted from the gateway (CI gate) |
-| `pnpm clean` / `pnpm nuke` | Remove build output (`nuke` also removes `node_modules`) |
+| Command                       | Effect                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm build`                  | tsup build                                                                        |
+| `pnpm dev`                    | tsup watch mode                                                                   |
+| `pnpm test`                   | Vitest (`--passWithNoTests`)                                                      |
+| `pnpm test:cov`               | Vitest with coverage                                                              |
+| `pnpm lint` / `pnpm lint:fix` | ESLint on `src`                                                                   |
+| `pnpm typecheck`              | `tsc --noEmit`                                                                    |
+| `pnpm check:exports`          | `attw --pack .` + `publint` — validates the published package's type/export shape |
+| `pnpm gen:admin`              | Regenerate `src/resources/admin/**` from the gateway route manifest + OpenAPI doc |
+| `pnpm gen:admin:check`        | Fail if the admin surface has drifted from the gateway (CI gate)                  |
+| `pnpm clean` / `pnpm nuke`    | Remove build output (`nuke` also removes `node_modules`)                          |
 
 ## How it works
 
 ### Two credential classes, mutually exclusive
 
-| | API key | Service account |
-|---|---|---|
-| Option / header | `apiKey` / `X-API-Key` | `serviceAccount` / `X-Service-Account-Token` |
-| Reaches the business plane | yes | yes |
-| Reaches `/admin/*` | never | only way to reach it |
-| Issued by | a tenant admin | a platform super-admin |
-| Shape | one long-lived secret | `clientId` + `clientSecret`, exchanged for a ~15-min token |
+|                            | API key                | Service account                                            |
+| -------------------------- | ---------------------- | ---------------------------------------------------------- |
+| Option / header            | `apiKey` / `X-API-Key` | `serviceAccount` / `X-Service-Account-Token`               |
+| Reaches the business plane | yes                    | yes                                                        |
+| Reaches `/admin/*`         | never                  | only way to reach it                                       |
+| Issued by                  | a tenant admin         | a platform super-admin                                     |
+| Shape                      | one long-lived secret  | `clientId` + `clientSecret`, exchanged for a ~15-min token |
 
 Supplying both throws at construction. A user-facing frontend should use a gateway JWT via
 `@arcaai/vox` instead — both credentials here are machine identities with no bound session.
@@ -80,26 +80,26 @@ SDK never sends `X-Tenant-Id` alongside it. Passing top-level `tenantId` togethe
 `UnifiedAuthGuard` checks a `@RequiredScopes(...)` decorator on the API-key auth path (JWT
 callers are unaffected). A key holding `consultation:*` satisfies every scope below.
 
-| SDK method | Required scope (API key) |
-|---|---|
+| SDK method                                                                  | Required scope (API key)     |
+| --------------------------------------------------------------------------- | ---------------------------- |
 | `consultations.open`, `.recording.start/.stop`, `.addContext`, `.streams.*` | `consultation:session:write` |
-| `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor` | `consultation:session:read` |
-| `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession` | `stt:transcription:write` |
-| `summarization.preSummary`/`.preSummaryStream`/`.summary`/`.summaryStream` | `consultation:report:write` |
-| `consultations.summaries.generate*`, `.update` | `consultation:report:write` |
-| `consultations.summaries.list`/`.latest`/`.latestPreSummary` | `consultation:report:read` |
+| `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor`         | `consultation:session:read`  |
+| `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`            | `stt:transcription:write`    |
+| `summarization.preSummary`/`.preSummaryStream`/`.summary`/`.summaryStream`  | `consultation:report:write`  |
+| `consultations.summaries.generate*`, `.update`                              | `consultation:report:write`  |
+| `consultations.summaries.list`/`.latest`/`.latestPreSummary`                | `consultation:report:read`   |
 
 ### Which credential reaches what
 
-| Plane | API key | Service account |
-|---|---|---|
-| `hope.agents.*`, `hope.workflows.*` | yes | yes |
-| `hope.consultations.*` (open, recording, streams, context, summaries) | yes | yes |
-| `hope.consultations.workflows.*` (the clinical workflow plane) | yes | yes |
-| `hope.stt.*` | yes | yes |
-| `hope.tenants.contextSchema()` | yes | yes |
-| `hope.dnaWritingStyle.*` | yes | yes |
-| `hope.admin.*` | never, under any scope | only |
+| Plane                                                                 | API key                | Service account |
+| --------------------------------------------------------------------- | ---------------------- | --------------- |
+| `hope.agents.*`, `hope.workflows.*`                                   | yes                    | yes             |
+| `hope.consultations.*` (open, recording, streams, context, summaries) | yes                    | yes             |
+| `hope.consultations.workflows.*` (the clinical workflow plane)        | yes                    | yes             |
+| `hope.stt.*`                                                          | yes                    | yes             |
+| `hope.tenants.contextSchema()`                                        | yes                    | yes             |
+| `hope.dnaWritingStyle.*`                                              | yes                    | yes             |
+| `hope.admin.*`                                                        | never, under any scope | only            |
 
 A service-account caller opening a consultation MUST name `clinicianUserId` (a machine is never
 recorded as the clinician); a human JWT caller is refused if it sends one.
@@ -129,12 +129,12 @@ and a stale precondition throws `VersionConflictError` (412).
 
 ### Two summarization families
 
-| | `hope.summarization.*` (stateless) | `hope.consultations.summaries.*` (consultation-bound) |
-|---|---|---|
-| Prerequisite | None | A consultation must exist |
-| Persistence | None | Persisted, versioned `ContextItemVersion` rows |
-| Wire contract | v1-compat, frozen `snake_case` | v2 native, `camelCase` |
-| When to use | Migrating a v1 integration; one-off/batch summarization | Building against HOPE's own consultation model |
+|               | `hope.summarization.*` (stateless)                      | `hope.consultations.summaries.*` (consultation-bound) |
+| ------------- | ------------------------------------------------------- | ----------------------------------------------------- |
+| Prerequisite  | None                                                    | A consultation must exist                             |
+| Persistence   | None                                                    | Persisted, versioned `ContextItemVersion` rows        |
+| Wire contract | v1-compat, frozen `snake_case`                          | v2 native, `camelCase`                                |
+| When to use   | Migrating a v1 integration; one-off/batch summarization | Building against HOPE's own consultation model        |
 
 ### Running workflows and invoking agents
 
@@ -163,13 +163,16 @@ hidden `dna-writing-style-analyst` agent can regenerate a clinician's writing-st
 
 ### Realtime consultations
 
-`open()` fixes identity for the whole visit: `clinicianUserId` (-> `Consultation.doctorId`),
+`open<TContext>()` fixes identity for the whole visit: `clinicianUserId` (-> `Consultation.doctorId`),
 `departmentId` (governing workflow + note shape), `parentConsultationId` (present = revisit,
-absent = new visit), `language` (the note's language, independent of the STT language). Then:
-open an STT session (`hope.stt.createStreamSession`), start recording with that session id,
+absent = new visit), `language` (the note's language, independent of the STT language). It is
+GENERIC on `context` — pass the `OpenConsultationContext` type `vox-codegen --tenant` generates
+for your tenant's schema and the payload is checked at the call site, not just at the gateway.
+Then: open an STT session (`hope.stt.createStreamSession`), start recording with that session id,
 subscribe to `hope.consultations.streams.liveSummary/liveAssist/harnessProgress/loop` (each
 returns `{ close() }`; `onError` is required — a subscription is fire-and-forget), stream PCM16
-LE mono up `hope.stt.socket(session)`, then stop recording and read the finished note.
+LE mono up `hope.stt.socket(session)`, then stop recording and read the finished note. The full
+journey, including the finish (below), is `examples/06-realtime-consultation.ts`.
 
 `RealtimeSttSocket` is a socket client, not an inference stack: the handshake carries a
 single-use ticket (never a credential), reconnects resume via `{ type: 'resume', sessionId,
@@ -181,7 +184,28 @@ cascade decide.
 `hope.tenants.contextSchema()` returns the tenant's pinned context-schema bundle; pin its
 `contextSchemaVersionId` on every `addContext` call so a mid-run publish never silently changes
 validation. `@arcaai/vox-codegen --tenant` generates TypeScript types from the same bundle and
-accepts a service account as well as a human JWT.
+accepts a service account as well as a human JWT. `hope.consultations.listContext(id)` reads
+every context item back — including the `kindKey` / `contextSchemaVersionId` each one was
+validated under, which `addContext`'s own response never carried before now.
+
+Every `HopeAPIError` may carry `.problems` — one human-readable string per validation failure
+(the house `{ message, code, problems? }` shape), lifted for every 4xx status. `open()` itself can
+refuse `WORKFLOW_CONTEXT_INCOMPATIBLE` (400) when the governing workflow's trigger would not
+accept the context you sent — see `@arcaai/types`' `OPEN_REFUSAL_CODES` for the full union,
+re-exported from this package.
+
+`ConsultationOpenResponse.governingRun` / `ConsultationGetResponse.governingRun` /
+`hope.consultations.get(id)` read the consultation's governing workflow run — `null` when
+ungoverned — derived from the persisted marker, never a live harness call. Read
+`WorkflowSchemaDescription.reviewNodes` (from `hope.workflows.schema(slug)`) to discover a
+`core.humanReview` node id without hardcoding it, release it with
+`hope.workflows.reviews.get/decide(slug, runId, nodeId)`, then finish the consultation:
+`hope.consultations.summaries.approve(consultationId, contextItemId, { clinicianUserId? }, { ifMatch })`
+signs the note (only legal from `PENDING_REVIEW`), and
+`hope.consultations.close(consultationId, { clinicianUserId? }, { ifMatch })` closes it (only
+legal from `SIGNED` or `TIMED_OUT` — a `PENDING_REVIEW` consultation must be approved first, or
+`close()` answers 409). Both need the row's `version` as `ifMatch`, exactly like every other
+OCC-guarded write in this SDK.
 
 ### Streaming and async jobs
 
