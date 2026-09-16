@@ -179,9 +179,11 @@ class TestADisabledStageCostsZeroModelLoads:
         """The gate reads defensively, and its fallback is a DECLARED one.
 
         A config with no `preprocessing`/`diarization` block must behave exactly
-        like a default `PipelineSpec` — `VadConfig.enabled=True`,
-        `DenoiseConfig.enabled=False`, `DiarizationConfig.enabled=False` — rather
-        than raising, or silently deciding that everything is off.
+        like a default `PipelineSpec` rather than raising. Since TASK-977 moved
+        `VadConfig.enabled` to False, every stage's dataclass default is OFF — so
+        the expectation is DERIVED from the dataclasses, not written down: a blanket
+        "everything off" in the gate would pass a hardcoded `[]` today and silently
+        stop following a default the day one of them changes.
         """
         cache = _RecordingCache()
         await _warm(
@@ -196,7 +198,16 @@ class TestADisabledStageCostsZeroModelLoads:
             cache,
         )
 
-        assert cache.attempted == [VAD_SLUG]
+        expected = [
+            slug
+            for slug, on in (
+                (VAD_SLUG, VadConfig().enabled),
+                (DENOISE_SLUG, DenoiseConfig().enabled),
+                (EMBEDDING_SLUG, DiarizationConfig().enabled),
+            )
+            if on
+        ]
+        assert cache.attempted == expected
 
 
 # ---------------------------------------------------------------------------

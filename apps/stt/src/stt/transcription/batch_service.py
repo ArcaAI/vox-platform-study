@@ -1054,7 +1054,7 @@ class BatchTranscriptionService:
         # defensively: the fallback is each stage's own dataclass default, so a spec
         # carrying no `preprocessing` block behaves like a default `PipelineSpec`.
         _preprocessing = getattr(pipeline.spec, "preprocessing", None)
-        _vad_enabled = bool(getattr(getattr(_preprocessing, "vad", None), "enabled", True))
+        _vad_enabled = bool(getattr(getattr(_preprocessing, "vad", None), "enabled", False))
         _denoise_enabled = bool(getattr(getattr(_preprocessing, "denoise", None), "enabled", False))
 
         # Load ASR model (required)

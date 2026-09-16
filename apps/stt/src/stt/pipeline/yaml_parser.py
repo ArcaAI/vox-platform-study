@@ -550,7 +550,9 @@ class PipelineYamlParser:
 
         vad_data = data.get("vad", {})
         vad = VadConfig(
-            enabled=vad_data.get("enabled", True),
+            # TASK-977 (D-1) — follows `VadConfig.enabled`, now False. A legacy YAML that
+            # wants VAD must say so, exactly as an agent must.
+            enabled=vad_data.get("enabled", False),
             threshold=float(vad_data.get("threshold", 0.6)),
             # Fallbacks aligned with VadConfig defaults (the old 350 ms
             # min-speech fallback was the harshest value in the codebase and

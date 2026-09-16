@@ -115,7 +115,8 @@ postprocessing:
 
         # Check preprocessing defaults
         assert spec.preprocessing.target_sample_rate == 16000
-        assert spec.preprocessing.vad.enabled is True
+        # TASK-977 (D-1) — a YAML that wants VAD must say so.
+        assert spec.preprocessing.vad.enabled is False
         assert spec.preprocessing.vad.threshold == 0.6
 
         # Check inference defaults
