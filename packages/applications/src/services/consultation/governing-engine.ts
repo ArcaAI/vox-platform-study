@@ -1,3 +1,4 @@
+import type { GoverningRunSummary } from '@arcaai/types';
 /**
  * which agentic-loop engine GOVERNS a consultation.
  *
@@ -86,22 +87,8 @@ export type GoverningRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED'
 
 const GOVERNING_RUN_STATUSES: readonly GoverningRunStatus[] = ['RUNNING', 'COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT'];
 
-/**
- * The governing run of a consultation, derived from `Consultation.metadata.governingEngine`.
- *
- * Defined LOCALLY here rather than imported: the canonical copy is landing in `@arcaai/types`
- * alongside the refusal-code union, and the import is switched over at merge.
- */
-export interface GoverningRunSummary {
-  workflowDefinitionSlug: string;
-  workflowRunId: string;
-  /** Persisted vocabulary only — never the interpreter's `SUCCEEDED`/`DEGRADED`. */
-  status: GoverningRunStatus;
-  /** True when the run finished with at least one degraded or skipped-for-cause node. */
-  degraded: boolean;
-  decidedAt: string;
-  failureReason: string | null;
-}
+/** The governing run of a consultation — the canonical shape lives in `@arcaai/types`. */
+export type { GoverningRunSummary } from '@arcaai/types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

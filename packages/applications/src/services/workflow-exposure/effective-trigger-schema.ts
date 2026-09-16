@@ -113,11 +113,18 @@ function triggerContextSchemaBlock(compiledConfig: unknown): Record<string, unkn
  * answers `{ followsLatest: false, schemaId: null }`, which reads as "nothing to re-resolve"
  * at every call site.
  */
-export function triggerContextBinding(compiledConfig: unknown): TriggerContextBinding {
+/**
+ * `followsLatestHint` is the definition row's `contextSchemaFollowsLatest` column — the published
+ * answer for artifacts compiled BEFORE the compiler wrote `followsLatest` into the trigger block
+ * (the migration backfilled the column from the authored graph). Either source saying "latest"
+ * means latest; the compiled flag alone would leave every earlier publish silently pinned.
+ */
+export function triggerContextBinding(compiledConfig: unknown, followsLatestHint?: boolean | null): TriggerContextBinding {
   const contextSchema = triggerContextSchemaBlock(compiledConfig);
   const schemaId =
     typeof contextSchema?.contextSchemaId === 'string' && contextSchema.contextSchemaId.length > 0 ? contextSchema.contextSchemaId : null;
-  return { followsLatest: contextSchema?.followsLatest === true && schemaId !== null, schemaId };
+  const declared = contextSchema?.followsLatest === true || followsLatestHint === true;
+  return { followsLatest: declared && schemaId !== null, schemaId };
 }
 
 /** Replace the trigger node's `contextSchema` block, leaving every other byte where it was. */
@@ -158,12 +165,16 @@ function withTriggerContextSchema(compiledConfig: Record<string, unknown>, conte
  * by a claim-check ref nothing else reads. Recomputing it would mint a checksum for bytes no
  * publish ever produced, which is strictly more misleading than carrying the real one.
  */
-export function effectiveTriggerConfig(compiledConfig: unknown, currentPin: ContextSchemaPin | null): EffectiveTriggerConfig {
+export function effectiveTriggerConfig(
+  compiledConfig: unknown,
+  currentPin: ContextSchemaPin | null,
+  followsLatestHint?: boolean | null,
+): EffectiveTriggerConfig {
   const contextSchema = triggerContextSchemaBlock(compiledConfig);
   const frozen = isPlainObject(contextSchema?.resolved) ? (contextSchema.resolved as Record<string, unknown>) : null;
   const unchanged: EffectiveTriggerConfig = { config: compiledConfig, resolved: frozen, effectiveVersionNumber: null, rewritten: false };
 
-  const { followsLatest } = triggerContextBinding(compiledConfig);
+  const { followsLatest } = triggerContextBinding(compiledConfig, followsLatestHint);
   if (!followsLatest || currentPin === null || !isPlainObject(compiledConfig) || contextSchema === undefined) return unchanged;
 
   const resolved = payloadSchemaFromDefinition(currentPin.definition);

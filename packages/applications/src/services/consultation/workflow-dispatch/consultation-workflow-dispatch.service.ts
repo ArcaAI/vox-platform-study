@@ -235,7 +235,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       // validates `resolved` with `additionalProperties: false`, so a kind added since would fail
       // the run's first node. Resolving here, into the per-run copy, is what lets the interpreter
       // keep reading `resolved` and nothing else.
-      const effective = await this.effectiveTriggerConfigFor(tenantId, definition.compiledConfig);
+      const effective = await this.effectiveTriggerConfigFor(tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest);
 
       const configRef = await mintCompiledConfigClaimCheckRef(effective.config, CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
         this.s3Service!.putFile(b, key, data, contentType),
@@ -360,7 +360,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       const definition = await this.definitionRepository.findPublishedBySlug(input.tenantId, slug);
       if (!definition || consultationSelectionViolation(definition) !== null || !definition.compiledConfig) return null;
 
-      const effective = await this.effectiveTriggerConfigFor(input.tenantId, definition.compiledConfig);
+      const effective = await this.effectiveTriggerConfigFor(input.tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest);
       if (effective.resolved === null) return null;
 
       return {
@@ -386,12 +386,16 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    * pin all answer with the published bytes, because dispatch is best-effort by contract and a
    * clinician must be able to open a consultation whatever the schema plane is doing.
    */
-  private async effectiveTriggerConfigFor(tenantId: string, compiledConfig: unknown): Promise<ReturnType<typeof effectiveTriggerConfig>> {
-    const binding = triggerContextBinding(compiledConfig);
+  private async effectiveTriggerConfigFor(
+    tenantId: string,
+    compiledConfig: unknown,
+    followsLatestHint?: boolean | null,
+  ): Promise<ReturnType<typeof effectiveTriggerConfig>> {
+    const binding = triggerContextBinding(compiledConfig, followsLatestHint);
     if (!binding.followsLatest || binding.schemaId === null || !this.effectiveTriggerSchema) {
-      return effectiveTriggerConfig(compiledConfig, null);
+      return effectiveTriggerConfig(compiledConfig, null, followsLatestHint);
     }
-    return effectiveTriggerConfig(compiledConfig, await this.effectiveTriggerSchema.currentPin(tenantId, binding.schemaId));
+    return effectiveTriggerConfig(compiledConfig, await this.effectiveTriggerSchema.currentPin(tenantId, binding.schemaId), followsLatestHint);
   }
 
   /**
