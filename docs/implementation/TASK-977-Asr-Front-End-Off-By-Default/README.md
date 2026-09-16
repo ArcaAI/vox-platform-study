@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | bugfix / refactor |
 | **Branch** | four lanes → `dev-2.2` |
 | **Base** | `6ae4a535c` |
@@ -74,10 +74,85 @@ the seeded parameters against `AGENT_PARAMETER_SCHEMAS`, so the schema must decl
 
 ## Implementation Summary
 
-_Pending._
+All six decisions landed across five lanes, merged into `dev-2.2` in two waves.
+
+### The behaviour, before and after
+
+| Stage | Before | After |
+|---|---|---|
+| VAD | `enabled` hardcoded `true`; no schema key existed, so no admin could turn it off. The seeded agent bound `silero-vad`, so every tenant ran it. | Declared `audioFrontEnd.vad.enabled`, `default: false`, read by the resolver. The seed declares it `false` and keeps the model slug bound, so enabling it is one switch and never trips the new guard. |
+| Noise suppression | No `enabled` key. Derived: binding a denoise model silently set `level: 'medium'`. | Declared `audioFrontEnd.denoise.enabled`, `default: false`. Enablement is never inferred from a binding. `enabled === false ⟺ level === 'off'`, and `'off'` wins a disagreement so the old `level` spelling still works as a kill switch. |
+| Diarization / voice embedding | Already correct (TASK-887). | Unchanged, plus the embedding model is no longer shipped when the stage is off. |
+| Resampling | `default: true` in the resolver, but the flag was decorative: streaming never read it (zero references under `streaming/`). | Still `true` by default. The streaming path now reads it and forces a resample with a WARNING on a genuine rate mismatch — the batch path's existing posture. Disabling is honoured only where it is a no-op. |
+| Browser | `clientInference.allow` gated exactly two stages. `useLocalVoiceEmbedding` (WavLM) and the raw `useVAD`/`useSTT`/`useNoiseFilter` re-exports ran models with no gate. | One predicate, `isClientInferenceAllowed`, failing closed. Both paths gated; `useSTT` narrowly, only at `features.provider === 'local'`, so capture-only use is untouched. |
+
+### D-3 asymmetry — VAD guarded, denoise deliberately not
+
+`ASR_AGENT_VAD_MODEL_MISSING` joins `ASR_AGENT_DIARIZATION_MODEL_MISSING`: Silero needs weights, and
+`_load_vad_service` resolves them from `models.vad.localPath` — with no row it passes `None` and falls
+back to whatever the HuggingFace cache holds, which is a selection nobody made.
+
+Denoise gets **no** guard, and that is the finding rather than an oversight. The engines are
+RUNTIME-owned: `StreamingDenoiser.initialize()` constructs `pyrnnoise.RNNoise(sample_rate=48000)`,
+`DeepFilterNet3StreamingDenoiser.initialize()` calls `init_df(default_model='DeepFilterNet3')`, and
+both paths pick the engine by NAME from `DenoiseConfig.engine`. `spec.py` never sets `engine` from
+`models`, so the denoise model ref fed nothing but the cache warm. Requiring a bound row would have
+refused the working default configuration.
+
+### What only the merge could catch
+
+`cloudWithAgentFallback` in the contract fixture became the D-4 negative case (a bound denoise model
+with the stage off). The Python half of that same fixture asserted the opposite —
+`denoise.enabled is True`, `strength > 0.5`, `models['rnnoise']` present. The TypeScript lane owned
+the fixture but not `apps/stt`; the Python lane ran against the pre-change fixture. The fixture header
+already says *"change it with both suites open"*, which the file partition made impossible for any one
+lane. Resolved by keeping the fixture (its polarity design is sound) and moving the Python
+denoise-mapping coverage to `twoConnectionsOfOneVendor`, so both poles stay pinned in both languages.
+
+A second merge-only trap: `apps/admin-console` consumes `@arcaai/workflow-contract` from its built
+`dist`, so the console suite fails against a stale build even when the source is correct. Rebuild that
+package after a schema change before trusting a console run in the primary checkout.
+
+### Evidence (primary checkout, post-merge)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/workflow-contract test` | 53 files / 950 tests |
+| `@arcaai/applications test` | 14106 passed; 1 failed FILE, 0 failed tests (see below) |
+| `@arcaai/api test` | 320 files / 4628 passed |
+| `@arcaai/database test` | 92 files / 1826 passed |
+| `@arcaai/vox test` / typecheck / lint | 247 files / 3743 passed; both clean |
+| `@arcaai/admin-console test` / typecheck / lint / build | 340 files / 3266 passed; all clean |
+| `pnpm stt:test:unit` / `stt:lint` / `stt:typecheck` | 3466 passed; ruff clean; mypy clean (142 files) |
+| TS ↔ Python contract parity | 21 passed |
+
+`membership-bounded-sync.integration.test.ts` fails in `beforeAll` with ECONNREFUSED — the isolated
+test infra (port 5433) is down. Zero failed TESTS, nothing in this diff is in its import graph, and it
+reproduces at the base commit. Environmental, out of scope.
+
+### Deliberately not done
+
+- **`VadConfig.enabled` in `apps/stt/src/stt/pipeline/dto.py` stays `True`.** It is the dataclass
+  default for the DEPRECATED `pipeline_id` YAML path, which already fails closed
+  (`STT_DATABASE_ENABLED` defaults `false`). D-1 is satisfied without it; flipping it would change
+  legacy-path execution behaviour and wants its own owner call.
+- **`stt.vad-sensitivity` `GlobalSetting`** (`seed/11-global-setting.ts:251`) has no backend reader
+  left — only the retiring browser SDK's `ModelRegistry`. Retiring it is a settings-registry change
+  with its own migration.
+- **Enum controls with schema defaults** (`diarization.backend`, and `responseFormat`/`memory` on
+  `TEXT_GENERATION`) share the display gap the boolean control just had: a `"Default"` placeholder
+  rather than the effective value. Outside D-1..D-6.
+
+### Verification still owed before this reaches the cluster
+
+D-1(b) changes runtime behaviour for every tenant — sessions fall from Silero VAD to the energy-based
+fallback in `StreamingPreprocessor._run_energy_fallback` until an admin opts in. The gates above prove
+the wiring, not the transcription quality. A listening pass on a real consultation is owed before
+deploy, and the owner accepted that trade when choosing (b) over (a).
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-16 | Ticket opened; four-lane audit recorded; owner decisions D-1(b), D-2..D-6 taken. |
+| 2026-09-16 | All five lanes merged into `dev-2.2`. Status Review, pending the listening pass D-1(b) owes. |
