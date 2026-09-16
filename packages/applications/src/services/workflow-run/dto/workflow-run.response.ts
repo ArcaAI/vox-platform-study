@@ -58,6 +58,17 @@ export class WorkflowRunResponse {
   @ApiProperty({ description: 'Count of nodes that degraded (produced a marked nothing) — a flag, never a run status.' })
   degradedNodeCount: number;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Count of nodes SKIPPED for cause. Sourced from the row's `_metadata.skippedNodeCount` — there is no dedicated column.",
+  })
+  skippedNodeCount: number | null;
+
+  @ApiProperty({
+    description: 'True when the run COMPLETED with at least one degraded-or-skipped-for-cause node. A derived flag, never a run status.',
+  })
+  degraded: boolean;
+
   @ApiPropertyOptional({ nullable: true })
   firstErrorCode: string | null;
 

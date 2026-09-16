@@ -301,6 +301,14 @@ def _envelope_for(batch: RunEventBatch, spec: RunEventSpec) -> Any:
         payload["reason"] = spec.reason
     if spec.iteration is not None:
         payload["iteration"] = spec.iteration
+    if spec.node_count is not None:
+        payload["nodeCount"] = spec.node_count
+    if spec.failed_node_count is not None:
+        payload["failedNodeCount"] = spec.failed_node_count
+    if spec.degraded_node_count is not None:
+        payload["degradedNodeCount"] = spec.degraded_node_count
+    if spec.skipped_node_count is not None:
+        payload["skippedNodeCount"] = spec.skipped_node_count
 
     return build_run_event(
         tenant_id=batch.tenant_id,

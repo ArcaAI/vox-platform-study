@@ -50,24 +50,41 @@ export class WorkflowExposureDtoMapper {
    *
    * Both default to `null`, which is also the honest answer for every caller that has no run row
    * to read from.
+   *
+   * TASK-982 (E6) — `status` is the caller's ALREADY-FOLDED value (`terminalStatusOf(upstream.status)
+   * ?? 'RUNNING'`, computed once in `WorkflowExposureService.getRunStatus`), never `upstream.status`
+   * verbatim: the raw interpreter vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…) must never reach a
+   * caller, on this surface or the persisted one. The four node counts share `resultRef`'s
+   * provenance — the durable run read model, not Temporal — and `degraded` is DERIVED from them:
+   * a per-run FLAG, never a run STATE (README pitfall 6).
    */
   static toStatusResponse(
     slug: string,
     workflowVersionNumber: number,
     upstream: GetWorkflowRunResult,
+    status: string,
     resultRef: Record<string, unknown> | null = null,
     actingUserId: string | null = null,
+    nodeCount: number | null = null,
+    failedNodeCount: number | null = null,
+    degradedNodeCount: number | null = null,
+    skippedNodeCount: number | null = null,
   ): WorkflowRunStatusResponse {
     return {
       runId: upstream.runId,
       slug,
       workflowVersionNumber,
-      status: upstream.status,
+      status,
       stages: upstream.stages,
       startedAt: upstream.startedAt,
       endedAt: upstream.endedAt,
       resultRef,
       actingUserId,
+      nodeCount,
+      failedNodeCount,
+      degradedNodeCount,
+      skippedNodeCount,
+      degraded: status === 'COMPLETED' && (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0,
     };
   }
 

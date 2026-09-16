@@ -13,11 +13,15 @@
 import { Module } from '@nestjs/common';
 
 import { ILivePreSummaryRunner } from '../live-documentation/live-pre-summary.port';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { LivePreSummaryAdapter } from './live-pre-summary.adapter';
 import { SummaryServiceModule } from './summary.service.module';
 
 @Module({
-  imports: [SummaryServiceModule],
+  // TASK-982 §3.4.5 — resolves the `@Optional` EffectiveSettingsService the retry loop reads its
+  // bounded-attempts knob from; the same import `LiveDocumentationServiceModule` carries for the
+  // sibling `consultation.realtime.*` budgets.
+  imports: [SummaryServiceModule, EffectiveSettingsModule],
   providers: [LivePreSummaryAdapter, { provide: ILivePreSummaryRunner, useExisting: LivePreSummaryAdapter }],
   exports: [ILivePreSummaryRunner],
 })

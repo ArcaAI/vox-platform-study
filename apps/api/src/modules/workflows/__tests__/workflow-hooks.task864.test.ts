@@ -6,9 +6,9 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { Reflector } from '@nestjs/core';
-import { SKIP_AUTH_KEY } from '@arcaai/applications';
+import { SKIP_AUTH_KEY, terminalStatusOf } from '@arcaai/applications';
 import { WorkflowHooksController } from '../workflow-hooks.controller';
-import { WorkflowRunCompletionService, terminalStatusOf } from '../workflow-run-completion.service';
+import { WorkflowRunCompletionService } from '../workflow-run-completion.service';
 import { WorkflowsController } from '../workflows.controller';
 
 const reflector = new Reflector();

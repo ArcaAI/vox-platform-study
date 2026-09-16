@@ -44,7 +44,10 @@ export class WorkflowRunStatusResponse {
   @ApiProperty()
   workflowVersionNumber: number;
 
-  @ApiProperty({ description: 'Live Temporal-sourced status string (RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT/…).' })
+  @ApiProperty({
+    description:
+      'RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT — already folded through the same vocabulary the persisted `WorkflowRun` row uses (TASK-982, E6): the interpreter\'s raw SUCCEEDED/DEGRADED/CANCELLED never reach this field.',
+  })
   status: string;
 
   @ApiProperty({ type: [WorkflowRunStageResponse] })
@@ -71,6 +74,23 @@ export class WorkflowRunStatusResponse {
       "TASK-950 — the clinician this run acts FOR, sourced (like `resultRef`) from the durable run read model's `_metadata.actingUserId` rather than from Temporal. It sits BESIDE the actor the audit envelope names (the service account), never instead of it. `null` for a human caller, for a consultation-bound run (identity is `Consultation.doctorId`), and for a trigger schema that declares no identity field.",
   })
   actingUserId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled node count, sourced from the durable run read model. Null until the run is synced.' })
+  nodeCount: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled FAILED-node count, sourced from the durable run read model.' })
+  failedNodeCount: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled DEGRADED-node count, sourced from the durable run read model.' })
+  degradedNodeCount: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'TASK-982 — settled SKIPPED-for-cause node count, sourced from the durable run read model.' })
+  skippedNodeCount: number | null;
+
+  @ApiProperty({
+    description: 'True when `status` is COMPLETED and at least one node degraded or was skipped for cause. A derived flag, never a run status (README pitfall 6).',
+  })
+  degraded: boolean;
 }
 
 /** Response of `POST /api/v1/workflows/:slug/runs/:runId/cancel`. */
