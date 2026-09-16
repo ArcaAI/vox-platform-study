@@ -151,12 +151,14 @@ transient after N consecutive failures) or a manual
 `provider_switched` result on the session's result stream. `transcribe_file`
 re-dispatches once onto the fallback within the same Dramatiq attempt.
 
-**Diarization backends.** Default is embedding + in-memory clustering
+**Diarization backend.** Embedding + in-memory clustering
 (`pyannote/wespeaker-voxceleb-resnet34-LM`, 256-dim, or SpeechBrain
-ECAPA-TDNN, 192-dim, selected by a `speechbrain/*` model id). An optional
-self-hosted **Streaming Sortformer** backend (`DiarizationConfig.backend ==
-"sortformer"`, GPU-only) exists for the live 2-speaker loop and degrades to
-"no labels" until its weights + NeMo runtime are staged.
+ECAPA-TDNN, 192-dim, selected by a `speechbrain/*` model id) is the only
+backend: `ResolvedAsrSpec.audioFrontEnd.diarization.backend` accepts `embedding`
+alone, and a spec or legacy pipeline YAML naming anything else is refused, never
+coerced. The self-hosted NeMo Streaming Sortformer backend was retired by
+TASK-980 — its checkpoint was a code literal no agent could select, and the
+production image carries no NeMo to run it.
 
 **Punctuation restoration (Cadence).** `punctuation/cadence_fast.py` loads
 `ai4bharat/Cadence-Fast` directly via `transformers` under the exact model

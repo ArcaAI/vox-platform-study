@@ -141,7 +141,6 @@ class StreamingInferenceWorker:
         postprocessing_config: PostprocessingConfig | None = None,
         initial_prompt: str | None = None,
         speaker_identifier: Any = None,
-        sortformer_diarizer: Any = None,
         prev_text_context_words: int | None = None,
         max_words_per_second: float | None = None,
         max_segment_text_chars: int | None = None,
@@ -252,16 +251,6 @@ class StreamingInferenceWorker:
         self._last_final_tail: str = ""
         self._initial_prompt: str | None = initial_prompt
         self._speaker_identifier = speaker_identifier
-        # Self-hosted Streaming Sortformer diarizer. When
-        # present (backend == "sortformer" sessions), it REPLACES the embedding
-        # SpeakerIdentifier path: frame-level turns are attached to
-        # ``result.speaker_id`` on both finals and partials. None keeps the
-        # default embedding path byte-for-byte.
-        self._sortformer_diarizer = sortformer_diarizer
-        # One per-session diarizer instance is shared by the final consume loop
-        # and the partial task; the underlying NeMo model is not reentrant, so
-        # serialize every forward through a single-slot lock.
-        self._sortformer_lock = asyncio.Lock()
         # TASK-934 — the session's own decode window
         # (`AiModel._metadata.asr.maxDecodeWindowSec` →
         # `InferenceConfig.max_decode_window_sec`), asked for per CALL rather
@@ -671,43 +660,27 @@ class StreamingInferenceWorker:
 
         # Step 3: Speaker Diarization
         if utterance.is_final:
-            if self._sortformer_diarizer is not None:
-                # Self-hosted Streaming Sortformer path. Attach the
-                # longest-turn label to the existing wire field; fail-safe (no
-                # crash, no label) when the diarizer degrades. Only diarize when
-                # the final carries text — parity with the embedding path.
-                if result.text.strip():
-                    logger.debug(
-                        "Diarizing final with Streaming Sortformer",
-                        session_id=session_id,
-                        component="SPEAKER_DIARIZATION",
-                        utterance_index=utterance.utterance_index,
-                    )
-                    sortformer_speaker = await self._diarize_utterance_sortformer(utterance)
-                    if sortformer_speaker:
-                        result.speaker_id = sortformer_speaker
-            else:
-                logger.debug(
-                    "Identifying speaker from embedding",
-                    session_id=session_id,
-                    component="SPEAKER_DIARIZATION",
-                    utterance_index=utterance.utterance_index,
-                )
-                diarization_enabled = bool(
-                    self._diarization_config and getattr(self._diarization_config, "enabled", False)
-                )
-                speaker_id, speaker_confidence = await self._identify_speaker(
-                    embedding,
-                    result.text,
-                    samples=utterance.samples,
-                    sample_rate=utterance.sample_rate,
-                )
-                if diarization_enabled and result.text.strip() and not speaker_id:
-                    speaker_id = "unknown"
-                if speaker_id:
-                    result.speaker_id = speaker_id
-                    if speaker_confidence is not None:
-                        result.speaker_confidence = float(speaker_confidence)
+            logger.debug(
+                "Identifying speaker from embedding",
+                session_id=session_id,
+                component="SPEAKER_DIARIZATION",
+                utterance_index=utterance.utterance_index,
+            )
+            diarization_enabled = bool(
+                self._diarization_config and getattr(self._diarization_config, "enabled", False)
+            )
+            speaker_id, speaker_confidence = await self._identify_speaker(
+                embedding,
+                result.text,
+                samples=utterance.samples,
+                sample_rate=utterance.sample_rate,
+            )
+            if diarization_enabled and result.text.strip() and not speaker_id:
+                speaker_id = "unknown"
+            if speaker_id:
+                result.speaker_id = speaker_id
+                if speaker_confidence is not None:
+                    result.speaker_confidence = float(speaker_confidence)
 
         logger.info(
             "Utterance transcribed",
@@ -1184,68 +1157,6 @@ class StreamingInferenceWorker:
             )
             return None, None
 
-    async def _diarize_utterance_sortformer(self, utterance: AudioUtterance) -> str | None:
-        """Streaming Sortformer turn label for one utterance window.
-
-        Runs the (self-hosted, injectable) diarizer over the utterance audio and
-        returns the ``"S<i>"`` label of the turn with the greatest temporal
-        overlap with the window, or ``None`` when the diarizer degraded
-        (``applied=False``) or produced no turns. Never raises — the diarizer is
-        fail-safe by contract, and this wrapper guards defensively so a wiring
-        surprise can never crash the ASR hot path. The forward is offloaded to a
-        worker thread (GPU/CPU-bound) to keep the event loop free.
-        """
-        diarizer = self._sortformer_diarizer
-        if diarizer is None:
-            return None
-        try:
-            samples = utterance.samples
-            sample_rate = int(utterance.sample_rate)
-            # Serialize the shared, non-reentrant diarizer across the partial and
-            # final threads — only the forward needs the lock; ``to_turns``
-            # runs on a fresh result and touches no shared state.
-            async with self._sortformer_lock:
-                diarization = await asyncio.to_thread(diarizer.diarize, samples, sample_rate)
-            if not diarization.applied:
-                return None
-            threshold = (
-                float(getattr(self._diarization_config, "sortformer_threshold", 0.5))
-                if self._diarization_config is not None
-                else 0.5
-            )
-            turns = diarization.to_turns(threshold)
-            if not turns:
-                return None
-            return self._max_duration_label(turns)
-        except Exception as exc:  # noqa: BLE001 — never crash the hot path
-            logger.warning(
-                "Streaming sortformer diarization failed",
-                tenant_id=self._tenant_id,
-                error=type(exc).__name__,
-            )
-            return None
-
-    @staticmethod
-    def _max_duration_label(
-        turns: list[tuple[float, float, str]],
-    ) -> str | None:
-        """Label of the longest turn in the set.
-
-        ``to_turns`` yields contiguous, non-overlapping, buffer-local turns, so
-        the dominant speaker of the window is simply the turn of greatest
-        duration. Ranking by duration alone keeps the choice independent of the
-        model frame-time base vs. the real-audio window length (M2). On a tie the
-        earliest turn wins (strict ``>``); an empty set yields ``None``.
-        """
-        best_label: str | None = None
-        best_duration = 0.0
-        for start, end, label in turns:
-            duration = end - start
-            if duration > best_duration:
-                best_duration = duration
-                best_label = label
-        return best_label
-
     def _is_hallucination(self, text: str, utterance: AudioUtterance) -> bool:
         """Detect likely hallucinated output from silence or near-silence audio.
 
@@ -1425,15 +1336,6 @@ class StreamingInferenceWorker:
 
         # NOTE: Do NOT update self._previous_text for partials
 
-        # The Streaming Sortformer path diarizes partials too
-        # (frame-level turns are available immediately). The embedding path
-        # leaves partials unlabeled (speaker_id=None), unchanged. Skip the
-        # forward when the partial has no text — it is dropped by the publish
-        # gate anyway, so paying a full diarizer forward would be wasted.
-        speaker_id: str | None = None
-        if self._sortformer_diarizer is not None and text:
-            speaker_id = await self._diarize_utterance_sortformer(utterance)
-
         elapsed = time.monotonic() - start_ts
 
         return SegmentResult(
@@ -1441,7 +1343,8 @@ class StreamingInferenceWorker:
             start_time=utterance.start_time,
             end_time=utterance.end_time,
             is_final=False,
-            speaker_id=speaker_id,
+            # Partials are never diarized: embedding diarization labels finals only.
+            speaker_id=None,
             speaker_confidence=0.0,
             inference_ms=round(elapsed * 1000, 1),
             utterance_index=utterance.utterance_index,

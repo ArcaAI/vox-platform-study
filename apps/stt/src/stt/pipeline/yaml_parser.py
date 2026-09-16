@@ -39,6 +39,16 @@ from .dto import (
 logger = logging.getLogger(__name__)
 
 
+class UnsupportedDiarizationBackendError(ValueError):
+    """A pipeline YAML selects a diarization backend this runtime does not run.
+
+    Raised at PARSE time, before a ``DiarizationConfig`` exists, so an unsupported
+    backend is refused rather than parsed into a session that would silently run
+    embedding diarization instead. A ``ValueError``, so every caller that already
+    reports parse failures as config errors reports this one too.
+    """
+
+
 class PipelineYamlParser:
     """
     Parse and validate pipeline YAML configuration.
@@ -743,7 +753,19 @@ class PipelineYamlParser:
         )
 
     def _parse_diarization(self, data: dict[str, Any]) -> DiarizationConfig:
-        """Parse diarization section."""
+        """Parse diarization section.
+
+        Raises:
+            UnsupportedDiarizationBackendError: ``backend`` names anything but a
+                supported backend.
+        """
+        backend = data.get("backend", "embedding")
+        if backend not in VALID_DIARIZATION_BACKENDS:
+            # The NeMo sortformer backend was retired by TASK-980: refused by name, never mapped.
+            raise UnsupportedDiarizationBackendError(
+                f"diarization.backend {backend!r} is not supported; "
+                f"valid values: {', '.join(VALID_DIARIZATION_BACKENDS)}"
+            )
         return DiarizationConfig(
             enabled=data.get("enabled", False),
             high_threshold=float(data.get("high_threshold", 0.7)),
@@ -753,14 +775,7 @@ class PipelineYamlParser:
             segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
             min_update_confidence=float(data.get("min_update_confidence", 0.8)),
             enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
-            # Streaming diarizer backend selector + Sortformer knobs.
-            backend=str(data.get("backend", "embedding")),
-            sortformer_model_id=str(
-                data.get("sortformer_model_id", "nvidia/diar_streaming_sortformer_4spk-v2.1")
-            ),
-            sortformer_revision=data.get("sortformer_revision"),
-            sortformer_threshold=float(data.get("sortformer_threshold", 0.5)),
-            sortformer_frame_shift_s=float(data.get("sortformer_frame_shift_s", 0.08)),
+            backend=backend,
         )
 
 

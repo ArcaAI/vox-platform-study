@@ -5,10 +5,11 @@ separately here. It is a SIBLING of ``streaming_quality.py`` (NOT a fork
 of it): the ASR-guardrail scorecard (WER / keyterm recall / transport) stays in
 ``streaming_quality.py``; the speaker-attribution scorecard lives here.
 
-Deterministic, dependency-light (stdlib only — no numpy, no NeMo), so the metric
-math is unit-testable with NOTHING staged. The LIVE capture on real 2-speaker
-clinical audio (baseline) is what is BLOCKED on the un-staged Streaming
-Sortformer model — this module is the scaffold that capture will feed.
+Deterministic, dependency-light (stdlib only — no numpy, no model), so the metric
+math is unit-testable with NOTHING staged. It is backend-agnostic: it scores the
+turns of whichever diarizer produced them (today the embedding-clustering path).
+The LIVE capture on real de-identified 2-speaker clinical audio (baseline) has not
+been taken yet — this module is the scaffold that capture will feed.
 
 WHAT'S HERE
 -----------
