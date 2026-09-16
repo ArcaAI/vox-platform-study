@@ -1,6 +1,6 @@
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { ResourceStatusType, SysEventType } from '@arcaai/domains';
-import { BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceProfileService } from '../voiceProfile.service';
@@ -75,7 +75,9 @@ const mockAsrResolver = {
   resolve: vi.fn(),
 };
 
-function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThreshold?: number | null } = {}) {
+function asrSpec(
+  overrides: { embedding?: unknown; enabled?: boolean; backend?: 'embedding' | 'sortformer'; matchThreshold?: number | null } = {},
+) {
   const embedding = 'embedding' in overrides ? overrides.embedding : { slug: EMBEDDING_SLUG, sourceUri: EMBEDDING_SOURCE_URI };
   return {
     spec: {
@@ -84,6 +86,7 @@ function asrSpec(overrides: { embedding?: unknown; enabled?: boolean; matchThres
       audioFrontEnd: {
         diarization: {
           enabled: overrides.enabled ?? true,
+          backend: overrides.backend ?? 'embedding',
           ...(overrides.matchThreshold === undefined ? {} : { matchThreshold: overrides.matchThreshold }),
         },
       },
@@ -345,13 +348,54 @@ describe('VoiceProfileService', () => {
         expect((mockHttpService.post.mock.calls[0][1] as FormData).get('min_similarity')).toBeNull();
       });
 
-      it('refuses BEFORE any audio leaves the gateway when the agent declares no embedding model', async () => {
+      /**
+       * TASK-977 follow-up (owner decision 2026-09-16) — enrollment COMPUTES a voice embedding,
+       * and voice embedding is off unless the admin enabled diarization on the agent. So a
+       * disabled stage refuses enrollment outright, even when the agent already names an
+       * embedding model (the seeded `realtime-transcription` agent does), and it refuses before
+       * a single sample reaches apps/stt: nothing is embedded or stored for a stage nothing uses.
+       * This reverses TASK-887's "enrol ahead of enabling".
+       */
+      it('refuses with 409 ASR_AGENT_DIARIZATION_DISABLED BEFORE any audio leaves the gateway when diarization is off', async () => {
         mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: false }));
 
-        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
-          constructor: BadRequestException,
-          message: expect.stringContaining('embeddingModelSlug'),
+        const thrown = await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }).catch((error: unknown) => error);
+
+        expect(thrown).toBeInstanceOf(ConflictException);
+        expect((thrown as ConflictException).getResponse()).toEqual({
+          code: 'ASR_AGENT_DIARIZATION_DISABLED',
+          message: expect.stringContaining(`'${AGENT_SLUG}'`),
         });
+        expect(((thrown as ConflictException).getResponse() as { message: string }).message).toContain('audioFrontEnd.diarization.enabled');
+        // The stale advice must be gone: the model slug was never the problem.
+        expect(((thrown as ConflictException).getResponse() as { message: string }).message).not.toContain('embeddingModelSlug');
+        expect(mockHttpService.post).not.toHaveBeenCalled();
+        expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+      });
+
+      it('refuses with 409 even when the disabled agent already names an embedding model (the seeded agent’s shape)', async () => {
+        // Before D-4 the model still shipped with the stage off; refusing on the switch, not on
+        // model presence, keeps the answer the same whichever way the resolver ships it.
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false }));
+
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
+          constructor: ConflictException,
+          response: { code: 'ASR_AGENT_DIARIZATION_DISABLED' },
+        });
+        expect(mockHttpService.post).not.toHaveBeenCalled();
+        expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+      });
+
+      it('refuses with a TRUE 400 when diarization is on but the sortformer backend needs no enrolled profiles', async () => {
+        mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: true, backend: 'sortformer' }));
+
+        const thrown = await service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }).catch((error: unknown) => error);
+
+        expect(thrown).toBeInstanceOf(BadRequestException);
+        const message = (thrown as BadRequestException).message;
+        expect(message).toContain(`'${AGENT_SLUG}'`);
+        expect(message).toContain('sortformer');
+        expect(message).not.toContain('embeddingModelSlug');
         expect(mockHttpService.post).not.toHaveBeenCalled();
         expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
       });
@@ -532,13 +576,13 @@ describe('VoiceProfileService', () => {
 
   describe('enrollmentTarget', () => {
     it('reports the resolved agent’s embedding model and whether it diarizes', async () => {
-      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ matchThreshold: 0.55 }));
 
       await expect(service.enrollmentTarget()).resolves.toEqual({
         agentSlug: AGENT_SLUG,
         modelId: EMBEDDING_SLUG,
         modelSourceUri: EMBEDDING_SOURCE_URI,
-        diarizationEnabled: false,
+        diarizationEnabled: true,
         matchThreshold: 0.55,
       });
       // No slug given ⇒ the ASSIGNED agent, which is what a session with no explicit agent runs.
@@ -547,6 +591,15 @@ describe('VoiceProfileService', () => {
 
     it('reports a null threshold when the agent declared none', async () => {
       await expect(service.enrollmentTarget()).resolves.toMatchObject({ matchThreshold: null });
+    });
+
+    it('refuses the target with 409 ASR_AGENT_DIARIZATION_DISABLED while the agent’s diarization is off', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(asrSpec({ enabled: false, matchThreshold: 0.55 }));
+
+      await expect(service.enrollmentTarget()).rejects.toMatchObject({
+        constructor: ConflictException,
+        response: { code: 'ASR_AGENT_DIARIZATION_DISABLED' },
+      });
     });
   });
 

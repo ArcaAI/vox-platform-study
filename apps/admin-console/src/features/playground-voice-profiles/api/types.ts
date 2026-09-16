@@ -48,6 +48,20 @@ export interface VoiceProfileEnrollmentTarget {
   diarizationEnabled: boolean;
 }
 
+/**
+ * TASK-977 — is this the gateway refusing enrollment because the agent has speaker diarization
+ * switched off (409 `{ code: 'ASR_AGENT_DIARIZATION_DISABLED', message }`)?
+ *
+ * Read off the BODY's `code` (`GatewayError.details`), not `GatewayError.code`, which carries the
+ * Nest `error` name and is unset on this envelope. Status is checked too: other ASR agent
+ * conflicts are also 409s, and only this code is a verdict on enrollment.
+ */
+export function isDiarizationDisabledError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status, details } = error as { status?: unknown; details?: unknown };
+  return status === 409 && (details as { code?: unknown } | undefined)?.code === 'ASR_AGENT_DIARIZATION_DISABLED';
+}
+
 /** PATCH :id/activate | :id/deactivate acknowledgement. */
 export interface VoiceProfileToggleResponse {
   success: boolean;

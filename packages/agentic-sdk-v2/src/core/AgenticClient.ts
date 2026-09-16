@@ -336,6 +336,11 @@ export class AgenticClient {
         if (response.status === 412 && errorData?.metadata?.currentVersion !== undefined) {
           errorContext.currentVersion = errorData.metadata.currentVersion;
         }
+        // The gateway's machine-readable `code` (e.g. `ASR_AGENT_DIARIZATION_DISABLED`) is the
+        // only thing that tells one 409 from another; `errorCode` above is a status bucket.
+        if (typeof errorData?.code === 'string') {
+          errorContext.code = errorData.code;
+        }
         throw new AgenticError(errorCode, errorMessage, { context: errorContext });
       }
 
@@ -885,7 +890,8 @@ export class AgenticClient {
         }
 
         throw new AgenticError(errorCode, errorMessage, {
-          context: { status: response.status, endpoint, requestId },
+          // Same lift as `request()`: keep the gateway's machine-readable `code`.
+          context: { status: response.status, endpoint, requestId, ...(typeof errorData?.code === 'string' ? { code: errorData.code } : {}) },
         });
       }
 
