@@ -773,6 +773,146 @@ describe('PromptManagementService', () => {
       expect(mockVersionRepo.findMaxVersionNumber).toHaveBeenCalledWith('template-id-1', mockTxClient);
       expect(mockVersionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ versionNumber: 6 }), mockTxClient);
     });
+
+    // ─── Change detection by VALUE, not by field presence ───
+    // The admin console always sends name/content/variables/tags. A field that
+    // is present but equal to the stored value is not a change: it must not mint
+    // a PromptVersion, and it must not flag an APPROVED template as live-edited.
+    // Only content/variables are snapshotted in a PromptVersion, so only a real
+    // difference in those two mints one.
+    describe('change detection (value comparison)', () => {
+      const declared = [{ name: 'transcript', type: 'string', required: true }];
+      const storedTemplate = (overrides: Record<string, unknown> = {}) =>
+        createMockTemplateEntity({
+          name: 'e2e977 A',
+          description: null,
+          content: 'Summarize {{transcript}}',
+          variables: declared,
+          tags: ['scribe'],
+          version: 5,
+          ...overrides,
+        });
+      const consoleSave = (overrides: Record<string, unknown> = {}) =>
+        ({
+          name: 'e2e977 A',
+          content: 'Summarize {{transcript}}',
+          variables: [{ name: 'transcript', type: 'string', required: true }],
+          tags: ['scribe'],
+          expectedVersion: 5,
+          ...overrides,
+        }) as never;
+
+      beforeEach(() => {
+        mockTemplateRepo.updateWithVersion.mockImplementation(async (_id: string, entity: unknown) => entity);
+      });
+
+      it('a status-only console save (every other field resubmitted unchanged) does not mint a version', async () => {
+        const existing = storedTemplate();
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ status: 'PUBLISHED' }));
+
+        expect(existing.status).toBe('PUBLISHED');
+        expect(existing.incrementVersion).not.toHaveBeenCalled();
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+        expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 5, mockTxClient);
+      });
+
+      it('an identical resubmit with no status change is rejected as "no changes" and mints no version', async () => {
+        mockTemplateRepo.findById.mockResolvedValue(storedTemplate());
+
+        await expect(service.updatePromptTemplate('template-id-1', consoleSave())).rejects.toThrow(ArgumentInvalidException);
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+        expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      it('treats stored null variables and a submitted empty list as equal (console-created v1)', async () => {
+        const existing = storedTemplate({ variables: null, content: 'Plain prompt' });
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ content: 'Plain prompt', variables: [], status: 'PUBLISHED' }));
+
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('compares variables independent of object key order (JSONB reorders keys)', async () => {
+        mockTemplateRepo.findById.mockResolvedValue(storedTemplate());
+
+        await service.updatePromptTemplate(
+          'template-id-1',
+          consoleSave({ variables: [{ required: true, type: 'string', name: 'transcript' }], status: 'PUBLISHED' }),
+        );
+
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('treats an empty submitted description as equal to a stored null description', async () => {
+        const existing = storedTemplate();
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+
+        await expect(service.updatePromptTemplate('template-id-1', consoleSave({ description: '' }))).rejects.toThrow(ArgumentInvalidException);
+      });
+
+      it('a real content change mints exactly one version', async () => {
+        const existing = storedTemplate();
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+        mockVersionRepo.findMaxVersionNumber.mockResolvedValue(2);
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ content: 'Summarize {{transcript}} briefly' }));
+
+        expect(existing.incrementVersion).toHaveBeenCalledTimes(1);
+        expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
+        expect(mockVersionRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ versionNumber: 3, content: 'Summarize {{transcript}} briefly' }),
+          mockTxClient,
+        );
+      });
+
+      it('a real variables change mints a version', async () => {
+        const existing = storedTemplate();
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ variables: [{ name: 'transcript', type: 'string', required: false }] }));
+
+        expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('a rename / description / tags change writes the row but does not mint a version', async () => {
+        const existing = storedTemplate();
+        mockTemplateRepo.findById.mockResolvedValue(existing);
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ name: 'Renamed', description: 'Now described', tags: ['scribe', 'ed'] }));
+
+        expect(existing.name).toBe('Renamed');
+        expect(existing.description).toBe('Now described');
+        expect(existing.tags).toEqual(['scribe', 'ed']);
+        expect(existing.incrementVersion).not.toHaveBeenCalled();
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+        expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 5, mockTxClient);
+      });
+
+      it('renaming an APPROVED template (content resubmitted unchanged) is not flagged wasApprovedLiveEdit', async () => {
+        mockTemplateRepo.findById.mockResolvedValue(storedTemplate({ status: 'APPROVED' }));
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ name: 'Renamed approved' }));
+
+        const call = mockEventEmitter.emit.mock.calls.find(([type]: unknown[]) => type === SysEventType.ResourceUpdated);
+        expect(call).toBeDefined();
+        expect((call![1] as { data: Record<string, unknown> }).data).not.toHaveProperty('wasApprovedLiveEdit');
+        expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('a variables-only change to an APPROVED template IS flagged wasApprovedLiveEdit', async () => {
+        mockTemplateRepo.findById.mockResolvedValue(storedTemplate({ status: 'APPROVED' }));
+
+        await service.updatePromptTemplate('template-id-1', consoleSave({ variables: [] }));
+
+        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+          SysEventType.ResourceUpdated,
+          expect.objectContaining({ data: expect.objectContaining({ wasApprovedLiveEdit: true }) }),
+        );
+      });
+    });
   });
 
   // ─── getPromptTemplate ──────────────────────────────────────

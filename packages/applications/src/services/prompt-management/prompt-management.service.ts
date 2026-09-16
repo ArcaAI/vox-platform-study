@@ -157,6 +157,21 @@ function extractDeclaredVariableNames(variables?: Record<string, unknown> | null
   return parsePromptVariableDeclarations(variables).map((decl) => decl.name);
 }
 
+/** JSON with object keys sorted (JSONB does not preserve key order); `undefined` members are dropped. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/** Stored and submitted variable declarations are equal; absent/`null` and `[]` both mean "none declared". */
+function sameVariables(submitted: unknown, stored: unknown): boolean {
+  const normalise = (v: unknown) => (v == null || (Array.isArray(v) && v.length === 0) ? null : v);
+  return canonicalJson(normalise(submitted)) === canonicalJson(normalise(stored));
+}
+
 /** Coerce a caller-supplied or `default` string value to a declaration's `type` (§3.6). */
 export function coercePromptVariableValue(type: PromptVariableType, value: unknown): unknown {
   switch (type) {
@@ -521,23 +536,30 @@ export class PromptManagementService extends BaseService implements IPromptManag
     this.assertOwnedByTenant(template, id);
     this.assertCanMutate(template);
 
+    // A field is a change only when its VALUE differs from the stored one — the
+    // console resubmits every field on each save. Only content and variables are
+    // snapshotted in a PromptVersion, so only a real difference in those mints a
+    // version; a name/description/tags change writes the row without one (a
+    // version whose content equals its predecessor is noise in the history).
+    const nameChanged = dto.name !== undefined && dto.name !== template.name;
+    const descriptionChanged = dto.description !== undefined && (dto.description || null) !== (template.description || null);
+    const contentChanged = dto.content !== undefined && dto.content !== template.content;
+    const variablesChanged = dto.variables !== undefined && !sameVariables(dto.variables, template.variables);
+    const tagsChanged = dto.tags !== undefined && canonicalJson(dto.tags) !== canonicalJson(template.tags ?? []);
+    const hasContentChanges = contentChanged || variablesChanged;
+
     // Capture the pre-edit publication status BEFORE any dto.status change below,
     // so we can flag a live content edit of an already-APPROVED template for
     // audit (F-33). The new PromptVersion this edit creates is NOT served until
     // re-approval (resolution serves `approvedVersionNumber`, not latest).
-    const wasApprovedLiveEdit = template.status === 'APPROVED' && dto.content !== undefined;
+    const wasApprovedLiveEdit = template.status === 'APPROVED' && hasContentChanges;
 
-    const hasContentChanges =
-      dto.name !== undefined || dto.description !== undefined || dto.content !== undefined || dto.variables !== undefined || dto.tags !== undefined;
-
-    if (hasContentChanges) {
-      if (dto.name !== undefined) template.name = dto.name;
-      if (dto.description !== undefined) template.description = dto.description;
-      if (dto.content !== undefined) template.content = dto.content;
-      if (dto.variables !== undefined) template.variables = dto.variables as unknown as Record<string, unknown>;
-      if (dto.tags !== undefined) template.tags = dto.tags;
-      template.incrementVersion();
-    }
+    if (nameChanged) template.name = dto.name!;
+    if (descriptionChanged) template.description = dto.description;
+    if (tagsChanged) template.tags = dto.tags!;
+    if (contentChanged) template.content = dto.content;
+    if (variablesChanged) template.variables = dto.variables as unknown as Record<string, unknown>;
+    if (hasContentChanges) template.incrementVersion();
 
     if (dto.resourceStatus !== undefined) {
       if (dto.resourceStatus === ResourceStatusType.DISABLED) {
@@ -550,7 +572,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // A publication-status change is a mutating edit (it does
     // NOT spawn a new PromptVersion snapshot, but it marks the row dirty so the
     // OCC write proceeds). Set it before the `hasChanges` gate below.
-    if (dto.status !== undefined) {
+    if (dto.status !== undefined && dto.status !== template.status) {
       template.status = dto.status;
     }
 
