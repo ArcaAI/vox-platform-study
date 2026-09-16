@@ -9,6 +9,7 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { ContextUserIdentityServiceModule } from '../user/identity';
 import { WorkflowRunServiceModule } from '../workflow-run';
+import { EffectiveTriggerSchemaModule } from './effective-trigger-schema.module';
 import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
 
@@ -60,6 +61,11 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     // TASK-950 (D-6). No cycle: the identity module reads the user/profile/role/department
     // repositories and the settings cascade, none of which leads back to the exposure plane.
     ContextUserIdentityServiceModule,
+    // The tenant's CURRENT context-schema pin, for a trigger the author bound to it. Without the
+    // import the `@Optional()` injection is always undefined and every follow-latest trigger
+    // silently runs against its published bytes — the exact failure mode the resolver exists to
+    // close. No cycle: it imports CoreDatabaseModule and nothing else.
+    EffectiveTriggerSchemaModule,
   ],
   providers: [
     WorkflowExposureService,

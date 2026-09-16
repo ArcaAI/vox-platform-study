@@ -7,6 +7,8 @@ import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.s
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
+import { effectiveTriggerConfig, triggerContextBinding } from '../../workflow-exposure/effective-trigger-schema';
+import { EffectiveTriggerSchemaService } from '../../workflow-exposure/effective-trigger-schema.service';
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
@@ -16,7 +18,9 @@ import { SelectableConsultationWorkflowListResponse } from './dto';
 import {
   ConsultationWorkflowDispatchResult,
   DispatchForConsultationInput,
+  GoverningWorkflowPreview,
   IConsultationWorkflowDispatchService,
+  PreviewGoverningWorkflowInput,
 } from './IConsultationWorkflowDispatchService';
 
 /**
@@ -53,6 +57,12 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // built without the gateway module degrades to the pre-existing "reconciled by the next
     // status read" behaviour rather than failing to construct.
     @Optional() @Inject(IWorkflowRunCompletionPort) private readonly runCompletion?: IWorkflowRunCompletionPort,
+    // Resolves the tenant's CURRENT schema pin for a trigger that binds by it, so the per-run
+    // config below carries what the tenant has pinned NOW rather than what publish froze.
+    // `@Optional()` like every other cross-cutting dependency here: absent, every trigger
+    // dispatches against its published bytes — the behaviour a follow-latest workflow had
+    // before this existed, never a failure.
+    @Optional() private readonly effectiveTriggerSchema?: EffectiveTriggerSchemaService,
   ) {}
 
   /**
@@ -151,8 +161,17 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
-    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug, parentConsultationId, visitType, authoredContext } =
-      input;
+    const {
+      consultationId,
+      tenantId,
+      departmentId,
+      userId,
+      externalPatientId,
+      workflowDefinitionSlug,
+      parentConsultationId,
+      visitType,
+      authoredContext,
+    } = input;
 
     // resolved FIRST, and unconditionally, because the two palettes are separate
     // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
@@ -169,7 +188,12 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // the one that ran.
     const resolved: { workflowDefinitionSlug: string | null; source: ConsultationWorkflowDispatchResult['source'] } = workflowDefinitionSlug
       ? { workflowDefinitionSlug, source: 'caller-selected' }
-      : await this.assignments.resolve(tenantId, CORE_PALETTE_KEY, departmentId ?? null, this.visitTypeSelectorTags(tenantId, parentConsultationId, visitType));
+      : await this.assignments.resolve(
+          tenantId,
+          CORE_PALETTE_KEY,
+          departmentId ?? null,
+          this.visitTypeSelectorTags(tenantId, parentConsultationId, visitType),
+        );
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
@@ -202,7 +226,18 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       if (!definition.compiledConfig) return notDispatched('definition has no compiled configuration');
       if (!this.s3Service) return notDispatched('no claim-check storage backend is configured');
 
-      const configRef = await mintCompiledConfigClaimCheckRef(definition.compiledConfig, CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
+      // The per-run config, and the ONE place a follow-latest trigger's promise is kept.
+      //
+      // `definition.compiledConfig` is the PUBLISHED artifact: immutable, checksummed, and
+      // frozen against whatever the schema was when the workflow was published. For a trigger
+      // the author PINNED that is the right answer forever. For one bound to the tenant's pin it
+      // is stale the moment the tenant publishes a new schema version — and `interpreter_core_trigger`
+      // validates `resolved` with `additionalProperties: false`, so a kind added since would fail
+      // the run's first node. Resolving here, into the per-run copy, is what lets the interpreter
+      // keep reading `resolved` and nothing else.
+      const effective = await this.effectiveTriggerConfigFor(tenantId, definition.compiledConfig);
+
+      const configRef = await mintCompiledConfigClaimCheckRef(effective.config, CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
         this.s3Service!.putFile(b, key, data, contentType),
       );
 
@@ -291,6 +326,87 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       this.logger.warn({ message: 'Consultation workflow dispatch failed — falling back to the default loop', consultationId, reason });
       return notDispatched(reason);
     }
+  }
+
+  /**
+   * The same resolution dispatch performs, WITHOUT starting anything: which workflow would
+   * govern a consultation opened right now, and which payload schema its trigger would check.
+   *
+   * This exists so `open` can refuse an incompatible context BEFORE it writes a row, and it is a
+   * method on this service rather than a second cascade at the call site for one reason: a
+   * preview that disagreed with the dispatch that follows it would be worse than no preview.
+   * Every step below — the selection-over-cascade precedence, the visit-type selector tag, the
+   * published-and-selectable re-check, the effective trigger schema — is the code dispatch runs.
+   *
+   * Returns `null` for EVERY inconclusive outcome, never an exception: no assignment, a
+   * definition that has since been unpublished, a missing compiled config, a trigger that froze
+   * no schema, or an unreadable dependency. The caller's contract is that only a CONCLUSIVE
+   * answer may refuse an open; anything else falls through to today's ungoverned open.
+   */
+  async previewGoverningWorkflow(input: PreviewGoverningWorkflowInput): Promise<GoverningWorkflowPreview | null> {
+    try {
+      const slug =
+        input.workflowDefinitionSlug ??
+        (
+          await this.assignments.resolve(
+            input.tenantId,
+            CORE_PALETTE_KEY,
+            input.departmentId ?? null,
+            this.visitTypeSelectorTags(input.tenantId, input.parentConsultationId, input.visitType),
+          )
+        ).workflowDefinitionSlug;
+      if (!slug) return null;
+
+      const definition = await this.definitionRepository.findPublishedBySlug(input.tenantId, slug);
+      if (!definition || consultationSelectionViolation(definition) !== null || !definition.compiledConfig) return null;
+
+      const effective = await this.effectiveTriggerConfigFor(input.tenantId, definition.compiledConfig);
+      if (effective.resolved === null) return null;
+
+      return {
+        workflowDefinitionSlug: definition.slug,
+        resolved: effective.resolved,
+        boundSchemaVersion: effective.effectiveVersionNumber ?? this.publishedSchemaVersion(definition.compiledConfig),
+      };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Governing workflow could not be previewed — the consultation opens without a pre-dispatch compatibility check',
+        tenantId: input.tenantId,
+        departmentId: input.departmentId ?? null,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * The config a run started NOW executes against.
+   *
+   * Never throws and never blocks: an unwired resolver, an unreadable schema row or a withdrawn
+   * pin all answer with the published bytes, because dispatch is best-effort by contract and a
+   * clinician must be able to open a consultation whatever the schema plane is doing.
+   */
+  private async effectiveTriggerConfigFor(tenantId: string, compiledConfig: unknown): Promise<ReturnType<typeof effectiveTriggerConfig>> {
+    const binding = triggerContextBinding(compiledConfig);
+    if (!binding.followsLatest || binding.schemaId === null || !this.effectiveTriggerSchema) {
+      return effectiveTriggerConfig(compiledConfig, null);
+    }
+    return effectiveTriggerConfig(compiledConfig, await this.effectiveTriggerSchema.currentPin(tenantId, binding.schemaId));
+  }
+
+  /**
+   * The schema version a PINNED trigger's frozen bytes came from, read off the compiled
+   * artifact's own `contextSchemaRefs` entry. `null` when the artifact records none — the
+   * refusal still names the workflow, which is the part an integrator acts on.
+   */
+  private publishedSchemaVersion(compiledConfig: unknown): number | null {
+    const policyBindings =
+      typeof compiledConfig === 'object' && compiledConfig !== null ? (compiledConfig as Record<string, unknown>).policyBindings : undefined;
+    const refs =
+      typeof policyBindings === 'object' && policyBindings !== null ? (policyBindings as Record<string, unknown>).contextSchemaRefs : undefined;
+    const first = Array.isArray(refs) ? refs[0] : undefined;
+    const versionNumber = typeof first === 'object' && first !== null ? (first as Record<string, unknown>).versionNumber : undefined;
+    return typeof versionNumber === 'number' ? versionNumber : null;
   }
 
   /**

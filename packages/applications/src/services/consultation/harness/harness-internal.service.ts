@@ -56,6 +56,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from './dto';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/open-markers';
+import { readGoverningEngineMarker, withGoverningEngineMarker } from '../governing-engine';
 import type {
   HarnessAssembleRequest,
   HarnessAssembleResponse,
@@ -92,6 +93,34 @@ export interface FailGovernedRunResult {
   transitioned: boolean;
   status: ConsultationStatus;
 }
+
+/** What the gateway's run-completion watcher reports about a run that ended WITHOUT failing. */
+export interface RecordGovernedRunCompletedInput {
+  tenantId: string;
+  runId: string;
+  /** True when the run finished with at least one degraded or skipped-for-cause node. */
+  degraded: boolean;
+  /** When the run ended, from the terminal envelope. Defaults to now. */
+  at?: Date;
+}
+
+/**
+ * The consultation states in which a governed run is still the thing writing the document, so
+ * its outcome is worth recording and announcing.
+ *
+ * `DRAINING` is handled separately and more strongly (it CLOSES the consultation); the three
+ * here record and announce without touching `status`, because the clinician is still working and
+ * the default loop can still produce a note. Every other state - `PENDING_REVIEW`, `SIGNED`,
+ * either `CLOSED_*` - has already moved past this run, and re-stamping it would rewrite history.
+ */
+const GOVERNED_RUN_OBSERVABLE_STATUSES: readonly ConsultationStatus[] = [
+  ConsultationStatus.OPEN,
+  ConsultationStatus.RECORDING,
+  ConsultationStatus.PRIMED,
+];
+
+/** The live-summary channel every realtime consultation frame shares. */
+const LIVE_SUMMARY_CHANNEL_PREFIX = 'consultation:live-summary:';
 
 /**
  * HarnessInternalService.
@@ -745,6 +774,18 @@ export class HarnessInternalService extends BaseService {
       }
 
       if (consultation.status !== ConsultationStatus.DRAINING) {
+        // The run failed while the clinician is still working - the common case for a TRIGGER
+        // failure, which happens seconds after `open`. There is nothing to close (the default
+        // loop can still document this consultation and the clinician can still record), but the
+        // outcome must stop being invisible: it goes on the marker every read surface derives
+        // `governingRun` from, on the sys-event bus, and on the live feed the client is already
+        // holding open. `status` is deliberately untouched - a failed governing run is not a
+        // failed consultation.
+        if (GOVERNED_RUN_OBSERVABLE_STATUSES.includes(consultation.status)) {
+          await this.recordGovernedRunFailure(consultation, input);
+          return { transitioned: false, status: consultation.status };
+        }
+
         this.logger.log({
           message: 'Governed run ended without a clinical result, but the consultation has already moved past DRAINING — status left unchanged',
           consultationId,
@@ -809,6 +850,135 @@ export class HarnessInternalService extends BaseService {
 
       return { transitioned: true, status: ConsultationStatus.CLOSED_INCOMPLETE };
     });
+  }
+
+  /**
+   * Record and ANNOUNCE a governed run's failure on a consultation that is still in progress.
+   *
+   * Three writes, in the order that makes each safe if the next one fails:
+   *
+   *   1. the MARKER — the system of record. `governingRun` on every consultation read, and on
+   *      `GET consultations/:id/workflow`, is derived from it, so this is what makes the failure
+   *      durable and visible to a client that reconnects an hour later;
+   *   2. the sys-event — audit and webhooks, through the existing fan-out;
+   *   3. ONE SSE frame on the live-summary channel — for the client holding the stream open right
+   *      now, which would otherwise see only silence.
+   *
+   * Steps 2 and 3 are best-effort in exactly the sense the rest of this surface is: a Redis
+   * hiccup must never roll back the already-persisted outcome.
+   *
+   * A consultation carrying no governing marker writes nothing at all — there is no run to
+   * describe, and inventing a marker here would make an ungoverned consultation look governed to
+   * the substrate gate.
+   */
+  private async recordGovernedRunFailure(consultation: ConsultationEntity, input: FailGovernedRunInput): Promise<void> {
+    const marker = readGoverningEngineMarker(consultation.metadata);
+    if (!marker) return;
+
+    const reason = input.reason ?? null;
+    const expectedVersion = consultation.version;
+
+    consultation.metadata = withGoverningEngineMarker(consultation.metadata, {
+      ...marker,
+      runStatus: 'FAILED',
+      ...(reason ? { terminalReason: reason } : {}),
+      endedAt: (input.at ?? new Date()).toISOString(),
+    }) as ConsultationEntity['metadata'];
+
+    await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+
+    if (this.eventEmitter) {
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: consultation.id,
+        data: { action: 'failGovernedRun', status: consultation.status, runId: input.runId, runStatus: input.status, reason },
+      });
+    }
+
+    await this.publishWorkflowFailed(consultation.id, marker.workflowRunId, marker.workflowDefinitionSlug, reason);
+
+    this.logger.warn({
+      message: 'Governing workflow run failed while the consultation is still in progress — recorded on the row, the consultation continues',
+      consultationId: consultation.id,
+      runId: input.runId,
+      runStatus: input.status,
+      currentStatus: consultation.status,
+      reason,
+    });
+  }
+
+  /** The one `workflow.failed` frame, on the channel the live-summary lane already multiplexes. */
+  private async publishWorkflowFailed(
+    consultationId: string,
+    workflowRunId: string,
+    workflowDefinitionSlug: string,
+    reason: string | null,
+  ): Promise<void> {
+    if (!this.redisCache) return;
+    try {
+      await this.redisCache.publish(
+        `${LIVE_SUMMARY_CHANNEL_PREFIX}${consultationId}`,
+        // Discriminated by the `event` field IN the JSON, like every other frame on this channel
+        // — a consumer reads one shape and switches on `event`.
+        JSON.stringify({ event: 'workflow.failed', consultationId, workflowRunId, workflowDefinitionSlug, reason }),
+      );
+    } catch (error) {
+      this.logger.warn({
+        message: 'workflow.failed SSE publish failed (best-effort — the outcome is already on the consultation row)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Stamp a governed run's SUCCESSFUL terminal outcome on the marker.
+   *
+   * The sibling of `failGovernedRun`, and it lives here for the same reason: `apps/api`'s
+   * completion watcher must not reach into `Consultation.metadata` itself. The marker's shape is
+   * this package's business, and a second writer of it would eventually disagree with
+   * `governingRunOf` about what a field means.
+   *
+   * Never throws and never changes `status`: success on the governing run is already expressed by
+   * `persistDraft` / `finalizeAssurance` moving the consultation, and the run row has already
+   * been recorded by the time this is called. This adds the ONE fact those paths do not carry —
+   * that the run reached COMPLETED, and whether any node degraded.
+   *
+   * The `runId` guard is what makes it safe against a late watcher: a consultation re-opened onto
+   * a NEW governing run must not have its live marker overwritten by the terminal status of the
+   * previous one.
+   */
+  async recordGovernedRunCompleted(consultationId: string, input: RecordGovernedRunCompletedInput): Promise<void> {
+    try {
+      await this.cls.run(async () => {
+        this.cls.set('tenantId', input.tenantId);
+        this.cls.set('user', createWorkerSession({ tenantId: input.tenantId, kind: 'harness-internal' }));
+
+        const consultation = await this.consultationRepository.findById(consultationId);
+        if (!consultation || consultation.tenantId !== input.tenantId) return;
+
+        const marker = readGoverningEngineMarker(consultation.metadata);
+        if (!marker || marker.workflowRunId !== input.runId) return;
+
+        const expectedVersion = consultation.version;
+        consultation.metadata = withGoverningEngineMarker(consultation.metadata, {
+          ...marker,
+          runStatus: 'COMPLETED',
+          ...(input.degraded ? { degraded: true } : {}),
+          endedAt: (input.at ?? new Date()).toISOString(),
+        }) as ConsultationEntity['metadata'];
+
+        await this.consultationRepository.updateWithVersion(consultationId, consultation, expectedVersion);
+      });
+    } catch (error) {
+      // Best-effort by contract: the WorkflowRun row already carries the terminal status, so a
+      // failure here costs the consultation surface one field, never the run's own record.
+      this.logger.warn({
+        message: 'Governed run completed but its outcome could not be stamped on the consultation — the run row still carries it',
+        consultationId,
+        runId: input.runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

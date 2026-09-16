@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { GoverningRunSummary } from '../../governing-engine';
 
 /**
  * `GET /api/v1/consultations/:id/workflow` — WHICH engine governs a
@@ -79,4 +80,22 @@ export class ConsultationWorkflowResponse {
     description: 'Always null: no per-definition input schema is declared anywhere in the substrate yet. See the class doc.',
   })
   inputSchema: Record<string, unknown> | null;
+
+  /**
+   * The governing run itself — the same object `ConsultationResponse.governingRun` carries, from
+   * the same derivation.
+   *
+   * The four fields above it (`workflowDefinitionSlug`, `workflowRunId`, `decidedAt`, `governed`)
+   * describe the DECISION and stay exactly as they were. This describes the RUN, and it is a
+   * separate object rather than four more sibling fields because the two facts have different
+   * lifetimes: the decision is fixed at open, the run's status moves.
+   */
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'The governing run and its status, or null when the default loop governs. Identical to `ConsultationResponse.governingRun` — one derivation, so the two routes can never disagree.',
+  })
+  run: GoverningRunSummary | null;
 }
