@@ -211,6 +211,25 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * Did the AUTHOR ask the trigger to follow the tenant's pin?
+ *
+ * A trigger that names a schema id with no `versionNumber` means "whatever this tenant has
+ * pinned"; one that names a version keeps it. `resolveTriggerContextSchema` answers with a
+ * concrete version number in BOTH cases — the resolution is the same, the intent is not — so
+ * this reads the authored graph, which is the only place the intent survives.
+ *
+ * Total: a graph with no trigger, no reference, or an unreadable config answers `false`, which is
+ * also what the caller stamps whenever there is no binding at all.
+ */
+function authoredTriggerFollowsLatest(graph: WorkflowGraph): boolean {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const trigger = nodes.find((node) => node.type === TRIGGER_NODE_TYPE);
+  const reference = asRecord(asRecord(trigger?.config)?.contextSchema);
+  if (typeof reference?.contextSchemaId !== 'string' || reference.contextSchemaId.length === 0) return false;
+  return reference.versionNumber == null;
+}
+
+/**
  * the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
  *  enum in this package (`paletteKey` is a free string on the entity) — a single named constant
  *  so the publish()-time entitlement check below and any future STT-specific branch share one
@@ -1492,6 +1511,21 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // any entity mutation below: a failure here (e.g. no `stt.asrEngine` node) must abort the
     // publish() with nothing written, exactly like the engine gate above.
     const asrPipeline = await this.compileSttPipelineIfNeeded(entity, compiled);
+
+    // The binding, stamped onto COLUMNS from the SAME resolution the compiler just froze into
+    // `compiledConfig`. It is not a second resolution — `triggerContextSchema` is the one above —
+    // it is the same answer written where it can be indexed and joined, so a context-schema
+    // publish can ask "who depends on me" without opening every compiled artifact.
+    //
+    // `followsLatest` cannot come from that resolution: it resolves to a concrete version number
+    // whether or not the author pinned one. It is a property of what was WRITTEN, so it is read
+    // off the authored graph.
+    //
+    // Assigned unconditionally, including the null branch: a draft that dropped its reference
+    // must not keep the binding a previous publish stamped.
+    entity.contextSchemaId = triggerContextSchema?.resolved?.schemaId ?? null;
+    entity.contextSchemaVersionNumber = triggerContextSchema?.resolved?.versionNumber ?? null;
+    entity.contextSchemaFollowsLatest = entity.contextSchemaId != null && authoredTriggerFollowsLatest(graph);
 
     entity.validationReport = report as unknown as JsonValue;
     entity.validatedAt = new Date();

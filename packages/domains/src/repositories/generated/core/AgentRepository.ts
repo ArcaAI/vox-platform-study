@@ -215,6 +215,24 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
   }
 
   /**
+   * Every version row of this tenant bound to one consultation context schema — the AGENT half of
+   * a schema's "used by" read, beside `WorkflowDefinitionRepository.findByContextSchemaId`.
+   *
+   * An agent pins by column (`contextSchemaId` + `contextSchemaVersionNumber`, indexed as
+   * `Agent_contextSchemaId_idx`), so unlike the workflow half there is nothing to backfill.
+   * Filters to ENABLED only, for the same reason its sibling does: which rows COUNT toward a
+   * publish gate is the caller's decision, not this read's.
+   */
+  async findByContextSchemaId(tenantId: string, contextSchemaId: string): Promise<AgentEntity[]> {
+    const rows = await this.findManyTolerant({
+      where: { contextSchemaId, resourceStatus: ResourceStatusType.ENABLED },
+      orderBy: [{ slug: 'asc' }, { versionNumber: 'desc' }],
+    });
+    const mapper = AgentEntityMapper.getInstance();
+    return rows.filter((row) => row.tenantId === tenantId).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
    * `max(versionNumber)` for a lineage, `0` when new — minted FROM THE TX CLIENT
    * (the `WorkflowDefinitionRepository` / `PromptVersionRepository` discipline) so a
    * lagging counter cannot recompute an existing versionNumber. Not filtered by

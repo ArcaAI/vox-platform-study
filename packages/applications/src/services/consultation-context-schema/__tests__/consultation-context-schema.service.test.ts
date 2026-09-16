@@ -30,6 +30,15 @@ const mockSchemaRepository = {
   softDelete: vi.fn(),
 };
 
+/** The two consumer planes a publish's impact is computed over. */
+const mockWorkflowDefinitionRepository = {
+  findByContextSchemaId: vi.fn(),
+};
+
+const mockAgentRepository = {
+  findByContextSchemaId: vi.fn(),
+};
+
 const mockVersionRepository = {
   create: vi.fn(),
   findById: vi.fn(),
@@ -151,11 +160,16 @@ describe('ConsultationContextSchemaService', () => {
       }
     });
 
+    mockWorkflowDefinitionRepository.findByContextSchemaId.mockResolvedValue([]);
+    mockAgentRepository.findByContextSchemaId.mockResolvedValue([]);
+
     service = new ConsultationContextSchemaService(
       mockSchemaRepository as never,
       mockVersionRepository as never,
       mockEventEmitter as never,
       mockClsService as never,
+      mockWorkflowDefinitionRepository as never,
+      mockAgentRepository as never,
     );
   });
 

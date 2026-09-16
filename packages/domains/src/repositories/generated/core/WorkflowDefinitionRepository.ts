@@ -43,7 +43,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * (404-over-403; rule 04 §NEVER). Uses `findFirstTolerant` because the base
    * `findFirst` THROWS `DataNotFoundException` on a miss — a genuine miss
    * here is the expected common case, not an error.
- */
+   */
   async findPublishedBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity | null> {
     return this.findFirstTolerant({ tenantId, slug, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE });
   }
@@ -52,7 +52,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * The tenant's published + ACTIVE workflows, one row per slug (the movable
    * pointer means at most one such row per `(tenantId, slug)`) — backs
    * `GET /api/v1/workflows` ( exposure plane list route).
- */
+   */
   async findActivePublishedByTenant(tenantId: string): Promise<WorkflowDefinitionEntity[]> {
     return this.findAll({
       filters: { tenantId, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE },
@@ -64,11 +64,31 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * Every version row for a `(tenantId, slug)` lineage, most recent first —
    * used to compute the next `versionNumber` and to resolve
    * `parentVersionId` branches.
- */
+   */
   async findAllVersionsBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity[]> {
     return this.findAll({
       filters: { tenantId, slug, resourceStatus: ResourceStatusType.ENABLED },
       sort: [{ versionNumber: 'desc' }],
+    });
+  }
+
+  /**
+   * Every version row of this tenant bound to one consultation context schema, newest lineage
+   * first — what the schema's "used by" read and its publish-impact gate walk.
+   *
+   * Reads the stamped COLUMN, never the `graph`/`compiledConfig` JSON: the column is written at
+   * publish from the same resolution the compiler freezes, and only a column can be indexed
+   * (`WorkflowDefinition_tenantId_contextSchemaId_idx`). A DRAFT is absent by construction — it
+   * has no published binding yet, so it is not a consumer of anything.
+   *
+   * Deliberately NOT filtered to PUBLISHED + ACTIVE: a superseded or deprecated version is still
+   * worth SHOWING an admin, and the caller (not this read) decides which rows count toward the
+   * acknowledgement gate. It IS filtered to ENABLED — a soft-deleted definition is gone.
+   */
+  async findByContextSchemaId(tenantId: string, contextSchemaId: string): Promise<WorkflowDefinitionEntity[]> {
+    return this.findAll({
+      filters: { tenantId, contextSchemaId, resourceStatus: ResourceStatusType.ENABLED },
+      sort: [{ slug: 'asc' }, { versionNumber: 'desc' }],
     });
   }
 
@@ -107,7 +127,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    *
    * A tenant's OWN row is clonable at any status: forking your own draft is the ordinary case.
    * A SYSTEM row must be PUBLISHED + ACTIVE — a SYSTEM draft is unreleased platform work.
- */
+   */
   async findCloneSource(id: string, tenantId: string, client: unknown): Promise<WorkflowDefinitionEntity | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors findMaxVersionNumber; the caller-supplied client's delegate shape isn't exposed through DomainModel typings.
     const model: any = (client as Record<string, any>)[this._modelName];
@@ -130,7 +150,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * constant exists to prevent.
    *
    * Takes the UNSCOPED client for the reason spelled out on `findCloneSource`.
- */
+   */
   async findSystemTemplates(client: unknown): Promise<WorkflowDefinitionEntity[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findCloneSource.
     const model: any = (client as Record<string, any>)[this._modelName];

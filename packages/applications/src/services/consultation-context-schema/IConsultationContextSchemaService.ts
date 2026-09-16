@@ -4,6 +4,7 @@ import type {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
   ConsultationContextSchemaVersionResponse,
+  ContextSchemaUsagesResponse,
   CreateConsultationContextSchemaRequest,
   PinConsultationContextSchemaVersionRequest,
   PublishConsultationContextSchemaRequest,
@@ -149,15 +150,36 @@ export interface IConsultationContextSchemaService {
    * Validate and publish a definition as a new immutable version, then move
    * the pin to it.
    *
+   * The response carries `impact`: what this publish did to every workflow and agent bound to
+   * the schema.
+   *
    * @throws NotFoundException — missing or cross-tenant id (checked first)
    * @throws BadRequestException — the definition is not authorable (every
-   *   problem listed at once), or the change is BREAKING and
-   *   `allowBreakingChange` was not set
+   *   problem listed at once), the change is BREAKING and `allowBreakingChange` was not set, or
+   *   an ACTIVE pinned consumer would refuse the new version and `acknowledgeImpact` was not set
+   *   (`code: 'SCHEMA_IMPACT_UNACKNOWLEDGED'`, with the impact document in the body)
    */
   publish(id: string, dto: PublishConsultationContextSchemaRequest): Promise<ConsultationContextSchemaResponse>;
 
-  /** Move the pin to an already-published version (the rollback path). */
+  /**
+   * Move the pin to an already-published version (the rollback path). The response carries
+   * `impact` for the version being pinned — reported, never gated: a pin is the escape hatch a
+   * bad publish needs.
+   */
   pin(id: string, dto: PinConsultationContextSchemaVersionRequest): Promise<ConsultationContextSchemaResponse>;
+
+  /**
+   * Every workflow and agent bound to this schema, with a verdict per consumer against
+   * `againstVersion` (default: the schema's own pin).
+   *
+   * The question an admin asks BEFORE publishing — "what does this change break?" — and the same
+   * document `publish`/`pin` embed as `impact`, so a preview and the write that follows it can
+   * never disagree.
+   *
+   * @throws NotFoundException — missing or cross-tenant schema id, or an `againstVersion` this
+   *   schema does not have
+   */
+  usages(schemaId: string, againstVersion?: number): Promise<ContextSchemaUsagesResponse>;
 
   /** Soft-delete the head row. Published versions are never deleted. */
   deleteById(id: string): Promise<ConsultationContextSchemaResponse>;
