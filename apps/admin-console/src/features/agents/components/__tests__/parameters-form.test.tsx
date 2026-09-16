@@ -187,6 +187,55 @@ describe('ParametersForm', () => {
     });
   });
 
+  /**
+   * TASK-977 (L4 console half) — the boolean switch must reflect and write the EFFECTIVE value:
+   * the explicit stored value when present, the schema's own declared `default` otherwise, off
+   * when neither says anything. `audioFrontEnd.resample`/`.normalize` declare `default: true`
+   * (the resolver has always applied it); `audioFrontEnd.vad.enabled` declares `default: false`.
+   * Before this fix the switch was a bare `checked={value === true}` and wrote `undefined` for
+   * "off" — a resample the admin explicitly turned off silently resolved back to `true`
+   * server-side, because the gateway reads `default: true` on an absent key.
+   */
+  describe('SPEECH_TO_TEXT audio front-end boolean defaults (TASK-977)', () => {
+    it('a default-true boolean (resample/normalize) with no stored value renders ON', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Audio Front End' }));
+      expect(block.getByLabelText('Resample').getAttribute('aria-checked')).toBe('true');
+      expect(block.getByLabelText('Normalize').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('a default-false boolean (VAD enabled) with no stored value renders OFF', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{}} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Vad' }));
+      expect(block.getByLabelText('Enabled').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('switching a default-true boolean off writes an explicit false — never undefined — that survives JSON serialisation', () => {
+      const onChange = vi.fn();
+      render(<Host task="SPEECH_TO_TEXT" onChange={onChange} />);
+      const block = within(screen.getByRole('group', { name: 'Audio Front End' }));
+      fireEvent.click(block.getByLabelText('Resample'));
+      expect(onChange).toHaveBeenLastCalledWith({ audioFrontEnd: { resample: false } });
+      // The actual wire encoding (`patchWithEtag`/`postJson`, both plain `JSON.stringify`) drops
+      // `undefined` properties but never `false` ones — round-trip it to prove the explicit
+      // `false` this write produced is not the `undefined` the old handler used to emit.
+      const written = onChange.mock.calls.at(-1)?.[0];
+      expect(JSON.parse(JSON.stringify(written))).toEqual({ audioFrontEnd: { resample: false } });
+    });
+
+    it('an explicitly stored true wins over a default-false schema', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{ audioFrontEnd: { vad: { enabled: true } } }} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Vad' }));
+      expect(block.getByLabelText('Enabled').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('an explicitly stored false wins over a default-true schema', () => {
+      render(<ParametersForm task="SPEECH_TO_TEXT" value={{ audioFrontEnd: { resample: false } }} onChange={() => undefined} />);
+      const block = within(screen.getByRole('group', { name: 'Audio Front End' }));
+      expect(block.getByLabelText('Resample').getAttribute('aria-checked')).toBe('false');
+    });
+  });
+
   it('TEXT_GENERATION: exposes the generation hyper-parameters and the free-form responseSchema as JSON', () => {
     render(<ParametersForm task="TEXT_GENERATION" value={{ generation: { temperature: 0.2 } }} onChange={() => undefined} />);
     expect((screen.getByLabelText('Temperature') as HTMLInputElement).value).toBe('0.2');
