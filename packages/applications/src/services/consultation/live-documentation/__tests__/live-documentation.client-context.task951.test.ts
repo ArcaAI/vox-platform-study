@@ -47,14 +47,31 @@ interface Wiring {
   /** Context items the consultation carries. `undefined` ⇒ no repository is wired at all. */
   items?: ContextItemFixture[];
   /** Replaces the whole finder — for the "the read throws" case. */
-  findByConsultation?: () => Promise<unknown>;
+  findLatestByKindKey?: () => Promise<unknown>;
   decrypt?: (entity: ContextItemFixture) => Promise<string | null>;
   departmentName?: string | null;
   consultation?: Record<string, unknown> | null;
 }
 
+/**
+ * The two kinds are read by an indexed `findLatestByKindKey` per kind, not by pulling every
+ * context item of the consultation and scanning in memory — on the summary path that second shape
+ * meant reading a whole encounter's transcripts to answer a question the
+ * `ContextItem_consultation_kindKey_idx` index answers directly. The fixture below serves that
+ * finder from the same item list, applying the same NEWEST-wins rule the repository does.
+ */
+function newestOfKind(items: ContextItemFixture[], kindKey: string): ContextItemFixture | null {
+  let latest: ContextItemFixture | null = null;
+  for (const item of items) {
+    if (item.kindKey !== kindKey) continue;
+    if (!latest || item.createdAt >= latest.createdAt) latest = item;
+  }
+  return latest;
+}
+
 function buildService(wiring: Wiring = {}) {
-  const findByConsultation = wiring.findByConsultation ?? vi.fn(async () => (wiring.items ?? []) as unknown as ContextItemFixture[]);
+  const findLatestByKindKey =
+    wiring.findLatestByKindKey ?? vi.fn(async (_consultationId: string, kindKey: string) => newestOfKind(wiring.items ?? [], kindKey));
   const decryptContentFromEntity = vi.fn(async (entity: ContextItemFixture) => (wiring.decrypt ? wiring.decrypt(entity) : null));
 
   const args: unknown[] = new Array(29).fill(undefined);
@@ -72,13 +89,13 @@ function buildService(wiring: Wiring = {}) {
     expire: vi.fn(),
   };
   args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
-  if (wiring.items !== undefined || wiring.findByConsultation) args[5] = { findByConsultation, decryptContentFromEntity };
+  if (wiring.items !== undefined || wiring.findLatestByKindKey) args[5] = { findLatestByKindKey, decryptContentFromEntity };
   args[7] = { decrypt: vi.fn() };
   args[15] = { findById: vi.fn(async () => wiring.consultation ?? null) };
   args[28] = { findById: vi.fn(async () => ({ id: 'dept-1', name: wiring.departmentName ?? 'General Medicine' })) };
 
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
-  return { service, findByConsultation, decryptContentFromEntity };
+  return { service, findLatestByKindKey, decryptContentFromEntity };
 }
 
 type SessionShape = {
@@ -317,18 +334,19 @@ describe('TASK-951 D-7 — how the two kinds are read', () => {
   });
 
   it('reads and decrypts at most ONCE per session — a flush every few seconds must not re-read', async () => {
-    const { service, findByConsultation } = buildService({ items: [item('vitals', { heartRate: 64 })] });
+    const { service, findLatestByKindKey } = buildService({ items: [item('vitals', { heartRate: 64 })] });
     const live = session();
 
     await Promise.all([contextOf(service, live), contextOf(service, live)]);
     await contextOf(service, live);
 
-    expect(findByConsultation).toHaveBeenCalledTimes(1);
+    // Two calls — one per kind — for the FIRST resolution, and nothing after it.
+    expect(findLatestByKindKey).toHaveBeenCalledTimes(2);
   });
 
   it('degrades to the declared defaults when the read throws — a note must still be produced', async () => {
     const { service } = buildService({
-      findByConsultation: vi.fn(async () => {
+      findLatestByKindKey: vi.fn(async () => {
         throw new Error('connection refused');
       }),
     });

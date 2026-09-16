@@ -129,7 +129,7 @@ import { readSummaryLanguage, summaryLanguageName } from '../consultation/summar
 import { readRecordedVisitType } from '../consultation/open-markers';
 // TASK-951 D-7 — the SAME cap the carried prior-visit summary is bounded by, applied here so a
 // client-supplied history is a bounded prompt input rather than an unbounded one.
-import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
+import { clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
 // TASK-932 — the visit type the realtime lane's `core.condition` guards branch on. The SHARED
 // instance rather than an injected one: since TASK-882 `VisitTypeService` holds no state, takes
 // no dependency and derives the answer from the consultation's own parent link, so the facade
@@ -908,176 +908,21 @@ function formatVitalsForPrompt(vitals?: LiveSummaryVitalsDto): string | undefine
 }
 
 /**
- * TASK-951 (owner amendment to OD-4) — the NORMALISED vitals object a client may state at `open`.
- *
- * Every field is optional, which is the whole point: a client sends the readings it took, and a
- * missing field means "not measured", never zero. `bloodPressure` is a STRING because that is how
- * the pair is recorded and read (`128/82`); splitting it into two numbers here would invent a
- * precision the source does not have. `temperature` is °C and `oxygenSaturation` is a percentage —
- * the units are fixed by the declaration rather than carried per reading, so there is no unit to
- * mis-read at render time.
- *
- * Deliberately declared HERE rather than imported: the kind's JSON Schema (lane B/A) is the
- * contract, and this is the narrow projection this one renderer needs from a payload that has
- * already been validated against it.
- */
-interface ClientVitalsPayload {
-  bloodPressure?: string;
-  heartRate?: number;
-  respiratoryRate?: number;
-  temperature?: number;
-  oxygenSaturation?: number;
-  weightKg?: number;
-  heightCm?: number;
-  bmi?: number;
-  bloodGlucose?: number;
-  painScore?: number;
-  recordedAt?: string;
-  notes?: string;
-}
-
-/**
- * TASK-951 D-7 — render a CLIENT-supplied vitals object as the `{{formatted_vitals}}` line, or
- * `undefined` when it states nothing.
- *
- * `undefined` rather than `''` for the same reason {@link formatVitalsForPrompt} returns it: the
- * caller then falls through to the next source, and finally to the DECLARED absence value
- * (`Not available`), instead of handing the model a blank where a reading belongs.
- *
- * Why this outranks {@link formatVitalsForPrompt}: that one reports what the SESSION extracted from
- * the conversation — a model's reading of speech. This one is what the clinic MEASURED and sent. A
- * measured reading is not a competing opinion to a transcribed one; it is the fact the transcription
- * is at best an echo of, so when both exist the measured one is what the note should carry.
- *
- * `recordedAt` rides on the same line rather than being dropped, because a vitals set with no time
- * reads as "now" to a model, and a set taken at triage two hours before the consultation is a
- * different clinical statement from one taken during it. `notes` takes a second line: it is free
- * text of unbounded length and folding it into the reading list would make the readings unparsable
- * by eye.
- */
-function formatClientVitalsForPrompt(vitals: ClientVitalsPayload | undefined): string | undefined {
-  if (!vitals) return undefined;
-  const parts: string[] = [];
-  const bp = vitals.bloodPressure?.trim();
-  if (bp) parts.push(`BP ${bp} mmHg`);
-  if (vitals.heartRate != null) parts.push(`HR ${vitals.heartRate} bpm`);
-  if (vitals.respiratoryRate != null) parts.push(`RR ${vitals.respiratoryRate} /min`);
-  if (vitals.temperature != null) parts.push(`Temp ${vitals.temperature} °C`);
-  if (vitals.oxygenSaturation != null) parts.push(`SpO2 ${vitals.oxygenSaturation} %`);
-  if (vitals.weightKg != null) parts.push(`Wt ${vitals.weightKg} kg`);
-  if (vitals.heightCm != null) parts.push(`Ht ${vitals.heightCm} cm`);
-  if (vitals.bmi != null) parts.push(`BMI ${vitals.bmi}`);
-  if (vitals.bloodGlucose != null) parts.push(`Glucose ${vitals.bloodGlucose} mg/dL`);
-  if (vitals.painScore != null) parts.push(`Pain ${vitals.painScore}/10`);
-
-  // A `recordedAt` (or a note) with NO readings states nothing about the patient: emitting
-  // `recorded 09:40` on its own would tell the model a vitals set exists when none was sent.
-  if (parts.length === 0) return undefined;
-
-  const notes = vitals.notes?.trim();
-  const recordedAt = vitals.recordedAt?.trim();
-  if (recordedAt) parts.push(`recorded ${recordedAt}`);
-  const line = parts.join(' · ');
-  return notes ? `${line}\n${notes}` : line;
-}
-
-/** One entry of the client-supplied `previous_case_notes` kind. Only `text` is required. */
-interface ClientPreviousCaseNote {
-  date?: string;
-  department?: string;
-  doctor?: string;
-  title?: string;
-  text?: string;
-}
-
-/**
- * TASK-951 D-7 / OD-5 — render the CLIENT-supplied previous case notes as
- * `{{formatted_previous_visits}}`, or `''` when there are none.
- *
- * `''` rather than `undefined`, because that is the value the workflow's own trigger-context
- * schema declares for this name and the realtime lane published before this ticket — an absent
- * history and a supplied-but-empty one are the same statement to the prompt, and both are "no
- * prior visits to report", never a missing variable the agent would fail closed on.
- *
- * ## Ordering
- *
- * Most recent first, because a prompt that runs out of budget should lose the oldest visit rather
- * than the last one. The sort is applied only to notes whose `date` actually PARSES: a free-text
- * date ("last monsoon") is not evidence of position, so those keep the order the client sent them
- * in and fall after the dated ones. `Array.prototype.sort` is stable, which is what makes that
- * second half a statement rather than an accident.
- *
- * ## Bounding
- *
- * Through the SAME {@link truncatePriorVisitSummary} the carried prior-visit summary uses, marker
- * and all — a truncated history must not read as a complete one. Whole notes are not dropped to
- * fit: cutting mid-note leaves the marker visible, whereas silently omitting a visit would make
- * the history look shorter than it is.
- */
-function formatPreviousVisitsForPrompt(notes: readonly ClientPreviousCaseNote[] | undefined): string {
-  if (!notes || notes.length === 0) return '';
-
-  const dated = notes.map((note, index) => {
-    const parsed = note.date ? Date.parse(note.date) : Number.NaN;
-    return { note, index, at: Number.isNaN(parsed) ? null : parsed };
-  });
-  dated.sort((a, b) => {
-    if (a.at === null && b.at === null) return a.index - b.index;
-    if (a.at === null) return 1;
-    if (b.at === null) return -1;
-    return b.at - a.at;
-  });
-
-  const rendered = dated
-    .map(({ note }) => {
-      const heading = [note.date, note.department, note.doctor, note.title].map((part) => part?.trim()).filter((part): part is string => !!part);
-      const text = note.text?.trim() ?? '';
-      if (!text) return '';
-      return heading.length > 0 ? `${heading.join(' · ')}\n${text}` : text;
-    })
-    .filter((entry) => entry.length > 0);
-
-  return rendered.length > 0 ? truncatePriorVisitSummary(rendered.join('\n\n')) : '';
-}
-
-/**
- * TASK-951 D-7 — the client-supplied prompt inputs this session resolved from its consultation's
- * PRE context items, resolved ONCE per session.
+ * The client-supplied prompt inputs this session resolved from its consultation's context items,
+ * resolved ONCE per session.
  *
  * Both halves are written at `open` and never change for the life of the consultation, so this is
  * frozen exactly as `summaryLanguage` / `visitType` / `departmentId` are — a flush every few
  * seconds must not re-read and re-decrypt two rows that cannot have moved.
- */
-interface LiveClientContext {
-  vitals?: ClientVitalsPayload;
-  previousVisits: readonly ClientPreviousCaseNote[];
-}
-
-/** The kind keys the realtime prompt lane reads. Both are declared by the tenant's scribe schema. */
-const CLIENT_VITALS_KIND_KEY = 'vitals';
-const CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY = 'previous_case_notes';
-
-/** A JSON object — not an array, not null. The shape every declared STRUCTURED kind persists as. */
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * The NEWEST context item carrying this kind key, or `null`.
  *
- * Newest rather than first: a kind declared `ONE` is written once at `open`, but a re-open or a
- * later correction can leave two rows behind, and the prompt must carry what the client last said.
- * The comparison is on `createdAt` rather than on position, so the answer does not depend on the
- * finder's sort staying ascending.
+ * The kind keys, the two payload shapes, the two renderers and the read itself all live in
+ * `consultation/context/client-clinical-context.ts` now. They were private to this file, which is
+ * why every OTHER prompt the platform composes — the warm-start pre-summary, the authoritative
+ * summary, the harness handoff, both job processors, the chain summary — rendered `Not available`
+ * and `''` for a consultation whose clinic had measured and sent the readings. This lane is now
+ * one CONSUMER of that module, not its owner.
  */
-function latestContextItemOfKind(items: readonly ContextItemEntity[], kindKey: string): ContextItemEntity | null {
-  let latest: ContextItemEntity | null = null;
-  for (const item of items) {
-    if (item.kindKey !== kindKey) continue;
-    if (!latest || item.createdAt >= latest.createdAt) latest = item;
-  }
-  return latest;
-}
+type LiveClientContext = ClientClinicalContext;
 
 /** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
 function readNumericEnv(configService: ConfigService, key: string): number | undefined {
@@ -3059,6 +2904,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // module constant. Prefix-cache friendliness is preserved BY CONSTRUCTION:
     // the prefix is frozen per session, so it stays byte-identical across every
     // flush — exactly the property the constant used to provide.
+    // What the client sent at `open`, resolved once for the session (the read is memoised, so
+    // asking for it here costs nothing the run context below was not going to pay anyway).
+    const clientContext = await this.resolveClientContext(session);
     const promptText = this.buildTextUserPrompt(
       priorNote,
       delta || transcript,
@@ -3070,6 +2918,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // TASK-939 OD-2(a) — the turn contract's prose half, kept beside its schema so the two
       // cannot drift.
       turnInstruction(template.compiled),
+      clientContext.vitals,
+      clientContext.previousVisits,
     );
     // TASK-943 — the run's expression/prompt context, built ONCE per flush. The lane evaluates its
     // guards against it and every `core.agent` renders its instruction from its `trigger` root, so
@@ -3161,6 +3011,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               template.compiled.title,
               this.operatingFrame(template, session.summaryLanguage),
               turnInstruction(template.compiled),
+              clientContext.vitals,
+              clientContext.previousVisits,
             ),
           agent,
           template,
@@ -4224,18 +4076,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private async realtimeRunContext(session: LiveSession): Promise<Record<string, ExpressionValue>> {
     const client = await this.resolveClientContext(session);
-    const clientVitals = formatClientVitalsForPrompt(client.vitals);
+    const clientVitals = client.vitals;
 
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.resolveDepartmentName(session),
       visitType: session.visitType,
       language: session.summaryLanguage,
-      // TASK-951 D-7 — the two the builder has always declared and this surface has never had a
-      // source for. Passed THROUGH the builder rather than assigned after it, so `safe_vitals` and
-      // `formatted_previous_visits` inherit v1's own `|| default` semantics instead of a second
-      // copy of them, and an empty client history still reads as `''`.
+      // The two the builder has always declared and this surface had no source for until a client
+      // could state them at `open`. Passed THROUGH the builder rather than assigned after it, so
+      // `safe_vitals` and `formatted_previous_visits` inherit v1's own `|| default` semantics
+      // instead of a second copy of them, and an empty client history still reads as `''`.
       vitals: clientVitals,
-      previousVisits: formatPreviousVisitsForPrompt(client.previousVisits),
+      previousVisits: client.previousVisits,
     });
 
     const context: Record<string, ExpressionValue> = {
@@ -4251,100 +4103,30 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-951 D-7 — the client-supplied `vitals` / `previous_case_notes` for this session, resolved
-   * at most ONCE and cached on it.
+   * The client-supplied `vitals` / `previous_case_notes` for this session, resolved at most ONCE
+   * and cached on it.
    *
    * Memoized through a promise rather than a boolean-plus-value, so two flushes racing the first
    * resolution share one read; the rows are written at `open` and cannot change for the life of
-   * the consultation, which is what makes caching them correct rather than merely cheap.
+   * the consultation, which is what makes caching them correct rather than merely cheap. The
+   * shared reader memoises too, but a NEW one is built per resolution here so the cache that
+   * survives belongs to the SESSION and dies with it, rather than accumulating consultations on
+   * this boot-time singleton.
+   *
+   * The read itself — filter by `kindKey`, newest wins, decrypt, parse, degrade to "the client
+   * sent nothing" on any failure — is the shared module's, and so is what an absent value means.
    */
   private async resolveClientContext(session: LiveSession): Promise<LiveClientContext> {
     if (session.clientContext) return session.clientContext;
     if (!session.clientContextPromise) {
-      session.clientContextPromise = this.readClientContext(session).then((resolved) => {
-        session.clientContext = resolved;
-        return resolved;
-      });
+      session.clientContextPromise = clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService)
+        .read(session.consultationId)
+        .then((resolved) => {
+          session.clientContext = resolved;
+          return resolved;
+        });
     }
     return session.clientContextPromise;
-  }
-
-  /**
-   * Read the two client-supplied kinds off the consultation's PRE context items. Never throws.
-   *
-   * Filtered by `kindKey` and NOT by `ContextItemType`: the kind key is what the tenant's schema
-   * declares and what the writer stamps, and binding this read to a type as well would make it
-   * disagree with the writer the moment either side chose a different enum member for the same
-   * declared kind.
-   *
-   * A failure — no repository, an unreadable row, a body that will not decrypt, a payload that is
-   * not the declared shape — degrades to "the client sent nothing", which is exactly the state
-   * every consultation opened before this ticket is in. The alternative, raising, would stop a
-   * note being produced over context that is by definition supplementary.
-   */
-  private async readClientContext(session: LiveSession): Promise<LiveClientContext> {
-    const none: LiveClientContext = { previousVisits: [] };
-    if (!this.contextItemRepository) return none;
-
-    try {
-      const items = await this.contextItemRepository.findByConsultation(session.consultationId);
-      const [vitalsPayload, notesPayload] = await Promise.all([
-        this.readClientKindPayload(latestContextItemOfKind(items, CLIENT_VITALS_KIND_KEY)),
-        this.readClientKindPayload(latestContextItemOfKind(items, CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY)),
-      ]);
-
-      const rawNotes = notesPayload?.notes;
-      return {
-        vitals: vitalsPayload ? (vitalsPayload as ClientVitalsPayload) : undefined,
-        previousVisits: Array.isArray(rawNotes) ? (rawNotes.filter(isPlainRecord) as ClientPreviousCaseNote[]) : [],
-      };
-    } catch (error) {
-      this.logger.warn({
-        message: 'Client-supplied consultation context could not be read — the prompt keeps its declared defaults',
-        consultationId: session.consultationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return none;
-    }
-  }
-
-  /**
-   * One context item's body as the object it was persisted as, or `null`.
-   *
-   * `content` is Vault-Transit ciphertext at rest (the plaintext column was dropped), so a read
-   * that skips the decrypt gets an empty body for a row that HAS one — the same defect
-   * `findLatestPreSummaryWithDecryptedContent` exists to avoid. The transient `content` populated
-   * by decrypt-on-read is the fallback for fixtures and for the no-secrets dev path, mirroring
-   * `HarnessObservabilityService.decryptSummaryText`.
-   */
-  private async readClientKindPayload(entity: ContextItemEntity | null): Promise<Record<string, unknown> | null> {
-    if (!entity) return null;
-
-    let raw = entity.content ?? null;
-    if (this.secretsService && this.contextItemRepository && entity.encryptedContent) {
-      try {
-        raw = await this.contextItemRepository.decryptContentFromEntity(entity, this.secretsService);
-      } catch (error) {
-        this.logger.warn({
-          message: 'Client context item could not be decrypted — the prompt keeps its declared default for that kind',
-          contextItemId: entity.id,
-          kindKey: entity.kindKey,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      }
-    }
-    if (!raw?.trim()) return null;
-
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return isPlainRecord(parsed) ? parsed : null;
-    } catch {
-      // A body that is not the JSON the kind declares is not a crash — PHI-safe: the key, never
-      // the body.
-      this.logger.warn({ message: 'Client context item is not a JSON object — ignored', contextItemId: entity.id, kindKey: entity.kindKey });
-      return null;
-    }
   }
 
   /**
@@ -5326,6 +5108,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Trailing and defaulted so every positional fixture keeps its arity. Empty ⇒ the pre-ticket
     // whole-document prompt, which is what the durable/compat callers still want.
     turnContract = '',
+    // What the CLIENT sent at `open`, already rendered by the shared reader: the measured
+    // readings line and the prior-visit history. Both trailing and optional, so every existing
+    // positional fixture keeps its arity and a session with neither produces a byte-identical
+    // prompt.
+    clientVitals?: string,
+    clientPreviousVisits?: string,
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -5368,7 +5156,31 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `turnContract` is LAST of all — after the operating frame — because it is the output
     // contract, and the nearest instruction to the generation point is the one a model honours
     // most reliably. It is per-session-stable like the frame, so the prefix cache is unaffected.
-    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock + operatingFrame + turnContract;
+    // The two CLIENT-context blocks. Labelled with the exact names the department templates'
+    // own source-of-truth protocol gives them — `Recent Vitals` is its T3 tier and
+    // `PREVIOUS CASE NOTES SUMMARY` its T4 — so the rules those templates already state about
+    // each tier bind to the block rather than describing material that is not in the prompt.
+    // Appended here rather than written into the bodies, so no seeded template is regenerated.
+    //
+    // Placed AFTER the transcript and note blocks and BEFORE the operating frame: they are
+    // per-session-stable like the frame, so the prefix cache is unaffected, and the turn's own
+    // procedure and output contract stay nearest the generation point, where a model honours
+    // them most reliably.
+    const clientVitalsBlock = clientVitals?.trim() ? `\n\nRecent Vitals:\n${clientVitals.trim()}` : '';
+    const clientPreviousVisitsBlock = clientPreviousVisits?.trim() ? `\n\nPREVIOUS CASE NOTES SUMMARY:\n${clientPreviousVisits.trim()}` : '';
+
+    return (
+      stablePrefix +
+      transcriptBlock +
+      currentNoteBlock +
+      elisionBlock +
+      deltaInstruction +
+      notesBlock +
+      clientVitalsBlock +
+      clientPreviousVisitsBlock +
+      operatingFrame +
+      turnContract
+    );
   }
 
   /**
@@ -6634,13 +6446,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * the enum the seeded CEL compares; `language` is the consultation's declared language CODE
    * beside the builder's `language_name`, exactly as the realtime context spells the pair.
    *
-   * `chief_complaint` and `formatted_vitals` are deliberately NOT published: the first is an
-   * empty-string placeholder the workflow's own trigger-context schema already defaults, and the
-   * second is this recording's extracted vitals — session state that no longer exists here, so
-   * any value would be stale or invented.
+   * `chief_complaint` is deliberately NOT published: it is an empty-string placeholder the
+   * workflow's own trigger-context schema already defaults, and publishing `''` would claim this
+   * lane knows the complaint.
+   *
+   * `formatted_vitals` IS published, and that is a change of source rather than of posture. It was
+   * excluded while the only vitals available were the SESSION's NLP-extracted readings — state
+   * that no longer exists by the time the handoff is read, so any value would have been stale or
+   * invented. What is published now is the object the clinic MEASURED and the client sent at
+   * `open`, persisted as a context item and readable for as long as the consultation is. So is
+   * `formatted_previous_visits`, which used to be the builder's `''` for every consultation
+   * whatever the client had sent.
    */
   private async handoffClinicalContext(consultation: ConsultationEntity): Promise<Record<string, unknown>> {
     const language = readSummaryLanguage(consultation.metadata);
+    const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
     const shared = buildPreSummaryVariables({
       currentDepartment: await this.departmentNameOf(consultation.departmentId ?? null),
       // Derived exactly as `ensureSubstrateResolved` derives the session's own copy — TASK-951 D-3
@@ -6652,8 +6472,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         recorded: readRecordedVisitType(consultation.metadata),
       }).key,
       language,
+      // What the client stated at `open`, through the SAME builder the realtime lane uses, so the
+      // two lanes cannot disagree about what an absent value means.
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
     });
-    return { ...shared, language: (language ?? '').trim() };
+    return {
+      ...shared,
+      language: (language ?? '').trim(),
+      // The general-medicine templates' own name for the reading line the pre-summary list spells
+      // `safe_vitals`; the realtime lane publishes both under the same rule.
+      formatted_vitals: client.vitals ?? shared.safe_vitals,
+    };
   }
 
   /** The DNA half — unchanged from before OD-3, including its `{}` on every non-applying state. */

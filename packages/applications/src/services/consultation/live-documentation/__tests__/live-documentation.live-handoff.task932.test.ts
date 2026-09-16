@@ -40,7 +40,9 @@ const DOCTOR = 'doctor-handoff-1';
  *
  * These are the values THIS fixture produces: no department repository is wired (so
  * `current_department` takes `buildPreSummaryVariables`' declared `General`), the row carries no
- * `parentConsultationId` (so `new-visit`) and no declared language (so `English` / `''`).
+ * `parentConsultationId` (so `new-visit`), no declared language (so `English` / `''`) and no
+ * context-item repository, so the two CLIENT kinds resolve to nothing and `safe_vitals` /
+ * `formatted_vitals` / `formatted_previous_visits` all take their declared absence values.
  */
 const CLINICAL = {
   current_department: 'General',
@@ -53,6 +55,7 @@ const CLINICAL = {
   formatted_previous_visits: '',
   language_name: 'English',
   language: '',
+  formatted_vitals: 'Not available',
 };
 
 type Wiring = {
