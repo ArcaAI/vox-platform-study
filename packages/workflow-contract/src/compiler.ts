@@ -222,6 +222,20 @@ export interface ResolvedTriggerContextSchema {
    * in an empty object.
    */
   openBindings?: CompiledOpenBindings | null;
+  /**
+   * Did the AUTHOR bind the trigger to a VERSION, or to the tenant's pin?
+   *
+   * Required, and not derivable here: `versionNumber` above is the concrete answer BOTH
+   * bindings resolve to, so the intent survives only in the authored graph, which the compiler
+   * never re-reads. The caller states it.
+   *
+   * It changes nothing about what this artifact freezes — `payloadSchema` is still the version
+   * the workflow was published against — only about who is allowed to replace it later. A
+   * PINNED trigger validates against these bytes for the life of the artifact. A FOLLOW-LATEST
+   * trigger has `resolved` replaced, per run, by the gateway with the tenant's pin at dispatch,
+   * before the run starts. Neither reaches the interpreter as a database read.
+   */
+  followsLatest: boolean;
 }
 
 export interface CompiledCaps {
@@ -393,6 +407,14 @@ function compileNode(
  * verifies. It never affects validation: `interpreter.core_trigger` reads `resolved` /
  * `inline` and nothing else.
  *
+ * `followsLatest` records WHICH RULE produced the frozen answer, and with it the invariant
+ * reads in full: a PINNED trigger validates against the schema the workflow was published
+ * with. A FOLLOW-LATEST trigger validates against the tenant's pin at dispatch: the gateway
+ * resolves it and freezes it into THAT RUN's config before the run starts. The interpreter
+ * never reads a schema row. It is stamped only when TRUE, on exactly the terms its two
+ * siblings are omitted: the artifact is checksummed over its canonical JSON, so a field that
+ * always appeared would move the checksum of every artifact that never used it.
+ *
  * TASK-951 D-1 — `openBindings` freezes beside both, on the same terms and for the same
  * reason: which field carries the department, the visit type or the external reference is a
  * property of the version the workflow was PUBLISHED against. Omitted when the resolution
@@ -415,6 +437,7 @@ function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Recor
       resolved: resolved.payloadSchema,
       ...(resolved.userIdentity ? { userIdentity: resolved.userIdentity } : {}),
       ...(resolved.openBindings ? { openBindings: resolved.openBindings } : {}),
+      ...(resolved.followsLatest ? { followsLatest: true } : {}),
     },
   };
 }

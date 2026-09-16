@@ -49,7 +49,7 @@ const OPEN_BINDINGS: CompiledOpenBindings = {
   materialize: [{ kindKey: 'previous_case_notes', as: 'CASE_NOTE' }],
 };
 
-const RESOLUTION = { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA };
+const RESOLUTION = { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA, followsLatest: false };
 
 function baseCtx(overrides: Partial<CompilerContext> = {}): CompilerContext {
   return {

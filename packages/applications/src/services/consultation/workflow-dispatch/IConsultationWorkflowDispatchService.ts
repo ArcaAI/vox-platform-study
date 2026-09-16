@@ -152,6 +152,32 @@ export interface DispatchForConsultationInput {
   readonly workflowDefinitionSlug?: string | null;
 }
 
+/**
+ * What a consultation open needs to know about the workflow that WOULD govern it, before it
+ * writes anything.
+ */
+export interface PreviewGoverningWorkflowInput {
+  readonly tenantId: string;
+  readonly departmentId?: string | null;
+  /** The caller's selection, which replaces the cascade exactly as it does at dispatch. */
+  readonly workflowDefinitionSlug?: string | null;
+  /** Feeds the reserved `visit-type:<key>` selector tag, same derivation as dispatch. */
+  readonly parentConsultationId?: string | null;
+  readonly visitType?: string | null;
+}
+
+/** A CONCLUSIVE answer about the governing workflow. Anything less is `null`, never this. */
+export interface GoverningWorkflowPreview {
+  readonly workflowDefinitionSlug: string;
+  /**
+   * The payload schema the trigger would validate this run's context against — the tenant's
+   * CURRENT pin for a follow-latest trigger, the frozen bytes for a pinned one.
+   */
+  readonly resolved: Record<string, unknown>;
+  /** Which schema version `resolved` came from, when the artifact or the pin records one. */
+  readonly boundSchemaVersion: number | null;
+}
+
 export interface IConsultationWorkflowDispatchService {
   /**
    * Resolve the tenant's `consultation`-palette assignment and, when one exists, start a
@@ -198,6 +224,22 @@ export interface IConsultationWorkflowDispatchService {
    * `tenantId` is the caller's resolved tenant, never a request field.
    */
   assertSelectableForConsultation(tenantId: string, workflowDefinitionSlug: string): Promise<void>;
+
+  /**
+   * Which workflow would govern a consultation opened right now, and which payload schema its
+   * trigger would check — resolved through the SAME cascade, the same selectability predicate
+   * and the same effective-schema resolution `dispatchForConsultation` uses, and starting
+   * nothing.
+   *
+   * `open` calls this to refuse an incompatible context before it writes a row. That is only
+   * safe while the two answers cannot disagree, which is why this is a method here rather than a
+   * second cascade at the call site.
+   *
+   * NEVER throws. `null` means the check is INCONCLUSIVE — no assignment, an unpublished or
+   * unreadable definition, a trigger that froze no schema — and an inconclusive check must let
+   * the open proceed exactly as it does today, ungoverned. Only a conclusive answer may refuse.
+   */
+  previewGoverningWorkflow(input: PreviewGoverningWorkflowInput): Promise<GoverningWorkflowPreview | null>;
 }
 
 export const IConsultationWorkflowDispatchService = Symbol('IConsultationWorkflowDispatchService');

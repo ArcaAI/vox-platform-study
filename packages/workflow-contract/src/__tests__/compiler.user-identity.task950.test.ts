@@ -29,7 +29,7 @@ const PAYLOAD_SCHEMA = {
 
 const BINDING = { kindKey: 'context', field: 'consultant_id' };
 
-const RESOLUTION = { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA };
+const RESOLUTION = { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA, followsLatest: false };
 
 function baseCtx(overrides: Partial<CompilerContext> = {}): CompilerContext {
   return {
@@ -121,7 +121,10 @@ describe('compile — the frozen trigger user-identity binding (test 18)', () =>
   });
 
   it('stamps NO key for a caller that predates the field — byte-identical legacy artifacts', () => {
-    const config = compiledOrThrow(graph({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }), baseCtx({ triggerContextSchema: RESOLUTION }));
+    const config = compiledOrThrow(
+      graph({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }),
+      baseCtx({ triggerContextSchema: RESOLUTION }),
+    );
 
     expect(triggerContextSchemaOf(config)).not.toHaveProperty('userIdentity');
   });

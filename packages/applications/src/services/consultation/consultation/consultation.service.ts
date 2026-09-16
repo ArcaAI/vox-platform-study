@@ -50,7 +50,8 @@ import { HarnessAuditService } from '../../harness-audit';
 import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
-import { readGoverningEngineMarker } from '../governing-engine';
+import { governingRunOf, readGoverningEngineMarker } from '../governing-engine';
+import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { withWorkflowSelectionMarker } from './workflow-selection';
 import { withSummaryLanguage } from './summary-language';
 import { type ConsultationVisitTypeKey, readRecordedVisitType, withExternalRefMarker, withVisitTypeMarker } from './open-markers';
@@ -392,6 +393,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
       activeVersionNumber: null,
       // No per-definition input schema is declared anywhere in the substrate. See the DTO.
       inputSchema: null,
+      // The same object `ConsultationResponse.governingRun` carries, from the same derivation —
+      // this route and a consultation read must never report different statuses for one run.
+      run: governingRunOf(consultation.metadata),
     };
 
     if (!base.workflowDefinitionSlug || !this.workflowDefinitionRepository) return base;
@@ -579,7 +583,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     return {
       departmentId,
-      visitTypeKey: bindings.visitType && validated.has(bindings.visitType.kindKey) ? this.matchStatedVisitType(tenantId, context, bindings.visitType) : null,
+      visitTypeKey:
+        bindings.visitType && validated.has(bindings.visitType.kindKey) ? this.matchStatedVisitType(tenantId, context, bindings.visitType) : null,
       externalRef: bindings.externalRef && validated.has(bindings.externalRef.kindKey) ? readBindingString(context, bindings.externalRef) : null,
       validatedKindKeys,
       identityBinding: bindings.userIdentity && validated.has(bindings.userIdentity.kindKey) ? bindings.userIdentity : null,
@@ -674,7 +679,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * An ABSENT value is not an error - `required` on the kind is the tenant's own decision to make,
    * and a marker says what to do with a value when there is one (TASK-950 D-2).
    */
-  private matchStatedVisitType(tenantId: string, context: Record<string, unknown>, binding: { kindKey: string; field: string }): ConsultationVisitTypeKey | null {
+  private matchStatedVisitType(
+    tenantId: string,
+    context: Record<string, unknown>,
+    binding: { kindKey: string; field: string },
+  ): ConsultationVisitTypeKey | null {
     const stated = readBindingString(context, binding);
     if (stated === null) return null;
 
@@ -878,6 +887,76 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * Static and pure: it takes no decision, so keeping it off the instance says plainly that the
    * run payload is a PROJECTION of what was already validated, not a second source of facts.
    */
+  /**
+   * Refuse an open whose context the GOVERNING WORKFLOW would reject.
+   *
+   * ## Why this is a second check and not a stricter first one
+   *
+   * Two different schemas are in play and both are legitimate:
+   *
+   *   * the tenant's CURRENT pinned version, which `assertContextConformsToSchema` checks — it
+   *     is what the tenant says a consultation context looks like today;
+   *   * the version the governing workflow's trigger was FROZEN against, which the interpreter
+   *     validates the run payload with and which a PINNED trigger keeps for the life of the
+   *     published artifact.
+   *
+   * They agree for a follow-latest trigger (the gateway re-resolves it at dispatch) and can
+   * differ for a pinned one. When they differ, today's behaviour is a 201 followed minutes later
+   * by a governing run that failed on its first node — with a metered unit, a written row and
+   * persisted PHI context items already committed, and nothing the clinician can act on.
+   *
+   * ## Only a CONCLUSIVE check may refuse
+   *
+   * `previewGoverningWorkflow` answers `null` for every inconclusive outcome — no assignment, a
+   * definition unpublished since, an unreadable compiled config, a trigger that froze no schema,
+   * a dependency outage — and never throws. Those all fall through to today's ungoverned open,
+   * because dispatch is best-effort by contract and a clinician must be able to open a
+   * consultation when the schema or harness plane is having a bad day. Only a workflow that was
+   * resolved, whose trigger schema was read, and which demonstrably refuses this payload produces
+   * a 400.
+   */
+  private async assertGoverningWorkflowAcceptsContext(
+    tenantId: string,
+    request: OpenConsultationRequest,
+    openContext: ResolvedOpenContext,
+  ): Promise<void> {
+    const authoredContext = ConsultationService.authoredContextOf(request.context, openContext.validatedKindKeys);
+    if (!authoredContext || !this.workflowDispatchService?.previewGoverningWorkflow) return;
+
+    let preview: Awaited<ReturnType<NonNullable<IConsultationWorkflowDispatchService['previewGoverningWorkflow']>>>;
+    try {
+      preview = await this.workflowDispatchService.previewGoverningWorkflow({
+        tenantId,
+        departmentId: openContext.departmentId ?? null,
+        workflowDefinitionSlug: request.workflowDefinitionSlug ?? null,
+        parentConsultationId: request.parentConsultationId ?? null,
+        visitType: openContext.visitTypeKey,
+      });
+    } catch (error) {
+      // Defensive: the preview's own contract is "never throws". A dependency that breaks that
+      // contract must still not cost a clinician their consultation.
+      this.logger.warn({
+        message: 'Governing-workflow compatibility could not be checked — opening without it, exactly as an unassigned consultation opens',
+        tenantId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (!preview) return;
+
+    const problems = jsonSchemaValueProblems(preview.resolved, authoredContext);
+    if (problems.length === 0) return;
+
+    throw new BadRequestException({
+      message: `The supplied \`context\` is not accepted by the workflow that governs this consultation ('${preview.workflowDefinitionSlug}').`,
+      code: 'WORKFLOW_CONTEXT_INCOMPATIBLE',
+      workflowDefinitionSlug: preview.workflowDefinitionSlug,
+      boundSchemaVersion: preview.boundSchemaVersion,
+      problems,
+    });
+  }
+
   private static authoredContextOf(context: Record<string, unknown> | undefined, validatedKindKeys: string[]): Record<string, unknown> | null {
     if (!context || validatedKindKeys.length === 0) return null;
     const authored: Record<string, unknown> = {};
@@ -970,12 +1049,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // DEPARTMENT has to be settled before either, because it selects the schema the rest is
     // checked against.
     const openContext = await this.resolveOpenContext(tenantId, request);
-    const { clinicianId: actingClinicianId, named: clinicianWasNamed } = await this.resolveActingClinician(
-      tenantId,
-      request,
-      doctorId,
-      openContext,
-    );
+    const { clinicianId: actingClinicianId, named: clinicianWasNamed } = await this.resolveActingClinician(tenantId, request, doctorId, openContext);
 
     await this.assertCrossAggregateRefsInTenant(tenantId, {
       doctorId: actingClinicianId,
@@ -1041,6 +1115,20 @@ export class ConsultationService extends BaseService implements IConsultationSer
       const withRelations = await this.consultationRepository.findWithRelations(existing.id);
       return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
     }
+
+    // The LAST refusal before anything is written: would the workflow that is about to govern
+    // this consultation actually accept the context the caller sent?
+    //
+    // `assertContextConformsToSchema` above already checked the payload against the tenant's
+    // CURRENT pinned schema. That is a different question: a governing workflow whose trigger the
+    // author PINNED carries the schema it was published with, frozen with
+    // `additionalProperties: false`, and `interpreter_core_trigger` validates against exactly
+    // those bytes. So a tenant that publishes a new kind gets a 201 here and a run that dies on
+    // its first node — after the meter unit, the row and the PHI context items are written.
+    //
+    // Placed on the CREATE path only (the re-open branch returned above) and only where the
+    // answer is CONCLUSIVE — see `assertGoverningWorkflowAcceptsContext`.
+    await this.assertGoverningWorkflowAcceptsContext(tenantId, request, openContext);
 
     // A genuinely NEW consultation consumes a monthly
     // meter unit. Only the create branch is metered (returning an existing

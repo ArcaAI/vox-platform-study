@@ -102,7 +102,15 @@ describe('compiledTriggerContextSchema — the answer publish already froze', ()
   it('lifts the resolved payload schema out of a compiled artifact', () => {
     const compiled = compiledOrThrow(
       graph({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }),
-      ctx({ triggerContextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: RESOLVED_SCHEMA } }),
+      ctx({
+        triggerContextSchema: {
+          schemaId: 'schema-1',
+          versionNumber: 2,
+          versionId: 'version-2',
+          payloadSchema: RESOLVED_SCHEMA,
+          followsLatest: false,
+        },
+      }),
     );
     expect(compiledTriggerContextSchema(compiled)).toEqual(RESOLVED_SCHEMA);
   });

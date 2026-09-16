@@ -90,7 +90,9 @@ describe('compile — the frozen trigger context schema', () => {
   it('stamps the derived payload schema on the compiled trigger node and records the ref', () => {
     const config = compiledOrThrow(
       graph({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }),
-      baseCtx({ triggerContextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA } }),
+      baseCtx({
+        triggerContextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA, followsLatest: false },
+      }),
     );
 
     expect(triggerNode(config).config).toMatchObject({
@@ -121,7 +123,9 @@ describe('compile — the frozen trigger context schema', () => {
     const bareAgain = compiledOrThrow(graph(), baseCtx()).checksum;
     const bound = compiledOrThrow(
       graph({ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }),
-      baseCtx({ triggerContextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA } }),
+      baseCtx({
+        triggerContextSchema: { schemaId: 'schema-1', versionNumber: 2, versionId: 'version-2', payloadSchema: PAYLOAD_SCHEMA, followsLatest: false },
+      }),
     ).checksum;
 
     expect(bare).toBe(bareAgain);

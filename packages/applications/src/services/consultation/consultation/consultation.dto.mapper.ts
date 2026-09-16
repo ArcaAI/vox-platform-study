@@ -1,6 +1,7 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
 import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
 import { readSummaryLanguage } from './summary-language';
+import { governingRunOf } from '../governing-engine';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
 /**
@@ -40,6 +41,10 @@ export class ConsultationDtoMapper {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       isNew,
+      // Read through the ONE derivation, so `open`, `GET :id`, the list and
+      // `GET :id/workflow` cannot disagree about a run's status — and so a malformed marker
+      // reads as "the default loop governs" here exactly as it does at the substrate gate.
+      governingRun: governingRunOf(entity.metadata),
     };
   }
 
