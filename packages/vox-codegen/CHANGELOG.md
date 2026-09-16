@@ -1,8 +1,12 @@
 # @arcaai/vox-codegen
 
-## Unreleased — 3.6.0
+## 3.6.0
 
 ### Minor Changes
+
+- Schema-driven consultation context, aligned end to end. vox-node: typed `open<TContext>`, `consultations.listContext`, `governingRun` on consultation responses, `HopeAPIError.problems`, run status `degraded` + node counts, `WorkflowSchemaDescription.contextSchema` / `reviewNodes`, `OPEN_REFUSAL_CODES` and `API_KEY_SCOPE_PRESETS` re-exported, a new refusal `WORKFLOW_CONTEXT_INCOMPATIBLE` on `open` (400). Browser SDK: `problems` on errors, `governingRun`, `degraded` + counts on `useWorkflowRun`. Codegen: `--check`, `OpenConsultationContext`, `@schemaVersion` / `@contextSchema` / `@reviewNodes` annotations, no ticket numbers in emitted text.
+
+### Details (3.6.0)
 
 - **`--check`, for both modes.** Regenerates in memory and compares against whatever is
   committed on disk (the `Generated:` timestamp line is normalized out first, so two honest
