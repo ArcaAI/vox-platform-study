@@ -7,6 +7,8 @@
  * `/api/v1/consultations/jobs/:jobId*`.
  */
 
+import type { GoverningRunSummary } from '@arcaai/types';
+
 // -----------------------------------------------------------------------------
 // Requests
 // -----------------------------------------------------------------------------
@@ -124,21 +126,15 @@ export interface SummaryApprovalResponse {
 // -----------------------------------------------------------------------------
 
 /**
- * Response body of `GET /api/v1/consultations/:id` — the ONLY consultation
- * read this SDK exposes (`hope.consultations.get(id)`), scoped to what the
- * P0.5 summarization flow needs to validate an id, not full consultation
- * CRUD (out of day-1 scope).
- *
- * The real backend DTO is `ConsultationResponse`
+ * Response body of `GET /api/v1/consultations/:id` (`hope.consultations.get(id)`) — the same
+ * PARTIAL VIEW of `ConsultationResponse` as {@link ConsultationOpenResponse} in
+ * `./consultation-realtime`, now that this SDK has grown from an id-validation
+ * check into the realtime lifecycle. `ConsultationResponse`
  * (`packages/applications/src/services/consultation/consultation/dto/consultation.response.ts`)
- * and additionally carries `doctor` (`DoctorInfo`), `department`
- * (`DepartmentInfo`), `parentConsultationId`, `metadata`, and `contextItems`
- * (`ContextItemResponse[]`, populated only when fetching a single
- * consultation). Deliberately NOT typed here — this SDK has no other reason
- * to model context items, and doing so would pull in the entire
- * transcript/summary content-item shape for a "does this id exist" check.
- * This type is a genuine PARTIAL VIEW of that DTO — reach for the fields
- * below only; anything else on the wire is simply not represented.
+ * additionally carries `doctor` (`DoctorInfo`), `department` (`DepartmentInfo`), and
+ * `contextItems` (`ContextItemResponse[]`, populated only when fetching a single consultation) —
+ * still deliberately NOT typed here; use {@link ConsultationsResource.listContext} for context
+ * items instead of expecting them inline.
  */
 export interface ConsultationGetResponse {
   id: string;
@@ -166,6 +162,11 @@ export interface ConsultationGetResponse {
     | 'REOPENED'
     | 'CLOSED_COMPLETE'
     | 'CLOSED_INCOMPLETE';
+  /** The PRIOR consultation, when this visit is a revisit or a referral — see `OpenConsultationRequest.parentConsultationId`. */
+  parentConsultationId?: string;
+  /** As DECLARED at open; absent = undeclared. NOT the STT language. */
+  language?: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   /**
@@ -176,6 +177,13 @@ export interface ConsultationGetResponse {
    * `options.ifMatch` and the SDK renders the strong validator for you.
    */
   version?: number;
+  /**
+   * The consultation's governing workflow run, derived from the persisted
+   * `metadata.governingEngine` marker. `null` when the consultation is ungoverned. See
+   * `ConsultationOpenResponse.governingRun` (`./consultation-realtime`) for the same field on
+   * `open()`'s response.
+   */
+  governingRun: GoverningRunSummary | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -398,7 +406,8 @@ export interface AddContextRequest {
 
 /**
  * Response body of `POST /api/v1/consultations/:id/context` (and the other
- * `:id/context*` reads). Mirrors `ContextItemResponse`
+ * `:id/context*` reads, including {@link ConsultationsResource.listContext}). Mirrors
+ * `ContextItemResponse`
  * (`packages/applications/src/services/consultation/context/dto/context-item.response.ts`).
  *
  * A genuine PARTIAL VIEW, in the same spirit as {@link ConsultationGetResponse}:
@@ -408,10 +417,10 @@ export interface AddContextRequest {
  * Those model the transcript-and-summary surface this SDK does not otherwise
  * touch; reach for the fields below only.
  *
- * Note what is deliberately ABSENT: the response carries **no `kindKey` and no
- * `contextSchemaVersionId`** — the DTO mapper does not project them. A caller
- * that needs to know which kind or schema version an item was written under
- * must remember what it sent, not read it back.
+ * `kindKey` and `contextSchemaVersionId` ARE now present — the DTO mapper projects both, where
+ * an earlier revision of this doc comment said they were absent. Read them back to confirm which
+ * tenant-declared kind, and which schema version, an item was validated against — rather than
+ * having to remember what you sent.
  */
 export interface ContextItemResponse {
   id: string;
@@ -422,6 +431,17 @@ export interface ContextItemResponse {
   mediaId?: string;
   dnaWritingStyleId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The kind key this item satisfies, from the tenant's pinned consultation context schema
+   * (e.g. `vitals`, `previous_case_notes`). `null` for an item that names no kind — most
+   * pre-schema and platform-authored items. Always present (never `undefined`); may be `null`.
+   */
+  kindKey: string | null;
+  /**
+   * The `ConsultationContextSchemaVersion` id this item was validated against, when {@link kindKey}
+   * is set. `null` when `kindKey` is `null`. Always present (never `undefined`).
+   */
+  contextSchemaVersionId: string | null;
   /** Content-revision pointer. DISTINCT from {@link ContextItemResponse.version}. */
   currentVersionNumber: number;
   /** Row `_version`, the OCC counter. Echo back as `If-Match: "<version>"` on a PATCH. */

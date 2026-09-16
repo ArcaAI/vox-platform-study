@@ -43,6 +43,8 @@ const SCHEMA = {
   modes: ['async', 'stream', 'socket'],
   components: { Workflow_triage_Input: { title: 'Workflow_triage_Input', type: 'object' } },
   asyncapi: { asyncapi: '3.0.0' },
+  contextSchema: { schemaId: 'schema-1', slug: 'default', versionNumber: 3, followsLatest: true },
+  reviewNodes: [{ nodeId: 'n_review', label: 'Clinician review' }],
 };
 
 describe('hope.workflows.schema', () => {
@@ -65,6 +67,27 @@ describe('hope.workflows.schema', () => {
   // AMENDED TASK-931: this plane accepted an API key ONLY until TASK-930 declared
   // `svc:workflow:definition:read` on it. The refusal now belongs to the consultation-bound
   // plane alone — pinned in `task931-agent-plane.test.ts`, along with the reach it replaced.
+
+  /**
+   * `contextSchema` names which schema (and whether it tracks the tenant's pin) the trigger
+   * validates against; `reviewNodes` is how a caller discovers a review node id without
+   * hardcoding it.
+   */
+  it('surfaces contextSchema and reviewNodes', async () => {
+    const { hope } = client([() => json(SCHEMA)]);
+    const schema = await hope.workflows.schema('triage');
+
+    expect(schema.contextSchema).toEqual({ schemaId: 'schema-1', slug: 'default', versionNumber: 3, followsLatest: true });
+    expect(schema.reviewNodes).toEqual([{ nodeId: 'n_review', label: 'Clinician review' }]);
+  });
+
+  it('contextSchema is null for a definition with no consultation trigger', async () => {
+    const { hope } = client([() => json({ ...SCHEMA, contextSchema: null, reviewNodes: [] })]);
+    const schema = await hope.workflows.schema('triage');
+
+    expect(schema.contextSchema).toBeNull();
+    expect(schema.reviewNodes).toEqual([]);
+  });
 });
 
 describe('hope.workflows.list — the contract travels with the catalogue', () => {

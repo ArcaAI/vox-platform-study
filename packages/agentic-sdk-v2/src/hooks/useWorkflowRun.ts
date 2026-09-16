@@ -297,6 +297,14 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
 
       const payload = envelope.payload as WorkflowRunEventPayload | undefined;
       if (payload?.status !== undefined && typeof payload.status === 'string') {
+        // The four node counts ride the interpreter's completion event through
+        // `WorkflowRunEventPayload`'s index signature — read defensively rather than assuming
+        // every deployed harness has caught up, and derive `degraded` with the same rule the
+        // gateway's own live read uses, so this hook and a server-side `getRun` never disagree.
+        const nodeCount = typeof payload.nodeCount === 'number' ? payload.nodeCount : null;
+        const failedNodeCount = typeof payload.failedNodeCount === 'number' ? payload.failedNodeCount : null;
+        const degradedNodeCount = typeof payload.degradedNodeCount === 'number' ? payload.degradedNodeCount : null;
+        const skippedNodeCount = typeof payload.skippedNodeCount === 'number' ? payload.skippedNodeCount : null;
         setStatus({
           runId: payload.runId ?? runId,
           slug: payload.slug ?? slug,
@@ -306,6 +314,11 @@ export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflow
           startedAt: payload.startedAt ?? null,
           endedAt: payload.endedAt ?? null,
           resultRef: (payload.resultRef as Record<string, unknown> | undefined) ?? null,
+          degraded: (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0 && payload.status === 'COMPLETED',
+          nodeCount,
+          failedNodeCount,
+          degradedNodeCount,
+          skippedNodeCount,
         });
       }
       if (envelope.type === 'workflow.run.completed' || (typeof payload?.status === 'string' && isTerminalRunStatus(payload.status))) {

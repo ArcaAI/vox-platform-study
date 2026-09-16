@@ -400,6 +400,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       metadata: store.consultation.metadata,
       createdAt: store.consultation.createdAt,
       updatedAt: store.consultation.updatedAt,
+      governingRun: store.consultation.governingRun,
     };
   }, [store.consultation]);
 

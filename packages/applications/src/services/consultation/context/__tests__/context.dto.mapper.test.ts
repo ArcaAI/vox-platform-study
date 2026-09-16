@@ -37,6 +37,8 @@ const createMockContextItemEntity = (
     source: string;
     content: string | null;
     dnaWritingStyleId: string | null;
+    kindKey: string | null;
+    contextSchemaVersionId: string | null;
     currentVersionNumber: number;
     version: number;
     qdrantSynced: boolean;
@@ -65,6 +67,8 @@ const createMockContextItemEntity = (
   source: overrides.source ?? ContextItemSource.USER,
   content: 'content' in overrides ? overrides.content : 'Test content',
   dnaWritingStyleId: 'dnaWritingStyleId' in overrides ? overrides.dnaWritingStyleId : null,
+  kindKey: 'kindKey' in overrides ? overrides.kindKey : null,
+  contextSchemaVersionId: 'contextSchemaVersionId' in overrides ? overrides.contextSchemaVersionId : null,
   currentVersionNumber: overrides.currentVersionNumber ?? 1,
   // the OCC counter (`_version`) — DISTINCT from
   // `currentVersionNumber` above (the content-revision pointer).
@@ -275,6 +279,27 @@ describe('ContextDtoMapper', () => {
       const result = ContextDtoMapper.toResponse(entity as any);
 
       expect(result.dnaWritingStyleId).toBeUndefined();
+    });
+
+    it('should map kindKey and contextSchemaVersionId when present', () => {
+      const entity = createMockContextItemEntity({
+        kindKey: 'vitals',
+        contextSchemaVersionId: 'schema-version-1',
+      });
+
+      const result = ContextDtoMapper.toResponse(entity as any);
+
+      expect(result.kindKey).toBe('vitals');
+      expect(result.contextSchemaVersionId).toBe('schema-version-1');
+    });
+
+    it('should map kindKey and contextSchemaVersionId to null (never undefined) when absent', () => {
+      const entity = createMockContextItemEntity({ kindKey: null, contextSchemaVersionId: null });
+
+      const result = ContextDtoMapper.toResponse(entity as any);
+
+      expect(result.kindKey).toBeNull();
+      expect(result.contextSchemaVersionId).toBeNull();
     });
 
     it('should map content when present', () => {

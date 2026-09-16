@@ -30,12 +30,12 @@ describe('ApiKeyController', () => {
   });
 
   describe('GET /admin/api-keys/scopes', () => {
-    it('should return scopes grouped by category', () => {
+    it('should return scopes grouped by category, under `categories`', () => {
       const result = controller.getAvailableScopes();
 
-      expect(result).toHaveProperty('STT');
-      expect(result).toHaveProperty('Consultation');
-      expect(result).toHaveProperty('Wildcard');
+      expect(result.categories).toHaveProperty('STT');
+      expect(result.categories).toHaveProperty('Consultation');
+      expect(result.categories).toHaveProperty('Wildcard');
     });
 
     /**
@@ -44,14 +44,14 @@ describe('ApiKeyController', () => {
      * this catalog. Both categories vanish entirely rather than appearing
      * empty, because advertising a scope the platform will always refuse to
      * mint is worse than not listing it.
- */
+     */
     it('does not advertise the reserved Admin / Webhook families', () => {
       const result = controller.getAvailableScopes();
 
-      expect(result).not.toHaveProperty('Admin');
-      expect(result).not.toHaveProperty('Webhook');
+      expect(result.categories).not.toHaveProperty('Admin');
+      expect(result.categories).not.toHaveProperty('Webhook');
 
-      const wildcard = (result['Wildcard'] as Array<{ scope: string }>).map((s) => s.scope);
+      const wildcard = (result.categories['Wildcard'] as Array<{ scope: string }>).map((s) => s.scope);
       expect(wildcard).not.toContain('admin:*');
       expect(wildcard).not.toContain('webhook:*');
       // The bare '*' stays — it is the platform SERVICE_ACCOUNT wildcard for
@@ -62,7 +62,7 @@ describe('ApiKeyController', () => {
     it('should include scope and description in each category entry', () => {
       const result = controller.getAvailableScopes();
 
-      for (const [, scopes] of Object.entries(result)) {
+      for (const [, scopes] of Object.entries(result.categories)) {
         expect(Array.isArray(scopes)).toBe(true);
         for (const entry of scopes as Array<{ scope: string; description: string }>) {
           expect(entry).toHaveProperty('scope');
@@ -73,7 +73,7 @@ describe('ApiKeyController', () => {
 
     it('should include STT scopes in the STT category', () => {
       const result = controller.getAvailableScopes();
-      const sttScopes = (result['STT'] as Array<{ scope: string }>).map((s) => s.scope);
+      const sttScopes = (result.categories['STT'] as Array<{ scope: string }>).map((s) => s.scope);
 
       expect(sttScopes).toContain('stt:transcription:read');
       expect(sttScopes).toContain('stt:transcription:write');
@@ -88,6 +88,23 @@ describe('ApiKeyController', () => {
 
       expect(mockService.fetchAll).not.toHaveBeenCalled();
       expect(mockService.fetchById).not.toHaveBeenCalled();
+    });
+
+    it('returns the three scope presets beside the catalogue (D-6)', () => {
+      const result = controller.getAvailableScopes();
+
+      expect(result.presets.map((p) => p.key)).toEqual(['consultation-app', 'types-codegen', 'agents-and-workflows']);
+    });
+
+    it('every preset scope is a grantable (non-reserved) catalogue entry', () => {
+      const result = controller.getAvailableScopes();
+      const grantableScopes = new Set(Object.values(result.categories).flatMap((entries) => entries.map((e) => e.scope)));
+
+      for (const preset of result.presets) {
+        for (const scope of preset.scopes) {
+          expect(grantableScopes.has(scope), `preset "${preset.key}" advertises ungrantable scope "${scope}"`).toBe(true);
+        }
+      }
     });
   });
 
@@ -199,11 +216,15 @@ describe('ApiKeyController', () => {
    * The guard-side half of this proof (identical outcomes with and without the
    * pairs listed) lives in
    * `packages/applications/src/authorization/__tests__/casl-conditions.enforce-apikey.test.ts`.
- */
+   */
   describe('subject-instance resolver (why the ApiKey pairs are unreachable)', () => {
     const descriptorFor = (method: keyof ApiKeyController) =>
       Reflect.getMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, ApiKeyController.prototype[method] as object) as
-        | { resolver: (req: unknown, ctx: { get: (t: unknown) => unknown }) => Promise<Record<string, unknown> | undefined>; subject?: string; enforceGrade: boolean }
+        | {
+            resolver: (req: unknown, ctx: { get: (t: unknown) => unknown }) => Promise<Record<string, unknown> | undefined>;
+            subject?: string;
+            enforceGrade: boolean;
+          }
         | undefined;
 
     const ctxFor = (service: unknown) => ({ get: () => service });
@@ -233,7 +254,10 @@ describe('ApiKeyController', () => {
       const descriptor = descriptorFor('fetchById');
       mockService.fetchById.mockResolvedValue({ id: 'key-1', tenantId: 'tenant-1', userId: 'user-1' });
 
-      await expect(descriptor!.resolver({ params: { id: 'key-1' } }, ctxFor(mockService))).resolves.toEqual({ tenantId: 'tenant-1', userId: 'user-1' });
+      await expect(descriptor!.resolver({ params: { id: 'key-1' } }, ctxFor(mockService))).resolves.toEqual({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
     });
 
     it('no id on the request → no row is loaded at all', async () => {

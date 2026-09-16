@@ -107,6 +107,32 @@ function componentBySuffix(components: unknown, suffix: string): Record<string, 
   return null;
 }
 
+/**
+ * Parse `WorkflowSchemaDescription.contextSchema` off untrusted wire JSON — defensive, never
+ * throwing: a malformed or absent value just means no `@contextSchema` annotation, not a broken
+ * generator run.
+ */
+function readContextSchema(value: unknown): PublishedWorkflow['contextSchema'] {
+  if (!isPlainObject(value)) return null;
+  const { schemaId, slug, versionNumber, followsLatest } = value;
+  if (typeof schemaId !== 'string' || typeof slug !== 'string' || typeof versionNumber !== 'number' || typeof followsLatest !== 'boolean') {
+    return null;
+  }
+  return { schemaId, slug, versionNumber, followsLatest };
+}
+
+/** Parse `WorkflowSchemaDescription.reviewNodes` off untrusted wire JSON — same defensive posture as {@link readContextSchema}. */
+function readReviewNodes(value: unknown): PublishedWorkflow['reviewNodes'] {
+  if (!Array.isArray(value)) return [];
+  const nodes: PublishedWorkflow['reviewNodes'] = [];
+  for (const entry of value) {
+    if (isPlainObject(entry) && typeof entry.nodeId === 'string' && typeof entry.label === 'string') {
+      nodes.push({ nodeId: entry.nodeId, label: entry.label });
+    }
+  }
+  return nodes;
+}
+
 async function fetchAgents(base: string, apiKey: string, doFetch: typeof fetch): Promise<PublishedAgent[]> {
   const listUrl = `${base}${API_PREFIX}/agents`;
   const entries = readCollection(await getJson(listUrl, apiKey, doFetch), listUrl);
@@ -151,6 +177,8 @@ async function fetchWorkflows(base: string, apiKey: string, doFetch: typeof fetc
       // projection, so prefer it and fall back only when the definition declares none.
       inputSchema: componentBySuffix(described.components, '_Input') ?? schemaOrNull(entry.inputSchema),
       outputSchema: componentBySuffix(described.components, '_Output') ?? schemaOrNull(entry.outputSchema),
+      contextSchema: readContextSchema(described.contextSchema),
+      reviewNodes: readReviewNodes(described.reviewNodes),
     });
   }
   return workflows;

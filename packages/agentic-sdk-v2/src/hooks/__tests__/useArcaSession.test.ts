@@ -142,6 +142,52 @@ describe('useArcaSession', () => {
       });
     });
 
+    it('maps governingRun from store — derived from the persisted marker, never a live call', () => {
+      mockStore.consultation = {
+        id: 'cons-1',
+        patientId: 'p1',
+        doctorId: 'd1',
+        appointmentDate: '2026-02-19',
+        createdAt: '2026-02-19T00:00:00Z',
+        updatedAt: '2026-02-19T00:00:00Z',
+        governingRun: {
+          workflowDefinitionSlug: 'gen-new-visit',
+          workflowRunId: 'run-1',
+          status: 'RUNNING',
+          degraded: false,
+          decidedAt: '2026-02-19T00:00:01Z',
+          failureReason: null,
+        },
+      };
+      (useAgenticStore as any).mockReturnValue(mockStore);
+
+      const { result } = renderHook(() => useArcaSession());
+      expect(result.current.consultation?.governingRun).toEqual({
+        workflowDefinitionSlug: 'gen-new-visit',
+        workflowRunId: 'run-1',
+        status: 'RUNNING',
+        degraded: false,
+        decidedAt: '2026-02-19T00:00:01Z',
+        failureReason: null,
+      });
+    });
+
+    it('maps governingRun as null for an ungoverned consultation', () => {
+      mockStore.consultation = {
+        id: 'cons-1',
+        patientId: 'p1',
+        doctorId: 'd1',
+        appointmentDate: '2026-02-19',
+        createdAt: '2026-02-19T00:00:00Z',
+        updatedAt: '2026-02-19T00:00:00Z',
+        governingRun: null,
+      };
+      (useAgenticStore as any).mockReturnValue(mockStore);
+
+      const { result } = renderHook(() => useArcaSession());
+      expect(result.current.consultation?.governingRun).toBeNull();
+    });
+
     it('should reflect loading and error state from store', () => {
       mockStore.sessionLoading = true;
       mockStore.sessionError = new Error('test error');
