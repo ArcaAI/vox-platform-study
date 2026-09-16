@@ -1,0 +1,15 @@
+{
+ "sessionId": "01a0ab97-ea41-7279-b729-b0ab9f6ff571",
+ "status": "active",
+ "wsUrl": "/ws/stt/stream",
+ "maxConcurrent": 15,
+ "currentActive": 0,
+ "ticket": "<redacted>",
+ "ticketExpiresAt": 1789585300326,
+ "voiceProfileSeeded": false,
+ "pipelineId": "01a0ab94-662f-74c9-9423-210b1fde0454",
+ "activeEngine": "primary",
+ "agentSlug": "realtime-transcription",
+ "agentVersionId": "01a0ab94-662f-74c9-9423-210b1fde0454",
+ "sessionEpochMs": 1789585254977
+}

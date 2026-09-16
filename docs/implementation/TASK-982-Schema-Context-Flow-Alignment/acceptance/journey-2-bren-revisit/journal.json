@@ -1,0 +1,86 @@
+{
+  "startedAt": "2026-09-16T19:19:50.607Z",
+  "context": {
+    "encounter": {
+      "doctor_id": "DR-982-1789585253",
+      "event_id": "EVT-982-BREN2-1789586390",
+      "department_code": "BREN",
+      "department_name": "Breast & Endocrine",
+      "visit_type": "revisit",
+      "chief_complaint": "Follow-up after lumpectomy; review of thyroid function"
+    },
+    "vitals": {
+      "bloodPressure": "128/82",
+      "heartRate": 88,
+      "temperature": 36.8,
+      "oxygenSaturation": 97,
+      "weightKg": 81.5,
+      "recordedAt": "2026-09-16T19:19:50.576Z"
+    },
+    "previous_case_notes": {
+      "notes": [
+        {
+          "date": "2026-01-14",
+          "department": "General Medicine",
+          "doctor": "Dr. Bren",
+          "title": "Hypertension review",
+          "text": "PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months."
+        },
+        {
+          "date": "2026-03-02",
+          "title": "Lipid panel follow-up",
+          "text": "PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported."
+        }
+      ]
+    }
+  },
+  "open": {
+    "id": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+    "patientId": "PAT-982-BREN2-1789586390",
+    "doctorId": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+    "doctor": {
+      "id": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+      "username": "auto_8e873edc98ebd2e6",
+      "firstName": "",
+      "lastName": ""
+    },
+    "departmentId": "70000000-0000-0000-0001-000000000015",
+    "department": {
+      "id": "70000000-0000-0000-0001-000000000015",
+      "code": "BREN",
+      "name": "Breast & Endocrine"
+    },
+    "appointmentDate": "2026-09-16",
+    "status": "OPEN",
+    "language": "en",
+    "metadata": {
+      "visitType": "revisit",
+      "externalRef": "EVT-982-BREN2-1789586390",
+      "governingEngine": {
+        "engine": "tenant-workflow",
+        "decidedAt": "2026-09-16T19:19:51.538Z",
+        "workflowRunId": "01a0aba9-4042-7312-9ac5-94a078f4dd54",
+        "workflowDefinitionSlug": "arcaai-bren-consultation"
+      },
+      "summaryLanguage": "en"
+    },
+    "version": 1,
+    "createdAt": "2026-09-16T19:19:50.739Z",
+    "updatedAt": "2026-09-16T19:19:51.539Z",
+    "isNew": true,
+    "governingRun": {
+      "workflowDefinitionSlug": "arcaai-bren-consultation",
+      "workflowRunId": "01a0aba9-4042-7312-9ac5-94a078f4dd54",
+      "status": "RUNNING",
+      "degraded": false,
+      "decidedAt": "2026-09-16T19:19:51.538Z",
+      "failureReason": null
+    }
+  },
+  "governingEngine": {
+    "workflowRunId": "01a0aba9-4042-7312-9ac5-94a078f4dd54",
+    "workflowDefinitionSlug": "arcaai-bren-consultation"
+  },
+  "endedAt": "2026-09-16T19:23:59.269Z",
+  "finalStatus": "PENDING_REVIEW"
+}
