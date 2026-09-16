@@ -10,6 +10,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useConsultation, visitTypeOf } from '../api';
 import type { Consultation } from '../api';
 import { ConsultationStatusBadge } from './consultation-status-badge';
+import { ConsultationWorkflowMeta } from './consultation-workflow-meta';
 
 const EM_DASH = '\u2014';
 
@@ -113,6 +114,8 @@ function DetailBody({ id }: { id: string }) {
         <MetaItem label="Status">
           <ConsultationStatusBadge status={consultation.status} />
         </MetaItem>
+        {/* Directly after Status, full width: which workflow governed this, and whether it worked. */}
+        <ConsultationWorkflowMeta run={consultation.governingRun} />
         <MetaItem label="Type">
           <Badge variant="outline">{visitType === 'new' ? 'New' : 'Revisit'}</Badge>
         </MetaItem>

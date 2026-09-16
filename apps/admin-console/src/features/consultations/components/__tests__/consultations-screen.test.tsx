@@ -305,6 +305,42 @@ describe('ConsultationsScreen', () => {
     expect(within(dialog).getByText('Summary')).toBeDefined();
     expect(within(dialog).getByText(/no mutations; a plain DOCTOR never passes this guard/i)).toBeDefined();
     expect(within(dialog).getByRole('button', { name: 'Copy consultation id' })).toBeDefined();
+    // The detail fixture carries no `governingRun`, which reads the same as null.
+    expect(within(dialog).getByText('Workflow')).toBeDefined();
+    expect(within(dialog).getByText('Not governed by a workflow')).toBeDefined();
+  });
+
+  it('surfaces a FAILED governing run in the detail, with the run link and the raw reason', async () => {
+    stubConsultations((call, parsed) => {
+      if (call.method === 'GET' && parsed.pathname === '/api/hope/admin/consultations/c_9f2ka7aa11') {
+        return Response.json({
+          ...DETAIL,
+          governingRun: {
+            workflowDefinitionSlug: 'cardiology-intake',
+            workflowRunId: 'wr-77',
+            status: 'FAILED',
+            degraded: false,
+            decidedAt: '2026-07-04T14:05:00.000Z',
+            failureReason: '/referral: not declared in the bound version v2',
+          },
+        });
+      }
+      return undefined;
+    });
+    renderWithProviders(<ConsultationsScreen />);
+
+    fireEvent.click(await screen.findByText('dr.vasquez'));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(await within(dialog).findByText('cardiology-intake')).toBeDefined();
+    expect(within(dialog).getByText('Failed')).toBeDefined();
+    expect(within(dialog).getByText(/This consultation ran without its workflow/)).toBeDefined();
+    expect(within(dialog).getByText('/referral: not declared in the bound version v2')).toBeDefined();
+    expect(
+      within(dialog)
+        .getByRole('link', { name: /View run/ })
+        .getAttribute('href'),
+    ).toBe('/workflow-runs/wr-77');
   });
 
   it('shows the filtered empty state with a clear-filters action', async () => {

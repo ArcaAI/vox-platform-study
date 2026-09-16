@@ -145,7 +145,9 @@ export function ContextSchemaRefField({ idPrefix, config, onConfigChange, errors
                     <SelectValue placeholder="Follow latest" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={FOLLOW_LATEST}>Follow latest{bound?.pinnedVersionNumber != null ? ` (currently v${bound.pinnedVersionNumber})` : ''}</SelectItem>
+                    <SelectItem value={FOLLOW_LATEST}>
+                      Follow latest{bound?.pinnedVersionNumber != null ? ` (currently v${bound.pinnedVersionNumber})` : ''}
+                    </SelectItem>
                     {(versions.data ?? []).map((row) => (
                       <SelectItem key={row.versionNumber} value={String(row.versionNumber)}>
                         v{row.versionNumber}
@@ -161,8 +163,15 @@ export function ContextSchemaRefField({ idPrefix, config, onConfigChange, errors
                     // nothing while believing there was nothing to pin.
                     'The version list could not be loaded, so only “Follow latest” is offered. Reopen the inspector to try again.'
                   : binding.versionNumber != null
-                    ? `Pinned to v${binding.versionNumber} — the run always validates against this version.`
-                    : "Follows the schema's own pin — a republish changes what this trigger accepts."}
+                    ? // What moves a PINNED trigger is republishing THIS workflow —
+                      // the schema's own pin is irrelevant to it, which is the
+                      // whole point of pinning.
+                      `This trigger always validates against v${binding.versionNumber}, whatever the schema is pinned to. Republish this workflow to move it.`
+                    : // Follow-latest is resolved at DISPATCH, so a new pin reaches
+                      // this trigger without republishing anything here. The old
+                      // wording ("a republish changes what this trigger accepts")
+                      // described the author's intent, not when it takes effect.
+                      `This trigger uses whichever version is pinned under Context Schemas${bound?.pinnedVersionNumber != null ? ` — currently v${bound.pinnedVersionNumber}` : ''}. Publishing and pinning a new version takes effect here immediately, with no republish.`}
               </FieldDescription>
             </Field>
           ) : null}
