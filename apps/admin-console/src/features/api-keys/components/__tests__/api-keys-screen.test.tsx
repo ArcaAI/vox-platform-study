@@ -58,8 +58,13 @@ const KEYS = [
 ];
 
 const SCOPES: ApiKeyScopeCatalog = {
-  Metrics: [{ scope: 'read:metrics', description: 'Read platform metrics' }],
-  Consultations: [{ scope: 'export:consult', description: 'Export consultation data' }],
+  categories: {
+    Metrics: [{ scope: 'read:metrics', description: 'Read platform metrics' }],
+    Consultations: [{ scope: 'export:consult', description: 'Export consultation data' }],
+  },
+  // No presets in this fixture: these two scopes belong to no purpose card, so
+  // a create here is the Custom path — which is exactly what this test drives.
+  presets: [],
 };
 
 const USAGE: ApiKeyUsage = { totalCalls: 812, lastUsedAt: '2026-07-01T00:00:00.000Z', rateLimit: 600 };
@@ -240,6 +245,10 @@ describe('ApiKeysScreen', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Create key' })[0]);
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'ci_smoke_tests' } });
+    // The scope checklist is one disclosure away now; Custom is the only purpose
+    // this fixture's catalogue offers.
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Custom/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Show all scopes/ }));
     fireEvent.click(await within(dialog).findByRole('checkbox', { name: 'read:metrics' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create key' }));
 

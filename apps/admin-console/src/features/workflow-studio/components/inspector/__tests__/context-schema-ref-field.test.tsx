@@ -19,7 +19,14 @@ function stubFetch(impl?: (url: string) => unknown): void {
       if (impl) return Response.json(impl(url));
       if (url.includes('/versions')) return Response.json([{ versionNumber: 2 }, { versionNumber: 1 }]);
       return Response.json([
-        { id: 'schema-1', slug: 'consultation-legacy-v1', name: 'Consultation (legacy v1)', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true },
+        {
+          id: 'schema-1',
+          slug: 'consultation-legacy-v1',
+          name: 'Consultation (legacy v1)',
+          status: 'PUBLISHED',
+          pinnedVersionNumber: 1,
+          isDefault: true,
+        },
         { id: 'schema-2', slug: 'intake-v2', name: 'Intake v2', status: 'PUBLISHED', pinnedVersionNumber: 3, isDefault: false },
       ]);
     }),
@@ -60,7 +67,14 @@ describe('ContextSchemaRefField', () => {
         const url = String(input);
         if (url.includes('/versions')) return new Response('boom', { status: 500 });
         return Response.json([
-          { id: 'schema-1', slug: 'consultation-legacy-v1', name: 'Consultation (legacy v1)', status: 'PUBLISHED', pinnedVersionNumber: 1, isDefault: true },
+          {
+            id: 'schema-1',
+            slug: 'consultation-legacy-v1',
+            name: 'Consultation (legacy v1)',
+            status: 'PUBLISHED',
+            pinnedVersionNumber: 1,
+            isDefault: true,
+          },
         ]);
       }),
     );
@@ -82,11 +96,40 @@ describe('ContextSchemaRefField', () => {
   it('offers "Follow latest" vs a specific published version once a schema is referenced', async () => {
     stubFetch();
     renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText(/follows the schema.s own pin/i)).toBeTruthy();
+    expect(await screen.findByText(/whichever version is pinned under Context Schemas/i)).toBeTruthy();
     const listbox = await openSelect(/version/i);
     expect(within(listbox).getByRole('option', { name: /^Follow latest/ })).toBeTruthy();
     expect(within(listbox).getByRole('option', { name: 'v2' })).toBeTruthy();
     expect(within(listbox).getByRole('option', { name: 'v1' })).toBeTruthy();
+  });
+
+  /**
+   * The helper text is the whole contract an author reads before choosing. It
+   * used to say a republish of the SCHEMA "changes what this trigger accepts",
+   * which was true of the intent and false of the runtime — the pin was resolved
+   * at COMPILE time. Both sentences now say when the change takes effect and
+   * what has to happen for it to.
+   */
+  it('says, for follow-latest, that a new pin takes effect with no republish — naming the current pin', async () => {
+    stubFetch();
+    renderWithProviders(<ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1' } }} onConfigChange={vi.fn()} />);
+
+    expect(
+      await screen.findByText(
+        'This trigger uses whichever version is pinned under Context Schemas — currently v1. Publishing and pinning a new version takes effect here immediately, with no republish.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says, for a pinned version, that only republishing THIS workflow moves it', async () => {
+    stubFetch();
+    renderWithProviders(
+      <ContextSchemaRefField idPrefix="n1" config={{ contextSchema: { contextSchemaId: 'schema-1', versionNumber: 2 } }} onConfigChange={vi.fn()} />,
+    );
+
+    expect(
+      await screen.findByText('This trigger always validates against v2, whatever the schema is pinned to. Republish this workflow to move it.'),
+    ).toBeTruthy();
   });
 
   it('pinning a specific version writes versionNumber', async () => {
