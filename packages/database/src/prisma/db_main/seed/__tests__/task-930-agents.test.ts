@@ -194,12 +194,14 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
     }
   });
 
-  it('TASK-977 D-1 — realtime-transcription seeds VAD and diarization OFF; only diarization`s model stays unbound', () => {
+  it('TASK-977 — realtime-transcription declares all five audioFrontEnd controls explicitly, VAD/denoise/diarization OFF', () => {
     for (const spec of ALL_SPECS.filter((s) => s.slug === 'realtime-transcription')) {
       const audioFrontEnd = (spec.parameters as any).audioFrontEnd;
       expect(audioFrontEnd.vad).toMatchObject({ enabled: false, modelSlug: 'silero-vad' });
+      expect(audioFrontEnd.denoise).toEqual({ enabled: false });
       expect(audioFrontEnd.diarization).toMatchObject({ enabled: false });
-      expect(audioFrontEnd.denoise).toBeUndefined();
+      expect(audioFrontEnd.resample).toBe(true);
+      expect(audioFrontEnd.normalize).toBe(true);
     }
   });
 

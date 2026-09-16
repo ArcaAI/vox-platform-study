@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { AGENT_PARAMETER_SCHEMAS } from '../agent-schemas';
+import { forbiddenSchemaKeyProblems } from '../agentic-contract';
 
 const props = (schema: unknown, ...path: string[]): Record<string, unknown> => {
   let cursor = schema as Record<string, unknown>;
@@ -53,5 +54,29 @@ describe('TASK-977 — the ASR front-end stages declare themselves OFF', () => {
     expect(Object.keys(afe('denoise').properties as object).sort()).toEqual(['enabled', 'level', 'modelSlug']);
     expect(afe('vad')).toMatchObject({ type: 'object', additionalProperties: false });
     expect(afe('denoise')).toMatchObject({ type: 'object', additionalProperties: false });
+  });
+
+  /**
+   * Follow-up — `vad.modelSlug` and `denoise.modelSlug` gain the same `modelTaskType`
+   * annotation `diarization.embeddingModelSlug` carries (TASK-887): a schema ANNOTATION, not a
+   * validation keyword, that tells the console editor which registry rows are selectable here.
+   * Without it the console renders a bare free-text input the admin can type anything into.
+   */
+  it('vad.modelSlug and denoise.modelSlug are catalogue references, annotated with their task type', () => {
+    const vadSlug = afe('vad', 'modelSlug');
+    expect(vadSlug).toMatchObject({ type: 'string', modelTaskType: 'VOICE_ACTIVITY_DETECTION' });
+    expect(typeof vadSlug.pattern).toBe('string');
+    expect(String(vadSlug.description)).toContain('VOICE_ACTIVITY_DETECTION');
+
+    const denoiseSlug = afe('denoise', 'modelSlug');
+    expect(denoiseSlug).toMatchObject({ type: 'string', modelTaskType: 'AUDIO_TO_AUDIO' });
+    expect(typeof denoiseSlug.pattern).toBe('string');
+    expect(String(denoiseSlug.description)).toContain('AUDIO_TO_AUDIO');
+  });
+
+  it('still declares no property that could hold a credential, endpoint or wire model id', () => {
+    // The annotations added above are schema KEYWORDS, not property names, so the
+    // reference-only sweep must remain clean (same guard as TASK-887).
+    expect(forbiddenSchemaKeyProblems(AGENT_PARAMETER_SCHEMAS)).toEqual([]);
   });
 });
