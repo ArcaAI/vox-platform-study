@@ -387,10 +387,13 @@ Verified status on the last-verified date:
 
 Two runtime tails are honest limitations, not doc drift:
 
-- **Streaming Sortformer diarization is unvalidated pending GPU.** The NeMo
-  loader is implemented but the weights are not staged and there is no CPU/ONNX
-  path, so the live diarizer degrades to "no labels" — today's default
-  diarization-off behaviour (see [overview §3.5](./overview.md#35-speaker-diarization--voice-profile-enrollment)).
+- **Streaming Sortformer diarization was retired (TASK-980, 2026-09-16).** Its
+  checkpoint was a Python literal no agent could choose, pin or veto, and no
+  deployed image carries NeMo, so it only ever degraded to "no labels".
+  `audioFrontEnd.diarization.backend` now accepts `embedding` alone; a stored
+  agent version whose enabled stage names anything else is refused with 409
+  `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED` (see [overview §3.5](./overview.md#35-speaker-diarization--voice-profile-enrollment)).
+  The registry-backed revival design is kept in the TASK-980 ticket.
 - **The ECAPA-TDNN (192-dim) speaker-embedding cutover is not applied.** Voice
   profiles run on the 256-dim default embedding model; the cutover is a config +
   `vector(192)` migration + re-enroll step.

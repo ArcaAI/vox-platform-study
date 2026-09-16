@@ -183,9 +183,7 @@ Still owed for the follow-up:
   list: the grid keeps filters in the `f` URL parameter and never reads `task`. The three retired-route
   redirects (`/audio/pipelines`, `/ai-model-defaults`, `/ai-configuration`) have the same gap — it
   predates this ticket.
-- **Sortformer diarization uses a hardcoded model id** (`DiarizationConfig.sortformer_model_id =
-  'nvidia/diar_streaming_sortformer_4spk-v2.1'`) with no agent property — a no-hardcoded-config
-  violation outside voice-embedding diarization, left for its own ticket.
+- ~~Sortformer diarization uses a hardcoded model id~~ — **resolved by TASK-980 (2026-09-16):** the backend was retired rather than wired to the registry (owner decision C).
 
 ### Verification still owed before this reaches the cluster
 

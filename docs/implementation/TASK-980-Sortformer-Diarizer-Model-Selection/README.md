@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review — code complete; cluster audit + ordered deploy owed |
 | **Type** | refactor (removal) |
 | **Base** | `9c7b61a75` |
 | **Origin** | Flagged by TASK-977 (README "Still owed"); design investigated 2026-09-16 |
@@ -149,7 +149,51 @@ the current image** — acceptance is contract and unit level.
 
 ## Implementation Summary
 
-_In progress — lanes G and P._
+Both lanes merged into `dev-2.2` (`merge(task-980): lane G` then `lane P`).
+
+### What changed
+
+| Layer | Result |
+|---|---|
+| Contract | `AsrSpecDiarizationBackend = 'embedding'`; agent schema `backend` enum `['embedding']`, default `'embedding'` — an agent saved with `sortformer` fails schema validation |
+| Gateway | `assertDiarizationBackendSupported` (`build-resolved-asr-spec.ts`) runs in `buildAsrSpecCore` BEFORE the front-end is built, so it covers the primary, the fallback agent and the model-level fallback core. ENABLED + stored backend present and not `embedding` → **409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`** (a stored `null` counts as present); disabled → `embedding`; absent → `embedding`. The spec always carries `backend: 'embedding'`. `assertDiarizationRunnable` lost its sortformer exemption; enabled embedding with no model is still 409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`. |
+| Voice profile | The unreachable "enabled but no embedding model" 400 became a guard that returns the resolver's own 409 `ASR_AGENT_DIARIZATION_MODEL_MISSING` — a misconfigured agent, not a bad request. API docs and the regenerated OpenAPI/portal artifacts match. |
+| `apps/stt` | Wire and `DiarizationConfig` Literals narrowed; `diarization/streaming_sortformer.py`, the four `sortformer_*` knobs, `_build_sortformer_diarizer` and all inference wiring deleted (net −1,062 lines across the lane); the embedding gate is plain `effective_diarization` (behaviour-identical for embedding sessions); legacy YAML naming it raises `UnsupportedDiarizationBackendError`; a persisted session spec naming it is skipped on recovery with a logged reason (pinned by `test_task980_retired_backend_recovery.py`). The `nemo` extra stays. |
+| Diarization-quality scaffold | Kept — DER/JER metrics and fixtures are backend-agnostic and still measure embedding diarization; only wording changed |
+| Docs | `docs/architecture/overview.md`, `docs/architecture/model-and-config-plane.md`, `docs/operations/deprecation-register.md` (new TASK-980 section with the deploy precondition), `docs/operations/retrieval-corpus-ingestion/README.md` |
+
+### Found only at the merge gate
+
+`test_nothing_under_src_names_the_retired_backend` walked every file under `apps/stt/src/`, including the
+gitignored `stt.egg-info/` an editable install leaves behind, whose `SOURCES.txt` still listed the deleted module.
+Green in the lane's fresh worktree, red in the primary checkout — and likely in any CI job with an editable
+install. It now skips `*.egg-info` like `__pycache__`.
+
+### Evidence (primary checkout, after both merges)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/types` build · `@arcaai/workflow-contract` build + test | OK · 54 files / 957 tests |
+| TS parity contract + `stt/agent-resolver/__tests__` | 6 files / 141 tests |
+| `CI=true pnpm stt:test:unit` (includes the Python parity suite) · `stt:lint` · `stt:typecheck` | 3450 passed · clean · clean (141 files) |
+| `@arcaai/applications` test | 14126+ passed; one known environmental file (test DB on :5433 down) and one pre-existing flaky test (`consultation-timeout-sweep` 1-ms clock race, failed 1 of 3 isolated runs on untouched code — queued as its own fix) |
+| `@arcaai/api` test | 320 files / 4634 tests |
+| `@arcaai/admin-console` test · typecheck · lint | 343 files / 3288 tests · clean · clean |
+| Contract fixture | byte-identical to the base (`FIXTURE_UNCHANGED`) |
+
+`api:openapi:check` / `api:portal:check` / `vox-node gen:admin:check` were run green in lane G's worktree after
+regeneration; they were not re-run in the primary checkout because a watch-mode API was running from it and
+`api:build` would race it.
+
+### Deploy precondition — owed
+
+1. Audit the target database for SPEECH_TO_TEXT agent versions whose `parameters.audioFrontEnd.diarization`
+   is `enabled: true` with `backend: 'sortformer'` (dev `hope`: 0). Notify those tenants' admins — published
+   versions are immutable content and cannot be auto-fixed.
+2. Deploy the gateway (stops emitting `sortformer`).
+3. Drain Redis-persisted streaming sessions and queued Dramatiq batch jobs carrying a sortformer spec — a queued
+   job would otherwise fail validation and spend its 3 retries.
+4. Deploy `apps/stt`.
 
 ## Change History
 
@@ -157,3 +201,4 @@ _In progress — lanes G and P._
 |---|---|
 | 2026-09-16 | Ticket opened with a read-only design investigation; Option A recommended; 19 decisions pending. |
 | 2026-09-16 | Owner decision: Option C — retire the backend, implement now. Option A kept as the revival design. |
+| 2026-09-16 | Lanes G (contract + gateway) and P (Python runtime) merged; egg-info fragility in the absence test fixed at the merge gate; docs updated; status Review pending the cluster audit and ordered deploy. |
