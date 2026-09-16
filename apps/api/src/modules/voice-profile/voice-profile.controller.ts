@@ -26,6 +26,17 @@ import { EnrollBodyDto, VoiceProfileEnrollmentTargetResponse, VoiceProfileRespon
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES = 3;
 
+// TASK-977 — the two refusals the enrollment target can answer with, documented identically on
+// both routes because `enroll` resolves the very same target before any audio leaves the gateway.
+const DIARIZATION_DISABLED_409 =
+  '`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off ' +
+  '(`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be ' +
+  'enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable ' +
+  'agent) answer 409 with their own `code`.';
+const SORTFORMER_400 =
+  'The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there ' +
+  'is no speaker-embedding space to enroll into.';
+
 @ApiBearerAuth()
 @ApiTags('voice-profile')
 @Controller('voice-profiles')
@@ -57,6 +68,11 @@ export class VoiceProfileController {
   @ApiOperation({ summary: 'Enroll a voice profile from audio samples' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Voice profile created', type: VoiceProfileResponse })
+  @ApiResponse({
+    status: 400,
+    description: `Missing, oversized or non-audio samples, samples the embedding model rejected, or: ${SORTFORMER_400}`,
+  })
+  @ApiResponse({ status: 409, description: DIARIZATION_DISABLED_409 })
   @UseInterceptors(FilesInterceptor('files', MAX_FILES))
   async enroll(
     @UploadedFiles(
@@ -96,11 +112,13 @@ export class VoiceProfileController {
     description:
       'TASK-887 — resolves the SPEECH_TO_TEXT agent (explicit `agentSlug`, else the tenant’s assigned one) and ' +
       'reports the SPEAKER_EMBEDDING model it declares. A profile whose `modelId` differs from this will never be ' +
-      'matched by that agent, so a client uses this to prompt a re-enrollment.',
+      'matched by that agent, so a client uses this to prompt a re-enrollment. TASK-977: refused with 409 ' +
+      '`ASR_AGENT_DIARIZATION_DISABLED` while the agent has speaker diarization switched off.',
   })
   @ApiQuery({ name: 'agentSlug', required: false, type: String })
   @ApiResponse({ status: 200, description: 'The enrollment target', type: VoiceProfileEnrollmentTargetResponse })
-  @ApiResponse({ status: 400, description: 'The agent declares no speaker-embedding model, so nothing could match an enrollment.' })
+  @ApiResponse({ status: 400, description: SORTFORMER_400 })
+  @ApiResponse({ status: 409, description: DIARIZATION_DISABLED_409 })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
   async enrollmentTarget(@Query('agentSlug') agentSlug?: string): Promise<VoiceProfileEnrollmentTargetResponse> {
     return VoiceProfileEnrollmentTargetResponse.from(await this.voiceProfileService.enrollmentTarget(agentSlug));

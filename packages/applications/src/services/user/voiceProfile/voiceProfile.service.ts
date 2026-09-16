@@ -1,7 +1,16 @@
 import { EntityId, ResourceType, SysEventType, UserVoiceProfileEntity, UserVoiceProfileFactory, UserVoiceProfileRepository } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { isAxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
@@ -60,7 +69,8 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
 
     // TASK-887 — the AGENT names the space. Resolving it BEFORE any audio leaves the gateway
     // means an unusable enrollment is refused with a 404/409 that says why, instead of after
-    // the user has recorded three samples.
+    // the user has recorded three samples. TASK-977: that includes a 409 while the agent's
+    // diarization is off — no voice embedding is computed for a stage nothing will use.
     const target = await this.enrollmentTarget(request.agentSlug);
     const extraction = await this.extractEmbeddings(request.audioBuffers, target);
 
@@ -107,6 +117,13 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
    * else the `AgentAssignment` cascade, with 404-over-403 for an agent that is not this
    * tenant's. That is the point — enrolling against a different resolution than the one that
    * will match you is how a profile silently becomes unusable.
+   *
+   * TASK-977 (owner decision 2026-09-16) — enrollment is REFUSED while the agent's diarization
+   * is off. Enrolling computes and stores a voice embedding, and voice embedding is off unless
+   * an admin enabled diarization on that agent; this deliberately reverses TASK-887's "enrol
+   * ahead of enabling". The refusal is on the SWITCH, not on the absent model: since TASK-977
+   * D-4 a disabled stage ships no model at all, so "no model" would otherwise send the admin to
+   * set an `embeddingModelSlug` the agent may already declare.
    */
   async enrollmentTarget(agentSlug?: string): Promise<VoiceProfileEnrollmentTarget> {
     const tenantId = this.tenantId;
@@ -117,14 +134,26 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
     const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
+    const diarization = spec.audioFrontEnd.diarization;
+    if (!diarization.enabled) {
+      // The same 409 body the ASR resolver gives its own refusals (`{ code, message }`), so a
+      // client reads one convention for every agent-shaped conflict on this path.
+      throw new ConflictException({
+        code: 'ASR_AGENT_DIARIZATION_DISABLED',
+        message:
+          `Agent '${spec.agent.slug}' has speaker diarization switched off (\`audioFrontEnd.diarization.enabled\` is false), ` +
+          `so voice embedding is off for it and no voice profile can be enrolled. ` +
+          `Enable \`audioFrontEnd.diarization.enabled\` on the agent first.`,
+      });
+    }
     const embedding = spec.models.embedding;
     if (!embedding) {
-      // The agent declares no speaker-embedding model, so there is no space to enrol INTO.
-      // (`buildResolvedAsrSpec` already refuses an agent that enables embedding diarization
-      // without one, so reaching here means diarization is simply off for this agent.)
+      // Diarization is on with no embedding model. `buildResolvedAsrSpec` refuses that for the
+      // `embedding` backend (409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`), so this is `sortformer`:
+      // it labels speakers with its own weights and never consults an enrolled profile.
       throw new BadRequestException(
-        `Agent '${spec.agent.slug}' declares no speaker-embedding model, so a voice profile enrolled for it ` +
-          `could never be matched. Set \`audioFrontEnd.diarization.embeddingModelSlug\` on the agent first.`,
+        `Agent '${spec.agent.slug}' diarizes with the '${diarization.backend}' backend, which labels speakers without ` +
+          `enrolled voice profiles, so there is no speaker-embedding space to enroll into.`,
       );
     }
     return {
