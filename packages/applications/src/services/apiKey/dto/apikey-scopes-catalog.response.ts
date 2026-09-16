@@ -20,7 +20,7 @@ export class ApiKeyScopePresetResponse {
   readonly description: string;
 
   @ApiProperty({ description: 'The scopes this preset grants', type: [String] })
-  readonly scopes: string[];
+  readonly scopes: readonly string[];
 }
 
 export class ApiKeyScopesCatalogResponse {
@@ -32,5 +32,5 @@ export class ApiKeyScopesCatalogResponse {
   readonly categories: Record<string, ApiKeyScopeCatalogEntryResponse[]>;
 
   @ApiProperty({ description: 'The three scope presets the create-key dialog offers before "Custom"', type: [ApiKeyScopePresetResponse] })
-  readonly presets: ApiKeyScopePresetResponse[];
+  readonly presets: readonly ApiKeyScopePresetResponse[];
 }
