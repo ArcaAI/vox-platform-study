@@ -110,10 +110,16 @@ function ScalarField({
   const combinedDescription = hint && value === undefined ? [description, hint].filter(Boolean).join(' — ') : description;
 
   if (enumValues) {
+    // TASK-979 — mirror the boolean branch's TASK-977 fix: display the EFFECTIVE value (explicit
+    // when present, else the schema's own declared `default`), not a bare presence check that
+    // hides a default the gateway resolver actually applies (e.g.
+    // `audioFrontEnd.diarization.backend` defaults to `'embedding'` server-side). A field with no
+    // declared default keeps the existing "Default" placeholder untouched.
+    const effectiveValue = value === undefined ? schema.default : value;
     return (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={id}>{labelOf(name)}</Label>
-        <Select value={value === undefined ? '' : String(value)} onValueChange={(next) => onChange(typeof enumValues[0] === 'number' ? Number(next) : next)}>
+        <Select value={effectiveValue === undefined ? '' : String(effectiveValue)} onValueChange={(next) => onChange(typeof enumValues[0] === 'number' ? Number(next) : next)}>
           <SelectTrigger id={id} aria-describedby={combinedDescription ? `${id}-desc` : undefined}>
             <SelectValue placeholder="Default" />
           </SelectTrigger>
