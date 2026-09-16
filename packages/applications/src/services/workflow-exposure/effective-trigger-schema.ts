@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '@arcaai/workflow-contract';
 /**
  * The schema a RUN is actually validated against, and where a follow-latest trigger gets it.
  *
@@ -194,9 +196,22 @@ export function effectiveTriggerConfig(
   };
 
   return {
-    config: withTriggerContextSchema(compiledConfig, next),
+    config: withVerifiableChecksum(withTriggerContextSchema(compiledConfig, next)),
     resolved,
     effectiveVersionNumber: currentPin.versionNumber,
     rewritten: true,
   };
+}
+
+/**
+ * The interpreter's config loader verifies `checksum` = sha256 of the canonical JSON of every
+ * other field before it executes anything, so a per-run copy whose trigger was rewritten must
+ * carry the checksum of ITS bytes — the published artifact's checksum would refuse every
+ * follow-latest run at `load_config`. Same canonicaliser and digest as the compiler; a config that
+ * never carried a checksum is returned untouched.
+ */
+function withVerifiableChecksum(config: Record<string, unknown>): Record<string, unknown> {
+  if (typeof config.checksum !== 'string') return config;
+  const { checksum: _stale, ...body } = config;
+  return { ...body, checksum: createHash('sha256').update(canonicalJson(body)).digest('hex') };
 }

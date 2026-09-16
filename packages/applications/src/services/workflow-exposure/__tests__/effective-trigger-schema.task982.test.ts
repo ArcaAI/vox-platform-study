@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '@arcaai/workflow-contract';
 /**
  * The per-run rewrite of a FOLLOW-LATEST trigger's frozen context schema.
  *
@@ -158,7 +160,11 @@ describe('effectiveTriggerConfig — a FOLLOW-LATEST trigger takes the tenant pi
 
     expect(view.stages[1]).toEqual((latest as typeof view).stages[1]);
     expect(view.policyBindings).toEqual((latest as typeof view).policyBindings);
-    expect(view.checksum).toBe('abc');
+    // The checksum is the ONE other field that moves: the loader verifies it over the bytes it
+    // is handed, so a rewritten copy must carry the checksum of the rewritten bytes.
+    const { checksum, ...body } = view as unknown as Record<string, unknown>;
+    expect(checksum).not.toBe('abc');
+    expect(checksum).toBe(createHash('sha256').update(canonicalJson(body)).digest('hex'));
   });
 });
 
@@ -178,5 +184,65 @@ describe('effectiveTriggerConfig — the schema the caller is measured against',
 
   it('reports a null resolved schema when the trigger froze none — the caller has nothing to check against', () => {
     expect(effectiveTriggerConfig(compiled(undefined), null).resolved).toBeNull();
+  });
+});
+
+describe('effectiveTriggerConfig — the per-run copy carries a verifiable checksum', () => {
+  const pin = {
+    versionNumber: 2,
+    definition: {
+      schemaVersion: 1,
+      kinds: [
+        {
+          key: 'encounter',
+          primitive: 'STRUCTURED',
+          phiClass: 'NON_PHI',
+          cardinality: 'ONE',
+          lifecycle: 'PRE',
+          producedBy: ['CLIENT'],
+          fields: { type: 'object', properties: { a: { type: 'string' } } },
+        },
+      ],
+    },
+  } as never;
+  const compiled = {
+    formatVersion: 1,
+    checksum: 'stale-published-checksum',
+    stages: [
+      {
+        stageIndex: 0,
+        nodes: [
+          {
+            nodeId: 'n_trigger',
+            type: 'core.trigger',
+            config: {
+              contextSchema: {
+                contextSchemaId: 's1',
+                followsLatest: true,
+                resolved: { type: 'object', properties: {}, additionalProperties: false },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  it('recomputes the checksum over the rewritten bytes, the way the loader verifies it', () => {
+    const out = effectiveTriggerConfig(compiled, pin);
+    expect(out.rewritten).toBe(true);
+    const { checksum, ...body } = out.config as Record<string, unknown>;
+    expect(checksum).not.toBe('stale-published-checksum');
+    expect(checksum).toBe(createHash('sha256').update(canonicalJson(body)).digest('hex'));
+  });
+
+  it('leaves the published checksum alone when nothing is rewritten', () => {
+    const pinned = {
+      ...compiled,
+      stages: [
+        { stageIndex: 0, nodes: [{ nodeId: 'n_trigger', type: 'core.trigger', config: { contextSchema: { contextSchemaId: 's1', resolved: {} } } }] },
+      ],
+    };
+    expect((effectiveTriggerConfig(pinned, pin).config as Record<string, unknown>).checksum).toBe('stale-published-checksum');
   });
 });

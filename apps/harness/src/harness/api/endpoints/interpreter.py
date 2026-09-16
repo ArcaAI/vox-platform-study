@@ -195,7 +195,12 @@ async def get_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     try:
         state = await handle.query(WorkflowInterpreter.state)
         stages_payload = [s.model_dump(mode="json") for s in state.stages]
-        status = state.status
+        # The interpreter's own verdict wins over Temporal's word — except when the execution
+        # already CLOSED and the state never left RUNNING: that is a run that died before the
+        # walk began (a config that failed to load), and the query answers the state at the
+        # moment of death, not an outcome.
+        if state.status != "RUNNING" or status == "RUNNING":
+            status = state.status
     except Exception as exc:  # noqa: BLE001 — the query is best-effort once the run has closed
         logger.info(
             "harness.interpreter.run.state_query_unavailable", run_id=run_id, error=str(exc)
