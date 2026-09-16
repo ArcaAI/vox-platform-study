@@ -1,9 +1,9 @@
-# TASK-980 — Sortformer diarization selects its model through the registry, not a literal
+# TASK-980 — Retire the Sortformer diarization backend (its model was a literal no agent could govern)
 
 | | |
 |---|---|
-| **Status** | Pending — awaiting owner decisions (below) |
-| **Type** | refactor / feature |
+| **Status** | In Progress |
+| **Type** | refactor (removal) |
 | **Base** | `9c7b61a75` |
 | **Origin** | Flagged by TASK-977 (README "Still owed"); design investigated 2026-09-16 |
 
@@ -40,7 +40,45 @@ Verified 2026-09-16 (orchestrator re-checked the starred rows directly).
 | Any agent editor can already pick `backend: 'sortformer'` in the console | `parameters-form.tsx:109-121` |
 | Dev database `hope`: 4 SPEECH_TO_TEXT agents, **0** with `backend: 'sortformer'` (read-only query, 2026-09-16). The cluster database has not been audited | — |
 
-## Implementation Plan (proposed — Option A)
+## Owner decision (2026-09-16)
+
+| # | Question | Decided |
+|---|---|---|
+| D-1 | Option A / B / C | **C — retire the `sortformer` backend until a NeMo-capable GPU image is validated.** Implement now. |
+| — | Load-failure posture, and D-2..D-19 | **Moot under C.** Answered "degrade" and "accept all recommended" in the same round, but every one of them governs Option A's `diarizer` role, which C does not build. Kept below as the starting point if Sortformer is revived. |
+| D-11 | Audit before deploy | **Still applies, and matters more:** under C a stored agent that says `sortformer` is refused, not silently coerced. Dev DB `hope` has 0 such agents; the cluster DB must be audited before the gateway deploys. |
+
+The 2026-07-11 owner pin (`nvidia/diar_streaming_sortformer_4spk-v2.1`, NVIDIA Open Model License accepted)
+is **retired with the backend**. Reviving Sortformer means re-establishing that decision and building Option A.
+
+## Implementation Plan (Option C — decided)
+
+**Wire shape stays; the vocabulary narrows.** `audioFrontEnd.diarization.backend` stays a required wire key
+(removing a required key breaks both `extra='forbid'` halves), but its only legal value becomes `embedding`.
+That keeps the door open for a future backend without a shape change.
+
+| Layer | Change |
+|---|---|
+| Types | `AsrSpecDiarizationBackend` → `'embedding'` only (`packages/types/src/asr-spec.ts`) |
+| Agent schema | diarization `backend` enum → `['embedding']`, default `'embedding'` (`packages/workflow-contract/src/agent-schemas.ts`); an agent saved with `sortformer` now fails schema validation |
+| Gateway resolver | **No silent coercion.** Today `oneOf(diarization.backend, …, 'embedding')` turns an unknown backend into `embedding`. An ENABLED stage whose stored backend is anything but `embedding` is refused with a named 409; a DISABLED stage emits `embedding` (nothing runs). `assertDiarizationRunnable` loses its sortformer exemption. |
+| Voice profile | `enrollmentTarget`'s "enabled but no embedding model ⇒ sortformer" 400 branch becomes unreachable — remove or re-word it truthfully |
+| Python runtime | narrow the `spec.py` / `dto.py` Literals; delete `diarization/streaming_sortformer.py`, the `sortformer_*` knobs, `_build_sortformer_diarizer` and its wiring in `session_manager.py` / `inference.py`; the embedding gate no longer keys on `sortformer_diarizer is None`; the deprecated YAML parser refuses `backend: sortformer` by name; the `nemo` extra STAYS (it also serves `models/nemo_loader.py`) |
+| Fixture | no change expected — all six cases already use `embedding`; both parity suites must stay green |
+| Docs | architecture docs, deprecation register, `apps/stt/README.md`, TASK-977 cross-reference |
+
+**Deploy order is the reverse of Option A:** the gateway first (it stops emitting `sortformer`), then let any
+Redis-persisted session and queued Dramatiq job carrying `sortformer` drain, then `apps/stt` (whose narrowed
+Literal would reject them on recovery). With zero sortformer agents in dev this is a formality there, not on
+the cluster.
+
+| Lane | Owns | Tier |
+|---|---|---|
+| **G — contract + gateway (TS)** | `packages/types/src/asr-spec.ts`, `packages/workflow-contract/src/agent-schemas.ts` + tests, `packages/applications/src/services/stt/agent-resolver/**`, `packages/applications/src/services/user/voiceProfile/**`, `tests/contracts/resolved-asr-spec-parity.contract.test.ts` | Sonnet (refusal semantics fixed by the orchestrator) |
+| **P — Python runtime** | `apps/stt/**` | Opus (multi-file deletion with wiring, recovery and replay risk) |
+| Docs + merge gate | `docs/**` | orchestrator |
+
+## Option A design (not built — the revival path)
 
 **Option A — a `diarizer` model role backed by a registry row (recommended).** New agent property
 `audioFrontEnd.diarization.diarizerModelSlug` tagged `modelTaskType: 'SPEAKER_DIARIZATION'` (the console
@@ -62,7 +100,7 @@ no platform veto, no tenant → SYSTEM cascade, and per-tenant clones make a rev
 about today (nothing deployed can run it), but discards the TASK-475 scaffold and the 2026-07-11 pin, needs a
 Redis/queue drain to narrow the wire `Literal`, and bringing it back later is Option A anyway.
 
-### Owner decisions
+### Option A decisions (moot under C; kept for revival)
 
 | ID | Question | Recommended |
 |---|---|---|
@@ -86,7 +124,7 @@ Redis/queue drain to narrow the wire `Literal`, and bringing it back later is Op
 | D-18 | Mask speaker columns by `maxSpeakers` on the sortformer path | **defer, record** |
 | D-19 | Remove sortformer literals from the deprecated YAML parser | **yes** |
 
-### Lanes (after decisions)
+### Option A lanes (not used)
 
 | Wave | Lane | Owns | Depends on | Tier |
 |---|---|---|---|---|
@@ -111,10 +149,11 @@ the current image** — acceptance is contract and unit level.
 
 ## Implementation Summary
 
-_Pending owner decisions._
+_In progress — lanes G and P._
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-16 | Ticket opened with a read-only design investigation; Option A recommended; 19 decisions pending. |
+| 2026-09-16 | Owner decision: Option C — retire the backend, implement now. Option A kept as the revival design. |
