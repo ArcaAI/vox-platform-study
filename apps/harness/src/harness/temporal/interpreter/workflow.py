@@ -393,12 +393,19 @@ class WorkflowInterpreter:
     async def run(self, inp: InterpreterInput) -> InterpreterResult:
         self._run_id = inp.run_id
 
-        config = await workflow.execute_activity(
-            load_config,
-            inp.config_ref,
-            start_to_close_timeout=_CONFIG_LOAD_TIMEOUT,
-            retry_policy=_CONFIG_LOAD_RETRY,
-        )
+        try:
+            config = await workflow.execute_activity(
+                load_config,
+                inp.config_ref,
+                start_to_close_timeout=_CONFIG_LOAD_TIMEOUT,
+                retry_policy=_CONFIG_LOAD_RETRY,
+            )
+        except ActivityError:
+            # The walk never starts, so nothing downstream would announce this run's end: say
+            # FAILED on the event stream first (the completion watcher and the consultation's
+            # governing-run marker read it), then fail exactly as before.
+            await self._emit_run_completed(inp, "FAILED")
+            raise
 
         # Index every node's TYPE before the walk. Gates are included: the compiler lifts them out
         # of `stages` into `gates`, so a graph that names one as an edge source would otherwise
