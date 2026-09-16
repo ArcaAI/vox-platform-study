@@ -21,7 +21,13 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../0
 import { ARCAAI_CLINICAL_APPROVED_VERSION, ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
 import { NOTE_CONTEXT_SCHEMA_DEFINITION } from '../07e-consultation-note-context-schema';
 import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from '../25-agents';
-import { CONSULTATION_WORKFLOW_SLUG, SUMMARIZATION_WORKFLOW_SLUG, WORKFLOW_LIBRARY_ASSIGNMENTS, WORKFLOW_LIBRARY_TARGETS, workflowLibraryDefinitions } from '../28-workflow-library';
+import {
+  CONSULTATION_WORKFLOW_SLUG,
+  SUMMARIZATION_WORKFLOW_SLUG,
+  WORKFLOW_LIBRARY_ASSIGNMENTS,
+  WORKFLOW_LIBRARY_TARGETS,
+  workflowLibraryDefinitions,
+} from '../28-workflow-library';
 import { WORKFLOW_LIBRARY_GENERATED, REGISTRY_CHECKSUM } from '../28-workflow-library.generated';
 import {
   ARCAAI_AGENT_SPECS,
@@ -89,6 +95,40 @@ describe('TASK-930 §8.6 — the generated blobs are real engine output', () => 
     expect(Object.keys(WORKFLOW_LIBRARY_GENERATED).sort()).toEqual(WORKFLOW_LIBRARY_TARGETS.map((target) => target.key).sort());
     expect(Object.keys(ARCAAI_GENERATED).sort()).toEqual(ARCAAI_WORKFLOW_TARGETS.map((target) => target.key).sort());
   });
+
+  /**
+   * TASK-982 — every seeded workflow's trigger binds FOLLOW LATEST, not a pinned version: the
+   * platform's own reference (and ArcaAI's) graphs must keep working when a tenant evolves its
+   * `consultation_note_context` schema, rather than silently freezing on the version pinned the
+   * day this seed last ran. The AUTHORED trigger therefore carries no `versionNumber`, and the
+   * ENGINE's own resolution (the compiled trigger, `stages[].nodes[].config.contextSchema`)
+   * freezes `followsLatest: true` beside `resolved` — the compiler's own invariant
+   * (`compiler.ts` `compiledConfigFor`), re-checked here against the committed blobs so a future
+   * hand-authored `versionNumber` (a PINNED trigger) would fail this test, not silently seed.
+   */
+  it('every seeded consultation/summarization trigger is FOLLOW LATEST — no authored `versionNumber`, compiled `followsLatest: true`', () => {
+    type CompiledStage = { nodes: Array<{ type: string; config: Record<string, unknown> }> };
+    const compiledTriggerContextSchema = (compiledConfig: unknown): Record<string, unknown> => {
+      const stages = (compiledConfig as { stages: CompiledStage[] }).stages;
+      const trigger = stages.flatMap((stage) => stage.nodes).find((node) => node.type === 'core.trigger');
+      expect(trigger, 'no core.trigger node in compiled config').toBeDefined();
+      return trigger!.config.contextSchema as Record<string, unknown>;
+    };
+    for (const [targets, generated] of [
+      [WORKFLOW_LIBRARY_TARGETS, WORKFLOW_LIBRARY_GENERATED],
+      [ARCAAI_WORKFLOW_TARGETS, ARCAAI_GENERATED],
+    ] as const) {
+      for (const target of targets) {
+        const trigger = target.graph.nodes.find((node) => node.type === 'core.trigger')!;
+        const authored = trigger.config.contextSchema as { contextSchemaId?: string; versionNumber?: number };
+        expect(authored.contextSchemaId, `${target.key} authors no contextSchemaId`).toBeTruthy();
+        expect(authored.versionNumber, `${target.key} authors a versionNumber — that is a PINNED trigger, not follow-latest`).toBeUndefined();
+
+        const compiled = compiledTriggerContextSchema(generated[target.key]!.compiledConfig);
+        expect(compiled.followsLatest, `${target.key} compiled trigger does not freeze followsLatest: true`).toBe(true);
+      }
+    }
+  });
 });
 
 describe('TASK-930 §8.4 — Global and SYSTEM carry the identical workflow set', () => {
@@ -100,6 +140,23 @@ describe('TASK-930 §8.4 — Global and SYSTEM carry the identical workflow set'
       for (const row of mine) expect(row).toMatchObject({ status: 'PUBLISHED', isActive: true, paletteKey: 'core', versionNumber: 1 });
     }
     expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
+  });
+
+  /**
+   * TASK-982 — `definitionRow` (28-workflow-library.ts) stamps the same three binding columns
+   * `WorkflowDefinitionService.publish` stamps server-side, read from the engine's own resolution
+   * rather than re-derived: `contextSchemaId`/`contextSchemaVersionNumber` from the compiled
+   * `policyBindings.contextSchemaRefs[0]`, `contextSchemaFollowsLatest` from the AUTHORED graph.
+   * Every seeded row here binds by reference with no pinned version, so all three are non-null and
+   * `contextSchemaFollowsLatest` is `true` on every row (the same fact the previous test checks on
+   * the compiled trigger, checked here on the ROW the seed actually writes).
+   */
+  it('every workflowLibraryDefinitions() row stamps contextSchemaId/contextSchemaVersionNumber/contextSchemaFollowsLatest', () => {
+    for (const row of workflowLibraryDefinitions()) {
+      expect(row.contextSchemaId, `${row.slug} (${row.tenantId}) has no contextSchemaId`).toEqual(expect.any(String));
+      expect(row.contextSchemaVersionNumber, `${row.slug} (${row.tenantId}) has no contextSchemaVersionNumber`).toEqual(expect.any(Number));
+      expect(row.contextSchemaFollowsLatest, `${row.slug} (${row.tenantId}) is not stamped follow-latest`).toBe(true);
+    }
   });
 
   it('and the identical AGENT set — the same five slugs on both tenants (§8.3)', () => {
@@ -132,7 +189,8 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(ARCAAI_WORKFLOW_TARGETS.filter((target) => target.slug === arcaaiWorkflowSlug(row))).toHaveLength(1);
       for (const visit of VISIT_TYPES) expect(ARCAAI_AGENT_SPECS.filter((spec) => spec.slug === arcaaiAgentSlug(row, visit))).toHaveLength(1);
     }
-    for (const spec of ARCAAI_AGENT_SPECS) expect(spec).toMatchObject({ tenantId: ARCAAI, task: 'TEXT_GENERATION', status: 'PUBLISHED', isActive: true });
+    for (const spec of ARCAAI_AGENT_SPECS)
+      expect(spec).toMatchObject({ tenantId: ARCAAI, task: 'TEXT_GENERATION', status: 'PUBLISHED', isActive: true });
     expect(new Set(ARCAAI_AGENT_SPECS.map((spec) => spec.id)).size).toBe(ARCAAI_AGENT_SPECS.length);
     expect(new Set(ARCAAI_WORKFLOW_TARGETS.map((target) => target.id)).size).toBe(ARCAAI_WORKFLOW_TARGETS.length);
   });
@@ -160,12 +218,15 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
    * skipped, so the day a v3 body grows a placeholder without a binding, this goes red.
    */
   it('every ArcaAI agent binds `instruction.variables` for exactly the `{{context.*}}` its template reads, each to a field the trigger schema declares', () => {
-    const kinds = (NOTE_CONTEXT_SCHEMA_DEFINITION as unknown as { kinds: Array<{ key: string; fields: { properties: Record<string, unknown> } }> }).kinds;
+    const kinds = (NOTE_CONTEXT_SCHEMA_DEFINITION as unknown as { kinds: Array<{ key: string; fields: { properties: Record<string, unknown> } }> })
+      .kinds;
     const contextFields = new Set(Object.keys(kinds.find((kind) => kind.key === 'context')!.fields.properties));
     const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, String(template.content)]));
     for (const spec of ARCAAI_AGENT_SPECS) {
       const instruction = spec.instruction as { promptTemplateId: string; variables?: Record<string, { value: string } | { path: string }> };
-      const used = new Set([...contentById.get(instruction.promptTemplateId)!.matchAll(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]!));
+      const used = new Set(
+        [...contentById.get(instruction.promptTemplateId)!.matchAll(/\{\{\s*context\.([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]!),
+      );
       const bound = instruction.variables ?? {};
       for (const name of used) {
         expect(bound[name], `${spec.slug} leaves {{context.${name}}} unbound`).toEqual({ path: `trigger.context.${name}` });
@@ -250,5 +311,15 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
     for (const row of rows) expect(seeded.has(row.workflowDefinitionSlug)).toBe(true);
     expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
     expect(new Set(changes.map((row) => row.id)).size).toBe(changes.length);
+  });
+
+  // TASK-982 — same stamped-columns proof as §8.4, for the 11 ArcaAI rows (`definitionRow` is
+  // shared between the two seed phases, so this is the same code path with a different target set).
+  it('every arcaaiWorkflowDefinitions() row stamps contextSchemaId/contextSchemaVersionNumber/contextSchemaFollowsLatest', () => {
+    for (const row of arcaaiWorkflowDefinitions()) {
+      expect(row.contextSchemaId, `${row.slug} has no contextSchemaId`).toEqual(expect.any(String));
+      expect(row.contextSchemaVersionNumber, `${row.slug} has no contextSchemaVersionNumber`).toEqual(expect.any(Number));
+      expect(row.contextSchemaFollowsLatest, `${row.slug} is not stamped follow-latest`).toBe(true);
+    }
   });
 });

@@ -272,9 +272,10 @@ describe('TASK-951 — the bindings', () => {
     for (const target of ARCAAI_WORKFLOW_TARGETS) {
       const trigger = target.graph.nodes.find((node) => node.type === 'core.trigger');
       expect(trigger, target.key).toBeDefined();
+      // TASK-982 — FOLLOW LATEST: no authored `versionNumber` (the trigger validates against
+      // whatever ArcaAI has pinned at dispatch, not a version frozen the day this seed last ran).
       expect((trigger!.config as any).contextSchema).toEqual({
         contextSchemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.CONSULTATION_SCRIBE,
-        versionNumber: 1,
       });
       expect(target.contextSchemaVersionId).toBe(SEED_ARCAAI_CONTEXT_SCHEMA_VERSION_IDS.CONSULTATION_SCRIBE);
       // The regen script derives THIS target's payload schema from here; without it the compiled
