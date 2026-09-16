@@ -174,6 +174,12 @@ export type ConsultationVisitType = (typeof VISIT_TYPES)[number];
  * ("new") visit, parent present ⇒ revisit. The list API exposes no type
  * filter param, so any type filtering is client-side over the loaded page.
  */
-export function visitTypeOf(consultation: Pick<Consultation, 'parentConsultationId'>): ConsultationVisitType {
+export function visitTypeOf(consultation: Pick<Consultation, 'parentConsultationId' | 'metadata'>): ConsultationVisitType {
+  // A visit type the caller STATED at open (recorded as `metadata.visitType` by the schema's
+  // visit-type marker) wins over the parent-link derivation, exactly as the platform's own
+  // prompt and workflow selection read it. Only the two catalogue keys are recognised.
+  const stated = consultation.metadata?.visitType;
+  if (stated === 'revisit') return 'revisit';
+  if (stated === 'new-visit') return 'new';
   return consultation.parentConsultationId ? 'revisit' : 'new';
 }
