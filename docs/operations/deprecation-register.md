@@ -177,6 +177,20 @@ replaced it, stored the artifact but streamed nothing — so the audio half of t
 been silently lost with the node type. The emission is ported into `_run_speech` and measured by
 `test_task849_audio_two_lane_split.py`.
 
+### TASK-980 — the `sortformer` diarization backend, removed (2026-09-16)
+
+| Item | Where | Status |
+|---|---|---|
+| `audioFrontEnd.diarization.backend: 'sortformer'` | `AGENT_PARAMETER_SCHEMAS` (enum now `['embedding']`), `AsrSpecDiarizationBackend`, `apps/stt` `spec.py` / `dto.py` Literals | **removed** — a stored agent version whose ENABLED stage names it gets 409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED` (primary and fallback chain); a disabled stage resolves to `embedding` |
+| `StreamingSortformerDiarizer`, `diarization/streaming_sortformer.py`, `DiarizationConfig.sortformer_{model_id,revision,threshold,frame_shift_s}` | `apps/stt` | **removed**; the `nemo` optional extra STAYS (`models/nemo_loader.py`, the NeMo ASR engine) |
+| `backend: sortformer` in a legacy pipeline YAML | `yaml_parser.py` | **refused** by name (`UnsupportedDiarizationBackendError`), never mapped |
+
+**Deploy precondition (not a code gap).** Order: gateway → drain → `apps/stt`. Before the gateway deploys, audit the
+target database for enabled sortformer agents (dev `hope`: 0 on 2026-09-16; the cluster was not audited). Then let
+Redis-persisted streaming sessions and queued Dramatiq batch jobs carrying a sortformer spec drain: the narrowed
+`apps/stt` Literal rejects them — a recovered session is skipped with a logged reason, a queued job fails
+validation and spends its retries (`max_retries=3`).
+
 ## Environment variables (TASK-940, TASK-870 item 12)
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

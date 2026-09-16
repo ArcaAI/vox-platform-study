@@ -70,7 +70,7 @@ flips.
 | # | Lever | Knob / env | Gate before flip ON |
 |---|---|---|---|
 | 1 | Institutional RAG (pilot tenant) | `retrievalEnabled` policy knob / `HARNESS_RETRIEVAL_ENABLED` | harness-eval faithfulness/citation delta >= 0 on golden set |
-| 2 | Sortformer diarization (staging) + diarization labels | ASR config | Streaming scorecard (WER/DER held) |
+| 2 | ~~Sortformer diarization (staging)~~ — **backend retired by TASK-980 (2026-09-16)**; embedding diarization labels only | ASR agent `audioFrontEnd.diarization` | Streaming scorecard (WER/DER held) |
 | 3 | MiniCheck GGUF entailment paths | sensor config | harness-eval AC-6 re-baseline |
 | 4 | Atomic-fact verifier ON | `atomic-fact` extra + flag | harness-eval faithfulness delta |
 | 5 | Warm-start / NER-priors ON | harness config | harness-eval + latency check |
