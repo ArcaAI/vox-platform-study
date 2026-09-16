@@ -27,6 +27,7 @@ import type { ComputeDevice } from '../../usageLedger/usage-attributes';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
@@ -624,8 +625,13 @@ export class ChainSummaryService extends BaseService {
     }
 
     const transcript = fullText + nerContext;
+    // The measured readings and prior-visit history the client stated at `open` on the
+    // consultation this chain is anchored to. Absent for a consultation that stated neither.
+    const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
       // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,

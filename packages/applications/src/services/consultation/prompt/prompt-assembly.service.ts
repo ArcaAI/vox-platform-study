@@ -303,6 +303,35 @@ export interface PromptAssemblyParams {
    */
   clinicianNotes?: string[];
   /**
+   * HISTORICAL case-note records this prompt documents FROM, one entry per note.
+   *
+   * Distinct from {@link clinicianNotes}, which is what the clinician wrote DURING this
+   * encounter as supporting context for a transcript. These are the records the pre-summary
+   * chain summarises, and they used to arrive as `transcript` — so the model was told that
+   * text from previous encounters was what was said in this one. They now arrive under their
+   * own `case_notes` section, and the pre-summary caller passes an EMPTY transcript, which is
+   * the truth: that chain has no recording.
+   */
+  caseNotes?: string[];
+  /**
+   * The vitals the clinic MEASURED and the client sent at `open`, already rendered as one line
+   * by the shared reader (`context/client-clinical-context.ts`).
+   *
+   * Rendered into v1's `{{context.safe_vitals}}` where a body declares it, and appended as a
+   * `recent_vitals` data block where none does. Absent ⇒ v1's own `Not available`.
+   *
+   * (Until the client could state a context payload at `open`, the v2 data model held no vitals
+   * and no prior-visit text at all, and these two fell through to v1's defaults on every prompt.
+   * They are a source now, so the defaults are no longer the honest answer.)
+   */
+  vitals?: string;
+  /**
+   * The prior-visit history the client sent at `open`, newest first and bounded, as rendered by
+   * the same shared reader. Feeds `{{context.formatted_previous_visits}}` and the
+   * `previous_case_notes_summary` data block. Absent ⇒ v1's own `''`.
+   */
+  previousVisits?: string;
+  /**
    * Uploaded lab/exam attachment contents (extracted text when
    * available, else the filename label). Serialised into {attachments} and/or
    * appended to the prompt.
@@ -553,6 +582,29 @@ export class PromptAssemblyService {
     const attachmentsBlock = variables.attachments ?? '';
     if (attachmentsBlock && !userPrompt.includes(attachmentsBlock)) {
       userPrompt += wrapExternalData('attachments', 'ATTACHMENTS (lab / exam results)', attachmentsBlock);
+    }
+
+    // The three CLIENT-context blocks, on the same consumed-variable convention as
+    // everything above: a body that inlined the value already carries it and gets no duplicate;
+    // one that did not gets the delimiter-wrapped block, so the tenant's own templates keep
+    // working untouched and no seeded body is regenerated.
+    //
+    // Their sections are named for what they ARE. The pre-summary chain used to hand its case
+    // notes to `transcript`, labelling records of PREVIOUS encounters as what was said in this
+    // one — the section name is the whole claim a data block makes about its contents.
+    const caseNotesBlock = variables.case_notes ?? '';
+    if (caseNotesBlock && !userPrompt.includes(caseNotesBlock)) {
+      userPrompt += wrapExternalData('case_notes', 'CASE NOTES', caseNotesBlock);
+    }
+
+    const recentVitalsBlock = variables.recent_vitals ?? '';
+    if (recentVitalsBlock && !userPrompt.includes(recentVitalsBlock)) {
+      userPrompt += wrapExternalData('recent_vitals', 'RECENT VITALS', recentVitalsBlock);
+    }
+
+    const previousCaseNotesBlock = variables.previous_case_notes_summary ?? '';
+    if (previousCaseNotesBlock && !userPrompt.includes(previousCaseNotesBlock)) {
+      userPrompt += wrapExternalData('previous_case_notes_summary', 'PREVIOUS CASE NOTES SUMMARY', previousCaseNotesBlock);
     }
 
     // Fold the doctor's manually highlighted spans into
@@ -840,6 +892,12 @@ export class PromptAssemblyService {
       // when none) so templates referencing them never leave a placeholder.
       clinician_notes: serializeTextBlock(params.clinicianNotes),
       attachments: serializeTextBlock(params.attachments),
+      // The three client-context blocks, always defined (empty when the caller
+      // supplied nothing) so a template referencing one never leaves a literal placeholder, and
+      // so the `includes(...)` guard in `assemble()` can decide between inlined and appended.
+      case_notes: serializeTextBlock(params.caseNotes),
+      recent_vitals: params.vitals?.trim() ?? '',
+      previous_case_notes_summary: params.previousVisits?.trim() ?? '',
       // Always define {doctor_highlights} (empty when
       // none) so templates referencing it never leave a literal placeholder.
       doctor_highlights: serializeTextBlock(params.highlights),
@@ -862,10 +920,16 @@ export class PromptAssemblyService {
         buildPreSummaryVariables({
           currentDepartment: await this.resolveDepartmentName(params.departmentId),
           visitType: params.visitType,
-          // The v2 data model holds no patient demographics, vitals, test
-          // results or prior-visit text (`patientId` is an external reference
-          // with no local demographic store), so these fall through to v1's own
-          // defaults — Unknown / Not available / '' — rather than an invented one.
+          // Vitals and prior visits are what the CLIENT stated at `open`, validated against the
+          // tenant's own context schema and read back through the shared reader. Passed THROUGH
+          // the builder rather than assigned after it, so both inherit v1's `|| default`
+          // semantics instead of a second copy of them.
+          //
+          // Demographics and test results still have no source in the v2 data model (`patientId`
+          // is an external reference with no local demographic store), so those fall through to
+          // v1's own defaults — Unknown / '' — rather than an invented one.
+          vitals: params.vitals,
+          previousVisits: params.previousVisits,
           language: params.conversationLanguage,
         }),
       );

@@ -54,6 +54,42 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
   }
 
   /**
+   * The NEWEST context item a consultation carries under a tenant-declared KIND KEY, or `null`.
+   *
+   * Every other finder here selects by {@link ContextItemType} — the PLATFORM's vocabulary. What a
+   * client states at `open` is addressed by `kindKey`, the name the tenant's own consultation
+   * context schema declares and the writer stamps, and this is the read for it. Filtering on the
+   * kind key ALONE (never also on a type) is deliberate: binding the read to a type as well would
+   * make it disagree with the writer the moment either side chose a different enum member for the
+   * same declared kind.
+   *
+   * NEWEST rather than first: a kind declared `ONE` is written once at `open`, but a re-open or a
+   * later correction can leave two rows behind, and a reader must see what the client last said.
+   * `ContextItem_consultation_kindKey_idx` is the index this rides.
+   *
+   * Answers `null` rather than throwing on a read failure, mirroring `findLatestPreSummary`: the
+   * callers are prompt CONTEXT, so an unreadable row must degrade to "the client sent nothing"
+   * rather than stop a clinical note being produced.
+   */
+  async findLatestByKindKey(consultationId: string, kindKey: string, tx?: unknown): Promise<ContextItemEntity | null> {
+    try {
+      const delegate = tx ? (tx as Record<string, any>)[(this as any)._modelName] : (this as any).db;
+      const model = await delegate.findFirst({
+        where: {
+          consultationId,
+          kindKey,
+          resourceStatus: ResourceStatusType.ENABLED,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!model) return null;
+      return (this as any)._mapper.toDomainEntity(model);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Find worknotes for a consultation
    */
   async findWorknotes(consultationId: string): Promise<ContextItemEntity[]> {

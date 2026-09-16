@@ -28,15 +28,20 @@ const CID = 'consultation-946-handoff';
 const DOCTOR = 'doctor-946';
 
 /**
- * The two keys `realtimeRunContext` publishes that the handoff deliberately does NOT.
+ * The one key `realtimeRunContext` publishes that the handoff deliberately does NOT.
  *
  * `chief_complaint` is the empty-string placeholder the workflow's own trigger-context schema
  * declares a default for — publishing `''` from here would claim the live lane knows the
- * complaint and it does not. `formatted_vitals` is SESSION state (this recording's extracted
- * readings); the handoff is read after `stop()`, when the session is gone, so any value would be
- * either stale or invented. Both remain the durable trigger context's own business.
+ * complaint and it does not. It remains the durable trigger context's own business.
+ *
+ * `formatted_vitals` used to be on this list, on the grounds that it was SESSION state (this
+ * recording's NLP-extracted readings) and the handoff is read after `stop()`, when the session is
+ * gone — so any value would be stale or invented. That reasoning belonged to that SOURCE. The
+ * handoff now publishes the vitals object the clinic MEASURED and the client sent at `open`,
+ * which is a context-item row and is readable for exactly as long as the consultation is; with no
+ * such row it publishes the same declared absence value the builder gives `safe_vitals`.
  */
-const PROMPT_ONLY_EXTRAS = ['chief_complaint', 'formatted_vitals'];
+const PROMPT_ONLY_EXTRAS = ['chief_complaint'];
 
 interface Wiring {
   isFollowUp?: boolean;
