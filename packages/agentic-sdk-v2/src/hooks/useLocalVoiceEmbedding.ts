@@ -36,6 +36,7 @@ import {
   type LocalVoiceEmbedder,
   type LocalVoiceEmbedderProgress,
 } from '../core/LocalVoiceEmbedder';
+import { clientInferenceDisabledError, isClientInferenceAllowed } from '../core/clientInferenceGate';
 
 /** A locally-cached enrolled embedding, keyed to a persisted voice profile. */
 export interface LocalVoiceEmbeddingRecord {
@@ -50,7 +51,16 @@ export interface LocalVoiceEmbeddingRecord {
 export type LocalVoiceStatus = 'idle' | 'loading-model' | 'extracting' | 'enrolling' | 'ready' | 'error';
 
 export interface UseLocalVoiceEmbeddingReturn {
-  /** Whether in-browser extraction is possible (WebAssembly + Web Audio). */
+  /**
+   * Whether in-browser extraction is possible AND permitted.
+   *
+   * `false` when the runtime cannot do it (no WebAssembly / Web Audio) OR when
+   * the host has not set `audio.clientInference: { allow: true }` (TASK-977
+   * D-6) — the two are indistinguishable to a caller on purpose: either way
+   * there is no local extraction here and the caller should fall back to
+   * `useVoiceEmbedding` (server-side enrol). Calling an action anyway rejects
+   * with `AgenticError('CLIENT_INFERENCE_DISABLED')` rather than loading a model.
+   */
   supported: boolean;
   /** Model id used for local extraction. */
   modelId: string;
@@ -114,6 +124,13 @@ function normalizeFiles(files: EnrollFiles): ReadonlyArray<File | Blob> {
 /**
  * In-browser voice enrolment via Transformers.js (WavLM speaker verification).
  *
+ * TASK-977 (D-6): this is the "voice embedding for diarization" the owner
+ * directive requires to be OFF until an admin enables it, and it runs entirely
+ * in the browser — so it is behind the same `audio.clientInference: { allow:
+ * true }` switch `TranscriptionPipeline` reads. Without it `supported` is
+ * `false` and every action rejects BEFORE the embedder is touched, so no
+ * weights are fetched.
+ *
  * @deprecated TASK-865 — removed in R4. The browser never runs a model; enrol with
  * `useVoiceEmbedding` (server-side). Logs a console warning on first use.
  */
@@ -125,6 +142,8 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
   const store = useAgenticStore();
   const userId = (store as unknown as { authUser?: { id?: string } | null }).authUser?.id ?? null;
   const tenantId = (store as unknown as { config?: { api?: { tenantId?: string } } | null }).config?.api?.tenantId ?? null;
+  // The host's own config, read off the provider store this hook already holds.
+  const clientInferenceAllowed = isClientInferenceAllowed((store as unknown as { config?: Parameters<typeof isClientInferenceAllowed>[0] }).config);
   const cacheKeys = useMemo(() => getCacheKeys(userId, tenantId), [userId, tenantId]);
 
   const matchThreshold = options.matchThreshold ?? DEFAULT_VOICE_MATCH_THRESHOLD;
@@ -136,7 +155,11 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
   }
   const embedder = embedderRef.current;
 
-  const supported = useMemo(() => (options.embedder ? true : isLocalVoiceEmbeddingSupported()), [options.embedder]);
+  // A runtime that CAN extract locally still may not: the host has to opt in.
+  const supported = useMemo(
+    () => clientInferenceAllowed && (options.embedder ? true : isLocalVoiceEmbeddingSupported()),
+    [clientInferenceAllowed, options.embedder],
+  );
 
   const [status, setStatus] = useState<LocalVoiceStatus>('idle');
   const [progress, setProgress] = useState<LocalVoiceEmbedderProgress | null>(null);
@@ -173,7 +196,21 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
 
   const handleProgress = useCallback((p: LocalVoiceEmbedderProgress) => setProgress(p), []);
 
+  /**
+   * The hard-off gate. Called FIRST by every action so the refusal lands before
+   * the embedder is touched — `supported: false` tells a caller to branch, this
+   * makes sure a caller that does not branch still cannot fetch weights.
+   */
+  const assertClientInferenceAllowed = useCallback(() => {
+    if (clientInferenceAllowed) return;
+    const err = clientInferenceDisabledError('useLocalVoiceEmbedding');
+    setStatus('error');
+    setError(err);
+    throw err;
+  }, [clientInferenceAllowed]);
+
   const preloadModel = useCallback(async () => {
+    assertClientInferenceAllowed();
     setError(null);
     setStatus('loading-model');
     try {
@@ -184,10 +221,14 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
       setError(err as Error);
       throw err;
     }
-  }, [embedder, handleProgress]);
+  }, [assertClientInferenceAllowed, embedder, handleProgress]);
 
   const enroll = useCallback(
     async (files: EnrollFiles, opts?: EnrollOptions): Promise<VoiceProfile> => {
+      // Refuse the whole call, not just the local half: the local extraction IS
+      // this hook. A host that wants server-side enrolment calls
+      // `useVoiceEmbedding().enroll` directly.
+      assertClientInferenceAllowed();
       setError(null);
       const fileList = normalizeFiles(files);
       try {
@@ -227,11 +268,12 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
         throw err;
       }
     },
-    [embedder, handleProgress, backendEnroll, cacheKeys, applyEnrolled],
+    [assertClientInferenceAllowed, embedder, handleProgress, backendEnroll, cacheKeys, applyEnrolled],
   );
 
   const quickTest = useCallback(
     async (file: File | Blob): Promise<VoiceMatchResult | null> => {
+      assertClientInferenceAllowed();
       setError(null);
       try {
         setStatus('loading-model');
@@ -253,7 +295,7 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
         throw err;
       }
     },
-    [embedder, handleProgress, matchThreshold],
+    [assertClientInferenceAllowed, embedder, handleProgress, matchThreshold],
   );
 
   const clearLocal = useCallback(async () => {

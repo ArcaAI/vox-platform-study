@@ -78,6 +78,14 @@ export type AgenticErrorCode =
   // transcription is disabled (`LOCAL_TRANSCRIPTION_ENABLED = false` in
   // `core/constants.ts`) and no backend transport is configured.
   | 'LOCAL_TRANSCRIPTION_DISABLED'
+  // The caller asked for an in-browser MODEL on a surface that sits outside
+  // `TranscriptionPipeline` — `useLocalVoiceEmbedding` (WavLM speaker
+  // verification) or the raw `useVAD` / `useSTT({ provider: 'local' })` /
+  // `useNoiseFilter` re-exports on `@arcaai/vox/plugins` — while the host has
+  // not set `audio.clientInference: { allow: true }`. The browser never runs a
+  // model unless the host explicitly opted in, so the call is refused rather
+  // than served: no weights are fetched and no processor is attached.
+  | 'CLIENT_INFERENCE_DISABLED'
   // `useArcaAudio.startAudio` / `addSource` throw this instead of
   // silently streaming zeros when a caller-injected `MediaStream`
   // (`AudioStartOptions.sourceStreams`, or `addSource({ stream })`) has no

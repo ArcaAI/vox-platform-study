@@ -40,16 +40,15 @@
  * @deprecated TASK-865 — removed in R4. `useVAD`, `useSTT` and `useNoiseFilter` exist only to run
  * a model in the browser; the browser never runs a model. Capture with `useArcaAudio` and let the
  * tenant's ASR Agent decide VAD/denoise/ASR server-side (`audio.start({ agentSlug })`).
+ *
+ * These are the GATED wrappers (TASK-977 D-6), not the raw package hooks: they are inert unless
+ * the host sets `audio.clientInference: { allow: true }`, the same switch `TranscriptionPipeline`
+ * reads. `useSTT` is gated narrowly — only `provider: 'local'` (in-browser Whisper); the default
+ * `'remote'` capture/transport path passes straight through. See `hooks/useGatedClientStages.ts`.
  */
-export { useVAD } from '@arcaai/vad';
+export { useVAD, useSTT, useNoiseFilter } from './hooks/useGatedClientStages';
 export type { UseVADOptions, UseVADReturn } from '@arcaai/vad';
-
-/** @deprecated TASK-865 — removed in R4. See the note on `useVAD` above. */
-export { useSTT } from '@arcaai/stt';
 export type { UseSTTOptions, UseSTTReturn } from '@arcaai/stt';
-
-/** @deprecated TASK-865 — removed in R4. See the note on `useVAD` above. */
-export { useNoiseFilter } from '@arcaai/noise-filter';
 export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-filter';
 
 // =============================================================================
