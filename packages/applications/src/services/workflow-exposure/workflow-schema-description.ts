@@ -41,11 +41,44 @@ export function graphOf(value: unknown): Pick<WorkflowGraph, 'nodes'> {
  */
 export type WorkflowDeliveryMode = 'async' | 'blocking' | 'stream' | 'socket';
 
+/**
+ * WHICH consultation-context-schema version typed this definition's Input.
+ *
+ * The Input component has carried the frozen payload schema since TASK-890, but not its
+ * PROVENANCE — so a client could see the shape and not know whether a schema publish would ever
+ * reach it. `followsLatest` is that answer: a follow-latest trigger re-resolves the tenant's pin
+ * at dispatch, a pinned one keeps `versionNumber` forever.
+ *
+ * `slug` is nullable (unlike the ids beside it) because it is the one field not carried in the
+ * published bytes: it is looked up on the schema row, and a schema the caller can no longer read
+ * must not take the whole binding down with it.
+ */
+export interface WorkflowContextSchemaBinding {
+  schemaId: string;
+  slug: string | null;
+  versionNumber: number | null;
+  followsLatest: boolean;
+}
+
+/** One `core.humanReview` node, addressable by the review decision routes. */
+export interface WorkflowReviewNode {
+  nodeId: string;
+  label: string;
+}
+
 export interface WorkflowSchemaDescription {
   slug: string;
   versionNumber: number;
   triggerKinds: string[];
   protocols: CoreOutputProtocol[];
+  /** The context-schema version this definition's Input was frozen from, or `null` when it binds none. */
+  contextSchema: WorkflowContextSchemaBinding | null;
+  /**
+   * Every `core.humanReview` node, in graph order — the `nodeId` the review routes
+   * (`GET`/`POST /workflows/{slug}/runs/{runId}/reviews/{nodeId}`) take. Without this the routes
+   * exist and their one required parameter is undiscoverable.
+   */
+  reviewNodes: WorkflowReviewNode[];
   /**
    * The delivery lanes this definition admits: the `?mode=` values
    * `POST /workflows/{slug}/runs` accepts, plus `socket` when the Output publishes it.
@@ -124,16 +157,36 @@ export function inputSchemaOf(graph: Pick<WorkflowGraph, 'nodes'>, compiledConfi
 }
 
 /**
+ * Every `core.humanReview` node of a graph, in authored order.
+ *
+ * The label is whatever the author named the node (`config.label`, then `config.name`) and the
+ * node id otherwise — never a generated "Review 1", which would change under the reader's feet
+ * when a node is inserted before it.
+ */
+export function reviewNodesOf(graph: Pick<WorkflowGraph, 'nodes'>): WorkflowReviewNode[] {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  return nodes
+    .filter((node) => node?.type === 'core.humanReview')
+    .map((node) => {
+      const config = (node.config ?? {}) as Record<string, unknown>;
+      const authored = [config.label, config.name].find((value) => typeof value === 'string' && value.length > 0);
+      return { nodeId: node.id, label: (authored as string | undefined) ?? node.id };
+    });
+}
+
+/**
  * Describe one published definition. `graph` is the authored graph; a legacy (non-`core`) graph
  * yields open `object` schemas and every mode, exactly as the route family behaves for it today.
- * `compiledConfig` is the published artifact, when the caller has it — the only place a
- * reference-bound trigger's resolved payload schema exists (see {@link inputSchemaOf}).
+ * `compiledConfig` is the published artifact, when the caller has it. `contextSchema` is the
+ * binding the CALLER resolved (columns plus a slug lookup) — this function reads no database and
+ * derives nothing about provenance on its own.
  */
 export function describeWorkflow(
   slug: string,
   versionNumber: number,
   graph: Pick<WorkflowGraph, 'nodes'>,
   compiledConfig?: unknown,
+  contextSchema?: WorkflowContextSchemaBinding | null,
 ): WorkflowSchemaDescription {
   const { output } = declaredIoSchemas(graph);
   const input = inputSchemaOf(graph, compiledConfig);
@@ -191,5 +244,15 @@ export function describeWorkflow(
     },
   };
 
-  return { slug, versionNumber, triggerKinds, protocols, modes: modesFor(protocols), components, asyncapi };
+  return {
+    slug,
+    versionNumber,
+    triggerKinds,
+    protocols,
+    contextSchema: contextSchema ?? null,
+    reviewNodes: reviewNodesOf(graph),
+    modes: modesFor(protocols),
+    components,
+    asyncapi,
+  };
 }

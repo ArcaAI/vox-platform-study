@@ -122,6 +122,18 @@ export class PublishConsultationContextSchemaRequest {
   @IsOptional()
   @IsBoolean()
   allowBreakingChange?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Acknowledges that this publish breaks a WORKFLOW or AGENT already bound to this schema — a consumer ' +
+      'PINNED to an older version whose frozen trigger would reject a kind this definition adds. Distinct from ' +
+      '`allowBreakingChange`, which is about CLIENTS built against the previous version: a publish can be ' +
+      'perfectly additive for clients and still break a pinned workflow. Without it such a publish is refused ' +
+      'with 400 `SCHEMA_IMPACT_UNACKNOWLEDGED`, carrying the full impact document.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeImpact?: boolean;
 }
 
 export class PinConsultationContextSchemaVersionRequest {
