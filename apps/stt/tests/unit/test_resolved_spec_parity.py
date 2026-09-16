@@ -124,13 +124,31 @@ def test_null_tuning_fields_keep_the_runtime_defaults() -> None:
     assert pipeline.inference.code_switching is False
     assert pipeline.preprocessing.vad.threshold == 0.6  # VadConfig default
     assert pipeline.preprocessing.resample_enabled is False
-    assert pipeline.preprocessing.denoise.enabled is True
-    assert pipeline.preprocessing.denoise.strength > 0.5  # "high"
+    # TASK-977 (D-2/D-4) — this agent BINDS a denoise model and names `level: "high"`, but
+    # never declares `denoise.enabled`. Naming a level is not consent to run the stage, so it
+    # resolves OFF, and an off stage ships no model for `apps/stt` to warm.
+    assert pipeline.preprocessing.denoise.enabled is False
+    assert "rnnoise" not in models
     assert pipeline.postprocessing.punctuation.enabled is False
     assert pipeline.postprocessing.remove_disfluencies is True
     assert pipeline.postprocessing.segment_merge.enabled is True
     assert pipeline.streaming.commit_policy == "none"
     assert models["azure-speech-stt"].format is AiModelFormat.AZURE_SPEECH
+
+
+def test_an_enabled_denoise_stage_maps_its_level_and_ships_its_model() -> None:
+    """TASK-977 — the POSITIVE pole of D-2/D-4.
+
+    `cloudWithAgentFallback` above proves a bound-but-undeclared denoise stage stays off.
+    This proves the other direction still maps end to end, so neither assertion can pass
+    vacuously: a DECLARED `enabled: true` carries its level into `DenoiseConfig.strength`
+    and its model into the slug-keyed model map.
+    """
+    spec = ResolvedAsrSpec.model_validate(CASES["twoConnectionsOfOneVendor"]["expected"])
+    pipeline, models = pipeline_spec_from_resolved(spec)
+
+    assert pipeline.preprocessing.denoise.enabled is True
+    assert pipeline.preprocessing.denoise.strength > 0.5  # "high"
     assert models["rnnoise"].local_path == "/opt/models/rnnoise"
 
 
