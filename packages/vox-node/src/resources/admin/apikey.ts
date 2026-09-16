@@ -11,7 +11,7 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type { ApiKeyResponse, CreateApiKeyRequest, PaginatedResponse, UpdateApiKeyRequest } from './schemas';
+import type { ApiKeyResponse, ApiKeyScopesCatalogResponse, CreateApiKeyRequest, PaginatedResponse, UpdateApiKeyRequest } from './schemas';
 
 /**
  * `hope.admin.apikey` — the `svc:admin:apikey:write` administration area.
@@ -163,12 +163,14 @@ export class AdminApikeyResource extends AdminResource {
   /**
    * List available API key scopes
    *
+   * Returns the grantable scope catalogue, grouped by category, plus the three scope presets the create-key dialog offers.
+   *
    * `GET /api/v1/admin/api-keys/scopes` — `ApiKeyController.getAvailableScopes`.
    *
    * Reachable with ANY ONE of `svc:admin:apikey:read`, `svc:admin:apikey:write` — the gateway matches required scopes with OR, so the area's `svc:admin:apikey:write` still reaches this route and a read-only grant now does too.
    */
-  getAvailableScopes(options: AdminRequestOptions = {}): Promise<unknown> {
-    return this.request<unknown>({
+  getAvailableScopes(options: AdminRequestOptions = {}): Promise<ApiKeyScopesCatalogResponse> {
+    return this.request<ApiKeyScopesCatalogResponse>({
       method: 'GET',
       path: 'admin/api-keys/scopes',
       svcScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'],

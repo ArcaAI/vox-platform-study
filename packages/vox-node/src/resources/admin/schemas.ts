@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 438 component schemas the generated surface transitively
+ * Only the 444 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -420,6 +420,26 @@ export interface ApiKeyResponse {
   usageCount: number;
   /** User ID who owns this key */
   userId?: string;
+}
+
+export type ApiKeyScopeCatalogEntryResponse = unknown;
+
+export interface ApiKeyScopePresetResponse {
+  /** One-sentence explanation of who this preset is for */
+  description: string;
+  /** The preset identifier, used as the value of the "Purpose" radio card */
+  key: string;
+  /** Short label shown on the "Purpose" radio card */
+  label: string;
+  /** The scopes this preset grants */
+  scopes: string[];
+}
+
+export interface ApiKeyScopesCatalogResponse {
+  /** Every grantable scope, grouped by category */
+  categories: Record<string, ApiKeyScopeCatalogEntryResponse[]>;
+  /** The three scope presets the create-key dialog offers before "Custom" */
+  presets: ApiKeyScopePresetResponse[];
 }
 
 export interface ApprovePromptTemplateRequest {
@@ -1049,6 +1069,7 @@ export interface ConsultationContextSchemaResponse {
   departmentId?: string | null;
   description?: string | null;
   id: string;
+  impact?: ContextSchemaUsagesResponse;
   isDefault: boolean;
   name: string;
   /** The version discovery serves. Null until the first publish. */
@@ -1092,6 +1113,8 @@ export interface ConsultationResponse {
   doctor?: DoctorInfo;
   /** Doctor identifier */
   doctorId: string;
+  /** The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run. */
+  governingRun?: Record<string, unknown> | null;
   /** Consultation ID */
   id: string;
   /** Whether this consultation was just created (true) or already existed (false) */
@@ -1151,6 +1174,8 @@ export interface ContextItemResponse {
   consultationId: string;
   /** Text content (for non-media types) */
   content?: string;
+  /** The `ConsultationContextSchemaVersion` id this item was validated against when `kindKey` is set. Null when `kindKey` is null. */
+  contextSchemaVersionId: string | null;
   createdAt: string;
   /** Current version number of the context item */
   currentVersionNumber: number;
@@ -1177,6 +1202,8 @@ export interface ContextItemResponse {
   isTranscript: boolean;
   /** Derived: true if type is WORKNOTE */
   isWorknote: boolean;
+  /** The kind key this item satisfies, from the tenant's pinned consultation context schema (e.g. `vitals`, `previous_case_notes`). Null for an item that names no kind — most pre-schema and platform-authored items. */
+  kindKey: string | null;
   /** Media ID of the uploaded file (for ATTACHMENT type) */
   mediaId?: string;
   /** Free-form JSON metadata. Convention: lab/exam ATTACHMENTs carry `{ "subType": "LAB_RESULT" }` (Clinical Workflow Playground WS5). */
@@ -1232,6 +1259,44 @@ export interface ContextItemVersionResponse {
   /** Field-level changes */
   fieldChanges?: Record<string, unknown>;
   id: string;
+  versionNumber: number;
+}
+
+export interface ContextSchemaAgentUsage {
+  agentId: string;
+  binding: 'latest' | 'pinned';
+  boundVersion?: number | null;
+  isActive: boolean;
+  name: string;
+  problems: string[];
+  slug: string;
+  status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
+  verdict: 'accepts' | 'refuses' | 'unknown';
+  versionNumber: number;
+}
+
+export interface ContextSchemaUsagesResponse {
+  /** The version the verdicts were computed against. Null only for a schema that has never been published. */
+  againstVersion?: number | null;
+  agents: ContextSchemaAgentUsage[];
+  schemaId: string;
+  workflows: ContextSchemaWorkflowUsage[];
+}
+
+export interface ContextSchemaWorkflowUsage {
+  /** `latest` = the trigger re-reads the tenant pin at dispatch; `pinned` = it keeps the version it was published with. */
+  binding: 'latest' | 'pinned';
+  /** The schema version this consumer was frozen at. */
+  boundVersion?: number | null;
+  definitionId: string;
+  /** Whether this is the version the dispatcher resolves for new runs. */
+  isActive: boolean;
+  name: string;
+  /** Empty unless the verdict is `refuses` or `unknown`. */
+  problems: string[];
+  slug: string;
+  status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
+  verdict: 'accepts' | 'refuses' | 'unknown';
   versionNumber: number;
 }
 
@@ -4436,6 +4501,8 @@ export interface PublishAgentRequest {
 }
 
 export interface PublishConsultationContextSchemaRequest {
+  /** Acknowledges that this publish breaks a WORKFLOW or AGENT already bound to this schema — a consumer PINNED to an older version whose frozen trigger would reject a kind this definition adds. Distinct from `allowBreakingChange`, which is about CLIENTS built against the previous version: a publish can be perfectly additive for clients and still break a pinned workflow. Without it such a publish is refused with 400 `SCHEMA_IMPACT_UNACKNOWLEDGED`, carrying the full impact document. */
+  acknowledgeImpact?: boolean;
   /** Acknowledges that this publish BREAKS clients built against the previous version (a removed or renamed kind or property, a changed primitive/type, a widened `required`). Without it a breaking publish is refused with 400 listing each break. */
   allowBreakingChange?: boolean;
   /** Why this version was published — recorded immutably on the version row. */
@@ -7237,6 +7304,8 @@ export interface WorkflowRunDetailResponse {
   createdAt: string;
   /** Denormalized WorkflowDefinition.name at run time. */
   definitionName: string;
+  /** True when the run COMPLETED with at least one degraded-or-skipped-for-cause node. A derived flag, never a run status. */
+  degraded: boolean;
   /** Count of nodes that degraded (produced a marked nothing) — a flag, never a run status. */
   degradedNodeCount: number;
   durationMs?: number | null;
@@ -7253,6 +7322,8 @@ export interface WorkflowRunDetailResponse {
   runId: string;
   /** The AgentTrajectoryStep join key ("workflow-interpreter-{runId}"). */
   sessionId: string;
+  /** Count of nodes SKIPPED for cause. Sourced from the row's `_metadata.skippedNodeCount` — there is no dedicated column. */
+  skippedNodeCount?: number | null;
   /** Run start (ISO-8601). */
   startedAt: string;
   /** RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT. No DEGRADED value — see degradedNodeCount. */
@@ -7274,6 +7345,8 @@ export interface WorkflowRunResponse {
   createdAt: string;
   /** Denormalized WorkflowDefinition.name at run time. */
   definitionName: string;
+  /** True when the run COMPLETED with at least one degraded-or-skipped-for-cause node. A derived flag, never a run status. */
+  degraded: boolean;
   /** Count of nodes that degraded (produced a marked nothing) — a flag, never a run status. */
   degradedNodeCount: number;
   durationMs?: number | null;
@@ -7290,6 +7363,8 @@ export interface WorkflowRunResponse {
   runId: string;
   /** The AgentTrajectoryStep join key ("workflow-interpreter-{runId}"). */
   sessionId: string;
+  /** Count of nodes SKIPPED for cause. Sourced from the row's `_metadata.skippedNodeCount` — there is no dedicated column. */
+  skippedNodeCount?: number | null;
   /** Run start (ISO-8601). */
   startedAt: string;
   /** RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT. No DEGRADED value — see degradedNodeCount. */
