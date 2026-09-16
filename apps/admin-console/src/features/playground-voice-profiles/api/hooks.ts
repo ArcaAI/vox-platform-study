@@ -19,9 +19,10 @@ export function useVoiceProfiles() {
 /**
  * TASK-887 — the speaker-embedding model a new enrollment would land in.
  *
- * `retry: false`: the honest failures here are a 400 (the assigned agent declares no embedding
- * model) and a 404 (a named agent this tenant cannot see). Both are answers, not outages, and
- * retrying them only delays the message.
+ * `retry: false`: the honest failures here are a 409 `ASR_AGENT_DIARIZATION_DISABLED` (the
+ * agent has diarization off, so nothing may be enrolled — TASK-977), a 400 (the agent diarizes
+ * with sortformer, which enrolls nothing) and a 404 (a named agent this tenant cannot see). All
+ * are answers, not outages, and retrying them only delays the message.
  */
 export function useVoiceProfileEnrollmentTarget(agentSlug?: string) {
   return useQuery({

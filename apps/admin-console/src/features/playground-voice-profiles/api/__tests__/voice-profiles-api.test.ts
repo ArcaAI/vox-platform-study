@@ -14,9 +14,11 @@ import {
   deactivateVoiceProfile,
   deleteVoiceProfile,
   enrollVoiceProfile,
+  getVoiceProfileEnrollmentTarget,
   listVoiceProfiles,
 } from '../client';
 import { voiceProfileKeys } from '../keys';
+import { isDiarizationDisabledError } from '../types';
 
 interface RecordedCall {
   url: string;
@@ -129,5 +131,30 @@ describe('voice profiles client', () => {
       '/api/hope/voice-profiles/vp%202/deactivate',
       '/api/hope/voice-profiles/vp%233',
     ]);
+  });
+});
+
+/**
+ * TASK-977 — the gateway refuses enrollment while the agent's diarization is off with 409
+ * `{ code: 'ASR_AGENT_DIARIZATION_DISABLED', message }`. The screen switches to a designed state
+ * on that code, so the predicate must read the BODY's code (GatewayError.code is the Nest
+ * `error` name, which this envelope does not set) and must not fire on any other 409.
+ */
+describe('isDiarizationDisabledError', () => {
+  async function targetError(status: number, body: unknown): Promise<unknown> {
+    installFetchMock(() => Response.json(body, { status }));
+    return getVoiceProfileEnrollmentTarget().catch((error: unknown) => error);
+  }
+
+  it('recognises the diarization-disabled refusal by its body code', async () => {
+    const error = await targetError(409, { statusCode: 409, code: 'ASR_AGENT_DIARIZATION_DISABLED', message: 'off' });
+    expect(isDiarizationDisabledError(error)).toBe(true);
+  });
+
+  it('does not fire on another 409 code or on a 400 carrying the same code', async () => {
+    expect(isDiarizationDisabledError(await targetError(409, { statusCode: 409, code: 'ASR_AGENT_UNRUNNABLE', message: 'x' }))).toBe(false);
+    expect(isDiarizationDisabledError(await targetError(400, { statusCode: 400, code: 'ASR_AGENT_DIARIZATION_DISABLED', message: 'x' }))).toBe(false);
+    expect(isDiarizationDisabledError(null)).toBe(false);
+    expect(isDiarizationDisabledError(new Error('boom'))).toBe(false);
   });
 });
