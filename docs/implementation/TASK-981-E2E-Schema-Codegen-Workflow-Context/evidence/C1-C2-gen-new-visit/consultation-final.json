@@ -1,0 +1,181 @@
+{
+  "id": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+  "patientId": "PAT-981-GEN-1789575693",
+  "doctorId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+  "doctor": {
+    "id": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+    "username": "auto_feff47c83779aa6a",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000001",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000001",
+    "code": "GEN",
+    "name": "General Medicine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "PENDING_REVIEW",
+  "language": "en",
+  "metadata": {
+    "endpoint": {
+      "reason": "ENDED",
+      "sequence": [
+        "session.timeout",
+        "harness.finalize",
+        "summary.finalize",
+        "feedback.capture"
+      ],
+      "recordedAt": "2026-09-16T16:25:27.098Z",
+      "idleTimeoutSeconds": 14400
+    },
+    "visitType": "new-visit",
+    "externalRef": "EVT-981-GEN-1789575693",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "decidedAt": "2026-09-16T16:21:34.738Z",
+      "workflowRunId": "01a0ab06-08aa-727e-bc68-84af18fa1f6b",
+      "workflowDefinitionSlug": "arcaai-gen-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 4,
+  "createdAt": "2026-09-16T16:21:34.128Z",
+  "updatedAt": "2026-09-16T16:25:52.082Z",
+  "isNew": false,
+  "contextItems": [
+    {
+      "id": "01a0ab09-f6a0-71ea-901a-40468081b78d",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "RAW_SUMMARY",
+      "source": "AI",
+      "content": "History of present illness includes shortness of breath on exertion and intermittent chest pain over the past two weeks. Physical examination revealed a heart rate of 88 and regular, with lungs clear to auscultation bilaterally. The differential diagnosis includes stable angina. Plan included starting Aspirin 81 milligrams daily for stable angina. An electrocardiogram and a troponin level were ordered.",
+      "metadata": {
+        "subType": "HARNESS_DRAFT"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:25:52.032Z",
+      "updatedAt": "2026-09-16T16:25:59.545Z",
+      "version": 2
+    },
+    {
+      "id": "01a0ab06-fa51-7f99-8da9-ed2718e4a0f4",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "## Presenting Complaints\nShortness of breath on exertion and intermittent chest pain over the past two weeks.\n\n## Past History\nNot documented in this consultation.\n\n## Family History\nNot documented in this consultation.\n\n## Drug History\nAspirin 81 milligrams daily was started for stable angina.\n\n## Hospital Admissions\nNot documented in this consultation.\n\n## General Examination & Vitals\nHeart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\n## Previous Diagnosis\nNot documented in this consultation.\n\n## Reports\nNot documented in this consultation.\n\n## Current Diagnosis\nThe differential includes stable angina.\n\n## Plan of Care\nAn electrocardiogram and a troponin level were ordered. Aspirin 81 milligrams daily was started for stable angina.",
+      "metadata": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0005-000000000001",
+          "frozenAt": "2026-09-16T16:21:44.839Z",
+          "agentName": null,
+          "resolvedFrom": "agent",
+          "promptTemplateId": "71000000-0000-0000-0001-000000000012",
+          "promptVersionNumber": 3
+        },
+        "subType": "LIVE_SOAP_SNAPSHOT",
+        "updatedAt": "2026-09-16T16:25:26.907Z",
+        "lastSegmentId": "utt-1"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:22:36.369Z",
+      "updatedAt": "2026-09-16T16:25:26.952Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab09-30eb-759c-8d12-a400d46d8deb",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "TRANSCRIPT",
+      "source": "TRANSCRIPTION",
+      "content": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are clear to auscultation bilaterally. We are ordering an electrocardiogram and a troponin level. , the differential includes stable angina and we will start aspirin 81 milligrams daily to the to",
+      "metadata": {
+        "subType": "STT_AGGREGATE"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:25:01.419Z",
+      "updatedAt": "2026-09-16T16:25:01.419Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab06-083e-7a63-a1de-c8a5a25a4647",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Hypertension review\nPRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.",
+      "metadata": {
+        "index": 0,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:21:34.398Z",
+      "updatedAt": "2026-09-16T16:21:34.398Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab06-0854-72de-bed0-3b1c60bc37ec",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.",
+      "metadata": {
+        "index": 1,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:21:34.420Z",
+      "updatedAt": "2026-09-16T16:21:34.420Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab06-07c0-7687-a2b2-0ea1adc52625",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"chief_complaint\":\"Exertional shortness of breath and intermittent chest pain for two weeks\",\"department_code\":\"GEN\",\"department_name\":\"General Medicine\",\"doctor_id\":\"DR-981-1789575693\",\"event_id\":\"EVT-981-GEN-1789575693\",\"visit_type\":\"new-visit\"}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:21:34.272Z",
+      "updatedAt": "2026-09-16T16:21:34.272Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab06-080b-76dc-94bd-b75c707cfcd4",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"bloodPressure\":\"128/82\",\"heartRate\":88,\"oxygenSaturation\":97,\"recordedAt\":\"2026-09-16T16:21:33.913Z\",\"temperature\":36.8,\"weightKg\":81.5}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:21:34.347Z",
+      "updatedAt": "2026-09-16T16:21:34.347Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab06-0824-7baa-9d04-2d607f9fa692",
+      "consultationId": "01a0ab06-0730-784e-ba9f-2f6f9600c707",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"notes\":[{\"date\":\"2026-01-14\",\"department\":\"General Medicine\",\"doctor\":\"Dr. Bren\",\"text\":\"PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.\",\"title\":\"Hypertension review\"},{\"date\":\"2026-03-02\",\"text\":\"PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.\",\"title\":\"Lipid panel follow-up\"}]}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:21:34.372Z",
+      "updatedAt": "2026-09-16T16:21:34.372Z",
+      "version": 1
+    }
+  ]
+}

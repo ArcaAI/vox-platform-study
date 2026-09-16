@@ -1,0 +1,6 @@
+[
+ {
+  "activity": "interpreter.core_trigger",
+  "failed": "core.trigger: run payload violates the declared context schema: (root): Additional properties are not allowed ('referral' was unexpected)"
+ }
+]

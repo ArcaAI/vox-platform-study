@@ -1,0 +1,4 @@
+src-negative/off-schema.ts(12,3): error TS2322: Type '"referral"' is not assignable to type '"new-visit" | "revisit"'.
+src-negative/off-schema.ts(17,3): error TS2322: Type 'string' is not assignable to type 'number'.
+src-negative/off-schema.ts(20,14): error TS2741: Property 'department_code' is missing in type '{ doctor_id: string; event_id: string; visit_type: "new-visit"; }' but required in type 'EncounterPayload'.
+exit=2

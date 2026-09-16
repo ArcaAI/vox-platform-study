@@ -1,0 +1,10 @@
+## C4a off-schema visit_type=referral (400 CONTEXT_SCHEMA_VIOLATION expected)
+{"ok":false,"status":400,"code":"CONTEXT_SCHEMA_VIOLATION","message":"The supplied `context` does not satisfy this tenant's consultation context schema."}
+## C4b unknown department code (404 DEPARTMENT_UNKNOWN expected)
+{"ok":false,"status":404,"code":"DEPARTMENT_UNKNOWN","message":"No department of this tenant carries the code 'NO-SUCH-DEPT'. (HOPE returns 404 for cross-tenant access as well as a missing route — this id may exist but belong to a different tenant; see NotFoundError's docstring for the 404-over-403 posture.)"}
+## C4c departmentId=RHEUM disagrees with code GEN (400 DEPARTMENT_MISMATCH expected)
+{"ok":false,"status":400,"code":"DEPARTMENT_MISMATCH","message":"`departmentId` and the department named by the context payload are two different departments. Send one, or send both agreeing; this consultation belongs to exactly one."}
+## C4d undeclared kind key (400 CONTEXT_SCHEMA_VIOLATION expected)
+{"ok":false,"status":400,"code":"CONTEXT_SCHEMA_VIOLATION","message":"The supplied `context` does not satisfy this tenant's consultation context schema."}
+## C4e machine caller with no identity at all (400 CLINICIAN_REQUIRED expected)
+{"ok":false,"status":400,"code":"CLINICIAN_REQUIRED","message":"A service account has no clinician of its own. Name the clinician this consultation belongs to with `clinicianUserId`, or send their staff identifier in the context field your schema marks as its user identity; a service account is never recorded as the doctor."}

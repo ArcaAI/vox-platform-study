@@ -1,0 +1,32 @@
+[
+  {
+    "at": "2026-09-16T16:22:36.407Z",
+    "sectionKey": "presenting_complaints",
+    "state": "provisional",
+    "content": "Shortness of breath on exertion and intermittent chest pain over the past two weeks."
+  },
+  {
+    "at": "2026-09-16T16:22:36.419Z",
+    "sectionKey": "drug_history",
+    "state": "provisional",
+    "content": "Aspirin 81 milligrams daily was started for stable angina."
+  },
+  {
+    "at": "2026-09-16T16:22:36.432Z",
+    "sectionKey": "examination_and_vitals",
+    "state": "provisional",
+    "content": "Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally."
+  },
+  {
+    "at": "2026-09-16T16:22:36.447Z",
+    "sectionKey": "current_diagnosis",
+    "state": "provisional",
+    "content": "The differential includes stable angina."
+  },
+  {
+    "at": "2026-09-16T16:22:36.466Z",
+    "sectionKey": "plan_of_care",
+    "state": "provisional",
+    "content": "An electrocardiogram and a troponin level were ordered. Aspirin 81 milligrams daily was started for stable angina."
+  }
+]

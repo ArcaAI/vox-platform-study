@@ -1,0 +1,194 @@
+{
+  "id": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+  "patientId": "PAT-981-BREN-1789576308",
+  "doctorId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+  "doctor": {
+    "id": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+    "username": "auto_feff47c83779aa6a",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000015",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000015",
+    "code": "BREN",
+    "name": "Breast & Endocrine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "PENDING_REVIEW",
+  "language": "en",
+  "metadata": {
+    "endpoint": {
+      "reason": "ENDED",
+      "sequence": [
+        "session.timeout",
+        "harness.finalize",
+        "summary.finalize",
+        "feedback.capture"
+      ],
+      "recordedAt": "2026-09-16T16:34:53.015Z",
+      "idleTimeoutSeconds": 14400
+    },
+    "visitType": "revisit",
+    "externalRef": "EVT-981-BREN-1789576308",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "decidedAt": "2026-09-16T16:31:49.009Z",
+      "workflowRunId": "01a0ab0f-68e0-7c40-8394-9617b60a3d74",
+      "workflowDefinitionSlug": "arcaai-bren-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 4,
+  "createdAt": "2026-09-16T16:31:48.612Z",
+  "updatedAt": "2026-09-16T16:35:24.600Z",
+  "isNew": false,
+  "contextItems": [
+    {
+      "id": "01a0ab12-b30a-788c-8047-94a4294e3747",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "RAW_SUMMARY",
+      "source": "AI",
+      "content": "Time elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions):\n\nPatient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks. No prior surgical or systemic therapy events were recorded.\n\nLast plan recap (surgery/systemic/RAI/thyroxine/calcium regimen), adherence, tolerance, side effects:\n\nOngoing systemic therapy includes chemo/hormonal/targeted regimens, RAI doses, levothyroxine/anti-thyroid medications, and calcium/vit D supplementation. Clinical/lab response and adverse events (AEs) are pending further documentation.\n\nPatient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nGeneral Exam:\nHeart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\nUpdated vitals/systemic exam:\nHeart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\nOrdering an electrocardiogram and a troponin level.\n\nImaging: Ordering new vs. prior mammogram/US/MRI/PET-CT, and neck US (nodule/bed, nodes) with trend.\n\nDifferential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started.\n\nOngoing systemic therapy (chemo/hormonal/targeted), RAI doses, levothyroxine/anti-thyroid meds, calcium/vit D; clinical/lab response and AEs: Differential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started.\n\nRecurrence/suspicion, contralateral lesions, metastasis; post-op issues (infection, hematoma, seroma, hypocalcemia, vocal cord palsy):\n\nManagement plan from this encounter: further surgery/procedures, systemic therapy changes, RAI plans, thyroid hormone adjustments, calcium/vit D changes. Investigations ordered today include an electrocardiogram and a troponin level.\n\nNext review interval; monitoring parameters (labs/imaging), survivorship/rehab referrals; patient-reported outcome tracking:\n\nCounseling provided, return precautions, wound/voice/hypocalcemia instructions, therapy-specific counseling, and consent updates.",
+      "metadata": {
+        "subType": "HARNESS_DRAFT"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:35:24.554Z",
+      "updatedAt": "2026-09-16T16:35:37.853Z",
+      "version": 2
+    },
+    {
+      "id": "01a0ab0f-920c-7401-a8a9-5f675948eae2",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "Pre-Summary of Medical History\n\n- Confirmed & Provisional Diagnoses:\n    - Hypertension (blood pressure controlled on amlodipine)\n    - Hyperlipidemia (LDL level was 3.9 mmol/L)\n\n- Plan of Care (Latest Note):\n    - Advised salt restriction for hypertension management.\n    - Follow-up scheduled in three months.\n\n- Investigations (Latest Note):\n    - Lipid panel follow-up conducted, showing LDL at 3.9 mmol/L.\n\n- Medications Prescribed (Latest Note):\n    - Amlodipine 5 mg (for blood pressure control).\n    - Atorvastatin 20 mg at night (started for lipid management); no muscle pain reported.\n\n- Diagnostics & Trends:\n    - Blood pressure was controlled on amlodipine.\n    - LDL level was 3.9 mmol/L following the lipid panel follow-up.",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:59.500Z",
+      "updatedAt": "2026-09-16T16:31:59.500Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab10-3299-79df-abb4-dfa24d76fc67",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "## Patient Identifiers\nName: Not supplied\n\n## Interval Since Last Visit\nTime elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions): (nothing recorded yet)\n\n## Review of Previous Plan & Adherence\nLast plan recap (surgery/systemic/RAI/thyroxine/calcium regimen), adherence, tolerance, side effects: (nothing recorded yet)\n\n## Presenting Complaints & Updates\nPatient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nNew or ongoing issues since prior visit (e.g., pain, swelling, wound issues, voice change, hypocalcemic symptoms): Patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\n## Clinical Examination Updates\n**General Exam:** Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\n**General Exam:** updated vitals/systemic exam: Heart rate is 88 and regular.\n\n## Investigations Compared\nOrdering an electrocardiogram and a troponin level.\n\nImaging: new vs. prior mammogram/US/MRI/PET-CT; neck US (nodule/bed, nodes) with trend: Ordering an electrocardiogram and a troponin level.\n\n## Treatment History & Response\nDifferential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started.\n\nOngoing systemic therapy (chemo/hormonal/targeted), RAI doses, levothyroxine/anti-thyroid meds, calcium/vit D; clinical/lab response and AEs: Differential diagnosis includes stable angina.\n\n## New Findings & Complications\nRecurrence/suspicion, contralateral lesions, metastasis; post-op issues (infection, hematoma, seroma, hypocalcemia, vocal cord palsy): (nothing recorded yet)\n\n## Plan of Care – Current\nOrdering an electrocardiogram and a troponin level.\n\nManagement plan from this encounter: further surgery/procedures, systemic therapy changes, RAI plans, thyroid hormone adjustments, calcium/vit D changes, investigations ordered today: Ordering an electrocardiogram and a troponin level.\n\n## Follow-Up & Monitoring Strategy\nNext review interval; monitoring parameters (labs/imaging), survivorship/rehab referrals; patient-reported outcome tracking: (nothing recorded yet)\n\n## Patient Education & Consent\nCounseling provided, return precautions, wound/voice/hypocalcemia instructions, therapy-specific counseling; consent updates: (nothing recorded yet)\n\n## Prepared By & Signatories\nPrepared By: [Clinician Name & Role]",
+      "metadata": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0005-000000000014",
+          "frozenAt": "2026-09-16T16:31:49.185Z",
+          "agentName": null,
+          "resolvedFrom": "agent",
+          "promptTemplateId": "71000000-0000-0000-0001-000000000023",
+          "promptVersionNumber": 3
+        },
+        "subType": "LIVE_SOAP_SNAPSHOT",
+        "updatedAt": "2026-09-16T16:34:52.833Z",
+        "lastSegmentId": "utt-1"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:32:40.601Z",
+      "updatedAt": "2026-09-16T16:34:52.886Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab11-f4af-77eb-a6f5-e5f9da3de9c0",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "TRANSCRIPT",
+      "source": "TRANSCRIPTION",
+      "content": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are clear to auscultation bilaterally. We are ordering an electrocardiogram and a troponin level. , the differential includes stable angina and we will start aspirin 81 milligrams daily to the to.",
+      "metadata": {
+        "subType": "STT_AGGREGATE"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:34:35.823Z",
+      "updatedAt": "2026-09-16T16:34:35.823Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab0f-685f-709e-9d7b-58f091159762",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Hypertension review\nPRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.",
+      "metadata": {
+        "index": 0,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:48.831Z",
+      "updatedAt": "2026-09-16T16:31:48.831Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab0f-6871-755e-9a91-0a7cb2ea9a67",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.",
+      "metadata": {
+        "index": 1,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:48.849Z",
+      "updatedAt": "2026-09-16T16:31:48.849Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab0f-6801-7231-ba60-6ee2ce04fa8c",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"chief_complaint\":\"Follow-up after lumpectomy; review of thyroid function\",\"department_code\":\"BREN\",\"department_name\":\"Breast & Endocrine\",\"doctor_id\":\"DR-981-1789575693\",\"event_id\":\"EVT-981-BREN-1789576308\",\"visit_type\":\"revisit\"}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:48.737Z",
+      "updatedAt": "2026-09-16T16:31:48.737Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab0f-682b-7c8c-9725-7858a6b406fb",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"bloodPressure\":\"128/82\",\"heartRate\":88,\"oxygenSaturation\":97,\"recordedAt\":\"2026-09-16T16:31:48.467Z\",\"temperature\":36.8,\"weightKg\":81.5}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:48.779Z",
+      "updatedAt": "2026-09-16T16:31:48.779Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab0f-6849-71f6-814e-5f87d4d7ef1b",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"notes\":[{\"date\":\"2026-01-14\",\"department\":\"General Medicine\",\"doctor\":\"Dr. Bren\",\"text\":\"PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.\",\"title\":\"Hypertension review\"},{\"date\":\"2026-03-02\",\"text\":\"PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.\",\"title\":\"Lipid panel follow-up\"}]}",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T16:31:48.809Z",
+      "updatedAt": "2026-09-16T16:31:48.809Z",
+      "version": 1
+    }
+  ]
+}

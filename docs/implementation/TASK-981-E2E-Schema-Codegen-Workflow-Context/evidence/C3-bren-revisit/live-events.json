@@ -1,0 +1,137 @@
+[
+  {
+    "at": "2026-09-16T16:31:49.199Z",
+    "kind": "presummary",
+    "event": {
+      "event": "presummary",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "status": "running",
+      "agentSlug": "case-notes-pre-summary",
+      "updatedAt": "2026-09-16T16:31:49.143Z"
+    }
+  },
+  {
+    "at": "2026-09-16T16:31:59.576Z",
+    "kind": "presummary",
+    "event": {
+      "event": "presummary",
+      "consultationId": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+      "status": "ready",
+      "content": "Pre-Summary of Medical History\n\n- Confirmed & Provisional Diagnoses:\n    - Hypertension (blood pressure controlled on amlodipine)\n    - Hyperlipidemia (LDL level was 3.9 mmol/L)\n\n- Plan of Care (Latest Note):\n    - Advised salt restriction for hypertension management.\n    - Follow-up scheduled in three months.\n\n- Investigations (Latest Note):\n    - Lipid panel follow-up conducted, showing LDL at 3.9 mmol/L.\n\n- Medications Prescribed (Latest Note):\n    - Amlodipine 5 mg (for blood pressure control).\n    - Atorvastatin 20 mg at night (started for lipid management); no muscle pain reported.\n\n- Diagnostics & Trends:\n    - Blood pressure was controlled on amlodipine.\n    - LDL level was 3.9 mmol/L following the lipid panel follow-up.",
+      "agentSlug": "case-notes-pre-summary",
+      "updatedAt": "2026-09-16T16:31:59.571Z"
+    }
+  },
+  {
+    "at": "2026-09-16T16:32:04.200Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:32:19.200Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:32:34.200Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:32:40.596Z",
+    "kind": "snapshot",
+    "sections": 12,
+    "entities": 18,
+    "runningSummary": "Name: Not supplied\n\nPatient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\n**General Exam:** Heart rate is 88 and regular. Lungs are clear to ausc"
+  },
+  {
+    "at": "2026-09-16T16:32:49.200Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:32:52.814Z",
+    "kind": "snapshot",
+    "sections": 12,
+    "entities": 19,
+    "runningSummary": "Name: Not supplied\n\nTime elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions): (nothing recorded yet)\n\nLast plan recap (surgery/systemic/RAI/thyroxine/calcium re"
+  },
+  {
+    "at": "2026-09-16T16:33:04.201Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:33:19.201Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:33:34.202Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:33:49.201Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:34:04.203Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:34:19.204Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:34:34.204Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:34:49.205Z",
+    "kind": "snapshot",
+    "sections": 0,
+    "entities": 0,
+    "runningSummary": ""
+  },
+  {
+    "at": "2026-09-16T16:34:52.838Z",
+    "kind": "snapshot",
+    "sections": 12,
+    "entities": 19,
+    "runningSummary": "Name: Not supplied\n\nTime elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions): (nothing recorded yet)\n\nLast plan recap (surgery/systemic/RAI/thyroxine/calcium re"
+  },
+  {
+    "at": "2026-09-16T16:34:52.899Z",
+    "kind": "snapshot",
+    "sections": 12,
+    "entities": 19,
+    "runningSummary": "Name: Not supplied\n\nTime elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions): (nothing recorded yet)\n\nLast plan recap (surgery/systemic/RAI/thyroxine/calcium re"
+  }
+]

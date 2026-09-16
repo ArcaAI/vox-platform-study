@@ -1,0 +1,35 @@
+{
+  "id": "01a0ab0f-6784-761c-8905-5d4602c5dfbb",
+  "patientId": "PAT-981-BREN-1789576308",
+  "doctorId": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+  "doctor": {
+    "id": "01a0ab06-0709-70d1-adeb-580b7d7bb3e3",
+    "username": "auto_feff47c83779aa6a",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000015",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000015",
+    "code": "BREN",
+    "name": "Breast & Endocrine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "OPEN",
+  "language": "en",
+  "metadata": {
+    "visitType": "revisit",
+    "externalRef": "EVT-981-BREN-1789576308",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "decidedAt": "2026-09-16T16:31:49.009Z",
+      "workflowRunId": "01a0ab0f-68e0-7c40-8394-9617b60a3d74",
+      "workflowDefinitionSlug": "arcaai-bren-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 1,
+  "createdAt": "2026-09-16T16:31:48.612Z",
+  "updatedAt": "2026-09-16T16:31:49.009Z",
+  "isNew": true
+}

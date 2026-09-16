@@ -1,0 +1,104 @@
+[
+  {
+    "at": "2026-09-16T16:32:40.618Z",
+    "sectionKey": "patient_identifiers",
+    "state": "provisional",
+    "content": "Name: Not supplied"
+  },
+  {
+    "at": "2026-09-16T16:32:40.639Z",
+    "sectionKey": "presenting_complaints_updates",
+    "state": "provisional",
+    "content": "Patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks."
+  },
+  {
+    "at": "2026-09-16T16:32:40.647Z",
+    "sectionKey": "clinical_examination_updates",
+    "state": "provisional",
+    "content": "**General Exam:** Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally."
+  },
+  {
+    "at": "2026-09-16T16:32:40.655Z",
+    "sectionKey": "investigations_compared",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T16:32:40.663Z",
+    "sectionKey": "treatment_history_response",
+    "state": "provisional",
+    "content": "Differential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started."
+  },
+  {
+    "at": "2026-09-16T16:32:40.672Z",
+    "sectionKey": "plan_of_care_current",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T16:32:40.681Z",
+    "sectionKey": "prepared_by_signatories",
+    "state": "provisional",
+    "content": "Prepared By: [Clinician Name & Role]"
+  },
+  {
+    "at": "2026-09-16T16:32:52.842Z",
+    "sectionKey": "interval_since_last_visit",
+    "state": "provisional",
+    "content": "Time elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions): (nothing recorded yet)"
+  },
+  {
+    "at": "2026-09-16T16:32:52.852Z",
+    "sectionKey": "review_of_previous_plan_adherence",
+    "state": "provisional",
+    "content": "Last plan recap (surgery/systemic/RAI/thyroxine/calcium regimen), adherence, tolerance, side effects: (nothing recorded yet)"
+  },
+  {
+    "at": "2026-09-16T16:32:52.882Z",
+    "sectionKey": "presenting_complaints_updates",
+    "state": "provisional",
+    "content": "Patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nNew or ongoing issues since prior visit (e.g., pain, swelling, wound issues, voice change, hypocalcemic symptoms): Patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks."
+  },
+  {
+    "at": "2026-09-16T16:32:52.898Z",
+    "sectionKey": "clinical_examination_updates",
+    "state": "provisional",
+    "content": "**General Exam:** Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\n**General Exam:** updated vitals/systemic exam: Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally."
+  },
+  {
+    "at": "2026-09-16T16:32:52.914Z",
+    "sectionKey": "investigations_compared",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level.\n\nImaging: new vs. prior mammogram/US/MRI/PET-CT; neck US (nodule/bed, nodes) with trend: Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T16:32:52.983Z",
+    "sectionKey": "treatment_history_response",
+    "state": "provisional",
+    "content": "Differential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started.\n\nOngoing systemic therapy (chemo/hormonal/targeted), RAI doses, levothyroxine/anti-thyroid meds, calcium/vit D; clinical/lab response and AEs: Differential diagnosis includes stable angina. Aspirin 81 milligrams daily will be started."
+  },
+  {
+    "at": "2026-09-16T16:32:52.995Z",
+    "sectionKey": "new_findings_complications",
+    "state": "provisional",
+    "content": "Recurrence/suspicion, contralateral lesions, metastasis; post-op issues (infection, hematoma, seroma, hypocalcemia, vocal cord palsy): (nothing recorded yet)"
+  },
+  {
+    "at": "2026-09-16T16:32:53.011Z",
+    "sectionKey": "plan_of_care_current",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level.\n\nManagement plan from this encounter: further surgery/procedures, systemic therapy changes, RAI plans, thyroid hormone adjustments, calcium/vit D changes, investigations ordered today: Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T16:32:53.020Z",
+    "sectionKey": "follow_up_monitoring_strategy",
+    "state": "provisional",
+    "content": "Next review interval; monitoring parameters (labs/imaging), survivorship/rehab referrals; patient-reported outcome tracking: (nothing recorded yet)"
+  },
+  {
+    "at": "2026-09-16T16:32:53.029Z",
+    "sectionKey": "patient_education_consent",
+    "state": "provisional",
+    "content": "Counseling provided, return precautions, wound/voice/hypocalcemia instructions, therapy-specific counseling; consent updates: (nothing recorded yet)"
+  }
+]
