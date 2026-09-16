@@ -202,7 +202,6 @@ def _make_manager():
         profile = MagicMock(spec=ExecutionProfile)
         profile.max_concurrent_streams = 5
         profile.vad_silence_threshold_ms = 500
-        profile.denoise_enabled_default = False
         return SessionManager(redis=AsyncMock(), profile=profile)
 
 

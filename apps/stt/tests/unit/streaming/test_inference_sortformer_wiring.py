@@ -302,7 +302,6 @@ async def test_create_session_wires_sortformer_diarizer():
         mock_cl.return_value.start = AsyncMock()
 
         mgr._profile = MagicMock()
-        mgr._profile.denoise_enabled_default = False
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))

@@ -69,7 +69,6 @@ def _make_manager():
         embedding_device="cpu",
         embedding_batch_size=2,
         preprocess_pool_size=2,
-        denoise_enabled_default=False,
         max_concurrent_streams=10,
         batch_scheduler_max_wait_ms=500,
         vad_silence_threshold_ms=700,
