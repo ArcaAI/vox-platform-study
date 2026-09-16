@@ -89,7 +89,14 @@ def test_nothing_under_src_names_the_retired_backend() -> None:
     assert _SRC_ROOT.is_dir(), _SRC_ROOT
     offenders: list[str] = []
     for path in sorted(_SRC_ROOT.rglob("*")):
-        if not path.is_file() or "__pycache__" in path.parts:
+        # Build output is not source: an editable install leaves a gitignored
+        # `stt.egg-info/SOURCES.txt` that still lists deleted modules until the
+        # next reinstall, which made this test depend on the checkout it ran in.
+        if (
+            not path.is_file()
+            or "__pycache__" in path.parts
+            or any(part.endswith(".egg-info") for part in path.parts)
+        ):
             continue
         try:
             text = path.read_text(encoding="utf-8")
