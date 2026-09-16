@@ -276,7 +276,9 @@ class AsrSpecDiarization(_Wire):
     OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({"match_threshold"})
 
     enabled: bool
-    backend: Literal["embedding", "sortformer"]
+    # The only backend. The key stays so a future one needs no shape change; the NeMo
+    # sortformer backend was retired by TASK-980, so a spec still naming it fails here.
+    backend: Literal["embedding"]
     max_speakers: int | None
     match_threshold: float | None = None
 

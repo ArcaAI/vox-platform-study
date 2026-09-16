@@ -24,9 +24,8 @@ Two-layer detector:
   lazy-loads it via ``load_default_endpoint_model`` (which raises until the model
   is staged), so an un-staged model degrades to the heuristic.
 
-Fail posture (mirrors ``streaming_sortformer.load_default_backend`` and the
-groundedness scorer): model un-staged / un-loadable → heuristic-only; model
-inference error → heuristic-only; ANY uncertainty (disabled, no hypothesis,
+Fail posture: model un-staged / un-loadable → heuristic-only; model inference
+error → heuristic-only; ANY uncertainty (disabled, no hypothesis,
 below the silence floor, low confidence, trailing filler) →
 ``should_endpoint=False``. ``decide()`` NEVER raises, so the preprocessor always
 falls back to the EXISTING fixed silence-offset endpoint. No path ever cuts a
