@@ -629,6 +629,16 @@ class SessionManager:
 
         normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
 
+        # TASK-977 (D-5) — resampling stays ON by default; the flag is forwarded so
+        # a declared `resample: false` is answered instead of silently dropped. The
+        # preprocessor refuses it on a genuine rate mismatch (VAD/ASR need the
+        # target rate) and honours it only where it is a no-op.
+        resample_enabled = (
+            getattr(pipeline_config.preprocessing, "resample_enabled", True)
+            if pipeline_config
+            else True
+        )
+
         denoise_scope = (
             getattr(pipeline_config.preprocessing.denoise, "scope", "vad_only")
             if pipeline_config
@@ -641,6 +651,7 @@ class SessionManager:
             vad_service=vad_service,
             target_sample_rate=target_sr,
             normalize=normalize,
+            resample_enabled=resample_enabled,
             denoiser=denoiser,
             denoise_scope=denoise_scope,
             **vad_kwargs,
@@ -2002,6 +2013,12 @@ class SessionManager:
 
         Failures for optional models (VAD/denoise/embedding) are logged and
         skipped; ASR is already loaded by the caller.
+
+        TASK-977 (D-4) — a DISABLED stage warms nothing. The warm used to key on ref
+        presence alone, so a session that would never run VAD still fetched and
+        pinned Silero's weights (not a runtime-owned library, so the download is
+        real). The gateway lane stops shipping a ref for a disabled stage; this is
+        the other half, so neither side has to be trusted alone.
         """
         from stt.pipeline.config_reader import get_model_reader
         from stt.pipeline.dto import ModelTaskType
@@ -2009,8 +2026,32 @@ class SessionManager:
         model_refs = pipeline_config.models
         pinned: list[str] = []
 
-        async def _load_optional(ref: Any, task_type: ModelTaskType, label: str) -> None:
+        # Read defensively: the fallback is each stage's OWN dataclass default, so a
+        # config carrying no `preprocessing` block behaves exactly like a default
+        # `PipelineSpec` rather than turning the warm silently off.
+        preprocessing = getattr(pipeline_config, "preprocessing", None)
+        vad_enabled = bool(getattr(getattr(preprocessing, "vad", None), "enabled", True))
+        denoise_enabled = bool(getattr(getattr(preprocessing, "denoise", None), "enabled", False))
+        # The embedding model is DIARIZATION's, and that flag is a sibling of
+        # `preprocessing`, not a member of it.
+        diarization_enabled = bool(
+            getattr(getattr(pipeline_config, "diarization", None), "enabled", False)
+        )
+
+        async def _load_optional(
+            ref: Any, task_type: ModelTaskType, label: str, *, enabled: bool
+        ) -> None:
             if ref is None:
+                return
+            if not enabled:
+                # Debug, not info: after TASK-977 a disabled stage is the NORMAL
+                # case, so this fires on most sessions. Deliberately worded apart
+                # from the "Skipped warming" refusal below — that one means the
+                # cache cannot serve the weights, this one means nobody asked.
+                logger.debug(
+                    f"Skipping the {label} warm: the stage is disabled",
+                    session_id=session_id,
+                )
                 return
             try:
                 db_cfg = None
@@ -2055,10 +2096,23 @@ class SessionManager:
             # Inline ASR uses a synthetic slug from the loaded model; pin after load in caller.
             pass
 
-        await _load_optional(model_refs.vad, ModelTaskType.VOICE_ACTIVITY_DETECTION, "VAD")
-        await _load_optional(model_refs.denoise, ModelTaskType.AUDIO_TO_AUDIO, "denoise")
         await _load_optional(
-            getattr(model_refs, "embedding", None), ModelTaskType.SPEAKER_EMBEDDING, "embedding"
+            model_refs.vad,
+            ModelTaskType.VOICE_ACTIVITY_DETECTION,
+            "VAD",
+            enabled=vad_enabled,
+        )
+        await _load_optional(
+            model_refs.denoise,
+            ModelTaskType.AUDIO_TO_AUDIO,
+            "denoise",
+            enabled=denoise_enabled,
+        )
+        await _load_optional(
+            getattr(model_refs, "embedding", None),
+            ModelTaskType.SPEAKER_EMBEDDING,
+            "embedding",
+            enabled=diarization_enabled,
         )
 
         # Prefer the cache's view of the ASR slug if inline.

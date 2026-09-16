@@ -153,6 +153,7 @@ class StreamingPreprocessor:
         min_silence_duration_ms: int = 700,
         target_sample_rate: int | None = None,
         normalize: bool = False,
+        resample_enabled: bool = True,
         denoiser: Any | None = None,
         denoise_scope: str = "vad_only",  # vad_only | full
         max_utterance_duration_ms: int = _DEFAULT_MAX_UTTERANCE_DURATION_MS,
@@ -179,6 +180,22 @@ class StreamingPreprocessor:
         self._endpointer = endpointer
         self._target_sr = target_sample_rate if target_sample_rate else sample_rate
         self._normalize = normalize
+        # TASK-977 (D-5) — `PreprocessingConfig.resample_enabled`, which never
+        # reached this preprocessor before. Same posture the batch path has always
+        # had (`transcription/preprocessing.py`): the skip is honoured only when it
+        # is a NO-OP, because VAD and ASR require the target rate. Both rates are
+        # fixed for the session, so the refusal is decided ONCE here rather than per
+        # 32 ms frame — `_resample_frame` stays unconditional, which is what makes
+        # the override forced rather than merely warned about.
+        self._resample_enabled = resample_enabled
+        if not resample_enabled and sample_rate != self._target_sr:
+            logger.warning(
+                "resample.enabled=false but the input rate does not match the target "
+                "— resampling anyway (VAD/ASR require the target rate)",
+                session_id=session_id,
+                input_sample_rate=sample_rate,
+                target_sample_rate=self._target_sr,
+            )
         self._denoiser = denoiser
         # Dual-path: "vad_only" (default) — the denoised
         # frame only gates the VAD decision; the buffered/emitted audio (what
@@ -290,6 +307,11 @@ class StreamingPreprocessor:
     @property
     def target_sample_rate(self) -> int:
         return self._target_sr
+
+    @property
+    def resample_enabled(self) -> bool:
+        """The stage as DECLARED; honoured only when it is a no-op (see ``__init__``)."""
+        return self._resample_enabled
 
     @property
     def endpointer(self) -> Any | None:
