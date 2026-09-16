@@ -2,6 +2,7 @@ import { WorkflowDefinitionEntity } from '@arcaai/domains';
 import { declaredIoSchemas, declaredOutputProtocols, declaredTriggerKinds } from '@arcaai/workflow-contract';
 import { GetWorkflowRunResult } from '../consultation/harness/harness-gateway.service';
 import { WorkflowInvokeResponse, WorkflowRunCancelResponse, WorkflowRunStatusResponse, WorkflowSummaryResponse } from './dto';
+import { terminalStatusOf } from '../workflow-run/run-status';
 import { graphOf, inputSchemaOf } from './workflow-schema-description';
 
 /** Static mapper — entity/upstream-payload -> response DTO, never the reverse (rule 04). */
@@ -62,9 +63,9 @@ export class WorkflowExposureDtoMapper {
     slug: string,
     workflowVersionNumber: number,
     upstream: GetWorkflowRunResult,
-    status: string,
     resultRef: Record<string, unknown> | null = null,
     actingUserId: string | null = null,
+    status: string = terminalStatusOf(upstream.status) ?? 'RUNNING',
     nodeCount: number | null = null,
     failedNodeCount: number | null = null,
     degradedNodeCount: number | null = null,
