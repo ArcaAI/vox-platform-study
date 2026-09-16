@@ -8,14 +8,17 @@ automated coverage see `packages/vox-node/src/**/__tests__/*.test.ts`
 
 ## Layout
 
-| File                          | Shows                                                                                                                                                                                                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `01-summary.ts`               | Stateless summary from a transcript — the 60-second quickstart                                                                                                                                                                            |
-| `02-presummary-stream.ts`     | Streaming a pre-summary: iterating deltas, then `.result()`                                                                                                                                                                               |
-| `03-consultation-async.ts`    | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts                                                                                                                                                           |
-| `04-error-handling.ts`        | Catching the typed error hierarchy, including the 404-over-403 nuance                                                                                                                                                                     |
-| `05-agents-and-workflows.ts`  | Invoking a published agent (including NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node                                                                                                  |
-| `06-realtime-consultation.ts` | The whole machine-driven consultation journey: open (with a typed `context`) -> record -> live summary -> stop -> release the governing workflow's review gate -> approve the summary -> close -> read the context items and the run back |
+| File                            | Shows                                                                                                                                                                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-summary.ts`                 | Stateless summary from a transcript — the 60-second quickstart                                                                                                                                                                            |
+| `02-presummary-stream.ts`       | Streaming a pre-summary: iterating deltas, then `.result()`                                                                                                                                                                               |
+| `03-consultation-async.ts`      | `generateAsync` + `jobs.waitFor` — the recommended pattern for long transcripts                                                                                                                                                           |
+| `04-error-handling.ts`          | Catching the typed error hierarchy, including the 404-over-403 nuance                                                                                                                                                                     |
+| `05-agents-and-workflows.ts`    | Invoking a published agent (including NER), streaming a workflow run over SSE and over a socket, and releasing a `core.humanReview` node                                                                                                  |
+| `06-realtime-consultation.ts`   | The whole machine-driven consultation journey: open (with a typed `context`) -> record -> live summary -> stop -> release the governing workflow's review gate -> approve the summary -> close -> read the context items and the run back |
+| `07-typed-open-and-refusals.ts` | Opening with a generated `OpenConsultationContext` type, and branching on every refusal `open()` can answer with                                                                                                                          |
+| `08-stream-audio.ts`            | Pushing audio a server already has into a consultation over `RealtimeSttSocket`                                                                                                                                                           |
+| `09-completion-signals.ts`      | The three ways to learn a run finished — hold the stream, poll, or receive the webhook — and how to verify a delivery                                                                                                                     |
 
 ## Commands
 
@@ -43,6 +46,22 @@ not an API key — see the package README's "Two credential classes") plus `HOPE
 `HOPE_CLINICIAN_USER_ID`. It releases a review gate only when the governing workflow's
 `reviewNodes` names one, and skips the approve/close finish gracefully when the consultation has
 no summary yet.
+
+`07-typed-open-and-refusals.ts` declares an `OpenConsultationContext` by hand so it compiles with no
+generated file present; a real caller imports the one `vox-codegen --tenant` writes. It additionally
+needs `HOPE_DOCTOR_STAFF_ID` and `HOPE_DEPARTMENT_CODE` — the values the tenant's schema marks as
+its user-identity and department fields.
+
+`08-stream-audio.ts` needs `HOPE_CONSULTATION_ID` (open one with `07` first) and
+`HOPE_AUDIO_PCM16`, a raw PCM16 LE mono file. Like the socket half of `05`, it needs Node 22+.
+
+`09-completion-signals.ts` runs on an API key and needs `HOPE_WORKFLOW_SLUG`; its
+`handleDelivery` export is the receiver half, to be wired into your own HTTP framework with
+`HOPE_WEBHOOK_SECRET`. Subscribing the webhook itself is an admin call and needs a service account —
+the example's comments say which scope.
+
+Every file here is type-checked by `pnpm --filter @arcaai/vox-node typecheck`
+(`tsconfig.examples.json`), against the package SOURCE rather than a built `dist`.
 
 ### Getting an API key
 

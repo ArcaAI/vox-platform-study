@@ -222,9 +222,15 @@ Subscribe with `hope.admin.webhookEvent.create(...)` (service account only, scop
 shown once. A subscription is per resource type, not per event type, and delivers references
 (`resourceId`, `fetchUrl`), never content — HOPE will not push PHI to a third-party endpoint.
 Verify every delivery with `verifyWebhookSignature(rawBody, header, secret)` against the RAW body
-before parsing (`X-Hope-Webhook-Signature: sha256=<hex>`, constant-time, never throws). Workflow
-runs deliberately emit no sys-event, so there is no "run completed" webhook — poll `getRun` or
-hold the stream instead.
+before parsing (`X-Hope-Webhook-Signature: sha256=<hex>`, constant-time, never throws).
+
+A workflow run **does** fire a webhook: `WorkflowRunService.recordRunFinished` emits exactly one
+sys-event per TERMINAL transition, so a subscription with `resourceTypeName: 'WorkflowRun'`
+receives it — and because the start of a run emits nothing, a delivery IS "the run finished". It
+no longer depends on somebody reading the run either: a gateway-side watcher attaches to the run's
+event stream independently of any HTTP connection. Holding the stream (`waitForRun`) and polling
+(`getRun` until `isTerminalRunStatus`) remain available and are lower-latency; pick by whether
+your process can afford to stay connected. See `examples/09-completion-signals.ts`.
 
 ### Errors
 
@@ -256,9 +262,10 @@ failures, exponential backoff with full jitter, `Retry-After` honored on 429, de
   `ContextItemVersion` row on every edit — a missing `If-Match` never 428s and concurrent edits
   never 412. The SDK still accepts and forwards `ifMatch` forward-compatibly; do not build
   conflict-detection logic around it yet.
-- **A workflow run's terminal status is only recorded when somebody asks.** Nothing server-side
-  observes a run's finish independently of a `getRun` read — do not fire-and-forget a run; hold
-  the stream or poll until `isTerminalRunStatus(status)`.
+- **A run's terminal status survives a gateway restart only on the next read.** A gateway-side
+  watcher records the terminal frame without any reader attached, but it is per PROCESS: a run
+  whose gateway restarts mid-run is reconciled by the next `getRun`, as before. Nothing is lost —
+  the outcome just arrives later than the webhook would have.
 - **Two job-status vocabularies for the same workflow.** `generateAsync` returns
   `pending | processing | completed | failed`; `jobs.get`/`jobs.stream` return
   `PENDING | RUNNING | COMPLETED | FAILED | CANCELLED`. Use the exported
@@ -277,5 +284,7 @@ failures, exponential backoff with full jitter, `Retry-After` honored on 429, de
   context schema or a tenant's published agents/workflows.
 - [`@arcaai/vox-node-codegen`](../vox-node-codegen/README.md) — the private generator that
   produces `src/resources/admin/**`.
-- [`examples/`](./examples) — five runnable examples with their own `examples/README.md`.
+- [`examples/`](./examples) — nine runnable examples with their own `examples/README.md`.
+- [`docs/guides/client-integration-guide.md`](../../docs/guides/client-integration-guide.md) — the
+  end-to-end integration guide these examples illustrate.
 - `.claude/rules/08-vox-sdk.md` — SDK architecture and credential-class rules.

@@ -20,7 +20,7 @@ to read before running; each has a usage header. Paths below are relative to the
 | `publish-sdk.sh` | Manual release of the browser SDK family |
 | `github-backup.sh`, `deploy-ssh-keys.sh`, `smoke-pgbouncer.sh` | CI backup job and homelab operator scripts |
 | `env-sync.mts`, `env-consumer-inventory.py`, `python-env-surface.py` | Env-var surface generators/checkers behind `pnpm env:*` |
-| `check-migration-compat.ts`, `check-openapi-coverage.ts`, `verify-doc-claims.mjs`, `verify-traceability.mjs` | CI verification scripts |
+| `check-migration-compat.ts`, `check-openapi-coverage.ts`, `check-docs-constants.ts`, `verify-doc-claims.mjs`, `verify-traceability.mjs` | CI verification scripts |
 | `changelog-draft.ts`, `changelog-from-commits.ts` | Release changelog generators |
 
 ## Commands
