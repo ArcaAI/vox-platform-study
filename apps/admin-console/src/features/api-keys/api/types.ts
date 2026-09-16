@@ -56,5 +56,21 @@ export interface ApiKeyUsage {
   rateLimit: number;
 }
 
-/** GET /admin/api-keys/scopes — scopes grouped by category (STT, Admin, ...). */
-export type ApiKeyScopeCatalog = Record<string, { scope: string; description: string }[]>;
+import type { ApiKeyScopePreset } from '@arcaai/types';
+
+/** Scopes grouped by category (STT, Admin, ...). */
+export type ApiKeyScopeCategories = Record<string, { scope: string; description: string }[]>;
+
+/**
+ * `GET /admin/api-keys/scopes` — the grantable catalogue PLUS the scope presets
+ * the create dialog's "Purpose" cards offer.
+ *
+ * The presets are RENDERED FROM this response, never from a copy in the console:
+ * they are declared once in `@arcaai/types`, and the seed, the gateway's scope
+ * registry and both SDKs read the same three. A local copy is how a preset that
+ * no longer grants what its label claims gets shipped.
+ */
+export interface ApiKeyScopeCatalog {
+  categories: ApiKeyScopeCategories;
+  presets: readonly ApiKeyScopePreset[];
+}

@@ -1,38 +1,31 @@
 'use client';
 
 /**
- * Definition tab: the kind editor + output-kind editor + publish
- * flow over `POST :id/publish`. The draft lives in the
- * parent drawer (`ContextSchemaDetailDrawer`) so the Tester tab can validate
- * sample payloads against the SAME in-progress draft, not a stale published
- * copy.
+ * Definition tab: the kind editor + output-kind editor.
  *
- * Publish surfaces the server's actual rejection reasons rather than a
- * generic error (`publishRejection`): a structural 400 lists every
- * `problems[]` entry inline; a refused breaking change lists every
- * `breakingChanges[]` entry and offers an explicit "Publish anyway"
- * acknowledgement (`allowBreakingChange: true`) — never a silent retry.
+ * Publish USED to live at the bottom of this panel, behind a change-reason
+ * input and a pair of inline alerts. It is now the page's single primary
+ * action, and its confirmation states the effect (`PublishConfirmDialog`) — so
+ * what remains here is editing, plus the one rejection that is genuinely about
+ * the definition itself: a STRUCTURAL problem naming the field that is wrong.
+ * A breaking change and a refusing consumer are decisions, not defects, and are
+ * made in the dialog.
+ *
+ * The draft lives in the parent screen so the footer can report it and the
+ * route guard can block a navigation that would discard it.
  */
 
-import { useId, useState } from 'react';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
-import { toast } from 'sonner';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@arcaai/ui/components/shadcn/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Separator } from '@arcaai/ui/components/shadcn/separator';
-import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { GatewayError } from '@/shared/api';
 import { EmptyState } from '@/shared/state/empty-state';
-import { usePublishContextSchema } from '../api/hooks';
 import type { ContextKindDeclaration, ContextOutputDeclaration, ContextSchemaDefinition } from '../api/types';
-import { publishRejection } from '../lib/publish-error';
-import { FieldRoleTable } from './field-role-table';
 import { KindForm } from './kind-form';
 import { OutputForm } from './output-form';
+import { KindPayloadTester } from './payload-tester';
 
 function defaultKind(): ContextKindDeclaration {
   return {
@@ -51,22 +44,15 @@ function defaultOutput(): ContextOutputDeclaration {
 }
 
 export function DefinitionEditor({
-  schemaId,
   definition,
   onDefinitionChange,
-  onPublished,
+  problems,
 }: {
-  schemaId: string;
   definition: ContextSchemaDefinition;
   onDefinitionChange: (next: ContextSchemaDefinition) => void;
-  onPublished: () => void;
+  /** Structural rejections from the last publish attempt — rendered against the fields they name. */
+  problems: string[] | null;
 }) {
-  const uid = useId();
-  const publish = usePublishContextSchema();
-  const [changeReason, setChangeReason] = useState('');
-  const [breakingChanges, setBreakingChanges] = useState<string[] | null>(null);
-  const problems = publish.error instanceof GatewayError ? (publishRejection(publish.error)?.problems ?? null) : null;
-
   function updateKind(index: number, next: ContextKindDeclaration) {
     onDefinitionChange({ ...definition, kinds: definition.kinds.map((kind, i) => (i === index ? next : kind)) });
   }
@@ -93,35 +79,25 @@ export function DefinitionEditor({
     onDefinitionChange({ ...definition, outputs: [...outputs, defaultOutput()] });
   }
 
-  function runPublish(allowBreakingChange?: boolean) {
-    publish.mutate(
-      { id: schemaId, body: { definition, changeReason: changeReason.trim() || undefined, allowBreakingChange } },
-      {
-        onSuccess: () => {
-          toast.success('Definition published');
-          setBreakingChanges(null);
-          setChangeReason('');
-          onPublished();
-        },
-        onError: (error) => {
-          const rejection = publishRejection(error);
-          if (rejection?.breakingChanges) {
-            setBreakingChanges(rejection.breakingChanges);
-            return;
-          }
-          setBreakingChanges(null);
-          if (rejection?.problems) return; // rendered inline below — no redundant toast
-          toast.error(error instanceof GatewayError ? error.message : 'Could not publish the definition.');
-        },
-      },
-    );
-  }
-
   return (
     <div className="flex flex-col gap-6">
+      {problems && problems.length > 0 ? (
+        <Alert variant="destructive">
+          <IconAlertTriangle aria-hidden />
+          <AlertTitle>The definition is not publishable</AlertTitle>
+          <AlertDescription>
+            <ul className="flex flex-col gap-0.5">
+              {problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Kinds ({definition.kinds.length})</h3>
+          <h2 className="text-sm font-medium">Kinds ({definition.kinds.length})</h2>
           <Button type="button" size="sm" variant="outline" onClick={addKind}>
             <IconPlus aria-hidden />
             Add kind
@@ -154,8 +130,8 @@ export function DefinitionEditor({
                       </Badge>
                     ) : null}
                     {kind.externalRef ? (
-                      <Badge variant="secondary" aria-label={`External ref field: ${kind.externalRef.field}`}>
-                        Ext. ref
+                      <Badge variant="secondary" aria-label={`Reference id field: ${kind.externalRef.field}`}>
+                        Reference id
                       </Badge>
                     ) : null}
                     {kind.streamContext ? (
@@ -173,8 +149,16 @@ export function DefinitionEditor({
                 </AccordionTrigger>
                 <AccordionContent>
                   <div className="flex flex-col gap-4">
-                    <KindForm kind={kind} onChange={(next) => updateKind(index, next)} onRemove={() => removeKind(index)} />
-                    <FieldRoleTable kind={kind} index={index} kinds={definition.kinds} onChange={(next) => updateKind(index, next)} />
+                    <KindForm
+                      kind={kind}
+                      index={index}
+                      kinds={definition.kinds}
+                      onChange={(next) => updateKind(index, next)}
+                      onRemove={() => removeKind(index)}
+                    />
+                    <div className="flex justify-end">
+                      <KindPayloadTester kind={kind} />
+                    </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -187,7 +171,7 @@ export function DefinitionEditor({
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Outputs ({outputs.length})</h3>
+          <h2 className="text-sm font-medium">Outputs ({outputs.length})</h2>
           <Button type="button" size="sm" variant="outline" onClick={addOutput}>
             <IconPlus aria-hidden />
             Add output
@@ -211,67 +195,6 @@ export function DefinitionEditor({
             ))}
           </Accordion>
         ) : null}
-      </section>
-
-      <Separator />
-
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Publish</h3>
-
-        {problems && problems.length > 0 ? (
-          <Alert variant="destructive">
-            <IconAlertTriangle aria-hidden />
-            <AlertTitle>The definition is not publishable</AlertTitle>
-            <AlertDescription>
-              <ul className="flex flex-col gap-0.5">
-                {problems.map((problem) => (
-                  <li key={problem}>{problem}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {breakingChanges ? (
-          <Alert variant="destructive">
-            <IconAlertTriangle aria-hidden />
-            <AlertTitle>This change breaks clients built against the current version</AlertTitle>
-            <AlertDescription>
-              <ul className="flex flex-col gap-0.5">
-                {breakingChanges.map((change) => (
-                  <li key={change}>{change}</li>
-                ))}
-              </ul>
-              <div className="mt-2 flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setBreakingChanges(null)}>
-                  Cancel
-                </Button>
-                <Button type="button" variant="destructive" size="sm" disabled={publish.isPending} onClick={() => runPublish(true)}>
-                  {publish.isPending ? <Spinner /> : null}
-                  Publish anyway
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`${uid}-change-reason`}>Change reason (optional)</Label>
-              <Input
-                id={`${uid}-change-reason`}
-                value={changeReason}
-                onChange={(event) => setChangeReason(event.target.value)}
-                placeholder="Add referral_letter kind for cardiology intake"
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button type="button" disabled={definition.kinds.length === 0 || publish.isPending} onClick={() => runPublish()}>
-                {publish.isPending ? <Spinner /> : null}
-                Publish
-              </Button>
-            </div>
-          </>
-        )}
       </section>
     </div>
   );

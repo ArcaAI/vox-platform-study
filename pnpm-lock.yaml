@@ -145,6 +145,9 @@ importers:
       '@arcaai/stt':
         specifier: workspace:*
         version: link:../../packages/stt
+      '@arcaai/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@arcaai/ui':
         specifier: workspace:*
         version: link:../../packages/ui

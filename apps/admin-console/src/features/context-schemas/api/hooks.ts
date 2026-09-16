@@ -11,6 +11,7 @@ import {
   createContextSchema,
   deleteContextSchema,
   getContextSchema,
+  getContextSchemaUsages,
   listContextSchemaVersions,
   listContextSchemas,
   listDepartments,
@@ -19,7 +20,11 @@ import {
   updateContextSchema,
 } from './client';
 import { contextSchemaKeys } from './keys';
-import type { CreateConsultationContextSchemaRequest, PublishConsultationContextSchemaRequest, UpdateConsultationContextSchemaRequest } from './types';
+import type {
+  CreateConsultationContextSchemaRequest,
+  PublishConsultationContextSchemaRequest,
+  UpdateConsultationContextSchemaRequest,
+} from './types';
 
 export function useContextSchemas() {
   return useQuery({ queryKey: contextSchemaKeys.list(), queryFn: listContextSchemas });
@@ -32,6 +37,19 @@ export function useContextSchema(id: string) {
 
 export function useContextSchemaVersions(id: string) {
   return useQuery({ queryKey: contextSchemaKeys.versions(id), queryFn: () => listContextSchemaVersions(id), enabled: !!id });
+}
+
+/**
+ * Consumers of this schema, judged against `againstVersion` (default: the pin).
+ * Kept out of the coarse invalidation nothing else needs — every mutation here
+ * invalidates the whole namespace anyway.
+ */
+export function useContextSchemaUsages(id: string, againstVersion?: number) {
+  return useQuery({
+    queryKey: contextSchemaKeys.usages(id, againstVersion),
+    queryFn: () => getContextSchemaUsages(id, againstVersion),
+    enabled: !!id,
+  });
 }
 
 export function useDepartments() {
@@ -51,7 +69,8 @@ export function useCreateContextSchema() {
 export function useUpdateContextSchema() {
   const invalidate = useInvalidateContextSchemas();
   return useMutation({
-    mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateConsultationContextSchemaRequest; etag: string }) => updateContextSchema(id, patch, etag),
+    mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateConsultationContextSchemaRequest; etag: string }) =>
+      updateContextSchema(id, patch, etag),
     onSuccess: invalidate,
   });
 }
