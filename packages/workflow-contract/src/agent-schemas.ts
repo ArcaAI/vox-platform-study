@@ -326,7 +326,15 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
             // selection. Enabled with no `VOICE_ACTIVITY_DETECTION` model bound is refused
             // (409 `ASR_AGENT_VAD_MODEL_MISSING`) rather than silently resolved from a cache.
             enabled: Object.freeze({ type: 'boolean', default: false }),
-            modelSlug: Object.freeze({ ...MODEL_SLUG_PROPERTY, description: 'Registry slug of a `VOICE_ACTIVITY_DETECTION` model.' }),
+            modelSlug: Object.freeze({
+              ...MODEL_SLUG_PROPERTY,
+              // TASK-977 follow-up — the same `modelTaskType` annotation as
+              // `diarization.embeddingModelSlug` (TASK-887): an editor picks from the tenant's
+              // `VOICE_ACTIVITY_DETECTION` catalogue instead of typing a slug.
+              modelTaskType: 'VOICE_ACTIVITY_DETECTION',
+              description:
+                'Registry slug of a `VOICE_ACTIVITY_DETECTION` model — the Silero weights the stage loads. Required when `vad.enabled` is true; the gateway refuses the agent with 409 `ASR_AGENT_VAD_MODEL_MISSING` otherwise.',
+            }),
             threshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
             minSpeechMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
             minSilenceMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
@@ -349,7 +357,15 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
             // `level` are kept consistent by the resolver: off ⇔ `level: 'off'`, and an
             // enabled stage with no level runs at `medium`.
             enabled: Object.freeze({ type: 'boolean', default: false }),
-            modelSlug: Object.freeze({ ...MODEL_SLUG_PROPERTY, description: 'Registry slug of an `AUDIO_TO_AUDIO` model.' }),
+            modelSlug: Object.freeze({
+              ...MODEL_SLUG_PROPERTY,
+              // TASK-977 follow-up — the same `modelTaskType` annotation as
+              // `diarization.embeddingModelSlug` (TASK-887): an editor picks from the tenant's
+              // `AUDIO_TO_AUDIO` catalogue instead of typing a slug.
+              modelTaskType: 'AUDIO_TO_AUDIO',
+              description:
+                'Registry slug of an `AUDIO_TO_AUDIO` model — selects the noise-suppression ENGINE (the `rnnoise` row runs RNNoise, the `deepfilternet3` row runs DeepFilterNet3). Optional; when unbound an enabled stage runs RNNoise.',
+            }),
             level: Object.freeze({ type: 'string', enum: Object.freeze(['off', 'low', 'medium', 'high']) }),
           }),
         }),
