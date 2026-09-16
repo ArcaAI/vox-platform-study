@@ -21,6 +21,7 @@ import { GenerateComprehensiveSummaryJobPayload, ComprehensiveSummaryJobResult }
 import { ChainSummaryService } from '../../summary/chain-summary.service';
 import { PromptResolutionService } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { clientClinicalContextReaderFor } from '../../context/client-clinical-context';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../../../common';
@@ -358,6 +359,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
   private async callTextService(
     consultation: {
+      id: string;
       departmentId?: string | null;
       parentConsultationId?: string | null;
     },
@@ -426,8 +428,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       fullText += `\n\n--- Named Entities (auto-extracted) ---\n${nerLines.join('\n')}`;
     }
 
+    // The measured readings and prior-visit history the client stated at `open` on the
+    // consultation this comprehensive summary is anchored to.
+    const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultation.id);
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
       // TASK-890 (OD-M) — stated, not derived: a BullMQ job has no request CLS to fall back on,
       // and the summary chain's platform-default tier resolves the TENANT'S OWN clone, so a
       // consultation with no department would fail closed with `PROMPT_DEFAULT_NOT_PROVISIONED`.

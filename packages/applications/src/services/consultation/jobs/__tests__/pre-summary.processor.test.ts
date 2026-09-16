@@ -57,10 +57,16 @@ const createMockPromptResolutionService = () => ({
 });
 
 // Mock PromptAssemblyService
+//
+// The pre-summary chain passes an EMPTY transcript and hands its case-note records to `caseNotes`
+// — that chain has no recording, and labelling records of previous encounters as the transcript of
+// this one is what the section name change fixed. The double echo below mirrors what the real
+// assembler does with that shape: an empty transcript contributes nothing, and the notes arrive in
+// the appended `case_notes` data block, `\n\n`-joined.
 const createMockPromptAssemblyService = () => ({
-  assemble: vi.fn().mockImplementation((params: { transcript?: string }) =>
+  assemble: vi.fn().mockImplementation((params: { transcript?: string; caseNotes?: string[] }) =>
     Promise.resolve({
-      userPrompt: params.transcript ?? 'assembled prompt text',
+      userPrompt: params.transcript || (params.caseNotes ?? []).join('\n\n') || 'assembled prompt text',
       systemPrompt: '',
       hyperparameters: {},
       responseFormat: null,
@@ -490,6 +496,10 @@ describe('PreSummaryProcessor', () => {
 
       await processor.process(createMockJob(payload));
 
+      // The notes travel as case-note RECORDS, not as a transcript.
+      expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+        expect.objectContaining({ transcript: '', caseNotes: ['First case note', 'Second case note', 'Third case note'] }),
+      );
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({

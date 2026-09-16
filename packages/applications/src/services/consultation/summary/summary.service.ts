@@ -74,6 +74,7 @@ import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { clientCaseNoteRenderings, clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IBillingService } from '../../billing/IBillingService';
@@ -424,6 +425,19 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
+   * What the CLIENT stated at `open` — measured vitals and a prior-visit history — rendered for
+   * a prompt.
+   *
+   * One reader per generation, so the memo it carries is scoped to that operation rather than
+   * accumulating consultations on this boot-time singleton. Never throws: the reader degrades an
+   * unreadable or undecryptable row to "the client sent nothing", which is exactly the state
+   * every consultation opened before the context schema existed is in.
+   */
+  private readClientClinicalContext(consultationId: string): Promise<ClientClinicalContext> {
+    return clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultationId);
+  }
+
+  /**
    * Generate pre-summary from historical case notes
    */
   async generatePreSummary(consultationId: string, request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
@@ -474,6 +488,19 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('No case notes found for pre-summary generation');
     }
 
+    // The client's own context. Read AFTER the "is there anything to summarise" guard, which is
+    // still asked of the case-note records as they stand: a consultation whose only notes came
+    // from the client is a consultation with notes, and it must not start refusing simply because
+    // the same text also reaches the prompt as prior-visit context below.
+    const client = await this.readClientClinicalContext(consultationId);
+
+    // A note the client sent under `previous_case_notes` is persisted TWICE at open — once as the
+    // structured kind, once as a `CASE_NOTE` row per entry — and `client.previousVisits` already
+    // carries it, dated and ordered. Feeding the case-note copies in as well would put the same
+    // history in front of the model under two different headings.
+    const duplicated = client.previousVisits ? clientCaseNoteRenderings(client.raw.previousVisits) : null;
+    const promptCaseNotes = caseNotes.map((note) => (note.content ?? '').trim()).filter((text) => text.length > 0 && !duplicated?.has(text));
+
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
       // The pre-summary chain has no department axis: without the tenant a
@@ -488,7 +515,13 @@ export class SummaryService extends BaseService implements ISummaryService {
       // signal; the LABEL comes from the platform's visit types, not from a literal that
       // disagreed with the one the summary path used for the same concept.
       visitType: this.visitType(consultation).label,
-      transcript: content,
+      // EMPTY, and that is the honest value: this chain has no recording. The case-note records
+      // used to be passed here, so the model was told that text from PREVIOUS encounters was the
+      // transcript of this one. They now travel as `caseNotes`, under their own section.
+      transcript: '',
+      caseNotes: promptCaseNotes,
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
       conversationLanguage: this.resolveConversationLanguage(request.options, consultation),
       dnaStyleId: request.dnaStyleId,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
@@ -714,8 +747,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // has opted out or the tenant flag is off. No-op (passes the requested id
     // through) when ConfigResolver is not wired into this instance.
     const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation.departmentId, consultation.doctorId, request.dnaStyleId);
+    // The measured readings and prior-visit history the client stated at `open`. The transcript
+    // stays authoritative for what happened today; these are background the note may cite.
+    const client = await this.readClientClinicalContext(consultationId);
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
       // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
