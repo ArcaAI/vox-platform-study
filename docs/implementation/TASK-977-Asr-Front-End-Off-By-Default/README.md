@@ -132,16 +132,57 @@ reproduces at the base commit. Environmental, out of scope.
 
 ### Deliberately not done
 
-- **`VadConfig.enabled` in `apps/stt/src/stt/pipeline/dto.py` stays `True`.** It is the dataclass
-  default for the DEPRECATED `pipeline_id` YAML path, which already fails closed
-  (`STT_DATABASE_ENABLED` defaults `false`). D-1 is satisfied without it; flipping it would change
-  legacy-path execution behaviour and wants its own owner call.
+- ~~`VadConfig.enabled` in `apps/stt` stays `True`.~~ Flipped in the follow-up below, on the owner's call.
 - **`stt.vad-sensitivity` `GlobalSetting`** (`seed/11-global-setting.ts:251`) has no backend reader
   left — only the retiring browser SDK's `ModelRegistry`. Retiring it is a settings-registry change
   with its own migration.
 - **Enum controls with schema defaults** (`diarization.backend`, and `responseFormat`/`memory` on
   `TEXT_GENERATION`) share the display gap the boolean control just had: a `"Default"` placeholder
   rather than the effective value. Outside D-1..D-6.
+
+### Follow-up — every control decided per agent (owner, 2026-09-16)
+
+Owner asks: flip `VadConfig.enabled` in `apps/stt`, and make sure the three features are controlled
+granularly on each platform agent. An audit found the per-agent path already holds for request bodies
+(sessions and jobs carry only the agent selector), workflow nodes (no audio-stage config), fallback
+agents (each chain maps its OWN front-end, keyed by runtime key) and the engine-internal VAD filter
+(`decoding.vadFilter`, agent-only, default off). It found four gaps, closed here:
+
+| Gap | Fix |
+|---|---|
+| **Four** sites defaulted VAD on in `apps/stt`, not one: `VadConfig.enabled`, the legacy YAML parser's `get("enabled", True)`, and the two D-4 warm gates whose fallback is "this stage's own dataclass default". | All four → `False`. The warm-gate fallback test now derives its expectation from the dataclasses, so it still tells "reads each default" from "blanket off". |
+| **The agent could not choose its denoise engine.** `pipeline_spec_from_resolved` never set `DenoiseConfig.engine`, so binding the `deepfilternet3` row still ran RNNoise; only the deprecated YAML path could pick. | The bound row's serving library selects it — `DENOISE_ENGINE_BY_LIBRARY` in `models/cache.py` (`pyrnnoise`→`rnnoise`, `deepfilternet`→`deepfilternet3`). No row keeps RNNoise; a row naming no known engine library, including none, fails closed with `UnsupportedDenoiseEngineError`. |
+| **A hardware profile could switch denoise on.** `ExecutionProfile.denoise_enabled_default` was `True` on four profiles. Unreachable, but a machine-level enable. | Field removed from the dataclass and all five profiles; no pipeline config ⇒ denoise off. |
+| **VAD and denoise models were free-text inputs** in the console while the embedding model was a catalogue picker. | `modelTaskType` annotations on both; the seeded `realtime-transcription` agent now declares all five controls explicitly so each tenant clone is self-describing. |
+
+**A regression D-4 caused, found by the audit.** `VoiceProfileService.enrollmentTarget()` read
+`spec.models.embedding`, which D-4 omits whenever diarization is off. The seeded agent (diarization
+off, `embeddingModelSlug` set) therefore answered enrollment with a 400 telling the admin to set a
+slug that was already set. Service tests mock the spec, so nothing went red. Owner decision: **refuse
+enrollment while diarization is off** — enrolling computes a voice embedding. Now a 409
+`ASR_AGENT_DIARIZATION_DISABLED` (same `{ code, message }` body as the ASR resolver's own refusals),
+raised before any audio reaches `apps/stt`; enabled-with-no-model is a truthful 400 naming the
+`sortformer` backend. This reverses TASK-887's "enrol ahead of enabling". The console renders an
+explanatory blocked state with the enroll actions disabled and a visible reason; existing profiles
+still list. `AgenticClient` now preserves the gateway's `code` on `AgenticError.context.code` —
+before, every 409 on this path was indistinguishable without parsing the message.
+
+Evidence after the follow-up merges (primary checkout): `stt` unit 3478 · ruff/mypy clean ·
+`workflow-contract` 952 · `database` 1826 · `applications` 14109 (same one environmental file) ·
+`api` 4632 · `vox` 3745 · `admin-console` 3274 · contract parity + resolver 43 · `api:openapi:check`,
+`api:portal:check`, `vox-node gen:admin:check` clean, and a fresh regeneration of `openapi.json` /
+`route-manifest.json` produces no diff.
+
+Still owed for the follow-up:
+- **Runtime verification of the blocked-enrollment card** — rule 13's DoD asks for a running app,
+  an axe scan and both themes; the local stack was down and none of this was exercised in a browser.
+- **The deep link does not filter.** `/agents?task=SPEECH_TO_TEXT` lands on the unfiltered Agents
+  list: the grid keeps filters in the `f` URL parameter and never reads `task`. The three retired-route
+  redirects (`/audio/pipelines`, `/ai-model-defaults`, `/ai-configuration`) have the same gap — it
+  predates this ticket.
+- **Sortformer diarization uses a hardcoded model id** (`DiarizationConfig.sortformer_model_id =
+  'nvidia/diar_streaming_sortformer_4spk-v2.1'`) with no agent property — a no-hardcoded-config
+  violation outside voice-embedding diarization, left for its own ticket.
 
 ### Verification still owed before this reaches the cluster
 
@@ -156,3 +197,4 @@ deploy, and the owner accepted that trade when choosing (b) over (a).
 |---|---|
 | 2026-09-16 | Ticket opened; four-lane audit recorded; owner decisions D-1(b), D-2..D-6 taken. |
 | 2026-09-16 | All five lanes merged into `dev-2.2`. Status Review, pending the listening pass D-1(b) owes. |
+| 2026-09-16 | Follow-up: `VadConfig.enabled` → False (four sites); per-agent denoise engine; `ExecutionProfile.denoise_enabled_default` removed; catalogue model pickers; explicit agent controls; voice enrollment refused while diarization is off (fixes a D-4 regression). |
