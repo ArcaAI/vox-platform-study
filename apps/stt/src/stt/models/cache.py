@@ -97,6 +97,16 @@ RUNTIME_OWNED_LIBRARIES: dict[str, str] = {
     ),
 }
 
+#: TASK-977 — the denoise ENGINE (`DenoiseConfig.engine`) each runtime-owned denoise
+#: library selects. Both engines ship inside their wheels and are chosen by NAME, so an
+#: agent's bound denoise row chooses one only through its declared library. Every key is
+#: also a `RUNTIME_OWNED_LIBRARIES` key. A library absent here names no denoise engine,
+#: and `pipeline_spec_from_resolved` refuses it — it never runs RNNoise in its place.
+DENOISE_ENGINE_BY_LIBRARY: dict[str, str] = {
+    "pyrnnoise": "rnnoise",
+    "deepfilternet": "deepfilternet3",
+}
+
 
 def set_retention_refresher(refresher: Callable[[], Awaitable[None]] | None) -> None:
     """Install (or clear, with None) the control-plane retention refresher."""
@@ -733,6 +743,7 @@ async def clear_model_cache() -> int:
 
 
 __all__ = [
+    "DENOISE_ENGINE_BY_LIBRARY",
     "RUNTIME_OWNED_LIBRARIES",
     "CacheEntry",
     "CacheStats",
