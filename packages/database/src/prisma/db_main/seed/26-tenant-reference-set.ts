@@ -523,7 +523,11 @@ export function restampCompiledConfig(compiled: Record<string, unknown>, target:
   const policyBindings = (next.policyBindings ?? {}) as Record<string, unknown>;
   if (policyBindings.contextSchemaVersionId !== undefined) policyBindings.contextSchemaVersionId = target.versionId;
   if (Array.isArray(policyBindings.contextSchemaRefs)) {
-    policyBindings.contextSchemaRefs = (policyBindings.contextSchemaRefs as Array<Record<string, unknown>>).map((ref) => ({ ...ref, schemaId: target.schemaId, versionId: target.versionId }));
+    policyBindings.contextSchemaRefs = (policyBindings.contextSchemaRefs as Array<Record<string, unknown>>).map((ref) => ({
+      ...ref,
+      schemaId: target.schemaId,
+      versionId: target.versionId,
+    }));
   }
   next.policyBindings = policyBindings;
   for (const stage of (next.stages ?? []) as Array<{ nodes?: Array<Record<string, unknown>> }>) {
@@ -571,21 +575,36 @@ async function copyWorkflowDefinitions(client: CorePrismaClient, tenantId: strin
     const id = cloneId(tenantId, 'workflow-definition', source.id);
     let graph = source.graph as Record<string, unknown>;
     let compiledConfig = source.compiledConfig as Record<string, unknown> | null;
+    // TASK-982 — the clone's own binding column, rebound to the TENANT's schema row below; stays
+    // `null` when the trigger binds no reference at all (the `else` branch, same as the source).
+    let contextSchemaId: string | null = null;
 
     // Resolve the SYSTEM schema the trigger names → its slug → the tenant's clone of that slug.
     const probe = repointTriggerGraph(source.graph, '');
     if (probe) {
-      const sourceSchema = await client.consultationContextSchema.findFirst({ where: { id: probe.sourceSchemaId }, select: { id: true, slug: true } });
+      const sourceSchema = await client.consultationContextSchema.findFirst({
+        where: { id: probe.sourceSchemaId },
+        select: { id: true, slug: true },
+      });
       const clone = sourceSchema
-        ? await client.consultationContextSchema.findFirst({ where: { tenantId, slug: sourceSchema.slug, resourceStatus: 'ENABLED' }, select: { id: true, pinnedVersionNumber: true } })
+        ? await client.consultationContextSchema.findFirst({
+            where: { tenantId, slug: sourceSchema.slug, resourceStatus: 'ENABLED' },
+            select: { id: true, pinnedVersionNumber: true },
+          })
         : null;
       const version =
         clone && clone.pinnedVersionNumber !== null
-          ? await client.consultationContextSchemaVersion.findFirst({ where: { schemaId: clone.id, versionNumber: clone.pinnedVersionNumber }, select: { id: true } })
+          ? await client.consultationContextSchemaVersion.findFirst({
+              where: { schemaId: clone.id, versionNumber: clone.pinnedVersionNumber },
+              select: { id: true },
+            })
           : null;
       if (!clone || !version) continue;
       graph = repointTriggerGraph(source.graph, clone.id)!.graph;
-      compiledConfig = compiledConfig ? restampCompiledConfig(compiledConfig, { definitionId: id, tenantId, schemaId: clone.id, versionId: version.id }) : null;
+      compiledConfig = compiledConfig
+        ? restampCompiledConfig(compiledConfig, { definitionId: id, tenantId, schemaId: clone.id, versionId: version.id })
+        : null;
+      contextSchemaId = clone.id;
     } else if (compiledConfig) {
       compiledConfig = restampCompiledConfig(compiledConfig, { definitionId: id, tenantId, schemaId: '', versionId: '' });
     }
@@ -609,6 +628,13 @@ async function copyWorkflowDefinitions(client: CorePrismaClient, tenantId: strin
         compiledConfig: compiledConfig as never,
         compiledConfigChecksum: compiledConfig ? (compiledConfig.checksum as string) : null,
         registryChecksum: source.registryChecksum,
+        // TASK-982 — the same three binding columns `WorkflowDefinitionService.publish` stamps,
+        // rebound to the TENANT's own clone exactly as the graph's trigger is rebound above.
+        // `contextSchemaVersionNumber`/`contextSchemaFollowsLatest` copy verbatim from the source:
+        // cloning moves which SCHEMA the trigger points at, never which binding the author chose.
+        contextSchemaId,
+        contextSchemaVersionNumber: contextSchemaId !== null ? source.contextSchemaVersionNumber : null,
+        contextSchemaFollowsLatest: contextSchemaId !== null && source.contextSchemaFollowsLatest,
         validationReport: source.validationReport as never,
         needsReview: false,
         validatedAt: source.validatedAt,

@@ -17,7 +17,13 @@ import { describe, expect, it } from 'vitest';
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 import { NOTE_CONTEXT_SCHEMAS, NOTE_CONTEXT_SCHEMA_VERSIONS, canonicalJson, noteContextSchemaIdFor } from '../07e-consultation-note-context-schema';
 import { cloneId, provisionTenantReferenceSet, restampCompiledConfig } from '../26-tenant-reference-set';
-import { CONSULTATION_WORKFLOW_SLUG, WORKFLOW_LIBRARY_ASSIGNMENTS, WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES, WORKFLOW_LIBRARY_TARGETS, workflowLibraryDefinitions } from '../28-workflow-library';
+import {
+  CONSULTATION_WORKFLOW_SLUG,
+  WORKFLOW_LIBRARY_ASSIGNMENTS,
+  WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES,
+  WORKFLOW_LIBRARY_TARGETS,
+  workflowLibraryDefinitions,
+} from '../28-workflow-library';
 import { REGISTRY_CHECKSUM } from '../28-workflow-library.generated';
 
 // `scripts/` sits outside this package's tsconfig `rootDir`, so the regen script is loaded by
@@ -34,7 +40,8 @@ type Row = Record<string, any>;
 
 const matches = (row: Row, where: Row | undefined): boolean =>
   Object.entries(where ?? {}).every(([key, expected]) => {
-    if (expected !== null && typeof expected === 'object' && !Array.isArray(expected) && 'in' in expected) return (expected.in as unknown[]).includes(row[key]);
+    if (expected !== null && typeof expected === 'object' && !Array.isArray(expected) && 'in' in expected)
+      return (expected.in as unknown[]).includes(row[key]);
     if (expected !== null && typeof expected === 'object' && !Array.isArray(expected) && 'not' in expected) return row[key] !== expected.not;
     return row[key] === expected;
   });
@@ -93,9 +100,12 @@ function makeClient() {
 async function seedSystem(client: ReturnType<typeof makeClient>['client']) {
   for (const schema of NOTE_CONTEXT_SCHEMAS) await client.consultationContextSchema.create({ data: schema });
   for (const version of NOTE_CONTEXT_SCHEMA_VERSIONS) await client.consultationContextSchemaVersion.create({ data: version });
-  for (const row of workflowLibraryDefinitions().filter((row) => row.tenantId === SYSTEM_TENANT_ID)) await client.workflowDefinition.create({ data: row });
-  for (const row of WORKFLOW_LIBRARY_ASSIGNMENTS.filter((row) => row.tenantId === SYSTEM_TENANT_ID)) await client.workflowAssignment.create({ data: row });
-  for (const row of WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES.filter((row) => row.tenantId === SYSTEM_TENANT_ID)) await client.workflowAssignmentChange.create({ data: row });
+  for (const row of workflowLibraryDefinitions().filter((row) => row.tenantId === SYSTEM_TENANT_ID))
+    await client.workflowDefinition.create({ data: row });
+  for (const row of WORKFLOW_LIBRARY_ASSIGNMENTS.filter((row) => row.tenantId === SYSTEM_TENANT_ID))
+    await client.workflowAssignment.create({ data: row });
+  for (const row of WORKFLOW_LIBRARY_ASSIGNMENT_CHANGES.filter((row) => row.tenantId === SYSTEM_TENANT_ID))
+    await client.workflowAssignmentChange.create({ data: row });
 }
 
 const sha256 = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
@@ -110,18 +120,39 @@ describe('phase 26 clones the SYSTEM workflow library into a tenant', () => {
     expect(summary.contextSchemas).toBe(1);
     expect(summary.workflowDefinitions).toBe(2);
     const cloned = client.workflowDefinition.rows.filter((row) => row.tenantId === TENANT);
-    expect(cloned.map((row) => row.slug).sort()).toEqual(WORKFLOW_LIBRARY_TARGETS.filter((t) => t.tenantId === SYSTEM_TENANT_ID).map((t) => t.slug).sort());
+    expect(cloned.map((row) => row.slug).sort()).toEqual(
+      WORKFLOW_LIBRARY_TARGETS.filter((t) => t.tenantId === SYSTEM_TENANT_ID)
+        .map((t) => t.slug)
+        .sort(),
+    );
     const tenantSchemaId = cloneId(TENANT, 'context-schema', noteContextSchemaIdFor(SYSTEM_TENANT_ID));
     const tenantSchema = client.consultationContextSchema.rows.find((row) => row.tenantId === TENANT)!;
     expect(tenantSchema.id).toBe(tenantSchemaId);
     for (const row of cloned) {
-      expect(row).toMatchObject({ status: 'PUBLISHED', isActive: true, paletteKey: 'core', versionNumber: 1, sourceTemplateSlug: row.slug, templateLocked: true, createdBy: SYSTEM_USER_ID });
+      expect(row).toMatchObject({
+        status: 'PUBLISHED',
+        isActive: true,
+        paletteKey: 'core',
+        versionNumber: 1,
+        sourceTemplateSlug: row.slug,
+        templateLocked: true,
+        createdBy: SYSTEM_USER_ID,
+      });
       const trigger = row.graph.nodes.find((node: Row) => node.type === 'core.trigger');
       expect(trigger.config.contextSchema.contextSchemaId).toBe(tenantSchemaId);
       expect(row.graphChecksum).toBe(sha256(row.graph));
       expect(row.compiledConfig).toMatchObject({ definitionId: row.id, tenantId: TENANT, slug: row.slug });
       expect(row.compiledConfigChecksum).toBe(row.compiledConfig.checksum);
       expect(row.registryChecksum).toBe(REGISTRY_CHECKSUM);
+      // TASK-982 — the clone REBINDS `contextSchemaId` to the tenant's own schema row (never the
+      // SYSTEM row the source names, exactly like the graph's trigger above), and copies
+      // `contextSchemaVersionNumber` / `contextSchemaFollowsLatest` verbatim from the source: the
+      // binding CHOICE the platform authored does not change when a tenant clones the workflow.
+      const source = WORKFLOW_LIBRARY_TARGETS.find((target) => target.tenantId === SYSTEM_TENANT_ID && target.slug === row.slug)!;
+      const sourceRow = workflowLibraryDefinitions().find((candidate) => candidate.tenantId === SYSTEM_TENANT_ID && candidate.slug === source.slug)!;
+      expect(row.contextSchemaId).toBe(tenantSchemaId);
+      expect(row.contextSchemaVersionNumber).toBe(sourceRow.contextSchemaVersionNumber);
+      expect(row.contextSchemaFollowsLatest).toBe(sourceRow.contextSchemaFollowsLatest);
     }
   });
 
@@ -133,7 +164,10 @@ describe('phase 26 clones the SYSTEM workflow library into a tenant', () => {
     const tenantVersion = client.consultationContextSchemaVersion.rows.find((row) => row.tenantId === TENANT)!;
     for (const row of client.workflowDefinition.rows.filter((candidate) => candidate.tenantId === TENANT)) {
       const source = WORKFLOW_LIBRARY_TARGETS.find((target) => target.tenantId === SYSTEM_TENANT_ID && target.slug === row.slug)!;
-      const real = engineOutputFor({ ...source, key: `PARITY:${row.slug}`, id: row.id, tenantId: TENANT, graph: row.graph, contextSchemaVersionId: tenantVersion.id }, REGISTRY_CHECKSUM);
+      const real = engineOutputFor(
+        { ...source, key: `PARITY:${row.slug}`, id: row.id, tenantId: TENANT, graph: row.graph, contextSchemaVersionId: tenantVersion.id },
+        REGISTRY_CHECKSUM,
+      );
       expect(real.problems).toEqual([]);
       expect(row.compiledConfig).toEqual(real.compiledConfig);
       expect(row.graphChecksum).toBe(real.graphChecksum);
@@ -157,20 +191,37 @@ describe('phase 26 clones the SYSTEM workflow library into a tenant', () => {
     const summary = await provisionTenantReferenceSet(client as never, TENANT);
     expect(summary.workflowAssignments).toBe(1);
     const assignment = client.workflowAssignment.rows.find((row) => row.tenantId === TENANT)!;
-    expect(assignment).toMatchObject({ scope: 'TENANT', scopeId: null, paletteKey: 'core', workflowDefinitionSlug: CONSULTATION_WORKFLOW_SLUG, selectorKey: '' });
+    expect(assignment).toMatchObject({
+      scope: 'TENANT',
+      scopeId: null,
+      paletteKey: 'core',
+      workflowDefinitionSlug: CONSULTATION_WORKFLOW_SLUG,
+      selectorKey: '',
+    });
     expect(client.workflowAssignmentChange.rows.filter((row) => row.tenantId === TENANT)).toHaveLength(1);
 
     // A tenant that already decided (ArcaAI: phase 29's TENANT default) keeps its own row.
     const own = makeClient();
     await seedSystem(own.client);
-    await own.client.workflowAssignment.create({ data: { id: 'own', tenantId: TENANT, scope: 'TENANT', scopeId: null, paletteKey: 'core', workflowDefinitionSlug: 'arcaai-gen-consultation', selectorKey: '' } });
+    await own.client.workflowAssignment.create({
+      data: {
+        id: 'own',
+        tenantId: TENANT,
+        scope: 'TENANT',
+        scopeId: null,
+        paletteKey: 'core',
+        workflowDefinitionSlug: 'arcaai-gen-consultation',
+        selectorKey: '',
+      },
+    });
     const ownSummary = await provisionTenantReferenceSet(own.client as never, TENANT);
     expect(ownSummary.workflowAssignments).toBe(0);
     expect(own.client.workflowAssignment.rows.filter((row) => row.tenantId === TENANT)).toHaveLength(1);
 
     // No definition in the tenant → no assignment (a row pointing at nothing looks provisioned).
     const bare = makeClient();
-    for (const row of WORKFLOW_LIBRARY_ASSIGNMENTS.filter((r) => r.tenantId === SYSTEM_TENANT_ID)) await bare.client.workflowAssignment.create({ data: row });
+    for (const row of WORKFLOW_LIBRARY_ASSIGNMENTS.filter((r) => r.tenantId === SYSTEM_TENANT_ID))
+      await bare.client.workflowAssignment.create({ data: row });
     const bareSummary = await provisionTenantReferenceSet(bare.client as never, TENANT);
     expect(bareSummary.workflowDefinitions).toBe(0);
     expect(bareSummary.workflowAssignments).toBe(0);
