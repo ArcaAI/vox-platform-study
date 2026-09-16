@@ -478,7 +478,6 @@ async def _assemble(pipeline_spec: Any) -> Any:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
     mgr._profile.vad_silence_threshold_ms = 500
-    mgr._profile.denoise_enabled_default = False
     mgr._redis = AsyncMock()
     mgr._make_endpointer = MagicMock(return_value=None)
     mgr._build_preprocessor_vad_kwargs = lambda cfg: SessionManager._build_preprocessor_vad_kwargs(

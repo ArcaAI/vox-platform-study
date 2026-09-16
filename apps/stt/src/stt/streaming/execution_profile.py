@@ -58,7 +58,6 @@ class ExecutionProfile:
 
     # Preprocessing tuning
     preprocess_pool_size: int  # ThreadPoolExecutor workers
-    denoise_enabled_default: bool
 
     # Streaming tuning
     max_concurrent_streams: int
@@ -157,7 +156,6 @@ def _build_a100_h100_profile(
         embedding_device="cuda:0",
         embedding_batch_size=16,
         preprocess_pool_size=16,
-        denoise_enabled_default=True,
         max_concurrent_streams=100,
         batch_scheduler_max_wait_ms=1000,
         vad_silence_threshold_ms=500,
@@ -183,7 +181,6 @@ def _build_multi_gpu_profile(
         embedding_device="cuda:1",
         embedding_batch_size=8,
         preprocess_pool_size=12,
-        denoise_enabled_default=True,
         max_concurrent_streams=40,
         batch_scheduler_max_wait_ms=800,
         vad_silence_threshold_ms=500,
@@ -207,7 +204,6 @@ def _build_rtx_a2000_profile(device_name: str, vram_gb: float) -> ExecutionProfi
         embedding_device="cpu",
         embedding_batch_size=4,
         preprocess_pool_size=8,
-        denoise_enabled_default=True,
         max_concurrent_streams=20,
         batch_scheduler_max_wait_ms=800,
         vad_silence_threshold_ms=500,
@@ -242,7 +238,6 @@ def _build_apple_silicon_profile(unified_memory_gb: float) -> ExecutionProfile:
         embedding_device="mps",
         embedding_batch_size=4,
         preprocess_pool_size=min(8, psutil.cpu_count(logical=False) or 4),
-        denoise_enabled_default=True,
         max_concurrent_streams=max_streams,
         batch_scheduler_max_wait_ms=1500,
         vad_silence_threshold_ms=500,
@@ -283,7 +278,6 @@ def _build_cpu_profile() -> ExecutionProfile:
         embedding_device="cpu",
         embedding_batch_size=8,
         preprocess_pool_size=pool_size,
-        denoise_enabled_default=False,  # too slow on CPU for real-time
         max_concurrent_streams=max_streams,
         batch_scheduler_max_wait_ms=2000,
         vad_silence_threshold_ms=500,

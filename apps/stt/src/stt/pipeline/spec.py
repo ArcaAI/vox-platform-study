@@ -33,6 +33,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 from pydantic.alias_generators import to_camel
 
+from ..models.cache import DENOISE_ENGINE_BY_LIBRARY
 from .dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -68,6 +69,10 @@ AGENT_PIPELINE_SPEC_VERSION = "agent/1"
 
 class UnsupportedAsrSpecError(ValueError):
     """The spec names something this runtime cannot execute (fail closed)."""
+
+
+class UnsupportedDenoiseEngineError(UnsupportedAsrSpecError):
+    """A bound denoise row whose serving library names no denoise engine (fail closed)."""
 
 
 class _Wire(BaseModel):
@@ -575,6 +580,30 @@ def _language_from_mode(decoding: AsrSpecDecoding) -> tuple[str | None, bool]:
     return mode.primary_language, code_switching or mode.kind == "code_switch"
 
 
+def _denoise_engine(model: AsrSpecModel | None) -> str | None:
+    """The denoise engine the agent's bound row selects; ``None`` when no row is bound.
+
+    TASK-977 — both engines are runtime-owned and chosen by NAME, so the row's declared
+    ``library_name`` is the only thing that can carry the agent's choice. No row is a
+    legitimate state (an engine that ships in its wheel needs none) and keeps the
+    ``DenoiseConfig`` default. A row whose library names no denoise engine — including a
+    row that declares none, since ``format`` cannot tell the two engines apart — FAILS
+    CLOSED: running RNNoise in place of the engine the admin bound is a wrong answer.
+    """
+    if model is None:
+        return None
+    library = (model.library_name or "").strip()
+    engine = DENOISE_ENGINE_BY_LIBRARY.get(library)
+    if engine is None:
+        declared = f"serving library '{library}'" if library else "no serving library"
+        raise UnsupportedDenoiseEngineError(
+            f"Denoise model '{model.slug}' declares {declared}, which names no denoise "
+            "engine this runtime runs. Known denoise libraries: "
+            f"{sorted(DENOISE_ENGINE_BY_LIBRARY)}. The engine is never guessed."
+        )
+    return engine
+
+
 def _endpoint_config(core: AsrSpecCore) -> EndpointConfig:
     """``streaming.endpointing`` → the ``EndpointConfig`` the session manager reads.
 
@@ -647,6 +676,9 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     denoise_kwargs: dict[str, object] = {"enabled": afe.denoise.enabled}
     if afe.denoise.level in _DENOISE_STRENGTH:
         denoise_kwargs["strength"] = _DENOISE_STRENGTH[afe.denoise.level]
+    denoise_engine = _denoise_engine(models.denoise)
+    if denoise_engine is not None:
+        denoise_kwargs["engine"] = denoise_engine
     preprocessing = PreprocessingConfig(
         normalize=afe.normalize,
         resample_enabled=afe.resample,
@@ -841,6 +873,7 @@ __all__ = [
     "ResolvedAsrSpec",
     "ResolvedSpecBundle",
     "UnsupportedAsrSpecError",
+    "UnsupportedDenoiseEngineError",
     "bundle_from_resolved",
     "pipeline_config_from_bundle",
     "pipeline_spec_from_resolved",
