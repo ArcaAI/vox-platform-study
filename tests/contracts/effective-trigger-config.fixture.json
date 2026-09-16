@@ -1,0 +1,81 @@
+{
+  "$comment": "TASK-982 §3.4.4 — the PER-RUN compiled-config `contextSchema` block, pinned across both languages. The gateway PRODUCES this block immediately before dispatch (packages/applications/src/services/workflow-exposure/effective-trigger-schema.ts::effectiveTriggerConfig, called from both dispatch paths); `interpreter.core_trigger` (apps/harness/src/harness/temporal/interpreter/nodes/core.py) CONSUMES it and validates a run payload against `contextSchema.resolved` and nothing else. Both tests/contracts/effective-trigger-config.contract.test.ts and apps/harness/src/harness/tests/unit/temporal/interpreter/test_task982_effective_trigger_config.py read this file; change it with both suites open. The invariant it locks: a PINNED trigger keeps the schema its workflow was published with, a FOLLOW-LATEST trigger carries the tenant's pin at dispatch under `effectiveVersionNumber` — and the interpreter cannot tell the two apart, because in both cases the answer is already in `resolved`. `followsLatest` is ABSENT on a pinned trigger, never `false`: compiledConfig is checksummed over its canonical JSON, so a field that always appeared would move the checksum of every artifact that never used it.",
+  "pinnedTriggerIsUnchanged": {
+    "$comment": "Published against v1 and pinned there. The gateway rewrites nothing, whatever the tenant has pinned since.",
+    "contextSchema": {
+      "contextSchemaId": "018f2a00-0000-7000-8000-0000000000a1",
+      "versionNumber": 1,
+      "resolved": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "encounter": {
+            "type": "object",
+            "properties": { "chief_complaint": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "accepts": [{ "encounter": { "chief_complaint": "cough for three days" } }, {}],
+    "refuses": [{ "encounter": { "chief_complaint": "cough" }, "referral": { "reason": "rheumatology" } }]
+  },
+  "followsLatestCarriesTheTenantPin": {
+    "$comment": "Authored as follow-latest and published when the tenant was on v1; the gateway resolved the tenant's CURRENT pin (v4) into THIS run's config. `resolved` is the v4 derivation and `effectiveVersionNumber` names where it came from — both written only in a per-run config, never by the compiler.",
+    "contextSchema": {
+      "contextSchemaId": "018f2a00-0000-7000-8000-0000000000a1",
+      "followsLatest": true,
+      "effectiveVersionNumber": 4,
+      "resolved": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "encounter": {
+            "type": "object",
+            "properties": { "chief_complaint": { "type": "string" } }
+          },
+          "referral": {
+            "type": "object",
+            "properties": { "reason": { "type": "string" } }
+          }
+        }
+      },
+      "userIdentity": { "kindKey": "encounter", "field": "doctor_id" },
+      "openBindings": {
+        "userIdentity": { "kindKey": "encounter", "field": "doctor_id" },
+        "department": { "kindKey": "encounter", "field": "department_code", "by": "code" }
+      }
+    },
+    "accepts": [
+      { "encounter": { "chief_complaint": "cough" }, "referral": { "reason": "rheumatology" } },
+      { "encounter": { "chief_complaint": "cough" } }
+    ],
+    "refuses": [{ "encounter": { "chief_complaint": "cough" }, "discharge": { "summary": "home" } }]
+  },
+  "reservedIdentityKeysAreNeverValidated": {
+    "$comment": "The server's own run envelope rides in `run_payload` beside the authored context. `_authored_context` strips it before the check, so a closed schema stays exactly as sharp as its author meant it while the platform's own keys pass — the TASK-930 D-2 rule, restated here because a per-run rewrite must not change it.",
+    "contextSchema": {
+      "contextSchemaId": "018f2a00-0000-7000-8000-0000000000a1",
+      "followsLatest": true,
+      "effectiveVersionNumber": 4,
+      "resolved": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "encounter": {
+            "type": "object",
+            "properties": { "chief_complaint": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "accepts": [
+      {
+        "consultationId": "018f2a00-0000-7000-8000-0000000000c1",
+        "userId": "018f2a00-0000-7000-8000-0000000000d1",
+        "externalPatientId": "MRN-1",
+        "encounter": { "chief_complaint": "cough" }
+      }
+    ],
+    "refuses": [{ "consultationId": "018f2a00-0000-7000-8000-0000000000c1", "referral": { "reason": "rheumatology" } }]
+  }
+}

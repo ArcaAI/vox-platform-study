@@ -6,6 +6,7 @@ import { WorkflowDefinitionServiceModule } from '../../workflow-definition/workf
 import { WorkflowRunServiceModule } from '../../workflow-run/workflow-run.service.module';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
+import { EffectiveTriggerSchemaModule } from '../../workflow-exposure/effective-trigger-schema.module';
 import { IConsultationWorkflowDispatchService } from './IConsultationWorkflowDispatchService';
 import { ConsultationWorkflowDispatchService } from './consultation-workflow-dispatch.service';
 
@@ -33,6 +34,10 @@ import { ConsultationWorkflowDispatchService } from './consultation-workflow-dis
     HarnessGatewayServiceModule,
     WorkflowDefinitionServiceModule,
     VisitTypeServiceModule,
+    // The tenant's CURRENT context-schema pin, so a follow-latest trigger dispatches against what
+    // the tenant has pinned NOW. The SAME module the exposure plane imports — one resolver, so
+    // the two dispatch paths cannot disagree. No cycle: it imports CoreDatabaseModule only.
+    EffectiveTriggerSchemaModule,
   ],
   providers: [
     ConsultationWorkflowDispatchService,

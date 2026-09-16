@@ -30,6 +30,7 @@ import { IContextUserIdentityService, extractUserIdentityValue } from '../user/i
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
 import { interpreterSessionId, IWorkflowRunService, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
+import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
 import { describeWorkflow, graphOf, type WorkflowContextSchemaBinding, type WorkflowSchemaDescription } from './workflow-schema-description';
@@ -146,6 +147,11 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // `contextSchema` block. `@Optional()` like every other cross-cutting dependency here; absent
     // simply leaves that slug `null`, which is also what an unreadable schema row yields.
     @Optional() private readonly contextSchemaRepository?: ConsultationContextSchemaRepository,
+    // Resolves the tenant's CURRENT schema pin for a trigger that binds by it, so the per-run
+    // config below is checked against what the tenant has pinned NOW. `@Optional()` like every
+    // other cross-cutting dependency here; absent, every trigger runs against its published
+    // bytes — the behaviour a follow-latest workflow had before this existed.
+    @Optional() private readonly effectiveTriggerSchema?: EffectiveTriggerSchemaService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -308,7 +314,15 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new BadRequestException('Workflow invocation is unavailable: no claim-check storage backend is configured.');
     }
     const bucket = CLAIM_CHECK_BUCKET;
-    const configRef = await mintCompiledConfigClaimCheckRef(definition.compiledConfig, bucket, (b, key, data, contentType) =>
+    // The per-run config. A trigger the author bound to the tenant's PIN is re-resolved here,
+    // immediately before dispatch, so a schema version published since this workflow shipped is
+    // what the run is validated against — the same rewrite the consultation dispatcher performs,
+    // through the same pure helper, because one plane honouring "follow latest" and the other
+    // ignoring it would be a difference no caller could see until a run failed.
+    const effective = this.effectiveTriggerSchema
+      ? await this.effectiveTriggerSchema.resolve(tenantId, definition.compiledConfig)
+      : { config: definition.compiledConfig };
+    const configRef = await mintCompiledConfigClaimCheckRef(effective.config, bucket, (b, key, data, contentType) =>
       this.s3Service!.putFile(b, key, data, contentType),
     );
 
