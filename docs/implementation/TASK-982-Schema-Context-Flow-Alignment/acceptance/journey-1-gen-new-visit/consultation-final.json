@@ -1,0 +1,220 @@
+{
+  "id": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+  "patientId": "PAT-982-GEN-1789585253",
+  "doctorId": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+  "doctor": {
+    "id": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+    "username": "auto_8e873edc98ebd2e6",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000001",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000001",
+    "code": "GEN",
+    "name": "General Medicine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "PENDING_REVIEW",
+  "language": "en",
+  "metadata": {
+    "endpoint": {
+      "reason": "ENDED",
+      "sequence": [
+        "session.timeout",
+        "harness.finalize",
+        "summary.finalize",
+        "feedback.capture"
+      ],
+      "recordedAt": "2026-09-16T19:04:15.294Z",
+      "idleTimeoutSeconds": 14400
+    },
+    "visitType": "new-visit",
+    "externalRef": "EVT-982-GEN-1789585253",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "decidedAt": "2026-09-16T19:00:54.936Z",
+      "workflowRunId": "01a0ab97-e95c-7321-9772-7e6be409b3a1",
+      "workflowDefinitionSlug": "arcaai-gen-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 4,
+  "createdAt": "2026-09-16T19:00:54.271Z",
+  "updatedAt": "2026-09-16T19:04:55.896Z",
+  "isNew": false,
+  "governingRun": {
+    "workflowDefinitionSlug": "arcaai-gen-consultation",
+    "workflowRunId": "01a0ab97-e95c-7321-9772-7e6be409b3a1",
+    "status": "RUNNING",
+    "degraded": false,
+    "decidedAt": "2026-09-16T19:00:54.936Z",
+    "failureReason": null
+  },
+  "contextItems": [
+    {
+      "id": "01a0ab9b-96fb-782a-a1ad-3f93ba668fa8",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "RAW_SUMMARY",
+      "source": "AI",
+      "content": "**Presenting Complaints**\nShortness of breath on exertion and intermittent chest pain over the past two weeks. Patient is in no acute distress.\n\n**Past History**\nHypertension review on 2026-01-14; blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months [[T4]]. Lipid panel follow-up: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported (record, 2026-03-02) [[T4]].\n\n**Family History**\nNot documented in this consultation.\n\n**Drug History**\nAspirin 81 milligrams daily was started for stable angina [[T1]].\n\n**Hospital Admissions**\nNot documented in this consultation.\n\n**General Examination & Vitals**\nHeart rate is 88 and regular [[T1]]. Lungs are clear to auscultation bilaterally [[T1]]. Blood pressure was 128/82 mmHg (record, 2026-09-16). Temperature was 36.8 °C, SpO2 was 97 %, and Weight was 81.5 kg (record, 2026-09-16).\n\n**Previous Diagnosis**\nHypertension review on 2026-01-14; blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months [[T4]].\n\n**Reports**\nOrdering of an electrocardiogram (ECG) and a troponin level to investigate the differential diagnosis which includes stable angina [[T1]].\n\n**Current Diagnosis**\nDifferential diagnosis includes stable angina [[T1]].\n\n**Plan of Care**\nStart aspirin 81 milligrams daily for stable angina [[T1]].\n\n* Treatment Orders\nAspirin 81 milligrams daily.\n\n* Investigations Ordered\nElectrocardiogram (ECG) and troponin level to investigate differential diagnosis of stable angina.\n\n* Follow-up Arrangements\nFollow-up in three months advised for hypertension review.",
+      "metadata": {
+        "subType": "HARNESS_DRAFT"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:04:55.803Z",
+      "updatedAt": "2026-09-16T19:04:55.803Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab98-638f-713c-a2af-13123d764ca5",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "Pre-Summary of Medical History\n\n- Confirmed & Provisional Diagnoses:\n    - Hypertension (controlled on amlodipine 5 mg)\n    - Hyperlipidemia (LDL 3.9 mmol/L at previous visit)\n\n- Plan of Care (Latest Note):\n    - Advised salt restriction for hypertension management.\n    - Follow-up scheduled in three months for blood pressure review.\n\n- Investigations (Latest Note):\n    - No new investigation results reported in the latest encounter.\n\n- Medications Prescribed (Latest Note):\n    - Amlodipine 5 mg (for hypertension).\n\n- Diagnostics & Trends:\n    - Blood pressure was controlled on amlodipine 5 mg at a previous visit.\n    - Previous lipid panel showed LDL of 3.9 mmol/L.\n    - Started atorvastatin 20 mg nightly for hyperlipidemia with no reported myalgia.",
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:01:26.031Z",
+      "updatedAt": "2026-09-16T19:01:26.031Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab98-f845-72bf-9bb6-570c9d9c40e2",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "## Presenting Complaints\nShortness of breath on exertion and intermittent chest pain over the past two weeks.\n\n## Past History\nNot documented in this consultation.\n\n## Family History\nNot documented in this consultation.\n\n## Drug History\nStarted aspirin 81 milligrams daily for stable angina.\n\n## Hospital Admissions\nNot documented in this consultation.\n\n## General Examination & Vitals\nHeart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\n## Previous Diagnosis\nHypertension review on 2026-01-14; blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.\n\n## Reports\nOrdering of an electrocardiogram and a troponin level.\n\n## Current Diagnosis\nNot documented in this consultation.\n\n## Plan of Care\nOrdering of an electrocardiogram and a troponin level.",
+      "metadata": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0005-000000000001",
+          "frozenAt": "2026-09-16T19:01:10.649Z",
+          "agentName": null,
+          "resolvedFrom": "agent",
+          "promptTemplateId": "71000000-0000-0000-0001-000000000012",
+          "promptVersionNumber": 3
+        },
+        "subType": "LIVE_SOAP_SNAPSHOT",
+        "updatedAt": "2026-09-16T19:04:15.132Z",
+        "lastSegmentId": "utt-1"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:02:04.101Z",
+      "updatedAt": "2026-09-16T19:04:15.156Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab9a-b46b-7f28-b4a1-74c3d9f7ce89",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "TRANSCRIPT",
+      "source": "TRANSCRIPTION",
+      "content": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are clear to auscultation bilaterally. We are ordering an electrocardiogram and a troponin level. , the differential includes stable angina and we will start aspirin 81 milligrams daily to the to.",
+      "metadata": {
+        "subType": "STT_AGGREGATE"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:03:57.803Z",
+      "updatedAt": "2026-09-16T19:03:57.803Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab97-e8d6-7c72-8977-98008e950516",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Hypertension review\nPRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.",
+      "metadata": {
+        "index": 0,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:00:54.614Z",
+      "updatedAt": "2026-09-16T19:00:54.614Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab97-e909-74c4-a6de-3a8f80bb0212",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.",
+      "metadata": {
+        "index": 1,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:00:54.665Z",
+      "updatedAt": "2026-09-16T19:00:54.665Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab97-e862-7eca-859d-34345ca03ea4",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"chief_complaint\":\"Exertional shortness of breath and intermittent chest pain for two weeks\",\"department_code\":\"GEN\",\"department_name\":\"General Medicine\",\"doctor_id\":\"DR-982-1789585253\",\"event_id\":\"EVT-982-GEN-1789585253\",\"visit_type\":\"new-visit\"}",
+      "kindKey": "encounter",
+      "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:00:54.498Z",
+      "updatedAt": "2026-09-16T19:00:54.498Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab97-e89f-7ba7-96f5-03616912462b",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"bloodPressure\":\"128/82\",\"heartRate\":88,\"oxygenSaturation\":97,\"recordedAt\":\"2026-09-16T19:00:54.055Z\",\"temperature\":36.8,\"weightKg\":81.5}",
+      "kindKey": "vitals",
+      "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:00:54.559Z",
+      "updatedAt": "2026-09-16T19:00:54.559Z",
+      "version": 1
+    },
+    {
+      "id": "01a0ab97-e8bc-7698-8ff0-118ec92c97c0",
+      "consultationId": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"notes\":[{\"date\":\"2026-01-14\",\"department\":\"General Medicine\",\"doctor\":\"Dr. Bren\",\"text\":\"PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.\",\"title\":\"Hypertension review\"},{\"date\":\"2026-03-02\",\"text\":\"PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.\",\"title\":\"Lipid panel follow-up\"}]}",
+      "kindKey": "previous_case_notes",
+      "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:00:54.588Z",
+      "updatedAt": "2026-09-16T19:00:54.588Z",
+      "version": 1
+    }
+  ]
+}

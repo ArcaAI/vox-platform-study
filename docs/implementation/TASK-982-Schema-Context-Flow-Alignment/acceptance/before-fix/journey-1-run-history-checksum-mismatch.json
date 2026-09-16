@@ -1,0 +1,249 @@
+{
+  "history": {
+    "events": [
+      {
+        "eventId": "1",
+        "eventTime": "2026-09-16T19:00:54.853647591Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+        "taskId": "9437545",
+        "workflowExecutionStartedEventAttributes": {
+          "workflowType": {
+            "name": "WorkflowInterpreter"
+          },
+          "taskQueue": {
+            "name": "harness-task-queue",
+            "kind": "TASK_QUEUE_KIND_NORMAL"
+          },
+          "input": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "data": "eyJzZXNzaW9uX2lkIjoid2YtMDFhMGFiOTctZTk1Yy03MzIxLTk3NzItN2U2YmU0MDliM2ExIiwid29ya2Zsb3dfdmVyc2lvbl9pZCI6Ijk5MDAwMDAwLTAwMDAtMDAwMC0wMDAxLTAwMDAwMDAwMDAwMSIsImNvbmZpZ19yZWYiOnsic3RvcmUiOiJzMyIsImJ1Y2tldCI6Imhhcm5lc3MtY2xhaW0tY2hlY2siLCJrZXkiOiI4ZTk3OTQxNjcyNzRhMWFiMDc5OGVhMDhiYWUxM2JmOTc1Njc5ZWYwOTQzMDMxMTEyYzIwYTYxNjJlMzYyMWFjIiwic2l6ZSI6MTI5ODcsInNoYTI1NiI6IjhlOTc5NDE2NzI3NGExYWIwNzk4ZWEwOGJhZTEzYmY5NzU2NzllZjA5NDMwMzExMTJjMjBhNjE2MmUzNjIxYWMiLCJjb250ZW50X3R5cGUiOiJ0ZXh0L3BsYWluOyBjaGFyc2V0PXV0Zi04In0sInRlbmFudF9pZCI6IjUwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsInJ1bl9pZCI6IjAxYTBhYjk3LWU5NWMtNzMyMS05NzcyLTdlNmJlNDA5YjNhMSIsInNhbmRib3giOmZhbHNlLCJzdWJqZWN0Ijp7ImNvbnN1bHRhdGlvbklkIjoiMDFhMGFiOTctZTc3Zi03ZGY2LTlmYzAtZWRjMDk3YWNhODQ4IiwiZXh0ZXJuYWxQYXRpZW50SWQiOiJQQVQtOTgyLUdFTi0xNzg5NTg1MjUzIiwidXNlcklkIjoiMDFhMGFiOTctZTcyNy03ZTkzLWE1MjQtMDc3N2U0Y2Q4MzM2In0sInBheWxvYWQiOnsiZW5jb3VudGVyIjp7ImRvY3Rvcl9pZCI6IkRSLTk4Mi0xNzg5NTg1MjUzIiwiZXZlbnRfaWQiOiJFVlQtOTgyLUdFTi0xNzg5NTg1MjUzIiwiZGVwYXJ0bWVudF9jb2RlIjoiR0VOIiwiZGVwYXJ0bWVudF9uYW1lIjoiR2VuZXJhbCBNZWRpY2luZSIsInZpc2l0X3R5cGUiOiJuZXctdmlzaXQiLCJjaGllZl9jb21wbGFpbnQiOiJFeGVydGlvbmFsIHNob3J0bmVzcyBvZiBicmVhdGggYW5kIGludGVybWl0dGVudCBjaGVzdCBwYWluIGZvciB0d28gd2Vla3MifSwidml0YWxzIjp7ImJsb29kUHJlc3N1cmUiOiIxMjgvODIiLCJoZWFydFJhdGUiOjg4LCJ0ZW1wZXJhdHVyZSI6MzYuOCwib3h5Z2VuU2F0dXJhdGlvbiI6OTcsIndlaWdodEtnIjo4MS41LCJyZWNvcmRlZEF0IjoiMjAyNi0wOS0xNlQxOTowMDo1NC4wNTVaIn0sInByZXZpb3VzX2Nhc2Vfbm90ZXMiOnsibm90ZXMiOlt7ImRhdGUiOiIyMDI2LTAxLTE0IiwiZGVwYXJ0bWVudCI6IkdlbmVyYWwgTWVkaWNpbmUiLCJkb2N0b3IiOiJEci4gQnJlbiIsInRpdGxlIjoiSHlwZXJ0ZW5zaW9uIHJldmlldyIsInRleHQiOiJQUklPUi1OT1RFLUFMUEhBOiBibG9vZCBwcmVzc3VyZSBjb250cm9sbGVkIG9uIGFtbG9kaXBpbmUgNSBtZzsgYWR2aXNlZCBzYWx0IHJlc3RyaWN0aW9uIGFuZCBmb2xsb3ctdXAgaW4gdGhyZWUgbW9udGhzLiJ9LHsiZGF0ZSI6IjIwMjYtMDMtMDIiLCJ0aXRsZSI6IkxpcGlkIHBhbmVsIGZvbGxvdy11cCIsInRleHQiOiJQUklPUi1OT1RFLUJSQVZPOiBMREwgMy45IG1tb2wvTDsgc3RhcnRlZCBhdG9ydmFzdGF0aW4gMjAgbWcgbm9jdGU7IG5vIG15YWxnaWEgcmVwb3J0ZWQuIn1dfSwiY29uc3VsdGF0aW9uSWQiOiIwMWEwYWI5Ny1lNzdmLTdkZjYtOWZjMC1lZGMwOTdhY2E4NDgiLCJleHRlcm5hbFBhdGllbnRJZCI6IlBBVC05ODItR0VOLTE3ODk1ODUyNTMiLCJ1c2VySWQiOiIwMWEwYWI5Ny1lNzI3LTdlOTMtYTUyNC0wNzc3ZTRjZDgzMzYifX0="
+              }
+            ]
+          },
+          "workflowTaskTimeout": "10s",
+          "originalExecutionRunId": "01a0ab97-e9c5-79df-aaf8-d4ebb52c6a39",
+          "identity": "71194@Taps-MacBook-Pro.local",
+          "firstExecutionRunId": "01a0ab97-e9c5-79df-aaf8-d4ebb52c6a39",
+          "attempt": 1,
+          "firstWorkflowTaskBackoff": "0s",
+          "workflowId": "workflow-interpreter-01a0ab97-e95c-7321-9772-7e6be409b3a1",
+          "priority": {}
+        }
+      },
+      {
+        "eventId": "2",
+        "eventTime": "2026-09-16T19:00:54.854999265Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+        "taskId": "9437546",
+        "workflowTaskScheduledEventAttributes": {
+          "taskQueue": {
+            "name": "harness-task-queue",
+            "kind": "TASK_QUEUE_KIND_NORMAL"
+          },
+          "startToCloseTimeout": "10s",
+          "attempt": 1
+        }
+      },
+      {
+        "eventId": "3",
+        "eventTime": "2026-09-16T19:00:54.889014789Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+        "taskId": "9437575",
+        "workflowTaskStartedEventAttributes": {
+          "scheduledEventId": "2",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "requestId": "2ef45273-b20b-4929-b373-0f507be578d3",
+          "historySizeBytes": "1992",
+          "workerVersion": {
+            "buildId": "985f493e4158abb92be0c7300214b364"
+          }
+        }
+      },
+      {
+        "eventId": "4",
+        "eventTime": "2026-09-16T19:00:55.100313179Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+        "taskId": "9437597",
+        "workflowTaskCompletedEventAttributes": {
+          "scheduledEventId": "2",
+          "startedEventId": "3",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "workerVersion": {
+            "buildId": "985f493e4158abb92be0c7300214b364"
+          },
+          "sdkMetadata": {
+            "coreUsedFlags": [
+              3,
+              2,
+              1
+            ],
+            "sdkName": "temporal-python",
+            "sdkVersion": "1.31.0"
+          },
+          "meteringMetadata": {}
+        }
+      },
+      {
+        "eventId": "5",
+        "eventTime": "2026-09-16T19:00:55.100450971Z",
+        "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+        "taskId": "9437598",
+        "activityTaskScheduledEventAttributes": {
+          "activityId": "1",
+          "activityType": {
+            "name": "interpreter.load_config"
+          },
+          "taskQueue": {
+            "name": "harness-task-queue",
+            "kind": "TASK_QUEUE_KIND_NORMAL"
+          },
+          "header": {},
+          "input": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "data": "eyJzdG9yZSI6InMzIiwiYnVja2V0IjoiaGFybmVzcy1jbGFpbS1jaGVjayIsImtleSI6IjhlOTc5NDE2NzI3NGExYWIwNzk4ZWEwOGJhZTEzYmY5NzU2NzllZjA5NDMwMzExMTJjMjBhNjE2MmUzNjIxYWMiLCJzaXplIjoxMjk4Nywic2hhMjU2IjoiOGU5Nzk0MTY3Mjc0YTFhYjA3OThlYTA4YmFlMTNiZjk3NTY3OWVmMDk0MzAzMTExMmMyMGE2MTYyZTM2MjFhYyIsImNvbnRlbnRfdHlwZSI6InRleHQvcGxhaW47IGNoYXJzZXQ9dXRmLTgifQ=="
+              }
+            ]
+          },
+          "scheduleToCloseTimeout": "0s",
+          "scheduleToStartTimeout": "0s",
+          "startToCloseTimeout": "30s",
+          "heartbeatTimeout": "0s",
+          "workflowTaskCompletedEventId": "4",
+          "retryPolicy": {
+            "initialInterval": "1s",
+            "backoffCoefficient": 2,
+            "maximumInterval": "100s",
+            "maximumAttempts": 3
+          },
+          "useWorkflowBuildId": true,
+          "priority": {}
+        }
+      },
+      {
+        "eventId": "6",
+        "eventTime": "2026-09-16T19:00:58.633360854Z",
+        "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+        "taskId": "9437685",
+        "activityTaskStartedEventAttributes": {
+          "scheduledEventId": "5",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "requestId": "e788ea1b-f4b2-411c-ba9d-afa87fd9bc6a",
+          "attempt": 3,
+          "lastFailure": {
+            "message": "checksum_mismatch: expected d4a224f97eb8be8a4eec4283fb8a8934746d0797ab06aa85d6c0d046b5f2445e, computed 44506371d35509076fe46725f8733550a77c4f1bbe04931a9d9d932f66c1d588",
+            "stackTrace": "  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 351, in _handle_start_activity_task\n    result = await self._execute_activity(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 681, in _execute_activity\n    return await impl.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/compute_metering.py\", line 315, in execute_activity\n    return await self.next.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 890, in execute_activity\n    return await input.fn(*input.args)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/activities.py\", line 194, in load_config\n    return parse_and_verify(raw)\n           ^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/compiled_config.py\", line 314, in parse_and_verify\n    raise InterpreterConfigError(\n",
+            "applicationFailureInfo": {
+              "type": "InterpreterConfigError"
+            }
+          },
+          "workerVersion": {
+            "buildId": "985f493e4158abb92be0c7300214b364"
+          }
+        }
+      },
+      {
+        "eventId": "7",
+        "eventTime": "2026-09-16T19:00:58.871493811Z",
+        "eventType": "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+        "taskId": "9437686",
+        "activityTaskFailedEventAttributes": {
+          "failure": {
+            "message": "checksum_mismatch: expected d4a224f97eb8be8a4eec4283fb8a8934746d0797ab06aa85d6c0d046b5f2445e, computed 44506371d35509076fe46725f8733550a77c4f1bbe04931a9d9d932f66c1d588",
+            "stackTrace": "  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 351, in _handle_start_activity_task\n    result = await self._execute_activity(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 681, in _execute_activity\n    return await impl.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/compute_metering.py\", line 315, in execute_activity\n    return await self.next.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 890, in execute_activity\n    return await input.fn(*input.args)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/activities.py\", line 194, in load_config\n    return parse_and_verify(raw)\n           ^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/compiled_config.py\", line 314, in parse_and_verify\n    raise InterpreterConfigError(\n",
+            "applicationFailureInfo": {
+              "type": "InterpreterConfigError"
+            }
+          },
+          "scheduledEventId": "5",
+          "startedEventId": "6",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "retryState": "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+        }
+      },
+      {
+        "eventId": "8",
+        "eventTime": "2026-09-16T19:00:58.871504978Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+        "taskId": "9437687",
+        "workflowTaskScheduledEventAttributes": {
+          "taskQueue": {
+            "name": "71195@Taps-MacBook-Pro.local-2dc380e6b48a48bf820ddcb1c33ebbef",
+            "kind": "TASK_QUEUE_KIND_STICKY",
+            "normalName": "harness-task-queue"
+          },
+          "startToCloseTimeout": "10s",
+          "attempt": 1
+        }
+      },
+      {
+        "eventId": "9",
+        "eventTime": "2026-09-16T19:00:58.908949687Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+        "taskId": "9437691",
+        "workflowTaskStartedEventAttributes": {
+          "scheduledEventId": "8",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "requestId": "dce5333f-35a6-47d5-aa55-6b5c3ed177db",
+          "historySizeBytes": "6040",
+          "workerVersion": {
+            "buildId": "985f493e4158abb92be0c7300214b364"
+          }
+        }
+      },
+      {
+        "eventId": "10",
+        "eventTime": "2026-09-16T19:00:59.083553039Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+        "taskId": "9437695",
+        "workflowTaskCompletedEventAttributes": {
+          "scheduledEventId": "8",
+          "startedEventId": "9",
+          "identity": "71195@Taps-MacBook-Pro.local",
+          "workerVersion": {
+            "buildId": "985f493e4158abb92be0c7300214b364"
+          },
+          "sdkMetadata": {},
+          "meteringMetadata": {}
+        }
+      },
+      {
+        "eventId": "11",
+        "eventTime": "2026-09-16T19:00:59.083665164Z",
+        "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_FAILED",
+        "taskId": "9437696",
+        "workflowExecutionFailedEventAttributes": {
+          "failure": {
+            "message": "Activity task failed",
+            "cause": {
+              "message": "checksum_mismatch: expected d4a224f97eb8be8a4eec4283fb8a8934746d0797ab06aa85d6c0d046b5f2445e, computed 44506371d35509076fe46725f8733550a77c4f1bbe04931a9d9d932f66c1d588",
+              "stackTrace": "  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 351, in _handle_start_activity_task\n    result = await self._execute_activity(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 681, in _execute_activity\n    return await impl.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/compute_metering.py\", line 315, in execute_activity\n    return await self.next.execute_activity(input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/miniconda3/envs/arcaenv/lib/python3.11/site-packages/temporalio/worker/_activity.py\", line 890, in execute_activity\n    return await input.fn(*input.args)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/activities.py\", line 194, in load_config\n    return parse_and_verify(raw)\n           ^^^^^^^^^^^^^^^^^^^^^\n\n  File \"/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/harness/src/harness/temporal/interpreter/compiled_config.py\", line 314, in parse_and_verify\n    raise InterpreterConfigError(\n",
+              "applicationFailureInfo": {
+                "type": "InterpreterConfigError"
+              }
+            },
+            "activityFailureInfo": {
+              "scheduledEventId": "5",
+              "startedEventId": "6",
+              "identity": "71195@Taps-MacBook-Pro.local",
+              "activityType": {
+                "name": "interpreter.load_config"
+              },
+              "activityId": "1",
+              "retryState": "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+            }
+          },
+          "retryState": "RETRY_STATE_RETRY_POLICY_NOT_SET",
+          "workflowTaskCompletedEventId": "10"
+        }
+      }
+    ]
+  }
+}

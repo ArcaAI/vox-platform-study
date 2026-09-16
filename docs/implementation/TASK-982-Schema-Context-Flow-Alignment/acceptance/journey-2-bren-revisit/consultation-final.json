@@ -1,0 +1,223 @@
+{
+  "id": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+  "patientId": "PAT-982-BREN2-1789586390",
+  "doctorId": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+  "doctor": {
+    "id": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+    "username": "auto_8e873edc98ebd2e6",
+    "firstName": "",
+    "lastName": ""
+  },
+  "departmentId": "70000000-0000-0000-0001-000000000015",
+  "department": {
+    "id": "70000000-0000-0000-0001-000000000015",
+    "code": "BREN",
+    "name": "Breast & Endocrine"
+  },
+  "appointmentDate": "2026-09-16",
+  "status": "PENDING_REVIEW",
+  "language": "en",
+  "metadata": {
+    "endpoint": {
+      "reason": "ENDED",
+      "sequence": [
+        "session.timeout",
+        "harness.finalize",
+        "summary.finalize",
+        "feedback.capture"
+      ],
+      "recordedAt": "2026-09-16T19:22:58.747Z",
+      "idleTimeoutSeconds": 14400
+    },
+    "visitType": "revisit",
+    "externalRef": "EVT-982-BREN2-1789586390",
+    "governingEngine": {
+      "engine": "tenant-workflow",
+      "endedAt": "2026-09-16T19:23:49.365Z",
+      "degraded": true,
+      "decidedAt": "2026-09-16T19:19:51.538Z",
+      "runStatus": "COMPLETED",
+      "workflowRunId": "01a0aba9-4042-7312-9ac5-94a078f4dd54",
+      "workflowDefinitionSlug": "arcaai-bren-consultation"
+    },
+    "summaryLanguage": "en"
+  },
+  "version": 5,
+  "createdAt": "2026-09-16T19:19:50.739Z",
+  "updatedAt": "2026-09-16T19:23:49.378Z",
+  "isNew": false,
+  "governingRun": {
+    "workflowDefinitionSlug": "arcaai-bren-consultation",
+    "workflowRunId": "01a0aba9-4042-7312-9ac5-94a078f4dd54",
+    "status": "COMPLETED",
+    "degraded": true,
+    "decidedAt": "2026-09-16T19:19:51.538Z",
+    "failureReason": null
+  },
+  "contextItems": [
+    {
+      "id": "01a0aba9-3faf-7cc4-9829-b12b4e44aafd",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"bloodPressure\":\"128/82\",\"heartRate\":88,\"oxygenSaturation\":97,\"recordedAt\":\"2026-09-16T19:19:50.576Z\",\"temperature\":36.8,\"weightKg\":81.5}",
+      "kindKey": "vitals",
+      "contextSchemaVersionId": "01a0ab99-06d8-7bd0-a2e3-bbc4400a88e6",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:19:50.959Z",
+      "updatedAt": "2026-09-16T19:19:50.959Z",
+      "version": 1
+    },
+    {
+      "id": "01a0aba9-3f93-789c-9d2f-987245e8a96f",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"chief_complaint\":\"Follow-up after lumpectomy; review of thyroid function\",\"department_code\":\"BREN\",\"department_name\":\"Breast & Endocrine\",\"doctor_id\":\"DR-982-1789585253\",\"event_id\":\"EVT-982-BREN2-1789586390\",\"visit_type\":\"revisit\"}",
+      "kindKey": "encounter",
+      "contextSchemaVersionId": "01a0ab99-06d8-7bd0-a2e3-bbc4400a88e6",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:19:50.931Z",
+      "updatedAt": "2026-09-16T19:19:50.931Z",
+      "version": 1
+    },
+    {
+      "id": "01a0aba9-3fdf-7fa6-b128-9df3ce9f480b",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "STRUCTURED",
+      "source": "USER",
+      "content": "{\"notes\":[{\"date\":\"2026-01-14\",\"department\":\"General Medicine\",\"doctor\":\"Dr. Bren\",\"text\":\"PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.\",\"title\":\"Hypertension review\"},{\"date\":\"2026-03-02\",\"text\":\"PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.\",\"title\":\"Lipid panel follow-up\"}]}",
+      "kindKey": "previous_case_notes",
+      "contextSchemaVersionId": "01a0ab99-06d8-7bd0-a2e3-bbc4400a88e6",
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:19:51.007Z",
+      "updatedAt": "2026-09-16T19:19:51.007Z",
+      "version": 1
+    },
+    {
+      "id": "01a0aba9-8fd9-705f-90bd-de9f69f02a6b",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "Pre-Summary of Medical History\n\n- Confirmed & Provisional Diagnoses:\n    - Hypertension (controlled on amlodipine 5 mg)\n\n- Plan of Care (Latest Note):\n    - Advised salt restriction and follow-up in three months.\n\n- Investigations (Latest Note):\n    - No new investigations reported in the latest note.\n\n- Medications Prescribed (Latest Note):\n    - Amlodipine 5 mg (for blood pressure control)\n\n- Diagnostics & Trends:\n    - Blood pressure was controlled on amlodipine 5 mg during the last visit.",
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:20:11.481Z",
+      "updatedAt": "2026-09-16T19:20:11.481Z",
+      "version": 1
+    },
+    {
+      "id": "01a0aba9-3fed-73eb-bf60-66ae48a8cfea",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Hypertension review\nPRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months.",
+      "metadata": {
+        "index": 0,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:19:51.021Z",
+      "updatedAt": "2026-09-16T19:19:51.021Z",
+      "version": 1
+    },
+    {
+      "id": "01a0aba9-3fff-75c5-a289-4f00b6715018",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "CASE_NOTE",
+      "source": "USER",
+      "content": "Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported.",
+      "metadata": {
+        "index": 1,
+        "origin": "open.context",
+        "kindKey": "previous_case_notes"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:19:51.039Z",
+      "updatedAt": "2026-09-16T19:19:51.039Z",
+      "version": 1
+    },
+    {
+      "id": "01a0abaa-532b-7f15-82df-af76b20b7fd9",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "PRE_SUMMARY",
+      "source": "AI",
+      "content": "## Patient Identifiers\nName: [Omitted]\n\n## Interval Since Last Visit\nTime elapsed since 2026-03-02 (Lipid panel follow-up) and 2026-01-14 (Hypertension review). No interim events were described in the current transcript.\n\n## Review of Previous Plan & Adherence\nLast plan recap: Atorvastatin 20 mg nocte was started for LDL 3.9 mmol/L on 2026-03-02; salt restriction and follow-up in three months were advised on 2026-01-14.\n\n## Presenting Complaints & Updates\nPatient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\n## Clinical Examination Updates\n**General Exam:** Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\n## Investigations Compared\nOrdering an electrocardiogram and a troponin level.\n\n## Treatment History & Response\nA differential diagnosis includes stable angina. Aspirin 81 milligrams daily was started.\n\n## New Findings & Complications\nNo new findings or complications were reported in the current transcript.\n\n## Plan of Care – Current\nOrdering an electrocardiogram and a troponin level.\n\n## Follow-Up & Monitoring Strategy\nNo specific follow-up interval or monitoring parameters were discussed in the current transcript.\n\n## Patient Education & Consent\nCounseling provided regarding the new investigations and aspirin initiation.\n\n## Prepared By & Signatories\nPrepared By: [Omitted]",
+      "metadata": {
+        "agent": {
+          "agentId": "9c000000-0000-0000-0005-000000000014",
+          "frozenAt": "2026-09-16T19:19:57.021Z",
+          "agentName": null,
+          "resolvedFrom": "agent",
+          "promptTemplateId": "71000000-0000-0000-0001-000000000023",
+          "promptVersionNumber": 3
+        },
+        "subType": "LIVE_SOAP_SNAPSHOT",
+        "updatedAt": "2026-09-16T19:22:58.611Z",
+        "lastSegmentId": "utt-1"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:21:01.483Z",
+      "updatedAt": "2026-09-16T19:22:58.641Z",
+      "version": 1
+    },
+    {
+      "id": "01a0abab-e311-7e04-a4bc-818c6ba9b2a7",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "TRANSCRIPT",
+      "source": "TRANSCRIPTION",
+      "content": "patient presence with shortness of breath on exertion and intermittent chest pain over the past two weeks. on examination, the patient is in no acute distress. Heart rate is 88 and regular. lungs are clear to auscultation bilaterally. We are ordering an electrocardiogram and a troponin level. , the differential includes stable angina and we will start aspirin 81 milligrams daily to the to.",
+      "metadata": {
+        "subType": "STT_AGGREGATE"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:22:43.857Z",
+      "updatedAt": "2026-09-16T19:22:43.857Z",
+      "version": 1
+    },
+    {
+      "id": "01a0abac-906c-7807-a74d-07dd9682e07e",
+      "consultationId": "01a0aba9-3ed3-79dd-98c9-1d57469c8957",
+      "type": "RAW_SUMMARY",
+      "source": "AI",
+      "content": "Time elapsed since 2026-03-02 (Lipid panel follow-up) and 2026-01-14 (Hypertension review). No interim events were described in the current transcript.\n\nLast plan recap: Atorvastatin 20 mg nocte was started for LDL 3.9 mmol/L on 2026-03-02; salt restriction and follow-up in three months were advised on 2026-01-14.\n\nThe patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks.\n\nGeneral Exam: Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally.\n\nOrdering an electrocardiogram and a troponin level.\n\nA differential diagnosis includes stable angina. Aspirin 81 milligrams daily was started.\n\nNo new findings or complications were reported in the current transcript.\n\nCounseling provided regarding the new investigations and aspirin initiation.",
+      "metadata": {
+        "subType": "HARNESS_DRAFT"
+      },
+      "kindKey": null,
+      "contextSchemaVersionId": null,
+      "currentVersionNumber": 1,
+      "qdrantSynced": false,
+      "isMediaType": true,
+      "createdAt": "2026-09-16T19:23:28.237Z",
+      "updatedAt": "2026-09-16T19:23:40.423Z",
+      "version": 2
+    }
+  ]
+}

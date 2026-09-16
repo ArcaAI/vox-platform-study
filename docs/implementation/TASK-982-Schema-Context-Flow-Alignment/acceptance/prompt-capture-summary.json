@@ -1,0 +1,362 @@
+[
+ {
+  "ts": 1789585285975,
+  "chars": 4586,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "other"
+ },
+ {
+  "ts": 1789585324070,
+  "chars": 43240,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "GEN new/referral"
+ },
+ {
+  "ts": 1789585331224,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585337090,
+  "chars": 43906,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "GEN new/referral"
+ },
+ {
+  "ts": 1789585340710,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585348084,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585373444,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585409251,
+  "chars": 2869,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585433818,
+  "chars": 2752,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585455107,
+  "chars": 44287,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "GEN new/referral"
+ },
+ {
+  "ts": 1789585481887,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585481889,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585491133,
+  "chars": 22260,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "GEN new/referral"
+ },
+ {
+  "ts": 1789585502699,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585530059,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585560103,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585590184,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789585860242,
+  "chars": 4586,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "other"
+ },
+ {
+  "ts": 1789585900277,
+  "chars": 45229,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789585912118,
+  "chars": 47260,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586032192,
+  "chars": 47642,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586066086,
+  "chars": 23715,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586119031,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586126238,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586134322,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586141498,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586149558,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586156880,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586165039,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586172283,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586205093,
+  "chars": 2869,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586228218,
+  "chars": 2752,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586270004,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586270213,
+  "chars": 3043,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586297113,
+  "chars": 2980,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586324289,
+  "chars": 2891,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586355335,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586385774,
+  "chars": 3237,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586411424,
+  "chars": 4586,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "other"
+ },
+ {
+  "ts": 1789586424107,
+  "chars": 3174,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ },
+ {
+  "ts": 1789586461420,
+  "chars": 45228,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586470210,
+  "chars": 46674,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586578584,
+  "chars": 47055,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586606048,
+  "chars": 23128,
+  "hasClientVitals": true,
+  "hasPriorNote": true,
+  "recentVitalsBlock": true,
+  "template": "BREN follow-up"
+ },
+ {
+  "ts": 1789586620311,
+  "chars": 3315,
+  "hasClientVitals": false,
+  "hasPriorNote": false,
+  "recentVitalsBlock": false,
+  "template": "other"
+ }
+]

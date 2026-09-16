@@ -1,0 +1,74 @@
+[
+  {
+    "at": "2026-09-16T19:21:01.513Z",
+    "sectionKey": "patient_identifiers",
+    "state": "provisional",
+    "content": "Name: [Omitted]"
+  },
+  {
+    "at": "2026-09-16T19:21:01.523Z",
+    "sectionKey": "interval_since_last_visit",
+    "state": "provisional",
+    "content": "Time elapsed since 2026-03-02 (Lipid panel follow-up) and 2026-01-14 (Hypertension review). No interim events were described in the current transcript."
+  },
+  {
+    "at": "2026-09-16T19:21:01.547Z",
+    "sectionKey": "review_of_previous_plan_adherence",
+    "state": "provisional",
+    "content": "Last plan recap: Atorvastatin 20 mg nocte was started for LDL 3.9 mmol/L on 2026-03-02; salt restriction and follow-up in three months were advised on 2026-01-14."
+  },
+  {
+    "at": "2026-09-16T19:21:01.557Z",
+    "sectionKey": "presenting_complaints_updates",
+    "state": "provisional",
+    "content": "Patient presented with shortness of breath on exertion and intermittent chest pain over the past two weeks."
+  },
+  {
+    "at": "2026-09-16T19:21:01.566Z",
+    "sectionKey": "clinical_examination_updates",
+    "state": "provisional",
+    "content": "**General Exam:** Heart rate is 88 and regular. Lungs are clear to auscultation bilaterally."
+  },
+  {
+    "at": "2026-09-16T19:21:01.576Z",
+    "sectionKey": "investigations_compared",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T19:21:01.584Z",
+    "sectionKey": "treatment_history_response",
+    "state": "provisional",
+    "content": "A differential diagnosis includes stable angina. Aspirin 81 milligrams daily was started."
+  },
+  {
+    "at": "2026-09-16T19:21:01.592Z",
+    "sectionKey": "new_findings_complications",
+    "state": "provisional",
+    "content": "No new findings or complications were reported in the current transcript."
+  },
+  {
+    "at": "2026-09-16T19:21:01.599Z",
+    "sectionKey": "plan_of_care_current",
+    "state": "provisional",
+    "content": "Ordering an electrocardiogram and a troponin level."
+  },
+  {
+    "at": "2026-09-16T19:21:01.607Z",
+    "sectionKey": "follow_up_monitoring_strategy",
+    "state": "provisional",
+    "content": "No specific follow-up interval or monitoring parameters were discussed in the current transcript."
+  },
+  {
+    "at": "2026-09-16T19:21:01.615Z",
+    "sectionKey": "patient_education_consent",
+    "state": "provisional",
+    "content": "Counseling provided regarding the new investigations and aspirin initiation."
+  },
+  {
+    "at": "2026-09-16T19:21:01.625Z",
+    "sectionKey": "prepared_by_signatories",
+    "state": "provisional",
+    "content": "Prepared By: [Omitted]"
+  }
+]

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress — owner approved every recommendation and said go (2026-09-17); §3.4 contracts pinned; wave 1 lanes (A, B1, C, D) spawned |
+| **Status** | In Progress — all code lanes merged and live-accepted on the dev stack (§5.1); docs lane F in flight; final gates running |
 | **Type** | feature + bugfix + docs, cross-cutting: `packages/types`, `packages/database` (one migration + seed), `packages/domains`, `packages/applications`, `packages/workflow-contract`, `apps/harness`, `apps/api`, `packages/vox-node`, `packages/agentic-sdk-v2`, `packages/vox-codegen`, `apps/admin-console`, `docs/` |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-17 |
@@ -331,6 +331,33 @@ vox-node: `HopeAPIError.problems?: string[]`; `open<TContext extends Record<stri
 | OD-8 | Retire the two existing developer guides to pointer stubs once the new guide exists (their load-bearing sections are ported, §3.2 F item 11) | stubs / keep both | **stubs** |
 | OD-9 | Run-completed webhook: the code says the `WorkflowRun` sys-event fires; the vox-node README says "poll". Lane F documents ONE answer after verifying live — confirm the intended posture | webhook + poll / poll only | **webhook + poll** |
 | OD-10 | Tenant Admin User Guide screenshots: taken from the dev console by lane G (13, listed in §3.2 F) and committed under `docs/guides/images/` | commit / link to the live console | **commit** |
+
+## 5. Implementation Summary
+
+### 5.1 Acceptance run (2026-09-16/17, dev stack rebuilt from `dev-2.2`, dev DB reset + reseeded from the new seeds; evidence under `acceptance/`)
+
+| # | Expectation | Result |
+|---|---|---|
+| E1 | Tenant admin evolves the schema with impact in view | **PASS** — `GET …/usages` lists the 11 ArcaAI workflows (all `latest`, all `accepts`); `arcaai_admin` published v2 (+ `chief_complaint`) and v3 (+ a NEW kind `referral`), each 201 with `impact` all-accept; the console page shows "Used by 11 workflows — all accept v2" with one Publish button (`screenshots/05-context-schema-page.png`); pin back to v1 reports impact too (`R-pin-v1.json`) |
+| E2 | Codegen with one command per credential; truthful, drift-checkable types | **PASS** — tenant mode emits `@schemaVersion` and `OpenConsultationContext` (the client's hand-written `Pick` is gone); catalogue mode now succeeds with the SEEDED day-one key (28 agents, 13 workflows, `@contextSchema … (follows latest)`); `--check` exits 0 when up to date; no ticket numbers in emitted text; typed client `tsc` exit 0, off-schema fixture 3 errors |
+| E3 | One typed `open()` does everything, refusals precise, client reads back items and run | **PASS** — `open<OpenConsultationContext>` answered 201 with `governingRun` (RUNNING → COMPLETED after the gate); `listContext` returned items with `kindKey` (`encounter`, `vitals`, `previous_case_notes`); same staff id → same clinician on journey 2 |
+| E4 | Every prompt can use what the client sent | **PASS** — the warm-start pre-summary prompt now reads `Recent Vitals: BP 128/82 mmHg · HR 88 bpm · Temp 36.8 °C · SpO2 97 % · Wt 81.5 kg` and `Previous Visits:` with both notes (`journey-1-gen-new-visit/presummary-prompt.txt`); the live-lane prompts carry `RECENT VITALS` and `PREVIOUS CASE NOTES SUMMARY` blocks; no note text twice (`prompt-capture-summary.json`) |
+| E5 | Admins see the governing run | **PASS** — consultation detail shows `Workflow · arcaai-bren-consultation · <status> · View run →` (`screenshots/10-consultation-workflow-row-2.png`); `GET consultations/:id/workflow` returns `run` |
+| E6 | One status vocabulary | **PASS** — after the gate release the live read, the consultation's `governingRun` and the persisted row all say COMPLETED with `nodeCount 10 / failed 0 / degraded 0 / skipped 5` (`journey-2-bren-revisit/run-status-after-gate.json`, `consultation-after-gate.json`) |
+| E7 | Day-1 docs aligned | see lane F below |
+| S3 | New kind after publish | **PASS** — v3 published ADDITIVE with impact all-accept (the seeded workflows follow latest); `open` with `referral` → 201; `load_config` verified the per-run checksum; `core.trigger` SUCCEEDED with `referral` in the context (`S3-open.json`) |
+
+### 5.2 What the acceptance run caught (fixed in this ticket, all with tests)
+
+1. **Every follow-latest dispatch failed at `interpreter.load_config` with `checksum_mismatch`** (`before-fix/journey-1-run-history-checksum-mismatch.json`): the per-run config was rewritten but kept the published artifact's checksum, and the harness verifies it. Fix: `effectiveTriggerConfig` recomputes `checksum` over the rewritten bytes with the compiler's canonicaliser (`b9151c782`).
+2. **A run that dies before the walk never announced its end**, so the completion watcher and `governingRun` stayed RUNNING (`before-fix/journey-1-run-status-stuck-running.json`). Fix: the interpreter emits `workflow.run.completed` FAILED when config loading fails, and the harness status read no longer lets a pre-failure `RUNNING` state query overwrite Temporal's terminal word (same commit; harness 2637 green, replay-compat untouched).
+3. **`degraded` counted skipped nodes**, so every consultation run read "Completed with warnings" (its five realtime-lane nodes are skipped by design). Fix: only DEGRADED nodes make a run degraded; skipped nodes are reported in their own count (`f59f532dd`).
+4. **The console's consultation "Type" ignored the stated visit type** (a stated revisit with no parent showed "New"). Fix: `visitTypeOf` reads `metadata.visitType` first (tests added).
+5. The seeded reference workflows PINNED their schema version, so the migration's follow-latest backfill matched nothing — lane S made them follow latest and the seeds stamp the binding columns.
+
+### 5.3 Gates (final, primary checkout)
+
+_filled from the post-acceptance gate run — see Change History_
 
 ## 4. Verification
 

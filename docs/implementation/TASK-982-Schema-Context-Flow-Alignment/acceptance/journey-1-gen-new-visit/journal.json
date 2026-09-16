@@ -1,0 +1,86 @@
+{
+  "startedAt": "2026-09-16T19:00:54.099Z",
+  "context": {
+    "encounter": {
+      "doctor_id": "DR-982-1789585253",
+      "event_id": "EVT-982-GEN-1789585253",
+      "department_code": "GEN",
+      "department_name": "General Medicine",
+      "visit_type": "new-visit",
+      "chief_complaint": "Exertional shortness of breath and intermittent chest pain for two weeks"
+    },
+    "vitals": {
+      "bloodPressure": "128/82",
+      "heartRate": 88,
+      "temperature": 36.8,
+      "oxygenSaturation": 97,
+      "weightKg": 81.5,
+      "recordedAt": "2026-09-16T19:00:54.055Z"
+    },
+    "previous_case_notes": {
+      "notes": [
+        {
+          "date": "2026-01-14",
+          "department": "General Medicine",
+          "doctor": "Dr. Bren",
+          "title": "Hypertension review",
+          "text": "PRIOR-NOTE-ALPHA: blood pressure controlled on amlodipine 5 mg; advised salt restriction and follow-up in three months."
+        },
+        {
+          "date": "2026-03-02",
+          "title": "Lipid panel follow-up",
+          "text": "PRIOR-NOTE-BRAVO: LDL 3.9 mmol/L; started atorvastatin 20 mg nocte; no myalgia reported."
+        }
+      ]
+    }
+  },
+  "open": {
+    "id": "01a0ab97-e77f-7df6-9fc0-edc097aca848",
+    "patientId": "PAT-982-GEN-1789585253",
+    "doctorId": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+    "doctor": {
+      "id": "01a0ab97-e727-7e93-a524-0777e4cd8336",
+      "username": "auto_8e873edc98ebd2e6",
+      "firstName": "",
+      "lastName": ""
+    },
+    "departmentId": "70000000-0000-0000-0001-000000000001",
+    "department": {
+      "id": "70000000-0000-0000-0001-000000000001",
+      "code": "GEN",
+      "name": "General Medicine"
+    },
+    "appointmentDate": "2026-09-16",
+    "status": "OPEN",
+    "language": "en",
+    "metadata": {
+      "visitType": "new-visit",
+      "externalRef": "EVT-982-GEN-1789585253",
+      "governingEngine": {
+        "engine": "tenant-workflow",
+        "decidedAt": "2026-09-16T19:00:54.936Z",
+        "workflowRunId": "01a0ab97-e95c-7321-9772-7e6be409b3a1",
+        "workflowDefinitionSlug": "arcaai-gen-consultation"
+      },
+      "summaryLanguage": "en"
+    },
+    "version": 1,
+    "createdAt": "2026-09-16T19:00:54.271Z",
+    "updatedAt": "2026-09-16T19:00:54.937Z",
+    "isNew": true,
+    "governingRun": {
+      "workflowDefinitionSlug": "arcaai-gen-consultation",
+      "workflowRunId": "01a0ab97-e95c-7321-9772-7e6be409b3a1",
+      "status": "RUNNING",
+      "degraded": false,
+      "decidedAt": "2026-09-16T19:00:54.936Z",
+      "failureReason": null
+    }
+  },
+  "governingEngine": {
+    "workflowRunId": "01a0ab97-e95c-7321-9772-7e6be409b3a1",
+    "workflowDefinitionSlug": "arcaai-gen-consultation"
+  },
+  "endedAt": "2026-09-16T19:09:17.670Z",
+  "finalStatus": "PENDING_REVIEW"
+}
