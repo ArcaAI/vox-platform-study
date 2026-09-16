@@ -37848,6 +37848,12 @@
               }
             },
             "description": "Voice profile created"
+          },
+          "400": {
+            "description": "Missing, oversized or non-audio samples, samples the embedding model rejected, or: The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there is no speaker-embedding space to enroll into."
+          },
+          "409": {
+            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable agent) answer 409 with their own `code`."
           }
         },
         "security": [
@@ -37874,7 +37880,7 @@
     },
     "/api/v1/voice-profiles/enrollment-target": {
       "get": {
-        "description": "TASK-887 — resolves the SPEECH_TO_TEXT agent (explicit `agentSlug`, else the tenant’s assigned one) and reports the SPEAKER_EMBEDDING model it declares. A profile whose `modelId` differs from this will never be matched by that agent, so a client uses this to prompt a re-enrollment.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:UserVoiceProfile`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "TASK-887 — resolves the SPEECH_TO_TEXT agent (explicit `agentSlug`, else the tenant’s assigned one) and reports the SPEAKER_EMBEDDING model it declares. A profile whose `modelId` differs from this will never be matched by that agent, so a client uses this to prompt a re-enrollment. TASK-977: refused with 409 `ASR_AGENT_DIARIZATION_DISABLED` while the agent has speaker diarization switched off.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:UserVoiceProfile`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "VoiceProfileController_enrollmentTarget",
         "parameters": [
           {
@@ -37898,10 +37904,13 @@
             "description": "The enrollment target"
           },
           "400": {
-            "description": "The agent declares no speaker-embedding model, so nothing could match an enrollment."
+            "description": "The agent diarizes with the `sortformer` backend, which labels speakers without enrolled voice profiles, so there is no speaker-embedding space to enroll into."
           },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent."
+          },
+          "409": {
+            "description": "`ASR_AGENT_DIARIZATION_DISABLED` — the agent has speaker diarization switched off (`audioFrontEnd.diarization.enabled` is false), so voice embedding is off for it and no voice profile can be enrolled until an admin enables it. Body: `{ code, message }`. Other ASR agent conflicts (e.g. an unrunnable agent) answer 409 with their own `code`."
           }
         },
         "security": [

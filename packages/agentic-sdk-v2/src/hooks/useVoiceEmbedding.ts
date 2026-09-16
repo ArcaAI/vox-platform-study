@@ -68,7 +68,13 @@ export interface UseVoiceEmbeddingReturn {
   activate: (profileId: string) => Promise<void>;
   deactivate: (profileId: string) => Promise<void>;
   delete: (profileId: string) => Promise<void>;
-  /** The speaker-embedding model a new enrollment would use, for `agentSlug` or the assigned agent. */
+  /**
+   * The speaker-embedding model a new enrollment would use, for `agentSlug` or the assigned agent.
+   *
+   * TASK-977 — while that agent has diarization switched off, this and `enroll` reject with an
+   * `AgenticError` whose `context.code` is `'ASR_AGENT_DIARIZATION_DISABLED'` (HTTP 409): voice
+   * profiles cannot be enrolled until an admin enables diarization on the agent.
+   */
   enrollmentTarget: (agentSlug?: string) => Promise<VoiceEnrollmentTarget>;
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { IconMicrophone, IconPlus, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
@@ -92,12 +92,16 @@ export function ProfileListCard({
   query,
   target,
   onEnroll,
+  enrollBlockedReason,
 }: {
   query: ReturnType<typeof useVoiceProfiles>;
   /** TASK-887 — the model a new enrollment would use; absent while loading or unresolvable. */
   target?: VoiceProfileEnrollmentTarget;
   onEnroll?: () => void;
+  /** TASK-977 — when set, the empty-state enroll action is disabled and this is shown as the reason. */
+  enrollBlockedReason?: string;
 }) {
+  const enrollBlockedReasonId = useId();
   const setActive = useSetVoiceProfileActive();
   const deleteProfile = useDeleteVoiceProfile();
   const [deleteTarget, setDeleteTarget] = useState<VoiceProfile | null>(null);
@@ -157,10 +161,21 @@ export function ProfileListCard({
               description={'Enroll your voice with up to 3 audio samples \u2014 \u226410 MB each, audio/* only.'}
               action={
                 onEnroll ? (
-                  <Button onClick={onEnroll}>
-                    <IconPlus aria-hidden />
-                    Enroll voice profile
-                  </Button>
+                  <div className="flex flex-col items-center gap-2">
+                    <Button
+                      onClick={onEnroll}
+                      disabled={Boolean(enrollBlockedReason)}
+                      aria-describedby={enrollBlockedReason ? enrollBlockedReasonId : undefined}
+                    >
+                      <IconPlus aria-hidden />
+                      Enroll voice profile
+                    </Button>
+                    {enrollBlockedReason ? (
+                      <p id={enrollBlockedReasonId} className="text-muted-foreground text-xs">
+                        {enrollBlockedReason}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : undefined
               }
             />

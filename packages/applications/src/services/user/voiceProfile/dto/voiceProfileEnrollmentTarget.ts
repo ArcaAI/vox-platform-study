@@ -13,7 +13,11 @@ export interface VoiceProfileEnrollmentTarget {
   modelId: string;
   /** The model's loader id (`sourceUri`) — informational; the gateway is what pushes it. */
   modelSourceUri: string;
-  /** Whether the agent has diarization switched on. A model may be declared with it off. */
+  /**
+   * Whether the agent has diarization switched on. Always `true` on a resolved target since
+   * TASK-977: an agent with it off refuses the target with 409 `ASR_AGENT_DIARIZATION_DISABLED`.
+   * Kept on the wire so existing clients keep parsing the same shape.
+   */
   diarizationEnabled: boolean;
   /**
    * The agent's `audioFrontEnd.diarization.matchThreshold`, or `null` when it declared none.
