@@ -2030,7 +2030,7 @@ class SessionManager:
         # config carrying no `preprocessing` block behaves exactly like a default
         # `PipelineSpec` rather than turning the warm silently off.
         preprocessing = getattr(pipeline_config, "preprocessing", None)
-        vad_enabled = bool(getattr(getattr(preprocessing, "vad", None), "enabled", True))
+        vad_enabled = bool(getattr(getattr(preprocessing, "vad", None), "enabled", False))
         denoise_enabled = bool(getattr(getattr(preprocessing, "denoise", None), "enabled", False))
         # The embedding model is DIARIZATION's, and that flag is a sibling of
         # `preprocessing`, not a member of it.

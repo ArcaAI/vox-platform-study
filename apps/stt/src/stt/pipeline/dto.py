@@ -584,7 +584,12 @@ class ModelRefs:
 class VadConfig:
     """Voice Activity Detection configuration."""
 
-    enabled: bool = True
+    # TASK-977 (owner decision D-1) — OFF by default. Only the DEPRECATED `pipeline_id` YAML
+    # path can reach this default: an agent-resolved session always STATES the flag on the
+    # wire (`ResolvedAsrSpec.audio_front_end.vad.enabled` is required, no pydantic default).
+    # Flipped so the legacy path cannot run a stage the gateway, the SYSTEM agent and the
+    # browser SDK all declare off — one posture, not one per entry point.
+    enabled: bool = False
     threshold: float = 0.6
     # 100 ms (was 250). A spoken "yes"/"no" is ~150-250 ms; at 250 ms the
     # whole word is discarded before reaching ASR. Production consensus

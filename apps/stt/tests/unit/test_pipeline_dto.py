@@ -318,7 +318,8 @@ class TestVadConfig:
     def test_default_values(self):
         """Test default configuration values."""
         config = VadConfig()
-        assert config.enabled is True
+        # TASK-977 (D-1) — OFF by default, like every other audio front-end STAGE.
+        assert config.enabled is False
         assert config.threshold == 0.6
         # Clinical defaults — 100 ms keeps short confirmations
         # ("yes"/"no"); 200 ms padding protects onsets/tails.
@@ -352,8 +353,11 @@ class TestPreprocessingConfig:
     def test_nested_defaults(self):
         """Test nested config defaults."""
         config = PreprocessingConfig()
-        assert config.vad.enabled is True
+        # TASK-977 (D-1) — every STAGE defaults off; `resample`/`normalize` are not stages.
+        assert config.vad.enabled is False
         assert config.denoise.enabled is False
+        assert config.resample_enabled is True
+        assert config.normalize is True
 
 
 class TestInferenceConfig:

@@ -336,7 +336,12 @@ async def test_a_genuine_warm_failure_is_still_a_warning(warm_manager, _isolate_
         await SessionManager._warm_and_pin_pipeline_models(
             warm_manager,
             _Broken(refuse=set()),
-            SimpleNamespace(models=ModelRefs(asr=ModelRef(slug="a"), vad=ModelRef(slug="v"))),
+            # TASK-977 (D-1) — the VAD stage must be ENABLED for a warm to be attempted at
+            # all, so the failure this test is about is only reachable with the flag on.
+            SimpleNamespace(
+                models=ModelRefs(asr=ModelRef(slug="a"), vad=ModelRef(slug="v")),
+                preprocessing=SimpleNamespace(vad=SimpleNamespace(enabled=True)),
+            ),
             tenant_id=None,
             session_id="sess-2",
         )
