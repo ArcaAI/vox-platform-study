@@ -1050,6 +1050,13 @@ class BatchTranscriptionService:
 
         models: dict[str, LoadedModel | None] = {}
 
+        # TASK-977 (D-4) — a DISABLED stage loads no weights, on this path too. Read
+        # defensively: the fallback is each stage's own dataclass default, so a spec
+        # carrying no `preprocessing` block behaves like a default `PipelineSpec`.
+        _preprocessing = getattr(pipeline.spec, "preprocessing", None)
+        _vad_enabled = bool(getattr(getattr(_preprocessing, "vad", None), "enabled", True))
+        _denoise_enabled = bool(getattr(getattr(_preprocessing, "denoise", None), "enabled", False))
+
         # Load ASR model (required)
         asr_ref = model_refs.asr
         # Capability sanity check for the batch mode: a
@@ -1106,7 +1113,7 @@ class BatchTranscriptionService:
             raise TranscriptionError("ASR model is required but not specified")
 
         # Load VAD model (optional)
-        if model_refs.vad:
+        if model_refs.vad and _vad_enabled:
             vad_ref = model_refs.vad
             try:
                 if vad_ref.is_inline and vad_ref.inline:
@@ -1123,10 +1130,12 @@ class BatchTranscriptionService:
                 logger.warning(f"Failed to load VAD model: {e}")
                 models["vad"] = None
         else:
+            if model_refs.vad:
+                logger.debug("Skipping the VAD model load: the stage is disabled")
             models["vad"] = None
 
         # Load denoise model (optional)
-        if model_refs.denoise:
+        if model_refs.denoise and _denoise_enabled:
             denoise_ref = model_refs.denoise
             try:
                 if denoise_ref.is_inline and denoise_ref.inline:
@@ -1143,6 +1152,8 @@ class BatchTranscriptionService:
                 logger.warning(f"Failed to load denoise model: {e}")
                 models["denoise"] = None
         else:
+            if model_refs.denoise:
+                logger.debug("Skipping the denoise model load: the stage is disabled")
             models["denoise"] = None
 
         return models

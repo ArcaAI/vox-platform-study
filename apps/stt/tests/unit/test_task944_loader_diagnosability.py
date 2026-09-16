@@ -237,6 +237,28 @@ class _FakeCache:
 
 
 @pytest.fixture
+def _isolate_structlog():
+    """`capture_logs()` cannot intercept a logger frozen by an earlier test's
+    `setup_logging` (cache_logger_on_first_use).
+
+    Without this both log assertions below pass alone and fail in a full-suite run,
+    which is how they were failing before TASK-977 touched this file. Same fixture
+    as `streaming/test_task935_commit_continuity.py`.
+    """
+    from stt.streaming import session_manager as session_manager_module
+
+    saved_config = structlog.get_config()
+    saved_logger = session_manager_module.logger
+    structlog.reset_defaults()
+    session_manager_module.logger = structlog.get_logger("stt.streaming.session_manager")
+    try:
+        yield
+    finally:
+        session_manager_module.logger = saved_logger
+        structlog.configure(**saved_config)
+
+
+@pytest.fixture
 def warm_manager() -> Any:
     """A bare object carrying only what the warm helper reads off `self`.
 
@@ -252,13 +274,20 @@ def warm_manager() -> Any:
     )
 
 
-async def test_a_runtime_owned_model_is_skipped_at_info_not_warned_as_a_failure(warm_manager):
+async def test_a_runtime_owned_model_is_skipped_at_info_not_warned_as_a_failure(warm_manager, _isolate_structlog):
     """The 9.3 s cold-start burn and the misleading WARNING, both gone.
 
     The session manager builds `PyannoteEmbeddingService` itself from the very
     same spec row (`_get_pipeline_embedding_service`), so this warm was never
     what made diarization work — it was a second, doomed load of the same model
     through `transformers`.
+
+    TASK-977 (D-4) put a second gate in front of this one: a warm now needs its
+    STAGE to be enabled as well as its model to be bound. The two are independent
+    refusals and must stay legible apart — "nobody asked for this stage" is not
+    "the cache cannot serve these weights" — so the config here declares both
+    stages ON, which is the only configuration in which the TASK-944 behaviour is
+    reachable at all. `test_task977_front_end_off_by_default.py` owns the other side.
     """
     cache = _FakeCache(refuse={"wespeaker-voxceleb-resnet34"})
     models = ModelRefs(
@@ -266,12 +295,17 @@ async def test_a_runtime_owned_model_is_skipped_at_info_not_warned_as_a_failure(
         vad=ModelRef(slug="silero-vad"),
         embedding=ModelRef(slug="wespeaker-voxceleb-resnet34"),
     )
+    pipeline_config = SimpleNamespace(
+        models=models,
+        preprocessing=SimpleNamespace(vad=SimpleNamespace(enabled=True)),
+        diarization=SimpleNamespace(enabled=True),
+    )
 
     with structlog.testing.capture_logs() as logs:
         pinned = await SessionManager._warm_and_pin_pipeline_models(
             warm_manager,
             cache,
-            SimpleNamespace(models=models),
+            pipeline_config,
             tenant_id=None,
             session_id="sess-1",
         )
@@ -289,7 +323,7 @@ async def test_a_runtime_owned_model_is_skipped_at_info_not_warned_as_a_failure(
     assert "wespeaker-voxceleb-resnet34" not in pinned
 
 
-async def test_a_genuine_warm_failure_is_still_a_warning(warm_manager):
+async def test_a_genuine_warm_failure_is_still_a_warning(warm_manager, _isolate_structlog):
     """The skip must not swallow the failures the WARNING exists for."""
 
     class _Broken(_FakeCache):
