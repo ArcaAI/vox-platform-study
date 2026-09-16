@@ -14,6 +14,8 @@ import type { WithEtag } from '@/shared/api';
 import type {
   ConsultationContextSchema,
   ConsultationContextSchemaVersion,
+  ConsultationContextSchemaWithImpact,
+  ContextSchemaUsagesResponse,
   CreateConsultationContextSchemaRequest,
   Department,
   PinConsultationContextSchemaVersionRequest,
@@ -40,7 +42,11 @@ export function createContextSchema(body: CreateConsultationContextSchemaRequest
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. Metadata only — the definition is never edited in place. */
-export function updateContextSchema(id: string, patch: UpdateConsultationContextSchemaRequest, etag: string): Promise<WithEtag<ConsultationContextSchema>> {
+export function updateContextSchema(
+  id: string,
+  patch: UpdateConsultationContextSchemaRequest,
+  etag: string,
+): Promise<WithEtag<ConsultationContextSchema>> {
   return patchWithEtag(schemaPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
@@ -60,14 +66,23 @@ export function listContextSchemaVersions(id: string): Promise<ConsultationConte
  * `breakingChanges` (refused break) in the response body, surfaced via
  * `GatewayError.details`.
  */
-export function publishContextSchema(id: string, body: PublishConsultationContextSchemaRequest): Promise<ConsultationContextSchema> {
+export function publishContextSchema(id: string, body: PublishConsultationContextSchemaRequest): Promise<ConsultationContextSchemaWithImpact> {
   return postJson(`${schemaPath(id)}/publish`, body);
 }
 
 /** Move the pin to an already-published version — the rollback path. */
-export function pinContextSchemaVersion(id: string, versionNumber: number): Promise<ConsultationContextSchema> {
+export function pinContextSchemaVersion(id: string, versionNumber: number): Promise<ConsultationContextSchemaWithImpact> {
   const body: PinConsultationContextSchemaVersionRequest = { versionNumber };
   return postJson(`${schemaPath(id)}/pin`, body);
+}
+
+/**
+ * Who depends on this schema, and whether each would ACCEPT the version named by
+ * `againstVersion` (default: the current pin). Read before publishing, so the
+ * confirmation can state the effect instead of asking "are you sure?".
+ */
+export function getContextSchemaUsages(id: string, againstVersion?: number): Promise<ContextSchemaUsagesResponse> {
+  return getJson(`${schemaPath(id)}/usages`, againstVersion != null ? { againstVersion } : undefined);
 }
 
 /** Department directory for the scope/department pickers. */

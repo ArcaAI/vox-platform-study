@@ -216,10 +216,66 @@ export interface PublishConsultationContextSchemaRequest {
   changeReason?: string;
   /** Acknowledges a breaking change; without it a breaking publish is refused with 400. */
   allowBreakingChange?: boolean;
+  /**
+   * Acknowledges that a bound consumer would REFUSE the version being published.
+   * Client compatibility (`allowBreakingChange`) and consumer compatibility are
+   * two different facts, so they are two different gates: without this the
+   * publish is refused with 400 `SCHEMA_IMPACT_UNACKNOWLEDGED`, carrying the
+   * same `impact` a successful publish returns.
+   */
+  acknowledgeImpact?: boolean;
 }
 
 export interface PinConsultationContextSchemaVersionRequest {
   versionNumber: number;
+}
+
+// ---------------------------------------------------------------------------
+// Who depends on this schema — `GET :id/usages?againstVersion=<n>`, and the
+// `impact` block `publish` / `pin` answer with.
+//
+// A consumer BINDS to a schema either by following the tenant's pin (`latest`)
+// or by freezing a version at its own publish (`pinned`). Only the second can
+// refuse: a frozen trigger validates against the version it was compiled with,
+// so a kind added afterwards is simply not declared there. `unknown` is honest
+// — the consumer's compiled config could not be read — and is never rendered as
+// "accepts".
+// ---------------------------------------------------------------------------
+
+export type ContextSchemaBinding = 'latest' | 'pinned';
+export type ContextSchemaVerdict = 'accepts' | 'refuses' | 'unknown';
+
+interface ContextSchemaUsageBase {
+  slug: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  /** Only ACTIVE published consumers count toward the acknowledgement gate. */
+  isActive: boolean;
+  binding: ContextSchemaBinding;
+  boundVersion: number | null;
+  verdict: ContextSchemaVerdict;
+  problems: string[];
+}
+
+export interface ContextSchemaWorkflowUsage extends ContextSchemaUsageBase {
+  definitionId: string;
+}
+
+export interface ContextSchemaAgentUsage extends ContextSchemaUsageBase {
+  agentId: string;
+}
+
+export interface ContextSchemaUsagesResponse {
+  schemaId: string;
+  againstVersion: number | null;
+  workflows: ContextSchemaWorkflowUsage[];
+  agents: ContextSchemaAgentUsage[];
+}
+
+/** `publish` and `pin` answer the schema PLUS the impact of the version they wrote. */
+export interface ConsultationContextSchemaWithImpact extends ConsultationContextSchema {
+  impact?: ContextSchemaUsagesResponse;
 }
 
 /** Minimal department-directory shape for the scope/department pickers. */
