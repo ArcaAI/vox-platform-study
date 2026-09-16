@@ -64,6 +64,43 @@ export interface GoverningEngineMarker {
   readonly workflowDefinitionSlug: string;
   /** When the decision was taken, ISO-8601. */
   readonly decidedAt?: string;
+  /**
+   * The run's TERMINAL outcome, stamped by the gateway's completion watcher.
+   *
+   * Absent means the run has not reached a terminal state that anything observed — which is the
+   * same fact a marker written before this field existed states, so both read as `RUNNING`.
+   * Only the PERSISTED vocabulary appears here: the interpreter's own `SUCCEEDED` / `DEGRADED`
+   * are folded to `COMPLETED` + the `degraded` flag before they get this far.
+   */
+  readonly runStatus?: GoverningRunStatus;
+  /** True when a COMPLETED run finished with at least one degraded or skipped-for-cause node. */
+  readonly degraded?: boolean;
+  /** The interpreter's own terminal reason. PHI-free; absent when the envelope carried none. */
+  readonly terminalReason?: string;
+  /** When the run ended, ISO-8601. */
+  readonly endedAt?: string;
+}
+
+/** The persisted run vocabulary. Never `SUCCEEDED`/`DEGRADED` — those are interpreter words. */
+export type GoverningRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
+
+const GOVERNING_RUN_STATUSES: readonly GoverningRunStatus[] = ['RUNNING', 'COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT'];
+
+/**
+ * The governing run of a consultation, derived from `Consultation.metadata.governingEngine`.
+ *
+ * Defined LOCALLY here rather than imported: the canonical copy is landing in `@arcaai/types`
+ * alongside the refusal-code union, and the import is switched over at merge.
+ */
+export interface GoverningRunSummary {
+  workflowDefinitionSlug: string;
+  workflowRunId: string;
+  /** Persisted vocabulary only — never the interpreter's `SUCCEEDED`/`DEGRADED`. */
+  status: GoverningRunStatus;
+  /** True when the run finished with at least one degraded or skipped-for-cause node. */
+  degraded: boolean;
+  decidedAt: string;
+  failureReason: string | null;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -105,6 +142,46 @@ export function readGoverningEngineMarker(metadata: unknown): GoverningEngineMar
     workflowRunId: marker.workflowRunId,
     workflowDefinitionSlug: typeof marker.workflowDefinitionSlug === 'string' ? marker.workflowDefinitionSlug : '',
     decidedAt: typeof marker.decidedAt === 'string' ? marker.decidedAt : undefined,
+    // Each read independently, and each ABSENT rather than defaulted, because a marker written
+    // before these fields existed must not claim an outcome it never observed. `governingRunOf`
+    // below is the one place absence is turned into a rendered value.
+    ...(isGoverningRunStatus(marker.runStatus) ? { runStatus: marker.runStatus } : {}),
+    ...(marker.degraded === true ? { degraded: true } : {}),
+    ...(typeof marker.terminalReason === 'string' ? { terminalReason: marker.terminalReason } : {}),
+    ...(typeof marker.endedAt === 'string' ? { endedAt: marker.endedAt } : {}),
+  };
+}
+
+function isGoverningRunStatus(value: unknown): value is GoverningRunStatus {
+  return typeof value === 'string' && (GOVERNING_RUN_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * The consultation's governing run, as every surface renders it — or `null` when the default
+ * engine governs.
+ *
+ * Pure, and derived from the PERSISTED marker rather than from a live harness call, so a
+ * consultation GET costs nothing extra and one harness outage cannot make every read fail.
+ *
+ * The three defaults are the whole point of having one function:
+ *
+ *   * no `runStatus` -> `RUNNING`. A run that has not been observed to end, and a marker written
+ *     before the field existed, are indistinguishable and must render identically;
+ *   * no `degraded` -> `false`. "Nobody has told us otherwise" is not "there were warnings";
+ *   * `failureReason` is `terminalReason ?? null`, NEVER a fabricated sentence. A failed run with
+ *     no reason on its envelope says nothing rather than something invented.
+ */
+export function governingRunOf(metadata: unknown): GoverningRunSummary | null {
+  const marker = readGoverningEngineMarker(metadata);
+  if (marker === null) return null;
+
+  return {
+    workflowDefinitionSlug: marker.workflowDefinitionSlug,
+    workflowRunId: marker.workflowRunId,
+    status: marker.runStatus ?? 'RUNNING',
+    degraded: marker.degraded === true,
+    decidedAt: marker.decidedAt ?? '',
+    failureReason: marker.terminalReason ?? null,
   };
 }
 
@@ -124,6 +201,12 @@ export function withGoverningEngineMarker(metadata: unknown, marker: GoverningEn
       workflowRunId: marker.workflowRunId,
       workflowDefinitionSlug: marker.workflowDefinitionSlug,
       decidedAt: marker.decidedAt ?? new Date().toISOString(),
+      // The terminal fields are written only when there is something to say, so a marker
+      // stamped at DISPATCH is byte-identical to the one this wrote before they existed.
+      ...(marker.runStatus ? { runStatus: marker.runStatus } : {}),
+      ...(marker.degraded === true ? { degraded: true } : {}),
+      ...(marker.terminalReason ? { terminalReason: marker.terminalReason } : {}),
+      ...(marker.endedAt ? { endedAt: marker.endedAt } : {}),
     },
   };
 }

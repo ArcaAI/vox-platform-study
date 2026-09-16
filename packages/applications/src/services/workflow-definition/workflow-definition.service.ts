@@ -2238,6 +2238,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         // resolver omits the key when the version declares nothing, so there is never an
         // empty object to forward.
         ...(resolution.openBindings ? { openBindings: resolution.openBindings } : {}),
+        // Which RULE produced `versionNumber` above. The resolution answers the same concrete
+        // version for both bindings, so the intent survives only in the authored graph — read
+        // here by the one helper that owns the rule, never restated. The compiler freezes it so
+        // the gateway knows, per run, whether it may replace `resolved` with the tenant's
+        // current pin before the run starts.
+        followsLatest: authoredTriggerFollowsLatest(graph),
       },
     };
   }

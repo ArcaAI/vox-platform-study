@@ -188,6 +188,35 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           });
         }
       }
+
+      // The SUCCESSFUL half of the same marker. `persistDraft` / `finalizeAssurance` already own
+      // what a completed run MEANS for the consultation's lifecycle; what they do not carry is
+      // that the RUN reached a terminal state at all, so the marker read back by every
+      // consultation surface said `RUNNING` for a run that had finished hours earlier.
+      //
+      // The write itself is delegated: `Consultation.metadata`'s marker shape belongs to
+      // `@arcaai/applications` (`governing-engine.ts`), and a second writer here would drift from
+      // `governingRunOf`. Its own method never throws, so this try/catch only covers a broken
+      // stub. `CANCELED` is deliberately absent — whoever cancelled the run owns what follows.
+      if (consultationId && status === 'COMPLETED') {
+        try {
+          await this.harnessInternal?.recordGovernedRunCompleted(consultationId, {
+            tenantId,
+            runId,
+            // ABSENT counts are read as "no warnings", never as unknown: an interpreter build
+            // that emits none must not make every run look degraded, or look suspiciously clean.
+            degraded: (counts.degradedNodeCount ?? 0) + (counts.skippedNodeCount ?? 0) > 0,
+            at: new Date(endedAt),
+          });
+        } catch (err) {
+          this.logger.warn({
+            message: 'governed run completed but its outcome could not be stamped on the consultation — the run row still carries it',
+            runId,
+            consultationId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
     });
   }
 

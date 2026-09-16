@@ -147,7 +147,8 @@
           "description": "A closed set drawn from apps/harness/src/harness/temporal/activities.py's @activity.defn names. No activity here writes SIGNED (\u00a72.7)."
         },
         "config": {
-          "type": "object"
+          "type": "object",
+          "description": "The node's config, verbatim as authored. The ONE exception is `core.trigger`, whose `contextSchema` block gains the publish-time resolution (see `triggerContextSchema`) - described but never closed, because a node type may author any config its own registry schema admits."
         },
         "timeoutSeconds": {
           "type": "integer",
@@ -183,7 +184,33 @@
             "$ref": "#/$defs/branchGuard"
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "core.trigger"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "contextSchema": {
+                    "$ref": "#/$defs/triggerContextSchema"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "retryPolicy": {
       "type": "object",
@@ -353,7 +380,7 @@
         },
         "contextSchemaRefs": {
           "type": "array",
-          "description": "TASK-890 \u00a73.4 \u2014 WHICH context-schema version each node that binds one by REFERENCE was frozen against. A sibling of promptTemplateRefs with the same guarantee: the interpreter validates a run payload against the schema the workflow was PUBLISHED with, never against whatever the tenant has edited since. Additive-optional: absent means no node binds a schema by reference, never 'unknown', so an artifact compiled before the field existed still admits.",
+          "description": "TASK-890 \u00a73.4 - WHICH context-schema version each node that binds one by REFERENCE was frozen against. A sibling of promptTemplateRefs. A PINNED trigger validates against the schema the workflow was published with. A FOLLOW-LATEST trigger validates against the tenant's pin at dispatch: the gateway resolves it and freezes it into THAT RUN's config before the run starts. The interpreter never reads a schema row. Additive-optional: absent means no node binds a schema by reference, never 'unknown', so an artifact compiled before the field existed still admits.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -465,6 +492,26 @@
         },
         "body": {
           "$ref": "#/$defs/loopBody"
+        }
+      }
+    },
+    "triggerContextSchema": {
+      "type": "object",
+      "description": "The `core.trigger`'s context-schema block: the reference as authored (`contextSchemaId`, and `versionNumber` when the author pinned one) or an `inline` schema, plus what publish resolved. A PINNED trigger validates against the schema the workflow was published with. A FOLLOW-LATEST trigger validates against the tenant's pin at dispatch: the gateway resolves it and freezes it into THAT RUN's config before the run starts. The interpreter never reads a schema row. Open on purpose - `resolved`'s own shape is a derived JSON Schema, and the authored half is whatever the trigger's registry schema admits.",
+      "properties": {
+        "resolved": {
+          "type": "object",
+          "description": "The DERIVED payload schema (`payloadSchemaFromDefinition`) a run is validated against - the only thing `interpreter.core_trigger` reads. Frozen at publish for a pinned trigger; rewritten per run by the gateway for a follow-latest one."
+        },
+        "followsLatest": {
+          "type": "boolean",
+          "default": false,
+          "description": "TRUE when the author bound the trigger to the tenant's PIN rather than to a version. Additive-optional and stamped only when true, so an artifact compiled before the field existed reads as `false` - 'pinned', never 'unknown'."
+        },
+        "effectiveVersionNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Present ONLY in a PER-RUN config the gateway minted for a follow-latest trigger: the schema version whose derived bytes are in `resolved` for that run. The compiler never writes it, so a PUBLISHED artifact never carries it."
         }
       }
     }

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ConsultationStatus } from '@arcaai/domains';
 import { ContextItemResponse } from '../../context/dto';
+import type { GoverningRunSummary } from '../../governing-engine';
 
 /**
  * Doctor Info (embedded in consultation response)
@@ -115,4 +116,28 @@ export class ConsultationResponse {
     example: true,
   })
   isNew?: boolean;
+
+  /**
+   * The tenant-authored workflow run that GOVERNS this consultation, or `null` when the default
+   * consultation loop does.
+   *
+   * ALWAYS present — `null` is the answer for an ungoverned consultation, never an omitted key.
+   * A client that has to distinguish "not governed" from "this build does not report it" cannot
+   * do so from an absent field, and the whole reason this exists is that a governed run could
+   * fail with nothing on any surface saying so.
+   *
+   * Derived from the persisted `metadata.governingEngine` marker (`governingRunOf`), never from a
+   * live harness call: a consultation read must not cost a round trip to the interpreter, and one
+   * harness outage must not make every consultation unreadable. The marker's terminal fields are
+   * stamped by the gateway's run-completion watcher, so `status` is `RUNNING` until that watcher
+   * observes the run end.
+   */
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: true,
+    description:
+      "The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run.",
+  })
+  governingRun: GoverningRunSummary | null;
 }
