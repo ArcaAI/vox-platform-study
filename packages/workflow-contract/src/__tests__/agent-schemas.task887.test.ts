@@ -36,7 +36,8 @@ describe('TASK-887 — the ASR agent declares the diarization space', () => {
   it('is OFF by default, on the embedding backend', () => {
     expect(diarization('enabled')).toMatchObject({ type: 'boolean', default: false });
     expect(diarization('backend')).toMatchObject({ type: 'string', default: 'embedding' });
-    expect(diarization('backend').enum).toEqual(['embedding', 'sortformer']);
+    // TASK-980 retired `sortformer`; `agent-schemas.task980.test.ts` pins why.
+    expect(diarization('backend').enum).toEqual(['embedding']);
   });
 
   it('carries matchThreshold with the retired platform key’s default', () => {

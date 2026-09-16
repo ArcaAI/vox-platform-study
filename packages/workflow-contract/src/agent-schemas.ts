@@ -381,7 +381,18 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           additionalProperties: false,
           properties: Object.freeze({
             enabled: Object.freeze({ type: 'boolean', default: false }),
-            backend: Object.freeze({ type: 'string', enum: Object.freeze(['embedding', 'sortformer']), default: 'embedding' }),
+            // TASK-980 (owner decision 2026-09-16) — `sortformer` is RETIRED: its checkpoint was a
+            // runtime literal no agent could choose, pin or veto, and no deployed image can run it.
+            // The key stays (both `extra='forbid'` halves of `ResolvedAsrSpec` require it); only the
+            // vocabulary narrows. A stored agent version still declaring `sortformer` is refused at
+            // resolution (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`), never coerced.
+            backend: Object.freeze({
+              type: 'string',
+              enum: Object.freeze(['embedding']),
+              default: 'embedding',
+              description:
+                'Diarization engine. `embedding` is the only supported backend: segments are labelled in the vector space of `embeddingModelSlug`. The `sortformer` backend was retired by TASK-980.',
+            }),
             embeddingModelSlug: Object.freeze({
               ...MODEL_SLUG_PROPERTY,
               // `modelTaskType` is an ANNOTATION, not a validation keyword: it tells an editor
