@@ -38,6 +38,38 @@ describe('classifyDefinitionChange', () => {
     expect(classifyDefinitionChange(prev, next).classification).toBe('ADDITIVE');
   });
 
+  // A new kind is additive for CLIENTS and hostile to a workflow whose trigger froze an
+  // `additionalProperties: false` payload schema. The classifier stays ADDITIVE (that is the
+  // client-compatibility question) and NAMES the new keys, so the impact gate can ask the
+  // consumer question separately instead of re-deriving it from the definition.
+  it('names every brand-new kind key in `additions`, classification unchanged', () => {
+    const prev = definition([structuredKind({ type: 'object' })]);
+    const next = definition([
+      structuredKind({ type: 'object' }),
+      { ...structuredKind({ type: 'object' }), key: 'referral' },
+      { ...structuredKind({ type: 'object' }), key: 'vitals' },
+    ]);
+    const result = classifyDefinitionChange(prev, next);
+    expect(result.classification).toBe('ADDITIVE');
+    expect(result.additions).toEqual(['referral', 'vitals']);
+  });
+
+  it('reports no additions when only an existing kind changed', () => {
+    const prev = definition([structuredKind({ type: 'object', properties: { a: { type: 'string' } } })]);
+    const next = definition([structuredKind({ type: 'object', properties: { a: { type: 'string' }, b: { type: 'number' } } })]);
+    expect(classifyDefinitionChange(prev, next).additions).toEqual([]);
+  });
+
+  it('a first publish lists every kind it declares as an addition', () => {
+    const next = definition([structuredKind({ type: 'object' }), { ...structuredKind({ type: 'object' }), key: 'referral' }]);
+    expect(classifyDefinitionChange(null, next).additions).toEqual(['intake', 'referral']);
+  });
+
+  it('IDENTICAL carries no additions', () => {
+    const prev = definition([structuredKind({ type: 'object' })]);
+    expect(classifyDefinitionChange(prev, prev).additions).toEqual([]);
+  });
+
   it('BREAKING — a RENAMED field (removal + addition) requires an acknowledgement', () => {
     const prev = definition([structuredKind({ type: 'object', properties: { severity: { type: 'string' } } })]);
     const next = definition([structuredKind({ type: 'object', properties: { severityLevel: { type: 'string' } } })]);

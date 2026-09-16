@@ -22,6 +22,9 @@ export class WorkflowDefinition extends BaseTenantDataModel {
   public compiledConfig: JsonValue | null;
   public compiledConfigChecksum: string | null;
   public registryChecksum: string | null;
+  public contextSchemaId: string | null;
+  public contextSchemaVersionNumber: number | null;
+  public contextSchemaFollowsLatest: boolean;
   public validationReport: JsonValue | null;
   public needsReview: boolean;
   public validatedAt: Date | null;
@@ -49,6 +52,9 @@ export class WorkflowDefinition extends BaseTenantDataModel {
     this.compiledConfig = data.compiledConfig;
     this.compiledConfigChecksum = data.compiledConfigChecksum;
     this.registryChecksum = data.registryChecksum;
+    this.contextSchemaId = data.contextSchemaId;
+    this.contextSchemaVersionNumber = data.contextSchemaVersionNumber;
+    this.contextSchemaFollowsLatest = data.contextSchemaFollowsLatest;
     this.validationReport = data.validationReport;
     this.needsReview = data.needsReview;
     this.validatedAt = data.validatedAt;

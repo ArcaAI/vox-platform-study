@@ -3,6 +3,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException, Optional, S
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
+  ConsultationContextSchemaRepository,
   generateId,
   ResourceType,
   SysEventType,
@@ -31,7 +32,7 @@ import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
-import { describeWorkflow, graphOf, type WorkflowSchemaDescription } from './workflow-schema-description';
+import { describeWorkflow, graphOf, type WorkflowContextSchemaBinding, type WorkflowSchemaDescription } from './workflow-schema-description';
 import {
   InvokeWorkflowRequest,
   ReviewDecisionRequest,
@@ -141,6 +142,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // summaries only. `@Optional()` like every other cross-cutting dependency here; absent = not
     // enforced, which is what a minimal fixture gets.
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
+    // Used for ONE thing: turning the stamped `contextSchemaId` into a slug for the description's
+    // `contextSchema` block. `@Optional()` like every other cross-cutting dependency here; absent
+    // simply leaves that slug `null`, which is also what an unreadable schema row yields.
+    @Optional() private readonly contextSchemaRepository?: ConsultationContextSchemaRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -558,7 +563,39 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     if (!definition || exposureBoundaryViolation(definition, {}) !== null) {
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
-    return describeWorkflow(definition.slug, definition.versionNumber, graphOf(definition.graph), definition.compiledConfig);
+    return describeWorkflow(
+      definition.slug,
+      definition.versionNumber,
+      graphOf(definition.graph),
+      definition.compiledConfig,
+      await this.contextSchemaBindingOf(definition),
+    );
+  }
+
+  /**
+   * The published context-schema binding, for the description's `contextSchema` block.
+   *
+   * Reads the COLUMNS publish stamped, never the compiled JSON — they are the same answer, and
+   * the columns are the ones an index can be built on. Only the slug needs a row read, and it
+   * degrades to `null` rather than failing the description: a schema row that has since been
+   * deleted must not make an existing workflow undescribable.
+   */
+  private async contextSchemaBindingOf(definition: {
+    tenantId: string;
+    contextSchemaId?: string | null;
+    contextSchemaVersionNumber?: number | null;
+    contextSchemaFollowsLatest?: boolean | null;
+  }): Promise<WorkflowContextSchemaBinding | null> {
+    const schemaId = definition.contextSchemaId;
+    if (!schemaId) return null;
+
+    const schema = (await this.contextSchemaRepository?.findById(schemaId).catch(() => null)) ?? null;
+    return {
+      schemaId,
+      slug: schema && schema.tenantId === definition.tenantId ? schema.slug : null,
+      versionNumber: definition.contextSchemaVersionNumber ?? null,
+      followsLatest: definition.contextSchemaFollowsLatest === true,
+    };
   }
 
   async rotateWebhookSecret(slug: string): Promise<WorkflowWebhookSecretResponse> {
