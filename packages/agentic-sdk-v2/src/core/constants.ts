@@ -477,10 +477,15 @@ export const STORAGE_KEYS = {
  * Local (in-browser) transcription kill switch.
  *
  * The owner decided to disable on-device Whisper transcription
- * platform-wide for now — backend-based transcription only. VAD and noise
- * suppression are UNAFFECTED and keep running in the browser as preprocessing
- * stages for the backend stream (they drive the level meter / speech-end
- * events); this flag gates only the STT stage's local/offline path.
+ * platform-wide for now — backend-based transcription only. This flag gates
+ * only the STT stage's local/offline path.
+ *
+ * VAD and noise suppression are gated SEPARATELY and are also off: since
+ * TASK-865 the browser never runs a model, so `TranscriptionPipeline` drops
+ * both client stages from the graph unless the host sets
+ * `audio.clientInference: { allow: true }`. (Earlier text here said they
+ * "keep running in the browser as preprocessing stages" — that predates
+ * TASK-865 and is no longer true; corrected under TASK-977 D-6.)
  *
  * `TranscriptionPipeline.resolveSTTRuntimeProvider()` reads this flag: when
  * `false`, it never resolves the STT provider to `'local'` regardless of

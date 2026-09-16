@@ -43,12 +43,16 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
+// TASK-977 D-6: the hook runs a WavLM model in the browser, so it is behind
+// `audio.clientInference.allow`. These tests exercise the MODEL path, so they
+// state the allow — that makes the whole file the gate's positive control.
+// The refusal side lives in `src/__tests__/client-inference-gate.task977.test.ts`.
 function mockStore() {
   return {
     apiClient: { get: vi.fn(), postFormData: vi.fn(), patch: vi.fn(), delete: vi.fn() },
     logger: null,
     authUser: { id: 'user-1' },
-    config: { api: { tenantId: 'tenant-1' } },
+    config: { api: { tenantId: 'tenant-1' }, audio: { clientInference: { allow: true } } },
   };
 }
 
