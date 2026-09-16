@@ -164,3 +164,13 @@ exact `f` encoding the translation produces.
 - 2026-09-16 — Initial implementation (this ticket). Both defects fixed under TDD, all four
   success-criteria commands green (see Evidence above). Commits `fix(task-979): …` on branch
   `worktree-agent-a4b944de8fb3d991c`.
+- 2026-09-16 — Merged into `dev-2.2`. Post-merge gates in the primary checkout (now also carrying TASK-978's
+  console change): `admin-console` 343 files / 3288 tests, typecheck and lint clean. Verified in a signed-in
+  browser against the live console as `arcaai_admin`:
+  `/agents?task=SPEECH_TO_TEXT` → "2 of 30 shown", both `realtime-transcription` versions, URL settled to
+  `?f=[["task","inArray","multiSelect",["SPEECH_TO_TEXT"]]]` with no `task=`; **Clear filters** → "30 of 30
+  shown", URL clean, no snap-back; `/audio/pipelines` → redirected into the same filtered "2 of 30" view.
+  New-agent wizard, TEXT_GENERATION Parameters step with nothing set: **Response Format** shows `text` and
+  **Memory** shows `none` (were "Default"); **Reasoning effort** still reads "Engine default" (no schema
+  default). The SPEECH_TO_TEXT `diarization.backend` display was not re-checked in the browser: TASK-980 is
+  narrowing that enum to `['embedding']` in parallel.
