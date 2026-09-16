@@ -2,6 +2,7 @@ import { WorkflowDefinitionEntity } from '@arcaai/domains';
 import { declaredIoSchemas, declaredOutputProtocols, declaredTriggerKinds } from '@arcaai/workflow-contract';
 import { GetWorkflowRunResult } from '../consultation/harness/harness-gateway.service';
 import { WorkflowInvokeResponse, WorkflowRunCancelResponse, WorkflowRunStatusResponse, WorkflowSummaryResponse } from './dto';
+import { terminalStatusOf } from '../workflow-run/run-status';
 import { graphOf, inputSchemaOf } from './workflow-schema-description';
 
 /** Static mapper — entity/upstream-payload -> response DTO, never the reverse (rule 04). */
@@ -50,6 +51,13 @@ export class WorkflowExposureDtoMapper {
    *
    * Both default to `null`, which is also the honest answer for every caller that has no run row
    * to read from.
+   *
+   * TASK-982 (E6) — `status` is the caller's ALREADY-FOLDED value (`terminalStatusOf(upstream.status)
+   * ?? 'RUNNING'`, computed once in `WorkflowExposureService.getRunStatus`), never `upstream.status`
+   * verbatim: the raw interpreter vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…) must never reach a
+   * caller, on this surface or the persisted one. The four node counts share `resultRef`'s
+   * provenance — the durable run read model, not Temporal — and `degraded` is DERIVED from them:
+   * a per-run FLAG, never a run STATE (README pitfall 6).
    */
   static toStatusResponse(
     slug: string,
@@ -57,17 +65,27 @@ export class WorkflowExposureDtoMapper {
     upstream: GetWorkflowRunResult,
     resultRef: Record<string, unknown> | null = null,
     actingUserId: string | null = null,
+    status: string = terminalStatusOf(upstream.status) ?? 'RUNNING',
+    nodeCount: number | null = null,
+    failedNodeCount: number | null = null,
+    degradedNodeCount: number | null = null,
+    skippedNodeCount: number | null = null,
   ): WorkflowRunStatusResponse {
     return {
       runId: upstream.runId,
       slug,
       workflowVersionNumber,
-      status: upstream.status,
+      status,
       stages: upstream.stages,
       startedAt: upstream.startedAt,
       endedAt: upstream.endedAt,
       resultRef,
       actingUserId,
+      nodeCount,
+      failedNodeCount,
+      degradedNodeCount,
+      skippedNodeCount,
+      degraded: status === 'COMPLETED' && (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0,
     };
   }
 

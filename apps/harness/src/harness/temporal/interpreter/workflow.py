@@ -319,6 +319,27 @@ def _is_empty_review_payload(payload: dict[str, Any]) -> bool:
     return True
 
 
+def _settled_node_counts(stages: list[StageResult]) -> tuple[int, int, int, int]:
+    """``(nodeCount, failedNodeCount, degradedNodeCount, skippedNodeCount)`` across every
+    settled node in `stages` — including the HITL gate, which `run()` appends as one more
+    `StageResult` after the walk. PURE: it only re-counts statuses the walk already settled and
+    already appended to `self._stages`, so it is safe to call from workflow code."""
+    node_count = 0
+    failed_node_count = 0
+    degraded_node_count = 0
+    skipped_node_count = 0
+    for stage in stages:
+        for node in stage.nodes:
+            node_count += 1
+            if node.status == "FAILED":
+                failed_node_count += 1
+            elif node.status == "DEGRADED":
+                degraded_node_count += 1
+            elif node.status == "SKIPPED":
+                skipped_node_count += 1
+    return node_count, failed_node_count, degraded_node_count, skipped_node_count
+
+
 @workflow.defn(name="WorkflowInterpreter")
 class WorkflowInterpreter:
     """Linear stage walk + single-level fan-out with an all-settled join. Nothing else (v1)."""
@@ -523,8 +544,21 @@ class WorkflowInterpreter:
     async def _emit_run_completed(self, inp: InterpreterInput, status: str) -> None:
         """The terminal event. This is what lets a connected client close its stream on a
         PUSH rather than by noticing, one poll later, that the status stopped changing."""
+        node_count, failed_node_count, degraded_node_count, skipped_node_count = (
+            _settled_node_counts(self._stages)
+        )
         await self._emit_run_events(
-            inp, [RunEventSpec(event_type=EVENT_RUN_COMPLETED, status=status)]
+            inp,
+            [
+                RunEventSpec(
+                    event_type=EVENT_RUN_COMPLETED,
+                    status=status,
+                    node_count=node_count,
+                    failed_node_count=failed_node_count,
+                    degraded_node_count=degraded_node_count,
+                    skipped_node_count=skipped_node_count,
+                )
+            ],
         )
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:

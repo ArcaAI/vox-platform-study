@@ -385,6 +385,11 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     if (input.nodeCount !== undefined) entity.nodeCount = input.nodeCount;
     if (input.failedNodeCount !== undefined) entity.failedNodeCount = input.failedNodeCount;
     if (input.degradedNodeCount !== undefined) entity.degradedNodeCount = input.degradedNodeCount;
+    // TASK-982 — no `skippedNodeCount` column; merged into the existing `_metadata` bag so
+    // `actingUserId` (written by `recordRunStarted`) is never clobbered by this later write.
+    if (input.skippedNodeCount !== undefined) {
+      entity.metaData = { ...(entity.metaData ?? {}), skippedNodeCount: input.skippedNodeCount };
+    }
     if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
     // (M-2). `undefined` means the caller reported no delivered output (a graph with no
     // `output.deliver` node) and must leave any existing value alone; an explicit `null` clears it.

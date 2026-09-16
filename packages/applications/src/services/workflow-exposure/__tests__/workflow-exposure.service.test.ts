@@ -328,8 +328,33 @@ describe('WorkflowExposureService', () => {
         // (M-2): the delivered-output read-back. Null here because this run's
         // read-model fixture carries none — an in-flight run has delivered nothing.
         resultRef: null,
+        // TASK-982 — absent on this run's read-model fixture (`createMockRun` declares none).
+        nodeCount: null,
+        failedNodeCount: null,
+        degradedNodeCount: null,
+        skippedNodeCount: null,
+        degraded: false,
       });
       expect(mockWorkflowRunService.recordRunFinished).not.toHaveBeenCalled();
+    });
+
+    it('TASK-982 (E6) folds the interpreter`s raw vocabulary to the read model`s on the LIVE surface', async () => {
+      mockWorkflowRunService.getRun.mockResolvedValue(createMockRun());
+      mockHarnessGateway.getWorkflowRun.mockResolvedValue({
+        runId: 'run-1',
+        status: 'DEGRADED',
+        stages: [],
+        startedAt: '2026-08-16T00:00:00Z',
+        endedAt: '2026-08-16T00:05:00Z',
+      });
+      const service = build('tenant-1');
+
+      const result = await service.getRunStatus('discharge_summary', 'run-1');
+
+      expect(result.status).toBe('COMPLETED');
+      // Folded BEFORE the opportunistic sync too — the previous bug compared the raw 'DEGRADED'
+      // against the read-model-spelled TERMINAL_RUN_STATUSES set and silently never synced it.
+      expect(mockWorkflowRunService.recordRunFinished).toHaveBeenCalledWith(expect.objectContaining({ status: 'COMPLETED' }));
     });
 
     it('opportunistically syncs the read model on a terminal status', async () => {

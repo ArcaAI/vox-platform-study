@@ -13,6 +13,7 @@ import { AI_READINESS_SETTINGS } from './descriptors/ai-readiness.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
+import { CONSULTATION_PRE_SUMMARY_SETTINGS } from './descriptors/consultation-presummary.descriptors';
 import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_AVAILABILITY_SETTINGS } from './descriptors/feature-availability.descriptors';
@@ -193,6 +194,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // was a raw env read whose hard-coded 20 s default sat below the measured p50 of the
   // generation it bounded, so every realtime flush timed out.
   ...CONSULTATION_REALTIME_SETTINGS,
+  // TASK-982 §3.4.5 — the warm-start pre-summary's bounded retry (not the realtime flush lane
+  // above; `LivePreSummaryAdapter` runs once, at recording start).
+  ...CONSULTATION_PRE_SUMMARY_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 

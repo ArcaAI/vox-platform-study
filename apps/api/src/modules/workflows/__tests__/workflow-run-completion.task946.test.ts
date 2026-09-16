@@ -41,12 +41,28 @@ describe('WorkflowRunCompletionService.recordTerminal (TASK-946)', () => {
     expect(runs.recordRunFinished).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT, runId: RUN_ID, status: 'FAILED', terminalReason: 'FAILED', consultationId: CONSULTATION }),
     );
-    // Node counts are NOT invented here — the interpreter's `workflow.run.completed` payload
-    // carries `status` (and a `reason`), never a stage summary (`activities.py::_envelope_for`).
+    // TASK-982 — no counts are INVENTED when the caller passes none: `recordTerminal`'s 7th
+    // argument defaults to `{}`, and every count stays `undefined` rather than a fabricated zero.
     const [input] = runs.recordRunFinished.mock.calls[0]!;
     expect(input.failedNodeCount).toBeUndefined();
     expect(input.degradedNodeCount).toBeUndefined();
     expect(input.nodeCount).toBeUndefined();
+    expect(input.skippedNodeCount).toBeUndefined();
+  });
+
+  it('TASK-982 — passes the four settled-node counts through verbatim when the caller supplies them', async () => {
+    const { service, runs } = build();
+
+    await service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'DEGRADED', ENDED_AT, CONSULTATION, {
+      nodeCount: 5,
+      failedNodeCount: 0,
+      degradedNodeCount: 2,
+      skippedNodeCount: 1,
+    });
+
+    expect(runs.recordRunFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeCount: 5, failedNodeCount: 0, degradedNodeCount: 2, skippedNodeCount: 1 }),
+    );
   });
 
   it('closes the consultation when the run FAILED', async () => {
