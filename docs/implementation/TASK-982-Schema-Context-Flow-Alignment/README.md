@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending — plan reviewed by three independent lenses (architecture & tenancy rules, console simplicity, Day-1 docs & SDK contract); awaiting owner decisions (§3.6) and the go |
+| **Status** | In Progress — owner approved every recommendation and said go (2026-09-17); §3.4 contracts pinned; wave 1 lanes (A, B1, C, D) spawned |
 | **Type** | feature + bugfix + docs, cross-cutting: `packages/types`, `packages/database` (one migration + seed), `packages/domains`, `packages/applications`, `packages/workflow-contract`, `apps/harness`, `apps/api`, `packages/vox-node`, `packages/agentic-sdk-v2`, `packages/vox-codegen`, `apps/admin-console`, `docs/` |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-17 |
@@ -177,9 +177,129 @@ Execution model: pinned contracts per lane (§3.4, written by the orchestrator B
 
 Order: W1 → {A, B1, C, D} → {B2 (needs B1 columns), E (needs B1 route + D presets; starts on mocks)} → F → G.
 
-### 3.4 Pinned contracts (filled by W1 on go)
+### 3.4 Pinned contracts (W1, written 2026-09-17 before any lane spawned)
 
-_Exact TS interfaces / `@arcaai/types` constants / route paths / error codes / migration SQL / harness event dataclass / per-run compiled-config block. Written before lanes spawn._
+Every lane implements EXACTLY these names and shapes. A lane that needs a different shape stops and reports; it does not improvise.
+
+#### 3.4.1 `@arcaai/types` (lane D owns the files; every other lane imports)
+
+`packages/types/src/consultation-context.ts` (exported from `index.ts`):
+
+```ts
+/** Every refusal `POST consultations/open` can answer with a 4xx `{ message, code, problems? }` body. */
+export const OPEN_REFUSAL_CODES = [
+  'CONTEXT_SCHEMA_VIOLATION', 'DEPARTMENT_UNKNOWN', 'DEPARTMENT_AMBIGUOUS', 'DEPARTMENT_MISMATCH',
+  'VISIT_TYPE_INVALID', 'CLINICIAN_REQUIRED', 'CLINICIAN_MISMATCH', 'CLINICIAN_NOT_ALLOWED_FOR_USER_CALLER',
+  'USER_IDENTITY_UNKNOWN', 'USER_IDENTITY_AMBIGUOUS', 'USER_IDENTITY_INVALID', 'USER_IDENTITY_NOT_USABLE',
+  'USER_IDENTITY_DEPARTMENT_UNRESOLVED', 'WORKFLOW_CONTEXT_INCOMPATIBLE',
+] as const;
+export type OpenRefusalCode = (typeof OPEN_REFUSAL_CODES)[number];
+
+/** The governing run of a consultation, derived from `Consultation.metadata.governingEngine`. */
+export interface GoverningRunSummary {
+  workflowDefinitionSlug: string;
+  workflowRunId: string;
+  /** Persisted vocabulary only — never the interpreter's `SUCCEEDED`/`DEGRADED`. */
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
+  /** True when the run finished with at least one degraded or skipped-for-cause node. */
+  degraded: boolean;
+  decidedAt: string;
+  failureReason: string | null;
+}
+```
+
+`packages/types/src/api-key-presets.ts` (exported from `index.ts`):
+
+```ts
+export type ApiKeyScopePresetKey = 'consultation-app' | 'types-codegen' | 'agents-and-workflows';
+export interface ApiKeyScopePreset { key: ApiKeyScopePresetKey; label: string; description: string; scopes: readonly string[] }
+export const API_KEY_SCOPE_PRESETS: readonly ApiKeyScopePreset[];
+// consultation-app      = consultation:session:{read,write}, consultation:report:{read,write}, stt:transcription:{read,write}, stt:stream:write,
+//                          stt:model:read, tts:speech:write, tts:voice:read, tenant:context-schema:read, tenant:profile:read,
+//                          user:profile:read, user:preferences:{read,write}, user:settings:{read,write}, prompt:template:read, dna-writing-style:ingest
+// types-codegen         = tenant:context-schema:read, agent:definition:read, workflow:definition:read
+// agents-and-workflows  = agent:definition:read, agent:invocation:write, workflow:definition:read, workflow:run:read, workflow:run:write, workflows:execute
+```
+
+Labels/descriptions are the §3.2 E copy verbatim. The seed's `SDK_DAY_ONE_SCOPES` = the de-duplicated union of `consultation-app` + `types-codegen` + `webhook:event:{read,write}` + `platform:changelog:read` + `tenant:account:read` (everything today's list has, plus the two catalogue scopes). `apikey-scopes.registry.ts` re-exports the presets and a unit test asserts every preset scope is a registry key and none is `reserved`.
+
+#### 3.4.2 Gateway response shapes (lane B2 adds `governingRun`; lane D adds the context-item fields; lane B1 adds the workflow-schema fields)
+
+```ts
+// ConsultationResponse (open, GET, list) — applications dto/consultation.response.ts
+governingRun: GoverningRunSummary | null;        // ALWAYS present (null when ungoverned)
+
+// ConsultationWorkflowResponse — GET consultations/:id/workflow
+run: GoverningRunSummary | null;                 // beside the existing fields
+
+// ContextItemResponse — GET consultations/:id/context
+kindKey: string | null;
+contextSchemaVersionId: string | null;
+
+// WorkflowSchemaDescription — GET workflows/:slug/schema
+contextSchema: { schemaId: string; slug: string; versionNumber: number; followsLatest: boolean } | null;
+reviewNodes: Array<{ nodeId: string; label: string }>;   // every core.humanReview node, graph order
+
+// WorkflowRunStatusResponse — GET workflows/:slug/runs/:runId, and WorkflowRunResponse (admin list)
+status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';   // mapped through terminalStatusOf; never SUCCEEDED/DEGRADED
+degraded: boolean;
+nodeCount: number | null; failedNodeCount: number | null; degradedNodeCount: number | null; skippedNodeCount: number | null;
+```
+
+`metadata.governingEngine` marker (applications `governing-engine.ts`) gains optional `runStatus`, `degraded`, `terminalReason`, `endedAt`; `GoverningRunSummary` is derived from it by one pure function `governingRunOf(metadata)` in the same file (status defaults to `RUNNING` when `runStatus` is absent).
+
+#### 3.4.3 Schema usages + impact (lane B1)
+
+```ts
+// GET admin/consultation-context-schemas/:id/usages?againstVersion=<n>   (default: the pinned version)
+export type ContextSchemaBinding = 'latest' | 'pinned';
+export type ContextSchemaVerdict = 'accepts' | 'refuses' | 'unknown';
+export interface ContextSchemaWorkflowUsage {
+  definitionId: string; slug: string; name: string; versionNumber: number; status: WorkflowDefinitionStatus; isActive: boolean;
+  binding: ContextSchemaBinding; boundVersion: number | null; verdict: ContextSchemaVerdict; problems: string[];
+}
+export interface ContextSchemaAgentUsage {
+  agentId: string; slug: string; name: string; versionNumber: number; status: AgentStatus; isActive: boolean;
+  binding: ContextSchemaBinding; boundVersion: number | null; verdict: ContextSchemaVerdict; problems: string[];
+}
+export interface ContextSchemaUsagesResponse { schemaId: string; againstVersion: number | null; workflows: ContextSchemaWorkflowUsage[]; agents: ContextSchemaAgentUsage[] }
+```
+
+Verdict rule (pure, unit-tested): `binding === 'latest'` → `accepts`. `pinned` → derive the target version's payload schema; every kind key the target admits that the bound version's frozen `resolved.properties` lacks is one problem `"/<kindKey>: not declared in the bound version v<n>"`; any problem → `refuses`, else `accepts`. `unknown` only when the consumer's compiled config cannot be read. Only ACTIVE (`isActive`) PUBLISHED consumers count toward the acknowledgement gate; others are listed with their status.
+
+`publish` and `pin` responses (`ConsultationContextSchemaResponse`) gain `impact: ContextSchemaUsagesResponse` computed against the version being published/pinned. `PublishContextSchemaRequest` gains `acknowledgeImpact?: boolean`; when `impact.workflows.some(w => w.isActive && w.verdict === 'refuses') || impact.agents.some(...)` and it is not `true` → **400 `{ message, code: 'SCHEMA_IMPACT_UNACKNOWLEDGED', impact }`**, nothing written. `classifyDefinitionChange` returns `{ classification, breakingChanges, additions: string[] }` where `additions` = new kind keys (classification unchanged).
+
+Columns (`packages/database/src/prisma/db_main/workflow-definition.prisma`, migration folder name `<timestamp>_task_982_workflow_definition_context_schema_binding`):
+
+```prisma
+contextSchemaId            String?
+contextSchemaVersionNumber Int?
+contextSchemaFollowsLatest Boolean @default(false)
+@@index([tenantId, contextSchemaId], name: "WorkflowDefinition_tenantId_contextSchemaId_idx")
+```
+
+Backfill in the same migration: `contextSchemaId`/`contextSchemaVersionNumber` from `compiledConfig->'policyBindings'->'contextSchemaRefs'->0` (the trigger's entry); `contextSchemaFollowsLatest = true` when the trigger node's `graph` config `contextSchema` has a `contextSchemaId` and no `versionNumber`. The `workflow_definition_immutability_guard` function is `CREATE OR REPLACE`d with the three columns added to its `IS DISTINCT FROM` list. Entity/factory/mapper/repository are hand-authored (`gen:model` for the model only; `gen:mapper` is never run).
+
+#### 3.4.4 Compiler + per-run config + dispatch (lane B2; compiler file shared with B1 only through `followsLatest`, which B1 does NOT touch)
+
+- `ResolvedTriggerContextSchema.followsLatest: boolean` (workflow-contract). `compiledConfigFor` writes `contextSchema.followsLatest` beside `resolved`. `compiled-config.schema.json`: add `followsLatest` (boolean, optional, default false) under the trigger's `contextSchema`, and rewrite the two invariant descriptions to: *"A PINNED trigger validates against the schema the workflow was published with. A FOLLOW-LATEST trigger validates against the tenant's pin at dispatch: the gateway resolves it and freezes it into THAT RUN's config before the run starts. The interpreter never reads a schema row."* `compiler.ts:391` comment likewise.
+- Effective schema at dispatch (both paths: `ConsultationWorkflowDispatchService.dispatchForConsultation` and `WorkflowExposureService.startRun`), one pure helper `effectiveTriggerConfig(compiledConfig, currentPin)` in applications `services/workflow-exposure/effective-trigger-schema.ts`: when the trigger's `contextSchema.followsLatest === true`, replace `resolved` with `payloadSchemaFromDefinition(pin.definition)`, re-derive `userIdentity`/`openBindings` from the pin, and set `contextSchema.effectiveVersionNumber = pin.versionNumber`; otherwise return the config unchanged. The per-run claim-checked config (`configRef`) is minted from the RESULT. `interpreter_core_trigger` is not modified.
+- Pre-dispatch check at `open` (create path only, after the idempotent lookup, before the meter/row/items are written): resolve the workflow the department assignment would select → its effective trigger config → `jsonSchemaValueProblems(effective.resolved, authoredContext)`. Problems → throw `BadRequestException({ message, code: 'WORKFLOW_CONTEXT_INCOMPATIBLE', workflowDefinitionSlug, boundSchemaVersion, problems })`. Any resolution failure (no assignment, config unreadable, schema pin missing) → log at warn and continue exactly as today (ungoverned open).
+- `failGovernedRun` accepts `OPEN | RECORDING | PRIMED | DRAINING`; for the three new states it stamps `governingEngine.runStatus = 'FAILED'`, `terminalReason`, `endedAt`, leaves `status` unchanged, broadcasts the existing sys-event, and publishes one live-summary SSE frame `{ event: 'workflow.failed', consultationId, workflowRunId, workflowDefinitionSlug, reason }`. The completion watcher also stamps `runStatus`/`degraded`/`endedAt` on COMPLETED.
+
+#### 3.4.5 Run-completed counts (lane C)
+
+Harness `RunEventSpec` gains `node_count: int | None`, `failed_node_count`, `degraded_node_count`, `skipped_node_count` (all optional, default `None`); `_emit_run_completed` fills them from the settled node results (`DEGRADED` and `SKIPPED` nodes count as degraded and skipped respectively). The emitted envelope carries `nodeCount`, `failedNodeCount`, `degradedNodeCount`, `skippedNodeCount` (camelCase). Applications `RecordRunFinishedInput` gains the same four optional numbers; `WorkflowRun` rows are written from them; `WorkflowRunCompletionService.recordTerminal` passes them; the live `getRunStatus` maps `upstream.status` through `terminalStatusOf` (fallback `RUNNING`) and computes `degraded = (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0 && status === 'COMPLETED'`. `TERMINAL_RUN_STATUSES` is unchanged. Parity fixture `tests/contracts/workflow-run-completed.fixture.json` pins the envelope.
+
+Settings descriptor (lane C): key `consultation.preSummary.retry.attempts`, tier `global-kv`, type integer, min 0, max 3, default 1, `failMode: 'open-to-default'`, description "Additional attempts the warm-start pre-summary makes after a transient text-service failure."
+
+#### 3.4.6 Prompt assembly (lane A)
+
+`packages/applications/src/services/consultation/context/client-clinical-context.ts` exports `CLIENT_VITALS_KIND_KEY = 'vitals'`, `CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY = 'previous_case_notes'`, `ClientVitalsPayload`, `ClientPreviousCaseNote`, `latestContextItemOfKind`, `formatClientVitalsForPrompt`, `formatPreviousVisitsForPrompt`, and `class ClientClinicalContextReader { constructor(repo: ContextItemRepository, decrypt: (entity) => Promise<string>); read(consultationId): Promise<{ vitals?: string; previousVisits?: string; raw: {...} }> }` memoised per `consultationId` for the reader instance's lifetime. `PromptAssemblyParams` and `PreSummaryVariableSources` gain `vitals?: string; previousVisits?: string`. `wrapExternalData` sections added: `case_notes` (header `CASE NOTES`), `recent_vitals` (header `RECENT VITALS`), `previous_case_notes_summary` (header `PREVIOUS CASE NOTES SUMMARY`). `generatePreSummary` passes the case-note records as `caseNotes` (rendered under `case_notes`), not as `transcript`; when the client `previous_case_notes` kind exists, `previousVisits` is built from it and the matching `CASE_NOTE` records (same `text`) are excluded from `caseNotes`.
+
+#### 3.4.7 SDK surfaces (lane D)
+
+vox-node: `HopeAPIError.problems?: string[]`; `open<TContext extends Record<string, unknown> = Record<string, unknown>>(request: OpenConsultationRequest<TContext>)`; `consultations.listContext(id, options?) → ContextItemResponse[]` (`GET consultations/:id/context`); `ConsultationGetResponse` adds `language?`, `metadata?`, `parentConsultationId?`, `governingRun`; `ConsultationOpenResponse` adds `governingRun`; `WorkflowRunStatus` adds `degraded`, the four counts; `WorkflowSchemaDescription` mirror adds `contextSchema`, `reviewNodes`; re-export `OPEN_REFUSAL_CODES`, `OpenRefusalCode`, `GoverningRunSummary`, `API_KEY_SCOPE_PRESETS` from `@arcaai/types` (a `dependencies` entry on the workspace package is allowed — it is types and constants, zero runtime deps remain true; confirm with `check:exports`/publint). Browser SDK: `AgenticError.context.problems`, `governingRun` on the session's consultation view + `useConsultationWorkflow`, `useWorkflowRun` exposes `degraded` + counts, `useConsultationSchema` JSDoc caveat. Codegen: `--check` (both modes; exit 1 + unified diff), `export type OpenConsultationContext = { <kind>?: <KindPayload> }` for every STRUCTURED kind with `lifecycle: 'PRE'` and `producedBy` including `CLIENT` (required when the kind is `required: true`), `@schemaVersion <n>` header tag, `@contextSchema <slug> v<n> (follows latest | pinned)` per workflow, `@reviewNodes n_review` per workflow, and NO ticket numbers in emitted text.
 
 ### 3.5 Decisions taken (owner may override)
 
@@ -221,4 +341,5 @@ Gates per affected package (build / lint / typecheck / test), harness unit + rep
 | Date | Entry |
 |---|---|
 | 2026-09-17 | Opened from the owner's "plan then align agents" ask after the end-to-end run. Four read-only discovery lanes (console, docs, prompt/freeze plumbing, SDK/seed/status/guardrail). Plan v1 written. |
+| 2026-09-17 | Owner: "approved the recommendations, lets go" — OD-0…OD-10 = the recommendations. §3.4 contracts written from the live code shapes. Wave 1 spawned: A (opus), B1 (opus), C (sonnet), D (sonnet) in worktrees off `dev-2.2`; no lane runs gates. Status → **In Progress**. |
 | 2026-09-17 | Three independent reviews (architecture & tenancy rules; console simplicity; Day-1 docs & SDK contract) folded in: follow-latest via the per-run config instead of a harness change; 400 not 422; create-path-only gate that never refuses on an inconclusive check; backfill from `contextSchemaRefs`, immutability guard extended; DEGRADED stays a flag (count columns exist); presets + refusal union in `@arcaai/types`; one-column schema page, kind editor 23 → 6 first-sight controls, publish copy leading with the effect, API-key dialog 103 → 9 visible controls; typed `open`, `listContext`, `reviewNodes`, codegen `--check` + `OpenConsultationContext`, webhook contradiction, 12-chapter admin guide, `docs:check` gate. Status Pending — awaiting OD answers and the go. |
