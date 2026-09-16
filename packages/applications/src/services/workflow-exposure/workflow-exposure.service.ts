@@ -28,7 +28,7 @@ import { IBillingService } from '../billing/IBillingService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
-import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
+import { interpreterSessionId, IWorkflowRunService, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
@@ -408,12 +408,23 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const upstream = await this.harnessGateway.getWorkflowRun(runId);
     await this.syncTerminalStatus(tenantId, run, upstream);
 
+    // TASK-982 (E6) — the SAME fold `WorkflowRunCompletionService.recordTerminal` applies, so the
+    // live surface and the persisted row say the same thing for the same run: RUNNING/DEGRADED/
+    // SUCCEEDED/CANCELLED never reach the caller as-is. A non-terminal upstream status (RUNNING,
+    // or an interpreter-internal stage label) folds to `null` and falls back to `RUNNING`.
+    const status = terminalStatusOf(upstream.status) ?? 'RUNNING';
+
     return WorkflowExposureDtoMapper.toStatusResponse(
       run.workflowSlug,
       run.workflowVersionNumber,
       upstream,
       run.resultRef ?? null,
       run.actingUserId ?? null,
+      status,
+      run.nodeCount ?? null,
+      run.failedNodeCount ?? null,
+      run.degradedNodeCount ?? null,
+      run.skippedNodeCount ?? null,
     );
   }
 
@@ -809,13 +820,17 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
   }
 
   private async syncTerminalStatus(tenantId: string, run: WorkflowRunResponse, upstream: GetWorkflowRunResult): Promise<void> {
-    if (!TERMINAL_RUN_STATUSES.has(upstream.status)) return;
+    // TASK-982 — fold FIRST, then check membership: `upstream.status` is the interpreter's raw
+    // vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…), not the read model's, so comparing it directly
+    // against `TERMINAL_RUN_STATUSES` missed every SUCCEEDED/DEGRADED/CANCELLED run.
+    const status = terminalStatusOf(upstream.status);
+    if (!status || !TERMINAL_RUN_STATUSES.has(status)) return;
     try {
       await this.workflowRunService.recordRunFinished({
         tenantId,
         sessionId: run.sessionId,
         runId: run.runId,
-        status: upstream.status as 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT',
+        status,
         endedAt: upstream.endedAt ? new Date(upstream.endedAt) : undefined,
       });
     } catch {

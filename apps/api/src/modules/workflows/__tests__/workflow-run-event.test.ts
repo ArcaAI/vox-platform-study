@@ -26,6 +26,11 @@ const RUNNING_STATUS: WorkflowRunStatusResponse = {
   // for a RUNNING fixture: the field carries the `output.deliver` result, which
   // its own doc says is "Null while the run is in flight".
   resultRef: null,
+  nodeCount: null,
+  failedNodeCount: null,
+  degradedNodeCount: null,
+  skippedNodeCount: null,
+  degraded: false,
 };
 
 describe('isTerminalRunStatus', () => {
@@ -50,7 +55,11 @@ describe('buildWorkflowRunEventEnvelope', () => {
   });
 
   it('type is workflow.run.completed on a terminal snapshot', () => {
-    const envelope = buildWorkflowRunEventEnvelope('11111111-1111-1111-1111-111111111111', { ...RUNNING_STATUS, status: 'COMPLETED', endedAt: '2026-08-16T00:05:00.000Z' });
+    const envelope = buildWorkflowRunEventEnvelope('11111111-1111-1111-1111-111111111111', {
+      ...RUNNING_STATUS,
+      status: 'COMPLETED',
+      endedAt: '2026-08-16T00:05:00.000Z',
+    });
     expect(envelope.type).toBe('workflow.run.completed');
   });
 

@@ -6,9 +6,9 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { Reflector } from '@nestjs/core';
-import { SKIP_AUTH_KEY } from '@arcaai/applications';
+import { SKIP_AUTH_KEY, terminalStatusOf } from '@arcaai/applications';
 import { WorkflowHooksController } from '../workflow-hooks.controller';
-import { WorkflowRunCompletionService, terminalStatusOf } from '../workflow-run-completion.service';
+import { WorkflowRunCompletionService } from '../workflow-run-completion.service';
 import { WorkflowsController } from '../workflows.controller';
 
 const reflector = new Reflector();
@@ -24,7 +24,13 @@ describe('WorkflowHooksController', () => {
     const controller = new WorkflowHooksController(service as never);
     const raw = '{"text":"chest pain"}';
     const result = await controller.trigger('hook-1', { rawBody: Buffer.from(raw) } as never, 'sha256=abc', '1700000000', 'idem-1');
-    expect(service.triggerByWebhook).toHaveBeenCalledWith('hook-1', { tenantId: '', rawBody: raw, signature: 'sha256=abc', timestamp: '1700000000', idempotencyKey: 'idem-1' });
+    expect(service.triggerByWebhook).toHaveBeenCalledWith('hook-1', {
+      tenantId: '',
+      rawBody: raw,
+      signature: 'sha256=abc',
+      timestamp: '1700000000',
+      idempotencyKey: 'idem-1',
+    });
     expect(result.runId).toBe('run-1');
   });
 

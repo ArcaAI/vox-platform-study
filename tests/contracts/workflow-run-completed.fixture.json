@@ -1,0 +1,37 @@
+{
+  "$comment": "TASK-982 §3.4.5 — the workflow.run.completed event's cross-language contract fixture. `input` is the four optional settled-node counts a RunEventSpec (apps/harness/src/harness/temporal/interpreter/models.py) can carry alongside `status`; `expected` is the camelCase envelope payload `interpreter.emit_run_events` (activities.py::_envelope_for) MUST produce from it, and the shape `WorkflowRunCompletionService`'s consume loop (apps/api/src/modules/workflows/workflow-run-completion.service.ts) MUST read back out. Both `tests/contracts/workflow-run-completed-parity.contract.test.ts` and `apps/harness/src/harness/tests/unit/temporal/interpreter/test_task982_run_completed_counts.py` read this file; change it with both suites open. A field ABSENT from `input` is OMITTED from `expected` — never sent as `null` — so a replaying pre-TASK-982 history (whose RunEventSpec carries all four as None) produces the byte-identical legacy payload.",
+  "allCountsPresent": {
+    "input": {
+      "status": "COMPLETED",
+      "nodeCount": 5,
+      "failedNodeCount": 0,
+      "degradedNodeCount": 2,
+      "skippedNodeCount": 1
+    },
+    "expected": {
+      "status": "COMPLETED",
+      "nodeCount": 5,
+      "failedNodeCount": 0,
+      "degradedNodeCount": 2,
+      "skippedNodeCount": 1
+    }
+  },
+  "noCountsPreTask982Shape": {
+    "input": {
+      "status": "FAILED"
+    },
+    "expected": {
+      "status": "FAILED"
+    }
+  },
+  "zeroCountsAreReal": {
+    "input": {
+      "status": "COMPLETED",
+      "failedNodeCount": 0
+    },
+    "expected": {
+      "status": "COMPLETED",
+      "failedNodeCount": 0
+    }
+  }
+}
