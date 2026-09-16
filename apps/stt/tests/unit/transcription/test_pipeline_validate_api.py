@@ -50,3 +50,17 @@ class TestPipelineValidateEndpoint:
         body = resp.json()
         assert body["valid"] is False
         assert "Unknown ASR provider" in body["errors"][0]["message"]
+
+    def test_retired_diarization_backend_is_refused_by_name(self, client):
+        yaml_str = (
+            'version: "2.0"\n'
+            "models:\n  asr: m\n"
+            "diarization:\n  enabled: true\n  backend: sortformer\n"
+        )
+        resp = client.post("/api/v1/pipelines/validate", json={"config_yaml": yaml_str})
+        body = resp.json()
+        assert body["valid"] is False
+        assert body["errors"][0]["field"] == "config_yaml"
+        message = body["errors"][0]["message"]
+        assert message.startswith("UnsupportedDiarizationBackendError:")
+        assert "'sortformer'" in message

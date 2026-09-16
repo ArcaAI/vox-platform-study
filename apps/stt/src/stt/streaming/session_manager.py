@@ -107,29 +107,6 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
 )
 
 
-def _build_sortformer_diarizer(diarization_config: Any) -> Any:
-    """Build the Streaming Sortformer diarizer, or None.
-
-    Returns a fresh :class:`StreamingSortformerDiarizer` only when diarization is
-    ENABLED and its ``backend`` is ``"sortformer"``; otherwise None (the default
-    embedding path is untouched). Used at BOTH session open and crash recovery so
-    a recovered sortformer session reconstructs a fresh, stateless diarizer
-    rather than silently losing diarization. The diarizer lazy-loads its
-    NeMo backend and degrades to "no labels" until the weights are staged, so
-    this construction is safe on a model-less host.
-    """
-    if not diarization_config:
-        return None
-    if not getattr(diarization_config, "enabled", False):
-        return None
-    if getattr(diarization_config, "backend", "embedding") != "sortformer":
-        return None
-
-    from stt.diarization.streaming_sortformer import StreamingSortformerDiarizer
-
-    return StreamingSortformerDiarizer(diarization_config)
-
-
 # Shared Redis Hash holding transcripts whose durable persist
 # exhausted its inline retries on a transient error. The reaper loop (any
 # worker) re-drives entries with an idempotency key; because it lives on shared
@@ -579,8 +556,7 @@ class SessionManager:
 
         ``build_speaker_identifier=False`` (recovery) skips the embedding
         SpeakerIdentifier: its in-memory tracker state is lost on crash, so a
-        recovered session restarts without it (Sortformer, being stateless
-        per-utterance, IS reconstructed either way).
+        recovered session restarts without it.
 
         ``active_pipeline_id`` is the pipeline this runtime is being
         assembled FOR — i.e. the EFFECTIVE engine, which is the fallback on the
@@ -668,17 +644,12 @@ class SessionManager:
             bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
         )
 
-        # Sortformer sessions use the self-hosted
-        # Streaming Sortformer diarizer INSTEAD of the embedding
-        # SpeakerIdentifier; the embedding preseed/tracker path is skipped.
-        sortformer_diarizer = _build_sortformer_diarizer(diarization_config)
-
         # Resolve the per-pipeline embedding service
         # ONCE for the whole session (worker utterance-extraction AND the
         # speaker-identifier below); cached per model id on the manager so the
         # seeded default (ECAPA on every session) doesn't reload the model.
         pipeline_embedding_service = None
-        if effective_diarization and sortformer_diarizer is None:
+        if effective_diarization:
             emb_model_id = self._spec_embedding_model_id(session_id, pipeline_config)
             if emb_model_id:
                 try:
@@ -698,7 +669,6 @@ class SessionManager:
             build_speaker_identifier
             and effective_diarization
             and diarization_config
-            and sortformer_diarizer is None
             # TASK-887 — no embedding service, no embedding diarization. The platform
             # singleton that used to stand in here is gone: it embedded into a space no
             # agent had chosen, so its matches were meaningless and its enrolments landed
@@ -785,7 +755,6 @@ class SessionManager:
             postprocessing_config=postprocessing_config,
             initial_prompt=initial_prompt,
             speaker_identifier=speaker_identifier,
-            sortformer_diarizer=sortformer_diarizer,
             prev_text_context_words=prev_text_context_words,
             max_words_per_second=max_words_per_second,
             max_segment_text_chars=max_segment_text_chars,
@@ -4625,8 +4594,7 @@ class SessionManager:
                     # One shared assembly for creation AND
                     # recovery (recovery previously kept a drifted hand copy).
                     # build_speaker_identifier=False: the embedding tracker
-                    # state is lost on crash; Sortformer (stateless
-                    # per-utterance) IS reconstructed inside.
+                    # state is lost on crash.
                     runtime = await self._assemble_session_runtime(
                         session_id=meta.session_id,
                         tenant_id=meta.tenant_id,
