@@ -45,6 +45,7 @@ import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { truncatePriorVisitSummary } from './prior-visit-summary';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
+import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { IUsageLedgerService } from '../../usageLedger';
@@ -1046,7 +1047,13 @@ export class HarnessInternalService extends BaseService {
           ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
           : null;
 
+      // The measured readings and prior-visit history the client stated at `open`. Read from the
+      // consultation's own rows, so the durable finalize sees exactly what the live lane saw.
+      const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultationId);
+
       const assembled = await this.promptAssemblyService.assemble({
+        vitals: client.vitals,
+        previousVisits: client.previousVisits,
         // Explicit tenant so prompt assembly resolves the SAME
         // effective warm-start policy this method just gated the snapshot on
         // (the harness runs outside the API-edge CLS middleware).

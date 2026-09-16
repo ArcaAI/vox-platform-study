@@ -9,6 +9,7 @@ import { IConsultationJobService } from '../consultation-job.service';
 import { GeneratePreSummaryJobPayload, PreSummaryJobResult } from '../dto';
 import { PromptResolutionService, type PromptResolutionTier } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { clientCaseNoteRenderings, clientClinicalContextReaderFor } from '../../context/client-clinical-context';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
@@ -163,27 +164,38 @@ export class PreSummaryProcessor extends WorkerHost {
           template: resolved.template,
         });
 
-        // Get case notes from the consultation chain
-        let content = '';
+        // Get case notes from the consultation chain. Kept as SEPARATE records rather than one
+        // joined string: the prompt now carries them as a list, and the de-duplication below
+        // compares whole notes — re-splitting a join would cut a note that contains a blank line.
+        let caseNoteTexts: string[];
         if (request.caseNoteIds?.length) {
           // Use specific case notes
           const caseNotes = await Promise.all(request.caseNoteIds.map((id) => this.contextItemRepository.findById(id)));
-          content = caseNotes
-            .filter(Boolean)
-            .map((c) => c!.content)
-            .join('\n\n');
+          caseNoteTexts = caseNotes.filter(Boolean).map((c) => c!.content ?? '');
         } else {
           // Get all case notes from the consultation
           const caseNotes = await this.contextItemRepository.findByConsultation(consultationId, { type: ContextItemType.CASE_NOTE });
-          content = caseNotes.map((c) => c.content).join('\n\n');
+          caseNoteTexts = caseNotes.map((c) => c.content ?? '');
         }
 
-        if (!content.trim()) {
+        if (!caseNoteTexts.join('\n\n').trim()) {
           throw new Error('No case notes available for pre-summary generation');
         }
 
+        // What the CLIENT stated at `open` — measured vitals and a prior-visit history. Read
+        // after the "is there anything to summarise" guard, which is still asked of the
+        // case-note records as they stand.
+        const client = await clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService).read(consultationId);
+        // A note the client sent under `previous_case_notes` is persisted twice at open — as the
+        // structured kind AND as one `CASE_NOTE` per entry — and the prior-visit history already
+        // carries it. Without this the same note reaches the model under two headings.
+        const duplicated = client.previousVisits ? clientCaseNoteRenderings(client.raw.previousVisits) : null;
+        const promptCaseNotes = caseNoteTexts.map((text) => text.trim()).filter((text) => text.length > 0 && !duplicated?.has(text));
+
         const assembledPrompt = await this.promptAssemblyService.assemble({
           departmentId: consultation.departmentId ?? undefined,
+          vitals: client.vitals,
+          previousVisits: client.previousVisits,
           // Same reason as the resolve() above — assemble() runs its OWN
           // resolution, and that is the one whose body reaches the LLM.
           tenantId: consultation.tenantId,
@@ -194,7 +206,11 @@ export class PreSummaryProcessor extends WorkerHost {
           // v1 `{visit_type}`. `parentConsultationId` is the consultation's own
           // follow-up signal; the LABEL comes from the platform's visit types.
           visitType: this.visitType(consultation).label,
-          transcript: content,
+          // EMPTY on purpose: this chain has no recording. The case-note records travel as
+          // `caseNotes`, under a section that says what they are — they used to arrive as the
+          // transcript, which told the model that text from previous encounters was said today.
+          transcript: '',
+          caseNotes: promptCaseNotes,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
           // Thread the doctor-preferred prompt id into assembly.
