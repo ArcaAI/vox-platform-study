@@ -49,19 +49,17 @@ WHERE "compiledConfig" IS NOT NULL
 --    "whatever the tenant has pinned", and publish resolved that to a concrete
 --    version without recording which of the two the author chose. So it is
 --    derived from `graph`, never from `compiledConfig`.
-UPDATE "core"."WorkflowDefinition" AS wd
+UPDATE "core"."WorkflowDefinition"
 SET "contextSchemaFollowsLatest" = true
-FROM LATERAL (
-  SELECT node
-  FROM jsonb_array_elements(
-    CASE WHEN jsonb_typeof(wd."graph" -> 'nodes') = 'array' THEN wd."graph" -> 'nodes' ELSE '[]'::jsonb END
-  ) AS node
-  WHERE node ->> 'type' = 'core.trigger'
-  LIMIT 1
-) AS trigger_node
-WHERE wd."contextSchemaId" IS NOT NULL
-  AND (trigger_node.node -> 'config' -> 'contextSchema' ->> 'contextSchemaId') IS NOT NULL
-  AND (trigger_node.node -> 'config' -> 'contextSchema' -> 'versionNumber') IS NULL;
+WHERE "contextSchemaId" IS NOT NULL
+  AND jsonb_typeof("graph" -> 'nodes') = 'array'
+  AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements("graph" -> 'nodes') AS node
+    WHERE node ->> 'type' = 'core.trigger'
+      AND (node -> 'config' -> 'contextSchema' ->> 'contextSchemaId') IS NOT NULL
+      AND (node -> 'config' -> 'contextSchema' -> 'versionNumber') IS NULL
+  );
 
 -- 4. Extend the published-bytes immutability guard to the three new columns.
 --
