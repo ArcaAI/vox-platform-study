@@ -1,10 +1,15 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { HarnessInternalService, IConfigService, IWorkflowRunService, createWorkerSession, interpreterSessionId } from '@arcaai/applications';
+import { HarnessInternalService, IConfigService, IWorkflowRunService, createWorkerSession, interpreterSessionId, terminalStatusOf } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING, parseAsyncEnvelope } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import Redis from 'ioredis';
+import { runCompletedCountsFromPayload } from './run-completed-counts';
+import type { RunCompletedCounts } from './run-completed-counts';
 import { WORKFLOW_RUN_COMPLETED, runEventStreamKey } from './workflow-run-event';
+
+export { runCompletedCountsFromPayload } from './run-completed-counts';
+export type { RunCompletedCounts } from './run-completed-counts';
 
 /** How long ONE watcher stays attached before giving up — a run's own ceiling, not a poll interval. */
 export const RUN_COMPLETION_WATCH_CEILING_MS = 6 * 60 * 60 * 1000;
@@ -12,25 +17,6 @@ export const RUN_COMPLETION_WATCH_CEILING_MS = 6 * 60 * 60 * 1000;
 const RUN_COMPLETION_BLOCK_MS = 15_000;
 /** Watchers per process. A run past the cap is reconciled by the next status read, as before. */
 export const RUN_COMPLETION_MAX_WATCHERS = 256;
-
-/** The interpreter's `workflow.run.completed` status vocabulary → the read model's. */
-export function terminalStatusOf(status: unknown): 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT' | null {
-  switch (status) {
-    case 'SUCCEEDED':
-    case 'DEGRADED':
-    case 'COMPLETED':
-      return 'COMPLETED';
-    case 'FAILED':
-      return 'FAILED';
-    case 'CANCELLED':
-    case 'CANCELED':
-      return 'CANCELED';
-    case 'TIMED_OUT':
-      return 'TIMED_OUT';
-    default:
-      return null;
-  }
-}
 
 /**
  * `WorkflowRunCompletionService` — TASK-864 §3.3, the fix for finding G9.
@@ -105,15 +91,17 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
         cursor = entryId;
         const envelope = this.parse(fields);
         if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
-        const status = terminalStatusOf((envelope.payload as { status?: unknown } | undefined)?.status);
+        const payload = envelope.payload as Record<string, unknown> | undefined;
+        const status = terminalStatusOf(payload?.status);
         if (status === null) return;
         await this.recordTerminal(
           tenantId,
           runId,
           status,
-          String((envelope.payload as { status?: unknown }).status),
+          String(payload?.status),
           envelope.occurredAt,
           consultationId,
+          runCompletedCountsFromPayload(payload),
         );
         return;
       }
@@ -130,10 +118,10 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
    * cannot be resolved must not stop a consultation from reaching a terminal state, and a
    * consultation that refuses the transition must not lose the run's terminal status.
    *
-   * Node counts (`nodeCount`/`failedNodeCount`/`degradedNodeCount`) are NOT reported here. The
-   * interpreter's `workflow.run.completed` payload carries `status` and an optional `reason` and
-   * nothing else (`apps/harness/.../interpreter/activities.py::_envelope_for`), so passing a
-   * count would mean inventing one; the columns are left untouched instead.
+   * TASK-982 — the four settled-node counts now ride the SAME `workflow.run.completed` payload
+   * (`apps/harness/.../interpreter/activities.py::_envelope_for`) and are passed through verbatim
+   * to `recordRunFinished`; `undefined` (an older interpreter build, or a field the payload never
+   * carried) leaves the corresponding column/bag entry untouched, exactly as before this change.
    */
   async recordTerminal(
     tenantId: string,
@@ -142,6 +130,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     reason: string,
     endedAt: string,
     consultationId: string | null,
+    counts: RunCompletedCounts = {},
   ): Promise<void> {
     // A CLS context carrying the run's tenant: `broadcastSysEvent` stamps `tenantId` from CLS,
     // and the webhook matcher finds a tenant's subscriptions by it. Without this the event would
@@ -162,6 +151,10 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           endedAt: new Date(endedAt),
           terminalReason: reason,
           consultationId,
+          nodeCount: counts.nodeCount,
+          failedNodeCount: counts.failedNodeCount,
+          degradedNodeCount: counts.degradedNodeCount,
+          skippedNodeCount: counts.skippedNodeCount,
         });
       } catch (err) {
         this.logger.warn({

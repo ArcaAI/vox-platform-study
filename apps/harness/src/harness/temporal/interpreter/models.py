@@ -438,6 +438,14 @@ class RunEventSpec(BaseModel):
     status: str | None = None
     reason: str | None = None
     iteration: int | None = None
+    #: Settled-node counts for a `workflow.run.completed` event only. Additive-optional fields
+    #: on an ACTIVITY INPUT, not a new `execute_activity` call, so no `workflow.patched` era is
+    #: needed (the same argument `_SEQ_STRIDE`'s docstring makes in `workflow.py`) — a replaying
+    #: history that predates these fields simply constructs a `RunEventSpec` with all four `None`.
+    node_count: int | None = None
+    failed_node_count: int | None = None
+    degraded_node_count: int | None = None
+    skipped_node_count: int | None = None
 
 
 class RunEventBatch(BaseModel):

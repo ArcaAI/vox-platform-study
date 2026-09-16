@@ -42,6 +42,13 @@ export interface RecordRunFinishedInput {
   nodeCount?: number;
   failedNodeCount?: number;
   degradedNodeCount?: number;
+  /**
+   * TASK-982 — settled-SKIPPED-node count. There is NO `skippedNodeCount` column
+   * (`workflow-run.prisma` carries only `nodeCount`/`failedNodeCount`/`degradedNodeCount`), so
+   * `WorkflowRunService.recordRunFinished` merges this into the row's `_metadata.skippedNodeCount`
+   * bag instead — the same accessor `actingUserId` already uses, never a second source of truth.
+   */
+  skippedNodeCount?: number;
   firstErrorCode?: string | null;
   /**
    * (M-2) — the run's delivered output, the `output.deliver` node's `output` object
