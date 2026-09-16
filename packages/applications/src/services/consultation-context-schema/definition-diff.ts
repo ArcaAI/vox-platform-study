@@ -32,6 +32,20 @@ export interface DefinitionChangeResult {
   classification: DefinitionChangeClassification;
   /** Human-readable reasons, empty unless the classification is BREAKING. */
   breakingChanges: string[];
+  /**
+   * Kind keys this definition declares that the previous one did not.
+   *
+   * Deliberately NOT a classification change: for a CLIENT a new kind is additive, and it
+   * stays `ADDITIVE`. But a workflow whose trigger froze a derived payload schema carries
+   * `additionalProperties: false`, so a kind that is new to the schema is a key those frozen
+   * bytes reject — which is the ONE thing this classifier could not previously see, because
+   * it iterated the PREVIOUS kinds only and a brand-new kind was therefore never inspected.
+   *
+   * Naming the keys here is what lets the impact gate answer the CONSUMER question
+   * (`context-schema-usages.ts`) without re-walking the definition with a second, divergent
+   * notion of what changed.
+   */
+  additions: string[];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -52,19 +66,23 @@ function declarationsByKey(definition: unknown, collection: 'kinds' | 'outputs')
 }
 
 export function classifyDefinitionChange(previous: unknown, next: unknown): DefinitionChangeResult {
-  // A first publish has nothing to break.
+  // A first publish has nothing to break — but every kind it declares is new.
   if (previous == null) {
-    return { classification: 'ADDITIVE', breakingChanges: [] };
+    return { classification: 'ADDITIVE', breakingChanges: [], additions: [...declarationsByKey(next, 'kinds').keys()] };
   }
 
   if (computeDefinitionChecksum(previous) === computeDefinitionChecksum(next)) {
-    return { classification: 'IDENTICAL', breakingChanges: [] };
+    return { classification: 'IDENTICAL', breakingChanges: [], additions: [] };
   }
 
   const breakingChanges: string[] = [];
 
   const previousKinds = declarationsByKey(previous, 'kinds');
   const nextKinds = declarationsByKey(next, 'kinds');
+
+  // The NEW kinds, in declaration order. Iterating `nextKinds` (never `previousKinds`) is the
+  // whole point: the loop below can only ever see keys that already existed.
+  const additions = [...nextKinds.keys()].filter((key) => !previousKinds.has(key));
 
   for (const [key, before] of previousKinds) {
     const after = nextKinds.get(key);
@@ -89,7 +107,9 @@ export function classifyDefinitionChange(previous: unknown, next: unknown): Defi
     breakingChanges.push(...fieldsBreakingChanges(`output \`${key}\``, before.fields, after.fields));
   }
 
-  return breakingChanges.length > 0 ? { classification: 'BREAKING', breakingChanges } : { classification: 'ADDITIVE', breakingChanges: [] };
+  return breakingChanges.length > 0
+    ? { classification: 'BREAKING', breakingChanges, additions }
+    : { classification: 'ADDITIVE', breakingChanges: [], additions };
 }
 
 function kindBreakingChanges(key: string, before: Record<string, unknown>, after: Record<string, unknown>): string[] {

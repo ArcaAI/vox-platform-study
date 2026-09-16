@@ -105,6 +105,25 @@ model WorkflowDefinition {
   // re-validation.
   registryChecksum String?
 
+  // Which consultation context schema this PUBLISHED version's `core.trigger`
+  // is bound to, stamped server-side at publish from the SAME resolution the
+  // compiler freezes into `compiledConfig` — never authored, never accepted
+  // from a request DTO.
+  //
+  // The binding already exists inside `graph`/`compiledConfig` JSON, but JSON
+  // is not queryable as a foreign key: nothing could answer "which workflows
+  // depend on this schema" before an admin publishes a new version of it. These
+  // three columns are that index, and they are part of the PUBLISHED bytes —
+  // so the immutability trigger guards them alongside `compiledConfig` itself.
+  //
+  // `contextSchemaFollowsLatest` records WHICH binding the author chose: a
+  // trigger that names a schema id with no `versionNumber` follows the tenant's
+  // pin at dispatch, one that names a version keeps it. Null `contextSchemaId`
+  // means the trigger declares an inline schema or none at all.
+  contextSchemaId            String?
+  contextSchemaVersionNumber Int?
+  contextSchemaFollowsLatest Boolean @default(false)
+
   // The last server-side ValidationReport ( owns its shape).
   validationReport Json? @db.JsonB
   needsReview      Boolean @default(false)
@@ -143,5 +162,6 @@ model WorkflowDefinition {
   @@index([tenantId, slug, isActive], name: "WorkflowDefinition_tenant_slug_isActive_idx")
   @@index([parentVersionId], name: "WorkflowDefinition_parentVersionId_idx")
   @@index([tenantId, sourceTemplateSlug], name: "WorkflowDefinition_tenant_sourceTemplateSlug_idx")
+  @@index([tenantId, contextSchemaId], name: "WorkflowDefinition_tenantId_contextSchemaId_idx")
   @@schema("core")
 }

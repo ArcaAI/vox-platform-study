@@ -39,6 +39,19 @@ export interface IWorkflowDefinitionEntity extends IBaseTenantEntity {
   compiledConfig?: JsonValue | null;
   compiledConfigChecksum?: string | null;
   registryChecksum?: string | null;
+  /**
+   * Which consultation-context-schema version this PUBLISHED definition's `core.trigger` is
+   * bound to, stamped at publish from the same resolution the compiler freezes into
+   * `compiledConfig`. The binding also lives inside that JSON; these columns are what makes it
+   * QUERYABLE — "which workflows depend on this schema" has no answer over a JSON blob.
+   *
+   * `contextSchemaFollowsLatest` records the AUTHOR's choice, which the resolved version number
+   * alone cannot express: a trigger naming a schema with no `versionNumber` follows the tenant's
+   * pin at dispatch; one naming a version keeps it.
+   */
+  contextSchemaId?: string | null;
+  contextSchemaVersionNumber?: number | null;
+  contextSchemaFollowsLatest?: boolean | null;
   validationReport?: JsonValue | null;
   needsReview: boolean;
   validatedAt?: Date | null;
@@ -63,6 +76,9 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
   private _compiledConfig?: IWorkflowDefinitionEntity['compiledConfig'];
   private _compiledConfigChecksum?: IWorkflowDefinitionEntity['compiledConfigChecksum'];
   private _registryChecksum?: IWorkflowDefinitionEntity['registryChecksum'];
+  private _contextSchemaId?: IWorkflowDefinitionEntity['contextSchemaId'];
+  private _contextSchemaVersionNumber?: IWorkflowDefinitionEntity['contextSchemaVersionNumber'];
+  private _contextSchemaFollowsLatest?: IWorkflowDefinitionEntity['contextSchemaFollowsLatest'];
   private _validationReport?: IWorkflowDefinitionEntity['validationReport'];
   private _needsReview: IWorkflowDefinitionEntity['needsReview'];
   private _validatedAt?: IWorkflowDefinitionEntity['validatedAt'];
@@ -87,6 +103,9 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
     this._compiledConfig = init.compiledConfig;
     this._compiledConfigChecksum = init.compiledConfigChecksum;
     this._registryChecksum = init.registryChecksum;
+    this._contextSchemaId = init.contextSchemaId ?? null;
+    this._contextSchemaVersionNumber = init.contextSchemaVersionNumber ?? null;
+    this._contextSchemaFollowsLatest = init.contextSchemaFollowsLatest ?? false;
     this._validationReport = init.validationReport;
     this._needsReview = init.needsReview;
     this._validatedAt = init.validatedAt;
@@ -206,6 +225,30 @@ export class WorkflowDefinitionEntity extends BaseTenantEntity {
 
   set registryChecksum(value: IWorkflowDefinitionEntity['registryChecksum']) {
     this.setProperty('registryChecksum', value);
+  }
+
+  get contextSchemaId(): IWorkflowDefinitionEntity['contextSchemaId'] {
+    return this._contextSchemaId;
+  }
+
+  set contextSchemaId(value: IWorkflowDefinitionEntity['contextSchemaId']) {
+    this.setProperty('contextSchemaId', value);
+  }
+
+  get contextSchemaVersionNumber(): IWorkflowDefinitionEntity['contextSchemaVersionNumber'] {
+    return this._contextSchemaVersionNumber;
+  }
+
+  set contextSchemaVersionNumber(value: IWorkflowDefinitionEntity['contextSchemaVersionNumber']) {
+    this.setProperty('contextSchemaVersionNumber', value);
+  }
+
+  get contextSchemaFollowsLatest(): IWorkflowDefinitionEntity['contextSchemaFollowsLatest'] {
+    return this._contextSchemaFollowsLatest;
+  }
+
+  set contextSchemaFollowsLatest(value: IWorkflowDefinitionEntity['contextSchemaFollowsLatest']) {
+    this.setProperty('contextSchemaFollowsLatest', value);
   }
 
   get validationReport(): IWorkflowDefinitionEntity['validationReport'] {

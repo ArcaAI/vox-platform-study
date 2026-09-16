@@ -2,13 +2,14 @@ import {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
   ConsultationContextSchemaVersionResponse,
+  ContextSchemaUsagesResponse,
   CreateConsultationContextSchemaRequest,
   IConsultationContextSchemaService,
   PinConsultationContextSchemaVersionRequest,
   PublishConsultationContextSchemaRequest,
   UpdateConsultationContextSchemaRequest,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -57,6 +58,36 @@ export class ConsultationContextSchemaAdminController {
   @ApiResponse({ status: 404, description: 'Not found (or owned by another tenant).' })
   async getById(@Param('id') id: string): Promise<ConsultationContextSchemaResponse> {
     return this.service.getById(id);
+  }
+
+  @Get(':id/usages')
+  @ApiOperation({
+    summary: 'List the workflows and agents bound to a context schema, with a verdict per consumer',
+    description:
+      'Answers "what does changing this schema break?" BEFORE an admin publishes. Every workflow and agent bound ' +
+      'to the schema is listed with its `binding` (`latest` = its trigger re-reads the tenant pin at dispatch; ' +
+      '`pinned` = it keeps the version it was published with) and a `verdict` against `againstVersion`.\n\n' +
+      'A follow-latest consumer always `accepts`. A PINNED one `refuses` when the target version declares a kind ' +
+      "its frozen trigger does not, and each such kind is named in `problems`; `unknown` means the consumer's " +
+      'compiled configuration could not be read, which is reported rather than silently treated as acceptance.\n\n' +
+      'This is the same document `POST :id/publish` and `POST :id/pin` return as `impact`, and the same one a ' +
+      'publish refused with `SCHEMA_IMPACT_UNACKNOWLEDGED` carries — a preview and the write that follows it can ' +
+      'never disagree.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiQuery({
+    name: 'againstVersion',
+    required: false,
+    type: Number,
+    description: "The version to judge consumers against. Defaults to the schema's currently pinned version.",
+  })
+  @ApiResponse({ status: 200, type: ContextSchemaUsagesResponse })
+  @ApiResponse({ status: 404, description: 'Schema not found (or owned by another tenant), or it has no such version.' })
+  async usages(
+    @Param('id') id: string,
+    @Query('againstVersion', new ParseIntPipe({ optional: true })) againstVersion?: number,
+  ): Promise<ContextSchemaUsagesResponse> {
+    return this.service.usages(id, againstVersion);
   }
 
   @Get(':id/versions')

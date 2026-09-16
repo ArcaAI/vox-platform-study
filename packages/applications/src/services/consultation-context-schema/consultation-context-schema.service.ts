@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
 import {
+  AgentRepository,
   ConsultationContextSchemaEntity,
   ConsultationContextSchemaFactory,
   ConsultationContextSchemaRepository,
@@ -14,6 +15,7 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
@@ -28,11 +30,15 @@ import {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
   ConsultationContextSchemaVersionResponse,
+  ContextSchemaAgentUsage,
+  ContextSchemaUsagesResponse,
+  ContextSchemaWorkflowUsage,
   CreateConsultationContextSchemaRequest,
   PinConsultationContextSchemaVersionRequest,
   PublishConsultationContextSchemaRequest,
   UpdateConsultationContextSchemaRequest,
 } from './dto';
+import { agentUsageVerdict, workflowUsageVerdict } from './context-schema-usages';
 import { ConsultationContextSchemaDtoMapper } from './consultation-context-schema.dto.mapper';
 import {
   canonicalJson,
@@ -69,6 +75,14 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     private readonly versionRepository: ConsultationContextSchemaVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // The two CONSUMER planes `usages()` enumerates. `@Optional()` + trailing so the existing
+    // positional unit fixtures keep their arity; production DI (this module already imports
+    // `CoreDatabaseModule`) always supplies both. Absent ⇒ `usages()` reports an empty consumer
+    // set, which makes the acknowledgement gate inert rather than making a publish fail on a
+    // missing dependency of its own — the same posture `WorkflowDefinitionService` takes for its
+    // optional planes.
+    @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    @Optional() private readonly agentRepository?: AgentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ConsultationContextSchema);
   }
@@ -209,6 +223,92 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
   }
 
   // ============================================================
+  // Usages — who depends on this schema, and what a version does to them
+  // ============================================================
+
+  async usages(schemaId: string, againstVersion?: number): Promise<ContextSchemaUsagesResponse> {
+    const tenantId = this.requireTenantId();
+    // Ownership FIRST: a cross-tenant id must 404 before the caller learns anything about which
+    // workflows or agents exist — the same ordering `publish` uses.
+    const entity = await this.findOwnedOrThrow(schemaId, tenantId);
+
+    const targetVersion = againstVersion ?? entity.pinnedVersionNumber ?? null;
+    let definition: unknown = null;
+    if (targetVersion != null) {
+      const version = await this.versionRepository.findBySchemaAndVersionNumber(schemaId, targetVersion);
+      if (!version) {
+        throw new NotFoundException(`Context schema ${schemaId} has no version ${targetVersion}`);
+      }
+      definition = version.definition;
+    }
+
+    return this.impactOf(tenantId, schemaId, targetVersion, definition);
+  }
+
+  /**
+   * The impact document, for a definition that may not be a version row yet.
+   *
+   * `publish` computes it against the CANDIDATE definition — the bytes it is about to write — so
+   * this takes a raw definition rather than a version id. That is what lets the gate refuse
+   * before anything is persisted.
+   */
+  private async impactOf(
+    tenantId: string,
+    schemaId: string,
+    againstVersion: number | null,
+    definition: unknown,
+  ): Promise<ContextSchemaUsagesResponse> {
+    const targetPayloadSchema = payloadSchemaFromDefinition(definition);
+
+    const [workflowRows, agentRows] = await Promise.all([
+      this.workflowDefinitionRepository?.findByContextSchemaId(tenantId, schemaId) ?? Promise.resolve([]),
+      this.agentRepository?.findByContextSchemaId(tenantId, schemaId) ?? Promise.resolve([]),
+    ]);
+
+    const workflows: ContextSchemaWorkflowUsage[] = workflowRows.map((row) => ({
+      definitionId: row.id,
+      slug: row.slug,
+      name: row.name,
+      versionNumber: row.versionNumber,
+      status: row.status,
+      isActive: row.isActive === true,
+      ...workflowUsageVerdict(
+        {
+          contextSchemaFollowsLatest: row.contextSchemaFollowsLatest,
+          contextSchemaVersionNumber: row.contextSchemaVersionNumber,
+          compiledConfig: row.compiledConfig,
+        },
+        targetPayloadSchema,
+      ),
+    }));
+
+    const agents: ContextSchemaAgentUsage[] = agentRows.map((row) => ({
+      agentId: row.id,
+      slug: row.slug,
+      name: row.name,
+      versionNumber: row.versionNumber,
+      status: row.status,
+      isActive: row.isActive === true,
+      ...agentUsageVerdict({ contextSchemaVersionNumber: row.contextSchemaVersionNumber, compiledConfig: row.compiledConfig }, targetPayloadSchema),
+    }));
+
+    return { schemaId, againstVersion, workflows, agents };
+  }
+
+  /**
+   * Only an ACTIVE consumer gates a publish.
+   *
+   * A superseded or deprecated version is still SHOWN — an admin wants to know the shape of what
+   * they have — but it dispatches no new runs, so blocking a publish on it would make a schema
+   * un-evolvable by its own history. `unknown` does not gate either: refusing on a consumer whose
+   * bytes could not be read would turn a data problem into a permanent publish block.
+   */
+  private static refusingConsumers(impact: ContextSchemaUsagesResponse): boolean {
+    const refuses = (usage: { isActive: boolean; verdict: string }) => usage.isActive && usage.verdict === 'refuses';
+    return impact.workflows.some(refuses) || impact.agents.some(refuses);
+  }
+
+  // ============================================================
   // Publish / pin
   // ============================================================
 
@@ -252,6 +352,27 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     }
 
     const versionNumber = (latest?.versionNumber ?? 0) + 1;
+
+    // The CONSUMER question, which `classifyDefinitionChange` above deliberately does not answer.
+    // The classifier asks "can a client built against the previous version keep working"; a new
+    // kind passes that and is still rejected by a workflow whose trigger froze an
+    // `additionalProperties: false` payload schema at an older version. Two different questions,
+    // two different acknowledgements — so a blanket `allowBreakingChange` must not silence this
+    // one, and vice versa.
+    //
+    // Computed against the CANDIDATE definition and the version number this publish WOULD create,
+    // and evaluated BEFORE any write, so a refusal persists nothing.
+    const impact = await this.impactOf(tenantId, id, versionNumber, dto.definition);
+    if (dto.acknowledgeImpact !== true && ConsultationContextSchemaService.refusingConsumers(impact)) {
+      throw new BadRequestException({
+        message:
+          'This version adds a kind that one or more ACTIVE workflows or agents pinned to an older version would ' +
+          'reject at run time. Review the impact and re-submit with `acknowledgeImpact: true` to publish anyway.',
+        code: 'SCHEMA_IMPACT_UNACKNOWLEDGED',
+        impact,
+      });
+    }
+
     const version = ConsultationContextSchemaVersionFactory.CreateConsultationContextSchemaVersion({
       tenantId,
       schemaId: id,
@@ -286,10 +407,12 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
         checksum,
         classification: change.classification,
         breakingChanges: change.breakingChanges,
+        additions: change.additions,
+        impactAcknowledged: dto.acknowledgeImpact === true,
       },
     });
 
-    return ConsultationContextSchemaDtoMapper.toResponse(updated);
+    return { ...ConsultationContextSchemaDtoMapper.toResponse(updated), impact };
   }
 
   async pin(id: string, dto: PinConsultationContextSchemaVersionRequest): Promise<ConsultationContextSchemaResponse> {
@@ -312,7 +435,12 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       data: { action: 'pin', previousVersionNumber, versionNumber: dto.versionNumber },
     });
 
-    return ConsultationContextSchemaDtoMapper.toResponse(updated);
+    // Reported, never gated. A pin is how an admin ROLLS BACK — usually the very move that fixes
+    // a bad publish — so refusing one because a consumer disagrees would take away the escape
+    // hatch. The impact rides on the response so the console can say what the rollback changed.
+    const impact = await this.impactOf(tenantId, id, dto.versionNumber, version.definition);
+
+    return { ...ConsultationContextSchemaDtoMapper.toResponse(updated), impact };
   }
 
   // ============================================================

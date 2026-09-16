@@ -25,6 +25,10 @@ export interface CreateWorkflowDefinitionProps extends BaseEntityFactoryCreatePr
   compiledConfig?: IWorkflowDefinitionEntity['compiledConfig'];
   compiledConfigChecksum?: IWorkflowDefinitionEntity['compiledConfigChecksum'];
   registryChecksum?: IWorkflowDefinitionEntity['registryChecksum'];
+  /** Server-stamped at publish, never authored — see the entity docstring. */
+  contextSchemaId?: IWorkflowDefinitionEntity['contextSchemaId'];
+  contextSchemaVersionNumber?: IWorkflowDefinitionEntity['contextSchemaVersionNumber'];
+  contextSchemaFollowsLatest?: IWorkflowDefinitionEntity['contextSchemaFollowsLatest'];
   validationReport?: IWorkflowDefinitionEntity['validationReport'];
   needsReview?: IWorkflowDefinitionEntity['needsReview'];
   validatedAt?: IWorkflowDefinitionEntity['validatedAt'];
@@ -73,6 +77,9 @@ export class WorkflowDefinitionFactory {
       compiledConfig: props.compiledConfig ?? null,
       compiledConfigChecksum: props.compiledConfigChecksum ?? null,
       registryChecksum: props.registryChecksum ?? null,
+      contextSchemaId: props.contextSchemaId ?? null,
+      contextSchemaVersionNumber: props.contextSchemaVersionNumber ?? null,
+      contextSchemaFollowsLatest: props.contextSchemaFollowsLatest ?? false,
       validationReport: props.validationReport ?? null,
       needsReview: props.needsReview ?? false,
       validatedAt: props.validatedAt ?? null,
