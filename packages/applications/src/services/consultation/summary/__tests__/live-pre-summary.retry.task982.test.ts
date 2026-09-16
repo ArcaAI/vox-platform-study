@@ -38,10 +38,7 @@ function effectiveSettingsStub(value: number | undefined) {
 
 describe('TASK-982 — LivePreSummaryAdapter bounded retry', () => {
   it('retries a transient (text_unavailable) failure and succeeds on the second attempt', async () => {
-    const generatePreSummary = vi
-      .fn()
-      .mockRejectedValueOnce(TRANSIENT_ERROR)
-      .mockResolvedValueOnce({ content: 'a recovered pre-summary' });
+    const generatePreSummary = vi.fn().mockRejectedValueOnce(TRANSIENT_ERROR).mockResolvedValueOnce({ content: 'a recovered pre-summary' });
     const adapter = new LivePreSummaryAdapter({ generatePreSummary } as never, undefined, effectiveSettingsStub(undefined) as never);
 
     await expect(adapter.run(INPUT)).resolves.toEqual({ status: 'ready', content: 'a recovered pre-summary' });

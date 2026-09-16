@@ -1,5 +1,12 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { HarnessInternalService, IConfigService, IWorkflowRunService, createWorkerSession, interpreterSessionId, terminalStatusOf } from '@arcaai/applications';
+import {
+  HarnessInternalService,
+  IConfigService,
+  IWorkflowRunService,
+  createWorkerSession,
+  interpreterSessionId,
+  terminalStatusOf,
+} from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING, parseAsyncEnvelope } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
