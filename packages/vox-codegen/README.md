@@ -1,8 +1,8 @@
 # @arcaai/vox-codegen — tenant type generator
 
-`packages/vox-codegen`, npm package `@arcaai/vox-codegen` (version 3.5.0), bin `vox-codegen`. A
-Node >= 22 build-time CLI that emits TypeScript types from a tenant's live HOPE configuration. Two
-mutually exclusive modes:
+`packages/vox-codegen`, npm package `@arcaai/vox-codegen`, bin `vox-codegen`. Versioned in lockstep
+with the rest of the SDK family. A Node >= 22 build-time CLI that emits TypeScript types from a
+tenant's live HOPE configuration. Two mutually exclusive modes:
 
 | Mode                                                      | Credential      | Emits                                                                                        |
 | --------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------- |
@@ -103,7 +103,15 @@ discovery endpoint on `--interval` and rewrites the output only when the respons
 
 Reads four routes and no admin route: `GET /agents`, `GET /agents/{slug}`, `GET /workflows`,
 `GET /workflows/{slug}/schema`, all with `X-API-Key` — structural, since an API key can never
-reach `/admin/*`. Writes one file per requested plane (`agents.generated.ts`,
+reach `/admin/*`. The key needs exactly two scopes, which is what the tenant console's
+**Type generation (build tools)** purpose grants beside `tenant:context-schema:read`:
+
+```
+agent:definition:read
+workflow:definition:read
+```
+
+Writes one file per requested plane (`agents.generated.ts`,
 `workflows.generated.ts`) plus a map keyed by slug:
 
 ```ts
@@ -220,4 +228,6 @@ Full exported surface: `src/index.ts` (`runCodegenOnce`, `runCatalogueCodegenOnc
   can).
 - [`@arcaai/vox-node`](../vox-node/README.md) — the server SDK a generated `agents.generated.ts`
   / `workflows.generated.ts` pairs with.
+- [`docs/guides/client-integration-guide.md`](../../docs/guides/client-integration-guide.md) —
+  chapter 2 is this CLI in its place in the whole integration.
 - `.claude/rules/08-vox-sdk.md` — SDK architecture rules.
