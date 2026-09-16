@@ -1856,6 +1856,62 @@
         ],
         "type": "object"
       },
+      "ApiKeyScopePresetResponse": {
+        "properties": {
+          "description": {
+            "description": "One-sentence explanation of who this preset is for",
+            "type": "string"
+          },
+          "key": {
+            "description": "The preset identifier, used as the value of the \"Purpose\" radio card",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short label shown on the \"Purpose\" radio card",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "The scopes this preset grants",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "ApiKeyScopesCatalogResponse": {
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ApiKeyScopeCatalogEntryResponse"
+              },
+              "type": "array"
+            },
+            "description": "Every grantable scope, grouped by category",
+            "type": "object"
+          },
+          "presets": {
+            "description": "The three scope presets the create-key dialog offers before \"Custom\"",
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyScopePresetResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories",
+          "presets"
+        ],
+        "type": "object"
+      },
       "ApprovePromptTemplateRequest": {
         "properties": {
           "expectedVersion": {
@@ -4294,6 +4350,9 @@
           "id": {
             "type": "string"
           },
+          "impact": {
+            "$ref": "#/components/schemas/ContextSchemaUsagesResponse"
+          },
           "isDefault": {
             "type": "boolean"
           },
@@ -4445,6 +4504,12 @@
           "doctorId": {
             "description": "Doctor identifier",
             "type": "string"
+          },
+          "governingRun": {
+            "additionalProperties": true,
+            "description": "The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run.",
+            "nullable": true,
+            "type": "object"
           },
           "id": {
             "description": "Consultation ID",
@@ -4605,6 +4670,12 @@
             "nullable": true,
             "type": "string"
           },
+          "run": {
+            "additionalProperties": true,
+            "description": "The governing run and its status, or null when the default loop governs. Identical to `ConsultationResponse.governingRun` — one derivation, so the two routes can never disagree.",
+            "nullable": true,
+            "type": "object"
+          },
           "workflowDefinitionSlug": {
             "description": "Slug of the governing definition; null when the default loop governs.",
             "nullable": true,
@@ -4692,6 +4763,11 @@
             "description": "Text content (for non-media types)",
             "type": "string"
           },
+          "contextSchemaVersionId": {
+            "description": "The `ConsultationContextSchemaVersion` id this item was validated against when `kindKey` is set. Null when `kindKey` is null.",
+            "nullable": true,
+            "type": "string"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -4745,6 +4821,12 @@
           "isWorknote": {
             "description": "Derived: true if type is WORKNOTE",
             "type": "boolean"
+          },
+          "kindKey": {
+            "description": "The kind key this item satisfies, from the tenant's pinned consultation context schema (e.g. `vitals`, `previous_case_notes`). Null for an item that names no kind — most pre-schema and platform-authored items.",
+            "example": "vitals",
+            "nullable": true,
+            "type": "string"
           },
           "mediaId": {
             "description": "Media ID of the uploaded file (for ATTACHMENT type)",
@@ -4835,6 +4917,8 @@
           "consultationId",
           "type",
           "source",
+          "kindKey",
+          "contextSchemaVersionId",
           "currentVersionNumber",
           "qdrantSynced",
           "isSummary",
@@ -4900,6 +4984,170 @@
           "contextItemId",
           "versionNumber",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "ContextSchemaAgentUsage": {
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "binding": {
+            "enum": [
+              "latest",
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "boundVersion": {
+            "nullable": true,
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED",
+              "PUBLISHED",
+              "DEPRECATED"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "accepts",
+              "refuses",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "agentId",
+          "slug",
+          "name",
+          "versionNumber",
+          "status",
+          "isActive",
+          "binding",
+          "verdict",
+          "problems"
+        ],
+        "type": "object"
+      },
+      "ContextSchemaUsagesResponse": {
+        "properties": {
+          "againstVersion": {
+            "description": "The version the verdicts were computed against. Null only for a schema that has never been published.",
+            "nullable": true,
+            "type": "number"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/ContextSchemaAgentUsage"
+            },
+            "type": "array"
+          },
+          "schemaId": {
+            "type": "string"
+          },
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/ContextSchemaWorkflowUsage"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schemaId",
+          "workflows",
+          "agents"
+        ],
+        "type": "object"
+      },
+      "ContextSchemaWorkflowUsage": {
+        "properties": {
+          "binding": {
+            "description": "`latest` = the trigger re-reads the tenant pin at dispatch; `pinned` = it keeps the version it was published with.",
+            "enum": [
+              "latest",
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "boundVersion": {
+            "description": "The schema version this consumer was frozen at.",
+            "nullable": true,
+            "type": "number"
+          },
+          "definitionId": {
+            "type": "string"
+          },
+          "isActive": {
+            "description": "Whether this is the version the dispatcher resolves for new runs.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "problems": {
+            "description": "Empty unless the verdict is `refuses` or `unknown`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED",
+              "PUBLISHED",
+              "DEPRECATED"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "accepts",
+              "refuses",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "definitionId",
+          "slug",
+          "name",
+          "versionNumber",
+          "status",
+          "isActive",
+          "binding",
+          "verdict",
+          "problems"
         ],
         "type": "object"
       },
@@ -15991,6 +16239,10 @@
       },
       "PublishConsultationContextSchemaRequest": {
         "properties": {
+          "acknowledgeImpact": {
+            "description": "Acknowledges that this publish breaks a WORKFLOW or AGENT already bound to this schema — a consumer PINNED to an older version whose frozen trigger would reject a kind this definition adds. Distinct from `allowBreakingChange`, which is about CLIENTS built against the previous version: a publish can be perfectly additive for clients and still break a pinned workflow. Without it such a publish is refused with 400 `SCHEMA_IMPACT_UNACKNOWLEDGED`, carrying the full impact document.",
+            "type": "boolean"
+          },
           "allowBreakingChange": {
             "description": "Acknowledges that this publish BREAKS clients built against the previous version (a removed or renamed kind or property, a changed primitive/type, a widened `required`). Without it a breaking publish is refused with 400 listing each break.",
             "type": "boolean"
@@ -25909,6 +26161,10 @@
             "description": "Denormalized WorkflowDefinition.name at run time.",
             "type": "string"
           },
+          "degraded": {
+            "description": "True when the run COMPLETED with at least one degraded-or-skipped-for-cause node. A derived flag, never a run status.",
+            "type": "boolean"
+          },
           "degradedNodeCount": {
             "description": "Count of nodes that degraded (produced a marked nothing) — a flag, never a run status.",
             "type": "number"
@@ -25953,6 +26209,11 @@
             "description": "The AgentTrajectoryStep join key (\"workflow-interpreter-{runId}\").",
             "type": "string"
           },
+          "skippedNodeCount": {
+            "description": "Count of nodes SKIPPED for cause. Sourced from the row's `_metadata.skippedNodeCount` — there is no dedicated column.",
+            "nullable": true,
+            "type": "number"
+          },
           "startedAt": {
             "description": "Run start (ISO-8601).",
             "type": "string"
@@ -25995,6 +26256,7 @@
           "startedAt",
           "failedNodeCount",
           "degradedNodeCount",
+          "degraded",
           "createdAt",
           "cpuSeconds"
         ],
@@ -26015,6 +26277,10 @@
             "description": "Denormalized WorkflowDefinition.name at run time.",
             "type": "string"
           },
+          "degraded": {
+            "description": "True when the run COMPLETED with at least one degraded-or-skipped-for-cause node. A derived flag, never a run status.",
+            "type": "boolean"
+          },
           "degradedNodeCount": {
             "description": "Count of nodes that degraded (produced a marked nothing) — a flag, never a run status.",
             "type": "number"
@@ -26059,6 +26325,11 @@
             "description": "The AgentTrajectoryStep join key (\"workflow-interpreter-{runId}\").",
             "type": "string"
           },
+          "skippedNodeCount": {
+            "description": "Count of nodes SKIPPED for cause. Sourced from the row's `_metadata.skippedNodeCount` — there is no dedicated column.",
+            "nullable": true,
+            "type": "number"
+          },
           "startedAt": {
             "description": "Run start (ISO-8601).",
             "type": "string"
@@ -26101,6 +26372,7 @@
           "startedAt",
           "failedNodeCount",
           "degradedNodeCount",
+          "degraded",
           "createdAt"
         ],
         "type": "object"
@@ -26116,9 +26388,28 @@
             "nullable": true,
             "type": "string"
           },
+          "degraded": {
+            "description": "True when `status` is COMPLETED and at least one node degraded or was skipped for cause. A derived flag, never a run status (README pitfall 6).",
+            "type": "boolean"
+          },
+          "degradedNodeCount": {
+            "description": "TASK-982 — settled DEGRADED-node count, sourced from the durable run read model.",
+            "nullable": true,
+            "type": "number"
+          },
           "endedAt": {
             "nullable": true,
             "type": "string"
+          },
+          "failedNodeCount": {
+            "description": "TASK-982 — settled FAILED-node count, sourced from the durable run read model.",
+            "nullable": true,
+            "type": "number"
+          },
+          "nodeCount": {
+            "description": "TASK-982 — settled node count, sourced from the durable run read model. Null until the run is synced.",
+            "nullable": true,
+            "type": "number"
           },
           "resultRef": {
             "additionalProperties": true,
@@ -26128,6 +26419,11 @@
           },
           "runId": {
             "type": "string"
+          },
+          "skippedNodeCount": {
+            "description": "TASK-982 — settled SKIPPED-for-cause node count, sourced from the durable run read model.",
+            "nullable": true,
+            "type": "number"
           },
           "slug": {
             "type": "string"
@@ -26143,7 +26439,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Live Temporal-sourced status string (RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT/…).",
+            "description": "RUNNING/COMPLETED/FAILED/CANCELED/TIMED_OUT — already folded through the same vocabulary the persisted `WorkflowRun` row uses (TASK-982, E6): the interpreter's raw SUCCEEDED/DEGRADED/CANCELLED never reach this field.",
             "type": "string"
           },
           "workflowVersionNumber": {
@@ -26155,7 +26451,8 @@
           "slug",
           "workflowVersionNumber",
           "status",
-          "stages"
+          "stages",
+          "degraded"
         ],
         "type": "object"
       },
@@ -30833,12 +31130,19 @@
     },
     "/api/v1/admin/api-keys/scopes": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:apikey:read`, `svc:admin:apikey:write`).\n\n**Abilities** — `read:ApiKey`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Returns the grantable scope catalogue, grouped by category, plus the three scope presets the create-key dialog offers.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:apikey:read`, `svc:admin:apikey:write`).\n\n**Abilities** — `read:ApiKey`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ApiKeyController_getAvailableScopes",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Available scopes grouped by category"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyScopesCatalogResponse"
+                }
+              }
+            },
+            "description": "Available scopes grouped by category, plus the scope presets"
           }
         },
         "security": [
@@ -35052,6 +35356,72 @@
           }
         ],
         "summary": "Validate a definition, publish it as a new immutable version, and pin it",
+        "tags": [
+          "admin-consultation-context-schemas"
+        ],
+        "x-hope-abilities": [
+          "manage:ConsultationContextSchema"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:consultation-context-schema:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/consultation-context-schemas/{id}/usages": {
+      "get": {
+        "description": "Answers \"what does changing this schema break?\" BEFORE an admin publishes. Every workflow and agent bound to the schema is listed with its `binding` (`latest` = its trigger re-reads the tenant pin at dispatch; `pinned` = it keeps the version it was published with) and a `verdict` against `againstVersion`.\n\nA follow-latest consumer always `accepts`. A PINNED one `refuses` when the target version declares a kind its frozen trigger does not, and each such kind is named in `problems`; `unknown` means the consumer's compiled configuration could not be read, which is reported rather than silently treated as acceptance.\n\nThis is the same document `POST :id/publish` and `POST :id/pin` return as `impact`, and the same one a publish refused with `SCHEMA_IMPACT_UNACKNOWLEDGED` carries — a preview and the write that follows it can never disagree.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:consultation-context-schema:manage`).\n\n**Abilities** — `manage:ConsultationContextSchema`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationContextSchemaAdminController_usages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version to judge consumers against. Defaults to the schema's currently pinned version.",
+            "in": "query",
+            "name": "againstVersion",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSchemaUsagesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Schema not found (or owned by another tenant), or it has no such version."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List the workflows and agents bound to a context schema, with a verdict per consumer",
         "tags": [
           "admin-consultation-context-schemas"
         ],

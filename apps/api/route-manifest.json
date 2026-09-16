@@ -2747,6 +2747,29 @@
     },
     {
       "controller": "ConsultationContextSchemaAdminController",
+      "handler": "usages",
+      "method": "GET",
+      "path": "/api/v1/admin/consultation-context-schemas/{id}/usages",
+      "routePath": "/admin/consultation-context-schemas/:id/usages",
+      "svcScopes": [
+        "svc:admin:consultation-context-schema:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "ConsultationContextSchema"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationContextSchemaAdminController",
       "handler": "listVersions",
       "method": "GET",
       "path": "/api/v1/admin/consultation-context-schemas/{id}/versions",

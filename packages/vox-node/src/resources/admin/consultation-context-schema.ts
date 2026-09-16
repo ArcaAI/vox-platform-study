@@ -14,6 +14,7 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   ConsultationContextSchemaResponse,
   ConsultationContextSchemaVersionResponse,
+  ContextSchemaUsagesResponse,
   CreateConsultationContextSchemaRequest,
   PinConsultationContextSchemaVersionRequest,
   PublishConsultationContextSchemaRequest,
@@ -28,7 +29,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller ConsultationContextSchemaAdminController
- * (8 routes). Several controllers sharing one scope share one
+ * (9 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -149,6 +150,23 @@ export class AdminConsultationContextSchemaResource extends AdminResource {
       method: 'POST',
       path: `admin/consultation-context-schemas/${encodePathSegment(String(id))}/publish`,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List the workflows and agents bound to a context schema, with a verdict per consumer
+   *
+   * Answers "what does changing this schema break?" BEFORE an admin publishes. Every workflow and agent bound to the schema is listed with its `binding` (`latest` = its trigger re-reads the tenant pin at dispatch; `pinned` = it keeps the version it was published with) and a `verdict` against `againstVersion`. A follow-latest consumer always `accepts`. A PINNED one `refuses` when the target version declares a kind its frozen trigger does not, and each such kind is named in `problems`; `unknown` means the consumer's compiled configuration could not be read, which is reported rather than silently treated as acceptance. This is the same document `POST :id/publish` and `POST :id/pin` return as `impact`, and the same one a publish refused with `SCHEMA_IMPACT_UNACKNOWLEDGED` carries — a preview and the write that follows it can never disagree.
+   *
+   * `GET /api/v1/admin/consultation-context-schemas/{id}/usages` — `ConsultationContextSchemaAdminController.usages`.
+   */
+  usages(id: string, options: AdminRequestOptions & { query?: { againstVersion?: number } } = {}): Promise<ContextSchemaUsagesResponse> {
+    return this.request<ContextSchemaUsagesResponse>({
+      method: 'GET',
+      path: `admin/consultation-context-schemas/${encodePathSegment(String(id))}/usages`,
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
