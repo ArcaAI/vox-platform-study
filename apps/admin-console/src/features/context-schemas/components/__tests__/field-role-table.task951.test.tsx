@@ -34,9 +34,18 @@ afterEach(() => {
   cleanup();
 });
 
-/** Expand a kind's collapsed Accordion item so its fields (and the field-role table) render. */
+/**
+ * Expand a kind's collapsed Accordion item so its fields render, then open that
+ * kind's own "Field roles" disclosure — the roles table moved behind one when
+ * the kind editor adopted progressive disclosure, so reaching it is two clicks
+ * scoped to the same accordion item.
+ */
 async function expandKind(keyPattern: RegExp): Promise<void> {
-  fireEvent.click(await screen.findByRole('button', { name: keyPattern }));
+  const trigger = await screen.findByRole('button', { name: keyPattern });
+  fireEvent.click(trigger);
+  const item = trigger.closest('[data-slot="accordion-item"]');
+  const roles = item ? within(item as HTMLElement).queryByRole('button', { name: /Field roles/ }) : null;
+  if (roles) fireEvent.click(roles);
 }
 
 async function openSelect(name: RegExp | string): Promise<void> {
@@ -80,13 +89,12 @@ function Harness({ initial, onDefinition }: { initial: ContextSchemaDefinition; 
   const [definition, setDefinition] = useState(initial);
   return (
     <DefinitionEditor
-      schemaId="s-1"
       definition={definition}
       onDefinitionChange={(next) => {
         setDefinition(next);
         onDefinition?.(next);
       }}
-      onPublished={() => {}}
+      problems={null}
     />
   );
 }
@@ -235,7 +243,7 @@ describe('FieldRoleTable (TASK-951)', () => {
     expect(captured?.kinds[0]?.materializeAs).toBe('CASE_NOTE');
   });
 
-  it('renders Department/Visit type/Ext. ref/Stream/Case notes badges beside Required, with field-naming aria-labels', async () => {
+  it('renders Department/Visit type/Reference id/Stream/Case notes badges beside Required, with field-naming aria-labels', async () => {
     const marked = encounterKind({
       required: true,
       department: { field: 'department_code', by: 'code' },
@@ -248,7 +256,9 @@ describe('FieldRoleTable (TASK-951)', () => {
 
     expect((await screen.findByText('Department')).getAttribute('aria-label')).toBe('Department field: department_code (by code)');
     expect((await screen.findByText('Visit type')).getAttribute('aria-label')).toBe('Visit type field: visit_type');
-    expect((await screen.findByText('Ext. ref')).getAttribute('aria-label')).toBe('External ref field: event_id');
+    // The badge reads "Reference id": an admin authors "your own reference id",
+    // and `Ext. ref` was console shorthand for the `externalRef` column name.
+    expect((await screen.findByText('Reference id')).getAttribute('aria-label')).toBe('Reference id field: event_id');
     expect((await screen.findByText('Stream')).getAttribute('aria-label')).toBe('Stream context kind: encounter');
     expect((await screen.findByText('Case notes')).getAttribute('aria-label')).toBe('Case notes field: notes');
   });

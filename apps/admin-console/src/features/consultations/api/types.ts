@@ -60,6 +60,26 @@ export interface ConsultationContextItem {
   updatedAt: string;
 }
 
+/**
+ * The workflow run that governed this consultation, derived by the gateway from
+ * `Consultation.metadata.governingEngine` (`GoverningRunSummary` in
+ * `@arcaai/types`). Mirrored here rather than imported because the field is
+ * always present on `ConsultationResponse` but the console must tolerate a
+ * gateway that predates it: `undefined` and `null` both mean "not governed".
+ *
+ * `status` is the PERSISTED vocabulary only. Degradation is a per-run FLAG, so
+ * a run that finished with degraded or skipped-for-cause nodes is
+ * `COMPLETED` + `degraded: true` — never a `DEGRADED` status.
+ */
+export interface GoverningRun {
+  workflowDefinitionSlug: string;
+  workflowRunId: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
+  degraded: boolean;
+  decidedAt: string;
+  failureReason: string | null;
+}
+
 /** GET /admin/consultations rows and :id detail (ConsultationResponse). */
 export interface Consultation {
   id: string;
@@ -75,6 +95,8 @@ export interface Consultation {
   /** ConsultationStatus enum value (legacy rows may carry metadata strings). */
   status?: string;
   metadata?: Record<string, unknown>;
+  /** `null` = ungoverned; absent = a gateway that predates the field, read the same way. */
+  governingRun?: GoverningRun | null;
   /** Only populated by the :id detail (findWithRelations includes them). */
   contextItems?: ConsultationContextItem[];
   createdAt: string;

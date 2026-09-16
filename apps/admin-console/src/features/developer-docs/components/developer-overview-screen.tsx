@@ -12,6 +12,7 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { useGatewayVersion } from '../api/hooks';
 import { CodeBlock } from './code-block';
+import { ContextSchemaCodegenSection } from './context-schema-codegen-section';
 
 const CURL_EXAMPLE = `curl -X GET "$HOPE_API_URL/api/v1/consultations" \\
   -H "X-API-Key: $HOPE_API_KEY"`;
@@ -191,6 +192,8 @@ export function DeveloperOverviewScreen({ canReadAdminPlane }: { canReadAdminPla
             </p>
           </CardContent>
         </Card>
+
+        <ContextSchemaCodegenSection />
 
         <Card>
           <CardHeader>
