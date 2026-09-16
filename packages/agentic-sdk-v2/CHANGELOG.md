@@ -1,8 +1,20 @@
 # @arcaai/vox — Changelog
 
-## Unreleased — 3.6.0
+## 3.6.0
 
 ### Minor Changes
+
+- Schema-driven consultation context, aligned end to end. vox-node: typed `open<TContext>`, `consultations.listContext`, `governingRun` on consultation responses, `HopeAPIError.problems`, run status `degraded` + node counts, `WorkflowSchemaDescription.contextSchema` / `reviewNodes`, `OPEN_REFUSAL_CODES` and `API_KEY_SCOPE_PRESETS` re-exported, a new refusal `WORKFLOW_CONTEXT_INCOMPATIBLE` on `open` (400). Browser SDK: `problems` on errors, `governingRun`, `degraded` + counts on `useWorkflowRun`. Codegen: `--check`, `OpenConsultationContext`, `@schemaVersion` / `@contextSchema` / `@reviewNodes` annotations, no ticket numbers in emitted text.
+
+### Patch Changes
+
+- @arcaai/med-ner@3.6.0
+  - @arcaai/noise-filter@3.6.0
+  - @arcaai/room@3.6.0
+  - @arcaai/stt@3.6.0
+  - @arcaai/vad@3.6.0
+
+### Details (3.6.0)
 
 - **`AgenticError.context.problems`** — lifted in `AgenticClient`'s request error handling beside
   the existing `code` lift, from the house `{ message, code, problems? }` body shape. One

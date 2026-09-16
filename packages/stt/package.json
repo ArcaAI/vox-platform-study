@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/stt",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "description": "Speech-to-text plugin for @arcaai/room with local Whisper and backend fallback support",
   "deprecated": "DEPRECATED (TASK-865) — removed in R4, two releases after R2. In-browser Whisper is retired; transcription is backend streaming ASR selected by the tenant's ASR Agent (@arcaai/vox audio.start({ agentSlug })). The browser never runs a model. See docs/operations/deprecation-register.md.",
   "main": "./dist/index.js",
