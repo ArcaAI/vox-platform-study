@@ -174,8 +174,11 @@ Evidence after the follow-up merges (primary checkout): `stt` unit 3478 · ruff/
 `route-manifest.json` produces no diff.
 
 Still owed for the follow-up:
-- **Runtime verification of the blocked-enrollment card** — rule 13's DoD asks for a running app,
-  an axe scan and both themes; the local stack was down and none of this was exercised in a browser.
+- ~~Runtime verification of the blocked-enrollment card~~ — **done 2026-09-16** against the live dev
+  stack as `arcaai_admin`: `GET /api/hope/voice-profiles/enrollment-target` → **409**; the card renders
+  the gateway's own `ASR_AGENT_DIARIZATION_DISABLED` message and the deep link; "New profile" and
+  "Enroll voice profile" are `disabled` with visible reasons wired via `aria-describedby`; axe
+  (wcag2a/aa, 21a/aa, 22aa) over `main` = **0 violations in both dark and light themes**.
 - **The deep link does not filter.** `/agents?task=SPEECH_TO_TEXT` lands on the unfiltered Agents
   list: the grid keeps filters in the `f` URL parameter and never reads `task`. The three retired-route
   redirects (`/audio/pipelines`, `/ai-model-defaults`, `/ai-configuration`) have the same gap — it
@@ -197,4 +200,5 @@ deploy, and the owner accepted that trade when choosing (b) over (a).
 |---|---|
 | 2026-09-16 | Ticket opened; four-lane audit recorded; owner decisions D-1(b), D-2..D-6 taken. |
 | 2026-09-16 | All five lanes merged into `dev-2.2`. Status Review, pending the listening pass D-1(b) owes. |
+| 2026-09-16 | Runtime check of the blocked-enrollment card on the live stack: 409 from the gateway, disabled actions with reasons, axe 0 violations in both themes. |
 | 2026-09-16 | Follow-up: `VadConfig.enabled` → False (four sites); per-agent denoise engine; `ExecutionProfile.denoise_enabled_default` removed; catalogue model pickers; explicit agent controls; voice enrollment refused while diarization is off (fixes a D-4 regression). |
