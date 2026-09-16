@@ -194,6 +194,15 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
     }
   });
 
+  it('TASK-977 D-1 — realtime-transcription seeds VAD and diarization OFF; only diarization`s model stays unbound', () => {
+    for (const spec of ALL_SPECS.filter((s) => s.slug === 'realtime-transcription')) {
+      const audioFrontEnd = (spec.parameters as any).audioFrontEnd;
+      expect(audioFrontEnd.vad).toMatchObject({ enabled: false, modelSlug: 'silero-vad' });
+      expect(audioFrontEnd.diarization).toMatchObject({ enabled: false });
+      expect(audioFrontEnd.denoise).toBeUndefined();
+    }
+  });
+
   it('each tenant assigns exactly one UNQUALIFIED agent per task at TENANT scope', () => {
     for (const assignments of [PLATFORM_AGENT_ASSIGNMENTS, GLOBAL_AGENT_ASSIGNMENTS]) {
       const unqualified = assignments.filter((a) => !a.selectorKey);
