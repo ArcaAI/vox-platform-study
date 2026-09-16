@@ -357,7 +357,23 @@ vox-node: `HopeAPIError.problems?: string[]`; `open<TContext extends Record<stri
 
 ### 5.3 Gates (final, primary checkout)
 
-_filled from the post-acceptance gate run — see Change History_
+| Gate | Result |
+|---|---|
+| `@arcaai/domains` test | 1991 passed (170 files) |
+| `@arcaai/applications` test (integration suite excluded — needs the live test DB) | 14268 passed (889 files) |
+| `@arcaai/api` test | 4647 passed (322 files) |
+| `@arcaai/workflow-contract` / `@arcaai/types` / `@arcaai/database` test | 961 / 41 / 1835 passed |
+| `tests/contracts` (incl. the two new parity fixtures) | 395 passed |
+| `@arcaai/admin-console` test / typecheck / lint / build | 3346 + 27 passed; clean; clean; build exit 0 |
+| `@arcaai/vox-node` build / typecheck / test / `check:exports` | clean; 565 passed; publint "All good" (no `dependencies` key) |
+| `@arcaai/vox` (browser) typecheck / test | clean; 3756 passed |
+| `@arcaai/vox-codegen` build / typecheck / test | clean; 106 passed |
+| `pnpm harness:test:unit` / `harness:lint` | 2637 passed; all checks passed |
+| Lint (errors) applications / domains / api / console / SDKs / types | 0 everywhere (warnings pre-existing: 187 / 14 / 65) |
+| CI typecheck steps (`api tsc --noEmit`; turbo typecheck ui/domains/stt/vox-node) | 0 errors |
+| Generators `gen:model/entity/factory:check` | no drift; schema coverage OK |
+| Migration `task_982_workflow_definition_context_schema_binding` | replays on a fresh shadow DB (45 migrations), empty drift, guard extended |
+| Five artifacts (`route-manifest`, `openapi`, `portal` ×2, `vox-node gen:admin`) | regenerated, all `:check`s no drift |
 
 ## 4. Verification
 
