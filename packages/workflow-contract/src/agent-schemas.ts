@@ -319,6 +319,13 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           type: 'object',
           additionalProperties: false,
           properties: Object.freeze({
+            // TASK-977 (owner decision D-1) — VAD segmentation is OFF until an admin turns it
+            // on. It used to be the literal `true` in `buildResolvedAsrSpec`, which made a
+            // model the platform picked run on every tenant that never asked for it; model
+            // SELECTION fails closed (rule 09 §Configuration Tiers), and so does stage
+            // selection. Enabled with no `VOICE_ACTIVITY_DETECTION` model bound is refused
+            // (409 `ASR_AGENT_VAD_MODEL_MISSING`) rather than silently resolved from a cache.
+            enabled: Object.freeze({ type: 'boolean', default: false }),
             modelSlug: Object.freeze({ ...MODEL_SLUG_PROPERTY, description: 'Registry slug of a `VOICE_ACTIVITY_DETECTION` model.' }),
             threshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
             minSpeechMs: Object.freeze({ type: 'integer', minimum: 0, maximum: 10000 }),
@@ -336,6 +343,12 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           type: 'object',
           additionalProperties: false,
           properties: Object.freeze({
+            // TASK-977 (owner decision D-2) — enablement is DECLARED. It used to be derived
+            // from model binding (`models.denoise ? 'medium' : 'off'`), so attaching a row to
+            // inspect it switched noise suppression on for every session. `enabled` and
+            // `level` are kept consistent by the resolver: off ⇔ `level: 'off'`, and an
+            // enabled stage with no level runs at `medium`.
+            enabled: Object.freeze({ type: 'boolean', default: false }),
             modelSlug: Object.freeze({ ...MODEL_SLUG_PROPERTY, description: 'Registry slug of an `AUDIO_TO_AUDIO` model.' }),
             level: Object.freeze({ type: 'string', enum: Object.freeze(['off', 'low', 'medium', 'high']) }),
           }),
@@ -375,8 +388,12 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
             }),
           }),
         }),
-        resample: Object.freeze({ type: 'boolean' }),
-        normalize: Object.freeze({ type: 'boolean' }),
+        // TASK-977 (owner decision D-5) — NOT stages: these are what makes the audio meet
+        // the model's input contract, so they stay ON. The `default` is declared so the
+        // console renders the truth (`buildResolvedAsrSpec` has always applied `true` here);
+        // an undeclared default left the widget showing "off" for a stage that ran.
+        resample: Object.freeze({ type: 'boolean', default: true }),
+        normalize: Object.freeze({ type: 'boolean', default: true }),
       }),
     }),
     decoding: Object.freeze({

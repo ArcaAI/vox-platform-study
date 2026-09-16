@@ -128,6 +128,17 @@ export interface AsrSpecModel {
   metadata?: AsrSpecModelMetadata;
 }
 
+/**
+ * TASK-977 (owner decision D-4) — `vad`, `denoise` and `embedding` are present ONLY when
+ * their `audioFrontEnd` stage is enabled. `apps/stt` warms and pins whatever this block
+ * names (`session_manager._load_optional`, `batch_service._load_models`) on ref presence
+ * alone, so a disabled stage must name nothing: "off" costs zero model loads. An agent may
+ * keep a `modelSlug` bound while the stage is off — the binding survives in the agent's
+ * parameters, it just does not reach the wire.
+ *
+ * `punctuation` and `endpointing` are NOT audio front-end stages (they are post-ASR
+ * services referenced by slug and loaded by their own service) and are unconditional.
+ */
 export interface AsrSpecModels {
   asr: AsrSpecModel;
   vad?: AsrSpecModel;
@@ -141,9 +152,26 @@ export type AsrSpecDenoiseLevel = 'off' | 'low' | 'medium' | 'high';
 export type AsrSpecDiarizationBackend = 'embedding' | 'sortformer';
 export type AsrSpecEndpointing = 'fixed' | 'semantic';
 
-/** §3.2 `audioFrontEnd` — replaces `models.vad/denoise/embedding` + `preprocessing.*`. */
+/**
+ * §3.2 `audioFrontEnd` — replaces `models.vad/denoise/embedding` + `preprocessing.*`.
+ *
+ * TASK-977 — the three STAGES (`vad`, `denoise`, `diarization`) are each a declared agent
+ * opinion that defaults OFF, and a stage that is off ships no model (see `AsrSpecModels`).
+ * `resample` and `normalize` are NOT stages: they are what makes the audio meet the
+ * model's input contract, so they default ON.
+ */
 export interface AsrSpecAudioFrontEnd {
   vad: {
+    /**
+     * TASK-977 (D-1) — was emitted as a constant `true` by the gateway, so Silero
+     * segmentation ran for every tenant that had never asked for it. Now read from the
+     * agent, default `false`. `true` with no `models.vad` is refused at build time
+     * (409 `ASR_AGENT_VAD_MODEL_MISSING`) rather than resolved from whatever weights the
+     * runtime's cache happens to hold — model selection fails closed.
+     *
+     * The tuning fields below are carried whatever this says: they are what the agent
+     * SAID, and stating a threshold is not consent to run the stage.
+     */
     enabled: boolean;
     threshold: number | null;
     minSpeechMs: number | null;
@@ -156,6 +184,16 @@ export interface AsrSpecAudioFrontEnd {
      */
     speechPadMs?: number | null;
   };
+  /**
+   * TASK-977 (D-2) — enablement is DECLARED by the agent, not inferred from a bound
+   * denoise model as it was before this ticket. The two fields are two spellings of one
+   * decision and the builder keeps them consistent, so a reader may test either:
+   * `enabled === (level !== 'off')` always holds.
+   *
+   * No model is required to denoise — the engines are runtime-owned (`pyrnnoise`,
+   * `init_df('DeepFilterNet3')`) and selected by NAME via `DenoiseConfig.engine`, so
+   * unlike VAD and diarization this stage has no fail-closed model guard.
+   */
   denoise: { enabled: boolean; level: AsrSpecDenoiseLevel };
   diarization: {
     enabled: boolean;
@@ -174,6 +212,10 @@ export interface AsrSpecAudioFrontEnd {
      */
     matchThreshold?: number | null;
   };
+  /**
+   * TASK-977 (D-5) — resampling stays ON by default (owner directive: the audio must meet
+   * the model's input requirements). Not a stage, so no model guard and no opt-in.
+   */
   resample: boolean;
   normalize: boolean;
 }

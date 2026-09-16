@@ -53,7 +53,7 @@ export { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 /** Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine). */
 export class AsrSpecBuildError extends Error {
   /** Machine-readable cause; the resolver surfaces it as the 409 body's `code`. */
-  readonly code: 'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING';
+  readonly code: 'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING' | 'ASR_AGENT_VAD_MODEL_MISSING';
 
   constructor(message: string, code: AsrSpecBuildError['code'] = 'ASR_AGENT_UNRUNNABLE') {
     super(message);
@@ -187,22 +187,42 @@ function primaryOf(agent: ResolvedAgent): ResolvedAgentModel {
   return primary;
 }
 
-function auxModels(agent: ResolvedAgent): Omit<AsrSpecModels, 'asr'> {
+/**
+ * The aux models this spec SHIPS.
+ *
+ * TASK-977 (owner decision D-4) — `vad`, `denoise` and `embedding` belong to audio
+ * front-end STAGES, so a stage the spec declares OFF ships no model for it: `apps/stt`
+ * warms and pins whatever `models.*` names (`session_manager._load_optional`,
+ * `batch_service._load_models`) on ref presence alone, and "disabled" must cost zero
+ * model loads. `punctuation` and `endpointing` are not front-end stages — they are
+ * post-ASR services with their own enable flags elsewhere in the spec — so they are
+ * copied unconditionally, exactly as before.
+ */
+function auxModels(agent: ResolvedAgent, front: AsrSpecAudioFrontEnd): Omit<AsrSpecModels, 'asr'> {
   const out: Omit<AsrSpecModels, 'asr'> = {};
+  const shipsStage: Partial<Record<AsrSpecModelRole, boolean>> = {
+    vad: front.vad.enabled,
+    denoise: front.denoise.enabled,
+    embedding: front.diarization.enabled,
+  };
   for (const role of ['vad', 'denoise', 'embedding', 'punctuation', 'endpointing'] as const) {
+    if (shipsStage[role] === false) continue;
     const found = agent.models.find((m) => m.role === role);
     if (found) out[role] = toSpecModel(found, role);
   }
   return out;
 }
 
-function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFrontEnd {
+function audioFrontEnd(parameters: Rec): AsrSpecAudioFrontEnd {
   const afe = rec(parameters.audioFrontEnd);
   const vad = rec(afe.vad);
   const denoise = rec(afe.denoise);
   const diarization = rec(afe.diarization);
-  // A denoise model with no explicit level means "on, engine default strength".
-  const level = oneOf(denoise.level, ['off', 'low', 'medium', 'high'] as const, models.denoise ? 'medium' : 'off');
+  // TASK-977 (D-2) — enablement is DECLARED, never inferred from model binding. `enabled`
+  // and `level` are two spellings of one decision, so they are resolved together and can
+  // never disagree: off ⇒ `level: 'off'` whatever the agent wrote, and an enabled stage
+  // with no level runs at `medium` (the strength binding a model used to imply).
+  const level = bool(denoise.enabled, false) ? oneOf(denoise.level, ['off', 'low', 'medium', 'high'] as const, 'medium') : 'off';
   // TASK-880 — `speechPadMs` replaces the platform key `stt.vad.speechPadMs`. OMITTED
   // when the agent said nothing (the omit-when-absent rule the TASK-877 additions use),
   // so `VadConfig.padding_ms` remains the one source of the engine default.
@@ -210,7 +230,10 @@ function audioFrontEnd(parameters: Rec, models: AsrSpecModels): AsrSpecAudioFron
   const matchThreshold = num(diarization.matchThreshold);
   return {
     vad: {
-      enabled: true,
+      // TASK-977 (D-1) — was the literal `true`. The tuning fields beside it are carried
+      // whatever the flag says: they are what the agent SAID, and stating a threshold is
+      // not consent to run the stage.
+      enabled: bool(vad.enabled, false),
       threshold: num(vad.threshold),
       minSpeechMs: num(vad.minSpeechMs),
       minSilenceMs: num(vad.minSilenceMs),
@@ -433,6 +456,35 @@ function assertDiarizationRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontE
 }
 
 /**
+ * TASK-977 (owner decision D-3) — an agent that turns VAD ON must NAME the VAD model.
+ *
+ * The guard above, applied to the stage this ticket stopped forcing on. Silero needs
+ * weights, and `_load_vad_service` resolves them from the session's own
+ * `models.vad.localPath`; with no row it passes `None` and the service falls back to
+ * whatever the HuggingFace cache happens to hold. That is a model SELECTION nobody made
+ * — the same silent substitution TASK-887 removed from diarization — so it is refused.
+ *
+ * DENOISE deliberately has no such guard, and that asymmetry is the finding, not an
+ * oversight: the denoise engines are RUNTIME-owned. `StreamingDenoiser.initialize()`
+ * constructs `pyrnnoise.RNNoise(sample_rate=48000)` and
+ * `DeepFilterNet3StreamingDenoiser.initialize()` calls
+ * `init_df(default_model='DeepFilterNet3')` — weights shipped inside the wheel — and the
+ * engine is chosen by NAME (`DenoiseConfig.engine`, default `rnnoise`), never from
+ * `models.denoise`, which is only ever warmed into the model cache and never read back by
+ * a denoise call. Requiring an `AiModel` row to denoise would refuse the default working
+ * configuration.
+ */
+function assertVadRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontEnd, vad: AsrSpecModel | undefined): void {
+  if (!afe.vad.enabled || vad) return;
+  throw new AsrSpecBuildError(
+    `Agent '${agent.slug}' v${agent.versionNumber} enables voice-activity detection but binds no VAD model. ` +
+      `Set \`audioFrontEnd.vad.modelSlug\` to a VOICE_ACTIVITY_DETECTION model visible to this tenant, or leave ` +
+      `\`audioFrontEnd.vad.enabled\` off and let the runtime segment on energy.`,
+    'ASR_AGENT_VAD_MODEL_MISSING',
+  );
+}
+
+/**
  * One engine chain for `agent`, optionally with its primary ASR model swapped (model-level fallback).
  *
  * TASK-934 — the chain resolves against ITS OWN ASR row's profile, which is the point of
@@ -452,8 +504,12 @@ export function buildAsrSpecCore(
   // observability only, so a live session can be explained without re-deriving precedence.
   const sources: Sources = {};
   const partialWindowSec = partialWindowSecOf(parameters, profile, sources);
-  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', specModelMetadata(profile, partialWindowSec)), ...auxModels(agent) };
-  const front = audioFrontEnd(parameters, models);
+  // TASK-977 — the front end is resolved FIRST and then decides which aux models ship.
+  // Before D-2 this ran the other way round (the denoise level was read off the bound
+  // model), which is why a disabled stage could not drop its model.
+  const front = audioFrontEnd(parameters);
+  const models: AsrSpecModels = { asr: toSpecModel(asrModel, 'asr', specModelMetadata(profile, partialWindowSec)), ...auxModels(agent, front) };
+  assertVadRunnable(agent, front, models.vad);
   assertDiarizationRunnable(agent, front, models.embedding);
   const decodingBlock = decoding(parameters, profile, sources);
   const instructionBlock = instruction(agent, profile, sources);
