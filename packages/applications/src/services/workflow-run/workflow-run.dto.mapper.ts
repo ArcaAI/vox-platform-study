@@ -52,7 +52,8 @@ export class WorkflowRunDtoMapper {
     dto.skippedNodeCount = readSkippedNodeCount(entity.metaData);
     // TASK-982 — a per-run FLAG, never a run STATE (README pitfall 6, workflow-run.prisma:49-55):
     // COMPLETED with at least one degraded-or-skipped-for-cause node.
-    dto.degraded = String(entity.status) === 'COMPLETED' && entity.degradedNodeCount + (dto.skippedNodeCount ?? 0) > 0;
+    // A SKIPPED node is a hand-off or an untaken branch, never a warning — only DEGRADED nodes make a run degraded.
+    dto.degraded = String(entity.status) === 'COMPLETED' && entity.degradedNodeCount > 0;
     dto.firstErrorCode = entity.firstErrorCode ?? null;
     dto.resultRef = (entity.resultRef as Record<string, unknown> | null) ?? null;
     dto.actingUserId = readActingUserId(entity.metaData);

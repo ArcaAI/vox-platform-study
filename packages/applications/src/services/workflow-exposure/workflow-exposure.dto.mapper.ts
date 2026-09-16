@@ -85,7 +85,8 @@ export class WorkflowExposureDtoMapper {
       failedNodeCount,
       degradedNodeCount,
       skippedNodeCount,
-      degraded: status === 'COMPLETED' && (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0,
+      // A SKIPPED node is a hand-off or an untaken branch, never a warning — only DEGRADED nodes count.
+      degraded: status === 'COMPLETED' && (degradedNodeCount ?? 0) > 0,
     };
   }
 

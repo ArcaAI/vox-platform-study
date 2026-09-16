@@ -201,7 +201,7 @@ export interface GoverningRunSummary {
   workflowRunId: string;
   /** Persisted vocabulary only — never the interpreter's `SUCCEEDED`/`DEGRADED`. */
   status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
-  /** True when the run finished with at least one degraded or skipped-for-cause node. */
+  /** True when the run finished with at least one DEGRADED node; skipped nodes (hand-offs, untaken branches) never count. */
   degraded: boolean;
   decidedAt: string;
   failureReason: string | null;
@@ -289,7 +289,7 @@ Backfill in the same migration: `contextSchemaId`/`contextSchemaVersionNumber` f
 
 #### 3.4.5 Run-completed counts (lane C)
 
-Harness `RunEventSpec` gains `node_count: int | None`, `failed_node_count`, `degraded_node_count`, `skipped_node_count` (all optional, default `None`); `_emit_run_completed` fills them from the settled node results (`DEGRADED` and `SKIPPED` nodes count as degraded and skipped respectively). The emitted envelope carries `nodeCount`, `failedNodeCount`, `degradedNodeCount`, `skippedNodeCount` (camelCase). Applications `RecordRunFinishedInput` gains the same four optional numbers; `WorkflowRun` rows are written from them; `WorkflowRunCompletionService.recordTerminal` passes them; the live `getRunStatus` maps `upstream.status` through `terminalStatusOf` (fallback `RUNNING`) and computes `degraded = (degradedNodeCount ?? 0) + (skippedNodeCount ?? 0) > 0 && status === 'COMPLETED'`. `TERMINAL_RUN_STATUSES` is unchanged. Parity fixture `tests/contracts/workflow-run-completed.fixture.json` pins the envelope.
+Harness `RunEventSpec` gains `node_count: int | None`, `failed_node_count`, `degraded_node_count`, `skipped_node_count` (all optional, default `None`); `_emit_run_completed` fills them from the settled node results (`DEGRADED` and `SKIPPED` nodes count as degraded and skipped respectively). The emitted envelope carries `nodeCount`, `failedNodeCount`, `degradedNodeCount`, `skippedNodeCount` (camelCase). Applications `RecordRunFinishedInput` gains the same four optional numbers; `WorkflowRun` rows are written from them; `WorkflowRunCompletionService.recordTerminal` passes them; the live `getRunStatus` maps `upstream.status` through `terminalStatusOf` (fallback `RUNNING`) and computes `degraded = (degradedNodeCount ?? 0) > 0 && status === 'COMPLETED'` (skipped nodes are reported but never count as warnings). `TERMINAL_RUN_STATUSES` is unchanged. Parity fixture `tests/contracts/workflow-run-completed.fixture.json` pins the envelope.
 
 Settings descriptor (lane C): key `consultation.preSummary.retry.attempts`, tier `global-kv`, type integer, min 0, max 3, default 1, `failMode: 'open-to-default'`, description "Additional attempts the warm-start pre-summary makes after a transient text-service failure."
 

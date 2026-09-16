@@ -99,9 +99,10 @@ describe('TASK-982 — WorkflowRunDtoMapper.skippedNodeCount + degraded', () => 
     expect(WorkflowRunDtoMapper.toResponse(run).degraded).toBe(true);
   });
 
-  it('degraded is true on a COMPLETED run with only a skipped-for-cause node', () => {
+  it('a skipped node alone never makes a run degraded — a hand-off or an untaken branch is not a warning', () => {
     const run = buildRun({ status: WorkflowRunStatus.COMPLETED, degradedNodeCount: 0, metaData: { skippedNodeCount: 2 } });
-    expect(WorkflowRunDtoMapper.toResponse(run).degraded).toBe(true);
+    expect(WorkflowRunDtoMapper.toResponse(run).degraded).toBe(false);
+    expect(WorkflowRunDtoMapper.toResponse(run).skippedNodeCount).toBe(2);
   });
 
   it('degraded is a per-run flag, never a run status — a FAILED run with a degraded count is not "degraded"', () => {
