@@ -85,6 +85,8 @@ callers are unaffected). A key holding `consultation:*` satisfies every scope be
 | `consultations.open`, `.recording.start/.stop`, `.addContext`, `.streams.*` | `consultation:session:write` |
 | `consultations.get`, `jobs.get/.cancel/.stream/.subscribe/.waitFor`         | `consultation:session:read`  |
 | `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`            | `stt:transcription:write`    |
+| `agents.transcribe(slug, { file })` — multipart upload, batch ASR                   | `stt:transcription:write`    |
+| `agents.transcribe(slug, { mediaId })` — media already uploaded                     | `agent:invocation:write`     |
 | `summarization.preSummary`/`.preSummaryStream`/`.summary`/`.summaryStream`  | `consultation:report:write`  |
 | `consultations.summaries.generate*`, `.update`                              | `consultation:report:write`  |
 | `consultations.summaries.list`/`.latest`/`.latestPreSummary`                | `consultation:report:read`   |
