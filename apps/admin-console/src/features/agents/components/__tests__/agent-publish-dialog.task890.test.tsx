@@ -2,7 +2,7 @@
  * TASK-890 §3.8/§3.9 — the agent publish dialog: a confirm step, then (once published) the
  * resolved endpoint, the `@arcaai/vox-node` snippet, and the `/api-keys` link.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import type { Agent } from '../../api/types';
@@ -70,8 +70,18 @@ describe('AgentPublishDialog', () => {
 
   it('a speech-to-text agent shows the transcriptions endpoint', () => {
     render(<AgentPublishDialog open onOpenChange={() => undefined} onConfirm={() => undefined} agent={agent()} published={agent({ status: 'PUBLISHED', isActive: true, task: 'SPEECH_TO_TEXT' })} />);
-    expect(screen.getByText(/POST \/agents\/clinic-summarizer\/transcriptions/)).toBeTruthy();
-    expect(screen.getByText(/hope\.agents\.transcribe/)).toBeTruthy();
+    expect(screen.getAllByText(/POST \/agents\/clinic-summarizer\/transcriptions/).length).toBeGreaterThan(0);
+    // The panel opens on the Realtime job for a speech-to-text agent (TASK-983); the batch SDK
+    // call lives under Node → Batch.
+    const node = screen.getByRole('tab', { name: 'Node' });
+    fireEvent.mouseDown(node);
+    fireEvent.click(node);
+    const jobList = screen.getAllByRole('tablist').find((list) => within(list).queryByRole('tab', { name: 'Batch' }) !== null);
+    if (!jobList) throw new Error('no Batch job view');
+    const batch = within(jobList).getByRole('tab', { name: 'Batch' });
+    fireEvent.mouseDown(batch);
+    fireEvent.click(batch);
+    expect(screen.getAllByText(/hope\.agents\.transcribe/).length).toBeGreaterThan(0);
   });
 
   it('has no axe violations, confirming or published (WCAG 2.2 AA gate)', async () => {
