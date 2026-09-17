@@ -8,10 +8,10 @@
  * in `packages/applications/src/services/agent/__tests__/agent.portability.task884.test.ts`; a
  * second, weaker copy in the browser would be a rule with two owners.
  */
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { Agent } from '../../api/types';
+import type { Agent, AgentLineage } from '../../api/types';
 import { AgentsScreen } from '../agents-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -70,6 +70,26 @@ const AGENTS: Agent[] = [
   agent({ id: 'sys-1', sourceTenantId: SYSTEM, sourceSlug: 'platform-summarization', slug: 'clinic-platform-summarization', name: 'Platform summarization', tags: ['tier:platform-default', 'task:llm'] }),
 ];
 
+/**
+ * TASK-965 WS-4 — the grid reads the LINEAGE register, so the rows above fold into three
+ * lineages. The tags travel on the lineage row exactly as they did on the version row.
+ */
+const LINEAGES: AgentLineage[] = AGENTS.map((row) => ({
+  slug: row.slug,
+  name: row.name,
+  task: row.task,
+  versionCount: 1,
+  latestVersionNumber: row.versionNumber,
+  deprecatedCount: 0,
+  active: { id: row.id, versionNumber: row.versionNumber, publishedAt: row.publishedAt, publishedBy: null, modelSlug: row.modelSlug, compiledConfigChecksum: row.compiledConfigChecksum },
+  draft: null,
+  assignment: { tenantDefault: false, departmentCount: 0, selectorCount: 0 },
+  origin: { sourceTenantId: row.sourceTenantId, sourceSlug: row.sourceSlug },
+  tags: row.tags,
+  updatedAt: row.updatedAt,
+  hidden: false,
+}));
+
 interface RecordedCall {
   url: string;
   method: string;
@@ -102,10 +122,20 @@ function stubFetch(extra: (call: RecordedCall) => Response | undefined = () => u
         });
       }
       if (call.method !== 'GET') throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
+      if (path === '/api/hope/admin/agents/lineages') {
+        const params = new URL(call.url, 'http://test.local').searchParams;
+        const slug = /slug\[iequals\]:([^;]+)/.exec(params.get('filters') ?? '')?.[1];
+        const data = LINEAGES.filter((row) => !slug || row.slug === slug);
+        return Response.json({ count: data.length, page: 1, limit: 25, data });
+      }
       if (path === '/api/hope/admin/agents') return Response.json(AGENTS);
-      if (path === '/api/hope/admin/agents/a-1') return Response.json(AGENTS[0], { headers: { etag: '"3"' } });
+      {
+        const row = AGENTS.find((candidate) => path === `/api/hope/admin/agents/${candidate.id}`);
+        if (row) return Response.json(row, { headers: { etag: `"${row.version}"` } });
+      }
       if (path.endsWith('/versions')) return Response.json([AGENTS[0]]);
       if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
+      if (path === '/api/hope/admin/departments') return Response.json({ data: [] });
       if (path === '/api/hope/admin/ai-models/catalogue') return Response.json({ providers: [], models: [] });
       if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
       if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [] });
@@ -134,22 +164,36 @@ describe('Agents list — tags', () => {
     return `?f=${encodeURIComponent(JSON.stringify([['tags', 'inArray', 'multiSelect', values]]))}`;
   }
 
-  it('filters to the agents carrying a selected tag, from the URL filter state', async () => {
+  /**
+   * TASK-965 WS-4 — the tag FACET is gone, and its absence is deliberate.
+   *
+   * `GET admin/agents/lineages` applies `filters` to the VERSION ROWS and folds afterwards
+   * (`AgentRepository.findLineagesForTenant`), so a predicate that can differ between the versions
+   * of one slug — and `tags` is per version, editable on every draft — would not merely narrow the
+   * list: it would drop rows from the fold and rewrite the lineage's own `active`, `draft`,
+   * `versionCount` and `deprecatedCount`. A lineage whose active v2 is untagged would answer
+   * "None active" under a tag filter, which is the exact class of lie this ticket exists to
+   * remove. Until the register can narrow by tag AFTER the fold, the console shows the tags and
+   * offers no facet over them. `task` is the one fold-safe facet (it is constant across a
+   * lineage), which is why it is a first-class field on the route.
+   */
+  it('shows each lineage’s tags but offers no tag facet: a stale `f` tags rule narrows nothing and corrupts nothing', async () => {
     stubFetch();
     renderWithProviders(<AgentsScreen />, { searchParams: tagFilter('specialty:rheumatology') });
     expect(await screen.findByText('Clinic summarizer')).toBeTruthy();
-    expect(screen.queryByText('Clinic general')).toBeNull();
-    expect(screen.queryByText('Platform summarization')).toBeNull();
+    // Every lineage is still listed, with its own counters intact — no silent fold distortion.
+    expect(screen.getByText('Clinic general')).toBeTruthy();
+    expect(screen.getByText('Platform summarization')).toBeTruthy();
+    expect(screen.getByText('3 of 3 agents')).toBeTruthy();
   });
 
-  // AND-joined, matching how a selector narrows the assignment cascade. The footer count is
-  // asserted rather than only absence, so the test cannot pass on a render that has not loaded.
-  it('AND-joins several tags rather than widening to either', async () => {
-    stubFetch();
+  it('never sends a tag predicate to the register, even when the URL carries one', async () => {
+    const calls = stubFetch();
     renderWithProviders(<AgentsScreen />, { searchParams: tagFilter('specialty:rheumatology', 'tier:platform-default') });
-    expect(await screen.findByText('0 of 3 shown')).toBeTruthy();
-    expect(screen.queryByText('Clinic summarizer')).toBeNull();
-    expect(screen.queryByText('Platform summarization')).toBeNull();
+    expect(await screen.findByText('Clinic summarizer')).toBeTruthy();
+    const register = calls.filter((call) => call.url.includes('/admin/agents/lineages'));
+    expect(register.length).toBeGreaterThan(0);
+    expect(register.every((call) => !call.url.includes('tags'))).toBe(true);
   });
 });
 
@@ -203,14 +247,14 @@ describe('Agent detail — export and the assignment tag selector', () => {
     // happy-dom has no object-URL implementation; the click is what we are asserting on.
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }));
 
-    renderWithProviders(<AgentsScreen />, { searchParams: '?agent=a-1' });
-    const exportButton = await screen.findByRole('button', { name: 'Export' });
+    renderWithProviders(<AgentsScreen />, { searchParams: '?slug=clinic-summarizer' });
+    const exportButton = await screen.findByRole('button', { name: 'Export v2' });
     fireEvent.click(exportButton);
 
     await waitFor(() => {
       const call = calls.find((entry) => entry.url.includes('/clinic-summarizer/export'));
       expect(call).toBeTruthy();
-      // The OPEN version, not "whatever is active" — the drawer shows one row and exports it.
+      // The INSPECTED version — the active one by default, since that is what the lineage serves.
       expect(call?.url).toContain('versionNumber=2');
     });
   });
@@ -221,8 +265,11 @@ describe('Agent detail — export and the assignment tag selector', () => {
       if (call.method === 'POST' && path === '/api/hope/admin/agent-assignments') return Response.json({ id: 'as-1' }, { status: 201 });
       return undefined;
     });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?agent=a-1' });
+    renderWithProviders(<AgentsScreen />, { searchParams: '?slug=clinic-summarizer' });
 
+    // TASK-965 WS-4 — assignment is per SLUG, so it lives on the lineage's Assignments tab.
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Assignments' }), { button: 0 });
     const selector = await screen.findByLabelText('Tag selector (optional)');
 
     // A bare key is named back to the user and the button is disabled — no request is made.
@@ -245,8 +292,10 @@ describe('Agent detail — export and the assignment tag selector', () => {
       if (call.method === 'POST' && path === '/api/hope/admin/agent-assignments') return Response.json({ id: 'as-1' }, { status: 201 });
       return undefined;
     });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?agent=a-1' });
+    renderWithProviders(<AgentsScreen />, { searchParams: '?slug=clinic-summarizer' });
 
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Assignments' }), { button: 0 });
     fireEvent.click(await screen.findByRole('button', { name: 'Set as tenant default' }));
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && call.url.includes('/admin/agent-assignments'));

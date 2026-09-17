@@ -1,7 +1,8 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  activateAgent,
   cloneAgent,
   createAgent,
   createAgentAssignment,
@@ -10,8 +11,10 @@ import {
   exportAgent,
   finalizeAgentTest,
   getAgent,
+  getAgentLineageBySlug,
   importAgent,
   listAgentAssignments,
+  listAgentLineages,
   listAgentVersions,
   listAgents,
   listDepartments,
@@ -23,8 +26,10 @@ import {
   updateAgentAssignment,
   validateAgent,
 } from './client';
+import type { AgentLineageListParams } from './client';
 import { agentKeys } from './keys';
 import type {
+  AgentLineage,
   AgentTask,
   CloneAgentRequest,
   CreateAgentRequest,
@@ -41,12 +46,60 @@ export function useAgents(task?: AgentTask) {
   return useQuery({ queryKey: agentKeys.list(task), queryFn: () => listAgents(task) });
 }
 
+/**
+ * TASK-965 — the grid's read: one row per LINEAGE, server-paged. `keepPreviousData` so paging or
+ * re-filtering keeps the last page on screen (the grid's `isBusy` says it is refreshing) instead
+ * of flashing the skeleton — the pattern `useModelsPaginated` established.
+ */
+export function useAgentLineages(params?: AgentLineageListParams) {
+  return useQuery({ queryKey: agentKeys.lineages(params), queryFn: () => listAgentLineages(params), placeholderData: keepPreviousData });
+}
+
+/**
+ * The deep-link resolver: a `/agents?slug=…` link can name a lineage that is not on the page the
+ * grid loaded, so the drawer falls back to this ONE-row read. `enabled` is the caller's, because
+ * the screen already holds the row when it came from the open page.
+ */
+export function useAgentLineageBySlug(slug: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: agentKeys.lineageBySlug(slug ?? ''),
+    queryFn: () => getAgentLineageBySlug(slug as string),
+    enabled: !!slug && (options?.enabled ?? true),
+  });
+}
+
 export function useAgent(id: string | null) {
   return useQuery({ queryKey: agentKeys.detail(id ?? ''), queryFn: () => getAgent(id as string), enabled: !!id });
 }
 
 export function useAgentVersions(id: string | null) {
   return useQuery({ queryKey: agentKeys.versions(id ?? ''), queryFn: () => listAgentVersions(id as string), enabled: !!id });
+}
+
+/**
+ * TASK-965 — every version of ONE lineage, for the drawer's Versions tab.
+ *
+ * `GET admin/agents/{id}/versions` is addressed by a version ROW ID, not by the slug, and the
+ * lineage row carries an id only for its ACTIVE version and its OPEN DRAFT. A lineage whose
+ * versions are all published-but-inactive, or all deprecated, therefore has no anchor id on the
+ * wire at all — and that is precisely the lineage an admin opens in order to ACTIVATE one. The
+ * fallback is the per-version list route (narrowed by task, folded to this slug here), which is
+ * what the screen read before the register existed. Remove it the day the register carries a
+ * version id of its own, or the versions route accepts a slug.
+ */
+export function useAgentLineageVersions(lineage: AgentLineage | null) {
+  const anchorId = lineage?.active?.id ?? lineage?.draft?.id ?? null;
+  const slug = lineage?.slug ?? null;
+  const task = lineage?.task;
+  return useQuery({
+    queryKey: [...agentKeys.root, 'lineage-versions', slug ?? '', anchorId ?? ''] as const,
+    queryFn: async () => {
+      if (anchorId) return listAgentVersions(anchorId);
+      const all = await listAgents(task);
+      return all.filter((row) => row.slug === slug);
+    },
+    enabled: !!slug,
+  });
 }
 
 export function useAgentAssignments(task?: AgentTask) {
@@ -95,6 +148,17 @@ export function useNewAgentVersion() {
 export function useDeprecateAgent() {
   const invalidate = useInvalidateAgents();
   return useMutation({ mutationFn: (id: string) => deprecateAgent(id), onSuccess: invalidate });
+}
+
+/**
+ * TASK-965 (OD-965-1) — rollback. The invalidation is the whole point: activating vN demotes its
+ * sibling server-side, so the lineage register, the version list and every open detail read are
+ * all stale the moment it returns. `useInvalidateAgents` drops the whole `agent-entities`
+ * namespace, which is exactly the blast radius of a moved pointer.
+ */
+export function useActivateAgent() {
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: (id: string) => activateAgent(id), onSuccess: invalidate });
 }
 
 // TASK-884 — portability. Export is a MUTATION rather than a query on purpose: it is an action

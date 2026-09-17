@@ -348,3 +348,73 @@ export interface Department {
   id: string;
   name: string;
 }
+
+// ---------------------------------------------------------------------------
+// TASK-965 (OD-965-3) — the LINEAGE projection: one row per slug, not per version
+// ---------------------------------------------------------------------------
+
+/**
+ * `GET admin/agents` answers one row per VERSION. That is the right shape for a Versions tab and
+ * the wrong shape for a list: one agent with four versions rendered as four near-identical rows,
+ * every count counted versions where it meant agents, and a page boundary could split a lineage
+ * (AG-13/AG-14). `GET admin/agents/lineages` is the list shape — the active pointer, the open
+ * draft, the counts and what the slug serves, folded into one row, paginated by LINEAGE.
+ *
+ * Mirrors `packages/applications/src/services/agent/dto/agent-lineage.response.ts`.
+ */
+export interface AgentLineageActive {
+  id: string;
+  versionNumber: number;
+  publishedAt: string | null;
+  /** `updatedBy`, stamped by publish. */
+  publishedBy: string | null;
+  modelSlug: string | null;
+  compiledConfigChecksum: string | null;
+}
+
+/** The newest OPEN version — what "Continue draft vM" continues. `null` when none is open. */
+export interface AgentLineageDraft {
+  id: string;
+  versionNumber: number;
+  status: 'DRAFT' | 'VALIDATED';
+  updatedAt: string;
+}
+
+/**
+ * What this SLUG serves. The assignment is per-SLUG, never per-version (AG-15): a DRAFT v4 of an
+ * assigned slug serves nothing, and the old drawer badged it "Tenant default" anyway.
+ */
+export interface AgentLineageAssignment {
+  tenantDefault: boolean;
+  departmentCount: number;
+  selectorCount: number;
+}
+
+/** Reference-set provenance — a SYSTEM `sourceTenantId` is the "Platform origin" badge. */
+export interface AgentLineageOrigin {
+  sourceTenantId: string | null;
+  sourceSlug: string | null;
+}
+
+export interface AgentLineage {
+  slug: string;
+  /** The ACTIVE version's name, or the newest version's when nothing is active. */
+  name: string;
+  task: AgentTask;
+  /** Live (non-deleted) version rows in this lineage. */
+  versionCount: number;
+  latestVersionNumber: number;
+  deprecatedCount: number;
+  active: AgentLineageActive | null;
+  draft: AgentLineageDraft | null;
+  assignment: AgentLineageAssignment;
+  origin: AgentLineageOrigin;
+  tags: string[];
+  /** The newest touch anywhere in the lineage. */
+  updatedAt: string;
+  /**
+   * TASK-974 D-1 — a platform service agent (`dna-writing-style-analyst`): one SYSTEM row the
+   * business plane never lists. Admin surfaces render it flagged, never as a tenant's own lineage.
+   */
+  hidden?: boolean;
+}
