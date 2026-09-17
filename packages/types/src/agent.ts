@@ -208,6 +208,21 @@ export interface AgentCompiledConfig {
    * carries none either.
    */
   contextSchema?: { schemaId: string; versionNumber: number; versionId: string; payloadSchema: Record<string, unknown> } | null;
+  /**
+   * TASK-983 (R9) — the placeholder PATHS this agent's composed instruction references that
+   * carry no `default("…")` and that the agent's own `instruction.variables` do not supply:
+   * sorted, de-duplicated, computed at PUBLISH by `requiredPromptVariables` over every fragment.
+   *
+   * It exists so `GET /api/v1/agents/{slug}` can PUBLISH what an invocation must send. Before it,
+   * the renderer threw on the FIRST unresolved placeholder and the summary listed none, so a
+   * developer discovered a nine-variable prompt one 400 at a time and could not build a correct
+   * body from the contract at all.
+   *
+   * ADDITIVE-OPTIONAL: every artifact published before this ticket carries no key, and absence
+   * means "not computed", never "nothing required" — a reader recomputes from `resolvedPrompt`
+   * (`AgentDtoMapper.toSummary` does exactly that) rather than publishing an empty list.
+   */
+  requiredVariables?: string[];
 }
 
 export interface ResolvedAgent {

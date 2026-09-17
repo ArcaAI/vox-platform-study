@@ -55,6 +55,18 @@ export interface TemplateReference {
   readonly offset: number;
 }
 
+/**
+ * TASK-983 (R9) — one placeholder of a template, DE-DUPLICATED: the path and whether every
+ * occurrence of it carries `default("…")`. `TemplateReference` above is per OCCURRENCE (it
+ * carries an offset, which an editor wants); this is per NAME, which is what a published
+ * contract and a request-time diff want.
+ */
+export interface PlaceholderReference {
+  readonly path: string;
+  /** `true` only when EVERY occurrence carries `default("…")` — one undefaulted use makes the path required. */
+  readonly hasDefault: boolean;
+}
+
 export interface RenderTemplateOptions {
   /**
    * What to name this template in a `PromptVariableUnresolved` error — a template id, an agent
@@ -332,6 +344,46 @@ export function templateReferences(content: string): TemplateReference[] {
   return scan(content)
     .segments.filter((segment): segment is PlaceholderSegment => segment.kind === 'placeholder')
     .map((segment) => ({ path: segment.path, hasDefault: segment.defaultValue !== null, offset: segment.offset }));
+}
+
+/**
+ * TASK-983 (R9) — every placeholder of one template, or of a COMPOSED instruction's fragments,
+ * as a sorted, de-duplicated set of names.
+ *
+ * Fragments are walked one by one rather than concatenated, for the same reason `composePrompt`
+ * renders them one by one: a `{{` must never pair with a `}}` across a fragment boundary.
+ *
+ * `hasDefault` is the AND of every occurrence. A path defaulted in one place and bare in another
+ * is REQUIRED — the bare occurrence is the one that throws, and calling it optional would be a
+ * published lie. Malformed placeholders are skipped exactly as `templateReferences` skips them:
+ * a syntax problem is its own finding (`templateSyntaxProblems`), reported once, by publish.
+ *
+ * Sorted by code unit, never `localeCompare`: this set is frozen into an artifact and compared
+ * across machines, so the order must not depend on a locale.
+ */
+export function collectPlaceholders(template: string | readonly (string | null | undefined)[]): PlaceholderReference[] {
+  const templates = typeof template === 'string' ? [template] : template;
+  const byPath = new Map<string, boolean>();
+  for (const one of templates) {
+    if (typeof one !== 'string' || one.length === 0) continue;
+    for (const reference of templateReferences(one)) {
+      const seen = byPath.get(reference.path);
+      byPath.set(reference.path, seen === undefined ? reference.hasDefault : seen && reference.hasDefault);
+    }
+  }
+  return [...byPath.entries()]
+    .map(([path, hasDefault]) => ({ path, hasDefault }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/**
+ * The renderer's OWN traversal, exported so a caller can ask "would this path resolve?" without
+ * rendering and without a second implementation of the rules (own properties, plain objects
+ * only, an array is a value, `null` is missing). `undefined` means it did not resolve — which is
+ * exactly when `renderTemplate` throws `PromptVariableUnresolvedError`.
+ */
+export function resolveTemplatePath(scope: Readonly<Record<string, unknown>>, path: string): unknown {
+  return resolvePath(scope, path);
 }
 
 /** Every way the template fails to parse. `[]` means `renderTemplate` will not throw a syntax error. */
