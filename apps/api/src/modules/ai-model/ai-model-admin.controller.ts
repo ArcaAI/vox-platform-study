@@ -116,16 +116,11 @@ export class AiModelAdminController {
   }
 
   /**
-   * TASK-983 R1/R4 — ONE whole-object `@Query()` binding.
-   *
-   * This route used to bind `@Query('page')` and `@Query('limit')` and nothing
-   * else, so the console grid's `search` / `searchFields` / `filters` / `sort`
-   * were dropped by the framework before the handler ran. Named `@Query('x')`
-   * params are invisible to the global validation pipe, so the request answered
-   * 200 with the UNFILTERED page instead of 400 — a search for a slug that does
-   * not exist returned every row. Binding the standard `PaginatedQuery` both
-   * forwards the params and puts them under `whitelist +
-   * forbidNonWhitelisted`.
+   * List the SYSTEM model registry as one paginated page. The whole query object
+   * is bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so
+   * the grid's parameters reach the service and undeclared ones are rejected by
+   * the global validation pipe; named `@Query('x')` bindings would silently drop
+   * everything but the named keys.
    */
   @ApiEndpoint({
     returnedModel: PaginatedModelResponse,
