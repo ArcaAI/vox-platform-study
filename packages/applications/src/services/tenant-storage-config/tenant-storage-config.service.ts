@@ -22,6 +22,7 @@ import { TenantStorageConfigDtoMapper } from './tenant-storage-config.dto.mapper
 const CONFIG_FIELDS = [
   'topology',
   'endpoint',
+  'publicEndpoint',
   'region',
   'forcePathStyle',
   'accountName',
@@ -29,6 +30,16 @@ const CONFIG_FIELDS = [
   'containerPrefix',
   'credentialsRef',
 ] as const;
+
+/**
+ * `publicEndpoint` arrives from a text field: surrounding whitespace is noise
+ * and an empty value means "clear it" (sign with `endpoint` again). Anything
+ * else is left for `TenantStorageConfigEntity.validate()` to accept or 400.
+ */
+function withNormalizedPublicEndpoint<T extends { publicEndpoint?: string | null }>(dto: T): T {
+  if (typeof dto.publicEndpoint !== 'string') return dto;
+  return { ...dto, publicEndpoint: dto.publicEndpoint.trim() || null };
+}
 
 /**
  * Manages per-tenant / per-bucket storage configuration AND the platform
@@ -94,7 +105,8 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     return platformDefault ? TenantStorageConfigDtoMapper.toResponse(platformDefault) : null;
   }
 
-  async upsertConfig(dto: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigResponse> {
+  async upsertConfig(request: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigResponse> {
+    const dto = withNormalizedPublicEndpoint(request);
     const tenantId = this.requireTenantId();
     this.assertNotPlatformScope(tenantId);
     const bucketId = dto.bucketId ?? null;
@@ -157,8 +169,9 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     return row ? TenantStorageConfigDtoMapper.toResponse(row) : TenantStorageConfigDtoMapper.platformPlaceholder();
   }
 
-  async upsertPlatformDefault(dto: UpsertPlatformStorageConfigRequest): Promise<TenantStorageConfigResponse> {
+  async upsertPlatformDefault(request: UpsertPlatformStorageConfigRequest): Promise<TenantStorageConfigResponse> {
     this.assertSuperAdmin('change the platform storage default');
+    const dto = withNormalizedPublicEndpoint(request);
 
     const existing = await this.configRepository.findSystemDefault();
 
@@ -236,6 +249,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
       provider: dto.provider,
       topology: dto.topology,
       endpoint: dto.endpoint,
+      publicEndpoint: dto.publicEndpoint,
       region: dto.region,
       forcePathStyle: dto.forcePathStyle,
       accountName: dto.accountName,
@@ -253,6 +267,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     entity.provider = dto.provider;
     if (dto.topology !== undefined) entity.topology = dto.topology;
     if (dto.endpoint !== undefined) entity.endpoint = dto.endpoint;
+    if (dto.publicEndpoint !== undefined) entity.publicEndpoint = dto.publicEndpoint;
     if (dto.region !== undefined) entity.region = dto.region;
     if (dto.forcePathStyle !== undefined) entity.forcePathStyle = dto.forcePathStyle;
     if (dto.accountName !== undefined) entity.accountName = dto.accountName;

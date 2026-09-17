@@ -166,6 +166,40 @@ describe('BlobStorageProviderFactory', () => {
    * favour of env — a silent downgrade from the Vault tier to the bootstrap tier
    * on a credential path, which is the drift this ticket exists to remove.
  */
+  describe('public download origin (TASK-984)', () => {
+    it('hands the SYSTEM row publicEndpoint to the platform S3 provider', async () => {
+      const configRepo = {
+        findSystemDefault: vi.fn().mockResolvedValue({
+          provider: 'MINIO',
+          endpoint: 'https://hope-minio:9000',
+          publicEndpoint: 'https://admin.example.com',
+          region: 'us-east-1',
+          forcePathStyle: true,
+          accountName: null,
+          endpointSuffix: null,
+          containerPrefix: null,
+          credentialsRef: null,
+        }),
+        findTenantDefault: vi.fn(),
+        findForBucket: vi.fn(),
+      };
+      const factory = new BlobStorageProviderFactory(makeAppSettings({}) as any, makeSecrets({}) as any, configRepo as any);
+
+      await factory.getProvider();
+
+      expect(S3BlobProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ endpoint: 'https://hope-minio:9000', publicEndpoint: 'https://admin.example.com' }),
+      );
+    });
+
+    it('passes no publicEndpoint on the env bootstrap tier', async () => {
+      await build({ S3_ENDPOINT: 'http://localhost:9000' }, {}).getProvider();
+
+      const [config] = (S3BlobProvider as unknown as { mock: { calls: [Record<string, unknown>][] } }).mock.calls[0];
+      expect(config.publicEndpoint).toBeUndefined();
+    });
+  });
+
   describe('platform credentials — the Vault credentialsRef outranks the env bootstrap tier', () => {
     /** A SYSTEM `TenantStorageConfig` row carrying a Vault path and nothing else. */
     function systemRowRepo(credentialsRef: string) {

@@ -198,7 +198,7 @@ describe('S3BlobProvider', () => {
     it('presignGet signs a GetObjectCommand with the requested expiry', async () => {
       const url = await provider.presignGet({ bucket: 'b', key: 'k', expiresInSeconds: 120 });
 
-      expect(GetObjectCommand).toHaveBeenCalledWith({ Bucket: 'b', Key: 'k' });
+      expect(GetObjectCommand).toHaveBeenCalledWith({ Bucket: 'b', Key: 'k', ResponseCacheControl: 'private, no-store' });
       expect(getSignedUrl).toHaveBeenCalledWith(expect.anything(), expect.anything(), { expiresIn: 120 });
       expect(url).toBe('https://signed.example.com/url');
     });

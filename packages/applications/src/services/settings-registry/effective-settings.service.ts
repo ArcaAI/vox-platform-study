@@ -75,6 +75,7 @@ export function effectiveResolverLane(descriptor: SettingDescriptor): string | n
 const PLATFORM_STORAGE_KEYS = new Set([
   'storage.platformDefault.provider',
   'storage.platformDefault.endpoint',
+  'storage.platformDefault.publicEndpoint',
   'storage.platformDefault.region',
   'storage.platformDefault.forcePathStyle',
   'storage.platformDefault.containerPrefix',

@@ -139,6 +139,10 @@ model TenantStorageConfig {
   endpoint       String?
   region         String?
   forcePathStyle Boolean?
+  // Origin presigned URLs are SIGNED for (`https://host[:port]`, no path) —
+  // the address a browser reaches the store at. Null = sign with `endpoint`.
+  // Platform-admin managed on the SYSTEM row; never an env var (TASK-984).
+  publicEndpoint String?
 
   // Azure settings (used when provider is AZURE_BLOB)
   accountName    String?

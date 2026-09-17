@@ -405,6 +405,75 @@ describe('TenantStorageConfigService', () => {
     });
   });
 
+  describe('public download endpoint (TASK-984)', () => {
+    it('a platform admin sets it on the SYSTEM row without touching the other fields', async () => {
+      const platform = systemDefaultEntity();
+      const { service, configRepo, factory } = build({
+        cls: superAdminCls(),
+        configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) },
+      });
+
+      const res = await service.upsertPlatformDefault({
+        provider: platform.provider,
+        publicEndpoint: 'https://admin.example.com',
+        expectedVersion: platform.version,
+      });
+
+      const written = configRepo.updateWithVersion.mock.calls[0]![1];
+      expect(written.publicEndpoint).toBe('https://admin.example.com');
+      expect(written.endpoint).toBe('http://localhost:9000');
+      expect(res.publicEndpoint).toBe('https://admin.example.com');
+      expect(factory.invalidatePlatform).toHaveBeenCalledTimes(1);
+    });
+
+    it('an empty value clears it back to null (sign with the endpoint again)', async () => {
+      const platform = TenantStorageConfigFactory.CreateConfig({
+        tenantId: SYSTEM_TENANT_ID,
+        provider: StorageProviderType.MINIO,
+        endpoint: 'http://localhost:9000',
+        publicEndpoint: 'https://admin.example.com',
+      });
+      const { service, configRepo } = build({ cls: superAdminCls(), configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) } });
+
+      const res = await service.upsertPlatformDefault({ provider: platform.provider, publicEndpoint: '  ', expectedVersion: platform.version });
+
+      expect(configRepo.updateWithVersion.mock.calls[0]![1].publicEndpoint).toBeNull();
+      expect(res.publicEndpoint).toBeNull();
+    });
+
+    it('400s a value that is not a bare origin, and writes nothing', async () => {
+      const platform = systemDefaultEntity();
+      const { service, configRepo, factory } = build({ cls: superAdminCls(), configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) } });
+
+      await expect(
+        service.upsertPlatformDefault({ provider: platform.provider, publicEndpoint: 'https://admin.example.com/s3', expectedVersion: platform.version }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(configRepo.updateWithVersion).not.toHaveBeenCalled();
+      expect(factory.invalidatePlatform).not.toHaveBeenCalled();
+    });
+
+    it('a tenant config carries its own publicEndpoint on create', async () => {
+      const { service, configRepo } = build({});
+
+      const res = await service.upsertConfig({
+        provider: StorageProviderType.MINIO,
+        topology: StorageTopologyType.DEDICATED,
+        endpoint: 'http://tenant-minio:9000',
+        publicEndpoint: 'https://files.tenant.example',
+        credentialsRef: 'T1',
+      });
+
+      expect(configRepo.create.mock.calls[0]![0].publicEndpoint).toBe('https://files.tenant.example');
+      expect(res.publicEndpoint).toBe('https://files.tenant.example');
+    });
+
+    it('the not-yet-seeded platform placeholder reports publicEndpoint null', async () => {
+      const { service } = build({ cls: superAdminCls() });
+
+      expect((await service.getPlatformDefault()).publicEndpoint).toBeNull();
+    });
+  });
+
   describe('listConfigs', () => {
     it('returns mapped configs for the active tenant', async () => {
       const a = defaultEntity();

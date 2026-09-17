@@ -8,6 +8,7 @@ export interface ITenantStorageConfigEntity extends IBaseTenantEntity {
   endpoint?: string | null;
   region?: string | null;
   forcePathStyle?: boolean | null;
+  publicEndpoint?: string | null;
   accountName?: string | null;
   endpointSuffix?: string | null;
   containerPrefix?: string | null;
@@ -21,6 +22,7 @@ export class TenantStorageConfigEntity extends BaseTenantEntity {
   private _endpoint?: string | null;
   private _region?: string | null;
   private _forcePathStyle?: boolean | null;
+  private _publicEndpoint?: string | null;
   private _accountName?: string | null;
   private _endpointSuffix?: string | null;
   private _containerPrefix?: string | null;
@@ -34,6 +36,7 @@ export class TenantStorageConfigEntity extends BaseTenantEntity {
     this._endpoint = init.endpoint;
     this._region = init.region;
     this._forcePathStyle = init.forcePathStyle;
+    this._publicEndpoint = init.publicEndpoint;
     this._accountName = init.accountName;
     this._endpointSuffix = init.endpointSuffix;
     this._containerPrefix = init.containerPrefix;
@@ -88,6 +91,18 @@ export class TenantStorageConfigEntity extends BaseTenantEntity {
     this.setProperty('forcePathStyle', value);
   }
 
+  /**
+   * Origin presigned URLs are SIGNED for — the address a browser reaches the
+   * store at (`https://host[:port]`). Null ⇒ sign with `endpoint`.
+   */
+  get publicEndpoint(): string | null | undefined {
+    return this._publicEndpoint;
+  }
+
+  set publicEndpoint(value: string | null | undefined) {
+    this.setProperty('publicEndpoint', value);
+  }
+
   get accountName(): string | null | undefined {
     return this._accountName;
   }
@@ -138,5 +153,24 @@ export class TenantStorageConfigEntity extends BaseTenantEntity {
     if (this._topology === StorageTopologyType.DEDICATED && !this._credentialsRef) {
       throw new Error('credentialsRef is required for a DEDICATED storage configuration');
     }
+    if (this._publicEndpoint) {
+      if (this._provider === StorageProviderType.AZURE_BLOB) {
+        throw new Error('publicEndpoint applies to S3/MinIO only; Azure SAS URLs are already public');
+      }
+      if (!isBareHttpOrigin(this._publicEndpoint)) {
+        // SigV4 signs the path and an S3 API cannot be mounted under a
+        // sub-path, so anything but a bare origin can never verify.
+        throw new Error('publicEndpoint must be an origin such as https://files.example.com (scheme, host and optional port; no path)');
+      }
+    }
+  }
+}
+
+function isBareHttpOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value;
+  } catch {
+    return false;
   }
 }

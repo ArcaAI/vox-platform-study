@@ -180,6 +180,7 @@ export class BlobStorageProviderFactory {
 
     return new S3BlobProvider({
       ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+      ...(config.publicEndpoint ? { publicEndpoint: config.publicEndpoint } : {}),
       region: config.region,
       accessKeyId: creds.accessKeyId ?? '',
       secretAccessKey: creds.secretAccessKey ?? '',
@@ -360,6 +361,7 @@ export class BlobStorageProviderFactory {
     const provider = config.provider === StorageProviderType.AWS_S3 ? StorageProvider.AWS_S3 : StorageProvider.MINIO;
     return new S3BlobProvider({
       ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+      ...(config.publicEndpoint ? { publicEndpoint: config.publicEndpoint } : {}),
       region: config.region ?? 'us-east-1',
       accessKeyId: creds.accessKeyId ?? '',
       secretAccessKey: creds.secretAccessKey ?? '',

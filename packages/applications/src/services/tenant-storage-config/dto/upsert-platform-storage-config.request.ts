@@ -36,6 +36,17 @@ export class UpsertPlatformStorageConfigRequest {
   @MaxLength(500)
   endpoint?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      'Origin presigned download URLs are signed for — the address a browser reaches the store at, e.g. https://admin.example.com ' +
+      '(scheme, host, optional port; no path). Empty or null signs with `endpoint`. S3/MinIO only.',
+    example: 'https://admin.example.com',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  publicEndpoint?: string | null;
+
   @ApiPropertyOptional({ description: 'S3 region', example: 'us-east-1' })
   @IsOptional()
   @IsString()

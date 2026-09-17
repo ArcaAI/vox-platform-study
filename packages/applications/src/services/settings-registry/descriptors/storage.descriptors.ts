@@ -69,6 +69,28 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     description: 'S3/MinIO endpoint URL for the platform default. Empty means the SDK default (real AWS S3).',
   },
   {
+    // TASK-984 — the ORIGIN presigned download URLs are signed for. SigV4 signs
+    // the host, so a URL signed for the in-cluster endpoint cannot be rewritten
+    // for a browser afterwards; it must be signed for the address the browser
+    // uses. Deliberately NO env or AppSettings fallback (owner, 2026-09-17): the
+    // platform admin sets it on the SYSTEM row, and absent means "sign with the
+    // endpoint", which is already right wherever the endpoint is reachable.
+    // No `consumedBy`: only the gateway presigns.
+    key: 'storage.platformDefault.publicEndpoint',
+    tier: 'db-config',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Storage',
+    failMode: 'open-to-default',
+    label: 'Public download endpoint',
+    description:
+      'Origin browsers use to download stored files (e.g. https://admin.example.com). Presigned URLs are signed for it. ' +
+      'Empty means sign with the storage endpoint. S3/MinIO only.',
+  },
+  {
     key: 'storage.platformDefault.region',
     tier: 'db-config',
     consumedBy: ['harness'],

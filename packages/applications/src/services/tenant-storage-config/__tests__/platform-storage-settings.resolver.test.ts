@@ -73,6 +73,15 @@ describe('PlatformStorageSettingsResolver', () => {
     await expect(resolver.resolve('storage.platformDefault.containerPrefix')).resolves.toEqual({ value: 'hope-', sourceScope: 'system' });
   });
 
+  it('serves storage.platformDefault.publicEndpoint from the SYSTEM row, and nothing when unset (TASK-984)', async () => {
+    const { resolver } = build({ rows: [systemRow({ publicEndpoint: 'https://admin.example.com' })] });
+    expect(resolver.resolves('storage.platformDefault.publicEndpoint')).toBe(true);
+    await expect(resolver.resolve('storage.platformDefault.publicEndpoint')).resolves.toEqual({ value: 'https://admin.example.com', sourceScope: 'system' });
+
+    const unset = build({ rows: [systemRow()] });
+    await expect(unset.resolver.resolve('storage.platformDefault.publicEndpoint')).resolves.toBeUndefined();
+  });
+
   it('serves the provider in the DESCRIPTOR vocabulary, not the Prisma enum spelling', async () => {
     const { resolver } = build({ rows: [systemRow({ provider: StorageProviderType.AZURE_BLOB } as Partial<TenantStorageConfigEntity>)] });
     await expect(resolver.resolve('storage.platformDefault.provider')).resolves.toEqual({ value: 'azure_blob', sourceScope: 'system' });

@@ -36,6 +36,13 @@ import {
 export interface S3BlobProviderConfig {
   /** S3 endpoint URL. Omit for real AWS S3; set for MinIO/custom endpoints. */
   endpoint?: string;
+  /**
+   * Origin presigned URLs are SIGNED for (`TenantStorageConfig.publicEndpoint`,
+   * set by a platform admin). SigV4 signs the `host`, so a URL signed for the
+   * in-cluster endpoint cannot be rewritten afterwards — it has to be signed
+   * for the address the browser will use. Omitted ⇒ sign with `endpoint`.
+   */
+  publicEndpoint?: string;
   region?: string;
   accessKeyId: string;
   secretAccessKey: string;
@@ -62,17 +69,22 @@ export class S3BlobProvider implements IBlobStorageProvider {
   readonly provider: StorageProvider;
   private readonly logger = new Logger(S3BlobProvider.name);
   private readonly client: S3Client;
+  /** Signs presigned URLs only; never sends a request. Same as `client` when no public origin is set. */
+  private readonly presignClient: S3Client;
 
   constructor(config: S3BlobProviderConfig) {
     this.provider = config.provider ?? StorageProvider.MINIO;
-    this.client = new S3Client({
-      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+    const shared = {
       region: config.region ?? 'us-east-1',
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
       forcePathStyle: config.forcePathStyle ?? true,
+    };
+    this.client = new S3Client({
+      ...shared,
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
       // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
       // `MINIO_CERT_CHECK`): MinIO keeps TLS but its certificate is not
       // verified, because the platform has no private CA to chain it to and
@@ -81,6 +93,9 @@ export class S3BlobProvider implements IBlobStorageProvider {
       // site that has to be reverted when a CA lands.
       ...(config.certCheck === false ? { requestHandler: new NodeHttpHandler({ httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }) } : {}),
     });
+    // Presigning is offline, so this client never opens a connection and
+    // needs no TLS relaxation.
+    this.presignClient = config.publicEndpoint ? new S3Client({ ...shared, endpoint: config.publicEndpoint }) : this.client;
   }
 
   /**
@@ -167,13 +182,16 @@ export class S3BlobProvider implements IBlobStorageProvider {
   }
 
   async presignGet(params: PresignGetParams): Promise<string> {
-    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: params.bucket, Key: params.key }), {
+    // `private, no-store`: a presigned object is a bearer link to tenant data,
+    // and on the public origin it crosses a CDN — an edge copy must never
+    // outlive the signature (the store sends this header back on the object).
+    return getSignedUrl(this.presignClient, new GetObjectCommand({ Bucket: params.bucket, Key: params.key, ResponseCacheControl: 'private, no-store' }), {
       expiresIn: params.expiresInSeconds,
     });
   }
 
   async presignPut(params: PresignPutParams): Promise<string> {
-    return getSignedUrl(this.client, new PutObjectCommand({ Bucket: params.bucket, Key: params.key, ContentType: params.contentType }), {
+    return getSignedUrl(this.presignClient, new PutObjectCommand({ Bucket: params.bucket, Key: params.key, ContentType: params.contentType }), {
       expiresIn: params.expiresInSeconds,
     });
   }

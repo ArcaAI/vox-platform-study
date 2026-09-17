@@ -26,6 +26,9 @@ export class TenantStorageConfigResponse {
   @ApiPropertyOptional({ description: 'S3/MinIO endpoint URL' })
   endpoint?: string | null;
 
+  @ApiPropertyOptional({ description: 'Origin presigned download URLs are signed for; null = signed with `endpoint`' })
+  publicEndpoint?: string | null;
+
   @ApiPropertyOptional({ description: 'S3 region' })
   region?: string | null;
 
