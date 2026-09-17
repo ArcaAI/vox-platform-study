@@ -368,6 +368,7 @@
         "HOPE_SECRETS_DIR",
         "HOPE_SVC_CLIENT_ID",
         "HOPE_SVC_CLIENT_SECRET",
+        "HOPE_WEBHOOK_SECRET",
         "HOPE_WORKFLOW_SLUG",
         "HOST",
         "HOSTNAME",
