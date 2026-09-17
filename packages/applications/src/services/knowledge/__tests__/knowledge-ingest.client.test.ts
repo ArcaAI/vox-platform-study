@@ -83,6 +83,15 @@ describe('KnowledgeIngestClient', () => {
     expect(options.headers['Content-Type']).toBe('application/json');
   });
 
+  it('attributes the internal call to the request tenant via X-Tenant-Id', async () => {
+    const client = build('http://harness:8866', 'tok');
+
+    await client.ingest(REQUEST);
+
+    const [, , options] = mockHttpService.axiosRef.post.mock.calls[0];
+    expect(options.headers['X-Tenant-Id']).toBe('tenant-1');
+  });
+
   it('sends an empty X-Service-Token when no secret is configured (harness guard rejects)', async () => {
     const client = build('http://harness:8866', undefined);
 

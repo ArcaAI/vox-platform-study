@@ -244,10 +244,7 @@ export function parseTurnJson(raw: string, compiled: CompiledDocumentTemplate): 
  * already has. (The store would refuse that anyway as `deletion-without-contradiction`; not
  * issuing the write keeps the refusal out of the log when there is nothing to refuse.)
  */
-export function wholeDocumentAsTurn(
-  parsed: readonly LiveSummarySectionDto[],
-  compiled: CompiledDocumentTemplate,
-): AppliedTurn {
+export function wholeDocumentAsTurn(parsed: readonly LiveSummarySectionDto[], compiled: CompiledDocumentTemplate): AppliedTurn {
   // The parsed list is passed through VERBATIM rather than re-keyed onto `sectionKeys`. The prose
   // parser has its own fallback — a single `Running Summary` section carrying the whole output when
   // no heading matched — and re-keying would silently discard it, publishing an empty note for a

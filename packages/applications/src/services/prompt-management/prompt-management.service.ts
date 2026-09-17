@@ -1530,7 +1530,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       return {
         provider: spec.primary.provider,
         model: spec.primary.model,
-        generation: typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined,
+        generation:
+          typeof generation === 'object' && generation !== null && !Array.isArray(generation) ? (generation as Record<string, unknown>) : undefined,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {

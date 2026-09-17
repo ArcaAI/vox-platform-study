@@ -1,7 +1,15 @@
 import { ConflictException, Injectable, NotImplementedException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ResourceStatusType, ResourceType, SysEventType, EntityId, UserProfileEntity, UserProfileFactory, UserProfileRepository } from '@arcaai/domains';
+import {
+  ResourceStatusType,
+  ResourceType,
+  SysEventType,
+  EntityId,
+  UserProfileEntity,
+  UserProfileFactory,
+  UserProfileRepository,
+} from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IUserProfileService } from './IUserProfileService';
 import { CreateUserProfileRequest, UpdateUserProfileRequest } from './dto';

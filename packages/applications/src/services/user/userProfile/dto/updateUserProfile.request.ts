@@ -43,7 +43,8 @@ export class UpdateUserProfileRequest extends BaseRequest {
   // `@IsOptional` skips `@IsString` for null, so an explicit null body still validates.
   // Uniqueness is per TENANT and is enforced in the service (409 `STAFF_ID_TAKEN`).
   @ApiPropertyOptional({
-    description: "Tenant staff identifier (null clears). Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it.",
+    description:
+      "Tenant staff identifier (null clears). Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it.",
     nullable: true,
   })
   @IsString()

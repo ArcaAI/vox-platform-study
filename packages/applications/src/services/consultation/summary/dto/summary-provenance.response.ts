@@ -66,8 +66,6 @@ export class SummaryProvenanceResponse {
   })
   redactionApplied?: boolean | null;
 
-
-
   @ApiPropertyOptional({ description: 'Entity-faithfulness sensor score (0..1)', nullable: true })
   entityFaithfulnessScore?: number | null;
 

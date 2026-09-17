@@ -6,7 +6,7 @@ import {
   TenantFrontendConfigRepository,
   TranscriptionMode,
 } from '@arcaai/domains';
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
