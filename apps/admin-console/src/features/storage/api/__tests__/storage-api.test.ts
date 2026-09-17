@@ -8,6 +8,7 @@ import {
   deleteObject,
   deleteStorageConfig,
   getBucket,
+  getPlatformStorageConfig,
   getBucketDefaults,
   getBucketTree,
   getEffectiveStorageConfig,
@@ -18,6 +19,7 @@ import {
   listStorageConfigs,
   provisionTenantBuckets,
   setBucketDefaults,
+  setPlatformPublicEndpoint,
   uploadObject,
   upsertStorageConfig,
 } from '../client';
@@ -135,6 +137,35 @@ describe('storage client — config + access keys', () => {
       'PUT /api/hope/admin/tenants/storage/config',
       'DELETE /api/hope/admin/tenants/storage/config/cfg-1',
     ]);
+  });
+
+  it('reads the platform storage default and sets its public download endpoint under If-Match (TASK-984)', async () => {
+    const calls: { url: string; method: string; ifMatch: string | null; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? 'GET',
+          ifMatch: new Headers(init?.headers).get('if-match'),
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        });
+        return Response.json({ id: 'sys-1', provider: 'MINIO', version: 3 });
+      }),
+    );
+
+    const platform = await getPlatformStorageConfig();
+    await setPlatformPublicEndpoint(platform, 'https://admin.example.com');
+    await setPlatformPublicEndpoint(platform, null);
+
+    expect(calls[0]).toMatchObject({ method: 'GET', url: '/api/hope/admin/tenants/storage/config/platform' });
+    expect(calls[1]).toEqual({
+      method: 'PUT',
+      url: '/api/hope/admin/tenants/storage/config/platform',
+      ifMatch: '"3"',
+      body: { provider: 'MINIO', publicEndpoint: 'https://admin.example.com', expectedVersion: 3 },
+    });
+    expect(calls[2].body).toEqual({ provider: 'MINIO', publicEndpoint: null, expectedVersion: 3 });
   });
 
   it('lists/creates/revokes scoped access keys', async () => {

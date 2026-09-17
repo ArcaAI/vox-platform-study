@@ -41,6 +41,7 @@ import type { TenantBucket, TenantBucketPurpose } from '../api/types';
 import { AccessKeysTab } from './access-keys-tab';
 import { BucketBrowserSheet } from './bucket-browser-sheet';
 import { BucketDefaultsTab } from './bucket-defaults-tab';
+import { PlatformStorageDefaultPanel } from './platform-storage-default-panel';
 import { StorageConfigsTab } from './storage-configs-tab';
 
 const TAB_VALUES = ['buckets', 'defaults', 'configs', 'keys'] as const;
@@ -532,9 +533,10 @@ function RegisterBucketDialog({
 /**
  * The buckets list works CROSS-TENANT for an unscoped elevated
  * session (SUPER_ADMIN with no working tenant): the backend returns every
- * tenant's buckets and the grid shows a Tenant column + filter. Defaults,
- * configs and access keys remain per-tenant wiring, so those tabs still ask
- * for a working tenant when the session is unscoped.
+ * tenant's buckets and the grid shows a Tenant column + filter. Defaults and
+ * access keys remain per-tenant wiring, so those tabs still ask for a working
+ * tenant when the session is unscoped; Configs shows the PLATFORM storage
+ * default instead, since that is the scope an unscoped platform admin is in.
  */
 export function TenantStorageScreen() {
   const session = useSession();
@@ -660,7 +662,8 @@ function StorageScreenBody({ scoped, elevated }: { scoped: boolean; elevated: bo
           {scoped ? <BucketDefaultsTab /> : <PickTenantState />}
         </TabsContent>
         <TabsContent value="configs" className="overflow-y-auto">
-          {scoped ? <StorageConfigsTab /> : <PickTenantState />}
+          {/* Unscoped is always elevated here: with no working tenant the scope IS the platform (TASK-984). */}
+          {scoped ? <StorageConfigsTab /> : <PlatformStorageDefaultPanel />}
         </TabsContent>
         <TabsContent value="keys" className="overflow-y-auto">
           {scoped ? <AccessKeysTab /> : <PickTenantState />}

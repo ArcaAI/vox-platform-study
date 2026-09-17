@@ -13,6 +13,7 @@ import {
   getBucketDefaults,
   getBucketTree,
   getEffectiveStorageConfig,
+  getPlatformStorageConfig,
   getPresignedUrl,
   listAccessKeys,
   listBuckets,
@@ -20,11 +21,19 @@ import {
   listStorageConfigs,
   provisionTenantBuckets,
   setBucketDefaults,
+  setPlatformPublicEndpoint,
   uploadObject,
   upsertStorageConfig,
 } from './client';
 import { storageKeys } from './keys';
-import type { AdoptBucketRequest, CreateAccessKeyRequest, CreateBucketRequest, SetBucketDefaultsRequest, UpsertStorageConfigRequest } from './types';
+import type {
+  AdoptBucketRequest,
+  CreateAccessKeyRequest,
+  CreateBucketRequest,
+  SetBucketDefaultsRequest,
+  TenantStorageConfig,
+  UpsertStorageConfigRequest,
+} from './types';
 
 export function useBuckets() {
   return useQuery({ queryKey: storageKeys.buckets(), queryFn: listBuckets });
@@ -52,6 +61,11 @@ export function useStorageConfigs(includeDisabled?: boolean) {
 
 export function useEffectiveStorageConfig(bucketId?: string) {
   return useQuery({ queryKey: storageKeys.effectiveConfig(bucketId), queryFn: () => getEffectiveStorageConfig(bucketId) });
+}
+
+/** The platform storage default (SYSTEM row) — only mounted for an unscoped platform admin. */
+export function usePlatformStorageConfig() {
+  return useQuery({ queryKey: storageKeys.platformConfig(), queryFn: getPlatformStorageConfig });
 }
 
 export function useAccessKeys() {
@@ -129,4 +143,13 @@ export function useCreateAccessKey() {
 export function useDeleteAccessKey() {
   const invalidate = useInvalidateStorage();
   return useMutation({ mutationFn: (id: string) => deleteAccessKey(id), onSuccess: invalidate });
+}
+
+export function useSetPlatformPublicEndpoint() {
+  const invalidate = useInvalidateStorage();
+  return useMutation({
+    mutationFn: ({ platform, publicEndpoint }: { platform: TenantStorageConfig; publicEndpoint: string | null }) =>
+      setPlatformPublicEndpoint(platform, publicEndpoint),
+    onSuccess: invalidate,
+  });
 }
