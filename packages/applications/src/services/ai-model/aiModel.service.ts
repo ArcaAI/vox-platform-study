@@ -6,10 +6,14 @@ import {
   AiModelAvailability,
   AiModelEntity,
   AiModelFactory,
+  AiModelFormat,
   AiModelRepository,
+  AiModelSource,
   AiTaskKind,
   CoreDatabaseService,
+  ModelCategory,
   ModelTaskType,
+  ModelType,
   ResourceStatusType,
   ResourceType,
   SYSTEM_TENANT_ID,
@@ -58,9 +62,52 @@ import {
 import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
 import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
 import type { ModelTier } from '../entitlements/entitlements.constants';
-import { BaseService } from '../../common';
+import {
+  BaseService,
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+  PaginatedQuery,
+  enumFilterSpec,
+  withFormattedCountProps,
+  withFormattedPaginatedProps,
+  type FilterFieldTypeMap,
+} from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
+
+/**
+ * How a `filters` token coerces on the ADMIN registry grid (TASK-983 R1/R4).
+ *
+ * An explicit map rather than a `MODEL_FILTER_FIELD_TYPES` registry entry: the
+ * registry's `satisfies ModelFilterFieldTypes<T>` guard demands EVERY coercible
+ * column of the model, and this surface only needs the columns the grid and the
+ * documented query grammar actually address. The enum entries are what turn a
+ * bogus facet value (`availability[equals]:NOT_A_MEMBER`) into a 400 naming the
+ * allowed members instead of an opaque Prisma 500.
+ *
+ * Deliberately absent: `isPlatformDefaultFor` and `languages`. Both are scalar
+ * LIST columns, and the filter grammar has no array operators (`has`/`hasSome`)
+ * — see `SCALAR_FILTER_OPERATORS`. Neither is offered as a facet.
+ */
+const AI_MODEL_FILTER_FIELD_TYPES: FilterFieldTypeMap = {
+  version: 'number',
+  memorySizeMb: 'number',
+  gated: 'boolean',
+  availabilityCheckedAt: 'date',
+  resourceStatusUpdatedAt: 'date',
+  createdAt: 'date',
+  updatedAt: 'date',
+  category: enumFilterSpec(ModelCategory),
+  taskType: enumFilterSpec(ModelTaskType),
+  modelType: enumFilterSpec(ModelType),
+  source: enumFilterSpec(AiModelSource),
+  format: enumFilterSpec(AiModelFormat),
+  deploymentKind: enumFilterSpec(AiDeploymentKind),
+  availability: enumFilterSpec(AiModelAvailability),
+  resourceStatus: enumFilterSpec(ResourceStatusType),
+  metaData: 'json',
+  availabilityDetail: 'json',
+};
 
 /** One `(service, provider)` pair's connection facts, resolved once per catalogue read. */
 interface ConnectionFacts {
@@ -588,20 +635,48 @@ export class AiModelService extends BaseService implements IAiModelService {
     return models.map(AiModelDtoMapper.toResponse);
   }
 
-  /** Paginated ADMIN registry rows (TASK-932 OD-4). */
-  async list(page: number = 1, limit: number = 20): Promise<PaginatedModelResponse> {
+  /**
+   * Paginated ADMIN registry rows (TASK-932 OD-4).
+   *
+   * TASK-983 R1/R4 — the signature used to be `(page, limit)` with a hardcoded
+   * `sort: [{ name: 'asc' }]` and no search or filters, so every facet chip,
+   * sort click and omni-search term the console sent was discarded SILENTLY
+   * (individual `@Query('x')` bindings on the controller, so not even a 400).
+   * `…?search=zzzz-no-such-model` answered the same rows as the unfiltered
+   * call, and a newly registered model appeared to need a page refresh because
+   * the server ignored the ordering the grid was showing. It now takes the
+   * standard {@link PaginatedQuery} and runs it through the same two formatting
+   * helpers every other paginated read uses.
+   *
+   * Two invariants survive the change: the read is platform-admin only, and it
+   * is pinned to the SYSTEM tenant — the pin is applied AFTER the caller's
+   * filters, so a `tenantId[equals]:…` token can only narrow to nothing, never
+   * widen to another tenant's rows.
+   */
+  async list(query: PaginatedQuery = {}): Promise<PaginatedModelResponse> {
     this.assertPlatformAdmin();
+
+    const findProps = withFormattedPaginatedProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    const countProps = withFormattedCountProps(query, AI_MODEL_FILTER_FIELD_TYPES);
+    const page = findProps.page ?? DEFAULT_PAGE;
+    const limit = findProps.limit ?? DEFAULT_PAGE_SIZE;
+
     const models = await this.aiModelRepository.findAll({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
-      filters: { tenantId: SYSTEM_TENANT_ID } as any,
+      ...findProps,
       page,
       limit,
-      sort: [{ name: 'asc' }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
+      filters: { ...(findProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
+      // The console leaves its default sort implicit in the URL but still sends
+      // it; a caller that sends none gets the same ordering rather than
+      // Postgres' arbitrary one.
+      sort: findProps.sort ?? [{ name: 'asc' }],
     });
 
     const total = await this.aiModelRepository.count({
+      ...countProps,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository filter type is narrower than the Prisma `where` it forwards
-      filters: { tenantId: SYSTEM_TENANT_ID } as any,
+      filters: { ...(countProps.filters ?? {}), tenantId: SYSTEM_TENANT_ID } as any,
     });
 
     return {

@@ -13,6 +13,15 @@ import { expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
+/**
+ * Every ConsultationStatus label the grid can render, anchored so a badge is
+ * matched whole. Mirrors `STATUS_LABELS` in `consultations-screen.tsx` and
+ * `STATUS_META` in `consultation-status-badge.tsx`; anchoring is what keeps
+ * "Signed" from also matching "Closed (signed)".
+ */
+const STATUS_LABEL_PATTERN =
+  /^(Open|Primed|Recording|Draining|Draft pending sensors|Pending review|Signed|Timed out|Closed|Reopened|Closed \(signed\)|Closed \(no sign-off\))$/;
+
 /** The aggregate settles into the chart visual (zero-filled buckets always draw). */
 async function waitForAggregateSettled(page: Page) {
   await expect(page.getByRole('heading', { level: 1, name: 'Consultations' })).toBeVisible();
@@ -119,38 +128,77 @@ test.describe('consultations filters, detail and chart interactions (frame 40)',
     await expect(dataRows.first().or(emptyState.first())).toBeVisible();
   }
 
-  test('the doctor filter syncs the URL and narrows the grid', async ({ page }) => {
+  /**
+   * TASK-983 R4. This used to end at `rowCountAfter <= rowCountBefore`, which
+   * every possible outcome satisfies — including a server that ignores
+   * `doctorId` entirely and answers the same page. A doctor id that cannot
+   * exist has exactly one correct answer: NO rows. That is what is asserted.
+   */
+  test('the doctor filter syncs the URL and empties the grid for a doctor that cannot exist', async ({ page }) => {
     await page.goto('/consultations');
     await waitForSettled(page);
     const grid = page.getByRole('grid', { name: 'Consultations', exact: true });
-    const rowCountBefore = await grid.locator('[data-slot="data-grid-row"]').count();
+    const dataRows = grid.locator('[data-slot="data-grid-row"]');
+    const rowCountBefore = await dataRows.count();
+    test.skip(rowCountBefore === 0, 'no seeded consultations — narrowing to empty would prove nothing');
 
     await page.getByRole('button', { name: 'Filters' }).click();
     await page.getByRole('textbox', { name: 'Doctor value' }).fill('doctor-does-not-exist');
     await expect(page).toHaveURL(/doctorId/);
 
-    const emptyState = page.getByText('No consultations in range');
-    const dataRows = grid.locator('[data-slot="data-grid-row"]');
-    await expect(dataRows.first().or(emptyState.first())).toBeVisible();
-    const rowCountAfter = await dataRows.count();
-    expect(rowCountAfter <= rowCountBefore).toBe(true);
+    await expect(page.getByText('No consultations in range')).toBeVisible();
+    await expect(dataRows).toHaveCount(0);
   });
 
-  test('the department filter syncs the URL and narrows the grid', async ({ page }) => {
+  /** Same correction as the doctor case above (TASK-983 R4). */
+  test('the department filter syncs the URL and empties the grid for a department that cannot exist', async ({ page }) => {
     await page.goto('/consultations');
     await waitForSettled(page);
     const grid = page.getByRole('grid', { name: 'Consultations', exact: true });
-    const rowCountBefore = await grid.locator('[data-slot="data-grid-row"]').count();
+    const dataRows = grid.locator('[data-slot="data-grid-row"]');
+    const rowCountBefore = await dataRows.count();
+    test.skip(rowCountBefore === 0, 'no seeded consultations — narrowing to empty would prove nothing');
 
     await page.getByRole('button', { name: 'Filters' }).click();
     await page.getByRole('textbox', { name: 'Department value' }).fill('department-does-not-exist');
     await expect(page).toHaveURL(/departmentId/);
 
-    const emptyState = page.getByText('No consultations in range');
+    await expect(page.getByText('No consultations in range')).toBeVisible();
+    await expect(dataRows).toHaveCount(0);
+  });
+
+  /**
+   * TASK-983 R4 — the Status facet had NO narrowing coverage at all, only "the
+   * URL changed". `status` is server-filtered (`GET admin/consultations`), so
+   * the invariant is exact: after picking one status, every rendered row
+   * carries it. Two-sided by construction — the status chosen is one the
+   * unfiltered page actually contains, so an endpoint that answered nothing
+   * would fail just as loudly as one that answered everything.
+   */
+  test('the status filter narrows the grid to rows of that status', async ({ page }) => {
+    await page.goto('/consultations');
+    await waitForSettled(page);
+    const grid = page.getByRole('grid', { name: 'Consultations', exact: true });
     const dataRows = grid.locator('[data-slot="data-grid-row"]');
+    const statusesBefore = await dataRows.getByText(STATUS_LABEL_PATTERN).allTextContents();
+    test.skip(statusesBefore.length === 0, 'no seeded consultations to narrow');
+    const target = statusesBefore[0];
+
+    await page.getByRole('button', { name: 'Filters' }).click();
+    await page.getByRole('option', { name: target, exact: true }).click();
+    await expect(page).toHaveURL(/status/);
+    await page.keyboard.press('Escape');
+
+    const emptyState = page.getByText('No consultations in range');
     await expect(dataRows.first().or(emptyState.first())).toBeVisible();
-    const rowCountAfter = await dataRows.count();
-    expect(rowCountAfter <= rowCountBefore).toBe(true);
+    const statusesAfter = await dataRows.getByText(STATUS_LABEL_PATTERN).allTextContents();
+    expect(statusesAfter.length).toBeGreaterThan(0);
+    expect([...new Set(statusesAfter)]).toEqual([target]);
+    // When the unfiltered page was mixed, the filter must actually have removed
+    // rows — otherwise "all rows carry it" could be true of an ignored filter.
+    if (new Set(statusesBefore).size > 1) {
+      expect(statusesAfter.length).toBeLessThan(statusesBefore.length);
+    }
   });
 
   test('the type filter narrows the visible rows client-side', async ({ page }) => {

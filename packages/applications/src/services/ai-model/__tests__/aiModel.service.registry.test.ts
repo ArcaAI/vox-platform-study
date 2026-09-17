@@ -155,7 +155,7 @@ describe('AiModelService — platform-admin only (403)', () => {
     ['getById (admin read)', (s: AiModelService) => s.getById('row-1')],
     ['getBySlug (admin read)', (s: AiModelService) => s.getBySlug('medical-ner')],
     ['getAllForAdmin', (s: AiModelService) => s.getAllForAdmin()],
-    ['list (admin read)', (s: AiModelService) => s.list(1, 20)],
+    ['list (admin read)', (s: AiModelService) => s.list({ page: 1, limit: 20 })],
   ])('%s throws ForbiddenException for a tenant admin, before touching the repository', async (_name, call) => {
     const { service, repo } = makeService(makeCls({ roles: ['TENANT_ADMIN'] }));
     await expect(call(service)).rejects.toBeInstanceOf(ForbiddenException);
