@@ -763,17 +763,6 @@
             "additionalProperties": true,
             "type": "object"
           },
-          "protocols": {
-            "items": {
-              "enum": [
-                "http",
-                "http-sse",
-                "socket"
-              ],
-              "type": "string"
-            },
-            "type": "array"
-          },
           "slug": {
             "type": "string"
           },
@@ -797,8 +786,7 @@
           "versionNumber",
           "isTenantDefault",
           "inputSchema",
-          "outputSchema",
-          "protocols"
+          "outputSchema"
         ],
         "type": "object"
       },
@@ -7199,7 +7187,7 @@
       "CreateUserRequest": {
         "properties": {
           "departmentId": {
-            "description": "Department to assign in the active tenant (membership)",
+            "description": "Department to assign in the active tenant (membership). REQUIRED for a HUMAN user whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_DEPARTMENT_REQUIRED. Service accounts are exempt, mirroring assertUserBelongsToTenant.",
             "type": "string"
           },
           "email": {
@@ -7228,7 +7216,7 @@
             "type": "string"
           },
           "roleId": {
-            "description": "Role to assign in the active tenant (membership)",
+            "description": "Role to assign in the active tenant (membership). REQUIRED whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_ROLE_REQUIRED, because a user with no role assignment belongs to no tenant and cannot sign in. A non-super-admin caller may not name the SUPER_ADMIN role (403).",
             "type": "string"
           },
           "tenantId": {
@@ -27145,7 +27133,7 @@
             "service-account": []
           }
         ],
-        "summary": "Describe one published agent: its task, version, I/O schemas and protocols",
+        "summary": "Describe one published agent: its task, version and I/O schemas",
         "tags": [
           "agents"
         ],

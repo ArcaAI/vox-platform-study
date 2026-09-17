@@ -312,11 +312,15 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
-   * Retrieving a single PaginatedModelResponse
+   * List the SYSTEM model registry as one paginated page. The whole query object is bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so the grid's parameters reach the service and undeclared ones are rejected by the global validation pipe; named `@Query('x')` bindings would silently drop everything but the named keys.
    *
    * `GET /api/v1/admin/ai-models/list` — `AiModelAdminController.list`.
    */
-  list(options: AdminRequestOptions & { query?: { limit?: number; page?: number } } = {}): Promise<PaginatedModelResponse> {
+  list(
+    options: AdminRequestOptions & {
+      query?: { filters?: string; limit?: number; page?: number; search?: string; searchFields?: string; sort?: string };
+    } = {},
+  ): Promise<PaginatedModelResponse> {
     return this.request<PaginatedModelResponse>({
       method: 'GET',
       path: 'admin/ai-models/list',

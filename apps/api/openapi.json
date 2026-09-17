@@ -763,17 +763,6 @@
             "additionalProperties": true,
             "type": "object"
           },
-          "protocols": {
-            "items": {
-              "enum": [
-                "http",
-                "http-sse",
-                "socket"
-              ],
-              "type": "string"
-            },
-            "type": "array"
-          },
           "slug": {
             "type": "string"
           },
@@ -797,8 +786,7 @@
           "versionNumber",
           "isTenantDefault",
           "inputSchema",
-          "outputSchema",
-          "protocols"
+          "outputSchema"
         ],
         "type": "object"
       },
@@ -7199,7 +7187,7 @@
       "CreateUserRequest": {
         "properties": {
           "departmentId": {
-            "description": "Department to assign in the active tenant (membership)",
+            "description": "Department to assign in the active tenant (membership). REQUIRED for a HUMAN user whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_DEPARTMENT_REQUIRED. Service accounts are exempt, mirroring assertUserBelongsToTenant.",
             "type": "string"
           },
           "email": {
@@ -7228,7 +7216,7 @@
             "type": "string"
           },
           "roleId": {
-            "description": "Role to assign in the active tenant (membership)",
+            "description": "Role to assign in the active tenant (membership). REQUIRED whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_ROLE_REQUIRED, because a user with no role assignment belongs to no tenant and cannot sign in. A non-super-admin caller may not name the SUPER_ADMIN role (403).",
             "type": "string"
           },
           "tenantId": {
@@ -28941,21 +28929,65 @@
         "operationId": "AiModelAdminController_list",
         "parameters": [
           {
-            "description": "Page number (default: 1)",
+            "description": "Page number. The list contract is 1-based (`skip = (page - 1) * limit`); 0 and 1 both select the first page.",
             "in": "query",
             "name": "page",
             "required": false,
             "schema": {
+              "default": 0,
+              "example": 0,
               "type": "number"
             }
           },
           {
-            "description": "Items per page (default: 20)",
+            "description": "Items per page (default: 10)",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
+              "default": 10,
+              "example": 10,
               "type": "number"
+            }
+          },
+          {
+            "description": "Free-text term matched against `searchFields` (case-insensitive contains).",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated columns the `search` term targets — the registry grid sends `name,slug`. Without it, `search` matches nothing.",
+            "in": "query",
+            "name": "searchFields",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "';'-separated `field[op]:value` tokens, e.g. `deploymentKind[in]:CLOUD|SELF_HOSTED;availability[equals]:AVAILABLE`. The [operator] is REQUIRED and the operator set is closed; an unknown operator or an invalid enum member is a 400. `tenantId` is not honoured — the registry is pinned to the SYSTEM tenant.",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated `field:asc|desc`, e.g. `name:desc`. Defaults to `name:asc`.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
             }
           }
         ],
@@ -28969,6 +29001,9 @@
               }
             },
             "description": "Retrieving a single PaginatedModelResponse"
+          },
+          "400": {
+            "description": "Bad request — malformed pagination, filter token, or an undeclared query parameter."
           }
         },
         "security": [
@@ -28979,7 +29014,7 @@
             "service-account": []
           }
         ],
-        "summary": "Retrieving a single PaginatedModelResponse",
+        "summary": "List the SYSTEM model registry as one paginated page. The whole query object\nis bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so\nthe grid's parameters reach the service and undeclared ones are rejected by\nthe global validation pipe; named `@Query('x')` bindings would silently drop\neverything but the named keys.",
         "tags": [
           "admin-ai-models"
         ]
@@ -52460,7 +52495,7 @@
             "service-account": []
           }
         ],
-        "summary": "Describe one published agent: its task, version, I/O schemas and protocols",
+        "summary": "Describe one published agent: its task, version and I/O schemas",
         "tags": [
           "agents"
         ]
