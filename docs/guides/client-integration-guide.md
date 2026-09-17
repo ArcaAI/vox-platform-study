@@ -428,6 +428,36 @@ the next call — and each transcript then carries the metadata that was in forc
 There is no timestamp to pass, deliberately: you cannot know how much of your audio the platform
 has ingested.
 
+### The literal frames on `/ws/stt/stream`
+
+`RealtimeSttSocket` hides all of this — read this only if you are debugging with `websocat`, or
+writing a client without the SDK. Binary WebSocket frames are audio, one PCM16 LE mono frame per
+message, no envelope. Every other frame is JSON text:
+
+```
+client -> server
+{"type":"metadata","metadata":{"mic_id":"left"}}     // sets the metadata in force from here on
+{"type":"stop"}                                      // finalize the utterance; ends the session
+{"type":"resume","sessionId":"…","lastSeq":42}        // reconnect handshake, on a FRESH ticket
+{"type":"close"}                                      // real end, no grace window
+
+server -> client
+{"type":"ready","sessionId":"…","fromSeq":1}
+{"type":"transcript","text":"…","isFinal":false,"seq":7,"startTime":0.4,"endTime":1.1}
+{"type":"status","status":"transcribing","message":"…"}
+{"type":"resumed","sessionId":"…","fromSeq":43}
+{"type":"resume_failed","sessionId":"…","reason":"unknown_session"}
+{"type":"resume_failed","sessionId":"…","reason":"buffer_overflow","minAvailableSeq":10}
+{"type":"error","code":"…","message":"…"}
+```
+
+Resume is **in-band**, not a reconnect option: mint a fresh ticket (the old one is consumed),
+open a new socket, then send `{"type":"resume", sessionId, lastSeq}` where `lastSeq` is the
+highest `seq` you actually saw (`RealtimeSttSocket.lastSeq`). A successful `resumed` replays every
+buffered transcript with `seq > lastSeq` — never a duplicate flood. `resume_failed` means a real
+gap in the transcript (the buffer window was exceeded, or the session was never resumable), not a
+hiccup to retry blind.
+
 ---
 
 ## 6. Live summary and events
@@ -600,6 +630,53 @@ Full file: [`packages/vox-node/examples/09-completion-signals.ts`](../../package
 `streamRun` and `runAndStream` track each frame's opaque id and reconnect with `Last-Event-ID`, so a
 dropped connection costs latency, not events. Use `isTerminalRunStatus(status)` rather than comparing
 strings: the terminal set includes `TIMED_OUT`, and cancellation is spelled `CANCELED`, with one L.
+
+### Workflow run over WebSocket
+
+`transport: 'socket'` is an **option on the methods above**, not a different method — nothing else
+in your code changes:
+
+```ts
+const run = await hope.workflows.run(slug, { input: { /* … */ } });
+
+for await (const event of hope.workflows.streamRun(slug, run.runId, { transport: 'socket' })) {
+  // Same frames, same order, same terminal event as the SSE lane.
+}
+```
+
+The browser SDK takes the same option: `useWorkflowRun({ transport: 'socket' })` (chapter 10)
+returns the identical shape — same `events`, `status`, `lastEventId`, `stopWatching()` — as the
+default SSE lane.
+
+Reach for it only when something between you and the gateway **buffers `text/event-stream`** — a
+proxy that looks like the run stalled and then completed all at once. It is not a faster default:
+
+- **SSE is the only lane that resumes.** `streamRun`/`runAndStream` reconnect with
+  `Last-Event-ID` automatically. The socket has no such reconnect: a drop just ends the watch —
+  mint a fresh ticket, open a new socket, and pass the last frame `id` you saw as `lastEventId` on
+  the query string to pick the stream back up. Nothing is replayed for you in between.
+- **`globalThis.WebSocket` is required — Node 22+, Bun, Deno or edge.** `@arcaai/vox-node` throws
+  `SocketUnavailableError` rather than silently falling back to SSE, the transport you explicitly
+  ruled out.
+- **The ticket is minted by a different route than the JWT-only one.**
+  `POST auth/stream-ticket` is user-JWT-only and refuses API keys and service accounts.
+  `POST workflows/{slug}/runs/{runId}/stream-ticket` is the counterpart for unattended callers —
+  reachable by an API key or a service account — and derives the scope itself as
+  `workflow_run:{runId}`, so nothing wider than that run is ever minted. The SDK mints it and opens
+  the URL the gateway returns for you; you never see the query string.
+
+Every text message on the socket is the same `{ event, id?, data }` shape the SSE lane sends, one
+JSON object per message — the first message is a snapshot and carries no `id`, every one after it
+does:
+
+```
+{"event":"workflow.run.progress","data":{"runId":"…","status":"running","…":"…"}}   // snapshot, no "id"
+{"event":"workflow.run.progress","id":"3","data":{"…":"…"}}                          // a later delta
+{"event":"workflow.run.completed","data":{"status":"succeeded"}}                     // terminal, socket closes
+```
+
+There is no client-to-server frame on this socket — it is receive-only, exactly like the SSE run
+stream.
 
 ### A workflow declares what it can do
 
