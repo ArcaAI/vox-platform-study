@@ -110,6 +110,7 @@ export class AgentDtoMapper {
       assignment,
       origin: { sourceTenantId: lineage.origin.sourceTenantId, sourceSlug: lineage.origin.sourceSlug },
       tags: lineage.tags,
+      hidden: isPlatformHiddenAgentSlug(lineage.slug),
       updatedAt: lineage.updatedAt.toISOString(),
     };
   }
