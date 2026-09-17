@@ -11,6 +11,7 @@ import {
   PromptVariableUnresolvedError,
   composePrompt,
   outputSchemaResponseFormat,
+  unresolvedPromptVariables,
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
@@ -26,6 +27,7 @@ import {
 } from '../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import { buildAgentPromptScope } from './agent-prompt-scope';
+import { promptVariableSlot, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
 
 export interface AgentTextInvocationResult {
@@ -311,6 +313,12 @@ export class AgentInvocationService {
         trigger: this.contextScopeFor(resolved, input.context),
         templateRef: `agent:${resolved.slug}`,
       });
+      // TASK-983 R9 — EVERY missing placeholder, in one refusal, BEFORE the render.
+      // `renderTemplate` throws on the first one, so an agent whose instruction reads nine
+      // context paths was discoverable only as nine consecutive 400s (measured on the dev
+      // gateway, 2026-09-17). The diff runs over the SAME scope the render will use and the
+      // SAME traversal, so it can neither over- nor under-report what the render would reject.
+      this.assertPromptVariablesSupplied(resolved.slug, compiled.instruction, compiled.resolvedPrompt, scope);
       return composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${resolved.slug}` });
     });
     const systemPrompt = composed.prompt ?? undefined;
@@ -623,6 +631,52 @@ export class AgentInvocationService {
    */
   async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
     return this.textRequestEnrichment.guardrailDisposition(decision);
+  }
+
+  /**
+   * TASK-983 R9 — refuse an incomplete invocation ONCE, naming every placeholder it did not
+   * supply and the request key each one belongs under.
+   *
+   * Selection-aware (`unresolvedPromptVariables` selects the composite's fragments over this
+   * scope first): a conditional fragment this call excludes asks for nothing, so a body that
+   * works is never refused for a branch it does not take.
+   *
+   * `suppliedUnder` is a MAP rather than one key, because a single prompt legitimately mixes
+   * roots — `{{context.language}}`, `{{input.text}}` and a bare `{{tone}}` go to three different
+   * places, and a scalar could only describe one of them. A path whose root no invocation can
+   * supply (`vars.*`, `nodes.*` — workflow-only namespaces) is named in `missingVariables` and
+   * carries no entry here: there is no key that would satisfy it, and inventing one would send
+   * the caller to a field that does nothing.
+   *
+   * The per-path `PromptVariableUnresolvedError` mapping in {@link renderScoped} STAYS as the
+   * defensive fallback: a `{ path }` binding is resolved while the scope is being built, which
+   * is before this diff can run, and a malformed artifact must still refuse by name.
+   */
+  private assertPromptVariablesSupplied(
+    agentSlug: string,
+    instruction: Record<string, unknown> | null,
+    resolvedPrompt: ResolvedAgent['compiledConfig']['resolvedPrompt'],
+    scope: Readonly<Record<string, unknown>>,
+  ): void {
+    const missing = unresolvedPromptVariables(resolvedPrompt, scope);
+    if (missing.length === 0) return;
+    const boundNames = Object.keys(asRecord(asRecord(instruction).variables));
+    const suppliedUnder: Record<string, PromptVariableSlot> = {};
+    for (const path of missing) {
+      const slot = promptVariableSlot(path, boundNames);
+      if (slot !== null) suppliedUnder[path] = slot;
+    }
+    const where = missing.map((path) => `\`${path}\`${suppliedUnder[path] ? ` (send under \`${suppliedUnder[path]}\`)` : ''}`).join(', ');
+    throw new BadRequestException({
+      message:
+        `Agent '${agentSlug}' instruction references ${missing.length} variable(s) this invocation does not supply: ${where}. ` +
+        "Send each one under the request key named, or give the placeholder a `default(\"…\")`. " +
+        'The full list is published as `requiredVariables` on `GET /api/v1/agents/' +
+        `${agentSlug}\`.`,
+      code: 'PROMPT_VARIABLES_MISSING',
+      missingVariables: missing,
+      suppliedUnder,
+    });
   }
 
   /**
