@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
@@ -8,7 +8,26 @@ import { defineConfig } from 'vitest/config';
 const fromHere = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 const APP_SRC = fromHere('./src');
-const UI_SRC = fromHere('../../packages/ui/src');
+const UI_SRC_MARKER = `${sep}packages${sep}ui${sep}src`;
+
+/**
+ * The `packages/ui/src` root of the file doing the importing, or `undefined`
+ * when it is not a UI-package file.
+ *
+ * Derived from the IMPORTER rather than compared against one hard-coded
+ * absolute root, because the two are not always the same directory: in a git
+ * worktree, `node_modules` is a symlink into the primary checkout, so
+ * `@arcaai/ui` resolves to the PRIMARY `packages/ui/src` while a path built
+ * from this config file points at the worktree's. A `startsWith` test against
+ * the latter then misses every UI file and its internal `@/lib/utils` imports
+ * fail to resolve, so the whole suite collects zero tests. Keying on the
+ * importer's own package root resolves each file inside the copy it came from,
+ * which is identical behaviour in a normal checkout.
+ */
+function uiSrcRootOf(importer: string): string | undefined {
+  const index = importer.lastIndexOf(`${UI_SRC_MARKER}${sep}`);
+  return index === -1 ? undefined : importer.slice(0, index + UI_SRC_MARKER.length);
+}
 
 /**
  * Importer-aware `@/` resolution: files inside packages/ui/src use the UI
@@ -24,7 +43,7 @@ function importerAwareAtAlias(): Plugin {
     enforce: 'pre',
     resolveId(source, importer) {
       if (!source.startsWith('@/')) return undefined;
-      const base = importer && importer.startsWith(UI_SRC) ? UI_SRC : APP_SRC;
+      const base = (importer ? uiSrcRootOf(importer) : undefined) ?? APP_SRC;
       const stem = join(base, source.slice(2));
       if (existsSync(stem) && statSync(stem).isFile()) return stem;
       for (const ext of extensions) {
