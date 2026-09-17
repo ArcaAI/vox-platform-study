@@ -44,8 +44,9 @@ describe('InvokeGuideScreen', () => {
   it('states the flat-vs-enveloped body distinction and its consequence', () => {
     renderWithProviders(<InvokeGuideScreen />);
 
-    expect(screen.getByText(/"text"/)).toBeDefined();
-    expect(screen.getByText(/"input"/)).toBeDefined();
+    // The frame-shape reference (WebSocket surfaces) repeats these keys, so match "at least once".
+    expect(screen.getAllByText(/"text"/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/"input"/).length).toBeGreaterThan(0);
     expect(screen.getByText(/produced a 400 on every call/i)).toBeDefined();
   });
 
@@ -167,7 +168,7 @@ describe('InvokeGuideScreen', () => {
     renderWithProviders(<InvokeGuideScreen />);
 
     expect(screen.getAllByText(/single-use/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/only lane that resumes/i)).toBeDefined();
+    expect(screen.getAllByText(/only lane that resumes/i).length).toBeGreaterThan(0);
   });
 
   // TASK-983 R9 gap 1 — frame shapes were documented in no user-facing surface. Every event
