@@ -30,6 +30,12 @@ import { AiProvidersScreen } from '../ai-providers-screen';
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
+// The tenant-tier scope notice re-reads the session through the router after it
+// clears the working tenant (TASK-983 R3) — the same thing the shell's own
+// banner does. There is no app router under the test harness.
+const routerRefresh = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
+
 beforeAll(() => {
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 });
@@ -78,7 +84,8 @@ const TENANT_SESSION = {
 };
 
 /** The platform fallback for `llm` as the gateway projects it for tenant `tnt-1`. */
-function platformDefaults(service: string, tenantId: string, over: Partial<{ entitled: boolean }> = {}) {
+function platformDefaults(service: string, tenantId: string, over: Partial<{ entitled: boolean; resolutions: Record<string, string> }> = {}) {
+  const resolution = (provider: string, fallback: string) => over.resolutions?.[provider] ?? fallback;
   return {
     service,
     tenantId,
@@ -90,12 +97,16 @@ function platformDefaults(service: string, tenantId: string, over: Partial<{ ent
       {
         ...row(service, 'azure', SYSTEM_TENANT, { hasKey: true, enabled: true, baseUrl: 'https://platform.openai.azure.com', version: 3 }),
         id: `conn-sys-${service}-azure`,
-        resolution: 'inherited',
+        resolution: resolution('azure', 'inherited'),
       },
-      { ...row(service, 'bedrock', SYSTEM_TENANT), resolution: 'not-configured' },
-      { ...row(service, 'openai', SYSTEM_TENANT, { hasKey: true, enabled: false, version: 2 }), id: `conn-sys-${service}-openai`, resolution: 'off' },
-      { ...row(service, 'anthropic', SYSTEM_TENANT), resolution: 'not-configured' },
-      { ...row(service, 'vertex', SYSTEM_TENANT), resolution: 'not-configured' },
+      { ...row(service, 'bedrock', SYSTEM_TENANT), resolution: resolution('bedrock', 'not-configured') },
+      {
+        ...row(service, 'openai', SYSTEM_TENANT, { hasKey: true, enabled: false, version: 2 }),
+        id: `conn-sys-${service}-openai`,
+        resolution: resolution('openai', 'off'),
+      },
+      { ...row(service, 'anthropic', SYSTEM_TENANT), resolution: resolution('anthropic', 'not-configured') },
+      { ...row(service, 'vertex', SYSTEM_TENANT), resolution: resolution('vertex', 'not-configured') },
     ],
   };
 }
@@ -154,11 +165,22 @@ interface StubOptions {
   bindings?: Record<string, unknown>[];
   /** Per-`tenantId` stored rows, keyed `service/provider`. */
   rows?: Record<string, Record<string, Record<string, unknown>>>;
+  /** Per-provider cascade verdicts the `platform-defaults` read answers with. */
+  resolutions?: Record<string, string>;
   probe?: { ok: boolean; message: string; probe: 'auth' | 'reachability'; source: 'request' | 'tenant' | 'platform' };
   readiness?: { checkedAt: string; engines: { provider: string; status: 'up' | 'down' | 'unknown'; latencyMs: number | null; loadedCount: number; listedCount: number; detail: string | null }[] };
 }
 
-function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbidden, bindings, rows = {}, probe, readiness }: StubOptions = {}): RecordedCall[] {
+function stubFetch({
+  session = PLATFORM_SESSION,
+  permissions = ALL,
+  routingForbidden,
+  bindings,
+  rows = {},
+  resolutions,
+  probe,
+  readiness,
+}: StubOptions = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -169,6 +191,9 @@ function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbi
       calls.push({ url: raw, method, body });
 
       if (raw === '/api/auth/session') return Response.json(session);
+      // The scope notice's own control (TASK-983 R3) — the same BFF route the
+      // shell switcher uses to drop the working tenant.
+      if (raw === '/api/auth/working-tenant') return new Response(null, { status: 204 });
       if (raw === '/api/hope/users/me/permission-checks') return Response.json({ userId: session.user.id, tenantId: 'tnt-1', permissions });
 
       const url = new URL(raw, 'http://test.local');
@@ -216,7 +241,7 @@ function stubFetch({ session = PLATFORM_SESSION, permissions = ALL, routingForbi
         // TASK-954 — the read-only platform fallback (tenant tier only; 400 on SYSTEM).
         if (provider === 'platform-defaults') {
           if (tenantId === SYSTEM_TENANT) return Response.json({ statusCode: 400, message: 'top of the cascade' }, { status: 400 });
-          return Response.json(platformDefaults(service!, tenantId));
+          return Response.json(platformDefaults(service!, tenantId, { resolutions }));
         }
         if (action === 'test' && method === 'POST') {
           return Response.json(probe ?? { ok: true, message: 'Connected — key accepted', probe: 'auth', source: 'request' });
@@ -330,6 +355,95 @@ describe('AiProvidersScreen — the working tenant decides the scope (R-12)', ()
     expect(screen.getByText('The platform default serves this provider for you today.')).toBeDefined();
     expect(screen.queryByText('Built-in inference services')).toBeNull();
     expect(screen.queryByText('Model registry (built-in)')).toBeNull();
+  });
+
+  /**
+   * TASK-983 R3 / OD-1 — the owner could not change the platform Sarvam key
+   * once a tenant had configured its own.
+   *
+   * The lanes found no backend cause, and W0 proved the API sequence works
+   * (tenant row first, then a SYSTEM edit → 200). What does NOT work is
+   * realising which tier you are on: a super admin who selected a working
+   * tenant to configure it stays on the TENANT tier afterwards, forever, and the
+   * only tell was a badge. So the tenant tier now states the consequence in
+   * words and carries the control that undoes it, on this screen, rather than
+   * asking the operator to remember the shell.
+   */
+  it('tells an elevated caller on the tenant tier that platform defaults need the working tenant CLEARED, and clears it', async () => {
+    const calls = stubFetch({ session: WORKING_TENANT_SESSION });
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+
+    const notice = await screen.findByRole('status');
+    expect(notice.textContent).toMatch(/Acting on «Sunrise Medical Group»/);
+    expect(notice.textContent, 'the notice never says where the platform defaults are').toMatch(/Platform defaults are edited with no working tenant/i);
+
+    const clear = within(notice).getByRole('button', { name: /clear the working tenant/i });
+    await act(async () => {
+      fireEvent.click(clear);
+    });
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/auth/working-tenant' && c.method === 'DELETE')).toBe(true));
+    // and the session is re-read, so the screen lands on the platform tier.
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+  });
+
+  it('never offers a tenant admin a control it cannot use — the notice is elevated-only', async () => {
+    stubFetch({ session: TENANT_SESSION });
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+
+    expect(screen.queryByRole('button', { name: /clear the working tenant/i })).toBeNull();
+    expect(screen.queryByText(/Platform defaults are edited with no working tenant/i)).toBeNull();
+  });
+
+  /**
+   * TASK-983 R3 — a tenant-tier card said nothing about the platform row unless
+   * the tenant happened to be inheriting it. An admin looking at a tenant's own
+   * Azure key could not tell, from the card, whether the platform even HAS one
+   * — which is half of "why is my key not being used".
+   *
+   * Presence only, never a value: this is the masked `platform-defaults`
+   * projection, the one SYSTEM read a tenant admin is allowed.
+   */
+  it('summarises the platform default on every tenant-tier card, key PRESENCE only', async () => {
+    stubFetch({
+      session: TENANT_SESSION,
+      rows: { 'tnt-1': { 'llm/azure': { enabled: true, hasKey: true, version: 4, baseUrl: 'https://tenant.openai.azure.com' } } },
+    });
+    renderWithProviders(<AiProvidersScreen />);
+    const azure = (await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
+    // The tenant's OWN key wins here, so the old inherited hint says nothing —
+    // and the platform row's state was invisible.
+    expect(azure.textContent).toContain('Platform default: key set · enabled');
+
+    const openai = (await screen.findByRole('heading', { level: 3, name: 'OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
+    expect(openai.textContent).toContain('Platform default: key set · off');
+
+    const bedrock = (await screen.findByRole('heading', { level: 3, name: 'Amazon Bedrock' })).closest('[aria-labelledby]') as HTMLElement;
+    expect(bedrock.textContent).toContain('Platform default: not configured');
+
+    // Presence, never the secret itself.
+    for (const card of [azure, openai, bedrock]) {
+      expect(card.textContent).not.toMatch(/sk-|BEGIN PRIVATE KEY/);
+    }
+  });
+
+  it('says when the platform default is blocked by the tenant, and when the plan excludes it', async () => {
+    stubFetch({
+      session: TENANT_SESSION,
+      rows: { 'tnt-1': { 'llm/azure': { enabled: false, hasKey: true, version: 4 } } },
+      resolutions: { azure: 'vetoed' },
+    });
+    renderWithProviders(<AiProvidersScreen />);
+    const azure = (await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' })).closest('[aria-labelledby]') as HTMLElement;
+    expect(azure.textContent).toMatch(/Platform default: key set · enabled — blocked by your disabled connection/);
+  });
+
+  it('never summarises a platform default on the PLATFORM tier — there is no tier above it', async () => {
+    stubFetch();
+    renderWithProviders(<AiProvidersScreen />);
+    await screen.findByRole('heading', { level: 3, name: 'Azure OpenAI' });
+    expect(screen.queryByText(/Platform default: /)).toBeNull();
   });
 
   it('never reads the platform defaults on the platform tier', async () => {
