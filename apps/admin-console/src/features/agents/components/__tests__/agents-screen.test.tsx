@@ -1,16 +1,21 @@
 /**
- * TASK-863/TASK-890 — Agents screen: fill-height grid over `GET /admin/agents` (this tenant's
- * own rows only — TASK-890 OD-M dropped `includeTemplates`: the SYSTEM reference set is CLONED
- * into the tenant at provisioning, never read live), the detail slide-over following the `agent`
- * param, the publish-fails-closed findings surfacing in the drawer, `?create=1` opening the
- * wizard, and the create wizard's Task → Model step over the tenant catalogue. fetch is stubbed
- * at the network boundary.
+ * TASK-863/TASK-890 — Agents screen: fill-height grid over this tenant's own agents (TASK-890
+ * OD-M dropped `includeTemplates`: the SYSTEM reference set is CLONED into the tenant at
+ * provisioning, never read live), the detail slide-over, the publish-fails-closed findings
+ * surfacing in the drawer, `?create=1` opening the wizard, and the create wizard's Task → Model
+ * step over the tenant catalogue. fetch is stubbed at the network boundary.
+ *
+ * TASK-965 WS-4 rewrote the READ and the row model: the grid reads the LINEAGE register
+ * (`GET admin/agents/lineages`, one row per slug) instead of the per-version list, and the drawer
+ * follows `?slug=` instead of a version-row id. The cases below are the same behaviours expressed
+ * against that shape; the lineage-specific cases (one row per slug, activation, the deep-link
+ * resolver) live in `agents-lineage.task965.test.tsx`.
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import type { Agent } from '../../api/types';
+import type { Agent, AgentLineage } from '../../api/types';
 import { AgentsScreen } from '../agents-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -62,9 +67,12 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 
 // TASK-890 OD-M — a2 is THIS tenant's own row (a clone the reference set made at provisioning),
 // not a live SYSTEM row: `tenantId` is the caller's tenant, `sourceTenantId` names the platform
-// origin. `GET admin/agents` would never return a true `tenantId === SYSTEM` row to a tenant caller.
+// origin. No list route would ever return a true `tenantId === SYSTEM` row to a tenant caller.
 const AGENTS: Agent[] = [
+  // The open DRAFT of the clinic-summarizer lineage.
   agent(),
+  // Its published, active v1.
+  agent({ id: 'a-1p', versionNumber: 1, status: 'PUBLISHED', isActive: true, publishedAt: '2026-09-01T12:00:00.000Z', compiledConfig: { task: 'TEXT_GENERATION' }, compiledConfigChecksum: 'sha256:one' }),
   agent({
     id: 'a-2',
     slug: 'clinic-transcription',
@@ -72,6 +80,7 @@ const AGENTS: Agent[] = [
     sourceTenantId: SYSTEM,
     sourceSlug: 'platform-transcription',
     task: 'SPEECH_TO_TEXT',
+    versionNumber: 1,
     status: 'PUBLISHED',
     isActive: true,
     modelId: 'm-asr',
@@ -81,14 +90,56 @@ const AGENTS: Agent[] = [
   }),
   // TASK-974 §4.7 (D-1) — the SYSTEM-tenant DNA writing-style analyst, as an admin surface sees
   // it: `hidden: true`, still listed and openable so the console can label it.
-  agent({
-    id: 'a-3',
+  agent({ id: 'a-3', slug: 'dna-writing-style-analyst', name: 'DNA writing style analyst', versionNumber: 1, status: 'PUBLISHED', isActive: true, hidden: true }),
+];
+
+/** TASK-965 — the register's fold of the rows above: three lineages, not four version rows. */
+const LINEAGES: AgentLineage[] = [
+  {
+    slug: 'clinic-summarizer',
+    name: 'Clinic summarizer',
+    task: 'TEXT_GENERATION',
+    versionCount: 2,
+    latestVersionNumber: 2,
+    deprecatedCount: 0,
+    active: { id: 'a-1p', versionNumber: 1, publishedAt: '2026-09-01T12:00:00.000Z', publishedBy: null, modelSlug: 'lms-gemma-4-e2b-it-qat', compiledConfigChecksum: 'sha256:one' },
+    draft: { id: 'a-1', versionNumber: 2, status: 'DRAFT', updatedAt: '2026-09-02T10:00:00.000Z' },
+    assignment: { tenantDefault: false, departmentCount: 0, selectorCount: 0 },
+    origin: { sourceTenantId: null, sourceSlug: null },
+    tags: [],
+    updatedAt: '2026-09-02T10:00:00.000Z',
+    hidden: false,
+  },
+  {
+    slug: 'clinic-transcription',
+    name: 'Clinic transcription',
+    task: 'SPEECH_TO_TEXT',
+    versionCount: 1,
+    latestVersionNumber: 1,
+    deprecatedCount: 0,
+    active: { id: 'a-2', versionNumber: 1, publishedAt: '2026-09-02T10:00:00.000Z', publishedBy: null, modelSlug: 'arcaai-whisper-large-ml-en-gguf', compiledConfigChecksum: 'sha256:abc' },
+    draft: null,
+    assignment: { tenantDefault: true, departmentCount: 0, selectorCount: 0 },
+    origin: { sourceTenantId: SYSTEM, sourceSlug: 'platform-transcription' },
+    tags: [],
+    updatedAt: '2026-09-02T10:00:00.000Z',
+    hidden: false,
+  },
+  {
     slug: 'dna-writing-style-analyst',
     name: 'DNA writing style analyst',
-    status: 'PUBLISHED',
-    isActive: true,
+    task: 'TEXT_GENERATION',
+    versionCount: 1,
+    latestVersionNumber: 1,
+    deprecatedCount: 0,
+    active: { id: 'a-3', versionNumber: 1, publishedAt: '2026-09-02T10:00:00.000Z', publishedBy: null, modelSlug: 'lms-gemma-4-e2b-it-qat', compiledConfigChecksum: null },
+    draft: null,
+    assignment: { tenantDefault: false, departmentCount: 0, selectorCount: 0 },
+    origin: { sourceTenantId: SYSTEM, sourceSlug: 'dna-writing-style-analyst' },
+    tags: [],
+    updatedAt: '2026-09-02T10:00:00.000Z',
     hidden: true,
-  }),
+  },
 ];
 
 /** `GET admin/ai-models/catalogue` — one "Hope provider" holding both task's models (TASK-890 §3.7). */
@@ -170,12 +221,24 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
   if (call.method !== 'GET') return undefined;
   if (path === '/api/auth/session') return Response.json(session());
+  if (path === '/api/hope/admin/agents/lineages') {
+    const task = url.searchParams.get('task');
+    const slug = /slug\[iequals\]:([^;]+)/.exec(url.searchParams.get('filters') ?? '')?.[1];
+    const data = LINEAGES.filter((row) => (!task || row.task === task) && (!slug || row.slug === slug));
+    return Response.json({ count: data.length, page: 1, limit: 25, data });
+  }
   if (path === '/api/hope/admin/agents') return Response.json(AGENTS);
-  if (path === '/api/hope/admin/agents/a-1') return Response.json(AGENTS[0], { headers: { etag: '"3"' } });
-  if (path === '/api/hope/admin/agents/a-2') return Response.json(AGENTS[1], { headers: { etag: '"1"' } });
-  if (path === '/api/hope/admin/agents/a-3') return Response.json(AGENTS[2], { headers: { etag: '"1"' } });
-  if (path.endsWith('/versions')) return Response.json([AGENTS[0]]);
+  {
+    const row = AGENTS.find((candidate) => path === `/api/hope/admin/agents/${candidate.id}`);
+    if (row) return Response.json(row, { headers: { etag: `"${row.version}"` } });
+  }
+  if (path.endsWith('/versions')) {
+    const id = path.split('/').at(-2);
+    const anchor = AGENTS.find((candidate) => candidate.id === id);
+    return Response.json(anchor ? AGENTS.filter((candidate) => candidate.slug === anchor.slug) : []);
+  }
   if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
+  if (path === '/api/hope/admin/departments') return Response.json({ data: [] });
   if (path === '/api/hope/admin/ai-models/catalogue') {
     const taskType = url.searchParams.get('taskType');
     const models = taskType ? CATALOGUE_MODELS.filter((model) => model.taskType === taskType) : CATALOGUE_MODELS;
@@ -221,23 +284,28 @@ afterEach(() => {
 });
 
 describe('AgentsScreen', () => {
-  it('lists this tenant’s own agents, including its clones of the platform reference set, and never sends includeTemplates', async () => {
+  it('lists this tenant’s own agents, including its clones of the platform reference set, one row per lineage, and never sends includeTemplates', async () => {
     const calls = stubAgents();
     renderWithProviders(<AgentsScreen />);
     expect(await screen.findByText('Clinic summarizer')).toBeTruthy();
     expect(screen.getByText('Clinic transcription')).toBeTruthy();
     expect(screen.getAllByText('Platform origin').length).toBeGreaterThanOrEqual(1);
-    const list = calls.find((call) => new URL(call.url, 'http://test.local').pathname === '/api/hope/admin/agents');
+    // TASK-965 — the lineage with two versions is ONE row; the register is what the grid reads.
+    expect(screen.getAllByText('Clinic summarizer')).toHaveLength(1);
+    const list = calls.find((call) => new URL(call.url, 'http://test.local').pathname === '/api/hope/admin/agents/lineages');
+    expect(list).toBeTruthy();
     expect(list?.url).not.toContain('includeTemplates');
   });
 
-  it('opens the detail slide-over for the clicked row with the five tabs and the publish action on a draft', async () => {
+  it('opens the lineage slide-over for the clicked row with the six tabs and the publish action for its open draft', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);
     fireEvent.click(await screen.findByText('Clinic summarizer'));
     const drawer = await screen.findByRole('dialog');
     expect(await within(drawer).findByText('Clinic summarizer')).toBeTruthy();
-    for (const tab of ['Overview', 'Configuration', 'Versions', 'Test run', 'Usage']) {
+    // TASK-965 WS-4 — Configuration and Usage gave way to the lineage's own axes: the versions,
+    // the open draft, and what the slug is assigned to serve.
+    for (const tab of ['Overview', 'Versions', 'Draft', 'Assignments', 'Integration', 'Test run']) {
       expect(within(drawer).getByRole('tab', { name: tab })).toBeTruthy();
     }
     expect(await within(drawer).findByRole('button', { name: /^Publish$/ })).toBeTruthy();
@@ -270,16 +338,21 @@ describe('AgentsScreen', () => {
 
   it('an agent cloned from the platform is badged "Platform origin" but mutable like any other tenant row (OD-M — content is cloned, not read-only)', async () => {
     stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: 'agent=a-2' });
+    renderWithProviders(<AgentsScreen />, { searchParams: 'slug=clinic-transcription' });
     const drawer = await screen.findByRole('dialog');
     expect(await within(drawer).findByText('Platform origin')).toBeTruthy();
-    expect(within(drawer).getByRole('button', { name: 'Deprecate' })).toBeTruthy();
-    expect(within(drawer).getByRole('button', { name: 'New version' })).toBeTruthy();
+    // No draft is open on this lineage, so the lineage-level verb is to branch one (OD-965-9).
+    expect(await within(drawer).findByRole('button', { name: 'New draft' })).toBeTruthy();
+    // Deprecate belongs to a VERSION, so it lives on the version's own row menu.
+    fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Versions' }), { button: 0 });
+    await within(drawer).findByRole('list', { name: 'Versions of clinic-transcription' });
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Actions for v1' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    expect(await screen.findByRole('menuitem', { name: 'Deprecate v1' })).toBeTruthy();
   });
 
   // TASK-974 §4.7 (D-1) — the platform hidden agent is badged "Hidden · platform" in both the
   // grid row and the detail drawer; an ordinary tenant agent (a-1, a-2) carries no such badge.
-  it('badges the platform hidden agent "Hidden · platform" in the grid and the detail drawer, and no other agent', async () => {
+  it('badges the platform hidden agent "Hidden · platform" in the grid and the lineage drawer, and no other agent', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);
     await screen.findByText('DNA writing style analyst');
