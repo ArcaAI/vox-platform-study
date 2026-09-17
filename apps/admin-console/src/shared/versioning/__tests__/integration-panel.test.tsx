@@ -892,8 +892,11 @@ describe('IntegrationPanel — batch and realtime are both complete', () => {
 
     const code = codeOf('Batch transcription (@arcaai/vox-node) snippet');
     expect(code).toContain("hope.agents.transcribe('asr'");
-    // The 201 is the start of the job, not the end of the integration.
-    expect(code).toMatch(/hope\.jobs\.(subscribe|waitFor)/);
+    // The 201 is the start of the job, not the end of the integration — and the methods that
+    // follow it are on the AGENTS plane. `hope.jobs.*` addresses `consultations/jobs/{id}` and
+    // 404s on a transcription job id, which is exactly the mistake this assertion prevents.
+    expect(code).toMatch(/hope\.agents\.(waitForTranscription|subscribeTranscription)/);
+    expect(code).not.toMatch(/hope\.jobs\.\w+\(/);
     expect(code).toContain('resultText');
   });
 

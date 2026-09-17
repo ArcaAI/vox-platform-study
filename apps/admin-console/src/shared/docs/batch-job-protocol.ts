@@ -21,6 +21,13 @@
  * multipart route is the FIRST form a developer with a file reaches for, not the second — which
  * is the opposite of what every lane here used to print.
  *
+ * ## The SDK surface is on `hope.agents`, not `hope.jobs`
+ *
+ * `JobsResource` addresses `consultations/jobs/{id}` and answers 404 for a transcription job id
+ * (proven against the dev gateway, 2026-09-17). The batch-job methods therefore sit beside
+ * `transcribe`: `transcriptionJob(jobId)`, `subscribeTranscription(jobId, handlers)` and
+ * `waitForTranscription(jobId, { pollIntervalMs, timeoutMs })` (lane J).
+ *
  * ## The scope crossing
  *
  * The 201 from `POST /agents/{slug}/transcriptions` hands back
@@ -255,13 +262,17 @@ export function sttBatchFetchSnippet(agentSlug: string, baseUrl: string = FALLBA
 /**
  * The Node lane's batch story.
  *
- * `hope.agents.transcribe` is the batch method, and it takes EITHER a `file` (uploaded for you)
- * or the `mediaId` of media that already exists. It answers the same job handle the HTTP lane
- * does — `{ id, status, sseUrl, … }` — which the job methods then follow.
+ * Four calls, all on `hope.agents`: `transcribe` starts the job (a `file` is uploaded for you to
+ * the multipart route; a `mediaId` goes to the agent route), then `waitForTranscription` polls it
+ * to a terminal status, `subscribeTranscription` follows it frame by frame, and
+ * `transcriptionJob` reads it once.
+ *
+ * `hope.jobs.*` is NOT this plane — it addresses `consultations/jobs/{id}` and 404s on a
+ * transcription job id (proven live, 2026-09-17). That is why the batch methods live beside
+ * `transcribe` on the agents plane rather than on the job plane whose name suggests them.
  *
  * Option keys are pinned to `TranscribeSource` (`packages/vox-node/src/types/agent.ts:65-80`) by
- * `__tests__/batch-job-protocol.test.ts`, so a snippet can never name an option the SDK would
- * ignore.
+ * `__tests__/batch-job-protocol.test.ts`, so a snippet can never name an option the SDK ignores.
  */
 export function sttBatchVoxNodeSnippet(agentSlug: string): string {
   return [
@@ -274,23 +285,25 @@ export function sttBatchVoxNodeSnippet(agentSlug: string): string {
     `const job = await hope.agents.transcribe('${agentSlug}', { file, filename: 'consultation.wav' });`,
     `// → { id, status: 'QUEUED', sseUrl: '/api/v1${BATCH_STT_ROUTES.jobStream.replace('{jobId}', '<id>')}', … }`,
     ``,
-    `// Already hold a mediaId (a consultation recording)? The same method takes it instead, and`,
-    `// reaches POST /api/v1/agents/{slug}/transcriptions — scope ${GATEWAY_ROUTE_SCOPES.agentTranscriptions.apiKeyScope}.`,
-    `//   await hope.agents.transcribe('${agentSlug}', { mediaId });`,
+    `// Wait for it, then read the transcript. Polls GET /api/v1${BATCH_STT_ROUTES.jobById} until a`,
+    `// terminal status. Scope: ${GATEWAY_ROUTE_SCOPES.transcriptionJobGet.apiKeyScope} — a DIFFERENT family from a mediaId start.`,
+    `const done = await hope.agents.waitForTranscription(job.id, { timeoutMs: 120_000 });`,
+    `console.log(done.resultText);`,
     ``,
-    `// Follow it. \`subscribe\` hands you each frame and ends itself on a terminal status;`,
-    `// \`waitFor\` is the one-liner when you only want the end. Reading the job needs`,
-    `// ${GATEWAY_ROUTE_SCOPES.transcriptionJobStream.apiKeyScope} — a DIFFERENT scope family from the mediaId form above.`,
-    `const handle = hope.jobs.subscribe(job.id, {`,
-    `  onEvent: (event) => { /* status | progress | chunk | transcript */ },`,
+    `// …or follow it frame by frame instead, over the SSE the job answered:`,
+    `const handle = hope.agents.subscribeTranscription(job.id, {`,
+    `  onProgress: (event) => { /* { jobId, progress, stage? } */ },`,
+    `  onTranscript: (event) => { /* the full text, once every segment is done */ },`,
+    `  onStatus: (event) => { /* QUEUED → PROCESSING → COMPLETED | FAILED */ },`,
     `  onError: (error) => { /* REQUIRED: a subscription is fire-and-forget */ },`,
     `});`,
+    `// handle.close() to stop early. One read at any time: hope.agents.transcriptionJob(job.id).`,
     ``,
-    `// …or just wait, then read the transcript off the finished job.`,
-    `const finished = await hope.jobs.waitFor(job.id, { timeoutMs: 15 * 60_000 });`,
-    `const transcript = finished.resultText;`,
+    `// Already hold a mediaId (a consultation recording)? The same start method takes it instead,`,
+    `// and reaches POST /api/v1/agents/{slug}/transcriptions — scope ${GATEWAY_ROUTE_SCOPES.agentTranscriptions.apiKeyScope}.`,
+    `//   await hope.agents.transcribe('${agentSlug}', { mediaId });`,
     ``,
-    `// No SDK in the runtime that holds the audio? The Manual lane is the same three calls over`,
-    `// fetch — upload, follow \`job.sseUrl\`, read GET /api/v1${BATCH_STT_ROUTES.jobById}.`,
+    `// \`hope.jobs.*\` is the CONSULTATION job plane (consultations/jobs/{id}) and 404s on a`,
+    `// transcription job id. The batch methods above are the ones for this plane.`,
   ].join('\n');
 }
