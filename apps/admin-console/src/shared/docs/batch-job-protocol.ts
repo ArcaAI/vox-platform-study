@@ -7,7 +7,7 @@
  *
  * ## Two ways in, and only one of them takes a file
  *
- * | Route | Takes | Scope family |
+ * | Route | Takes | API-key scope |
  * |---|---|---|
  * | `POST /audio/transcription-jobs/transcribe` | a multipart `file` + `agentSlug` | `stt:transcription:write` |
  * | `POST /agents/{slug}/transcriptions` | JSON `{ mediaId }` — media that already exists | `agent:invocation:write` |
@@ -16,10 +16,10 @@
  * (`apps/api/src/modules/agent/agent.controller.ts:751-830` — the handler is
  * `@Body() body: AgentTranscriptionBody` and its first line is
  * ``if (!body?.mediaId) throw new BadRequestException('`mediaId` is required.')``). A multipart
- * body therefore arrives empty and the call is a 400. `@arcaai/vox-node`'s
- * `transcribe(slug, { file })` branch (`packages/vox-node/src/resources/agents.ts:213-233`)
- * builds exactly that request, so it cannot succeed against this gateway; the `{ mediaId }`
- * branch can. Documented rather than worked around: the docs follow the code.
+ * body therefore arrives empty and the call is a 400; measured live on the dev gateway,
+ * 2026-09-17. There is no standalone media-upload route in `route-manifest.json` either, so the
+ * multipart route is the FIRST form a developer with a file reaches for, not the second — which
+ * is the opposite of what every lane here used to print.
  *
  * ## The scope crossing
  *
@@ -64,10 +64,11 @@ export const BATCH_JOB_TERMINAL_STATUSES: readonly string[] = Object.freeze(['CO
 
 /** Why `POST /agents/{slug}/transcriptions` is not the upload route, said where a developer will reach for it. */
 export const MEDIA_ID_NOTE =
-  'POST /agents/{slug}/transcriptions takes a `mediaId` — the id of media that ALREADY exists (a consultation ' +
-  'recording). It has no multipart handler, so sending a file to it is a 400 `mediaId is required`. To transcribe ' +
-  'a file you hold, upload it to POST /audio/transcription-jobs/transcribe, which names the agent with `agentSlug` ' +
-  'and starts the job in the same request.';
+  'A file and a mediaId are two different routes. POST /audio/transcription-jobs/transcribe is the multipart one — ' +
+  'the `file` part plus an `agentSlug` field — and it is the only route on this gateway that accepts audio bytes. ' +
+  'POST /agents/{slug}/transcriptions takes the `mediaId` of media that ALREADY exists (a consultation recording); ' +
+  'sending a file to it is a 400 `mediaId is required`, and a mediaId this tenant does not own is a 404, exactly ' +
+  'like an unknown one.';
 
 export interface BatchStep {
   title: string;
@@ -254,11 +255,13 @@ export function sttBatchFetchSnippet(agentSlug: string, baseUrl: string = FALLBA
 /**
  * The Node lane's batch story.
  *
- * `hope.agents.transcribe` is the only batch method `@arcaai/vox-node` carries, and it reaches
- * the AGENT route — so it needs a `mediaId`. There is no SDK method for the audio job plane
- * (`hope.jobs` is the CONSULTATION job plane, `consultations/jobs/:jobId`), so the job is
- * followed with the transport the SDK is built on: a plain fetch against the `sseUrl` it
- * answered.
+ * `hope.agents.transcribe` is the batch method, and it takes EITHER a `file` (uploaded for you)
+ * or the `mediaId` of media that already exists. It answers the same job handle the HTTP lane
+ * does — `{ id, status, sseUrl, … }` — which the job methods then follow.
+ *
+ * Option keys are pinned to `TranscribeSource` (`packages/vox-node/src/types/agent.ts:65-80`) by
+ * `__tests__/batch-job-protocol.test.ts`, so a snippet can never name an option the SDK would
+ * ignore.
  */
 export function sttBatchVoxNodeSnippet(agentSlug: string): string {
   return [
@@ -266,20 +269,28 @@ export function sttBatchVoxNodeSnippet(agentSlug: string): string {
     ``,
     `const hope = new HopeClient({ baseUrl: process.env.HOPE_API_URL, apiKey: process.env.HOPE_API_KEY });`,
     ``,
-    `// The SDK's batch method reaches POST /agents/{slug}/transcriptions, which takes the id of media`,
-    `// that ALREADY exists — a consultation recording. Scope: ${GATEWAY_ROUTE_SCOPES.agentTranscriptions.apiKeyScope}.`,
-    `const job = await hope.agents.transcribe('${agentSlug}', { mediaId });`,
-    `// → { id, status, agentSlug, agentVersionId, pipelineId, sseUrl }`,
+    `// A FILE you hold: the SDK uploads it to POST /api/v1${BATCH_STT_ROUTES.uploadAndStart} with`,
+    `// \`agentSlug\`, which is the only route that accepts multipart. Scope: ${GATEWAY_ROUTE_SCOPES.transcriptionUpload.apiKeyScope}.`,
+    `const job = await hope.agents.transcribe('${agentSlug}', { file, filename: 'consultation.wav' });`,
+    `// → { id, status: 'QUEUED', sseUrl: '/api/v1${BATCH_STT_ROUTES.jobStream.replace('{jobId}', '<id>')}', … }`,
     ``,
-    `// Holding a FILE instead? Upload it to POST /api/v1${BATCH_STT_ROUTES.uploadAndStart} — that route,`,
-    `// and only that route, accepts multipart. The SDK has no method for it (nor for the job plane below).`,
+    `// Already hold a mediaId (a consultation recording)? The same method takes it instead, and`,
+    `// reaches POST /api/v1/agents/{slug}/transcriptions — scope ${GATEWAY_ROUTE_SCOPES.agentTranscriptions.apiKeyScope}.`,
+    `//   await hope.agents.transcribe('${agentSlug}', { mediaId });`,
     ``,
-    `// Follow the job on the sseUrl it answered. \`hope.jobs\` is the CONSULTATION job plane`,
-    `// (consultations/jobs/:jobId) and does not reach this one, so use fetch.`,
-    `// Scope: ${GATEWAY_ROUTE_SCOPES.transcriptionJobStream.apiKeyScope} — a DIFFERENT family from the start above.`,
-    `const stream = await fetch(new URL(job.sseUrl, process.env.HOPE_API_URL), {`,
-    `  headers: { 'X-API-Key': process.env.HOPE_API_KEY, Accept: 'text/event-stream' },`,
+    `// Follow it. \`subscribe\` hands you each frame and ends itself on a terminal status;`,
+    `// \`waitFor\` is the one-liner when you only want the end. Reading the job needs`,
+    `// ${GATEWAY_ROUTE_SCOPES.transcriptionJobStream.apiKeyScope} — a DIFFERENT scope family from the mediaId form above.`,
+    `const handle = hope.jobs.subscribe(job.id, {`,
+    `  onEvent: (event) => { /* status | progress | chunk | transcript */ },`,
+    `  onError: (error) => { /* REQUIRED: a subscription is fire-and-forget */ },`,
     `});`,
-    `// Frames are { type: 'status' | 'progress' | 'chunk' | 'transcript' | 'error', data: … }.`,
+    ``,
+    `// …or just wait, then read the transcript off the finished job.`,
+    `const finished = await hope.jobs.waitFor(job.id, { timeoutMs: 15 * 60_000 });`,
+    `const transcript = finished.resultText;`,
+    ``,
+    `// No SDK in the runtime that holds the audio? The Manual lane is the same three calls over`,
+    `// fetch — upload, follow \`job.sseUrl\`, read GET /api/v1${BATCH_STT_ROUTES.jobById}.`,
   ].join('\n');
 }
