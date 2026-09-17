@@ -175,7 +175,7 @@ function main(): void {
 }
 
 // Only run the CLI when invoked directly, so the test can import the checker.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? ' ')) {
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? '\0')) {
   try {
     main();
   } catch (error) {
