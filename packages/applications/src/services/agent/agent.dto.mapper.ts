@@ -1,6 +1,6 @@
-import { AgentEntity, AgentModelFallbackEntity } from '@arcaai/domains';
+import { AgentEntity, AgentModelFallbackEntity, type AgentLineage } from '@arcaai/domains';
 import { AGENT_IO_DEFAULTS } from '@arcaai/workflow-contract';
-import { AgentResponse, AgentSummaryResponse, AgentValidationReportResponse } from './dto';
+import { AgentLineageAssignmentResponse, AgentLineageResponse, AgentResponse, AgentSummaryResponse, AgentValidationReportResponse } from './dto';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -67,6 +67,50 @@ export class AgentDtoMapper {
       createdBy: entity.createdBy ?? null,
       updatedBy: entity.updatedBy ?? null,
       version: entity.version,
+    };
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the LINEAGE projection: one slug, not one version row.
+   *
+   * `modelSlugs` is the same map `toResponse` takes (ids are not a thing a person recognises);
+   * `assignment` is resolved by the service, because what a slug SERVES lives in
+   * `AgentAssignment`, not on any agent row.
+   */
+  static toLineageResponse(
+    lineage: AgentLineage,
+    assignment: AgentLineageAssignmentResponse,
+    modelSlugs: ReadonlyMap<string, string> = new Map(),
+  ): AgentLineageResponse {
+    return {
+      slug: lineage.slug,
+      name: lineage.name,
+      task: lineage.task,
+      versionCount: lineage.versionCount,
+      latestVersionNumber: lineage.latestVersionNumber,
+      deprecatedCount: lineage.deprecatedCount,
+      active: lineage.active
+        ? {
+            id: lineage.active.id,
+            versionNumber: lineage.active.versionNumber,
+            publishedAt: lineage.active.publishedAt ? lineage.active.publishedAt.toISOString() : null,
+            publishedBy: lineage.active.publishedBy,
+            modelSlug: lineage.active.modelId ? (modelSlugs.get(lineage.active.modelId) ?? null) : null,
+            compiledConfigChecksum: lineage.active.compiledConfigChecksum,
+          }
+        : null,
+      draft: lineage.draft
+        ? {
+            id: lineage.draft.id,
+            versionNumber: lineage.draft.versionNumber,
+            status: lineage.draft.status,
+            updatedAt: lineage.draft.updatedAt.toISOString(),
+          }
+        : null,
+      assignment,
+      origin: { sourceTenantId: lineage.origin.sourceTenantId, sourceSlug: lineage.origin.sourceSlug },
+      tags: lineage.tags,
+      updatedAt: lineage.updatedAt.toISOString(),
     };
   }
 

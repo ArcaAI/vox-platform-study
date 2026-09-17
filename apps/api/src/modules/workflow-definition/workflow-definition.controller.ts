@@ -4,9 +4,11 @@ import {
   ImportWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
   ListWorkflowDefinitionsQuery,
+  ListWorkflowLineagesQuery,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
+  PaginatedWorkflowLineageResponse,
   PromoteWorkflowToSystemRequest,
   PromoteWorkflowToSystemResponse,
   PublishWorkflowDefinitionRequest,
@@ -216,6 +218,27 @@ export class WorkflowDefinitionController {
     return this.workflowExposureService.rotateWebhookSecret(slug);
   }
 
+  /**
+   * TASK-965 (OD-965-3) — the REGISTER: one row per SLUG, paginated by slug.
+   *
+   * Declared above `@Get(':id')` for the same declaration-order reason `templates` is.
+   */
+  @Get('lineages')
+  @ApiOperation({
+    summary: 'List the caller tenant’s workflow LINEAGES (one row per slug)',
+    description:
+      'The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the ' +
+      'slug SERVES (tenant default / departments / tag selectors). `GET admin/workflow-definitions` stays the per-VERSION read — grouping ' +
+      'that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `paletteKey` ' +
+      'narrows to one palette and an unknown key is a 400 naming the known ones; the inherited `filters`/`search` grammar narrows the ' +
+      'VERSION rows, so a lineage is listed when any of its live versions match.',
+  })
+  @ApiResponse({ status: 200, type: PaginatedWorkflowLineageResponse })
+  @ApiResponse({ status: 400, description: 'Unknown `paletteKey`, or a malformed `filters` token.' })
+  async fetchLineages(@Query() query: ListWorkflowLineagesQuery): Promise<PaginatedWorkflowLineageResponse> {
+    return this.workflowDefinitionService.listLineages(query);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get one workflow definition version' })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
@@ -265,10 +288,11 @@ export class WorkflowDefinitionController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft-delete a workflow definition version' })
+  @ApiOperation({ summary: 'Soft-delete a workflow definition version (refused for the ACTIVE published version — deprecate it first)' })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
   @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  @ApiResponse({ status: 409, description: 'The row is the ACTIVE published version of its slug; deleting it would orphan every assignment on the slug.' })
   async delete(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.deleteById(id);
   }
@@ -354,6 +378,41 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async publish(@Param('id') id: string, @Body() request: PublishWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.publish(id, request ?? {});
+  }
+
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)',
+    description:
+      'Moves the `isActive` pointer the dispatcher resolves and demotes the sibling that held it — the demoted version stays PUBLISHED and ' +
+      'can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. ' +
+      'Without it, publishing with `activate: false` created a permanently inactive version and the only way back to an older one was to ' +
+      'branch and republish it.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The row is not PUBLISHED (a DRAFT must be published; a DEPRECATED version must be branched).' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async activate(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
+    return this.workflowDefinitionService.activate(id);
+  }
+
+  @Post(':id/deprecate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable',
+    description:
+      'The workflow plane had no deprecate lifecycle before this — the status existed and nothing could write it. Deprecating the ACTIVE ' +
+      'version leaves the slug serving NOTHING, so every assignment naming it resolves to nothing until another version is activated: name ' +
+      'that consequence before calling this.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The row is not PUBLISHED.' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async deprecate(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
+    return this.workflowDefinitionService.deprecate(id);
   }
 
   // ============================================================
