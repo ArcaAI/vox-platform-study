@@ -318,10 +318,12 @@ test.describe('TASK-958 — multiple provider connections per tenant', () => {
       data: { apiKey: 'platform-sarvam-key-task983', baseUrl: 'https://platform.enterprise.sarvam.example', enabled: false },
     });
     expect(systemWrite.status(), await systemWrite.text()).toBe(200);
-    const systemRow = (await systemWrite.json()) as { tenantId: string; keyVersion: number | null; hasKey: boolean };
+    const systemRow = (await systemWrite.json()) as { tenantId: string; version: number; hasKey: boolean };
     expect(systemRow.tenantId).toBe(SYSTEM_TENANT_ID);
     expect(systemRow.hasKey).toBe(true);
-    expect(systemRow.keyVersion ?? 0, 'the platform key did not rotate').toBeGreaterThan(systemPrior.keyVersion ?? 0);
+    // `keyVersion` is the Vault Transit key version the ciphertext was made with, not a
+    // per-row rotation counter — it stays put across rotations. The row version is what moves.
+    expect(systemRow.version, 'the platform row did not accept the write').toBe(systemPrior.version + 1);
 
     // 3. …and the tenant's own row is exactly as the tenant left it.
     const tenantAfter = await readSarvam(tenantAdminToken);
