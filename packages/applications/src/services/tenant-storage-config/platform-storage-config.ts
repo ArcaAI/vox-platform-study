@@ -34,6 +34,12 @@ export interface PlatformStorageConfig {
   provider: StorageProviderType;
   /** S3/MinIO endpoint URL; `''` means "SDK default" (real AWS S3). */
   endpoint: string;
+  /**
+   * Origin presigned URLs are signed for (TASK-984). Only ever read from the
+   * SYSTEM row — no AppSettings key, no env var — so it is `null` on both
+   * bootstrap tiers, which means "sign with `endpoint`".
+   */
+  publicEndpoint: string | null;
   region: string;
   forcePathStyle: boolean;
   /** Azure storage account name (`''` when not an Azure deployment). */
@@ -131,6 +137,7 @@ export function resolvePlatformStorageConfig(inputs: PlatformStorageInputs): Pla
     return {
       provider: systemRow.provider,
       endpoint: systemRow.endpoint ?? '',
+      publicEndpoint: systemRow.publicEndpoint || null,
       region: systemRow.region ?? DEFAULT_REGION,
       forcePathStyle: systemRow.forcePathStyle ?? true,
       accountName: systemRow.accountName ?? '',
@@ -149,6 +156,7 @@ export function resolvePlatformStorageConfig(inputs: PlatformStorageInputs): Pla
   return {
     provider,
     endpoint,
+    publicEndpoint: null,
     region: appSettings.S3_REGION?.trim() || DEFAULT_REGION,
     forcePathStyle: appSettings.S3_FORCE_PATH_STYLE ?? true,
     accountName: appSettings.AZURE_STORAGE_ACCOUNT?.trim() ?? '',

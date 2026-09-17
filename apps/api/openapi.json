@@ -21044,6 +21044,10 @@
             ],
             "type": "string"
           },
+          "publicEndpoint": {
+            "description": "Origin presigned download URLs are signed for; null = signed with `endpoint`",
+            "type": "string"
+          },
           "region": {
             "description": "S3 region",
             "type": "string"
@@ -24230,6 +24234,11 @@
             ],
             "type": "string"
           },
+          "publicEndpoint": {
+            "description": "Origin presigned download URLs are signed for — the address a browser reaches the store at, e.g. https://admin.example.com (scheme, host, optional port; no path). Empty or null signs with `endpoint`. S3/MinIO only.",
+            "example": "https://admin.example.com",
+            "type": "string"
+          },
           "region": {
             "description": "S3 region",
             "example": "us-east-1",
@@ -24478,6 +24487,11 @@
               "AWS_S3",
               "AZURE_BLOB"
             ],
+            "type": "string"
+          },
+          "publicEndpoint": {
+            "description": "Origin presigned download URLs are signed for — the address a browser reaches the store at, e.g. https://admin.example.com (scheme, host, optional port; no path). Empty or null signs with `endpoint`. S3/MinIO only.",
+            "example": "https://admin.example.com",
             "type": "string"
           },
           "region": {

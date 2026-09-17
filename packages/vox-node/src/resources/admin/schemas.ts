@@ -5673,6 +5673,8 @@ export interface TenantStorageConfigResponse {
   id: string;
   /** Storage backend */
   provider: 'MINIO' | 'AWS_S3' | 'AZURE_BLOB';
+  /** Origin presigned download URLs are signed for; null = signed with `endpoint` */
+  publicEndpoint?: string;
   /** S3 region */
   region?: string;
   /** Resource status */
@@ -6759,6 +6761,8 @@ export interface UpsertPlatformStorageConfigRequest {
   forcePathStyle?: boolean;
   /** Storage backend */
   provider: 'MINIO' | 'AWS_S3' | 'AZURE_BLOB';
+  /** Origin presigned download URLs are signed for — the address a browser reaches the store at, e.g. https://admin.example.com (scheme, host, optional port; no path). Empty or null signs with `endpoint`. S3/MinIO only. */
+  publicEndpoint?: string;
   /** S3 region */
   region?: string;
   /** Topology of the platform default. SHARED is the norm; DEDICATED requires credentialsRef. */
@@ -6857,6 +6861,8 @@ export interface UpsertTenantStorageConfigRequest {
   forcePathStyle?: boolean;
   /** Storage backend */
   provider: 'MINIO' | 'AWS_S3' | 'AZURE_BLOB';
+  /** Origin presigned download URLs are signed for — the address a browser reaches the store at, e.g. https://admin.example.com (scheme, host, optional port; no path). Empty or null signs with `endpoint`. S3/MinIO only. */
+  publicEndpoint?: string;
   /** S3 region */
   region?: string;
   /** SHARED defers to the global config; DEDICATED uses tenant-owned credentials. */

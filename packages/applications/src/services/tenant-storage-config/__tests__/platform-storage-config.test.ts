@@ -103,6 +103,30 @@ describe('resolvePlatformStorageConfig', () => {
     expect(resolved.credentialsRef).toBe(PLATFORM_STORAGE_CREDENTIALS_REF);
   });
 
+  it('carries the SYSTEM row publicEndpoint through (TASK-984)', () => {
+    const resolved = resolvePlatformStorageConfig({
+      systemRow: systemRow({ publicEndpoint: 'https://admin.example.com' }),
+      appSettings: {},
+      env: {},
+    });
+
+    expect(resolved.publicEndpoint).toBe('https://admin.example.com');
+  });
+
+  it('never takes publicEndpoint from AppSettings or env — it is platform-admin data only (TASK-984)', () => {
+    const lookalikes = { S3_PUBLIC_ENDPOINT: 'https://env.example.com', MINIO_PUBLIC_ENDPOINT: 'https://env.example.com' };
+    const fromSettings = resolvePlatformStorageConfig({
+      systemRow: null,
+      appSettings: { S3_ENDPOINT: 'http://appsettings:9000', ...lookalikes } as Record<string, string>,
+      env: { MINIO_ENDPOINT: 'localhost:9000', ...lookalikes },
+    });
+    const fromEnv = resolvePlatformStorageConfig({ systemRow: null, appSettings: {}, env: { MINIO_ENDPOINT: 'localhost:9000', ...lookalikes } });
+
+    expect(fromSettings.publicEndpoint).toBeNull();
+    expect(fromEnv.publicEndpoint).toBeNull();
+    expect(resolvePlatformStorageConfig({ systemRow: systemRow(), appSettings: {}, env: lookalikes }).publicEndpoint).toBeNull();
+  });
+
   it('carries the SYSTEM row provider/azure fields through', () => {
     const resolved = resolvePlatformStorageConfig({
       systemRow: systemRow({

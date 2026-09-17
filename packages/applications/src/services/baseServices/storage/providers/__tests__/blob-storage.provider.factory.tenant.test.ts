@@ -134,6 +134,25 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
     );
   });
 
+  it('signs a DEDICATED S3 tenant with its own publicEndpoint (TASK-984)', async () => {
+    const configRepo = {
+      findTenantDefault: vi
+        .fn()
+        .mockResolvedValue(
+          cfg({ provider: StorageProviderType.MINIO, endpoint: 'http://tenant-minio:9000', publicEndpoint: 'https://files.tenant.example', credentialsRef: 'T1' }),
+        ),
+      findForBucket: vi.fn(),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
+    };
+    const factory = build({ secrets: { T1: JSON.stringify({ accessKeyId: 'a', secretAccessKey: 's' }) }, configRepo });
+
+    await factory.getProviderForBucket(TENANT);
+
+    expect(h.S3BlobProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'http://tenant-minio:9000', publicEndpoint: 'https://files.tenant.example' }),
+    );
+  });
+
   it('builds a DEDICATED Azure provider from the tenant default', async () => {
     const configRepo = {
       findTenantDefault: vi

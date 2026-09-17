@@ -14,6 +14,7 @@ export class TenantStorageConfig extends BaseTenantDataModel {
   public endpoint: string | null;
   public region: string | null;
   public forcePathStyle: boolean | null;
+  public publicEndpoint: string | null;
   public accountName: string | null;
   public endpointSuffix: string | null;
   public containerPrefix: string | null;
@@ -33,6 +34,7 @@ export class TenantStorageConfig extends BaseTenantDataModel {
     this.endpoint = data.endpoint;
     this.region = data.region;
     this.forcePathStyle = data.forcePathStyle;
+    this.publicEndpoint = data.publicEndpoint;
     this.accountName = data.accountName;
     this.endpointSuffix = data.endpointSuffix;
     this.containerPrefix = data.containerPrefix;

@@ -64,6 +64,7 @@ export interface ResolvedPlatformStorageSetting {
 const KEY_TO_FIELD = {
   'storage.platformDefault.provider': 'provider',
   'storage.platformDefault.endpoint': 'endpoint',
+  'storage.platformDefault.publicEndpoint': 'publicEndpoint',
   'storage.platformDefault.region': 'region',
   'storage.platformDefault.forcePathStyle': 'forcePathStyle',
   'storage.platformDefault.containerPrefix': 'containerPrefix',

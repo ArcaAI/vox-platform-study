@@ -11,6 +11,8 @@ export interface CreateTenantStorageConfigParams {
   endpoint?: string | null;
   region?: string | null;
   forcePathStyle?: boolean | null;
+  /** Origin presigned URLs are signed for; null = sign with `endpoint`. */
+  publicEndpoint?: string | null;
   accountName?: string | null;
   endpointSuffix?: string | null;
   containerPrefix?: string | null;
@@ -30,6 +32,7 @@ export class TenantStorageConfigFactory {
       endpoint: params.endpoint ?? null,
       region: params.region ?? null,
       forcePathStyle: params.forcePathStyle ?? null,
+      publicEndpoint: params.publicEndpoint || null,
       accountName: params.accountName ?? null,
       endpointSuffix: params.endpointSuffix ?? null,
       containerPrefix: params.containerPrefix ?? null,
