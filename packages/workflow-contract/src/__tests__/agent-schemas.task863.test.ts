@@ -53,7 +53,7 @@ describe('TASK-863 — task taxonomy', () => {
   // TASK-983 OD-6 — `AGENT_PROTOCOLS` / `AgentProtocol` are REMOVED: a static per-task table
   // nothing ever enforced. This module no longer exports them.
   it('no longer exports AGENT_PROTOCOLS or AgentProtocol', async () => {
-    const mod = (await import('../agent-schemas')) as Record<string, unknown>;
+    const mod = (await import('../agent-schemas.js')) as Record<string, unknown>;
     expect(mod).not.toHaveProperty('AGENT_PROTOCOLS');
   });
 

@@ -293,7 +293,11 @@ export function buildStructuredSummary(sections: readonly LiveSummarySectionDto[
 export function cleanSectionBody(body: string, guidance?: string | null): string {
   const text = (body ?? '').trim();
   if (text.length === 0) return '';
-  const guidanceKeys = new Set(sentencesOf(guidance ?? '').map(sentenceKey).filter((key) => key.length > 0));
+  const guidanceKeys = new Set(
+    sentencesOf(guidance ?? '')
+      .map(sentenceKey)
+      .filter((key) => key.length > 0),
+  );
   const seen = new Set<string>();
   const out: string[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
@@ -340,14 +344,3 @@ function sentenceKey(sentence: string): string {
  * other heading, and a reader of the finished note sees the template complete.
  */
 export const NOT_DOCUMENTED_MARKER = 'Not documented in this consultation.';
-
-/** Template order for {@link buildStructuredSummary}; sections the template does not name keep their relative order, last. */
-function orderByTemplate(sections: readonly LiveSummarySectionDto[], compiled: CompiledDocumentTemplate): LiveSummarySectionDto[] {
-  const remaining = [...sections];
-  const ordered: LiveSummarySectionDto[] = [];
-  for (const entry of compiled.checklist) {
-    const at = remaining.findIndex((section) => section.title.trim().toLowerCase() === entry.title.trim().toLowerCase());
-    if (at >= 0) ordered.push(...remaining.splice(at, 1));
-  }
-  return [...ordered, ...remaining];
-}

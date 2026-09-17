@@ -39,7 +39,7 @@ export class KnowledgeVectorCleanupClient {
     await this.httpService.axiosRef.delete(url, {
       params: { tenantId: input.tenantId },
       timeout: 30000,
-      headers: { 'X-Service-Token': token },
+      headers: { 'X-Service-Token': token, 'X-Tenant-Id': input.tenantId },
     });
 
     this.logger.log({

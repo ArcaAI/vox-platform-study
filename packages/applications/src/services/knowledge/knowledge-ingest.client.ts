@@ -76,6 +76,7 @@ export class KnowledgeIngestClient {
       headers: {
         'Content-Type': 'application/json',
         'X-Service-Token': token,
+        'X-Tenant-Id': request.tenantId,
       },
     });
 

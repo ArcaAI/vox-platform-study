@@ -51,7 +51,11 @@ export abstract class IDnaWritingStyleService {
    * from it (scoped to this tenant and this credential), so a retried submission joins the job the
    * first attempt enqueued rather than starting a second analysis.
    */
-  abstract ingestWritingSamples(dto: IngestDnaWritingSamplesRequest, caller: DnaJobRequestedBy, idempotencyKey?: string): Promise<DnaIngestJobResponse>;
+  abstract ingestWritingSamples(
+    dto: IngestDnaWritingSamplesRequest,
+    caller: DnaJobRequestedBy,
+    idempotencyKey?: string,
+  ): Promise<DnaIngestJobResponse>;
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
   abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**

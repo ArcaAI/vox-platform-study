@@ -37,7 +37,9 @@ export class CreateUserProfileRequest extends BaseRequest {
   // context-schema user-identity field is mapped to. Unique PER TENANT, enforced in the service
   // (`STAFF_ID_TAKEN`, 409) rather than by a DB unique: `UserProfile` carries no tenant column,
   // so a user's tenant IS its role assignment and no single-table constraint can express it.
-  @ApiPropertyOptional({ description: "Tenant staff identifier. Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it." })
+  @ApiPropertyOptional({
+    description: "Tenant staff identifier. Unique within the tenant; 409 STAFF_ID_TAKEN when another of the tenant's users already holds it.",
+  })
   @IsString()
   @IsOptional()
   @MaxLength(128)
