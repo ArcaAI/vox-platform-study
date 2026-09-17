@@ -263,7 +263,7 @@ Owner rule (2026-09-17): no gating tests until everything is merged into `dev-2.
 | Artifact checks | `api:openapi:check` OK; `api:portal:check` no drift; `gen:admin:check` no drift |
 | Migration | shadow DB: ledger replayed, `migrate diff` → `-- This is an empty migration.` |
 | API e2e against the dev gateway (`SKIP_DB_PRECHECK=true RESET_DB=false API_URL=http://localhost:8868/api/v1`, rate limit off) | `storage-cross-tenant`, `task-958-provider-connections`, `users-management-contract`, `task-776-response-parsing`: 60 passed + 1 failed → assertion corrected → `task-958-provider-connections` 12/12 |
-| Console e2e (`ai-models`, `consultations`, `dna-writing-styles` against the dev console) | see the Change History row for the final run |
+| Console e2e (`ai-models`, `consultations`, `dna-writing-styles` against the dev console on 5176, `API_URL=http://127.0.0.1:8868`) | 29/31 on the first complete run; the two `ai-models` failures were pre-existing selector drift (the Task field label, the discovery drawer's button and title, the Retire action — all renamed by earlier tickets, none touched by lane A) → selectors updated → `ai-models` 9/9; consultations 13/13 and DNA 9/9 including the new Status / doctor / department / include-disabled narrowing cases |
 
 Live proof on the dev gateway (watch mode, after the merges):
 
@@ -283,6 +283,7 @@ Live proof on the dev gateway (watch mode, after the merges):
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Console e2e: the owner's `next dev` on 5176 had died (no crash trace; the box was under gate + lane-server load) and, restarted, served a stale Turbopack dev cache that never hydrated the login form (two HMR-client chunk hashes) — restarted again with `.next` cleared via `pnpm stack:dev -- admin`; the three specs then ran; two stale `ai-models` selectors fixed; leftover e2e model rows retired; `rate-limit.enabled` restored to `true` |
 | 2026-09-17 | Lane D merged (§4.8); artifacts regenerated in worktree M and merged (§4.9); single gate pass green (§5); two post-merge test fixes; API e2e subset green; worktrees removed; status Review |
 | 2026-09-17 | Owner: "do NOT run any gating tests until things are merged completely to dev-2.2" — relayed to the running lanes; per-merge suite runs stopped; one gate pass after the last merge. Lanes F, H, A, B, G merged (§4.3–4.7); types, workflow-contract, applications, vox-node, vox rebuilt in the primary after H |
 | 2026-09-17 | Lanes E and C merged into `dev-2.2` (§4.1, §4.2); applications rebuilt in the primary, watch API restarted, R7 and the `no-transform` header proven live; migration proven on a shadow DB |
