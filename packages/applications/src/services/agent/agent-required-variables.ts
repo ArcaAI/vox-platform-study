@@ -19,7 +19,7 @@
  * contract has no way to know — which names the AGENT already binds, and which request key
  * satisfies a given root.
  */
-import { requiredPromptVariables, type ComposableResolvedPrompt } from '@arcaai/workflow-contract';
+import { requiredPromptVariables, resolveTemplatePath, type ComposableResolvedPrompt } from '@arcaai/workflow-contract';
 
 /** The request key a caller supplies a path under, on the invocation plane. */
 export type PromptVariableSlot = 'context' | 'input' | 'variables';
@@ -92,4 +92,47 @@ export function agentRequiredVariables(instruction: Record<string, unknown> | nu
     if (path !== null) required.add(path);
   }
   return [...required].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** One `instruction.variables` entry whose `{ path }` does not resolve for this call. */
+export interface UnresolvedBinding {
+  /** The bare name the template reads it under. */
+  readonly name: string;
+  /** The path the binding reads — what the CALLER has to supply. */
+  readonly path: string;
+}
+
+/**
+ * TASK-983 follow-up — split a call's merged variables map into the bindings that RESOLVE and
+ * the ones that do not, against the roots alone.
+ *
+ * Why this exists: `buildAgentPromptScope` resolves every `{ path }` binding EAGERLY and raises
+ * `PromptVariableUnresolvedError` on the first one that fails, which happens before any
+ * template can be looked at. The seeded `general-medicine-summarization` agent binds all nine of
+ * its context paths that way (`seed/25-agents.ts`) and reads them as BARE names, so the
+ * aggregate refusal never saw them and the caller was back to one 400 per call.
+ *
+ * Splitting first lets the caller (a) name every failing binding by its PATH — which is what a
+ * request can supply, not the bare name it is read under — and (b) build the real scope from
+ * what is left without it throwing, so the template diff runs over the same scope the render
+ * would use and both halves land in ONE refusal.
+ *
+ * A `{ value }` binding and a plain value (what a caller override supplies) can never fail, so
+ * they are always resolvable.
+ */
+export function splitBindings(
+  variables: Readonly<Record<string, unknown>>,
+  roots: Readonly<Record<string, unknown>>,
+): { resolvable: Record<string, unknown>; unresolved: UnresolvedBinding[] } {
+  const resolvable: Record<string, unknown> = {};
+  const unresolved: UnresolvedBinding[] = [];
+  for (const [name, binding] of Object.entries(variables)) {
+    const path = bindingPath(binding);
+    if (path !== null && resolveTemplatePath(roots, path) === undefined) {
+      unresolved.push({ name, path });
+      continue;
+    }
+    resolvable[name] = binding;
+  }
+  return { resolvable, unresolved };
 }

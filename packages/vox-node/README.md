@@ -87,6 +87,7 @@ callers are unaffected). A key holding `consultation:*` satisfies every scope be
 | `stt.createStreamSession`/`.refreshTicket`/`.closeStreamSession`            | `stt:transcription:write`    |
 | `agents.transcribe(slug, { file })` — multipart upload, batch ASR                   | `stt:transcription:write`    |
 | `agents.transcribe(slug, { mediaId })` — media already uploaded                     | `agent:invocation:write`     |
+| `agents.transcriptionJob`/`.subscribeTranscription`/`.waitForTranscription`         | `stt:transcription:write`    |
 | `summarization.preSummary`/`.preSummaryStream`/`.summary`/`.summaryStream`  | `consultation:report:write`  |
 | `consultations.summaries.generate*`, `.update`                              | `consultation:report:write`  |
 | `consultations.summaries.list`/`.latest`/`.latestPreSummary`                | `consultation:report:read`   |
@@ -154,6 +155,18 @@ only lane that resumes. `options.idempotencyKey` derives the run id from `(tenan
 a retry with the same key JOINS the run already in flight rather than starting a second one.
 `input` may never carry the reserved keys `consultationId`, `externalPatientId`, `userId`,
 `jobId`, `sessionId` — the SDK throws `ReservedRunIdentityError` before the request leaves.
+
+**Batch transcription spans two planes, and the SDK hides the seam rather than the difference.**
+`agents.transcribe(slug, { file })` uploads the audio as multipart to
+`POST /audio/transcription-jobs/transcribe` (scope `stt:transcription:write`, the agent named in
+the form); `agents.transcribe(slug, { mediaId })` posts JSON to `POST /agents/{slug}/transcriptions`
+for media already uploaded. Either way you get a job handle — and the job is then read with
+`agents.transcriptionJob(jobId)`, watched with `agents.subscribeTranscription(jobId, handlers)`
+(SSE frames `status` / `progress` / `chunk` / `transcript` / `error`, ending itself on a terminal
+`status`), or awaited with `agents.waitForTranscription(jobId, { pollIntervalMs, timeoutMs })`,
+which resolves on COMPLETED/FAILED/CANCELLED/DEAD and throws `TranscriptionJobTimeoutError`
+otherwise. The transcript is `resultText` on the completed job. **Not `hope.jobs.*`** — that is the
+CONSULTATION jobs plane (`/consultations/jobs/{jobId}`) and answers 404 for a transcription job id.
 
 ### DNA writing style — `hope.dnaWritingStyle.*`
 

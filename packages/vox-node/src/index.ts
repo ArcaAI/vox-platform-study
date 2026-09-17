@@ -159,6 +159,7 @@ export {
   RateLimitError,
   ReservedRunIdentityError,
   SocketUnavailableError,
+  TranscriptionJobTimeoutError,
   VersionConflictError,
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
@@ -278,7 +279,9 @@ export type {
   SpeechRequest,
   SpeechSynthesis,
   TranscribeSource,
+  TranscriptionJobEvent,
   TranscriptionJobHandle,
+  TranscriptionJobStatus,
   DnaIngestJobResponse,
   DnaIngestJobStatus,
   DnaWritingSample,

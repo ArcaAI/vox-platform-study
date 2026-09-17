@@ -13,6 +13,8 @@
  * POST /api/v1/agents/{slug}/speech                    -> synthesize()
  * POST /api/v1/agents/{slug}/transcriptions            -> transcribe({ mediaId })
  * POST /api/v1/audio/transcription-jobs/transcribe     -> transcribe({ file })
+ * GET  /api/v1/audio/transcription-jobs/{id}           -> transcriptionJob()
+ * GET  /api/v1/audio/transcription-jobs/{id}/stream    -> subscribeTranscription() / waitForTranscription()
  * ```
  *
  * Hand-authored, like `hope.workflows`: this is the BUSINESS plane. Since
@@ -31,8 +33,11 @@
  * package has no audio stack and never will.
  */
 
+import { TranscriptionJobTimeoutError } from '../core/errors';
 import { generateUuidV7 } from '../core/idempotency';
 import { parseSseStream } from '../core/sse';
+import { subscribeToSse } from '../core/sse-subscription';
+import type { StreamHandle, StreamHandlers, SubscribeOptions } from '../core/sse-subscription';
 import type { Transport } from '../core/transport';
 import { encodePathSegment } from '../core/url';
 import type {
@@ -43,7 +48,9 @@ import type {
   SpeechRequest,
   SpeechSynthesis,
   TranscribeSource,
+  TranscriptionJobEvent,
   TranscriptionJobHandle,
+  TranscriptionJobStatus,
 } from '../types/agent';
 import type { StartRunOptions } from './workflows';
 
@@ -62,10 +69,48 @@ export const AGENT_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string }>
   // is the AUDIO plane's job (`stt:transcription:write`), and the agent is named in the form.
   // Listed here because this resource calls it, which is what this constant is checked against.
   { method: 'POST', path: '/api/v1/audio/transcription-jobs/transcribe' },
+  // TASK-983 — and where the job it creates is READ. `hope.jobs.*` is the CONSULTATION jobs
+  // plane (`/consultations/jobs/{jobId}`) and answers 404 for a transcription job id, which is
+  // what an integrator hit on the line after the upload.
+  { method: 'GET', path: '/api/v1/audio/transcription-jobs/{id}' },
+  { method: 'GET', path: '/api/v1/audio/transcription-jobs/{id}/stream' },
 ]);
 
 /** Where a FILE goes. The agent route beside it takes an already-uploaded `mediaId` as JSON. */
 const BATCH_TRANSCRIBE_PATH = '/audio/transcription-jobs/transcribe';
+
+/** Where the job it creates is read. NOT `consultations/jobs/…`, which is a different plane. */
+function transcriptionJobPath(jobId: string): string {
+  return `audio/transcription-jobs/${encodePathSegment(jobId)}`;
+}
+
+/**
+ * Every status a transcription job stops at. `CANCELLED` and `DEAD` (max retries exceeded) are
+ * terminal as surely as `COMPLETED`/`FAILED`: a waiter that ignored them would poll a finished
+ * job until its own timeout.
+ */
+const TERMINAL_TRANSCRIPTION_STATUSES: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'DEAD']);
+
+/** Options for {@link AgentsResource.waitForTranscription}. */
+export interface WaitForTranscriptionOptions {
+  signal?: AbortSignal;
+  /** Delay between polls, in ms. Default `2000`. */
+  pollIntervalMs?: number;
+  /** Ceiling on total wait time, in ms, before throwing {@link TranscriptionJobTimeoutError}. Default `600000` (10 min). */
+  timeoutMs?: number;
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
+  }
+}
 
 /** The gateway's `mode=blocking` 504 is a fixed ceiling, not a transient failure — never retry it. */
 const BLOCKING_NON_RETRYABLE: ReadonlySet<number> = new Set([504]);
@@ -108,7 +153,14 @@ function toInvocationEvent(data: string, resumeToken: string | undefined): Agent
  * ```
  */
 export class AgentsResource {
-  constructor(private readonly transport: Transport) {}
+  /**
+   * @param sleep Injectable for tests — never a real timer in a unit test. Not part of the
+   *   public `HopeClient` surface; `HopeClient` always constructs this resource with the default.
+   */
+  constructor(
+    private readonly transport: Transport,
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
+  ) {}
 
   /** `GET /api/v1/agents[?task=…]` — published, active agents visible to the tenant. Never `null`: `[]` means none. */
   async list(options: { task?: AgentTask; signal?: AbortSignal } = {}): Promise<AgentSummary[]> {
@@ -259,5 +311,74 @@ export class AgentsResource {
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
+  }
+
+  /**
+   * `GET /api/v1/audio/transcription-jobs/{jobId}` — read one batch transcription job.
+   *
+   * This is where a job from {@link transcribe} is read. `hope.jobs.*` is the CONSULTATION jobs
+   * plane (`/consultations/jobs/{jobId}`) and answers 404 for a transcription job id — the live
+   * finding this method exists to close.
+   *
+   * `resultText` appears once `status` is `COMPLETED`.
+   */
+  async transcriptionJob(jobId: string, options: { signal?: AbortSignal } = {}): Promise<TranscriptionJobStatus> {
+    return this.transport.request<TranscriptionJobStatus>({ path: transcriptionJobPath(jobId), signal: options.signal });
+  }
+
+  /**
+   * `GET /api/v1/audio/transcription-jobs/{jobId}/stream` — watch a batch job's progress.
+   *
+   * Frames are `{ type, data }` with the discriminator IN the JSON (there is no SSE `event:`
+   * line): `status`, `progress`, `chunk`, `transcript`, `error`. The subscription ENDS itself on
+   * a terminal `status` frame (`onClosed('terminal')`); the gateway also completes the stream on
+   * its own, which arrives as `onClosed('end')`.
+   *
+   * `onError` is REQUIRED, as on every subscription in this package: nothing awaits the promise
+   * this starts, so a 403 for a missing `stt:transcription:write` scope would otherwise be
+   * indistinguishable from a job that is simply taking its time.
+   *
+   * Reach for {@link waitForTranscription} when the job IS the thing you are waiting on.
+   */
+  subscribeTranscription(jobId: string, handlers: StreamHandlers<TranscriptionJobEvent>, options: SubscribeOptions = {}): StreamHandle {
+    return subscribeToSse(
+      this.transport,
+      {
+        path: `${transcriptionJobPath(jobId)}/stream`,
+        dispatch: (payload) => {
+          const event = payload as TranscriptionJobEvent;
+          handlers.onEvent(event);
+          return event.type === 'status' && typeof event.data?.status === 'string' && TERMINAL_TRANSCRIPTION_STATUSES.has(event.data.status);
+        },
+      },
+      handlers,
+      options,
+    );
+  }
+
+  /**
+   * Poll {@link transcriptionJob} until the job reaches a terminal status — `COMPLETED`,
+   * `FAILED`, `CANCELLED` or `DEAD`. ALL FOUR RESOLVE: a failed job is a valid terminal answer,
+   * and a caller reads `status` / `errorCode` rather than catching. Throws
+   * {@link TranscriptionJobTimeoutError} once `timeoutMs` elapses without one, and propagates
+   * `options.signal`'s abort reason immediately, before or between polls.
+   *
+   * Polling, not streaming, deliberately: this mirrors `hope.dnaWritingStyle.waitForIngestJob`,
+   * and the result a caller wants (`resultText`) is on the JOB, not in a stream frame. Use
+   * {@link subscribeTranscription} when it is progress you want to watch.
+   */
+  async waitForTranscription(jobId: string, options: WaitForTranscriptionOptions = {}): Promise<TranscriptionJobStatus> {
+    const { signal, pollIntervalMs = 2000, timeoutMs = 600_000 } = options;
+    const deadline = Date.now() + timeoutMs;
+    throwIfAborted(signal);
+
+    for (;;) {
+      const job = await this.transcriptionJob(jobId, { signal });
+      if (TERMINAL_TRANSCRIPTION_STATUSES.has(job.status)) return job;
+
+      if (Date.now() >= deadline) throw new TranscriptionJobTimeoutError(jobId, timeoutMs);
+      throwIfAborted(signal);
+      await this.sleep(pollIntervalMs);
+    }
   }
 }
