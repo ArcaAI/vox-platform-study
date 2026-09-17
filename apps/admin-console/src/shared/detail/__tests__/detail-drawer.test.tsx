@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { DetailDrawer } from '../detail-drawer';
@@ -56,23 +56,59 @@ describe('DetailDrawer', () => {
     expect(content.className).toContain('w-full');
     expect(content.className).toContain('max-w-none');
     // Desktop default size (md): constrained right slide-over.
-    expect(content.className).toContain('md:max-w-xl');
+    // TASK-983 R11/OD-7 widened the scale — 576px was too narrow to read.
+    expect(content.className).toContain('md:max-w-3xl');
   });
 
-  it('maps the size prop to the desktop width', () => {
+  /**
+   * The drawer scale (TASK-983 R11, owner decision OD-7): md 768px, lg 52vw,
+   * xl 68vw. The owner's report was that drawers "are too small to read
+   * comfortably"; the previous scale was 576 / 40vw / 56vw. Pinned as a whole
+   * map so the three steps stay ordered and a re-tune happens in ONE place.
+   */
+  it('maps the size prop to the desktop width (OD-7 scale)', () => {
     const { rerender } = render(
+      <DetailDrawer open onOpenChange={() => {}} title="Detail" size="md">
+        <p>Body</p>
+      </DetailDrawer>,
+    );
+    expect(sheetContent().className).toContain('md:max-w-3xl');
+
+    rerender(
       <DetailDrawer open onOpenChange={() => {}} title="Detail" size="lg">
         <p>Body</p>
       </DetailDrawer>,
     );
-    expect(sheetContent().className).toContain('md:max-w-[40vw]');
+    expect(sheetContent().className).toContain('md:max-w-[52vw]');
 
     rerender(
       <DetailDrawer open onOpenChange={() => {}} title="Detail" size="xl">
         <p>Body</p>
       </DetailDrawer>,
     );
-    expect(sheetContent().className).toContain('md:max-w-[56vw]');
+    expect(sheetContent().className).toContain('md:max-w-[68vw]');
+  });
+
+  /**
+   * Mobile stays full-screen at EVERY size: the width cap is `md:`-prefixed, so
+   * below 768px the sheet is edge to edge and nothing narrows it.
+   */
+  it('keeps mobile full-screen at every size', () => {
+    for (const size of ['md', 'lg', 'xl'] as const) {
+      cleanup();
+      render(
+        <DetailDrawer open onOpenChange={() => {}} title="Detail" size={size}>
+          <p>Body</p>
+        </DetailDrawer>,
+      );
+      const className = sheetContent().className;
+      expect(className).toContain('w-full');
+      expect(className).toContain('sm:max-w-none');
+      // Every width cap is desktop-only.
+      for (const token of className.split(/\s+/).filter((c) => c.includes('max-w-') && c !== 'max-w-none')) {
+        expect(token.startsWith('md:') || token.startsWith('sm:max-w-none')).toBe(true);
+      }
+    }
   });
 
   it('calls onOpenChange(false) when the close control is used', () => {
