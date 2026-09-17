@@ -128,6 +128,59 @@ export interface TranscriptionJobHandle {
 }
 
 /**
+ * One SSE frame of `GET /api/v1/audio/transcription-jobs/{id}/stream`, exactly as the gateway
+ * publishes it: a `type` discriminator and a typed `data` payload (there is no SSE `event:` line
+ * to read — the discriminator is IN the JSON).
+ *
+ * `status` carries the lifecycle (`QUEUED` → `PROCESSING` → `COMPLETED`/`FAILED`) and is what
+ * ENDS the stream; `progress` is a percentage; `chunk` is a per-segment partial; `transcript` is
+ * the full final text; `error` is a failure notification. Extra fields are kept, never dropped.
+ */
+export interface TranscriptionJobEvent {
+  type: 'status' | 'progress' | 'chunk' | 'transcript' | 'error';
+  data: {
+    jobId?: string;
+    /** On a `status` frame. */
+    status?: string;
+    /** On a `progress` frame: 0-100. */
+    progress?: number;
+    /** On a `transcript` (full) or `chunk` (partial) frame. */
+    text?: string;
+    errorCode?: string;
+    message?: string;
+    [extra: string]: unknown;
+  };
+  [extra: string]: unknown;
+}
+
+/**
+ * A batch transcription job as `GET /api/v1/audio/transcription-jobs/{id}` returns it.
+ *
+ * `resultText` is the transcript, and it is present only once `status` is `COMPLETED` — the
+ * gateway decrypts it from the Vault-Transit ciphertext that is the system of record, so it is
+ * never on a running job.
+ */
+export interface TranscriptionJobStatus {
+  id: string;
+  /** `QUEUED` | `PROCESSING` | `COMPLETED` | `FAILED` | `CANCELLED` | `DEAD`. */
+  status: string;
+  /** 0-100. */
+  progress?: number;
+  /** The transcript. Present on a COMPLETED job. */
+  resultText?: string;
+  /** Timings, language, word/sentence timestamps — whatever the engine reported. */
+  resultMetadata?: Record<string, unknown>;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  mediaId?: string | null;
+  consultationId?: string | null;
+  jobType?: string;
+  agentSlug?: string;
+  agentVersionId?: string | null;
+  [extra: string]: unknown;
+}
+
+/**
  * The DEFAULT input of a `NAMED_ENTITY_RECOGNITION` agent (TASK-930 §2.3) — the body of
  * `POST /api/v1/agents/{slug}/invocations`, sent FLAT like every other task.
  *
