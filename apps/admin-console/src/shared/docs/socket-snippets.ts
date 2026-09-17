@@ -158,8 +158,8 @@ export function sttRealtimeVoxNodeSnippet(agentSlug: string): string {
     `socket.on('close', (event) => { /* … */ });`,
     ``,
     `await socket.connect();`,
-    `socket.send(pcm16LeMonoChunk); // binary frames up, typed events down`,
-    `socket.finalize();             // flush, then`,
+    `socket.sendPcm16(pcm16LeMonoChunk); // binary frames up, typed events down`,
+    `socket.finalize();                  // flush, then`,
     `await hope.stt.closeStreamSession(session.sessionId);`,
   ].join('\n');
 }
