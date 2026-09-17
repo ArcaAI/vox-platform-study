@@ -1,0 +1,202 @@
+# TASK-983 — Admin-console defect sweep (owner report of 2026-09-17)
+
+| Field | Value |
+|---|---|
+| **Status** | In Progress — owner approved every recommendation and said **go** on 2026-09-17; OD-6 overridden: `protocols` is REMOVED (§3.6) |
+| **Type** | bugfix + UX + docs, cross-cutting: `apps/api`, `packages/applications`, `packages/database` (one data migration), `apps/admin-console`, `docs/guides` |
+| **Branch** | `dev-2.2` |
+| **Opened** | 2026-09-17 |
+| **Ticket number** | TASK-983 — next after TASK-982 (`docs/archive/**` is off-limits this sprint, so the archive was not checked; confirm, OD-0) |
+| **Reported by** | Owner, 2026-09-17, a 13-item list (§1). Tested on the deployed `admin.taphuynh.dev` (recent deploy, **no data reset**) and the dev stack |
+
+## 1. Requirement
+
+The owner's list, verbatim in spirit, numbered here so every later section can point at an item:
+
+| # | Report | Class |
+|---|---|---|
+| R1 | `/ai-models`: admin must refresh the page to see a model after registration | bugfix |
+| R2 | No input field to configure the Sarvam provider | bugfix |
+| R3 | Platform admin cannot change the Sarvam API key once a tenant admin configured it for their tenant; check every provider; BYO order is tenant (if any) → platform default (if any) → error | bugfix |
+| R4 | Filter controls not working on `/ai-models`, `/dna-writing-styles`, `/consultations` | bugfix |
+| R5 | Cannot approve any prompt template, even as super admin; related to seed data on the un-reset cluster? | bugfix |
+| R6 | When a tenant admin creates a user they MUST assign a role, and the user is linked to the tenant automatically | feature |
+| R7 | No admin can download bucket files: "Invalid file key: path traversal not allowed" | bugfix |
+| R8 | Cannot define multiple protocols on an agent; unclear what the field means; socket still works after declaring only `http` | bugfix / decision |
+| R9 | Integration guidance must cover socket use for workflows and transcription agents: input/output schema, connection protocol, auth, code samples | docs |
+| R10 | `/prompt-templates?tab=governance`: whole content scrolls instead of just the list | UX |
+| R11 | Drawers and dialogs are too small to read comfortably | UX |
+| R12 | Agent management lists one row per version | UX (owned by TASK-965) |
+
+Classification: **bugfix** program with two UX items and one docs item. One ticket, several lanes.
+
+## 2. Current state (six read-only discovery lanes, sonnet tier, 2026-09-17; every claim below was file-verified by the lane and spot-checked by the orchestrator)
+
+### 2.1 R1 + R4 — `/ai-models` list ignores every query param except page/limit (confirmed); DNA and consultations filters trace clean (unconfirmed report)
+
+- `apps/api/src/modules/ai-model/ai-model-admin.controller.ts:123` — `list(@Query('page'), @Query('limit'))` and nothing else. `packages/applications/src/services/ai-model/aiModel.service.ts:592-600` hardcodes `sort: [{ name: 'asc' }]` and passes no search/filters. The console (`features/ai-models/components/ai-models-screen.tsx:107-108`) builds `search`, `searchFields=name,slug`, `filters`, `sort` through `useAdminGridParams` → all discarded silently (individual `@Query('x')` params, so no 400).
+- Consequence for R1: the console's invalidation is correct (`features/ai-models/api/hooks.ts:45-48` invalidates `['ai-models']`, prefix-matching the list key; the BFF is `cache: 'no-store'`). After registration the refetch replays the admin's sort/filter/search, the server answers name-sorted page N regardless, so the new row lands off-screen. A refresh does not actually help either — the owner's "must refresh" is most likely "changed sort/filter/scrolled until it appeared". Confirm at runtime (§3.4 W0).
+- TASK-973 lane 4 concluded "no change required — every search surface filters an UNPAGINATED endpoint"; that is wrong for this one endpoint, which is the paginated envelope the screen uses (`useModelsPaginated`).
+- `/dna-writing-styles`: `dna-writing-style-admin.controller.ts:70-98` reads `tenantId` / `includeDisabled` / `doctorId`; `listReportsPaginated` (`dna-writing-style.service.ts:1203`) applies both and is unit-tested; e2e `dna-writing-styles.spec.ts:92-108` proves a bogus doctor id narrows to the empty state. There is **no free-text search box by design** (`globalSearch: false`, comment at `:36-39`), and the "Include disabled" toggle has no row-count assertion.
+- `/consultations`: the screen calls `GET admin/consultations` (`admin-consultation.controller.ts:44-67`), which reads `patientId` / `doctorId` / `departmentId` / `status` and `listConsultationsForTenant` (`consultation.service.ts:1649-1701`) applies all four. TASK-973 FU-3 (params dropped) is about the clinician-facing `ConsultationController`, not this one. e2e proves doctor narrowing; the "Type" filter is page-only by documented design; the **Status** filter has no narrowing test at all; two e2e narrowing tests are vacuous (`rowCountAfter <= rowCountBefore`).
+- Tests that would have caught R1/R4: `ai-models-screen.test.tsx:208-248` stubs every GET with `[]`; `ai-models.spec.ts` only asserts the search box is visible.
+
+### 2.2 R2 + R3 — providers: the STT Sarvam card has no `baseUrl` field although the runtime requires one (confirmed); the platform-key block has no code cause yet (needs a live repro)
+
+- R2 root cause: `apps/admin-console/src/features/ai-providers/components/provider-meta.ts:211-215` declares `stt:sarvam` with `fields: []` — the card can only hold the API key. But TASK-880 (`2e6f76ffc`) retired `stt.sarvam.baseUrl` and made `baseUrl` a per-row requirement: `apps/stt/src/stt/models/sarvam_loader.py:76-101` raises `CloudASRAuthError("Sarvam connection not configured … with its baseUrl set on the same row")` when either value is missing. That commit touched the seed and gateway constants, never the console. The SYSTEM row only works because the seed hand-sets `baseUrl: 'https://api.sarvam.ai'` (`17-ai-provider-connection.ts:516-523`, which itself warns the public API carries no BAA); a **tenant** BYO Sarvam STT row can never work, and nobody can point the platform row at an enterprise host. `tts:sarvam` (`provider-meta.ts:230-234`) and `stt:openai` (`:217-220`) DO carry the field; only `stt:sarvam` was left out — not a TASK-952 regression (that lane only removed the `model` extra).
+- Compounding: `packages/applications/src/services/ai-provider-connection/provider-requirements.ts` (`PROVIDER_REQUIREMENTS`, ~120-165) has no `stt:sarvam` or `stt:openai` entry, so an incomplete row is accepted at write time (the file's own doc says an unlisted pair "requires nothing") and fails as a 503 in a Python worker at request time — the exact failure mode the file exists to prevent.
+- R3: the lane traced the whole write path and found **no code dependency on a tenant row existing**: tier from the working tenant (`use-provider-scope.ts:85`), the BFF omits `x-tenant-id` when none is set (`hope-proxy.ts:34-36`), the console scopes writes by an explicit `?tenantId=` query (`api/client.ts:36`), `apps/api/src/shared/tenant-scope.ts:28-36` honours it for a super admin, `crossTenantLane` (`ai-provider-connection.service.ts:2084-2089`) uses the unscoped client for a SYSTEM write, `assertWriteAllowed` (`:2022-2033`) is role-only, and both unique indexes include `tenantId`. TASK-932 §6.2 claims this case passes. Ranked hypotheses for W0: (1) the working tenant was still set, so the admin was on the tenant tier while believing they were on the platform tier — nothing clears it automatically and the scope badge is the only tell; (2) an untested interleaving (tenant row first, then a SYSTEM edit) — no e2e covers it; (3) BFF caching. The lane refused to guess; the plan carries a W0 repro and an e2e for the interleaving regardless.
+- R3 resolution order: `AiProviderConnectionService.cascadeRows` (`:1122-1219`) is the single implementation — tenant tier first → veto from the tenant DEFAULT row → `mayConsumePlatformDefault` entitlement gate → SYSTEM only then; all six injection call sites (agent resolver, TTS agent resolver, tenant STT config, text-request enrichment, harness internal, text-compat controller) go through `resolveTenantCloudOverrides` / `resolveCredential`. Python side: zero env API-key fallbacks in `apps/{text,tts,stt}` (locked by `test_task602_byok_credentials.py` and the two `test_task799_byok_credentials.py` mirrors); `apps/nlp` has no vendor credential plane by design; guardrail's SQL resolver is the documented exception. **No deviation found.** The one weakness is the write-time gap above: "throw error" happens at request time instead of at save.
+
+### 2.3 R5 — approve is a silent no-op on seeded rows that are `APPROVED` with no pinned version (leading cause)
+
+- `packages/database/src/prisma/db_main/seed/07-prompt-template.ts:20-46` documents that 16 seeded templates (3 ARCAAI, 13 Global) used to ship `status: APPROVED` with `approvedVersionNumber: null`. Commit `8de75bd2c` (TASK-890 BBJ2-7) fixed the **seed script only** and says "re-seed required". The one data migration that backfills a pin (`20260903120000_task_858_reown_system_catchall_soap/migration.sql:11-16`) covers exactly one hard-coded id. The deployed cluster was never reseeded (memory: a deploy never refreshes seed data), so the other 15 rows are still unpinned there.
+- `packages/applications/src/services/prompt-management/prompt-management.service.ts:664-667` short-circuits on `template.status === 'APPROVED'` **before** the pin logic at `:691-735`, returning 200 with the row unchanged. The console then shows the green "Approved" badge next to the "not approved" pin badge (`features/prompt-templates/components/approval-pin.tsx:48-57`) and the admin's click "does nothing" — and clinically the template really is skipped by `PromptResolutionService`.
+- Ruled out / low: the OD-3 split gate (`assertCanApprove`, `:1945-1957`) only 403s a non-super-admin; a stale JWT (`roles` baked at login, `jwt.strategy.ts:77`) would 403 and is cheap to rule out; the eval promotion gate reads unguarded by design and would 500 every approve; no recent NOT NULL migration on prompt tables. No unit test covers the idempotent branch.
+- Runtime confirmation recipe (§3.4 W0): `GET admin/prompt-templates?status=APPROVED&limit=200` → rows with `approvedVersionNumber: null`; `POST admin/prompt-templates/:id/approve` with `If-Match` → 200, body unchanged = confirmed.
+
+### 2.4 R6 — role is optional at every layer; a role-less user is an orphan
+
+- `User` has no `tenantId` (`user.prisma:57-111`); tenancy lives on `UserRoleAssignment` (`@@unique([userId, roleId, tenantId])`) and `UserDepartment`. `assertUserBelongsToTenant` (`tenant-guards.ts` ~150) requires BOTH an enabled role assignment AND a department (service accounts exempt from the department half).
+- `createUser.request.ts:42-50`: `roleId` and `departmentId` both `@IsOptional()`. `user.service.ts` `create()` (~132): `wantsMembership = Boolean(roleId || departmentId)`; when false the user is persisted with zero membership rows — excluded from `fetchAllByTenantId`, 404 on every `admin/users/:id/*` sub-route via `assertUserInScope`, and per the code's own comment cannot log in. When a role IS supplied, the existing `$transaction` creates User + role assignment (+ department) atomically with seat quota and three sys-events — the machinery exists, it is just optional.
+- Console `features/users/components/create-user-dialog.tsx`: username, password, email, externalId, service-account switch — **no role or department field**; subtitle says "Roles and departments are assigned on the user detail". No test file for the dialog. No Zod schema in the feature.
+- Precedent to copy: `ContextUserIdentityService` (TASK-950, `services/user/identity/context-user-identity.service.ts:336-563`) treats role AND department as mandatory, fail-closed, atomic.
+- Policy seed already grants tenant admins `manage:User` + `manage:UserRoleAssignment` (`01-policy.ts:137,355`).
+
+### 2.5 R7 — the legacy storage controller rejects any key containing `/`; every bucket path pattern contains `/`
+
+- `apps/api/src/modules/storage/storage.controller.ts:222-224, 294-296, 309-311` (upload / getFileInfo = presign download / delete): `if (/[.]{2}|[/\\]/.test(fileKey)) throw new BadRequestException('Invalid file key: path traversal not allowed')`. Every system bucket's `pathPattern` is date-segmented (`TenantBucketFactory.ts:29-31,63`), so every real object fails. Listing has no validator, which is why only download is reported.
+- The console (`features/storage-browser/api/client.ts:31`) encodes the key into one path segment; the BFF (`server/hope-proxy.ts:40-52`) correctly re-encodes; Express decodes `%2F` back to `/` in the param; the regex fires. The client file already carries a comment admitting nested keys "cannot be presigned/deleted through this surface".
+- The sibling admin-plane service already has the right rule: `tenant-bucket.service.ts:812, 843, 874` rejects `..` only, with tests at `tenant-bucket.service.test.ts:773-795, 938-983` asserting `patients/2026/report-1.txt` succeeds. Never back-ported to `StorageController` (TASK-318 W2 regex, pinned by `storage.controller.task318-w2.test.ts:84-85` which lists `/etc/passwd` as a must-reject key — F-18).
+- Object keys go straight to the S3/Azure SDK as strings; no `path.join` exists downstream, so `/` cannot escape a bucket. `..` and a leading `/` are the only shapes worth refusing.
+
+### 2.6 R8 — `protocols` is not a field; it is a static per-task table that nothing enforces
+
+- `packages/workflow-contract/src/agent-schemas.ts:78-86`: `AGENT_PROTOCOLS` keyed by `AgentTask` (STT `['http','socket']`, TEXT_GENERATION / TTS `['http','http-sse']`, NER `['http']`). No Prisma column, not on the create/update DTOs (`forbidNonWhitelisted` would reject it), derived in `agent.dto.mapper.ts:73-86` and frozen into `compiledConfig` at publish (`agent.service.ts:2450-2491`), duplicated in `seed/25-agents.ts:62-66`.
+- Zero runtime reads: not in `agent.controller.ts` dispatch, not in `stt-ws.gateway.ts`. The one real mode refusal (NER `?mode=stream` → 400 `MODE_UNSUPPORTED`, `agent.controller.ts:474`) is hand-written. The console never renders it (zero hits under `features/agents`).
+- Workflows are the mental model the owner expects: `workflow-schema-description.ts:73,99-113` derives protocols from the graph and `workflow-exposure.service.ts:78-82` refuses an undeclared mode with 400.
+
+### 2.7 R9 — socket guidance: TASK-975 shipped the surfaces; two real gaps remain
+
+- Shipped and verified in code (TASK-975, merged 2026-09-15, its §3.2 runtime pass still outstanding): `shared/docs/socket-snippets.ts` (Node / browser / websocat snippets for the workflow socket and realtime STT), a **Socket** tab on `IntegrationPanel` for workflows and SPEECH_TO_TEXT agents (`integration-panel.tsx:262-267, 291-320, 597-611, 779-793`), a WebSocket-surfaces table on `/developer/invoke` (`invoke-guide-screen.tsx:64-91, 368-441`), `hope.stt.*` / `RealtimeSttSocket` / `useWorkflowRun({transport:'socket'})` on `/developer/sdk`, both SDK READMEs.
+- Gap 1 — **frame shapes** are documented in no user-facing surface: STT server→client `ready` / `transcript` / `status` / `error` / `resumed` / `resume_failed` and client→server `audio` / `metadata` / `stop` / `resume` / `close` (`stt-ws.gateway.ts:797-819, 1239-1323, 1334-1358, 1495-1520`); workflow socket `{event, id?, data}` with a snapshot first frame (`workflow-ws.gateway.ts:29-37, 94-97`). Auth per lane is documented correctly (JWT-only `POST auth/stream-ticket` vs API-key/service-account `POST workflows/:slug/runs/:runId/stream-ticket`; STT mints the ticket inline on `POST audio/transcription-jobs/stream/session`).
+- Gap 2 — `docs/guides/client-integration-guide.md` §9 never mentions `transport: 'socket'`, the run stream-ticket route or `WorkflowRunSocketClient` (SSE only, `:592-643`).
+- Gap 3 (TASK-975's own T8) — `socket-snippets.drift.test.ts` was never written; nothing pins the socket snippets to `SttResource` / `RealtimeSttSocket` / `useWorkflowRun` prototypes.
+- The OpenAPI portal cannot host WS lanes (HTTP-route-derived); the workflow schema route already computes a live AsyncAPI fragment per tenant, so a static AsyncAPI page would drift. Precision note: `workflow-ws.gateway.ts:72` accepts `lastEventId`, so a fresh ticket + that param CAN resume; the "socket never resumes" copy means "no automatic reconnect".
+
+### 2.8 R10 — governance tab is on `contentMode="scroll"` with a broken flex chain
+
+- `features/prompt-templates/components/prompt-templates-screen.tsx:102`: `contentMode={tab === 'templates' ? 'fill' : 'scroll'}` → the ScreenTemplate becomes the single scroller for header + list + detail. `governance-tab.tsx:413` `<section className="flex min-h-0 flex-col gap-3">` and `:420` grid lack `flex-1`; `GovernanceList`'s `lg:h-full` Card (`:68`) and `overflow-y-auto` list (`:104`) are inert because no ancestor resolves a height; `TemplateGovernanceDetail` root (`:380`) has no scroll container. Exemplar: `/agents` (`agents-screen.tsx:262-263`, `fill` + grid).
+
+### 2.9 R11 — the default drawer is 576px and most dense screens already worked around it
+
+- `shared/detail/detail-drawer.tsx:26-30`: `md: 'md:max-w-xl'` (576px, the default), `lg: 'md:max-w-[40vw]'`, `xl: 'md:max-w-[56vw]'`. 33 call sites: 14 at `md` (9 implicit), 21 at `lg`, 2 at `xl`.
+- `DialogContent` default `sm:max-w-lg` (576px). ~50 call sites: 4 bare default, ~28 `sm:max-w-md` confirms (correct per rule 11 §3), 10 `sm:max-w-lg` multi-field forms, 7 already on the rule-11 large convention (`h-[70vh] sm:max-w-[70vw]`), 7 ad-hoc widths (`40rem`, `46rem`, `36rem`, `640px`, `42rem`, `50vw`×3).
+- No persisted/resizable width exists for drawers or dialogs; the only per-user layout precedent is `features/playground-consultation/hooks/use-column-layout.ts` (`useUserSettings`, not localStorage) + `@arcaai/ui` `ResizablePanelGroup`.
+
+### 2.10 R12 — owned by TASK-965; WS-1 done, the grid rewrite is WS-2 + WS-4, both pending
+
+- `AgentRepository.findAllForTenant` (`AgentRepository.ts:208-215`) returns every ENABLED version row ordered `slug asc, versionNumber desc`; `GET admin/agents` (`agent-admin.controller.ts:59-64`) takes only `task`; `agents-screen.tsx:113-152, 279` filters and pages the flat list. No `lineages` route exists yet anywhere.
+- TASK-965 §3.2 OD-965-3 already approved the design (server-side `GET admin/agents/lineages`, one row per slug, contract pinned at its §3.4); WS-2 (backend, 2–3 days) → WS-3 (kit, 2 days, `IntegrationPanel` already pulled forward) → WS-4 (agents screen, 3 days). Nothing to re-plan — only sequencing (OD-9).
+
+## 3. Design
+
+### 3.1 Principles
+
+1. Fix the cause the lane proved, not the symptom the owner saw; every fix has a RED test first.
+2. Existing owners keep their scope: R12 executes under TASK-965, R9's gap 3 is TASK-975's T8. This ticket links, it does not duplicate.
+3. Security-pinned tests are changed by owner decision only (R7's F-18).
+4. Data healing ships as a migration, never as "click approve again" (R5).
+5. Console-wide UX changes land once in the shared kit (`DetailDrawer`, a `dialogSize` map), never per feature.
+
+### 3.2 Changes by area
+
+| Item | Layer | Change | RED test |
+|---|---|---|---|
+| R1/R4 ai-models | `apps/api` + `packages/applications` | `AiModelAdminController.list` takes `@Query() query: PaginatedQuery` (search, searchFields, filters, sort, page, limit); `AiModelService.list` applies them through `withFormattedPaginatedProps` / the repository's standard filter formatting, keeping the SYSTEM-tenant scope; regenerate the five API artifacts | controller test: params forwarded; service test: search on `name`/`slug`, sort honoured; console `ai-models-screen.test.tsx`: second GET returns the new row and it renders |
+| R4 dna / consultations | `apps/admin-console` e2e | Replace the two vacuous narrowing assertions in `consultations.spec.ts:122-149`; add a Status narrowing case; add an "Include disabled" row-count case to `dna-writing-styles.spec.ts`. Code fix only if W0's repro finds one (OD-3) | the new e2e cases |
+| R2/R3 providers | `apps/admin-console` + `packages/applications` (+ `apps/api` e2e) | `provider-meta.ts`: add `{ name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.sarvam.ai' }` to `stt:sarvam` (mirror `tts:sarvam`) and fix the comment above `STT_PROVIDERS`; `provider-requirements.ts`: add `stt:sarvam` and `stt:openai` entries requiring `baseUrl` + `apiKey` so an incomplete row is a 400 at save. R3: if W0 reproduces a real block, fix at the layer the captured response names; either way add the tenant-row-then-SYSTEM-edit e2e. Cascade order needs no change (§2.2) | `provider-meta.drift.test.ts`: `stt:sarvam` declares `baseUrl`; `provider-requirements.test.ts`: enabled `stt:sarvam` row without `baseUrl` refused; e2e in `task-958-provider-connections.spec.ts`: tenant creates `stt/sarvam`, super admin `PUT admin/providers/stt/sarvam?tenantId=SYSTEM` succeeds and reads back |
+| R5 approve | `packages/applications` + `packages/database` | Idempotent short-circuit becomes `status === 'APPROVED' && approvedVersionNumber != null`; an unpinned APPROVED row falls through to the pin logic (self-heal). Data migration `task_983_pin_unpinned_approved_prompt_templates`: `UPDATE core."PromptTemplate" SET "approvedVersionNumber" = COALESCE("approvedVersionNumber", "currentVersionNumber", 1) WHERE status='APPROVED' AND "approvedVersionNumber" IS NULL` (authored against a shadow DB per rule 02) | service tests: unpinned APPROVED → pinned; pinned APPROVED → no writes |
+| R6 users | `packages/applications` + `apps/admin-console` | Service-level rule in `UserService.create` (mirrors `ContextUserIdentityService`): a caller acting inside a tenant (CLS tenantId set) and not SUPER_ADMIN must supply `roleId` (400 `USER_ROLE_REQUIRED`), and — per OD-4 — `departmentId`; the existing atomic membership transaction is then the only path. Console create-user dialog gains a required Role select (tenant-assignable roles, SUPER_ADMIN excluded) and, per OD-4, a Department select; `valid` includes them; the service-account switch keeps its exemption | service test: tenant-admin create without role → 400; with role → user + assignment in one transaction; e2e `users-management-contract.spec.ts`: tenant admin omits role → 400; new `create-user-dialog.test.tsx` |
+| R7 buckets | `apps/api` | Segment-aware guard shared by the three `StorageController` sites: reject any `..` segment, a leading `/`, and `\`; allow internal `/` (aligns with `tenant-bucket.service.ts`). Update F-18's `TRAVERSAL_KEYS` per OD-5, add positive nested-key cases | controller tests: nested key presigns; `../x`, `/etc/passwd`, `a\b` rejected; e2e same-tenant nested download 200 |
+| R8 protocols | `packages/applications` + `packages/workflow-contract` + `packages/database` seed + SDK types | REMOVE (owner, OD-6): drop `protocols` from `agent-summary.response.ts`, `agent.dto.mapper.ts`, the `compile()` output in `agent.service.ts`, `seed/25-agents.ts`, `AGENT_PROTOCOLS`/`AgentProtocol` in `workflow-contract/src/agent-schemas.ts` (if nothing else consumes them), and the `AgentSummary` types in `@arcaai/vox` / `@arcaai/vox-node`; regenerate the five API artifacts; deprecation-register entry | mapper/service tests assert the key is absent; workflow-contract parity fixture updated; SDK type tests |
+| R9 socket docs | `apps/admin-console` + `docs/guides` | Add a "Frame shapes" reference to the `/developer/invoke` WebSocket-surfaces card (one JSON example per event type, both lanes, auth column kept) and the same content as a section in `client-integration-guide.md` (§5 STT frames, new §9.x "Workflow run over WebSocket" with the ticket route, `transport: 'socket'`, resume note); write TASK-975's missing `socket-snippets.drift.test.ts` | drift test pins `SttResource` / `RealtimeSttSocket` / `useWorkflowRun` prototypes; `docs:check` green |
+| R10 governance scroll | `apps/admin-console` | `prompt-templates-screen.tsx:102` → governance uses `fill`; `governance-tab.tsx:413/420` gain `flex-1`; detail column gets `min-h-0 overflow-y-auto` | `governance-tab.test.tsx` class-chain assertion + manual scroll proof |
+| R11 sizes | `apps/admin-console` (+ `packages/ui` only if OD-7 picks a new Dialog default) | `DetailDrawer` scale per OD-7 (proposal: `md` 576 → `md:max-w-3xl` 768px, `lg` 40vw → 52vw, `xl` 56vw → 68vw, all `max-w-[calc(100vw-2rem)]` floor); new `shared/dialog/dialog-size.ts` map (small `sm:max-w-md`, medium `sm:max-w-[50vw]`, large `h-[70vh] sm:max-w-[70vw]`) and migrate the 10 `sm:max-w-lg` forms + 7 ad-hoc widths onto it; resizable drawer deferred unless OD-8 says now | `detail-drawer.test.tsx` size map; snapshot of the migrated call sites |
+| R12 agents grid | TASK-965 | Execute WS-2 → WS-3 → WS-4 under TASK-965's own README (OD-9 for sequencing) | per TASK-965 §3.3 |
+
+### 3.3 Lanes, tiers, order
+
+Rule 14: one writer per worktree, disjoint files, the orchestrator owns merges, installs and the DB. Worktrees get `node_modules` by symlink, never `pnpm install` (memory: nested-worktree install corrupts the primary).
+
+| Wave | Lane | Scope (files it owns) | Tier / effort | Depends on |
+|---|---|---|---|---|
+| W0 | Runtime confirmation (orchestrator, browser + BFF fetches on the dev stack; the cluster read-only) | R5 recipe; R1 repro with sort/filter state; R4 repro on DNA + consultations Status; R3 write path with a tenant row present | fable (orchestrator) | owner go |
+| W1 | A — ai-models list params | `apps/api/src/modules/ai-model/**`, `packages/applications/src/services/ai-model/**`, console ai-models tests; artifacts regenerated by the orchestrator after merge | opus, low | — |
+| W1 | B — providers (R2/R3) | `features/ai-providers/components/provider-meta.ts` + tests, `services/ai-provider-connection/provider-requirements.ts` + tests, the new interleaving e2e; any R3 code fix per W0 | opus, medium | W0 (R3) |
+| W1 | C — approve self-heal + migration (R5) | `prompt-management.service.ts` + tests, one migration | sonnet, low (opus review of the migration SQL) | — |
+| W1 | D — user create role/tenant (R6) | `services/user/user/**`, `features/users/components/create-user-dialog*`, users e2e | opus, medium | OD-4 |
+| W1 | E — storage key guard (R7) | `apps/api/src/modules/storage/**`, storage e2e | sonnet, low | OD-5 |
+| W1 | F — governance scroll + drawer/dialog sizes (R10/R11) | `features/prompt-templates/components/{prompt-templates-screen,governance-tab}.tsx`, `shared/detail/**`, `shared/dialog/**`, the migrated call sites | opus, low | OD-7/8 |
+| W1 | G — socket docs + drift test (R9) | `features/developer-docs/**`, `shared/docs/__tests__/socket-snippets.drift.test.ts`, `docs/guides/client-integration-guide.md` | sonnet, medium | — |
+| W1 | H — protocols removal (R8) | `services/agent/{agent-summary.response,agent.dto.mapper,agent.service}.ts` + tests, `workflow-contract/src/agent-schemas.ts`, `seed/25-agents.ts`, SDK `AgentSummary` types; artifacts regenerated by the orchestrator | sonnet, medium (opus review of the SDK surface) | — |
+| W2 | I — dna/consultations filter fix if W0 finds one (R4) | per finding | sonnet | W0 |
+| W3 | TASK-965 WS-2 → WS-3 → WS-4 (R12) | per TASK-965 | opus (its README's tiers) | OD-9 |
+| Final | Orchestrator: merge, regenerate the five API artifacts, gates, runtime proof per item, README §5 | | fable | all |
+
+Verify/judge stages stay at opus or above; discovery was sonnet (this section's evidence).
+
+### 3.4 W0 — what the orchestrator checks before any lane writes
+
+| Item | Check | Confirms |
+|---|---|---|
+| R5 | `GET admin/prompt-templates?status=APPROVED&limit=200` → count rows with `approvedVersionNumber: null`; `POST …/:id/approve` with `If-Match` → 200 and unchanged body | cause §2.3; also try a DRAFT row to rule out a universal blocker |
+| R1 | Register a model while the grid holds a non-default sort or a filter; then clear sort/filter | §2.1 explanation of "must refresh" |
+| R4 | On DNA: toggle "Include disabled" and read the row count; on consultations: set Status = SIGNED and read rows | whether a real defect exists beyond the ai-models one |
+| R3 | First read the scope badge on `/ai-providers` (is a working tenant still set?); then, as super admin with NO working tenant, `PUT admin/providers/stt/sarvam?tenantId=<SYSTEM>` while a tenant `stt/sarvam` row exists; capture status + body; repeat for one text provider | §2.2 hypotheses 1–3 |
+| R7 | Capture the failing download request URL from the network pane | §2.5 chain |
+
+### 3.5 Decisions taken (owner may override)
+
+| # | Decision | Why |
+|---|---|---|
+| D-1 | R1 and R4-ai-models are one defect and one lane | same endpoint, same missing params |
+| D-2 | R5 ships both the runtime self-heal AND a data migration | the cluster is never reseeded; a migration heals every environment on deploy |
+| D-3 | R6 is enforced in the service (fail-closed, like TASK-950's provisioning), with the console enforcing it a second time in the form | class-validator cannot see the caller's role; the service can |
+| D-4 | R7 keeps `..`, leading `/` and `\` rejected; only internal `/` is allowed | matches the sibling service; keys never touch a filesystem |
+| D-5 | R9 lands on the existing `/developer/invoke` surface and the client-integration guide, not a new page | TASK-975 chose the home; frame shapes are the missing content |
+| D-6 | R11 is a scale bump in the shared kit plus a dialog-size map; feature files only change their size token | one place to tune later |
+| D-7 | R12 is not re-planned here | TASK-965 §3.2 already has the owner-approved design |
+
+### 3.6 Open decisions for the owner (OD)
+
+| OD | Question | Recommendation |
+|---|---|---|
+| OD-0 | Ticket number TASK-983 (archive unchecked) | accept |
+| OD-1 | R3: no code cause found (§2.2). Accept the W0 live repro as the gate, and accept that if the cause is "working tenant still set", the fix is a console affordance (a persistent "Acting on: ‹tenant› — clear" control on the providers screen) rather than a backend change | accept; the interleaving e2e is added either way |
+| OD-2 | R2: should the platform SYSTEM Sarvam STT row's `baseUrl` be editable in the console (an enterprise / VPC Sarvam host), given the public `api.sarvam.ai` carries no BAA? | **yes**, editable on both tiers, with a card hint "Public api.sarvam.ai is not PHI-safe; use your enterprise endpoint" |
+| OD-3 | R4 on DNA / consultations: the lanes found no code defect. If W0 reproduces nothing, is the complaint the **missing free-text search** on those two screens (by design today)? If yes: add server-side `search` on `admin/consultations` (patient name/id, doctor) and `admin/dna-writing-styles` (doctor) | ask for the exact filter; add the search boxes only on a yes |
+| OD-4 | R6: role only, or role AND department mandatory? `assertUserBelongsToTenant` needs both, so a role-only user still cannot pass the tenant guard | **both** mandatory for a tenant-scoped human user; service accounts keep the department exemption; a super admin creating a tenant-less platform user keeps the no-membership path |
+| OD-5 | R7: change the pinned F-18 test so `/etc/passwd` (leading `/`) stays rejected but `a/b/c.wav` is accepted | approve |
+| OD-6 | R8: is `protocols` meant to be per-agent and enforced (option 3), or informational per task (option 1)? | **Owner, 2026-09-17: "remove it if it does not take any effect."** It takes no effect (§2.6), so lane H removes `protocols` from the agent summary response, the DTO mapper, the publish-time `compiledConfig`, the seed's copy and the SDK types; `AGENT_PROTOCOLS` in `@arcaai/workflow-contract` goes with it unless a parity fixture still names it; deprecation-register entry; five API artifacts regenerated |
+| OD-7 | R11: new drawer scale. Proposal `md` 768px / `lg` 52vw / `xl` 68vw; dialog medium = 50vw | approve or name widths |
+| OD-8 | R11: resizable, per-user-persisted drawer width now (reusing the playground column-layout pattern) or deferred | defer |
+| OD-9 | R12: run TASK-965 WS-2/3/4 as W3 of this program (≈7–8 days) or as its own later cycle | W3 here, after W1 merges, since the IntegrationPanel and Socket tab work already sits on that screen |
+| OD-10 | R9: complete TASK-975's outstanding §3.2 runtime pass inside lane G | yes, it is the same surfaces |
+
+On **go**: W0 first (one session, ~1 h), then W1 lanes A–G in parallel worktrees, W2 after the ODs they depend on, W3 under TASK-965.
+
+## 4. Implementation Summary
+
+_Not started._
+
+## 5. Verification
+
+_Not started._
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
+| 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
