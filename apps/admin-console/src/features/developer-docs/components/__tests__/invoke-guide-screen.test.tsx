@@ -170,6 +170,44 @@ describe('InvokeGuideScreen', () => {
     expect(screen.getByText(/only lane that resumes/i)).toBeDefined();
   });
 
+  // TASK-983 R9 gap 1 — frame shapes were documented in no user-facing surface. Every event
+  // name from both gateways must be literally present, not just described in prose.
+  it('names every /ws/workflows frame event, both directions', () => {
+    const { container } = renderWithProviders(<InvokeGuideScreen />);
+    const text = container.textContent ?? '';
+
+    expect(text).toMatch(/"event":"workflow\.run\.progress"/);
+    expect(text).toMatch(/"event":"workflow\.run\.completed"/);
+    expect(screen.getAllByText(/lastEventId/i).length).toBeGreaterThan(0);
+  });
+
+  it('names every /ws/stt/stream frame type, both directions, and the binary frame format', () => {
+    const { container } = renderWithProviders(<InvokeGuideScreen />);
+    const text = container.textContent ?? '';
+
+    for (const type of ['audio', 'metadata', 'stop', 'resume', 'close']) {
+      expect(text).toMatch(new RegExp(`"type":"${type}"`));
+    }
+    for (const type of ['ready', 'transcript', 'status', 'resumed', 'resume_failed', 'error']) {
+      expect(text).toMatch(new RegExp(`"type":"${type}"`));
+    }
+    expect(text).toMatch(/PCM16 LE, mono frame/i);
+  });
+
+  it('gives each WebSocket surface its ticket route and credential class', () => {
+    renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getAllByText(/API key or service account/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/minted inline, any credential class/i)).toBeDefined();
+  });
+
+  it('states resume semantics differ: STT resumes in-band, the workflow socket does not auto-reconnect', () => {
+    renderWithProviders(<InvokeGuideScreen />);
+
+    expect(screen.getByText(/Resume semantics differ per lane/i)).toBeDefined();
+    expect(screen.getByText(/no automatic reconnect and no in-band resume message/i)).toBeDefined();
+  });
+
   it('links onward to the reference, the SDKs, and API keys', () => {
     renderWithProviders(<InvokeGuideScreen />);
 

@@ -82,15 +82,58 @@ const WEBSOCKET_SURFACES = [
     route: '/ws/workflows',
     handshake: '?slug=&runId=&ticket=[&lastEventId=]',
     scope: 'workflow_run:<runId>',
-    notes: 'Same frames as the SSE run stream, one JSON message per frame. Mint the ticket from the run-scoped route above.',
+    ticketRoute: 'auth/stream-ticket (user JWT only) or workflows/{slug}/runs/{runId}/stream-ticket (API key or service account)',
+    notes: 'Same frames as the SSE run stream, one JSON message per frame. Mint the ticket from either route above.',
   },
   {
     route: '/ws/stt/stream',
     handshake: '?sessionId=&ticket=',
     scope: 'stt_session:<sessionId>',
-    notes: 'Binary PCM16 LE mono up, typed transcript/status/error/resumed events down. Mint the ticket from auth/stream-ticket.',
+    ticketRoute: 'audio/transcription-jobs/stream/session (minted inline, any credential class), refreshed by …/refresh-ticket',
+    notes: 'Binary PCM16 LE mono up, typed transcript/status/error/resumed events down.',
   },
 ] as const;
+
+/** TASK-983 R9 gap 1 — the literal frames a developer reading only prose never saw. */
+const WORKFLOW_SOCKET_FRAMES_EXAMPLE = `// Every text message is one JSON object: { event, id?, data }.
+// The FIRST message is a snapshot and carries no "id" — everything after it does.
+
+// 1. snapshot (no "id")
+{"event":"workflow.run.progress","data":{"runId":"…","status":"running","…":"…"}}
+
+// 2. a later delta (has "id" — echo it back as ?lastEventId= on reconnect)
+{"event":"workflow.run.progress","id":"3","data":{"…":"…"}}
+
+// 3. terminal frame — the socket closes right after this one
+{"event":"workflow.run.completed","data":{"status":"succeeded"}}
+
+// There is no client→server frame on this socket: it is receive-only.
+// A drop does NOT resume automatically — mint a fresh ticket and reconnect
+// with the last "id" you saw as ?lastEventId= to continue from there. SSE
+// (Last-Event-ID + automatic reconnect) is the only lane that resumes by itself.`;
+
+const STT_SOCKET_FRAMES_EXAMPLE = `// Binary frames are audio: one PCM16 LE, mono frame per WebSocket binary message —
+// no envelope, no base64. Every other frame is JSON text.
+
+// client -> server (JSON control frames; audio may also travel as JSON, base64-encoded)
+{"type":"audio","seq":1,"data":"<base64 PCM16>","metadata":{"mic_id":"left"}}
+{"type":"metadata","metadata":{"mic_id":"left"}}
+{"type":"stop"}
+{"type":"resume","sessionId":"…","lastSeq":42}
+{"type":"close"}
+
+// server -> client
+{"type":"ready","sessionId":"…","fromSeq":1}
+{"type":"transcript","text":"…","isFinal":false,"seq":7,"startTime":0.4,"endTime":1.1}
+{"type":"status","status":"transcribing","message":"…"}
+{"type":"resumed","sessionId":"…","fromSeq":43}
+{"type":"resume_failed","sessionId":"…","reason":"unknown_session"}
+{"type":"resume_failed","sessionId":"…","reason":"buffer_overflow","minAvailableSeq":10}
+{"type":"error","code":"…","message":"…"}
+
+// Resume: send {"type":"resume", sessionId, lastSeq} on a reconnect (fresh ticket first —
+// each ticket is single-use). A successful "resumed" replays every buffered transcript with
+// seq > lastSeq; "resume_failed" means a real gap, not a retryable hiccup.`;
 
 const SSE_FRAME_EXAMPLE = `event: chunk
 id: 3
@@ -408,17 +451,18 @@ export function InvokeGuideScreen() {
           <CardHeader>
             <CardTitle>WebSocket surfaces</CardTitle>
             <CardDescription>
-              For a host that cannot hold an SSE connection. Both take the single-use ticket minted above.
+              For a host that cannot hold an SSE connection. Both take a single-use ticket, minted by different routes.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[44rem] text-sm">
+              <table className="w-full min-w-[56rem] text-sm">
                 <thead>
                   <tr className="text-muted-foreground border-b text-left">
                     <th scope="col" className="py-2 pr-4 font-medium">Route</th>
                     <th scope="col" className="py-2 pr-4 font-medium">Handshake</th>
                     <th scope="col" className="py-2 pr-4 font-medium">Scope</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Ticket route · credential class</th>
                     <th scope="col" className="py-2 pr-4 font-medium">Notes</th>
                   </tr>
                 </thead>
@@ -434,12 +478,33 @@ export function InvokeGuideScreen() {
                       <td className="py-3 pr-4">
                         <code className="font-mono text-xs">{entry.scope}</code>
                       </td>
+                      <td className="py-3 pr-4">
+                        <code className="font-mono text-xs">{entry.ticketRoute}</code>
+                      </td>
                       <td className="py-3 pr-4">{entry.notes}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Frame shapes — /ws/workflows</h2>
+              <CodeBlock label="workflow socket frame shapes" code={WORKFLOW_SOCKET_FRAMES_EXAMPLE} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Frame shapes — /ws/stt/stream</h2>
+              <CodeBlock label="STT socket frame shapes" code={STT_SOCKET_FRAMES_EXAMPLE} />
+            </div>
+            <Alert role="status">
+              <AlertTitle>Resume semantics differ per lane.</AlertTitle>
+              <AlertDescription>
+                The STT socket resumes IN-BAND — send <code className="font-mono text-xs">{'{"type":"resume",…}'}</code> on the same session and
+                the server replays buffered transcripts. The workflow socket has no automatic reconnect and no in-band resume message: on a
+                drop, mint a fresh ticket and reconnect, passing the last frame <code className="font-mono text-xs">id</code> you saw as{' '}
+                <code className="font-mono text-xs">?lastEventId=</code>. Neither socket resumes on its own the way the SSE lane does.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
 
