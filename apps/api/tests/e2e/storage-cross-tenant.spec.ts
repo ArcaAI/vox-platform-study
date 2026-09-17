@@ -120,4 +120,29 @@ test.describe('AC-2/AC-3 — Storage bucket ownership genuine probe (AC-9)', () 
     });
     expect(response.status()).toBe(404);
   });
+
+  // TASK-983 R7 / OD-5 — the live defect: every ARCAAI recording key is
+  // date-segmented (`{yyyy}/{MM}` pathPattern, seed/05a-tenant-bucket.ts), so
+  // a same-tenant presign of a nested key must succeed, not 400 "path
+  // traversal not allowed". Presigning does not require the object to exist
+  // (S3/MinIO presign is a pure URL-signing operation), so a not-yet-uploaded
+  // key is sufficient to prove the guard, not the object store.
+  test('GET /storage/buckets/:name/files/:key same-tenant nested key → 200 with a presigned url (OD-5)', async ({ request }) => {
+    const response = await request.get(`/api/v1/storage/buckets/${ARCAAI_RECORDINGS_BUCKET}/files/2026%2F09%2F17%2Ffile.wav`, {
+      headers: { Authorization: `Bearer ${superAdminArcaaiToken}` },
+    });
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as { key: string; url: string };
+    expect(body.key).toBe('2026/09/17/file.wav');
+    expect(body.url).toContain('http');
+  });
+
+  test('GET /storage/buckets/:name/files/:key with a traversal key → 400, even same-tenant', async ({ request }) => {
+    const response = await request.get(`/api/v1/storage/buckets/${ARCAAI_RECORDINGS_BUCKET}/files/..%2F..%2Fetc%2Fpasswd`, {
+      headers: { Authorization: `Bearer ${superAdminArcaaiToken}` },
+    });
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(JSON.stringify(body)).toContain('path traversal not allowed');
+  });
 });
