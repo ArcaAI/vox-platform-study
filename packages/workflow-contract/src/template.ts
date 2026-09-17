@@ -371,9 +371,7 @@ export function collectPlaceholders(template: string | readonly (string | null |
       byPath.set(reference.path, seen === undefined ? reference.hasDefault : seen && reference.hasDefault);
     }
   }
-  return [...byPath.entries()]
-    .map(([path, hasDefault]) => ({ path, hasDefault }))
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return [...byPath.entries()].map(([path, hasDefault]) => ({ path, hasDefault })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /**
