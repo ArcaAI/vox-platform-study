@@ -312,11 +312,15 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
-   * Retrieving a single PaginatedModelResponse
+   * TASK-983 R1/R4 — ONE whole-object `@Query()` binding. This route used to bind `@Query('page')` and `@Query('limit')` and nothing else, so the console grid's `search` / `searchFields` / `filters` / `sort` were dropped by the framework before the handler ran. Named `@Query('x')` params are invisible to the global validation pipe, so the request answered 200 with the UNFILTERED page instead of 400 — a search for a slug that does not exist returned every row. Binding the standard `PaginatedQuery` both forwards the params and puts them under `whitelist + forbidNonWhitelisted`.
    *
    * `GET /api/v1/admin/ai-models/list` — `AiModelAdminController.list`.
    */
-  list(options: AdminRequestOptions & { query?: { limit?: number; page?: number } } = {}): Promise<PaginatedModelResponse> {
+  list(
+    options: AdminRequestOptions & {
+      query?: { filters?: string; limit?: number; page?: number; search?: string; searchFields?: string; sort?: string };
+    } = {},
+  ): Promise<PaginatedModelResponse> {
     return this.request<PaginatedModelResponse>({
       method: 'GET',
       path: 'admin/ai-models/list',
