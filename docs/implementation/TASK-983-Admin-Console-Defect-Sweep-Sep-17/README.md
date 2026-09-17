@@ -200,7 +200,17 @@ On **go**: W0 first (one session, ~1 h), then W1 lanes A–G in parallel worktre
 
 ## 4. Implementation Summary
 
-_Not started._
+### 4.1 Lane E — storage object-key guard (R7) — merged `c790153d0`
+
+`apps/api/src/modules/storage/object-key.guard.ts` (`assertSafeObjectKey`: rejects empty, `\`, a leading `/`, any `.`/`..` segment; allows internal `/`) replaces the three inline regexes in `storage.controller.ts`; F-18's traversal keys still reject; positive nested-key cases added; e2e `storage-cross-tenant.spec.ts` gained a same-tenant nested 200 case (unrun until the e2e pass). Primary re-run after merge: `vitest run src/modules/storage` → 5 files, 44 passed. Live on the watch-mode dev gateway: `GET storage/buckets/hope-recordings-arcaai/files/2026%2F09%2Ffile.wav` → 200 with a presigned URL (was 400).
+
+### 4.2 Lane C — weak-ETag tolerance, `no-transform`, approve self-heal (R5) — merged `f8fdbfc99`
+
+- `apps/admin-console/src/shared/api/http.ts`: `normalizeEtag` unwraps `W/"7"` → `"7"`; absent stays `null`. The BFF already forwards `etag` + `cache-control` down and `if-match` up (`hope-proxy.ts:11,16`). Console tests 31/31.
+- `apps/api/src/interceptors/etag.interceptor.ts`: every ETag-carrying response also gets `Cache-Control: … no-transform` (merged with existing directives). Interceptor tests 29/29; e2e `task-776-response-parsing.spec.ts:92` updated to the new exact header. Live after merge: `GET admin/prompt-templates/:id` → `Cache-Control: private, no-cache, no-transform`, `ETag: "2"`.
+- `prompt-management.service.ts`: an APPROVED row with `approvedVersionNumber == null` now falls through to the pin logic; 4 new tests, suite 267/267.
+- Migration `20260917120000_task_983_pin_unpinned_approved_prompt_templates` (data-only). Shadow-DB proof (rule 02 recipe): ledger replayed → "All migrations have been successfully applied"; `prisma migrate diff --from-config-datasource --to-schema` → `-- This is an empty migration.`; shadow dropped.
+- `@ExpectedVersion()` still rejects a weak `If-Match` with 400 on purpose: the fix is to stop the weakening, not to loosen the precondition.
 
 ## 5. Verification
 
@@ -212,4 +222,5 @@ _Not started._
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Lanes E and C merged into `dev-2.2` (§4.1, §4.2); applications rebuilt in the primary, watch API restarted, R7 and the `no-transform` header proven live; migration proven on a shadow DB |
 | 2026-09-17 | W0 done (§3.4a): R5's live cause is the ingress weakening ETags + the console discarding weak validators, not seed data; lane C re-briefed. Eight worktrees `../hope-v2-983-{A..H}` (branches `task-983/<lane>`, node_modules + dist by symlink) spawned: A/B/C/D/F opus, E/G/H sonnet |
