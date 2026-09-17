@@ -91,12 +91,14 @@ export { canonicalJson } from './canonical-json';
 export {
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
+  collectPlaceholders,
   renderTemplate,
+  resolveTemplatePath,
   templateReferenceProblems,
   templateReferences,
   templateSyntaxProblems,
 } from './template';
-export type { DeclaredNamespaces, RenderTemplateOptions, TemplateReference } from './template';
+export type { DeclaredNamespaces, PlaceholderReference, RenderTemplateOptions, TemplateReference } from './template';
 
 // TASK-947 — a TEXT_GENERATION instruction's three forms read in ONE place (`agent-instruction`),
 // and prompt COMPOSITION (`prompt-composition`): which fragments of a composite artifact run
@@ -123,8 +125,10 @@ export {
   PromptCompositionEmptyError,
   composePrompt,
   conditionRootProblems,
+  requiredPromptVariables,
   selectPromptFragments,
   staticProjection,
+  unresolvedPromptVariables,
 } from './prompt-composition';
 export type {
   ComposableResolvedPrompt,

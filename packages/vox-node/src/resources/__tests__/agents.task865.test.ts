@@ -10,7 +10,8 @@
  * | `GET /api/v1/agents/{slug}` | `get(slug)` |
  * | `POST /api/v1/agents/{slug}/invocations?mode=blocking` | `invoke(slug, input)` |
  * | `POST /api/v1/agents/{slug}/invocations?mode=stream` | `invokeAndStream(slug, input)` |
- * | `POST /api/v1/agents/{slug}/transcriptions` | `transcribe(slug, source)` |
+ * | `POST /api/v1/agents/{slug}/transcriptions` | `transcribe(slug, { mediaId })` |
+ * | `POST /api/v1/audio/transcription-jobs/transcribe` | `transcribe(slug, { file })` (TASK-983) |
  * | `POST /api/v1/agents/{slug}/speech` | `synthesize(slug, body)` |
  *
  * The routes do not exist in `route-manifest.json` until TASK-863 lands; the
@@ -172,13 +173,16 @@ describe('AgentsResource — speech and transcription', () => {
     expect(new Uint8Array(await speech.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
 
+  // AMENDED TASK-983: the FILE shape posts to the AUDIO plane's multipart route — the agent
+  // route accepts JSON only and answered `400 mediaId is required` for every upload. The route
+  // and per-shape form fields are pinned in `agents.transcribe-file.task983.test.ts`.
   it('submits a batch transcription from a file as multipart (no JSON content-type) and returns the job', async () => {
     const { fetch, calls } = stubFetch([() => json({ id: 'job-1', status: 'QUEUED', jobType: 'BATCH' }, 202)]);
     const file = new Blob(['RIFF…'], { type: 'audio/wav' });
 
     const job = await client(fetch).agents.transcribe('clinic-asr', { file, filename: 'visit.wav', language: 'en' });
 
-    expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/agents/clinic-asr/transcriptions');
+    expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/audio/transcription-jobs/transcribe');
     expect(calls[0]!.init.method).toBe('POST');
     expect(calls[0]!.init.body).toBeInstanceOf(FormData);
     const form = calls[0]!.init.body as FormData;

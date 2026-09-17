@@ -55,6 +55,7 @@ import {
   readPromptFragments,
   renderTemplate,
   staticProjection,
+  unresolvedPromptVariables,
   templateReferenceProblems,
   templateSyntaxProblems,
   type AgentConfigView,
@@ -66,6 +67,7 @@ import {
 } from '@arcaai/workflow-contract';
 import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
+import { agentRequiredVariables } from './agent-required-variables';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
 import { IActiveUserContext } from '../../interfaces';
@@ -727,6 +729,22 @@ export class AgentService extends BaseService implements IAgentService {
     // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
     // what production sends: a composite is SELECTED and joined here, never served as its static
     // projection (which would show an author the base prompt and hide the branch they came to test).
+    // TASK-983 R9 — the bench reports EVERY unresolved placeholder, not just the first, so an
+    // author fixes a nine-variable prompt in one pass. The `code` and `path` are unchanged
+    // (`PROMPT_VARIABLE_UNRESOLVED` + the first path, the shape the console and the admin
+    // OpenAPI already document); `missingVariables` rides along additively.
+    const missingVariables = unresolvedPromptVariables(compiled.resolvedPrompt, scope);
+    if (missingVariables.length > 0) {
+      throw new BadRequestException({
+        message:
+          `The prompt references ${missingVariables.length} variable(s) this test does not supply: ` +
+          `${missingVariables.map((path) => `\`${path}\``).join(', ')}. ` +
+          'Supply them in `context` / `input` / `variables`, or give the placeholders a `default("…")`.',
+        code: 'PROMPT_VARIABLE_UNRESOLVED',
+        path: missingVariables[0],
+        missingVariables,
+      });
+    }
     const composed: ComposedPrompt = this.renderMapped(() => composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }));
     const assembledSystemPrompt = composed.prompt;
     const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
@@ -2547,7 +2565,12 @@ export class AgentService extends BaseService implements IAgentService {
     fallbackRows: AgentModelFallbackEntity[],
     resolvedPrompt: ResolvedPrompt,
     contextSchema: AgentCompiledContextSchema | null,
-  ): AgentCompiledConfig {
+    // TASK-983 R9 — `requiredVariables` rides along as an INTERSECTION, the same way
+    // `CompiledModelRef` carries `wireModelId` and `AgentCompiledContextSchema` carries
+    // `userIdentity`: the artifact is JSON, the field is additive-optional on
+    // `AgentCompiledConfig`, and stating it here keeps the freeze site honest about what it
+    // writes without a second declaration to keep in step.
+  ): AgentCompiledConfig & { requiredVariables: string[] } {
     const byId = new Map(fallbackModels.map((row) => [row.id, row]));
     const defaults = AGENT_IO_DEFAULTS[entity.task];
     // Built as a variable so the additive `wireModelId` rides along: `AgentCompiledConfig['model']`
@@ -2582,6 +2605,13 @@ export class AgentService extends BaseService implements IAgentService {
       tools: (Array.isArray(entity.tools) ? entity.tools : []) as Array<{ mcpServerId: string; toolName: string }>,
       contextSchema,
       guardrail: { enabled: guardrailEnabledOf(entity.parameters) },
+      // TASK-983 R9 — WHAT AN INVOCATION MUST SUPPLY, frozen with everything else it depends on.
+      // Computed here rather than on the read for the same reason `resolvedPrompt` is: the list
+      // is a property of the composed instruction as published, and a reader that re-derived it
+      // from a template row that has since moved would publish a contract this artifact does not
+      // serve. `AgentDtoMapper.toSummary` projects it; a row published before this ticket carries
+      // none and is recomputed there from this same artifact.
+      requiredVariables: agentRequiredVariables(asRecord(entity.instruction), resolvedPrompt),
     };
   }
 
