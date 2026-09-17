@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress — owner approved every recommendation and said **go** on 2026-09-17; OD-6 overridden: `protocols` is REMOVED (§3.6) |
+| **Status** | Review — all nine lanes merged into `dev-2.2`, artifacts regenerated, gates green after the full merge (§5), live proof on the dev gateway; awaiting owner sign-off. Not pushed |
 | **Type** | bugfix + UX + docs, cross-cutting: `apps/api`, `packages/applications`, `packages/database` (one data migration), `apps/admin-console`, `docs/guides` |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-17 |
@@ -232,9 +232,50 @@ Controller binds one `@Query() query: PaginatedQuery`; the service applies `sear
 `/developer/invoke`'s WebSocket-surfaces card gains a ticket-route / credential-class column, literal client→server and server→client frame examples for `/ws/stt/stream` and `/ws/workflows`, the binary-frame format and the resume semantics (STT `resume`; the workflow socket accepts `lastEventId` but has no automatic reconnect). `client-integration-guide.md` §5 gains the STT frames; new §9 subsection "Workflow run over WebSocket". TASK-975's missing T8 `socket-snippets.drift.test.ts` written — and it caught a real bug: the STT Node snippet called `socket.send`, which `RealtimeSttSocket` does not expose (`sendPcm16` does). `docs:check` OK (19 SDK calls verified). TASK-975 §3.2 runtime pass performed on the worktree console (Socket tab on the STT agent and on a workflow, `/developer/invoke`, `/developer/sdk`) and closed in its README; screenshots could not be saved from that lane's browser, so the pass is recorded in prose.
 
 
+
+### 4.8 Lane D — mandatory tenant membership on create (R6, OD-4) — merged `412a67252`
+
+`UserService.create` gains `assertTenantMembershipSupplied()`: with a CLS tenant set, `roleId` is required (400 `USER_ROLE_REQUIRED`) and, for a human user, `departmentId` too (400 `USER_DEPARTMENT_REQUIRED`); service accounts keep the department exemption; a tenant-less super-admin create is unchanged; the path also gained the `SUPER_ADMIN` tier guard (403). The create-user dialog collects Role and Department (required, labelled, service-account switch relaxes department) through the existing catalog hooks; copy fixed; new dialog test; three e2e contract cases. Live on the worktree console as `tenant_admin`: submit disabled until both are chosen, `POST admin/users` → 201, the role assignment and department read back (evidence `evidence/lane-D-*.png`). Note: a super admin WITH a working tenant is held to the same rule (only the tenant-less create is exempt) — the plan's §3.2 wording said "not SUPER_ADMIN"; the brief and OD-4 said tenant-scoped, and that is what shipped.
+
+### 4.9 After the merges (orchestrator)
+
+- `@arcaai/types`, `workflow-contract`, `applications`, `vox-node`, `vox` rebuilt in the primary; the watch-mode gateway restarted by touching `apps/api/src/main.ts`.
+- The five API artifacts regenerated in a separate worktree (`task-983/M`, merged `53496b5fe`): `openapi.json`, `route-manifest.json` (unchanged), the two portal documents, `packages/vox-node/src/resources/admin/{ai-model,schemas}.ts`. `api:openapi:check` OK, `api:portal:check` no drift (668 admin / 202 business ops), `gen:admin:check` no drift (49 areas, 426 routes, 444 schemas). The ai-models list handler's JSDoc was reworded first (`a7f038c45`) because the SDK codegen lifts it into the generated docstring.
+- Two post-merge test fixes: lane B's new e2e asserted `keyVersion` increments on a platform key change, but `keyVersion` is the Vault Transit key version (stays 1 across rotations) — it now asserts the row version moved (`a25693ec3`'s sibling commit); two pre-existing `invoke-guide-screen` tests used single-match `getByText` on phrases lane G's frame-shape reference now repeats — switched to `getAllByText` (`a25693ec3`).
+- Dev residue: the dev SYSTEM `stt/sarvam` row carries a dummy key from W0 and the e2e (enabled stays `false`); lane D's test user was soft-deleted; the platform `rate-limit.enabled` setting was switched off for the e2e runs and restored afterwards (§5).
+- Worktrees `../hope-v2-983-{A..H,M}` removed and their branches deleted after every branch was confirmed an ancestor of `dev-2.2`.
+
 ## 5. Verification
 
-_Not started._
+Owner rule (2026-09-17): no gating tests until everything is merged into `dev-2.2`. One full pass after the last merge, in the primary checkout (`scratchpad/gates.log`):
+
+| Gate | Result |
+|---|---|
+| `@arcaai/workflow-contract test` | 55 files, 961 passed |
+| `@arcaai/database test` | 92 files, 1835 passed |
+| `@arcaai/applications test` | 892 files passed, **1 file failed**: `agentPromotion/__tests__/integration/membership-bounded-sync.integration.test.ts` — `PrismaClientKnownRequestError` in its `beforeAll`/`afterAll` against a live test DB that is not up (test infra on 5433); reproduced alone; pre-existing and unrelated (all three lanes that ran the suite saw the same file). 14326 tests passed, 10 skipped, 0 failed |
+| `@arcaai/applications lint` / `typecheck` | exit 0 / exit 0 |
+| `@arcaai/api test` / `lint` / `typecheck` | exit 0 / 0 / 0 |
+| `@arcaai/vox-node test` / `typecheck` | exit 0 / 0 |
+| `@arcaai/vox test` / `typecheck` | exit 0 / 0 |
+| `@arcaai/admin-console test` | 354 files passed, 1 failed (2 tests, the `invoke-guide-screen` multi-match queries) → fixed in `a25693ec3`; `developer-docs` re-run 5 files / 51 passed; full suite 3388 + 2 passed |
+| `@arcaai/admin-console lint` / `typecheck` | exit 0 / exit 0 |
+| Artifact checks | `api:openapi:check` OK; `api:portal:check` no drift; `gen:admin:check` no drift |
+| Migration | shadow DB: ledger replayed, `migrate diff` → `-- This is an empty migration.` |
+| API e2e against the dev gateway (`SKIP_DB_PRECHECK=true RESET_DB=false API_URL=http://localhost:8868/api/v1`, rate limit off) | `storage-cross-tenant`, `task-958-provider-connections`, `users-management-contract`, `task-776-response-parsing`: 60 passed + 1 failed → assertion corrected → `task-958-provider-connections` 12/12 |
+| Console e2e (`ai-models`, `consultations`, `dna-writing-styles` against the dev console) | see the Change History row for the final run |
+
+Live proof on the dev gateway (watch mode, after the merges):
+
+| Item | Evidence |
+|---|---|
+| R7 | `GET storage/buckets/hope-recordings-arcaai/files/2026%2F09%2Ffile.wav` → 200 `{ key: "2026/09/file.wav", url: "http://localhost:9000/…X-Amz-Signature=…" }` |
+| R5 | `GET admin/prompt-templates/:id` → `Cache-Control: private, no-cache, no-transform`, `ETag: "2"`; approving the DRAFT DNA template → APPROVED, pinned v3 |
+| R6 | `tenant_admin` `POST admin/users` without role → 400 `USER_ROLE_REQUIRED`; with role, no department → 400 `USER_DEPARTMENT_REQUIRED` |
+| R1/R4 | `admin/ai-models/list?limit=3&sort=name:desc` → reversed order; `…&search=zzzz-no-such-model&searchFields=name,slug` → total 0; `…&bogus=1` → 400 Validation error |
+| R3 | tenant `stt/sarvam` row present → super admin `PUT …?tenantId=SYSTEM` → 200 (W0), e2e case 31 green |
+| R2, R10, R11, R9 | screenshots under `evidence/lane-{B,D,F}-*.png` from the lane consoles; lane G's pass recorded in prose in the TASK-975 README |
+
 
 ## Change History
 
@@ -242,6 +283,7 @@ _Not started._
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Lane D merged (§4.8); artifacts regenerated in worktree M and merged (§4.9); single gate pass green (§5); two post-merge test fixes; API e2e subset green; worktrees removed; status Review |
 | 2026-09-17 | Owner: "do NOT run any gating tests until things are merged completely to dev-2.2" — relayed to the running lanes; per-merge suite runs stopped; one gate pass after the last merge. Lanes F, H, A, B, G merged (§4.3–4.7); types, workflow-contract, applications, vox-node, vox rebuilt in the primary after H |
 | 2026-09-17 | Lanes E and C merged into `dev-2.2` (§4.1, §4.2); applications rebuilt in the primary, watch API restarted, R7 and the `no-transform` header proven live; migration proven on a shadow DB |
 | 2026-09-17 | W0 done (§3.4a): R5's live cause is the ingress weakening ETags + the console discarding weak validators, not seed data; lane C re-briefed. Eight worktrees `../hope-v2-983-{A..H}` (branches `task-983/<lane>`, node_modules + dist by symlink) spawned: A/B/C/D/F opus, E/G/H sonnet |
