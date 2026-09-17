@@ -33,6 +33,20 @@ export interface SelectableAgent {
   inputSchema?: Record<string, unknown>;
   /** JSON Schema of the invocation output. */
   outputSchema?: Record<string, unknown>;
+  /**
+   * TASK-983 R9 — the placeholder PATHS this agent's instruction reads that carry no
+   * `default("…")` and that the agent does not bind itself: sorted, de-duplicated, published so
+   * a caller can assemble a correct body from the contract instead of discovering it one 400 at
+   * a time.
+   *
+   * Send each path under the request key its root names — `trigger.*` / `context.*` → `context`,
+   * `input.*` → the invocation body, a bare name → `variables`. Omitting one is a 400
+   * `PROMPT_VARIABLES_MISSING`, whose `missingVariables` names ALL of them at once.
+   *
+   * Optional: a gateway older than TASK-983 sends no such field, and absence means "this gateway
+   * does not publish the list", never "nothing is required".
+   */
+  requiredVariables?: string[];
   // TASK-983 OD-6 — `protocols` (a static per-task constant) is REMOVED: the gateway never
   // enforced it. See `docs/operations/deprecation-register.md` §SDK.
 }

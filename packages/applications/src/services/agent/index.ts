@@ -15,6 +15,9 @@ export * from './tts-agent-resolver.service';
 export * from './tts-agent-resolver.service.module';
 export * from './agent-invocation.service';
 export * from './agent-wire-model';
+// TASK-983 R9 — what an invocation must supply: computed at publish, projected on the read,
+// diffed at request time. One vocabulary, three readers.
+export * from './agent-required-variables';
 export * from './agent.service.module';
 
 // The resolver contract shape lives in @arcaai/types; re-exported so apps/api needs no direct dependency on that package.

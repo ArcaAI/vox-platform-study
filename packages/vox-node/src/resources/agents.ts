@@ -11,7 +11,8 @@
  * POST /api/v1/agents/{slug}/invocations?mode=blocking -> invoke()
  * POST /api/v1/agents/{slug}/invocations?mode=stream   -> invokeAndStream()
  * POST /api/v1/agents/{slug}/speech                    -> synthesize()
- * POST /api/v1/agents/{slug}/transcriptions            -> transcribe()
+ * POST /api/v1/agents/{slug}/transcriptions            -> transcribe({ mediaId })
+ * POST /api/v1/audio/transcription-jobs/transcribe     -> transcribe({ file })
  * ```
  *
  * Hand-authored, like `hope.workflows`: this is the BUSINESS plane. Since
@@ -57,7 +58,14 @@ export const AGENT_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string }>
   { method: 'POST', path: '/api/v1/agents/{slug}/invocations' },
   { method: 'POST', path: '/api/v1/agents/{slug}/speech' },
   { method: 'POST', path: '/api/v1/agents/{slug}/transcriptions' },
+  // TASK-983 — the FILE half of `transcribe()`. It is not an `/agents/*` route: uploading audio
+  // is the AUDIO plane's job (`stt:transcription:write`), and the agent is named in the form.
+  // Listed here because this resource calls it, which is what this constant is checked against.
+  { method: 'POST', path: '/api/v1/audio/transcription-jobs/transcribe' },
 ]);
+
+/** Where a FILE goes. The agent route beside it takes an already-uploaded `mediaId` as JSON. */
+const BATCH_TRANSCRIBE_PATH = '/audio/transcription-jobs/transcribe';
 
 /** The gateway's `mode=blocking` 504 is a fixed ceiling, not a transient failure — never retry it. */
 const BLOCKING_NON_RETRYABLE: ReadonlySet<number> = new Set([504]);
@@ -203,31 +211,51 @@ export class AgentsResource {
   }
 
   /**
-   * `POST /api/v1/agents/{slug}/transcriptions` — BATCH transcription
-   * (SPEECH_TO_TEXT). A `file` is sent as multipart; a `mediaId` as JSON. Returns
-   * the `TranscriptionJob` handle; the job then runs asynchronously.
+   * BATCH transcription (SPEECH_TO_TEXT) — the job runs asynchronously and the
+   * handle is returned immediately. TWO SOURCE SHAPES, TWO GATEWAY ROUTES:
    *
-   * Realtime transcription is not a server-SDK concern: the browser opens the
-   * stream session through `@arcaai/vox` with the same `agentSlug`.
+   * | Source | Route | Body | API-key scope |
+   * |---|---|---|---|
+   * | `{ file }` | `POST /api/v1/audio/transcription-jobs/transcribe` | multipart `file` + `agentSlug` (+ `language`) | `stt:transcription:write` |
+   * | `{ mediaId }` | `POST /api/v1/agents/{slug}/transcriptions` | JSON | `agent:invocation:write` |
+   *
+   * TASK-983 — this method used to post the MULTIPART body to the agent route,
+   * which accepts JSON only ("the media must already be uploaded") and answered
+   * `400 mediaId is required` for every file. The gateway's file entry point is
+   * the audio route above, which is what the browser SDK has always used
+   * (`FileTranscriptionService`); the agent slug travels in the form there
+   * rather than in the path, and the response carries `sseUrl` / `audioUri` /
+   * `agentVersionId` beside the id and status.
+   *
+   * Realtime transcription is a different plane: a browser opens the stream
+   * session through `@arcaai/vox` with the same `agentSlug`, and a server that
+   * already HAS audio drives `hope.stt`.
    */
   async transcribe(
     slug: string,
     source: TranscribeSource,
     options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<TranscriptionJobHandle> {
-    let body: unknown;
     if (source.file !== undefined) {
       const form = new FormData();
+      // The third argument is what gives the part a FILENAME; without one the runtime sends the
+      // blob with no name, and the gateway's `ALLOWED_AUDIO_MIMES` check reads the part's own
+      // content type — which is why the caller's Blob `type` must survive, untouched, to here.
       form.append('file', source.file, source.filename ?? 'audio');
+      form.append('agentSlug', slug);
       if (source.language) form.append('language', source.language);
-      body = form;
-    } else {
-      body = { mediaId: source.mediaId, ...(source.language ? { language: source.language } : {}) };
+      return this.transport.request<TranscriptionJobHandle>({
+        method: 'POST',
+        path: BATCH_TRANSCRIBE_PATH,
+        body: form,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+      });
     }
     return this.transport.request<TranscriptionJobHandle>({
       method: 'POST',
       path: `${agentPath(slug)}/transcriptions`,
-      body,
+      body: { mediaId: source.mediaId, ...(source.language ? { language: source.language } : {}) },
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
