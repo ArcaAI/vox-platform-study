@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
-  AGENT_PROTOCOLS,
   AGENT_TASKS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
@@ -43,16 +42,19 @@ describe('TASK-863 — task taxonomy', () => {
     });
   });
 
-  it('declares a parameter schema, I/O defaults and protocols for every task', () => {
+  it('declares a parameter schema and I/O defaults for every task', () => {
     for (const task of AGENT_TASKS) {
       expect(AGENT_PARAMETER_SCHEMAS[task]).toMatchObject({ type: 'object', additionalProperties: false });
       expect(AGENT_IO_DEFAULTS[task].inputSchema).toMatchObject({ type: 'object' });
       expect(AGENT_IO_DEFAULTS[task].outputSchema).toMatchObject({ type: 'object' });
-      expect(AGENT_PROTOCOLS[task].length).toBeGreaterThan(0);
-      expect(AGENT_PROTOCOLS[task]).toContain('http');
     }
-    expect(AGENT_PROTOCOLS.SPEECH_TO_TEXT).toContain('socket');
-    expect(AGENT_PROTOCOLS.TEXT_GENERATION).toContain('http-sse');
+  });
+
+  // TASK-983 OD-6 — `AGENT_PROTOCOLS` / `AgentProtocol` are REMOVED: a static per-task table
+  // nothing ever enforced. This module no longer exports them.
+  it('no longer exports AGENT_PROTOCOLS or AgentProtocol', async () => {
+    const mod = (await import('../agent-schemas')) as Record<string, unknown>;
+    expect(mod).not.toHaveProperty('AGENT_PROTOCOLS');
   });
 
   it('declares no property that could carry a credential, endpoint or wire model id (reference-only rule)', () => {

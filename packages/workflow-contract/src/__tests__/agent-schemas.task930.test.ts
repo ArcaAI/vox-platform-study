@@ -14,7 +14,6 @@ import {
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
-  AGENT_PROTOCOLS,
   AGENT_TASKS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
@@ -39,9 +38,9 @@ describe('TASK-930 §2 — NAMED_ENTITY_RECOGNITION joins the task taxonomy', ()
     expect(AGENT_TASK_SERVICE.NAMED_ENTITY_RECOGNITION).toBeNull();
   });
 
-  it('publishes one-shot HTTP only', () => {
-    expect([...AGENT_PROTOCOLS.NAMED_ENTITY_RECOGNITION]).toEqual(['http']);
-  });
+  // TASK-983 OD-6 — the former `AGENT_PROTOCOLS.NAMED_ENTITY_RECOGNITION` assertion is REMOVED
+  // along with the constant. NER's one-shot posture is enforced in `AgentController.invokeNer`
+  // (`?mode=stream` → 400 `MODE_UNSUPPORTED`), not by anything in this package.
 
   it('declares the §2.3 IO defaults', () => {
     const { inputSchema, outputSchema } = AGENT_IO_DEFAULTS.NAMED_ENTITY_RECOGNITION;

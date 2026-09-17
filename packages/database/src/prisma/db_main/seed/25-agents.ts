@@ -58,14 +58,6 @@ export const AGENT_TASK_MODEL_TASK_TYPE: Record<SeedAgentTask, string> = {
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
   NAMED_ENTITY_RECOGNITION: 'TOKEN_CLASSIFICATION',
 };
-/** NER is ONE-SHOT (`?mode=stream` → 400 `MODE_UNSUPPORTED`, INTERFACES §2.4). */
-const AGENT_PROTOCOLS: Record<SeedAgentTask, string[]> = {
-  SPEECH_TO_TEXT: ['http', 'socket'],
-  TEXT_GENERATION: ['http', 'http-sse'],
-  TEXT_TO_SPEECH: ['http', 'http-sse'],
-  NAMED_ENTITY_RECOGNITION: ['http'],
-};
-
 /** INTERFACES §2.3, verbatim. */
 export const NER_IO_DEFAULTS = {
   inputSchema: {
@@ -729,7 +721,8 @@ export function buildCompiledConfig(
     inputSchema: IO_DEFAULTS[spec.task].inputSchema,
     outputSchema: spec.outputSchema ?? IO_DEFAULTS[spec.task].outputSchema,
     tools: [],
-    protocols: AGENT_PROTOCOLS[spec.task],
+    // TASK-983 OD-6 — `protocols` (per-task, never enforced) is REMOVED; NER's one-shot posture
+    // (`?mode=stream` → 400 `MODE_UNSUPPORTED`) is enforced in `AgentController.invokeNer`.
     // `contextSchema: null` — no seeded agent pins a context schema: a schema is CONTENT, cloned
     // per tenant; the trigger of the workflow binds it and `{{trigger.context.*}}` reads it.
     contextSchema: null,

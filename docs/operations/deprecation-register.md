@@ -237,6 +237,7 @@ as an API change, and belongs on the same ledger as any other removal.
 | `audio.clientInference: { allow }` (the client-stage escape hatch, deprecated on arrival) | TASK-865 | R2 | R4 | — | marked |
 | compat `V1SdkConfig.sttPipelineId` | TASK-865 | R2 | R4 | `V1SdkConfig.sttAgentSlug` | marked |
 | `hope.admin.audioPipeline.*` (generated) | TASK-861 | R2 | R4 | `hope.admin.agent.*` (generated) | planned (the route markers it will pick up are in place; regeneration — `pnpm --filter @arcaai/vox-node gen:admin` with the other four artifacts — is owed post-merge, TASK-861 step 13) |
+| `AgentSummaryResponse.protocols` (gateway), `AgentSummary.protocols` (`@arcaai/vox`, `@arcaai/vox-node`), `AGENT_PROTOCOLS`/`AgentProtocol` (`@arcaai/workflow-contract`) | TASK-983 (OD-6) | — | removed immediately, no window | `task` (an agent's own task already implies its transport; a NER agent's one-shot posture is enforced in `AgentController.invokeNer`, not read from this field) | removed — HOPE is pre-production, and the field was a static per-task constant (`SPEECH_TO_TEXT: ['http','socket']`, …) that no reader ever enforced (owner: "remove it if it does not take any effect"). Rows published before this ticket still carry `compiledConfig.protocols` in the database; nothing reads it, so the extra key is harmless and no migration is needed |
 
 ## Seeds (deleted immediately — no production data)
 

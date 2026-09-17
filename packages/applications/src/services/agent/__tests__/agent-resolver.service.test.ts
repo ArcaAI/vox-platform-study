@@ -41,7 +41,6 @@ const published = (over: Record<string, unknown> = {}) => ({
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http'],
   },
   ...over,
 });

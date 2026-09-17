@@ -242,7 +242,7 @@ export class AgentController {
   @Authorize()
   @RequiredScopes('agent:definition:read')
   @RequiredSvcScopes('svc:agent:definition:read')
-  @ApiOperation({ summary: 'Describe one published agent: its task, version, I/O schemas and protocols' })
+  @ApiOperation({ summary: 'Describe one published agent: its task, version and I/O schemas' })
   @ApiParam({ name: 'slug', type: String })
   @ApiResponse({ status: 200, type: AgentSummaryResponse })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent — one answer.' })
@@ -347,9 +347,9 @@ export class AgentController {
   async invoke(@Param('slug') slug: string, @Body() body: AgentInvocationBody, @Res() res: Response, @Query('mode') mode?: string): Promise<void> {
     const tenantId = this.requireTenant();
     // TASK-930 §2.4 — resolved WITHOUT a task pin, then dispatched on the agent's own task.
-    // Pinning TEXT_GENERATION here would have made a NER agent unreachable through the route
-    // its `protocols: ['http']` declares, and the refusal would have named the wrong thing
-    // ("this call needs TEXT_GENERATION") for a caller who asked for exactly what it published.
+    // Pinning TEXT_GENERATION here would have made a NER agent unreachable through the ONE route
+    // it publishes, and the refusal would have named the wrong thing ("this call needs
+    // TEXT_GENERATION") for a caller who asked for exactly what it published.
     const resolved = await this.resolver.resolve({ tenantId, agentSlug: slug });
     if (resolved.task === AgentTask.NAMED_ENTITY_RECOGNITION) {
       await this.invokeNer(resolved, tenantId, slug, body, res, mode);
@@ -453,7 +453,7 @@ export class AgentController {
    * One-shot by construction: `apps/nlp` classifies the whole document in a single pass, so
    * `?mode=stream` is REFUSED with a named code rather than degraded to a blocking answer — a
    * caller that opened an SSE reader against a silent one-shot route would simply hang, and a
-   * 400 that says why is the only honest reply to a protocol the agent never declared.
+   * 400 that says why is the only honest reply to a mode the agent never offers.
    *
    * Metered like every other inference activity (OD-E): the `monthlyNlpTextUnits` allowance is
    * checked BEFORE the call (nothing is billed for a refused one), and the row is the SAME
