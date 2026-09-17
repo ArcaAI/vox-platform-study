@@ -83,13 +83,18 @@ test.describe('response parsing — ETag / If-Match OCC + pagination', () => {
     expect(res.headers()['etag']).toBeUndefined();
   });
 
-  test('authenticated GET carries Cache-Control: private, no-cache', async ({ request }) => {
+  test('authenticated GET carries Cache-Control: private, no-cache, no-transform', async ({ request }) => {
     // `no-cache` (store, but revalidate) — NOT `no-store`, which would forbid
     // the client from holding the copy that makes the 304 path usable.
+    // `no-transform` (TASK-983) rides along on every ETag-carrying response:
+    // an intermediary that gzips the body is REQUIRED to weaken the validator
+    // it forwards (RFC 9110 §8.8.1), and a weak `If-Match` is a 400 from
+    // `@ExpectedVersion()` — which is how the deployed console lost every OCC
+    // precondition behind Cloudflare/Traefik.
     const dept = await createDepartment(request, tenantAdminToken, 't776-cachectl');
     const res = await request.get(`/api/v1/admin/departments/${dept.id}`, { headers: auth(tenantAdminToken) });
     expect(res.status()).toBe(200);
-    expect(res.headers()['cache-control']).toBe('private, no-cache');
+    expect(res.headers()['cache-control']).toBe('private, no-cache, no-transform');
   });
 
   // ==========================================================================

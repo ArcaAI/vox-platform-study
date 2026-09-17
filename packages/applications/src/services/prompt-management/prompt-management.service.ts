@@ -637,8 +637,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * requires for clinical flows), PINS a `PromptVersion` snapshot of the
    * approved content, and emits the audit sys-event — the version-pin + the OCC
    * compare-and-set commit (or roll back) together in a single interactive
-   * transaction (mirrors `updatePromptTemplate`). Idempotent: approving an
-   * already-APPROVED template is a no-op that returns the current row.
+   * transaction (mirrors `updatePromptTemplate`). Idempotent: approving a
+   * template that is already APPROVED **and** pinned is a no-op that returns
+   * the current row; an APPROVED row with no pinned version is healed (it is
+   * not serving anything until it has one — TASK-983 R5).
    *
    * Authorization is split by ownership :
    * - **SYSTEM/library** template (tenantId = SYSTEM) — the shared library is
@@ -661,8 +663,21 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     this.assertCanApprove(template, id);
 
-    // Idempotent — already approved: no version-pin, no audit noise.
-    if (template.status === 'APPROVED') {
+    // Idempotent — already approved AND pinned: no version-pin, no audit noise.
+    //
+    // The invariant is "APPROVED **and** pinned", not the status alone. 16
+    // templates were seeded `APPROVED` with `approvedVersionNumber: null`
+    // before the seed was fixed (TASK-890 BBJ2-7, "re-seed required"), and a
+    // deploy never refreshes seed data — so those rows are still unpinned in
+    // every environment that was not reseeded. Short-circuiting on status
+    // alone returned 200 with the row untouched: the admin's Approve click did
+    // nothing visible, and `PromptResolutionService` — which serves the PINNED
+    // version, not the mutable `content` column — kept skipping the template
+    // for clinical generation. An unpinned APPROVED row therefore falls through
+    // to the pin logic below and heals itself (TASK-983 R5; the same rows are
+    // backfilled at deploy time by
+    // `20260917120000_task_983_pin_unpinned_approved_prompt_templates`).
+    if (template.status === 'APPROVED' && template.approvedVersionNumber != null) {
       return PromptManagementDtoMapper.toTemplateResponse(template);
     }
 
