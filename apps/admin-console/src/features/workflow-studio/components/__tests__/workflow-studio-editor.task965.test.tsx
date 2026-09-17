@@ -393,7 +393,7 @@ describe('WorkflowStudioEditor — the published version stays reachable (TASK-9
 
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('POST /workflows/discharge_summary/runs')).toBeTruthy();
-    expect(within(dialog).getByRole('group', { name: /vox-node/i }).textContent).toContain('discharge_summary');
+    expect(within(dialog).getAllByRole('group', { name: /vox-node/i })[0].textContent).toContain('discharge_summary');
   });
 
   it('does not offer Integration on a draft', () => {
