@@ -70,7 +70,7 @@ describe('AGENT_PLANE_ROUTES', () => {
   // `transcribe({ file })` calls because the agent route takes JSON only. It is listed because
   // this constant names every route the resource calls — the assertions above then prove it
   // exists and accepts an API key, which is exactly the drift that shipped the defect.
-  it('names the five TASK-863 §3.5 invocation-plane routes, plus the batch-file upload route', () => {
+  it('names the five TASK-863 §3.5 invocation-plane routes, plus the batch-file upload and job-read routes', () => {
     expect(AGENT_PLANE_ROUTES.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/v1/agents',
       'GET /api/v1/agents/{slug}',
@@ -78,6 +78,8 @@ describe('AGENT_PLANE_ROUTES', () => {
       'POST /api/v1/agents/{slug}/speech',
       'POST /api/v1/agents/{slug}/transcriptions',
       'POST /api/v1/audio/transcription-jobs/transcribe',
+      'GET /api/v1/audio/transcription-jobs/{id}',
+      'GET /api/v1/audio/transcription-jobs/{id}/stream',
     ]);
   });
 });

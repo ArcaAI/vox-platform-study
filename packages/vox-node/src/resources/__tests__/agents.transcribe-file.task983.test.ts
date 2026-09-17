@@ -98,3 +98,82 @@ describe('agents.transcribe — a MEDIA ID stays on the agent JSON route', () =>
     expect(new Headers(calls[0]!.init.headers).get('Content-Type')).toBe('application/json');
   });
 });
+
+/**
+ * TASK-983 follow-up (live, 2026-09-17) — the step AFTER the upload had nowhere to go.
+ *
+ * `transcribe({ file })` answers 201 `{ id, status: 'QUEUED', sseUrl, … }`, and the obvious next
+ * line — `hope.jobs.waitFor(job.id)` — answered 404: `hope.jobs` is the CONSULTATION jobs plane
+ * (`/consultations/jobs/{jobId}`). A transcription job lives on the audio plane, so the three
+ * methods that read one live beside the method that creates it.
+ */
+describe('agents.transcriptionJob / subscribeTranscription / waitForTranscription', () => {
+  const RUNNING = { id: 'job-1', status: 'PROCESSING', progress: 40, mediaId: 'm-1' };
+  const DONE = { id: 'job-1', status: 'COMPLETED', progress: 100, resultText: 'the transcript', resultMetadata: { durationSeconds: 12 } };
+
+  function sse(frames: string[]): Response {
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) controller.enqueue(encoder.encode(frame));
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }
+
+  it('reads one job from GET /audio/transcription-jobs/{id}', async () => {
+    const { fetch, calls } = stubFetch([() => json(DONE)]);
+
+    const job = await client(fetch).agents.transcriptionJob('job-1');
+
+    expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/audio/transcription-jobs/job-1');
+    expect(job.status).toBe('COMPLETED');
+    expect(job.resultText).toBe('the transcript');
+  });
+
+  it('subscribes to the job stream and ends on a terminal `status` frame', async () => {
+    const frames = [
+      `data: ${JSON.stringify({ type: 'progress', data: { jobId: 'job-1', progress: 40 } })}\n\n`,
+      `data: ${JSON.stringify({ type: 'transcript', data: { jobId: 'job-1', text: 'the transcript' } })}\n\n`,
+      `data: ${JSON.stringify({ type: 'status', data: { jobId: 'job-1', status: 'COMPLETED' } })}\n\n`,
+    ];
+    const { fetch, calls } = stubFetch([() => sse(frames)]);
+    const seen: string[] = [];
+    let reason: string | undefined;
+
+    await new Promise<void>((resolve, reject) => {
+      client(fetch).agents.subscribeTranscription('job-1', {
+        onEvent: (event) => seen.push(event.type),
+        onClosed: (why) => {
+          reason = why;
+          resolve();
+        },
+        onError: reject,
+      });
+    });
+
+    expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/audio/transcription-jobs/job-1/stream');
+    expect(seen).toEqual(['progress', 'transcript', 'status']);
+    expect(reason).toBe('terminal');
+  });
+
+  it('polls until the job is terminal — a FAILED job RESOLVES, it does not throw', async () => {
+    const { fetch, calls } = stubFetch([() => json(RUNNING), () => json({ id: 'job-1', status: 'FAILED', errorCode: 'ASR_FAILED' })]);
+
+    const job = await client(fetch).agents.waitForTranscription('job-1', { pollIntervalMs: 0 });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.url).toBe('http://localhost:8868/api/v1/audio/transcription-jobs/job-1');
+    expect(job.status).toBe('FAILED');
+    expect(job.errorCode).toBe('ASR_FAILED');
+  });
+
+  it('throws once `timeoutMs` elapses with the job still running', async () => {
+    const { fetch } = stubFetch([() => json(RUNNING)]);
+
+    await expect(client(fetch).agents.waitForTranscription('job-1', { pollIntervalMs: 0, timeoutMs: 0 })).rejects.toThrow(/job-1/);
+  });
+});
