@@ -9,9 +9,9 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
-import { TenantScopeBanner } from '@/shared/tenant-scope/tenant-scope-banner';
 import { PlatformProviderSections } from './platform-provider-sections';
 import { ProviderCredentialsTabs } from './provider-credentials-tabs';
+import { ProviderScopeNotice } from './provider-scope-notice';
 import { UsedByPanel } from './used-by-panel';
 import { useProviderScope, type ResolvedProviderScope } from './use-provider-scope';
 
@@ -91,7 +91,7 @@ export function AiProvidersScreen() {
           }
         />
       }
-      statusBanner={scope.tier === 'tenant' ? <TenantScopeBanner /> : null}
+      statusBanner={scope.tier === 'tenant' ? <ProviderScopeNotice scope={scope} /> : null}
       toolbar={<ScopeSummary scope={scope} />}
       footer={
         <StatusFooter

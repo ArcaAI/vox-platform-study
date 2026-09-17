@@ -34,7 +34,7 @@ import {
   type ReadinessEngine,
 } from '../api/types';
 import { ConnectionModelsEditor } from './connection-models-editor';
-import { platformDefaultHint } from './platform-defaults-panel';
+import { platformDefaultHint, platformDefaultSummary } from './platform-defaults-panel';
 import { classOf, type ProviderField, type ProviderMeta } from './provider-meta';
 import type { ProviderTier } from './use-provider-scope';
 
@@ -242,6 +242,9 @@ export function ProviderCredentialCard({
   // A SIBLING inherits nothing: the platform default is what the PROVIDER falls
   // back to, which is a fact about the default row, not about this one.
   const inheritedHint = !platformTier && !isSibling && state === 'platform-default' ? platformDefaultHint(platformDefault) : null;
+  // TASK-983 R3 — and what the PLATFORM row holds, whatever this tenant does:
+  // stated on every tenant-tier default card, not only on the inheriting ones.
+  const platformSummary = !platformTier && !isSibling ? platformDefaultSummary(platformDefault) : null;
   const currentColumns = current as unknown as Record<string, unknown>;
 
   /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
@@ -470,6 +473,7 @@ export function ProviderCredentialCard({
         ) : null}
       </div>
       {meta.hint ? <p className="text-muted-foreground text-xs">{meta.hint}</p> : null}
+      {platformSummary ? <p className="text-muted-foreground text-xs">{platformSummary}</p> : null}
       {inheritedHint ? <p className="text-muted-foreground text-xs">{inheritedHint}</p> : null}
       {runningOnPlatformDefaults ? (
         <p className="text-muted-foreground text-xs">
