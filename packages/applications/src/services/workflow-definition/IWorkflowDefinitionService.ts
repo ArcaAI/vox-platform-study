@@ -3,9 +3,11 @@ import {
   CreateWorkflowDefinitionRequest,
   ImportWorkflowDefinitionRequest,
   ListWorkflowDefinitionsQuery,
+  ListWorkflowLineagesQuery,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
+  PaginatedWorkflowLineageResponse,
   PromoteWorkflowToSystemRequest,
   PromoteWorkflowToSystemResponse,
   PublishWorkflowDefinitionRequest,
@@ -32,6 +34,13 @@ import {
  */
 export interface IWorkflowDefinitionService {
   list(query: ListWorkflowDefinitionsQuery): Promise<PaginatedWorkflowDefinitionResponse>;
+
+  /**
+   * TASK-965 (OD-965-3) — the REGISTER: one row per SLUG, paginated by slug, carrying the active
+   * pointer, the open draft, the version counts and what the slug serves. `list` above stays the
+   * per-VERSION read.
+   */
+  listLineages(query: ListWorkflowLineagesQuery): Promise<PaginatedWorkflowLineageResponse>;
 
   /** Cross-tenant id throws `NotFoundException` (404-over-403). */
   getById(id: string): Promise<WorkflowDefinitionResponse>;
@@ -95,8 +104,26 @@ export interface IWorkflowDefinitionService {
    */
   update(id: string, dto: UpdateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
 
-  /** Soft delete. Does not touch sibling versions of the same slug. */
+  /**
+   * Soft delete. Does not touch sibling versions of the same slug.
+   *
+   * TASK-965 (G9) — refused with `ConflictException` (409) for the ACTIVE published version:
+   * deleting it leaves every assignment naming the slug resolving to nothing.
+   */
   deleteById(id: string): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * TASK-965 (OD-965-1) — rollback: elect an already-PUBLISHED version ACTIVE for its slug and
+   * demote the sibling. 400 for any other status; the published bytes are never touched.
+   */
+  activate(id: string): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * TASK-965 (OD-965-2, G2) — retire a PUBLISHED version (DEPRECATED, `isActive` cleared). The
+   * workflow plane had no deprecate lifecycle at all before this: the enum member existed and
+   * nothing could write it.
+   */
+  deprecate(id: string): Promise<WorkflowDefinitionResponse>;
 
   /**
    * Re-runs shape + engine + the DRAFT rule catalogue against the row's current `graph` and

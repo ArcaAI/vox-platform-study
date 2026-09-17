@@ -2,12 +2,136 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, SYSTEM_TENANT_ID } from '@arcaai/database';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
-import { Repository } from '../../../common';
+import { Repository, formatFindAllProps } from '../../../common';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { WorkflowDefinitionEntity } from '../../../entities';
 import { ResourceStatusType, WorkflowDefinitionStatus } from '../../../enums';
+import { DbFilters } from '../../../interfaces';
 import { WorkflowDefinitionEntityMapper } from '../../../mappers';
 import { WorkflowDefinition } from '../../../models';
+
+/**
+ * TASK-965 (OD-965-3) — ONE version row of a lineage, projected. The AGENT half's
+ * `AgentLineageVersionRef` with `registryChecksum` where an agent carries `modelId`: what a
+ * reader needs to know about a published workflow version is whether the node registry has
+ * drifted under it, not which model it names.
+ */
+export interface WorkflowLineageVersionRef {
+  id: string;
+  versionNumber: number;
+  status: WorkflowDefinitionStatus;
+  publishedAt: Date | null;
+  /** Who last wrote the row. On the ACTIVE row that is the publisher — `publishEntity` stamps `updatedBy`. */
+  publishedBy: string | null;
+  updatedAt: Date;
+  registryChecksum: string | null;
+  compiledConfigChecksum: string | null;
+}
+
+/** TASK-965 (OD-965-3) — one SLUG and everything a lineage list row has to say about it. */
+export interface WorkflowLineage {
+  slug: string;
+  name: string;
+  paletteKey: string;
+  versionCount: number;
+  latestVersionNumber: number;
+  deprecatedCount: number;
+  active: WorkflowLineageVersionRef | null;
+  draft: WorkflowLineageVersionRef | null;
+  origin: { sourceTemplateSlug: string | null; templateLocked: boolean };
+  tags: string[];
+  updatedAt: Date;
+}
+
+export interface WorkflowLineageQuery {
+  page?: number;
+  limit?: number;
+  paletteKey?: string;
+  filters?: DbFilters;
+  search?: string;
+  searchFields?: string[];
+}
+
+/**
+ * The columns a lineage projection reads. `graph`, `compiledConfig` and `validationReport` are
+ * ABSENT on purpose — this read walks every live version row of a tenant, and a workflow's graph
+ * is the largest JSON column in the schema.
+ */
+const WORKFLOW_LINEAGE_SELECT = {
+  id: true,
+  tenantId: true,
+  slug: true,
+  name: true,
+  paletteKey: true,
+  versionNumber: true,
+  status: true,
+  isActive: true,
+  registryChecksum: true,
+  compiledConfigChecksum: true,
+  publishedAt: true,
+  deprecatedAt: true,
+  sourceTemplateSlug: true,
+  templateLocked: true,
+  tags: true,
+  updatedAt: true,
+  updatedBy: true,
+} as const;
+
+type WorkflowLineageRow = {
+  id: string;
+  tenantId: string;
+  slug: string;
+  name: string;
+  paletteKey: string;
+  versionNumber: number;
+  status: WorkflowDefinitionStatus;
+  isActive: boolean;
+  registryChecksum: string | null;
+  compiledConfigChecksum: string | null;
+  publishedAt: Date | null;
+  deprecatedAt: Date | null;
+  sourceTemplateSlug: string | null;
+  templateLocked: boolean;
+  tags: string[];
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+const OPEN_STATUSES: ReadonlySet<WorkflowDefinitionStatus> = new Set([WorkflowDefinitionStatus.DRAFT, WorkflowDefinitionStatus.VALIDATED]);
+
+function workflowVersionRef(row: WorkflowLineageRow): WorkflowLineageVersionRef {
+  return {
+    id: row.id,
+    versionNumber: row.versionNumber,
+    status: row.status,
+    publishedAt: row.publishedAt ?? null,
+    publishedBy: row.updatedBy ?? null,
+    updatedAt: row.updatedAt,
+    registryChecksum: row.registryChecksum ?? null,
+    compiledConfigChecksum: row.compiledConfigChecksum ?? null,
+  };
+}
+
+/** Fold one slug's version rows (any order) into the lineage a list row renders. */
+export function foldWorkflowLineage(rows: readonly WorkflowLineageRow[]): WorkflowLineage {
+  const byVersionDesc = [...rows].sort((a, b) => b.versionNumber - a.versionNumber);
+  const active = byVersionDesc.find((row) => row.status === WorkflowDefinitionStatus.PUBLISHED && row.isActive) ?? null;
+  const draft = byVersionDesc.find((row) => OPEN_STATUSES.has(row.status)) ?? null;
+  const naming = active ?? byVersionDesc[0];
+  return {
+    slug: naming.slug,
+    name: naming.name,
+    paletteKey: naming.paletteKey,
+    versionCount: rows.length,
+    latestVersionNumber: byVersionDesc[0].versionNumber,
+    deprecatedCount: rows.filter((row) => row.status === WorkflowDefinitionStatus.DEPRECATED).length,
+    active: active ? workflowVersionRef(active) : null,
+    draft: draft ? workflowVersionRef(draft) : null,
+    origin: { sourceTemplateSlug: naming.sourceTemplateSlug ?? null, templateLocked: naming.templateLocked ?? false },
+    tags: naming.tags ?? [],
+    updatedAt: rows.reduce((newest, row) => (row.updatedAt > newest ? row.updatedAt : newest), rows[0].updatedAt),
+  };
+}
 
 /**
  * `WorkflowDefinition` — a single table whose rows ARE versions (see the
@@ -46,6 +170,72 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    */
   async findPublishedBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity | null> {
     return this.findFirstTolerant({ tenantId, slug, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE });
+  }
+
+  /**
+   * TASK-965 (G7) — the PINNED version of a lineage, for a reader that was given an explicit
+   * `versionNumber` rather than "whatever is active". The agent plane has had this read since
+   * TASK-876 (`findPublishedVisibleBySlugVersion`) and the workflow plane did not, so a caller
+   * holding a pin had only {@link findPublishedBySlug} — which answers the ACTIVE version and
+   * would therefore serve a DIFFERENT version than the one named, silently.
+   *
+   * Deliberately NOT narrowed by `isActive`: the point of a pin is a version that may no longer
+   * be the active one. `null` — never a throw — for a foreign, unknown, unpublished or deleted
+   * version, so the caller maps all of those to one 404.
+   */
+  async findPublishedBySlugVersion(tenantId: string, slug: string, versionNumber: number): Promise<WorkflowDefinitionEntity | null> {
+    return this.findFirstTolerant({
+      tenantId,
+      slug,
+      versionNumber,
+      status: WorkflowDefinitionStatus.PUBLISHED,
+      resourceStatus: ResourceStatusType.ENABLED,
+    });
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the caller's definitions ONE ROW PER SLUG, paginated BY SLUG.
+   *
+   * `GET admin/workflow-definitions` pages per VERSION, so a client that grouped that list into
+   * lineages would fold whatever fragment of a lineage landed on its page — and the switcher and
+   * the assignment picker silently truncate at 100/200 rows for the same reason. The fold happens
+   * here instead, and `count` is a count of LINEAGES.
+   *
+   * The AGENT half's `findLineagesForTenant`, field for field; `paletteKey` takes the place of
+   * `task` as the first-class narrowing.
+   */
+  async findLineagesForTenant(tenantId: string, query: WorkflowLineageQuery = {}): Promise<{ data: WorkflowLineage[]; count: number }> {
+    const { skip, take, where } = formatFindAllProps({
+      page: query.page,
+      limit: query.limit,
+      filters: query.filters,
+      search: query.search,
+      searchFields: query.searchFields,
+    });
+    const rows: WorkflowLineageRow[] = await this.db.findMany({
+      where: {
+        ...(where as Record<string, unknown>),
+        tenantId,
+        ...(query.paletteKey ? { paletteKey: query.paletteKey } : {}),
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      select: WORKFLOW_LINEAGE_SELECT,
+      orderBy: [{ slug: 'asc' }, { versionNumber: 'desc' }],
+    });
+
+    const bySlug = new Map<string, WorkflowLineageRow[]>();
+    for (const row of rows) {
+      if (row.tenantId !== tenantId) continue;
+      const group = bySlug.get(row.slug);
+      if (group) group.push(row);
+      else bySlug.set(row.slug, [row]);
+    }
+
+    const lineages = [...bySlug.values()]
+      .map((group) => foldWorkflowLineage(group))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
+
+    return { data: take ? lineages.slice(skip, skip + take) : lineages, count: lineages.length };
   }
 
   /**

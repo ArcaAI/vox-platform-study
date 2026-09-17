@@ -83,6 +83,20 @@ export class WorkflowAssignmentRepository extends Repository<WorkflowAssignmentE
   }
 
   /**
+   * TASK-965 (OD-965-3) — every live assignment a tenant holds, ACROSS palettes: what the
+   * lineage register's "Serves" column reads. {@link findAllForPalette} above cannot serve it —
+   * a page of lineages may span palettes, and asking per palette would be one query per row.
+   * The AGENT half's `AgentAssignmentRepository.findAllVisible`, minus its SYSTEM widening
+   * (a workflow assignment has no SYSTEM tier to widen to).
+   */
+  async findAllForTenant(tenantId: string): Promise<WorkflowAssignmentEntity[]> {
+    return this.findAll({
+      filters: { tenantId, resourceStatus: ResourceStatusType.ENABLED },
+      sort: [{ paletteKey: 'asc' }, { scope: 'asc' }, { scopeId: 'asc' }, { selectorKey: 'asc' }],
+    });
+  }
+
+  /**
    * `findFirst` throws `DataNotFoundException` on a miss. Only a genuine miss
    * maps to null — anything else (most importantly the tenant-scope
    * extension's cross-tenant throw) must SURFACE. Same treatment as

@@ -15,8 +15,10 @@ import {
   SYSTEM_TENANT_ID,
   WorkflowDefinitionEntity,
   WorkflowDefinitionFactory,
+  WorkflowAssignmentRepository,
   WorkflowDefinitionRepository,
   WorkflowDefinitionStatus,
+  PipelinePolicyScope,
 } from '@arcaai/domains';
 import type { CorePrisma, JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
@@ -49,7 +51,16 @@ import type {
   WorkflowValidationReport,
 } from '@arcaai/workflow-contract';
 import { createHash } from 'node:crypto';
-import { assertEqualTenants, BaseService, FetchResponse, isSuperAdmin, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import {
+  assertEqualTenants,
+  BaseService,
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+  FetchResponse,
+  isSuperAdmin,
+  withFormattedCountProps,
+  withFormattedPaginatedProps,
+} from '../../common';
 import { PolicyEngine } from '../../authorization/policy.engine';
 // TASK-885 — CONSUMED, never modified: `agentPromotion/**` is lane F's (TASK-884). The
 // Global -> SYSTEM path is the existing cross-tenant promotion plus a publish, not a second
@@ -84,8 +95,11 @@ import {
   UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   ListWorkflowDefinitionsQuery,
+  ListWorkflowLineagesQuery,
+  PaginatedWorkflowLineageResponse,
   WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
+  WorkflowLineageAssignmentResponse,
   WorkflowNodeRegistryResponse,
   WorkflowSyncResponse,
   WorkflowSyncTargetResponse,
@@ -107,6 +121,9 @@ import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
 const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
+
+/** TASK-965 — what a lineage nothing assigns reports; the console renders it as the "Unassigned" warning. */
+const NO_ASSIGNMENT: WorkflowLineageAssignmentResponse = { tenantDefault: false, departmentCount: 0, selectorCount: 0 };
 
 /**
  * TASK-885 — the Global build tenant.
@@ -339,6 +356,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // than guessing — an unresolved slot is safe, a WRONG one would not be.
     // `AgentServiceModule` does not import this module, so this closes no cycle.
     @Optional() @Inject(IAgentService) private readonly agentService?: Pick<IAgentService, 'publishAgentViews'>,
+    // TASK-965 (OD-965-3) — the lineage register's "Serves" column. TRAILING and @Optional() for
+    // the same reason as every dependency above (positional unit fixtures); absent ⇒ the summary
+    // reports no assignment, which the console renders as the "Unassigned" warning.
+    @Optional() private readonly workflowAssignmentRepository?: WorkflowAssignmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -371,6 +392,87 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { items: rows.map((row) => row.id) } });
 
     return WorkflowDefinitionDtoMapper.toPaginatedResponse(new FetchResponse({ data: rows, count, limit: limit ?? 10, page: page ?? 0 }));
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the caller tenant's definitions ONE ROW PER SLUG, paginated BY SLUG.
+   *
+   * `list()` above pages per VERSION, so an admin surface that wants lineages cannot assemble
+   * them: whatever fragment of a lineage lands on the page is all it can see. The studio's
+   * switcher and the assignment picker read flat per-version lists for the same reason and
+   * truncate silently at 100/200 rows. This is the register both should read.
+   *
+   * The assignment summary is joined here because what a palette SERVES lives in
+   * `WorkflowAssignment`, keyed by SLUG — never by version.
+   */
+  async listLineages(query: ListWorkflowLineagesQuery): Promise<PaginatedWorkflowLineageResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context required');
+    }
+    // The same assertion create/clone/list use: an unknown palette answers a 400 naming the
+    // known ones rather than an empty page that reads as "this tenant has none".
+    if (query.paletteKey) {
+      this.assertKnownPaletteKey(query.paletteKey);
+    }
+
+    const props = withFormattedPaginatedProps(query, WORKFLOW_DEFINITION_FILTER_MODEL);
+    const { data, count } = await this.workflowDefinitionRepository.findLineagesForTenant(tenantId, {
+      page: props.page,
+      limit: props.limit,
+      paletteKey: query.paletteKey,
+      filters: props.filters,
+      search: props.search,
+      searchFields: props.searchFields,
+    });
+
+    const assignments = await this.assignmentSummaries(tenantId);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { action: 'listLineages', paletteKey: query.paletteKey ?? null, count: data.length },
+    });
+
+    return new PaginatedWorkflowLineageResponse({
+      count,
+      limit: props.limit ?? DEFAULT_PAGE_SIZE,
+      page: props.page ?? DEFAULT_PAGE,
+      data: data.map((lineage) => WorkflowDefinitionDtoMapper.toLineageResponse(lineage, assignments.get(lineage.slug) ?? NO_ASSIGNMENT)),
+    });
+  }
+
+  /**
+   * TASK-965 — what each of the tenant's slugs SERVES, in one read. The AGENT half's
+   * `AgentService.assignmentSummaries`, keyed by `workflowDefinitionSlug`: the UNQUALIFIED
+   * tenant-tier row is the default (it is what the cascade resolves for a request naming no
+   * department and no tags), departments are counted by `scopeId`, and a tag-qualified row of
+   * any tier is a selector.
+   */
+  private async assignmentSummaries(tenantId: string): Promise<Map<string, WorkflowLineageAssignmentResponse>> {
+    const summaries = new Map<string, WorkflowLineageAssignmentResponse>();
+    if (!this.workflowAssignmentRepository) return summaries;
+
+    const departmentsBySlug = new Map<string, Set<string>>();
+    const rows = await this.workflowAssignmentRepository.findAllForTenant(tenantId);
+    for (const row of rows) {
+      if (row.tenantId !== tenantId) continue;
+      const summary = summaries.get(row.workflowDefinitionSlug) ?? { ...NO_ASSIGNMENT };
+      if (row.selectorKey) {
+        summary.selectorCount += 1;
+      } else if (row.scope === PipelinePolicyScope.TENANT) {
+        summary.tenantDefault = true;
+      }
+      if (row.scope === PipelinePolicyScope.DEPARTMENT && row.scopeId) {
+        const departments = departmentsBySlug.get(row.workflowDefinitionSlug) ?? new Set<string>();
+        departments.add(row.scopeId);
+        departmentsBySlug.set(row.workflowDefinitionSlug, departments);
+      }
+      summaries.set(row.workflowDefinitionSlug, summary);
+    }
+    for (const [slug, departments] of departmentsBySlug) {
+      const summary = summaries.get(slug);
+      if (summary) summary.departmentCount = departments.size;
+    }
+    return summaries;
   }
 
   async getById(id: string): Promise<WorkflowDefinitionResponse> {
@@ -1378,6 +1480,16 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const entity = await this.workflowDefinitionRepository.findById(id);
     assertEqualTenants(entity, { tenantId: this.tenantId });
 
+    // TASK-965 (G9, OD-965-2) — the guard `AgentService.deleteById` has always had. Without it
+    // the LIVE version could be soft-deleted: every `WorkflowAssignment` naming the slug kept
+    // pointing at it, the dispatcher resolved nothing, and the failure surfaced at RUN time as a
+    // missing workflow rather than here, at the moment someone chose it.
+    if (entity.isActive) {
+      throw new ConflictException(
+        'This is the ACTIVE published version of its slug — deprecate it (or activate another version) before deleting.',
+      );
+    }
+
     const deleted = await this.workflowDefinitionRepository.softDelete(id, this.requestUserId ?? undefined);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -1439,6 +1551,72 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const entity = await this.workflowDefinitionRepository.findById(id);
     assertEqualTenants(entity, { tenantId: this.tenantId });
     return this.publishEntity(entity, dto);
+  }
+
+  /**
+   * TASK-965 (OD-965-1 / WF-19) — ROLLBACK: elect an already-PUBLISHED version ACTIVE for its
+   * slug. The agent half's `AgentService.activate`, for the same reason: `publishEntity` was the
+   * only writer of `isActive = true` and `assertMutable` refuses a PUBLISHED row, so publishing
+   * with `activate: false` created a permanently inactive version and there was no way back to
+   * an older one except branching and republishing it.
+   *
+   * A POINTER move, not an edit: the published bytes are untouched, which is why an immutable
+   * row may take it.
+   */
+  async activate(id: string): Promise<WorkflowDefinitionResponse> {
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+    if (entity.status !== WorkflowDefinitionStatus.PUBLISHED) {
+      throw new BadRequestException(
+        `Only a PUBLISHED workflow version can be activated (this one is ${entity.status}). Publish the draft, or branch a new version from the deprecated one.`,
+      );
+    }
+
+    const demoted = await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id);
+    entity.isActive = true;
+    entity.updatedBy = this.requestUserId ?? undefined;
+    const updated = await this.workflowDefinitionRepository.update(entity.id, entity);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: {
+        action: 'activate',
+        slug: updated.slug,
+        versionNumber: updated.versionNumber,
+        demotedVersionNumber: demoted?.versionNumber ?? null,
+      },
+    });
+    return WorkflowDefinitionDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * TASK-965 (G2, OD-965-2) — retire a PUBLISHED version. The agent half has had `deprecate`
+   * since TASK-863; the workflow half had the enum member, the column and the DB trigger's
+   * special case, and NO writer anywhere — so `DEPRECATED` was a state a workflow definition
+   * could never reach.
+   *
+   * Clears `isActive`, so deprecating the live version leaves the slug serving nothing. That is
+   * the consequence the console must name in its confirm (every assignment on this slug then
+   * resolves to nothing), not something to paper over by refusing.
+   */
+  async deprecate(id: string): Promise<WorkflowDefinitionResponse> {
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+    if (entity.status !== WorkflowDefinitionStatus.PUBLISHED) {
+      throw new BadRequestException(`Only a PUBLISHED workflow version can be deprecated (this one is ${entity.status}).`);
+    }
+
+    entity.status = WorkflowDefinitionStatus.DEPRECATED;
+    entity.deprecatedAt = new Date();
+    entity.isActive = false;
+    entity.updatedBy = this.requestUserId ?? undefined;
+    const updated = await this.workflowDefinitionRepository.update(entity.id, entity);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { action: 'deprecate', slug: updated.slug, versionNumber: updated.versionNumber },
+    });
+    return WorkflowDefinitionDtoMapper.toResponse(updated);
   }
 
   /**
@@ -1534,6 +1712,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     entity.registryChecksum = registryChecksum();
     entity.status = WorkflowDefinitionStatus.PUBLISHED;
     entity.publishedAt = new Date();
+    // TASK-965 (G3, OD-965-5) — the publisher. Nothing stamped this before, so a PUBLISHED row
+    // carried whoever last EDITED the draft (or nobody), and "published by" was unanswerable.
+    entity.updatedBy = this.requestUserId ?? undefined;
 
     const activate = dto.activate ?? true;
     if (activate) {
@@ -2356,12 +2537,18 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
   /** At most one ACTIVE version per `(tenantId, slug)` — mirrors
    *  `ConsultationContextSchemaService.demoteExistingDefault` / `DepartmentAgent.isDefault`. */
-  private async demoteExistingActive(tenantId: string, slug: string, exceptId: string, tx?: CorePrisma.TransactionClient): Promise<void> {
+  private async demoteExistingActive(
+    tenantId: string,
+    slug: string,
+    exceptId: string,
+    tx?: CorePrisma.TransactionClient,
+  ): Promise<WorkflowDefinitionEntity | null> {
     const current = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, slug);
-    if (!current || current.id === exceptId) return;
+    if (!current || current.id === exceptId) return null;
     current.isActive = false;
     current.updatedBy = this.requestUserId ?? undefined;
     await this.workflowDefinitionRepository.update(current.id, current, tx);
+    return current;
   }
 }
 
