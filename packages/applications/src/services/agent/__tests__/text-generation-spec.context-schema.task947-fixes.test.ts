@@ -31,7 +31,6 @@ function agent(contextSchema: unknown): ResolvedAgent {
       inputSchema: {},
       outputSchema: {},
       tools: [],
-      protocols: ['http'],
       ...(contextSchema === undefined ? {} : { contextSchema }),
     },
     models: [model],

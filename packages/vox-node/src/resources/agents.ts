@@ -112,7 +112,7 @@ export class AgentsResource {
     return Array.isArray(response?.data) ? response.data : [];
   }
 
-  /** `GET /api/v1/agents/{slug}` — summary plus `inputSchema` / `outputSchema` / `protocols`. */
+  /** `GET /api/v1/agents/{slug}` — summary plus `inputSchema` / `outputSchema`. */
   async get(slug: string, options: { signal?: AbortSignal } = {}): Promise<AgentSummary> {
     return this.transport.request<AgentSummary>({ path: agentPath(slug), signal: options.signal });
   }

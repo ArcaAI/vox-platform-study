@@ -1,5 +1,5 @@
 import { AgentEntity, AgentModelFallbackEntity } from '@arcaai/domains';
-import { AGENT_IO_DEFAULTS, AGENT_PROTOCOLS } from '@arcaai/workflow-contract';
+import { AGENT_IO_DEFAULTS } from '@arcaai/workflow-contract';
 import { AgentResponse, AgentSummaryResponse, AgentValidationReportResponse } from './dto';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 
@@ -82,7 +82,6 @@ export class AgentDtoMapper {
       isTenantDefault,
       inputSchema: asObject(entity.inputSchema) ?? (defaults.inputSchema as Record<string, unknown>),
       outputSchema: asObject(entity.outputSchema) ?? (defaults.outputSchema as Record<string, unknown>),
-      protocols: [...AGENT_PROTOCOLS[entity.task]],
     };
   }
 }

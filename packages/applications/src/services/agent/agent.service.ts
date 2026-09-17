@@ -33,7 +33,6 @@ import {
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
-  AGENT_PROTOCOLS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   PROMPT_COMPOSITION_JOIN,
@@ -2487,7 +2486,6 @@ export class AgentService extends BaseService implements IAgentService {
       inputSchema: asRecord(entity.inputSchema) ?? (defaults.inputSchema as Record<string, unknown>),
       outputSchema: asRecord(entity.outputSchema) ?? (defaults.outputSchema as Record<string, unknown>),
       tools: (Array.isArray(entity.tools) ? entity.tools : []) as Array<{ mcpServerId: string; toolName: string }>,
-      protocols: [...AGENT_PROTOCOLS[entity.task]],
       contextSchema,
       guardrail: { enabled: guardrailEnabledOf(entity.parameters) },
     };

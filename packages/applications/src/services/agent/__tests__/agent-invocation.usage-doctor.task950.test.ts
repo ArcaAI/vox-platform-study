@@ -76,7 +76,6 @@ function agent(contextSchema: Record<string, unknown> | null): ResolvedAgent {
       inputSchema: { type: 'object' },
       outputSchema: { type: 'string' },
       tools: [],
-      protocols: ['http'],
       ...(contextSchema ? { contextSchema } : {}),
     },
     models: [],

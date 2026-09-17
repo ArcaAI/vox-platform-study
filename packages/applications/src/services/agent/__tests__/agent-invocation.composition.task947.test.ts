@@ -54,7 +54,6 @@ function composite(fragments: AgentCompiledPromptFragment[], instruction: Record
       inputSchema: { type: 'object' },
       outputSchema: { type: 'string' },
       tools: [],
-      protocols: ['http'],
     },
     models: [],
   } as unknown as ResolvedAgent;
