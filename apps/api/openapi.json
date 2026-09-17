@@ -436,6 +436,184 @@
         ],
         "type": "object"
       },
+      "AgentLineageActiveResponse": {
+        "properties": {
+          "compiledConfigChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "modelSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "publishedAt": {
+            "description": "ISO timestamp.",
+            "nullable": true,
+            "type": "string"
+          },
+          "publishedBy": {
+            "description": "The user that published this version (`updatedBy`, stamped by publish).",
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
+      "AgentLineageAssignmentResponse": {
+        "properties": {
+          "departmentCount": {
+            "description": "How many departments assign this slug.",
+            "type": "number"
+          },
+          "selectorCount": {
+            "description": "How many TAG-QUALIFIED assignments (any tier) name this slug.",
+            "type": "number"
+          },
+          "tenantDefault": {
+            "description": "The tenant tier’s UNQUALIFIED assignment for this task names this slug.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tenantDefault",
+          "departmentCount",
+          "selectorCount"
+        ],
+        "type": "object"
+      },
+      "AgentLineageDraftResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AgentLineageOriginResponse": {
+        "properties": {
+          "sourceSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceTenantId": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AgentLineageResponse": {
+        "properties": {
+          "active": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentLineageActiveResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/AgentLineageAssignmentResponse"
+          },
+          "deprecatedCount": {
+            "type": "number"
+          },
+          "draft": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentLineageDraftResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "hidden": {
+            "description": "A platform service agent (allow-listed slug) the business plane never lists; admin surfaces render it flagged, never as a tenant’s own lineage.",
+            "type": "boolean"
+          },
+          "latestVersionNumber": {
+            "type": "number"
+          },
+          "name": {
+            "description": "The ACTIVE version’s name, or the newest version’s when nothing is active.",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AgentLineageOriginResponse"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "task": {
+            "enum": [
+              "SPEECH_TO_TEXT",
+              "TEXT_GENERATION",
+              "TEXT_TO_SPEECH",
+              "NAMED_ENTITY_RECOGNITION"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp — the newest touch anywhere in the lineage.",
+            "type": "string"
+          },
+          "versionCount": {
+            "description": "Live (non-deleted) version rows in this lineage.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "task",
+          "versionCount",
+          "latestVersionNumber",
+          "deprecatedCount",
+          "assignment",
+          "origin",
+          "tags",
+          "hidden",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "AgentPromotionResponse": {
         "properties": {
           "checksum": {
@@ -763,6 +941,13 @@
             "additionalProperties": true,
             "type": "object"
           },
+          "requiredVariables": {
+            "description": "Placeholder paths an invocation must supply (no `default(...)`, not bound by the agent). Sorted, de-duplicated.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "slug": {
             "type": "string"
           },
@@ -786,7 +971,8 @@
           "versionNumber",
           "isTenantDefault",
           "inputSchema",
-          "outputSchema"
+          "outputSchema",
+          "requiredVariables"
         ],
         "type": "object"
       },
@@ -13000,6 +13186,10 @@
           "createdAt": {
             "type": "string"
           },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
           "currentRegistryChecksum": {
             "description": "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
             "type": "string"
@@ -13097,6 +13287,10 @@
             "type": "string"
           },
           "updatedAt": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "nullable": true,
             "type": "string"
           },
           "validatedAt": {
@@ -13411,6 +13605,38 @@
           "perMinute",
           "total",
           "refreshedAt"
+        ],
+        "type": "object"
+      },
+      "PaginatedAgentLineageResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AgentLineageResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
         ],
         "type": "object"
       },
@@ -14218,6 +14444,38 @@
           "data": {
             "items": {
               "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedWorkflowLineageResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowLineageResponse"
             },
             "type": "array"
           },
@@ -25579,6 +25837,10 @@
           "createdAt": {
             "type": "string"
           },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
           "currentRegistryChecksum": {
             "description": "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
             "type": "string"
@@ -25663,6 +25925,10 @@
             "type": "string"
           },
           "updatedAt": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "nullable": true,
             "type": "string"
           },
           "validatedAt": {
@@ -25811,6 +26077,177 @@
           "status",
           "statusUrl",
           "streamUrl"
+        ],
+        "type": "object"
+      },
+      "WorkflowLineageActiveResponse": {
+        "properties": {
+          "compiledConfigChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "description": "ISO timestamp.",
+            "nullable": true,
+            "type": "string"
+          },
+          "publishedBy": {
+            "description": "The user that published this version (`updatedBy`, stamped by publish).",
+            "nullable": true,
+            "type": "string"
+          },
+          "registryChecksum": {
+            "description": "The node-registry checksum stamped at publish; compare against the running one for drift.",
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
+      "WorkflowLineageAssignmentResponse": {
+        "properties": {
+          "departmentCount": {
+            "description": "How many departments assign this slug.",
+            "type": "number"
+          },
+          "selectorCount": {
+            "description": "How many TAG-QUALIFIED assignments (any tier) name this slug.",
+            "type": "number"
+          },
+          "tenantDefault": {
+            "description": "The tenant tier’s UNQUALIFIED assignment for this palette names this slug.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tenantDefault",
+          "departmentCount",
+          "selectorCount"
+        ],
+        "type": "object"
+      },
+      "WorkflowLineageDraftResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber",
+          "status",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "WorkflowLineageOriginResponse": {
+        "properties": {
+          "sourceTemplateSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "templateLocked": {
+            "description": "True when the tenant has not diverged, so a super-admin re-sync may refresh it.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "templateLocked"
+        ],
+        "type": "object"
+      },
+      "WorkflowLineageResponse": {
+        "properties": {
+          "active": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowLineageActiveResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/WorkflowLineageAssignmentResponse"
+          },
+          "deprecatedCount": {
+            "type": "number"
+          },
+          "draft": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowLineageDraftResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "latestVersionNumber": {
+            "type": "number"
+          },
+          "name": {
+            "description": "The ACTIVE version’s name, or the newest version’s when nothing is active.",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/WorkflowLineageOriginResponse"
+          },
+          "paletteKey": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp — the newest touch anywhere in the lineage.",
+            "type": "string"
+          },
+          "versionCount": {
+            "description": "Live (non-deleted) version rows in this lineage.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "paletteKey",
+          "versionCount",
+          "latestVersionNumber",
+          "deprecatedCount",
+          "assignment",
+          "origin",
+          "tags",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -27838,6 +28275,118 @@
         ]
       }
     },
+    "/api/v1/admin/agents/lineages": {
+      "get": {
+        "description": "The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/agents` stays the per-VERSION read a Versions tab needs — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `task` narrows to one agent task; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.",
+        "operationId": "AgentAdminController_fetchLineages",
+        "parameters": [
+          {
+            "description": "Page number (starting from 0)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Number of items per page (10, 20, or 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search fields (comma separated: name,phoneNumber)",
+            "in": "query",
+            "name": "searchFields",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` is a 400, never a silently unfiltered result. The operator set is CLOSED — equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, and the list in/notIn ('|'-separated values); anything else is a 400 naming the allowed set. Tokens combine with AND[…]/OR[…] groups. See `deserializeFilterString`.",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort (comma separated: name:asc,phoneNumber:desc)",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only lineages with a live version of this task.",
+            "in": "query",
+            "name": "task",
+            "required": false,
+            "schema": {
+              "enum": [
+                "SPEECH_TO_TEXT",
+                "TEXT_GENERATION",
+                "TEXT_TO_SPEECH",
+                "NAMED_ENTITY_RECOGNITION"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAgentLineageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown `task`, or a malformed `filters` token."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List the caller tenant’s agent LINEAGES (one row per slug)",
+        "tags": [
+          "admin-agents"
+        ]
+      }
+    },
     "/api/v1/admin/agents/promote-to-system": {
       "post": {
         "description": "The platform-admin path of owner decision #4 for an AGENT: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the reference set every customer tenant is provisioned from. Copies the Agent row and its `AgentModelFallback` chain into SYSTEM as a new version of the same slug (`max(versionNumber)+1`, so the previous SYSTEM version stays as history), re-resolves every model BY SLUG in the SYSTEM catalogue, then recompiles, PUBLISHES and ACTIVATES it — the half a tenant-to-tenant push (`POST admin/agents/{slug}/sync`) deliberately omits, because publishing into a customer tenant would re-point that customer’s live consultations and SYSTEM runs none. Referenced content travels with it: a Global-owned `instruction.promptTemplateId` is deep-copied into SYSTEM (APPROVED where the source was, `sourceTemplateId` stamped) and re-bound, while a SYSTEM-owned one is left alone; `contextSchemaId` binds the SYSTEM schema of the same slug, copied when SYSTEM carries none. `instruction.evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary. One WORM `AgentPromotion` record is written. Requires a platform administrator and an elevated tenant-less context.",
@@ -28035,6 +28584,52 @@
           }
         ],
         "summary": "Update a DRAFT/VALIDATED agent version (If-Match OCC)",
+        "tags": [
+          "admin-agents"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/{id}/activate": {
+      "post": {
+        "description": "Moves the `isActive` pointer and demotes the sibling that held it — the demoted version stays PUBLISHED and can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. Without it the only way back to an older version was to branch and republish it, which mints yet another version row. Every assignment naming this slug follows the pointer, so the departments that used vN now get this version.",
+        "operationId": "AgentAdminController_activate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The row is not PUBLISHED (a DRAFT must be published; a DEPRECATED version must be branched)."
+          },
+          "404": {
+            "description": "Not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)",
         "tags": [
           "admin-agents"
         ]
@@ -50572,6 +51167,113 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/lineages": {
+      "get": {
+        "description": "The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/workflow-definitions` stays the per-VERSION read — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `paletteKey` narrows to one palette and an unknown key is a 400 naming the known ones; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.",
+        "operationId": "WorkflowDefinitionController_fetchLineages",
+        "parameters": [
+          {
+            "description": "Page number (starting from 0)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Number of items per page (10, 20, or 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search fields (comma separated: name,phoneNumber)",
+            "in": "query",
+            "name": "searchFields",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filters, ';'-separated, each token `field[op]:value` — e.g. `status[equals]:ACTIVE;name[contains]:Jo`. The operator is REQUIRED: a token without `[op]` is a 400, never a silently unfiltered result. The operator set is CLOSED — equals/not/lt/lte/gt/gte/contains/startsWith/endsWith, the case-insensitive iequals/icontains/istartsWith/iendsWith, and the list in/notIn ('|'-separated values); anything else is a 400 naming the allowed set. Tokens combine with AND[…]/OR[…] groups. See `deserializeFilterString`.",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort (comma separated: name:asc,phoneNumber:desc)",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only lineages on this palette. An unknown key is a 400 naming the known ones, never an empty page.",
+            "in": "query",
+            "name": "paletteKey",
+            "required": false,
+            "schema": {
+              "example": "core",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedWorkflowLineageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown `paletteKey`, or a malformed `filters` token."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List the caller tenant’s workflow LINEAGES (one row per slug)",
+        "tags": [
+          "admin-workflow-definitions"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/promote-to-system": {
       "post": {
         "description": "The platform-admin path of owner decision #4: build in Global (`50000000-…`), promote into SYSTEM (`00000000-…`), which is the template every customer tenant refers to and the tenant template for new tenants. The cross-tenant copy is the existing promotion (`POST admin/agent-promotions`) — prompt templates deep-copied, `evalGate` stripped, a tenant-owned document-template binding blocking, one WORM audit record — and this route adds the half promotion deliberately omits: the SYSTEM row is recompiled against SYSTEM’s own catalogue and PUBLISHED. The previously active SYSTEM version is demoted, never deleted, so the lineage keeps its history. The eval promotion gate runs against the GLOBAL source and defaults to `warn` on this path (owner #7) — set `agentic.eval.promotionGate` to `block` for a blocking gate. Requires a platform administrator and an elevated tenant-less context.",
@@ -50986,6 +51688,9 @@
           },
           "404": {
             "description": "Not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "The row is the ACTIVE published version of its slug; deleting it would orphan every assignment on the slug."
           }
         },
         "security": [
@@ -50996,7 +51701,7 @@
             "service-account": []
           }
         ],
-        "summary": "Soft-delete a workflow definition version",
+        "summary": "Soft-delete a workflow definition version (refused for the ACTIVE published version — deprecate it first)",
         "tags": [
           "admin-workflow-definitions"
         ]
@@ -51111,6 +51816,53 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/{id}/activate": {
+      "post": {
+        "description": "Moves the `isActive` pointer the dispatcher resolves and demotes the sibling that held it — the demoted version stays PUBLISHED and can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. Without it, publishing with `activate: false` created a permanently inactive version and the only way back to an older one was to branch and republish it.",
+        "operationId": "WorkflowDefinitionController_activate",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The row is not PUBLISHED (a DRAFT must be published; a DEPRECATED version must be branched)."
+          },
+          "404": {
+            "description": "Not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)",
+        "tags": [
+          "admin-workflow-definitions"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/{id}/clone": {
       "post": {
         "description": "Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming version N+1 of that lineage.\n\nClonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss.\n\nThe graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are NOT carried over, and the validation report is recomputed for this tenant against the current node registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.",
@@ -51166,6 +51918,53 @@
           }
         ],
         "summary": "Clone an existing workflow (or a platform template) into a NEW draft workflow",
+        "tags": [
+          "admin-workflow-definitions"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/{id}/deprecate": {
+      "post": {
+        "description": "The workflow plane had no deprecate lifecycle before this — the status existed and nothing could write it. Deprecating the ACTIVE version leaves the slug serving NOTHING, so every assignment naming it resolves to nothing until another version is activated: name that consequence before calling this.",
+        "operationId": "WorkflowDefinitionController_deprecate",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The row is not PUBLISHED."
+          },
+          "404": {
+            "description": "Not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable",
         "tags": [
           "admin-workflow-definitions"
         ]
