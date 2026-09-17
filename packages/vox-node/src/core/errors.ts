@@ -449,6 +449,32 @@ export class DnaIngestJobTimeoutError extends Error {
   }
 }
 
+/**
+ * A BATCH TRANSCRIPTION job did not finish in time.
+ *
+ * Thrown by {@link AgentsResource.waitForTranscription | `AgentsResource#waitForTranscription`}
+ * when the job has not reached a terminal status (`COMPLETED` / `FAILED` / `CANCELLED` / `DEAD`)
+ * before its `timeoutMs` elapses. Like `DnaIngestJobTimeoutError`, the ceiling describes how long
+ * THIS CALL polled, not the job's health: the job may still complete. Recovery is
+ * `transcriptionJob(jobId)`, `subscribeTranscription(jobId, …)`, or another
+ * `waitForTranscription` with a longer `timeoutMs`.
+ */
+export class TranscriptionJobTimeoutError extends Error {
+  /** The job that was being awaited. */
+  readonly jobId: string;
+  /** The `timeoutMs` that elapsed. */
+  readonly timeoutMs: number;
+
+  constructor(jobId: string, timeoutMs: number) {
+    super(`Transcription job "${jobId}" did not reach a terminal status within ${timeoutMs}ms.`);
+    this.name = 'TranscriptionJobTimeoutError';
+    this.jobId = jobId;
+    this.timeoutMs = timeoutMs;
+    // Same prototype fix-up rationale as HopeAPIError above.
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Constructor options for {@link APIConnectionError}. */
 export interface APIConnectionErrorInit {
   message?: string;

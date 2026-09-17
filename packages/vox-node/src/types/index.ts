@@ -137,7 +137,9 @@ export type {
   SpeechRequest,
   SpeechSynthesis,
   TranscribeSource,
+  TranscriptionJobEvent,
   TranscriptionJobHandle,
+  TranscriptionJobStatus,
 } from './agent';
 
 /** DNA writing-style ingest — `hope.dnaWritingStyle.*` (TASK-974). */
