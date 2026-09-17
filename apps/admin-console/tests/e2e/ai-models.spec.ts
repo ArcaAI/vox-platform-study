@@ -57,7 +57,7 @@ test.describe('AI model registry screen', () => {
     const registerSheet = page.getByRole('dialog', { name: 'Register model' });
     await registerSheet.getByLabel(/^Name/).fill(name);
     await registerSheet.getByLabel(/^Slug/).fill(slug);
-    await registerSheet.getByLabel(/^Task type/).fill('AUTOMATIC_SPEECH_RECOGNITION');
+    await registerSheet.getByLabel(/^Task \(Hugging Face/).fill('AUTOMATIC_SPEECH_RECOGNITION');
     await registerSheet.getByLabel(/^Source URI/).fill('openai/whisper-e2e-fixture');
     await registerSheet.getByRole('button', { name: 'Register model' }).click();
     await expect(registerSheet).toBeHidden();
@@ -71,10 +71,10 @@ test.describe('AI model registry screen', () => {
     await editSheet.getByRole('button', { name: 'Save changes' }).click();
     await expect(editSheet).toBeHidden();
 
-    await page.getByRole('button', { name: `Delete ${name}` }).click();
-    const confirmDialog = page.getByRole('alertdialog', { name: 'Delete model' });
+    await page.getByRole('button', { name: `Retire ${name}` }).click();
+    const confirmDialog = page.getByRole('alertdialog', { name: 'Retire model' });
     await expect(confirmDialog.getByText(slug)).toBeVisible();
-    await confirmDialog.getByRole('button', { name: 'Delete model' }).click();
+    await confirmDialog.getByRole('button', { name: 'Retire model' }).click();
     await expect(confirmDialog).toBeHidden();
     await expect(page.getByRole('grid', { name: 'AI models' }).getByText(slug)).toHaveCount(0);
   });
@@ -196,8 +196,8 @@ test.describe('AI model registry screen', () => {
   // by keyboard (axe SERIOUS `scrollable-region-focusable`).
   test('discovery drawer has no WCAG 2.2 AA violations (drawer-open state)', async ({ page }) => {
     await page.goto('/ai-models');
-    await page.getByRole('button', { name: 'Discover from servers' }).click();
-    await expect(page.getByRole('dialog', { name: 'Discover models from servers' })).toBeVisible();
+    await page.getByRole('button', { name: 'Loaded on engines' }).click();
+    await expect(page.getByRole('dialog', { name: 'Loaded on engines (read-only)' })).toBeVisible();
     await expectNoA11yViolations(page);
   });
 });
