@@ -19,6 +19,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateGoldenCase, useGateEditExemplars, useGoldenSets } from '../api';
 import type { GateEditCorpusCandidate } from '../api';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const PAGE_LIMIT = 20;
 
@@ -73,7 +74,7 @@ function PromoteToGoldenCaseDialog({
 
   return (
     <Dialog open={!!candidate} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+      <DialogContent className={DIALOG_SIZE_CLASS.lg}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogHeader className="shrink-0">
             <DialogTitle>Promote to golden case</DialogTitle>

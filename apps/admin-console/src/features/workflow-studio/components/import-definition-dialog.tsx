@@ -36,6 +36,7 @@ import {
 } from '@arcaai/ui';
 import type { WorkflowDefinitionBundle } from '../api/types';
 import { parseBundleJson, suggestImportSlug } from '../lib/bundle-io';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /** Mirrors the server's `targetSlug` grammar. Client-side only — the DTO re-validates it. */
 const SLUG_PATTERN = /^[a-z0-9_]{2,48}$/;
@@ -116,7 +117,7 @@ export function ImportDefinitionDialog({ open, onOpenChange, onConfirm, confirmi
         onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Import a workflow</DialogTitle>

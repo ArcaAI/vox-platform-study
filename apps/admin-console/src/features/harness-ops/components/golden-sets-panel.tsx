@@ -19,6 +19,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateGoldenCase, useCreateGoldenSet, useGoldenCases, useGoldenSet, useGoldenSets } from '../api';
 import type { GoldenSet } from '../api';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const EM_DASH = '\u2014';
 const PAGE_LIMIT = 50;
@@ -84,7 +85,7 @@ function CreateGoldenSetDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>New golden set</DialogTitle>
@@ -179,7 +180,7 @@ function AddGoldenCaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+      <DialogContent className={DIALOG_SIZE_CLASS.lg}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogHeader className="shrink-0">
             <DialogTitle>Add case</DialogTitle>

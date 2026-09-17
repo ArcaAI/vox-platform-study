@@ -14,6 +14,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 
 import { useSupersedeSellRate } from '../api/hooks';
 import type { SellRate } from '../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /**
  * Supersede one SELL rate row — the write half of the rate card.
@@ -77,7 +78,7 @@ function SupersedeRateForm({ rate, onClose }: { rate: SellRate; onClose: () => v
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>Supersede rate</DialogTitle>
         </DialogHeader>

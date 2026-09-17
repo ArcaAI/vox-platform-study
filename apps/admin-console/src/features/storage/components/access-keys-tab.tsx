@@ -18,6 +18,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useAccessKeys, useCreateAccessKey, useDeleteAccessKey } from '../api/hooks';
 import type { StorageAccessKey, StorageAccessKeyWithSecret } from '../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 function CreateAccessKeyDialog({
   open,
@@ -93,7 +94,7 @@ function CreateAccessKeyDialog({
 function SecretRevealDialog({ created, onClose }: { created: StorageAccessKeyWithSecret | null; onClose: () => void }) {
   return (
     <Dialog open={created !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>Access key created</DialogTitle>
           <DialogDescription>Copy the secret before closing this dialog.</DialogDescription>

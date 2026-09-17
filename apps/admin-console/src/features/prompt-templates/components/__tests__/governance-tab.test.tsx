@@ -321,4 +321,82 @@ describe('GovernanceTab — Eval panel', () => {
       );
     });
   });
+
+  /**
+   * R10: "the whole content scrolls instead of just the list". The tab is a
+   * master-detail pane, so the page frame must hand it the height and the two
+   * columns must each own their scroll — the flex chain from the ScreenTemplate
+   * content region down to the list has to be unbroken, or `lg:h-full` on the
+   * list Card and `overflow-y-auto` on the `ul` resolve against nothing and go
+   * inert (which is exactly what happened).
+   *
+   * Asserted as a CLASS CHAIN rather than by measuring: happy-dom applies no
+   * stylesheet and lays nothing out, so scroll behaviour itself is only
+   * provable in a real browser (evidence/lane-F-governance-*.png).
+   */
+  describe('fill-height master-detail (R10)', () => {
+    it('grows the section and the grid so the columns can own their scroll', async () => {
+      stubFetch((call) => defaultHandler(call));
+      renderWithProviders(<GovernanceTab />);
+      await screen.findByText('Cardiology Notes');
+
+      const section = screen.getByRole('heading', { name: /prompt governance/i }).closest('section')!;
+      // Grows into the height the page frame hands it, and does not itself scroll.
+      expect(section.className).toContain('flex-1');
+      expect(section.className).toContain('min-h-0');
+      expect(section.className).toContain('flex-col');
+      expect(section.className).not.toContain('overflow-y-auto');
+
+      const grid = section.querySelector('div.grid') as HTMLElement;
+      expect(grid.className).toContain('flex-1');
+      expect(grid.className).toContain('min-h-0');
+    });
+
+    it('keeps the header block out of the growing region', async () => {
+      stubFetch((call) => defaultHandler(call));
+      renderWithProviders(<GovernanceTab />);
+      await screen.findByText('Cardiology Notes');
+
+      const section = screen.getByRole('heading', { name: /prompt governance/i }).closest('section')!;
+      const header = section.firstElementChild as HTMLElement;
+      expect(header.className).not.toContain('flex-1');
+    });
+
+    it('gives the list its own bounded scroll container', async () => {
+      stubFetch((call) => defaultHandler(call));
+      renderWithProviders(<GovernanceTab />);
+      await screen.findByText('Cardiology Notes');
+
+      const list = screen.getByText('Cardiology Notes').closest('ul') as HTMLElement;
+      expect(list.className).toContain('overflow-y-auto');
+      expect(list.className).toContain('min-h-0');
+      // The Card between the grid cell and the `ul` is what resolves that height.
+      const card = list.parentElement as HTMLElement;
+      expect(card.className).toContain('lg:h-full');
+      expect(card.className).toContain('min-h-0');
+    });
+
+    it('scrolls the detail column independently, and keeps that region keyboard reachable', async () => {
+      stubFetch((call) => defaultHandler(call));
+      renderWithProviders(<GovernanceTab />);
+      await selectTemplate();
+
+      const detail = await screen.findByRole('region', { name: 'Template governance detail' });
+      // Desktop-only: stacked below `lg` the grid is the single scroller, so
+      // scrolling here too would nest two scroll areas in one panel.
+      expect(detail.className).toContain('lg:overflow-y-auto');
+      expect(detail.className).toContain('min-h-0');
+      // A scroll container with no focusable content of its own (the unselected
+      // empty state) is unreachable by keyboard otherwise — WCAG 2.1.1, the same
+      // fix the DetailDrawer body carries.
+      expect(detail.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('has no axe violations on the fill-height layout', async () => {
+      stubFetch((call) => defaultHandler(call));
+      const { container } = renderWithProviders(<GovernanceTab />);
+      await selectTemplate();
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
 });
