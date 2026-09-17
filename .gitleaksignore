@@ -79,3 +79,18 @@ infrastructure/docker/configs/vault/dev-init.sh:hope-redis-password:84
 # `(JWT_SECRET_KEY|...)` makes the allowlist's secret-target see the var name,
 # so the `not-for-prod` regex never fires. Fingerprint pin:
 .env.test:hope-jwt-secret:86
+
+# ─── Harness claim-check object keys in ticket evidence (NOT credentials) ────
+#
+# Category: PLACEHOLDER-EQUIVALENT (safe). The four findings below are the
+# `config_ref.key` field of captured Temporal start inputs. A claim-check key
+# is the MinIO object name of the per-run compiled workflow config, and it is
+# by construction the sha256 of that object — the same value repeats in the
+# adjacent `sha256` field. It grants nothing: the bucket is reached only with
+# the platform's own storage credential. generic-api-key matches on the JSON
+# member name `key`. The run-history record carries the same value inside
+# base64 payloads, which gitleaks decodes (two line pins).
+docs/implementation/TASK-981-E2E-Schema-Codegen-Workflow-Context/evidence/C2-temporal-start-input.json:generic-api-key:7
+docs/implementation/TASK-981-E2E-Schema-Codegen-Workflow-Context/evidence/C3-bren-revisit/temporal-start-input.json:generic-api-key:7
+docs/implementation/TASK-982-Schema-Context-Flow-Alignment/acceptance/before-fix/journey-1-run-history-checksum-mismatch.json:generic-api-key:23
+docs/implementation/TASK-982-Schema-Context-Flow-Alignment/acceptance/before-fix/journey-1-run-history-checksum-mismatch.json:generic-api-key:111
