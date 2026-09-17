@@ -1,8 +1,15 @@
-import { WorkflowDefinitionEntity } from '@arcaai/domains';
+import { WorkflowDefinitionEntity, type WorkflowLineage } from '@arcaai/domains';
 import { CORE_PALETTE_KEY, WORKFLOW_NODE_REGISTRY, registryChecksum } from '@arcaai/workflow-contract';
 import type { CoreActionDescriptor, WorkflowNodeDescriptor, WorkflowPortDescriptor } from '@arcaai/workflow-contract';
 import { FetchResponse } from '../../common';
-import { PaginatedWorkflowDefinitionResponse, WorkflowDefinitionResponse, WorkflowNodePortResponse, WorkflowNodeResponse } from './dto';
+import {
+  PaginatedWorkflowDefinitionResponse,
+  WorkflowDefinitionResponse,
+  WorkflowLineageAssignmentResponse,
+  WorkflowLineageResponse,
+  WorkflowNodePortResponse,
+  WorkflowNodeResponse,
+} from './dto';
 
 /**
  * The running node registry's checksum, computed once.
@@ -59,9 +66,46 @@ export class WorkflowDefinitionDtoMapper {
     dto.resourceStatus = String(entity.resourceStatus);
     dto.createdAt = entity.createdAt.toISOString();
     dto.updatedAt = entity.updatedAt.toISOString();
+    // TASK-965 (G3) — `updatedBy` on a PUBLISHED row IS the publisher; `publishEntity` stamps it.
+    dto.createdBy = entity.createdBy ?? null;
+    dto.updatedBy = entity.updatedBy ?? null;
     dto.version = entity.version;
     dto.tags = entity.tags ?? [];
     return dto;
+  }
+
+  /** TASK-965 (OD-965-3) — the LINEAGE projection: one slug, not one version row. */
+  static toLineageResponse(lineage: WorkflowLineage, assignment: WorkflowLineageAssignmentResponse): WorkflowLineageResponse {
+    return {
+      slug: lineage.slug,
+      name: lineage.name,
+      paletteKey: lineage.paletteKey,
+      versionCount: lineage.versionCount,
+      latestVersionNumber: lineage.latestVersionNumber,
+      deprecatedCount: lineage.deprecatedCount,
+      active: lineage.active
+        ? {
+            id: lineage.active.id,
+            versionNumber: lineage.active.versionNumber,
+            publishedAt: lineage.active.publishedAt ? lineage.active.publishedAt.toISOString() : null,
+            publishedBy: lineage.active.publishedBy,
+            registryChecksum: lineage.active.registryChecksum,
+            compiledConfigChecksum: lineage.active.compiledConfigChecksum,
+          }
+        : null,
+      draft: lineage.draft
+        ? {
+            id: lineage.draft.id,
+            versionNumber: lineage.draft.versionNumber,
+            status: lineage.draft.status,
+            updatedAt: lineage.draft.updatedAt.toISOString(),
+          }
+        : null,
+      assignment,
+      origin: { sourceTemplateSlug: lineage.origin.sourceTemplateSlug, templateLocked: lineage.origin.templateLocked },
+      tags: lineage.tags,
+      updatedAt: lineage.updatedAt.toISOString(),
+    };
   }
 
   static toPaginatedResponse({ page, limit, count, data }: FetchResponse<WorkflowDefinitionEntity>): PaginatedWorkflowDefinitionResponse {

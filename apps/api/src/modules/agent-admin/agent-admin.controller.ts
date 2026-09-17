@@ -1,6 +1,8 @@
 import {
   AgentBundleResponse,
   AgentResponse,
+  ListAgentLineagesQuery,
+  PaginatedAgentLineageResponse,
   AgentSyncResponse,
   AgentTask,
   AgentTestAckResponse,
@@ -62,6 +64,28 @@ export class AgentAdminController {
   @ApiResponse({ status: 200, type: [AgentResponse] })
   async fetchAll(@Query('task') task?: AgentTask): Promise<AgentResponse[]> {
     return this.agentService.list(task);
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the REGISTER: one row per SLUG, paginated by slug.
+   *
+   * DECLARED ABOVE every `:id` route on purpose: Nest matches in declaration order, so
+   * `lineages` below `:id` would be read as an agent id and answer 404.
+   */
+  @Get('lineages')
+  @ApiOperation({
+    summary: 'List the caller tenant’s agent LINEAGES (one row per slug)',
+    description:
+      'The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the ' +
+      'slug SERVES (tenant default / departments / tag selectors). `GET admin/agents` stays the per-VERSION read a Versions tab needs — ' +
+      'grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. ' +
+      '`task` narrows to one agent task; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when ' +
+      'any of its live versions match.',
+  })
+  @ApiResponse({ status: 200, type: PaginatedAgentLineageResponse })
+  @ApiResponse({ status: 400, description: 'Unknown `task`, or a malformed `filters` token.' })
+  async fetchLineages(@Query() query: ListAgentLineagesQuery): Promise<PaginatedAgentLineageResponse> {
+    return this.agentService.listLineages(query);
   }
 
   @Get(':id')
@@ -165,6 +189,24 @@ export class AgentAdminController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant, or an unpublished SYSTEM draft).' })
   async newVersion(@Param('id') id: string, @Body() request: NewAgentVersionRequest): Promise<AgentResponse> {
     return this.agentService.newVersion(id, request ?? {});
+  }
+
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)',
+    description:
+      'Moves the `isActive` pointer and demotes the sibling that held it — the demoted version stays PUBLISHED and can be activated again. ' +
+      'The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. Without it the only ' +
+      'way back to an older version was to branch and republish it, which mints yet another version row. Every assignment naming this slug ' +
+      'follows the pointer, so the departments that used vN now get this version.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, type: AgentResponse })
+  @ApiResponse({ status: 400, description: 'The row is not PUBLISHED (a DRAFT must be published; a DEPRECATED version must be branched).' })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async activate(@Param('id') id: string): Promise<AgentResponse> {
+    return this.agentService.activate(id);
   }
 
   @Post(':id/deprecate')
