@@ -101,6 +101,18 @@ export class WorkflowDefinitionResponse {
   @ApiProperty()
   updatedAt: string;
 
+  /**
+   * TASK-965 (G3, OD-965-5) — who authored this version and who last wrote it. `publishEntity`
+   * stamps `updatedBy`, so on a PUBLISHED row `updatedBy` IS the publisher. Both columns were
+   * written from the start and simply absent from this DTO, which made "published by" — the
+   * first question anyone asks of a released version — unanswerable for workflows.
+   */
+  @ApiPropertyOptional({ nullable: true })
+  createdBy: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  updatedBy: string | null;
+
   @ApiProperty({ description: 'Optimistic-concurrency version (`_version`).' })
   version: number;
 
