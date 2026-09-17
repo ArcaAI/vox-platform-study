@@ -20,6 +20,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useBuckets, useDeleteStorageConfig, useStorageConfigs, useUpsertStorageConfig } from '../api/hooks';
 import type { StorageProviderType, StorageTopologyType, TenantBucket, TenantStorageConfig, UpsertStorageConfigRequest } from '../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const PROVIDER_LABELS: Record<StorageProviderType, string> = {
   MINIO: 'MinIO',
@@ -135,7 +136,7 @@ function ConfigFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>{initial ? 'Edit storage config' : 'Add storage config'}</DialogTitle>
           <DialogDescription>

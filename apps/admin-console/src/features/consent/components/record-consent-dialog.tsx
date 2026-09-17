@@ -12,6 +12,7 @@ import { GatewayError } from '@/shared/api';
 import { useCreateConsentGrant } from '../api';
 import { CONSENT_GRANT_METHODS, CONSENT_PURPOSES, GRANT_METHOD_META, PURPOSE_META } from '../api';
 import type { ConsentGrantMethod, ConsentPurpose } from '../api';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 export interface RecordConsentDialogProps {
   open: boolean;
@@ -35,7 +36,7 @@ export interface RecordConsentDialogProps {
 export function RecordConsentDialog({ open, onOpenChange, patientId, defaultPurpose, onRecorded }: RecordConsentDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         {open ? (
           <RecordConsentForm
             // Remount on identity change so field state initializes from props

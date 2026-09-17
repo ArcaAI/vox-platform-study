@@ -114,6 +114,7 @@ import { DefinitionMetadataForm } from './definition-metadata-form';
 import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-definition-dialog';
 import { ImportDefinitionDialog, type ImportDefinitionSubmission } from './import-definition-dialog';
 import { WorkflowSwitcher, STATUS_VARIANT } from './workflow-switcher';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /** The one container node type: its body is the set of nodes naming it as `parentId` (TASK-864). */
 const LOOP_NODE_TYPE = 'core.loop';
@@ -1379,7 +1380,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           TASK-971 lane C — sized as rule 11 §3's "Large dialog (multi-tab, editor)": a fixed
           70vh/70vw flex column whose body is the only scroll container. */}
       <Dialog open={integrationOpen} onOpenChange={setIntegrationOpen}>
-        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+        <DialogContent className={DIALOG_SIZE_CLASS.lg}>
           <DialogHeader className="shrink-0">
             <DialogTitle>Integration — {definition.slug}</DialogTitle>
             <DialogDescription>How developers reach this workflow. The endpoint always resolves the active version.</DialogDescription>

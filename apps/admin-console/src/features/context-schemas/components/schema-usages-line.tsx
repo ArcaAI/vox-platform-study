@@ -22,6 +22,8 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import type { ContextSchemaAgentUsage, ContextSchemaUsagesResponse, ContextSchemaVerdict, ContextSchemaWorkflowUsage } from '../api/types';
+import { cx } from '@/shared/cx';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 type Usage = ContextSchemaWorkflowUsage | ContextSchemaAgentUsage;
 
@@ -120,7 +122,7 @@ export function SchemaUsagesLine({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[70vh] flex-col sm:max-w-[42rem]">
+        <DialogContent className={cx('flex max-h-[70vh] flex-col', DIALOG_SIZE_CLASS.md)}>
           <DialogHeader>
             <DialogTitle>Workflows and agents using this schema</DialogTitle>
             <DialogDescription>

@@ -24,6 +24,8 @@ import {
   useUpdateRateLimitRule,
 } from '../api/hooks';
 import type { RateLimitRule, RouteCatalogEntry, TenantOption } from '../api/types';
+import { cx } from '@/shared/cx';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const SCOPE_OPTIONS = [
   { value: 'all', label: 'All scopes' },
@@ -85,7 +87,7 @@ function RuleDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col sm:max-w-[46rem]">
+      <DialogContent className={cx('flex flex-col', DIALOG_SIZE_CLASS.md)}>
         <DialogHeader>
           <DialogTitle>New rate-limit rule</DialogTitle>
           <DialogDescription>
@@ -207,7 +209,7 @@ function EditRuleDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col sm:max-w-[36rem]">
+      <DialogContent className={cx('flex flex-col', DIALOG_SIZE_CLASS.md)}>
         <DialogHeader>
           <DialogTitle>Edit rule</DialogTitle>
           <DialogDescription>

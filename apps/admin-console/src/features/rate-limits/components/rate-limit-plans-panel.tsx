@@ -14,6 +14,8 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useRateLimitPlans, useSetRateLimitPlan } from '../api/hooks';
 import type { RateLimitPlan, SetRateLimitPlanRequest } from '../api/types';
+import { cx } from '@/shared/cx';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const TIERS = ['default', 'strict', 'heavy', 'relaxed'];
 
@@ -60,7 +62,7 @@ function PlanDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col sm:max-w-[40rem]">
+      <DialogContent className={cx('flex flex-col', DIALOG_SIZE_CLASS.md)}>
         <DialogHeader>
           <DialogTitle>{plan.plan} rate limit</DialogTitle>
           <DialogDescription>
