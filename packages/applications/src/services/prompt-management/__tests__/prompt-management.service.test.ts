@@ -153,6 +153,9 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
     // Distinct from `currentVersionNumber` (the human-meaningful
     // PromptVersion history counter).
     version: 'version' in overrides ? overrides.version : 1,
+    // Only present when a test names it, so every existing expectation keeps
+    // the `undefined` it was written against.
+    ...('approvedVersionNumber' in overrides ? { approvedVersionNumber: overrides.approvedVersionNumber } : {}),
     isActive: () => (overrides.resourceStatus ?? 'ENABLED') === 'ENABLED',
     incrementVersion: vi.fn().mockImplementation(() => {
       _changed = true;
@@ -3349,6 +3352,120 @@ describe('PromptManagementService', () => {
       mockTemplateRepo.findById.mockResolvedValue(null);
 
       await expect(service.approveTemplate('nope', { expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── approveTemplate self-heal: APPROVED but never PINNED (TASK-983 R5) ───
+  //
+  // 16 templates were seeded `status: APPROVED, approvedVersionNumber: null`
+  // before the seed was fixed (TASK-890 BBJ2-7, "re-seed required"), and a
+  // deploy never refreshes seed data. The idempotent short-circuit keyed on
+  // status ALONE returned 200 with the row untouched, so an admin's Approve
+  // click did nothing visible and `PromptResolutionService` — which serves the
+  // PINNED version — kept skipping the template. Status is not the invariant;
+  // "APPROVED **and** pinned" is.
+  describe('approveTemplate self-heal for an unpinned APPROVED row (TASK-983 R5)', () => {
+    const useTenantAdmin = () => {
+      abilityCan.mockReturnValue(true);
+      mockClsService.get.mockImplementation((key: string) => {
+        switch (key) {
+          case 'user':
+            return { ...defaultClsContext.user, roles: [] };
+          case 'tenantId':
+            return 'tenant-1';
+          case 'userAbility':
+            return { can: abilityCan };
+          default:
+            return null;
+        }
+      });
+    };
+
+    it('an APPROVED row with NO pinned version falls through and gets pinned (write + sys-event)', async () => {
+      useTenantAdmin();
+      const tpl = createMockTemplateEntity({
+        id: 'tpl-unpinned',
+        tenantId: 'tenant-1',
+        status: 'APPROVED',
+        approvedVersionNumber: null,
+        version: 5,
+      });
+      mockTemplateRepo.findById.mockResolvedValue(tpl);
+      // Latest snapshot already holds the live content → approval pins it, no
+      // duplicate version is authored.
+      mockVersionRepo.findLatestVersion.mockResolvedValue(
+        createMockVersionEntity({ versionNumber: 2, content: tpl.content, variables: tpl.variables ?? null }),
+      );
+      mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
+
+      const result = await service.approveTemplate('tpl-unpinned', { expectedVersion: 5 } as never);
+
+      expect(result).toBeDefined();
+      expect(tpl.approvedVersionNumber).toBe(2);
+      expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-unpinned', tpl, 5, mockTxClient);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'approve', status: 'APPROVED', approvedVersionNumber: 2 }),
+        }),
+      );
+    });
+
+    it('an APPROVED row with NO history authors version 1 and pins it', async () => {
+      useTenantAdmin();
+      const tpl = createMockTemplateEntity({
+        id: 'tpl-unpinned-nohist',
+        tenantId: 'tenant-1',
+        status: 'APPROVED',
+        approvedVersionNumber: null,
+        version: 3,
+      });
+      mockTemplateRepo.findById.mockResolvedValue(tpl);
+      mockVersionRepo.findLatestVersion.mockResolvedValue(null);
+      mockVersionRepo.findMaxVersionNumber.mockResolvedValue(0);
+      mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 1 }));
+      mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
+
+      await service.approveTemplate('tpl-unpinned-nohist', { expectedVersion: 3 } as never);
+
+      expect(mockVersionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ versionNumber: 1 }), mockTxClient);
+      expect(tpl.approvedVersionNumber).toBe(1);
+    });
+
+    it('an APPROVED row that IS pinned stays a no-op — no version, no CAS, no sys-event', async () => {
+      useTenantAdmin();
+      const tpl = createMockTemplateEntity({
+        id: 'tpl-pinned',
+        tenantId: 'tenant-1',
+        status: 'APPROVED',
+        approvedVersionNumber: 4,
+        version: 9,
+      });
+      mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+      const result = await service.approveTemplate('tpl-pinned', { expectedVersion: 9 } as never);
+
+      expect(result).toBeDefined();
+      expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
+      expect(tpl.approvedVersionNumber).toBe(4);
+    });
+
+    it('authorization still runs first: a tenant admin cannot self-heal a SYSTEM row', async () => {
+      useTenantAdmin();
+      const tpl = createMockTemplateEntity({
+        id: 'tpl-sys-unpinned',
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        status: 'APPROVED',
+        approvedVersionNumber: null,
+        version: 2,
+      });
+      mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+      await expect(service.approveTemplate('tpl-sys-unpinned', { expectedVersion: 2 } as never)).rejects.toThrow(ForbiddenException);
+      expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
     });
   });
 
