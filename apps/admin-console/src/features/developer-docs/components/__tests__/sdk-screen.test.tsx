@@ -12,7 +12,7 @@ import { SdkScreen } from '../sdk-screen';
  * `@arcaai/vox-node` shipped `hope.stt.*` + `RealtimeSttSocket` and
  * `@arcaai/vox` shipped `useWorkflowRun({ transport: 'socket' })` before this
  * screen ever mentioned either. Both additions point at the Integration
- * panel's own Socket lane rather than restating its ticket mechanics — this
+ * panel's own Manual lane rather than restating its ticket mechanics — this
  * screen states WHAT exists and WHY you would reach for it, not the wire
  * details another surface owns.
  */
