@@ -31,6 +31,7 @@ import type {
   WorkflowAssignmentResponse,
   WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
+  WorkflowLineageResponse,
   WorkflowSyncResponse,
   WorkflowWebhookSecretResponseDto,
 } from './schemas';
@@ -43,7 +44,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (26 routes). Several controllers sharing one scope share one
+ * (29 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -247,7 +248,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
-   * Soft-delete a workflow definition version
+   * Soft-delete a workflow definition version (refused for the ACTIVE published version — deprecate it first)
    *
    * `DELETE /api/v1/admin/workflow-definitions/{id}` — `WorkflowDefinitionController.delete`.
    */
@@ -299,6 +300,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
+   * Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)
+   *
+   * Moves the `isActive` pointer the dispatcher resolves and demotes the sibling that held it — the demoted version stays PUBLISHED and can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. Without it, publishing with `activate: false` created a permanently inactive version and the only way back to an older one was to branch and republish it.
+   *
+   * `POST /api/v1/admin/workflow-definitions/{id}/activate` — `WorkflowDefinitionController.activate`.
+   */
+  activate(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+    return this.request<WorkflowDefinitionResponse>({
+      method: 'POST',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/activate`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Clone an existing workflow (or a platform template) into a NEW draft workflow
    *
    * Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming version N+1 of that lineage. Clonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss. The graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are NOT carried over, and the validation report is recomputed for this tenant against the current node registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.
@@ -310,6 +327,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
       method: 'POST',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/clone`,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable
+   *
+   * The workflow plane had no deprecate lifecycle before this — the status existed and nothing could write it. Deprecating the ACTIVE version leaves the slug serving NOTHING, so every assignment naming it resolves to nothing until another version is activated: name that consequence before calling this.
+   *
+   * `POST /api/v1/admin/workflow-definitions/{id}/deprecate` — `WorkflowDefinitionController.deprecate`.
+   */
+  deprecate(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+    return this.request<WorkflowDefinitionResponse>({
+      method: 'POST',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/deprecate`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -434,6 +467,36 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
+  }
+
+  /**
+   * List the caller tenant’s workflow LINEAGES (one row per slug)
+   *
+   * The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/workflow-definitions` stays the per-VERSION read — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `paletteKey` narrows to one palette and an unknown key is a 400 naming the known ones; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.
+   *
+   * `GET /api/v1/admin/workflow-definitions/lineages` — `WorkflowDefinitionController.fetchLineages`.
+   *
+   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link fetchLineagesIterate} to walk every page.
+   */
+  fetchLineages(
+    options: AdminListOptions & { query?: AdminListQuery & { paletteKey?: string } } = {},
+  ): Promise<PaginatedPage<WorkflowLineageResponse>> {
+    return this.listPage<WorkflowLineageResponse>('admin/workflow-definitions/lineages', options);
+  }
+
+  /**
+   * List the caller tenant’s workflow LINEAGES (one row per slug)
+   *
+   * The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/workflow-definitions` stays the per-VERSION read — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `paletteKey` narrows to one palette and an unknown key is a 400 naming the known ones; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.
+   *
+   * `GET /api/v1/admin/workflow-definitions/lineages` — `WorkflowDefinitionController.fetchLineages`.
+   *
+   * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
+   */
+  fetchLineagesIterate(
+    options: AdminListOptions & { query?: AdminListQuery & { paletteKey?: string } } = {},
+  ): AsyncGenerator<WorkflowLineageResponse, void, undefined> {
+    return this.listAll<WorkflowLineageResponse>('admin/workflow-definitions/lineages', options);
   }
 
   /**

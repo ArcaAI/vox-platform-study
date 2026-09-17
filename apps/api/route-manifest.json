@@ -494,6 +494,29 @@
     },
     {
       "controller": "AgentAdminController",
+      "handler": "activate",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/activate",
+      "routePath": "/admin/agents/:id/activate",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
       "handler": "deprecate",
       "method": "POST",
       "path": "/api/v1/admin/agents/{id}/deprecate",
@@ -728,6 +751,29 @@
       "method": "POST",
       "path": "/api/v1/admin/agents/import",
       "routePath": "/admin/agents/import",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "fetchLineages",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/lineages",
+      "routePath": "/admin/agents/lineages",
       "svcScopes": [
         "svc:admin:agent:manage"
       ],
@@ -10318,10 +10364,56 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "activate",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/{id}/activate",
+      "routePath": "/admin/workflow-definitions/:id/activate",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "clone",
       "method": "POST",
       "path": "/api/v1/admin/workflow-definitions/{id}/clone",
       "routePath": "/admin/workflow-definitions/:id/clone",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "deprecate",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/{id}/deprecate",
+      "routePath": "/admin/workflow-definitions/:id/deprecate",
       "svcScopes": [
         "svc:admin:workflow-definition:manage"
       ],
@@ -10483,6 +10575,29 @@
       "method": "POST",
       "path": "/api/v1/admin/workflow-definitions/import",
       "routePath": "/admin/workflow-definitions/import",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "fetchLineages",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/lineages",
+      "routePath": "/admin/workflow-definitions/lineages",
       "svcScopes": [
         "svc:admin:workflow-definition:manage"
       ],
