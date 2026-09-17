@@ -1,5 +1,6 @@
 import { AgentEntity, AgentModelFallbackEntity, type AgentLineage } from '@arcaai/domains';
-import { AGENT_IO_DEFAULTS } from '@arcaai/workflow-contract';
+import { AGENT_IO_DEFAULTS, type ComposableResolvedPrompt } from '@arcaai/workflow-contract';
+import { agentRequiredVariables } from './agent-required-variables';
 import { AgentLineageAssignmentResponse, AgentLineageResponse, AgentResponse, AgentSummaryResponse, AgentValidationReportResponse } from './dto';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 
@@ -115,6 +116,27 @@ export class AgentDtoMapper {
     };
   }
 
+  /**
+   * TASK-983 R9 — the list of placeholders an invocation must supply, as PUBLISHED.
+   *
+   * `compiledConfig.requiredVariables` is what `compile()` froze and is served verbatim: the
+   * read is a projection, never a render. A row published BEFORE this ticket carries no such key
+   * — absence means "not computed", never "nothing required" — so it is recomputed here from the
+   * artifact's own frozen `resolvedPrompt` + `instruction`. That recomputation is pure string
+   * scanning over content already in memory; it is not cached on the entity, because a cache
+   * field on a change-tracked domain object buys microseconds and costs an invariant.
+   */
+  private static requiredVariablesOf(entity: AgentEntity): string[] {
+    const compiled = asObject(entity.compiledConfig);
+    if (compiled === null) return [];
+    const frozen = compiled.requiredVariables;
+    if (Array.isArray(frozen)) return frozen.filter((entry): entry is string => typeof entry === 'string');
+    return agentRequiredVariables(
+      asObject(compiled.instruction) ?? asObject(entity.instruction),
+      (compiled.resolvedPrompt ?? null) as ComposableResolvedPrompt,
+    );
+  }
+
   /** The business-plane projection: schemas fall back to the task defaults so an integrator always gets a contract. */
   static toSummary(entity: AgentEntity, isTenantDefault: boolean): AgentSummaryResponse {
     const defaults = AGENT_IO_DEFAULTS[entity.task];
@@ -127,6 +149,7 @@ export class AgentDtoMapper {
       isTenantDefault,
       inputSchema: asObject(entity.inputSchema) ?? (defaults.inputSchema as Record<string, unknown>),
       outputSchema: asObject(entity.outputSchema) ?? (defaults.outputSchema as Record<string, unknown>),
+      requiredVariables: AgentDtoMapper.requiredVariablesOf(entity),
     };
   }
 }
