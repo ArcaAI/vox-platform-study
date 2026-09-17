@@ -36,6 +36,8 @@ describe('provider requirements — the declared sets', () => {
       'llm:bedrock',
       'model-registry:huggingface',
       'model-registry:s3',
+      'stt:sarvam',
+      'stt:openai',
     ]) {
       expect(PROVIDER_REQUIREMENTS[key], `${key} has no declared requirement`).toBeDefined();
     }
@@ -101,6 +103,66 @@ describe('llama.cpp — server URL AND a model path', () => {
 
   it('reports BOTH misses when the URL is absent too — an operator fixes one round trip, not two', () => {
     expect(validateProviderRequirements('llm', 'llama-cpp', bare)).toHaveLength(2);
+  });
+});
+
+/**
+ * TASK-983 R2 — the two CLOUD STT vendors, whose loaders take neither half from
+ * the environment.
+ *
+ * TASK-880 deleted `stt.sarvam.baseUrl` and `stt.openai.baseUrl` as platform
+ * settings: the endpoint now lives on the connection ROW beside the key, and
+ * `sarvam_loader.py` / `openai_loader.py` raise `CloudASRAuthError` when either
+ * is missing — in a Dramatiq worker, as a 503, hours after the row was saved.
+ * That is precisely the failure this table exists to move to save time, and
+ * neither pair was listed, so an enabled, keyed, endpoint-less row was accepted.
+ *
+ * The endpoint is required rather than defaulted on purpose: the public
+ * `api.sarvam.ai` / `api.openai.com` carry no BAA, so a silent default would be
+ * a PHI platform choosing a non-PHI-safe host on the operator's behalf.
+ */
+describe('stt cloud vendors — an endpoint AND a key, because the loader defaults neither', () => {
+  const complete = { ...bare, baseUrl: 'https://asr.enterprise.example', hasApiKey: true };
+
+  it.each(['sarvam', 'openai'])('stt:%s declares both halves', (provider) => {
+    expect(requirementsFor('stt', provider)?.columns).toEqual(['baseUrl', 'apiKey']);
+  });
+
+  it.each(['sarvam', 'openai'])('stt:%s accepts a complete connection', (provider) => {
+    expect(validateProviderRequirements('stt', provider, complete)).toEqual([]);
+  });
+
+  it.each(['sarvam', 'openai'])('stt:%s is refused without an endpoint, and the message NAMES baseUrl', (provider) => {
+    const errors = validateProviderRequirements('stt', provider, { ...complete, baseUrl: null });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('baseUrl');
+  });
+
+  it.each(['sarvam', 'openai'])('stt:%s is refused without a key — both are vendor accounts, BYOK-only', (provider) => {
+    const errors = validateProviderRequirements('stt', provider, { ...complete, hasApiKey: false });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('apiKey');
+  });
+
+  it('reports BOTH misses at once, so the console fixes one form in one round trip', () => {
+    expect(validateProviderRequirements('stt', 'sarvam', bare)).toHaveLength(2);
+  });
+
+  /**
+   * The seeded SYSTEM rows (`seed/17-ai-provider-connection.ts`) ship
+   * `enabled: false` WITH `baseUrl` already set, so they satisfy this both ways:
+   * exempt while disabled, and complete the moment a platform admin adds a key
+   * and enables them.
+   */
+  it('leaves the seeded, disabled SYSTEM placeholders legal', () => {
+    expect(validateProviderRequirements('stt', 'sarvam', { ...bare, enabled: false, baseUrl: 'https://api.sarvam.ai' })).toEqual([]);
+    expect(validateProviderRequirements('stt', 'openai', { ...bare, enabled: false, baseUrl: 'https://api.openai.com/v1' })).toEqual([]);
+  });
+
+  it('never invents a default endpoint — the public host carries no BAA, so absence is refused, not filled in', () => {
+    const errors = validateProviderRequirements('stt', 'sarvam', { ...bare, hasApiKey: true });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).not.toContain('api.sarvam.ai');
   });
 });
 

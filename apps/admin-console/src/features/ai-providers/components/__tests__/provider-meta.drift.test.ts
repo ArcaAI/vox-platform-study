@@ -115,6 +115,41 @@ describe('the cloud vendor cards mirror the gateway BYO declaration', () => {
     }
   });
 
+  /**
+   * TASK-983 R2 — the Sarvam STT card had `fields: []`, so the ONE thing its
+   * runtime cannot work without had nowhere to be typed.
+   *
+   * TASK-880 deleted the `stt.sarvam.baseUrl` platform setting and moved the
+   * endpoint onto the connection row: `sarvam_loader.py` raises
+   * `CloudASRAuthError` unless the SAME row carries a key AND a `baseUrl`. The
+   * SYSTEM row only worked because the seed hand-writes `https://api.sarvam.ai`
+   * — which the seed itself flags as not PHI-safe — and a TENANT bringing its
+   * own Sarvam account could never produce a usable row from this console.
+   * `tts:sarvam` and `stt:openai` carried the field all along; only this card
+   * was missed.
+   */
+  it('gives every cloud STT card the endpoint its loader requires (TASK-983 R2)', () => {
+    for (const provider of ['sarvam', 'openai']) {
+      const card = PROVIDERS_BY_SERVICE.stt.find((p) => p.id === provider);
+      expect(card, `no stt:${provider} card`).toBeDefined();
+      expect(card!.fields.some((f) => f.name === 'baseUrl'), `stt:${provider} offers no baseUrl field`).toBe(true);
+    }
+  });
+
+  it('never calls an STT endpoint OPTIONAL where the loader refuses the row without it', () => {
+    // `openai_loader.py` has no default base URL either — the label said
+    // "(optional)" while the write path (PROVIDER_REQUIREMENTS) refuses it.
+    for (const provider of ['sarvam', 'openai']) {
+      const label = PROVIDERS_BY_SERVICE.stt.find((p) => p.id === provider)!.fields.find((f) => f.name === 'baseUrl')!.label;
+      expect(label, `stt:${provider} labels a required endpoint optional`).not.toMatch(/optional/i);
+    }
+  });
+
+  it('warns on the Sarvam card that the public endpoint is not PHI-safe (OD-2)', () => {
+    const sarvam = PROVIDERS_BY_SERVICE.stt.find((p) => p.id === 'sarvam')!;
+    expect(sarvam.hint ?? '', 'the Sarvam card carries no BAA warning').toMatch(/BAA|PHI/i);
+  });
+
   it('keeps the four STT provider ids and their order unchanged', () => {
     expect(PROVIDERS_BY_SERVICE.stt.map((p) => p.id)).toEqual(['azure-speech', 'azure-foundry', 'sarvam', 'openai']);
   });
