@@ -670,7 +670,7 @@ export class AgentInvocationService {
     throw new BadRequestException({
       message:
         `Agent '${agentSlug}' instruction references ${missing.length} variable(s) this invocation does not supply: ${where}. ` +
-        "Send each one under the request key named, or give the placeholder a `default(\"…\")`. " +
+        'Send each one under the request key named, or give the placeholder a `default("…")`. ' +
         'The full list is published as `requiredVariables` on `GET /api/v1/agents/' +
         `${agentSlug}\`.`,
       code: 'PROMPT_VARIABLES_MISSING',

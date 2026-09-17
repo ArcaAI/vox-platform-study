@@ -75,10 +75,7 @@ export function promptVariableSlot(path: string, boundNames: readonly string[]):
  * branch a future call takes, and the worst case is the only honest thing to publish. The
  * per-call, selection-aware narrowing is `unresolvedPromptVariables` at invocation time.
  */
-export function agentRequiredVariables(
-  instruction: Record<string, unknown> | null | undefined,
-  resolvedPrompt: ComposableResolvedPrompt,
-): string[] {
+export function agentRequiredVariables(instruction: Record<string, unknown> | null | undefined, resolvedPrompt: ComposableResolvedPrompt): string[] {
   const bound = boundVariablesOf(instruction);
   const required = new Set<string>();
 
