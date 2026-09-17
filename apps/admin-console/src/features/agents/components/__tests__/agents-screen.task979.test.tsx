@@ -20,7 +20,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { Agent } from '../../api/types';
+import type { AgentLineage } from '../../api/types';
 import { AgentsScreen } from '../agents-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -28,53 +28,34 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 /** The exact `f` encoding `?task=SPEECH_TO_TEXT` is expected to translate into (`grid-url-state.ts`'s positional-tuple codec, the same shape the Task column's multiSelect facet already produces). */
 const SEEDED_TASK_FILTER = `f=${encodeURIComponent(JSON.stringify([['task', 'inArray', 'multiSelect', ['SPEECH_TO_TEXT']]]))}`;
 
-function agent(overrides: Partial<Agent> = {}): Agent {
+/**
+ * TASK-965 WS-4 — the grid reads the LINEAGE register, and `task` is that route's own first-class
+ * query field, so the deep link's translated `f` rule is lifted back out of the filter grammar and
+ * sent as `?task=`. The narrowing therefore happens on the SERVER; these fixtures are the three
+ * lineages it folds.
+ */
+function lineage(slug: string, name: string, task: AgentLineage['task'], id: string): AgentLineage {
   return {
-    id: 'a-1',
-    tenantId: 'tnt-1',
-    slug: 'clinic-summarizer',
-    name: 'Clinic summarizer',
-    description: null,
-    task: 'TEXT_GENERATION',
-    versionNumber: 1,
-    parentVersionId: null,
-    sourceAgentId: null,
-    sourceTenantId: null,
-    sourceSlug: null,
-    sourceVersionNumber: null,
-    status: 'DRAFT',
-    isActive: false,
-    modelId: 'm-llm',
-    contextSchemaId: null,
-    contextSchemaVersionNumber: null,
-    modelSlug: 'lms-gemma-4-e2b-it-qat',
-    fallbacks: [],
-    instruction: { systemPrompt: 'You are a scribe.' },
-    parameters: {},
-    inputSchema: null,
-    outputSchema: null,
-    tools: null,
-    compiledConfig: null,
-    compiledConfigChecksum: null,
-    validationReport: null,
-    validatedAt: null,
-    publishedAt: null,
-    deprecatedAt: null,
-    resourceStatus: 'ENABLED',
+    slug,
+    name,
+    task,
+    versionCount: 1,
+    latestVersionNumber: 1,
+    deprecatedCount: 0,
+    active: { id, versionNumber: 1, publishedAt: '2026-09-02T10:00:00.000Z', publishedBy: null, modelSlug: 'lms-gemma-4-e2b-it-qat', compiledConfigChecksum: null },
+    draft: null,
+    assignment: { tenantDefault: false, departmentCount: 0, selectorCount: 0 },
+    origin: { sourceTenantId: null, sourceSlug: null },
     tags: [],
-    createdAt: '2026-09-01T10:00:00.000Z',
     updatedAt: '2026-09-02T10:00:00.000Z',
-    createdBy: null,
-    updatedBy: null,
-    version: 1,
-    ...overrides,
+    hidden: false,
   };
 }
 
-const AGENTS: Agent[] = [
-  agent(),
-  agent({ id: 'a-2', slug: 'clinic-transcription', name: 'Clinic transcription', task: 'SPEECH_TO_TEXT' }),
-  agent({ id: 'a-3', slug: 'clinic-tts', name: 'Clinic TTS', task: 'TEXT_TO_SPEECH' }),
+const LINEAGES: AgentLineage[] = [
+  lineage('clinic-summarizer', 'Clinic summarizer', 'TEXT_GENERATION', 'a-1'),
+  lineage('clinic-transcription', 'Clinic transcription', 'SPEECH_TO_TEXT', 'a-2'),
+  lineage('clinic-tts', 'Clinic TTS', 'TEXT_TO_SPEECH', 'a-3'),
 ];
 
 function session() {
@@ -98,7 +79,11 @@ function stubAgents() {
       if (path.includes('/users/me/settings')) return Response.json([]);
       if ((init?.method ?? 'GET') !== 'GET') return Response.json({ ok: true });
       if (path === '/api/auth/session') return Response.json(session());
-      if (path === '/api/hope/admin/agents') return Response.json(AGENTS);
+      if (path === '/api/hope/admin/agents/lineages') {
+        const task = url.searchParams.get('task');
+        const data = LINEAGES.filter((row) => !task || row.task === task);
+        return Response.json({ count: data.length, page: 1, limit: 25, data });
+      }
       if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
       if (path === '/api/hope/admin/ai-models/catalogue') return Response.json({ providers: [], models: [] });
       // `CreateAgentWizard` (rendered unconditionally alongside the grid, `open`-gated) resolves
@@ -132,7 +117,9 @@ describe('AgentsScreen — `?task=` deep link (TASK-979)', () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />, { searchParams: SEEDED_TASK_FILTER });
     await screen.findByText('Clinic transcription');
-    await waitFor(() => expect(screen.getByText('1 of 3 shown')).toBeTruthy());
+    // Server-side narrowing: the register answers one lineage and counts one.
+    await waitFor(() => expect(screen.getByText('1 of 1 agents')).toBeTruthy());
+    expect(screen.queryByText('Clinic summarizer')).toBeNull();
   });
 
   it('ignores an unrecognised task value without crashing, showing the unfiltered list', async () => {
@@ -147,16 +134,25 @@ describe('AgentsScreen — `?task=` deep link (TASK-979)', () => {
     // Mounted with `task` already absent (as it is once the deep link has been consumed) — a
     // lingering `task` param would have nothing to re-seed the rule from here, proving the
     // cleared state sticks.
+    //
+    // TASK-965 WS-4: asserted through `onUrlUpdate` rather than through the rendered rows. The
+    // grid's read is server-driven now, so clearing the filter starts a FETCH, and the harness
+    // note at the top of this file applies verbatim — `NuqsTestingAdapter` with `hasMemory` off
+    // resyncs from its own un-mutated store the moment an async update lands, so the rendered
+    // rows would report the store, not the write. The write is the behaviour under test.
     stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: SEEDED_TASK_FILTER });
+    const onUrlUpdate = vi.fn();
+    renderWithProviders(<AgentsScreen />, { searchParams: SEEDED_TASK_FILTER, onUrlUpdate });
     await screen.findByText('Clinic transcription');
-    await waitFor(() => expect(screen.getByText('1 of 3 shown')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('1 of 1 agents')).toBeTruthy());
 
     const [clearButton] = screen.getAllByRole('button', { name: 'Clear filters' });
     fireEvent.click(clearButton);
 
-    await waitFor(() => expect(screen.getByText('3 of 3 shown')).toBeTruthy());
-    expect(screen.getByText('Clinic summarizer')).toBeTruthy();
-    expect(screen.getByText('Clinic TTS')).toBeTruthy();
+    await waitFor(() => {
+      const last = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
+      expect(last.searchParams.get('f')).toBeNull();
+      expect(last.searchParams.get('task')).toBeNull();
+    });
   });
 });

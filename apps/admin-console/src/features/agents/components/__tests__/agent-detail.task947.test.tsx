@@ -8,8 +8,8 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { Agent } from '../../api/types';
-import { AgentDetailDrawer } from '../agent-detail';
+import type { Agent, AgentLineage } from '../../api/types';
+import { AgentLineageDrawer } from '../agent-detail';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -65,6 +65,31 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 
 const TEMPLATE = { id: 'tpl-1', name: 'SOAP note', status: 'APPROVED', category: 'SUMMARY', approvedVersionNumber: 3, currentVersionNumber: 3, contentPreview: 'Write a note', declaredVariables: [] };
 
+/**
+ * TASK-965 WS-4 — the drawer is keyed by the lineage SLUG, not by a version row id, so a test
+ * hands it the lineage the grid would have. This folds the one fixture row into that shape.
+ */
+function lineageFor(row: Agent): AgentLineage {
+  const open = row.status === 'DRAFT' || row.status === 'VALIDATED';
+  return {
+    slug: row.slug,
+    name: row.name,
+    task: row.task,
+    versionCount: 1,
+    latestVersionNumber: row.versionNumber,
+    deprecatedCount: row.status === 'DEPRECATED' ? 1 : 0,
+    active: row.isActive
+      ? { id: row.id, versionNumber: row.versionNumber, publishedAt: row.publishedAt, publishedBy: row.updatedBy, modelSlug: row.modelSlug, compiledConfigChecksum: row.compiledConfigChecksum }
+      : null,
+    draft: open ? { id: row.id, versionNumber: row.versionNumber, status: row.status as 'DRAFT' | 'VALIDATED', updatedAt: row.updatedAt } : null,
+    assignment: { tenantDefault: false, departmentCount: 0, selectorCount: 0 },
+    origin: { sourceTenantId: row.sourceTenantId, sourceSlug: row.sourceSlug },
+    tags: row.tags,
+    updatedAt: row.updatedAt,
+    hidden: false,
+  };
+}
+
 interface RecordedCall {
   url: string;
   method: string;
@@ -86,6 +111,7 @@ function stubFetch(agentRow: Agent, extra: FetchHandler = () => undefined): Reco
       if (path === `/api/hope/admin/agents/${agentRow.id}`) return Response.json(agentRow, { headers: { etag: `"${agentRow.version}"` } });
       if (path === `/api/hope/admin/agents/${agentRow.id}/versions`) return Response.json([agentRow]);
       if (path === '/api/hope/admin/agent-assignments') return Response.json([]);
+      if (path === '/api/hope/admin/departments') return Response.json({ data: [] });
       if (path === '/api/hope/admin/ai-models/catalogue') return Response.json({ providers: [], models: [] });
       if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([]);
       if (path === '/api/hope/admin/prompt-templates') return Response.json({ data: [TEMPLATE] });
@@ -101,11 +127,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('AgentDetailDrawer — composite instruction (TASK-947)', () => {
+describe('AgentLineageDrawer — composite instruction (TASK-947, on the TASK-965 lineage model)', () => {
   it('a PUBLISHED composite agent shows a read-only fragment summary, not the raw JSON block', async () => {
-    stubFetch(agent({ status: 'PUBLISHED', isActive: true, publishedAt: '2026-09-02T10:00:00.000Z' }));
-    renderWithProviders(<AgentDetailDrawer agentId="a-1" onOpenChange={() => undefined} onSelect={() => undefined} />);
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Configuration' }), { button: 0 });
+    const row = agent({ status: 'PUBLISHED', isActive: true, publishedAt: '2026-09-02T10:00:00.000Z' });
+    stubFetch(row);
+    renderWithProviders(<AgentLineageDrawer slug="clinic-summarizer" lineage={lineageFor(row)} onOpenChange={() => undefined} />);
+    // TASK-965 WS-4 — a published version's body is read on the lineage's Overview (the default
+    // tab), which shows the version the lineage SERVES; "Configuration" was a per-version tab.
     expect(await screen.findByText('Instruction — composable fragments (2)')).toBeTruthy();
     expect(screen.getByText('base')).toBeTruthy();
     expect(screen.getByText('revisit')).toBeTruthy();
@@ -115,12 +143,13 @@ describe('AgentDetailDrawer — composite instruction (TASK-947)', () => {
   });
 
   it('a DRAFT composite agent seeds the fragments editor, and saving PATCHes the edited fragments', async () => {
-    const calls = stubFetch(agent(), (call) => {
+    const row = agent();
+    const calls = stubFetch(row, (call) => {
       if (call.method === 'PATCH' && call.url.endsWith('/admin/agents/a-1')) return Response.json({ ...agent(), version: 2 }, { headers: { etag: '"2"' } });
       return undefined;
     });
-    renderWithProviders(<AgentDetailDrawer agentId="a-1" onOpenChange={() => undefined} onSelect={() => undefined} />);
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Configuration' }), { button: 0 });
+    renderWithProviders(<AgentLineageDrawer slug="clinic-summarizer" lineage={lineageFor(row)} onOpenChange={() => undefined} />);
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Draft' }), { button: 0 });
     fireEvent.click(await screen.findByRole('button', { name: 'Edit draft' }));
 
     // Seeded into fragments mode with both rows present.
