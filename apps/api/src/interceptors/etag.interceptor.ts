@@ -5,6 +5,8 @@ import { map } from 'rxjs/operators';
 /** Response surface this interceptor needs from the underlying Express response. */
 interface ETagResponse {
   setHeader: (key: string, value: string) => void;
+  /** Express's reader — absent on minimal test doubles, hence optional. */
+  getHeader?: (key: string) => string | number | string[] | undefined;
   status: (code: number) => unknown;
   /** True once the response head has been flushed — always true mid-stream on `@Sse()` routes. */
   headersSent?: boolean;
@@ -61,6 +63,17 @@ interface ETagRequest {
  * deliberately not `no-store`, which would forbid the client from holding a
  * copy to revalidate. `private` keeps shared caches out of it entirely.
  *
+ * `Cache-Control: no-transform` is appended to EVERY response that carries an
+ * ETag (GET and mutation alike), merged with whatever Cache-Control is already
+ * there. RFC 9110 §8.8.1 REQUIRES an intermediary that transforms the payload
+ * to weaken the validator it forwards, and the deployed stack does exactly that
+ * — Cloudflare/Traefik gzip the JSON and the browser receives `W/"7"` where an
+ * uncompressed fetch of the same row gets `"7"`. A weak validator is useless as
+ * a precondition here: `@ExpectedVersion()` rejects `If-Match: W/"7"` with 400.
+ * §5.2.6 `no-transform` forbids the transformation, so the strong validator
+ * survives the hop intact. (The admin console additionally unwraps a `W/` it
+ * still receives, for proxies that ignore the directive.)
+ *
  * STREAMING SAFETY: an interceptor's `map` runs once per EMISSION, and an
  * `@Sse()` route emits many times over one already-flushed response. Any
  * `setHeader` after that flush throws `ERR_HTTP_HEADERS_SENT` and turns the
@@ -95,8 +108,10 @@ export class ETagInterceptor implements NestInterceptor {
     // authenticated one leaves `req.user` unset, skips this branch, and
     // survived — which is why the trajectory stream passed while the loop
     // stream (Bearer) never delivered an event or a heartbeat.
+    let eagerCacheControl: string | undefined;
     if (isGet && !res.headersSent && Boolean(req.user ?? req.apiKey ?? req.serviceAccount)) {
-      res.setHeader('Cache-Control', 'private, no-cache');
+      eagerCacheControl = 'private, no-cache';
+      res.setHeader('Cache-Control', eagerCacheControl);
     }
 
     return next.handle().pipe(
@@ -110,6 +125,7 @@ export class ETagInterceptor implements NestInterceptor {
 
         const etag = `"${version}"`;
         res.setHeader('ETag', etag);
+        this.forbidTransformation(res, eagerCacheControl);
 
         // Conditional GET is strictly opt-in from the client side: a client
         // that never sends `If-None-Match` sees no change in behaviour.
@@ -146,6 +162,28 @@ export class ETagInterceptor implements NestInterceptor {
     if (typeof header !== 'string' || header.length === 0) return false;
     const opaque = this.stripWeak(etag);
     return header.split(',').some((candidate) => this.stripWeak(candidate.trim()) === opaque);
+  }
+
+  /**
+   * Appends `no-transform` to Cache-Control so an intermediary may not rewrite
+   * the body — which is what obliges it to weaken this ETag (RFC 9110 §8.8.1),
+   * and what cost the deployed console its If-Match preconditions.
+   *
+   * Merge, never clobber: `no-store` / `private` set by a route or another
+   * layer must survive. `eager` is the value this interceptor set itself before
+   * subscribing, used when the response surface has no `getHeader` (test
+   * doubles, non-Express adapters).
+   */
+  private forbidTransformation(res: ETagResponse, eager: string | undefined): void {
+    const current = res.getHeader?.('Cache-Control') ?? eager;
+    const raw = Array.isArray(current) ? current.join(', ') : current == null ? '' : String(current);
+    const directives = raw
+      .split(',')
+      .map((directive) => directive.trim())
+      .filter(Boolean);
+    if (directives.some((directive) => directive.toLowerCase() === 'no-transform')) return;
+    directives.push('no-transform');
+    res.setHeader('Cache-Control', directives.join(', '));
   }
 
   private stripWeak(validator: string): string {
