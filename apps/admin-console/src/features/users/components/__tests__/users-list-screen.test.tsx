@@ -9,7 +9,7 @@
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { User, UserRoleAssignment } from '../../api/types';
 import { UsersListScreen } from '../users-list-screen';
@@ -114,6 +114,14 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
     if (custom) return custom;
     const settings = settingsResponse(url, init);
     if (settings) return settings;
+    // Role + department catalogs behind the create dialog's mandatory
+    // membership pickers (TASK-983 R6).
+    if (method === 'GET' && url.startsWith('/api/hope/admin/rbac/roles')) {
+      return Response.json({ data: [{ id: 'role-clinician', name: 'Clinician' }] });
+    }
+    if (method === 'GET' && url.startsWith('/api/hope/admin/departments')) {
+      return Response.json([{ id: 'dept-gen', code: 'GEN', name: 'General Medicine' }]);
+    }
     // Tenant catalog behind the Tenant column/filter.
     if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
       return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 500, page: 0 });
@@ -145,10 +153,23 @@ function queryOf(url: string): URLSearchParams {
   return new URLSearchParams(url.split('?')[1] ?? '');
 }
 
+/** Radix Select: open the trigger and click an option by its label. */
+async function pickOption(trigger: HTMLElement, optionName: string) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(await screen.findByRole('option', { name: optionName }));
+}
+
 function openRowMenu(username: string) {
   const trigger = screen.getByRole('button', { name: new RegExp(`open actions for ${username}`, 'i') });
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
 }
+
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -180,7 +201,7 @@ describe('UsersListScreen', () => {
   });
 
   it('shows the no-users empty state with a create CTA when the list is empty', async () => {
-    stubListFetch(() => listResponse([]));
+    stubListFetch((url) => (url.startsWith('/api/hope/admin/users?') ? listResponse([]) : undefined));
     renderWithProviders(<UsersListScreen />);
 
     expect(await screen.findByText(/no users yet/i)).toBeDefined();
@@ -188,7 +209,7 @@ describe('UsersListScreen', () => {
   });
 
   it('offers Clear filters instead of the create CTA when filters match nothing', async () => {
-    stubListFetch(() => listResponse([]));
+    stubListFetch((url) => (url.startsWith('/api/hope/admin/users?') ? listResponse([]) : undefined));
     renderWithProviders(<UsersListScreen />, { searchParams: '?search=zzz' });
 
     expect(await screen.findByText(/no users match/i)).toBeDefined();
@@ -421,11 +442,15 @@ describe('UsersListScreen', () => {
 
     fireEvent.change(within(dialog).getByLabelText(/^username/i), { target: { value: 'anna' } });
     fireEvent.change(within(dialog).getByLabelText(/^password/i), { target: { value: 'pw-123456' } });
+    // TASK-983 R6: role + department are mandatory — the gateway refuses a
+    // membership-less create, so the dialog collects both before it can submit.
+    await pickOption(within(dialog).getByLabelText(/^role/i), 'Clinician');
+    await pickOption(within(dialog).getByLabelText(/^department/i), 'General Medicine (GEN)');
     fireEvent.click(within(dialog).getByRole('button', { name: /create user/i }));
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users');
-      expect(post?.body).toEqual({ username: 'anna', password: 'pw-123456' });
+      expect(post?.body).toEqual({ username: 'anna', password: 'pw-123456', roleId: 'role-clinician', departmentId: 'dept-gen' });
     });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/users/u-new'));
   });
