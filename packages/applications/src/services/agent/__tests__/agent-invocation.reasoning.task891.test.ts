@@ -49,7 +49,6 @@ function resolved(parameters: Record<string, unknown>): ResolvedAgent {
       inputSchema: { type: 'object' },
       outputSchema: { type: 'string' },
       tools: [],
-      protocols: ['http'],
     },
     models: [],
     guardrail: { enabled: true },

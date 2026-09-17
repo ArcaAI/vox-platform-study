@@ -60,7 +60,6 @@ function resolved(over: Partial<Record<string, unknown>> = {}): ResolvedAgent {
     inputSchema: { type: 'object' },
     outputSchema: { type: 'string' },
     tools: [],
-    protocols: ['http'],
     ...over,
   };
   return {

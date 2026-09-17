@@ -63,7 +63,6 @@ const agent = (over: Partial<ResolvedAgent> & { parameters?: Record<string, unkn
       inputSchema: { type: 'object' },
       outputSchema: { type: 'object' },
       tools: [],
-      protocols: ['http'],
     },
     models,
     ...rest,

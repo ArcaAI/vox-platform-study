@@ -74,7 +74,6 @@ function nerAgent(
       inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
       outputSchema: { type: 'object', properties: { entities: { type: 'array' } }, required: ['entities'] },
       tools: [],
-      protocols: ['http'],
     },
     models: over.models ?? [nerPrimary()],
     guardrail: { enabled: true },
@@ -102,7 +101,6 @@ function textAgent(over: { parameters?: Record<string, unknown>; outputSchema?: 
       outputSchema:
         over.outputSchema ?? ({ type: 'object', properties: { case_note: { type: 'string' } }, required: ['case_note'] } as unknown),
       tools: [],
-      protocols: ['http'],
     },
     models: [],
     guardrail: { enabled: true },

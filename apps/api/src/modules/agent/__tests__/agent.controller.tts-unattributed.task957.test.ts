@@ -39,7 +39,6 @@ const TTS_AGENT = {
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http'],
   },
   models: [],
   guardrail: { enabled: true },

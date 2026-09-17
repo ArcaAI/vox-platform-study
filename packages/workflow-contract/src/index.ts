@@ -258,13 +258,12 @@ export { validate, ALL_DRAFT_RULES } from './validate';
 export type { ValidateOptions } from './validate';
 
 // TASK-863 — the Agent entity's task-typed configuration contract (parameters / instruction /
-// default I/O per task, protocols, and the checks a JSON Schema cannot express).
+// default I/O per task, and the checks a JSON Schema cannot express).
 export {
   AGENT_FALLBACK_DEFAULTS,
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
-  AGENT_PROTOCOLS,
   AGENT_TAG_MAX_COUNT,
   AGENT_TAG_PATTERN,
   AGENT_TASKS,
@@ -290,7 +289,6 @@ export type {
   AgentConfigView,
   AgentIoDefaults,
   AgentModelView,
-  AgentProtocol,
   AgentProviderCapabilities,
   AgentTagPair,
   AgentTask,

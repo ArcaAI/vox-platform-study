@@ -805,7 +805,7 @@ export const AGENT_ENDPOINTS = {
    * when `NAMED_ENTITY_RECOGNITION` was added in TASK-931.
    */
   LIST: (task?: AgentTask) => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
-  /** One published agent: summary + input/output schema + protocols. */
+  /** One published agent: summary + input/output schema. */
   GET: (slug: string) => `/agents/${encodeURIComponent(slug)}`,
   /**
    * TASK-890 (OD-F) — invoke a `TEXT_GENERATION` agent. `?mode=blocking` answers JSON;

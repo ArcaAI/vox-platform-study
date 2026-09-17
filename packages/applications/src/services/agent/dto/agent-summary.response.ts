@@ -12,7 +12,6 @@ export class AgentSummaryResponse {
   isTenantDefault!: boolean;
   @ApiProperty({ type: 'object', additionalProperties: true }) inputSchema!: Record<string, unknown>;
   @ApiProperty({ type: 'object', additionalProperties: true }) outputSchema!: Record<string, unknown>;
-  @ApiProperty({ type: [String], enum: ['http', 'http-sse', 'socket'] }) protocols!: string[];
 }
 
 export class AgentSummaryListResponse {

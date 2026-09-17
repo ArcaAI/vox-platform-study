@@ -183,7 +183,6 @@ const compiled = {
   inputSchema: { type: 'object' },
   outputSchema: { type: 'object' },
   tools: [],
-  protocols: ['http'],
 };
 
 function makeResolver(): AgentResolverService {

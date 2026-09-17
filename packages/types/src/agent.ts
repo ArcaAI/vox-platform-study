@@ -182,7 +182,12 @@ export interface AgentCompiledConfig {
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;
   tools: Array<{ mcpServerId: string; toolName: string }>;
-  protocols: Array<'http' | 'http-sse' | 'socket'>;
+  // TASK-983 OD-6 — `protocols` (a static per-task constant, `AGENT_PROTOCOLS[task]`) was REMOVED
+  // here: no reader ever enforced it — the gateway's one real mode refusal (`?mode=stream` on a
+  // NAMED_ENTITY_RECOGNITION agent) is hand-written in `AgentController.invokeNer`, not driven by
+  // this field. Rows published before this ticket still carry `compiledConfig.protocols` in the
+  // database; nothing here reads it, so the extra key is harmless.
+  // See `docs/operations/deprecation-register.md` §SDK.
   /**
    * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail opt-out, stamped at publish from
    * `parameters.guards.enabled ?? true`.

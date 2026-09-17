@@ -114,7 +114,6 @@ const agentRepository = {
         inputSchema: { type: 'object' },
         outputSchema: { type: 'object' },
         tools: [],
-        protocols: ['http'],
       },
     };
   }),
