@@ -265,6 +265,90 @@ describe('TenantStorageScreen', () => {
     expect(await screen.findByText('Select a working tenant')).toBeDefined();
   });
 
+  describe('platform storage default — public download endpoint (TASK-984)', () => {
+    const PLATFORM: TenantStorageConfig = {
+      ...CONFIGS[0],
+      id: 'sys-1',
+      tenantId: '00000000-0000-0000-0000-000000000000',
+      endpoint: 'https://hope-minio:9000',
+      publicEndpoint: null,
+      credentialsRef: 'platform/storage/minio',
+      version: 4,
+    };
+
+    function unscoped(custom: FetchHandler = () => undefined) {
+      return stubStorage((call) => {
+        const path = new URL(call.url, 'http://test.local').pathname;
+        if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+        return custom(call);
+      });
+    }
+
+    it('lets an unscoped platform admin set the public download endpoint on the SYSTEM row under If-Match', async () => {
+      const calls = unscoped((call) => {
+        if (!call.url.endsWith('/admin/tenants/storage/config/platform')) return undefined;
+        if (call.method === 'PUT') return Response.json({ ...PLATFORM, publicEndpoint: 'https://admin.example.com', version: 5 });
+        return Response.json(PLATFORM);
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      expect(await screen.findByRole('heading', { name: 'Platform storage default' })).toBeDefined();
+      expect(await screen.findByText('https://hope-minio:9000')).toBeDefined();
+
+      fireEvent.change(screen.getByLabelText('Public download endpoint'), { target: { value: ' https://admin.example.com/ ' } });
+      fireEvent.click(screen.getByRole('button', { name: /save public endpoint/i }));
+
+      await waitFor(() => {
+        const put = calls.find((call) => call.method === 'PUT' && call.url.endsWith('/admin/tenants/storage/config/platform'));
+        expect(put?.body).toEqual({ provider: 'MINIO', publicEndpoint: 'https://admin.example.com', expectedVersion: 4 });
+      });
+    });
+
+    it('clears the public download endpoint with an empty value', async () => {
+      const calls = unscoped((call) => {
+        if (!call.url.endsWith('/admin/tenants/storage/config/platform')) return undefined;
+        return Response.json({ ...PLATFORM, publicEndpoint: call.method === 'PUT' ? null : 'https://admin.example.com' });
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      const input = await screen.findByLabelText('Public download endpoint');
+      await waitFor(() => expect((input as HTMLInputElement).value).toBe('https://admin.example.com'));
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /save public endpoint/i }));
+
+      await waitFor(() => {
+        const put = calls.find((call) => call.method === 'PUT');
+        expect(put?.body).toEqual({ provider: 'MINIO', publicEndpoint: null, expectedVersion: 4 });
+      });
+    });
+
+    it('does not offer to create a SYSTEM row that has not been seeded', async () => {
+      unscoped((call) => (call.url.endsWith('/admin/tenants/storage/config/platform') ? Response.json({ ...PLATFORM, id: '', version: 0 }) : undefined));
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      expect(await screen.findByText(/has not been seeded/i)).toBeDefined();
+      expect(screen.queryByRole('button', { name: /save public endpoint/i })).toBeNull();
+    });
+  });
+
+  it('sends a tenant config public download endpoint from the add-config dialog (TASK-984)', async () => {
+    const calls = stubStorage((call) => {
+      if (call.method === 'PUT' && call.url.endsWith('/admin/tenants/storage/config')) return Response.json(CONFIGS[0]);
+      return undefined;
+    });
+    renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /add config/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Public download endpoint'), { target: { value: 'https://files.tenant.example' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save config/i }));
+
+    await waitFor(() => {
+      const put = calls.find((call) => call.method === 'PUT' && call.url.endsWith('/admin/tenants/storage/config'));
+      expect(put?.body).toEqual(expect.objectContaining({ publicEndpoint: 'https://files.tenant.example' }));
+    });
+  });
+
   it('renders the data tabs for a tenant-scoped (non-elevated) session without a working tenant', async () => {
     stubStorage((call) => {
       const path = new URL(call.url, 'http://test.local').pathname;

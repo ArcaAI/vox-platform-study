@@ -7,5 +7,6 @@ export const storageKeys = {
   objects: (bucketId: string, prefix?: string) => [...storageKeys.root, 'objects', bucketId, prefix ?? ''] as const,
   configs: (includeDisabled?: boolean) => [...storageKeys.root, 'configs', includeDisabled ?? false] as const,
   effectiveConfig: (bucketId?: string) => [...storageKeys.root, 'effective-config', bucketId ?? null] as const,
+  platformConfig: () => [...storageKeys.root, 'platform-config'] as const,
   accessKeys: () => [...storageKeys.root, 'access-keys'] as const,
 };

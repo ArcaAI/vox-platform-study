@@ -97,6 +97,29 @@ export function deleteStorageConfig(id: string): Promise<TenantStorageConfig> {
   return deleteJson(`${CONFIG}/${encodeURIComponent(id)}`);
 }
 
+/**
+ * The PLATFORM storage default — the SYSTEM row every tenant falls back to.
+ * Super-admin only; `version: 0` means the row has not been seeded.
+ */
+export function getPlatformStorageConfig(): Promise<TenantStorageConfig> {
+  return getJson(`${CONFIG}/platform`);
+}
+
+/**
+ * Sets (or, with null, clears) the origin presigned download URLs are signed
+ * for (TASK-984). Only `provider` is resent — the route leaves omitted fields
+ * untouched — and the OCC token is the row's own `version`, sent both as
+ * If-Match and as the DTO's required `expectedVersion`.
+ */
+export function setPlatformPublicEndpoint(platform: TenantStorageConfig, publicEndpoint: string | null): Promise<TenantStorageConfig> {
+  const version = platform.version ?? 0;
+  return request<TenantStorageConfig>(`${CONFIG}/platform`, {
+    method: 'PUT',
+    body: { provider: platform.provider, publicEndpoint, expectedVersion: version },
+    etag: `"${version}"`,
+  }).then((response) => response.data);
+}
+
 export function listAccessKeys(): Promise<StorageAccessKey[]> {
   return getJson(KEYS);
 }

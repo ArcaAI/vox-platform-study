@@ -41,6 +41,7 @@ interface ConfigFormValues {
   topology: StorageTopologyType;
   bucketId: string;
   endpoint: string;
+  publicEndpoint: string;
   region: string;
   forcePathStyle: boolean;
   accountName: string;
@@ -55,6 +56,7 @@ function toFormValues(config: TenantStorageConfig | null): ConfigFormValues {
     topology: config?.topology ?? 'SHARED',
     bucketId: config?.bucketId ?? TENANT_WIDE,
     endpoint: config?.endpoint ?? '',
+    publicEndpoint: config?.publicEndpoint ?? '',
     region: config?.region ?? '',
     forcePathStyle: config?.forcePathStyle ?? false,
     accountName: config?.accountName ?? '',
@@ -80,6 +82,8 @@ function toRequest(values: ConfigFormValues): UpsertStorageConfigRequest {
         }
       : {
           ...(values.endpoint.trim() ? { endpoint: values.endpoint.trim() } : {}),
+          // Always sent so clearing the field clears the row (the upsert ignores an omitted field).
+          publicEndpoint: values.publicEndpoint.trim().replace(/\/+$/, '') || null,
           ...(values.region.trim() ? { region: values.region.trim() } : {}),
           forcePathStyle: values.forcePathStyle,
         }),
@@ -243,6 +247,20 @@ function ConfigFormDialog({
                     className="font-mono"
                     placeholder="us-east-1"
                   />
+                </div>
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label htmlFor="config-public-endpoint">Public download endpoint</Label>
+                  <Input
+                    id="config-public-endpoint"
+                    value={values.publicEndpoint}
+                    onChange={(event) => set('publicEndpoint', event.target.value)}
+                    className="font-mono"
+                    placeholder="https://files.example.com"
+                    aria-describedby="config-public-endpoint-help"
+                  />
+                  <p id="config-public-endpoint-help" className="text-muted-foreground text-xs">
+                    Origin browsers download from; links are signed for it. Leave empty when the endpoint itself is reachable.
+                  </p>
                 </div>
                 <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 sm:col-span-2">
                   <Label htmlFor="config-force-path-style" className="font-normal">

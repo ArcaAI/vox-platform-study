@@ -93,6 +93,8 @@ export interface TenantStorageConfig {
   provider: StorageProviderType;
   topology: StorageTopologyType;
   endpoint?: string | null;
+  /** Origin presigned download URLs are signed for; null = signed with `endpoint` (TASK-984). */
+  publicEndpoint?: string | null;
   region?: string | null;
   forcePathStyle?: boolean | null;
   accountName?: string | null;
@@ -100,6 +102,8 @@ export interface TenantStorageConfig {
   containerPrefix?: string | null;
   credentialsRef?: string | null;
   resourceStatus?: ResourceStatus;
+  /** `_version`; `0` on the not-yet-created platform-default placeholder. */
+  version?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +113,7 @@ export interface UpsertStorageConfigRequest {
   provider: StorageProviderType;
   topology?: StorageTopologyType;
   endpoint?: string | null;
+  publicEndpoint?: string | null;
   region?: string | null;
   forcePathStyle?: boolean | null;
   accountName?: string | null;
