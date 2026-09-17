@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
 import {
+  AgentAssignmentRepository,
   AgentEntity,
   AgentFactory,
   AgentModelFallbackEntity,
@@ -16,6 +17,7 @@ import {
   CoreDatabaseService,
   McpServerRepository,
   ModelTaskType,
+  PipelinePolicyScope,
   PromptTemplateEntity,
   PromptTemplateRepository,
   PromptVersionRepository,
@@ -62,7 +64,7 @@ import {
   type AgentModelView,
   type AgentProviderCapabilities,
 } from '@arcaai/workflow-contract';
-import { BaseService } from '../../common';
+import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
@@ -119,6 +121,7 @@ import {
 } from './agent-bundle';
 import {
   AgentBundleResponse,
+  AgentLineageAssignmentResponse,
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
@@ -128,13 +131,20 @@ import {
   CreateAgentRequest,
   FinalizeAgentTestRequest,
   ImportAgentRequest,
+  ListAgentLineagesQuery,
   NewAgentVersionRequest,
+  PaginatedAgentLineageResponse,
   PublishAgentRequest,
   SyncAgentRequest,
   TestAgentRequest,
   UpdateAgentRequest,
 } from './dto';
 import { IAgentService } from './IAgentService';
+
+const AGENT_FILTER_MODEL = 'Agent';
+
+/** TASK-965 — what a lineage nothing assigns reports; the console renders it as the "Unassigned" warning. */
+const NO_ASSIGNMENT: AgentLineageAssignmentResponse = { tenantDefault: false, departmentCount: 0, selectorCount: 0 };
 
 const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
   WorkflowDefinitionStatus.PUBLISHED,
@@ -253,6 +263,12 @@ export class AgentService extends BaseService implements IAgentService {
     @Optional() @Inject(IConsultationContextSchemaService) private readonly contextSchemas?: IConsultationContextSchemaServicePort,
     @Optional() @Inject(IInferenceReadinessService) private readonly readiness?: IInferenceReadinessServicePort,
     @Optional() private readonly draftTest?: AgentDraftTestService,
+    // TASK-965 (OD-965-3) — the lineage list's "Serves" column reads the tenant's assignment
+    // ROWS directly rather than through `IAgentAssignmentService.list`, which would emit a second
+    // `ResourceViewed` for every grid load. TRAILING and @Optional() for the same reason as every
+    // dependency above; absent ⇒ the summary reports no assignment, which the console renders as
+    // the same "Unassigned" warning an unassigned slug gets.
+    @Optional() private readonly assignmentRepository?: AgentAssignmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -274,6 +290,46 @@ export class AgentService extends BaseService implements IAgentService {
     const rows = await this.agentRepository.findAllForTenant(tenantId, task);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { task: task ?? null, count: rows.length } });
     return this.respondMany(rows);
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the caller tenant's agents ONE ROW PER SLUG, paginated BY SLUG.
+   *
+   * `list()` above is one row per VERSION. That is the right shape for a Versions tab and the
+   * wrong shape for a register: an agent with four versions rendered as four near-identical grid
+   * rows, every count counted versions, and client-side grouping is wrong the moment a lineage
+   * straddles a page boundary (which `list()` cannot even hit — it is unpaginated). This is the
+   * register shape, and `count` counts LINEAGES.
+   *
+   * The assignment summary is joined here because "what serves this task" lives in
+   * `AgentAssignment`, never on an agent row — and it is per SLUG, so it is reported on the
+   * lineage rather than on a version (AG-15: a DRAFT v4 was badged as the tenant default).
+   */
+  async listLineages(query: ListAgentLineagesQuery): Promise<PaginatedAgentLineageResponse> {
+    const tenantId = this.requireTenant();
+    const props = withFormattedPaginatedProps(query, AGENT_FILTER_MODEL);
+    const { data, count } = await this.agentRepository.findLineagesForTenant(tenantId, {
+      page: props.page,
+      limit: props.limit,
+      task: query.task,
+      filters: props.filters,
+      search: props.search,
+      searchFields: props.searchFields,
+    });
+
+    const assignments = await this.assignmentSummaries(tenantId);
+    const slugs = await this.modelSlugMap(data.map((lineage) => lineage.task));
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { action: 'listLineages', task: query.task ?? null, count: data.length },
+    });
+
+    return new PaginatedAgentLineageResponse({
+      count,
+      limit: props.limit ?? DEFAULT_PAGE_SIZE,
+      page: props.page ?? DEFAULT_PAGE,
+      data: data.map((lineage) => AgentDtoMapper.toLineageResponse(lineage, assignments.get(lineage.slug) ?? NO_ASSIGNMENT, slugs)),
+    });
   }
 
   async getById(id: string): Promise<AgentResponse> {
@@ -551,6 +607,44 @@ export class AgentService extends BaseService implements IAgentService {
       },
     });
     return this.respond(saved);
+  }
+
+  /**
+   * TASK-965 (OD-965-1) — ROLLBACK: elect an already-PUBLISHED version ACTIVE for its slug.
+   *
+   * Before this, `publish()` was the ONLY writer of `isActive = true` and `assertMutable`
+   * refuses a PUBLISHED row, so a published-but-inactive version could never serve again: the
+   * only way "back" to v2 was to branch it and publish v4, which adds another row to the very
+   * list the owner called chaotic. Activation is a POINTER move, not an edit — the published
+   * bytes are untouched, so the immutability rule is not bent to allow it.
+   *
+   * PUBLISHED only. A DRAFT/VALIDATED row has no compiled config to serve, and a DEPRECATED one
+   * was explicitly retired — reviving it silently would make "Deprecated" mean nothing. Both are
+   * a 400 naming the status.
+   */
+  async activate(id: string): Promise<AgentResponse> {
+    const entity = await this.loadOwned(id);
+    if (entity.status !== WorkflowDefinitionStatus.PUBLISHED) {
+      throw new BadRequestException(
+        `Only a PUBLISHED agent version can be activated (this one is ${entity.status}). Publish the draft, or branch a new version from the deprecated one.`,
+      );
+    }
+
+    const demoted = await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id);
+    entity.isActive = true;
+    entity.updatedBy = this.requestUserId ?? undefined;
+    const updated = await this.agentRepository.update(entity.id, entity);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: {
+        action: 'activate',
+        slug: updated.slug,
+        versionNumber: updated.versionNumber,
+        demotedVersionNumber: demoted?.versionNumber ?? null,
+      },
+    });
+    return this.respond(updated);
   }
 
   async deprecate(id: string): Promise<AgentResponse> {
@@ -2587,12 +2681,52 @@ export class AgentService extends BaseService implements IAgentService {
     }
   }
 
-  private async demoteExistingActive(tenantId: string, slug: string, exceptId: string): Promise<void> {
+  /** Returns the version that STOPPED serving, or `null` when nothing was demoted — `activate` names it in its event. */
+  private async demoteExistingActive(tenantId: string, slug: string, exceptId: string): Promise<AgentEntity | null> {
     const current = await this.agentRepository.findOwnActiveBySlug(tenantId, slug);
-    if (!current || current.id === exceptId) return;
+    if (!current || current.id === exceptId) return null;
     current.isActive = false;
     current.updatedBy = this.requestUserId ?? undefined;
     await this.agentRepository.update(current.id, current);
+    return current;
+  }
+
+  /**
+   * TASK-965 — what each of the tenant's slugs SERVES, in one read.
+   *
+   * `tenantDefault` is the UNQUALIFIED tenant-tier row, because that is the one the cascade
+   * resolves for a request that names no department and no tags — a tag-qualified tenant row is
+   * an opinion about SOME requests and is counted as a selector instead. Departments are counted
+   * by `scopeId`, so two tiers of the same department never count twice. SYSTEM rows are the
+   * reference set, not a tier (OD-M), so they are filtered out here exactly as the cascade
+   * ignores them.
+   */
+  private async assignmentSummaries(tenantId: string): Promise<Map<string, AgentLineageAssignmentResponse>> {
+    const summaries = new Map<string, AgentLineageAssignmentResponse>();
+    if (!this.assignmentRepository) return summaries;
+
+    const departmentsBySlug = new Map<string, Set<string>>();
+    const rows = await this.assignmentRepository.findAllVisible(tenantId);
+    for (const row of rows) {
+      if (row.tenantId !== tenantId) continue;
+      const summary = summaries.get(row.agentSlug) ?? { ...NO_ASSIGNMENT };
+      if (row.selectorKey) {
+        summary.selectorCount += 1;
+      } else if (row.scope === PipelinePolicyScope.TENANT) {
+        summary.tenantDefault = true;
+      }
+      if (row.scope === PipelinePolicyScope.DEPARTMENT && row.scopeId) {
+        const departments = departmentsBySlug.get(row.agentSlug) ?? new Set<string>();
+        departments.add(row.scopeId);
+        departmentsBySlug.set(row.agentSlug, departments);
+      }
+      summaries.set(row.agentSlug, summary);
+    }
+    for (const [slug, departments] of departmentsBySlug) {
+      const summary = summaries.get(slug);
+      if (summary) summary.departmentCount = departments.size;
+    }
+    return summaries;
   }
 
   private async tenantDefaultSlugs(tenantId: string, tasks: readonly AgentTask[]): Promise<Map<AgentTask, string | null>> {

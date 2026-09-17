@@ -10,7 +10,9 @@ import {
   CreateAgentRequest,
   FinalizeAgentTestRequest,
   ImportAgentRequest,
+  ListAgentLineagesQuery,
   NewAgentVersionRequest,
+  PaginatedAgentLineageResponse,
   PublishAgentRequest,
   SyncAgentRequest,
   TestAgentRequest,
@@ -27,6 +29,12 @@ export const IAgentService = Symbol('IAgentService');
 export interface IAgentService {
   /** Admin list: the caller tenant's OWN rows (every version). SYSTEM is never widened into it (OD-M). */
   list(task?: AgentTask): Promise<AgentResponse[]>;
+  /**
+   * TASK-965 (OD-965-3) — the admin REGISTER: one row per SLUG, paginated by slug, carrying the
+   * active pointer, the open draft, the version counts and what the slug serves. `list` above
+   * stays the per-VERSION read the Versions tab needs.
+   */
+  listLineages(query: ListAgentLineagesQuery): Promise<PaginatedAgentLineageResponse>;
   /** A row visible to the tenant (own or SYSTEM); anything else is 404. */
   getById(id: string): Promise<AgentResponse>;
   listVersions(id: string): Promise<AgentResponse[]>;
@@ -38,6 +46,11 @@ export interface IAgentService {
   /** Fails closed (400 with findings, `code: MODEL_UNAVAILABLE` etc.) on any blocking finding. */
   publish(id: string, dto: PublishAgentRequest): Promise<AgentResponse>;
   newVersion(sourceId: string, dto: NewAgentVersionRequest): Promise<AgentResponse>;
+  /**
+   * TASK-965 (OD-965-1) — rollback: elect an already-PUBLISHED version ACTIVE for its slug and
+   * demote the sibling. 400 for any other status; the published bytes are never touched.
+   */
+  activate(id: string): Promise<AgentResponse>;
   deprecate(id: string): Promise<AgentResponse>;
 
   /**
