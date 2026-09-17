@@ -272,14 +272,103 @@ describe('ETagInterceptor', () => {
       expect(res.setHeader).not.toHaveBeenCalledWith('Cache-Control', expect.anything());
     });
 
-    it('does NOT set Cache-Control on a mutation', async () => {
+    it('does NOT set Cache-Control on a mutation without an ETag', async () => {
       const res = makeRes();
-      const next: CallHandler = { handle: () => of({ id: 'x', version: 2 }) };
+      const next: CallHandler = { handle: () => of({ id: 'x' }) };
       await lastValueFrom(
         new ETagInterceptor().intercept(makeContext(res, { method: 'PATCH', headers: {}, user: { id: 'u1' } }), next),
       );
       expect(res.setHeader).not.toHaveBeenCalledWith('Cache-Control', expect.anything());
+      expect(res.setHeader).not.toHaveBeenCalledWith('ETag', expect.anything());
+    });
+  });
+
+  // ─── TASK-983: no-transform pins the validator to the STRONG form ───
+  //
+  // RFC 9110 §8.8.1 obliges an intermediary that transforms the payload (the
+  // deployed stack gzips through Cloudflare + Traefik) to WEAKEN the ETag it
+  // forwards. `@ExpectedVersion()` rejects `If-Match: W/"7"` with 400, so a
+  // weakened validator costs the client its precondition — which is what broke
+  // prompt-template approval on the cluster. §5.2.6: `no-transform` forbids the
+  // transformation, so the validator survives the hop.
+  describe('Cache-Control: no-transform (validator integrity)', () => {
+    const getHeaderRes = () => {
+      const store = new Map<string, string>();
+      const res = {
+        setHeader: vi.fn((k: string, v: string) => store.set(k.toLowerCase(), v)),
+        getHeader: vi.fn((k: string) => store.get(k.toLowerCase())),
+        status: vi.fn(),
+        headersSent: false,
+      };
+      res.status.mockReturnValue(res);
+      return res;
+    };
+
+    it('appends no-transform to the eager `private, no-cache` on an authenticated versioned GET', async () => {
+      const res = getHeaderRes();
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };
+      await lastValueFrom(new ETagInterceptor().intercept(makeContext(res as never, authedGet()), next));
+      expect(res.setHeader).toHaveBeenCalledWith('ETag', '"7"');
+      expect(res.getHeader('Cache-Control')).toBe('private, no-cache, no-transform');
+    });
+
+    it('sets no-transform on a versioned MUTATION response, which carries no Cache-Control of its own', async () => {
+      // `postWithEtag` surfaces (publish/validate) re-read their ETag from the
+      // mutation response, so that hop needs protecting too.
+      const res = getHeaderRes();
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 2 }) };
+      await lastValueFrom(
+        new ETagInterceptor().intercept(makeContext(res as never, { method: 'PATCH', headers: {}, user: { id: 'u1' } }), next),
+      );
       expect(res.setHeader).toHaveBeenCalledWith('ETag', '"2"');
+      expect(res.getHeader('Cache-Control')).toBe('no-transform');
+    });
+
+    it('MERGES with a Cache-Control another layer already set, keeping no-store/private', async () => {
+      const res = getHeaderRes();
+      res.setHeader('Cache-Control', 'no-store, private');
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 3 }) };
+      await lastValueFrom(
+        new ETagInterceptor().intercept(makeContext(res as never, { method: 'PATCH', headers: {}, user: { id: 'u1' } }), next),
+      );
+      expect(res.getHeader('Cache-Control')).toBe('no-store, private, no-transform');
+    });
+
+    it('does not duplicate no-transform when it is already present', async () => {
+      const res = getHeaderRes();
+      res.setHeader('Cache-Control', 'no-store, No-Transform');
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 3 }) };
+      await lastValueFrom(
+        new ETagInterceptor().intercept(makeContext(res as never, { method: 'PATCH', headers: {}, user: { id: 'u1' } }), next),
+      );
+      expect(res.getHeader('Cache-Control')).toBe('no-store, No-Transform');
+    });
+
+    it('does NOT touch Cache-Control on a response that carries no ETag', async () => {
+      const res = getHeaderRes();
+      const next: CallHandler = { handle: () => of({ id: 'x' }) };
+      await lastValueFrom(
+        new ETagInterceptor().intercept(makeContext(res as never, { method: 'PATCH', headers: {}, user: { id: 'u1' } }), next),
+      );
+      expect(res.setHeader).not.toHaveBeenCalled();
+    });
+
+    it('works on a bare response object with no getHeader (never throws, still labels)', async () => {
+      // Non-Express test doubles and any response surface lacking `getHeader`:
+      // the interceptor falls back to the value it set itself this request.
+      const res = makeRes();
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };
+      await lastValueFrom(new ETagInterceptor().intercept(makeContext(res, authedGet()), next));
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+      expect(res.setHeader).toHaveBeenLastCalledWith('Cache-Control', 'private, no-cache, no-transform');
+    });
+
+    it('never touches headers mid-stream (@Sse), even with a versioned emission', async () => {
+      const res = getHeaderRes();
+      res.headersSent = true;
+      const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };
+      await lastValueFrom(new ETagInterceptor().intercept(makeContext(res as never, authedGet()), next));
+      expect(res.setHeader).not.toHaveBeenCalled();
     });
   });
 
