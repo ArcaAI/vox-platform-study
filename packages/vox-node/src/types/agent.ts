@@ -24,6 +24,20 @@ export interface AgentSummary {
   inputSchema?: Record<string, unknown>;
   /** JSON Schema of the invocation output. */
   outputSchema?: Record<string, unknown>;
+  /**
+   * TASK-983 R9 — the placeholder PATHS this agent's instruction reads that carry no
+   * `default("…")` and that the agent does not bind itself: sorted, de-duplicated, published so
+   * a caller can assemble a correct body from the contract instead of discovering it one 400 at
+   * a time.
+   *
+   * Send each path under the request key its root names — `trigger.*` / `context.*` → `context`,
+   * `input.*` → the invocation body, a bare name → `variables`. Omitting one is a 400
+   * `PROMPT_VARIABLES_MISSING`, whose `missingVariables` names ALL of them at once.
+   *
+   * Optional: a gateway older than TASK-983 sends no such field, and absence means "this gateway
+   * does not publish the list", never "nothing is required".
+   */
+  requiredVariables?: string[];
   // TASK-983 OD-6 — `protocols` (a static per-task constant) is REMOVED: the gateway never
   // enforced it. See `docs/operations/deprecation-register.md` §SDK.
 }
@@ -59,12 +73,23 @@ export interface AgentInvocationEventPayload {
 export type AgentInvocationEvent = WorkflowRunEvent<AgentInvocationEventPayload>;
 
 /**
- * What `POST /api/v1/agents/{slug}/transcriptions` accepts: an audio file
- * (multipart) OR the id of media already uploaded through the media routes.
+ * What `transcribe()` accepts — and, since TASK-983, WHICH ROUTE each shape takes:
+ *
+ * - `{ file }` → `POST /api/v1/audio/transcription-jobs/transcribe`, multipart, with the agent
+ *   named in the form. This is the gateway's only file entry point (the browser SDK has always
+ *   used it); the agent route below takes JSON only and answers `400 mediaId is required` for a
+ *   multipart body.
+ * - `{ mediaId }` → `POST /api/v1/agents/{slug}/transcriptions`, JSON, for media ALREADY
+ *   uploaded through the media routes.
  */
 export type TranscribeSource =
   | {
-      /** Audio to transcribe. Sent as the multipart `file` part. */
+      /**
+       * Audio to transcribe, sent as the multipart `file` part. Give the Blob its real `type`
+       * (`audio/wav`, `audio/mpeg`, …): the gateway reads the part's content type and refuses
+       * anything outside its allowed set, so an untyped Blob arrives as
+       * `application/octet-stream` and is rejected.
+       */
       file: Blob;
       /** File name for the multipart part (default `audio`). */
       filename?: string;
@@ -79,11 +104,26 @@ export type TranscribeSource =
       file?: never;
     };
 
-/** The `TranscriptionJob` the gateway returns (TASK-861 payload); poll or stream it with `hope.jobs`-style routes on the audio plane. */
+/**
+ * The queued job, as the gateway returns it. Poll or stream it on the audio plane.
+ *
+ * The two routes answer with two overlapping payloads — `id` and `status` are on both; the
+ * multipart route adds `sseUrl`, `audioUri`, `agentSlug` and `agentVersionId`, and the agent
+ * route carries `jobType` — so everything but the common pair is OPTIONAL here, and the index
+ * signature keeps any field a newer gateway adds.
+ */
 export interface TranscriptionJobHandle {
   id: string;
   status: string;
   jobType?: string;
+  /** Path of the job's progress stream, e.g. `/api/v1/audio/transcription-jobs/<id>/stream` (file submissions). */
+  sseUrl?: string;
+  /** Where the uploaded audio was stored (file submissions). */
+  audioUri?: string;
+  /** The ASR agent the job resolved to — the slug sent, or the tenant's assigned one when none was. */
+  agentSlug?: string;
+  /** The agent VERSION the job runs on; what makes the run reproducible. */
+  agentVersionId?: string;
   [extra: string]: unknown;
 }
 
