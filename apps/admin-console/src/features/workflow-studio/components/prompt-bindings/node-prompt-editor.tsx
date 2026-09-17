@@ -44,6 +44,7 @@ import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { usePromptTemplateVersions, useUpdateNodePrompt } from '../../api';
 import type { NodePromptBinding, NodePromptUpdateResult } from '../../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 function latestContent(versions: { versionNumber: number; content: string }[]): string {
   if (versions.length === 0) return '';
@@ -125,7 +126,7 @@ export function NodePromptEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+      <DialogContent className={DIALOG_SIZE_CLASS.lg}>
         <DialogHeader>
           <DialogTitle>Edit prompt for {binding?.nodeId ?? 'node'}</DialogTitle>
           <DialogDescription>

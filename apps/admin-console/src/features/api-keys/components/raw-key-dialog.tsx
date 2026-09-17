@@ -8,6 +8,7 @@ import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { CopyButton } from '@/shared/copy-button';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 export interface RawKeyResult {
   rawKey: string;
@@ -34,7 +35,7 @@ export function RawKeyDialog({ result, onClose }: { result: RawKeyResult | null;
 
   return (
     <Dialog open={result !== null} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>{result?.mode === 'rotated' ? 'API key rotated' : 'API key created'}</DialogTitle>
           <DialogDescription>

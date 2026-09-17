@@ -20,6 +20,7 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldContent, FieldDescription, FieldLabel, Switch } from '@arcaai/ui';
 import { useState } from 'react';
 import { IntegrationPanel } from '@/shared/versioning';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 export interface PublishDialogProps {
   open: boolean;
@@ -47,7 +48,7 @@ export function PublishDialog({ open, onOpenChange, onConfirm, confirming, publi
       // "Large dialog (multi-tab, editor)" shape: a fixed 70vh/70vw flex column whose BODY is the
       // only thing that scrolls. The confirm step below stays a short dialog.
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[70vw]">
+        <DialogContent className={DIALOG_SIZE_CLASS.lg}>
           <DialogHeader className="shrink-0">
             <DialogTitle>Published</DialogTitle>
             <DialogDescription>{activated ? 'This version is live. Here is how your developers reach it.' : 'This version is frozen and can be activated later.'}</DialogDescription>
@@ -67,7 +68,7 @@ export function PublishDialog({ open, onOpenChange, onConfirm, confirming, publi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className={DIALOG_SIZE_CLASS.sm}>
         <DialogHeader>
           <DialogTitle>Publish this version?</DialogTitle>
           <DialogDescription>

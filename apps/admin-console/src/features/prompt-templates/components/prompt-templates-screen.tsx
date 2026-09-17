@@ -99,7 +99,11 @@ function PromptTemplatesScreenBody() {
       onValueChange={(next) => void setTabParam(next === 'fallbacks' ? null : next)}
     >
       <ScreenTemplate
-        contentMode={tab === 'templates' ? 'fill' : 'scroll'}
+        // Fallbacks is a document (a resolution map that reads top to bottom);
+        // Templates and Governance are fill-height panes that own their own
+        // scrolling — the page frame must not become their single scroller
+        // (TASK-983 R10).
+        contentMode={tab === 'fallbacks' ? 'scroll' : 'fill'}
         tabs={
           <TabsList variant="line">
             <TabsTrigger value="fallbacks">Fallbacks</TabsTrigger>

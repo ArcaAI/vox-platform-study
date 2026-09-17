@@ -13,6 +13,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { useCreateFixture, useDeleteFixture, useFixtures } from '../api/hooks';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /** Radix Select rejects an empty-string item value. */
 const NONE = '__none__';
@@ -132,7 +133,7 @@ export function FixturePicker({
           if (!next) resetDialog();
         }}
       >
-        <DialogContent className="sm:max-w-[50vw]">
+        <DialogContent className={DIALOG_SIZE_CLASS.md}>
           <DialogHeader>
             <DialogTitle>New fixture</DialogTitle>
             <DialogDescription>

@@ -37,6 +37,7 @@ import {
   Skeleton,
 } from '@arcaai/ui';
 import type { WorkflowDefinition } from '../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /** Mirrors the server's `targetSlug` grammar (`WORKFLOW_NODE_ID_PATTERN`). Client-side only —
  *  the DTO re-validates it; this exists so a typo costs no round trip. */
@@ -123,7 +124,7 @@ export function CloneDefinitionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{source ? 'Clone this workflow' : 'Start from a platform template'}</DialogTitle>

@@ -40,6 +40,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { useApiKeyScopes, useCreateApiKey, useUpdateApiKey } from '../api/hooks';
 import type { ApiKey, ApiKeyScopeCategories, CreateApiKeyResult } from '../api/types';
+import { cx } from '@/shared/cx';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const CUSTOM = 'custom';
 
@@ -170,7 +172,7 @@ export function ApiKeyFormDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
+      <DialogContent className={cx('flex max-h-[85vh] flex-col', DIALOG_SIZE_CLASS.md)}>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit API key' : 'Create API key'}</DialogTitle>
           <DialogDescription>

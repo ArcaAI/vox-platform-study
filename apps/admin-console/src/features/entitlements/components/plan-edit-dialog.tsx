@@ -16,6 +16,8 @@ import { ErrorState } from '@/shared/state/error-state';
 import { usePlanEntitlement, useUpdatePlanEntitlement } from '../api/hooks';
 import type { PlanEntitlement, UpdatePlanEntitlementRequest } from '../api/types';
 import { LIMIT_FIELDS, LIMIT_GROUPS, PLAN_LABELS } from './plan-meta';
+import { cx } from '@/shared/cx';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /**
  * TASK-883 retired the three display-only plan booleans, and every surviving
@@ -196,7 +198,7 @@ function PlanEditSkeleton() {
 export function PlanEditDialog({ plan, onOpenChange }: { plan: TenantPlan | null; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={plan !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-y-auto sm:max-w-[640px]">
+      <DialogContent className={cx('flex max-h-[85vh] flex-col overflow-y-auto', DIALOG_SIZE_CLASS.md)}>
         <DialogHeader>
           <DialogTitle>{plan ? `Edit ${PLAN_LABELS[plan]} plan defaults` : 'Edit plan defaults'}</DialogTitle>
           <DialogDescription>

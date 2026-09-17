@@ -12,6 +12,7 @@
  */
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldDescription, FieldLabel, Input } from '@arcaai/ui';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 export interface DefinitionMetadataFormProps {
   open: boolean;
@@ -26,7 +27,7 @@ export interface DefinitionMetadataFormProps {
 export function DefinitionMetadataForm({ open, onOpenChange, name, description, onNameChange, onDescriptionChange, readOnly }: DefinitionMetadataFormProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>Definition details</DialogTitle>
           <DialogDescription>Name and description autosave the same way graph edits do.</DialogDescription>

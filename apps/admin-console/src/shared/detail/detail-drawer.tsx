@@ -23,10 +23,21 @@ import { cx } from '@/shared/cx';
  */
 export type DetailDrawerSize = 'md' | 'lg' | 'xl';
 
+/**
+ * The desktop width scale. Owner decision OD-7 (TASK-983 R11) widened
+ * every step — the report was that drawers "are too small to read
+ * comfortably", and the previous scale (576px / 40vw / 56vw) put a
+ * two-column detail body, a JSON editor or a versions table into a column
+ * narrower than the reading it replaced.
+ *
+ * Every entry is `md:`-prefixed, so the mobile sheet stays full-screen at
+ * every size; `lg`/`xl` are viewport-relative so a wide monitor gains room
+ * while a small laptop does not lose any.
+ */
 const SIZE_CLASS: Record<DetailDrawerSize, string> = {
-  md: 'md:max-w-xl',
-  lg: 'md:max-w-[40vw]',
-  xl: 'md:max-w-[56vw]',
+  md: 'md:max-w-3xl',
+  lg: 'md:max-w-[52vw]',
+  xl: 'md:max-w-[68vw]',
 };
 
 export interface DetailDrawerProps {

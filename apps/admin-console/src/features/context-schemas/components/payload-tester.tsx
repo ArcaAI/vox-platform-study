@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import type { ContextKindDeclaration } from '../api/types';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 export function KindPayloadTester({ kind }: { kind: ContextKindDeclaration }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +59,7 @@ export function KindPayloadTester({ kind }: { kind: ContextKindDeclaration }) {
           if (!next) setResult(null);
         }}
       >
-        <DialogContent className="flex h-[70vh] flex-col sm:max-w-[50vw]">
+        <DialogContent className={DIALOG_SIZE_CLASS.lg}>
           <DialogHeader>
             <DialogTitle>Try a sample payload against &lsquo;{kindName}&rsquo;</DialogTitle>
             <DialogDescription>

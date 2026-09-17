@@ -10,6 +10,7 @@ import { cx } from '@/shared/cx';
 import { useAcknowledgeChangelog, useUnseenChangelog } from '../api/hooks';
 import type { ChangelogEntry } from '../api/types';
 import { ChangelogSeverityBadge } from './severity-badge';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const MAX_SHOWN = 3;
 /** Session-scoped guard so a hard reload / remount within the same tab does not re-open it. */
@@ -101,7 +102,7 @@ export function WhatsNewDialog() {
         if (!next) dismiss();
       }}
     >
-      <DialogContent className="flex h-[70vh] w-full flex-col gap-0 sm:max-w-[70vw]">
+      <DialogContent className={cx('w-full gap-0', DIALOG_SIZE_CLASS.lg)}>
         <DialogHeader className="shrink-0 gap-1.5 border-b pb-4">
           <DialogTitle>What&apos;s new</DialogTitle>
           <DialogDescription>{shownEntries.length} recent release {shownEntries.length === 1 ? 'note' : 'notes'}</DialogDescription>
