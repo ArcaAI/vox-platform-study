@@ -185,9 +185,13 @@ export class S3BlobProvider implements IBlobStorageProvider {
     // `private, no-store`: a presigned object is a bearer link to tenant data,
     // and on the public origin it crosses a CDN — an edge copy must never
     // outlive the signature (the store sends this header back on the object).
-    return getSignedUrl(this.presignClient, new GetObjectCommand({ Bucket: params.bucket, Key: params.key, ResponseCacheControl: 'private, no-store' }), {
-      expiresIn: params.expiresInSeconds,
-    });
+    return getSignedUrl(
+      this.presignClient,
+      new GetObjectCommand({ Bucket: params.bucket, Key: params.key, ResponseCacheControl: 'private, no-store' }),
+      {
+        expiresIn: params.expiresInSeconds,
+      },
+    );
   }
 
   async presignPut(params: PresignPutParams): Promise<string> {
