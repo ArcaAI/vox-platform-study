@@ -8,6 +8,7 @@ import {
   UpdateModelRequest,
 } from './dto';
 import { ModelTaskType } from '@arcaai/domains';
+import { PaginatedQuery } from '../../common/dto';
 
 /**
  * The model registry service (TASK-860). Every WRITE is platform-admin only
@@ -40,8 +41,14 @@ export interface IAiModelService {
   /** Get all catalogue rows for the admin surface (ENABLED + DISABLED). */
   getAllForAdmin(): Promise<ModelResponse[]>;
 
-  /** Get paginated list of catalogue rows */
-  list(page: number, limit: number): Promise<PaginatedModelResponse>;
+  /**
+   * Get a paginated page of catalogue rows for the ADMIN grid.
+   *
+   * TASK-983 R1/R4 — takes the standard `PaginatedQuery`, so `search`,
+   * `searchFields`, `filters` and `sort` reach the repository instead of being
+   * dropped. Always pinned to the SYSTEM tenant, always platform-admin only.
+   */
+  list(query?: PaginatedQuery): Promise<PaginatedModelResponse>;
 
   /** Get ENABLED catalogue rows by task type */
   getByTaskType(taskType: ModelTaskType): Promise<ModelResponse[]>;
