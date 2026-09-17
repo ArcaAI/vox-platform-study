@@ -577,6 +577,19 @@ describe('IntegrationPanel — the Socket lane', () => {
     expect(browser).toContain('useArcaAudio');
 
     selectTab('Socket');
+    // The manual path comes BEFORE any SDK call: the routes, the handshake, every frame, and two
+    // no-SDK samples — a developer without the SDK sets the socket up from this lane alone.
+    expect(screen.getByText('Without the SDK — the contract, step by step')).toBeTruthy();
+    expect(screen.getByRole('table', { name: /every frame on the realtime STT socket/i })).toBeTruthy();
+    for (const type of ['ready', 'transcript', 'stop', 'resume', 'resumed', 'resume_failed', 'close']) {
+      expect(screen.getAllByText(type, { selector: 'td' }).length, type).toBeGreaterThan(0);
+    }
+    const shell = codeOf('Realtime STT without an SDK (curl + websocat) snippet');
+    expect(shell).toContain('/audio/transcription-jobs/stream/session');
+    expect(shell).toContain('websocat');
+    const raw = codeOf('Realtime STT without an SDK (fetch + WebSocket) snippet');
+    expect(raw).toContain('new WebSocket(');
+    expect(raw).not.toContain('@arcaai/');
     const node = codeOf('Realtime STT (@arcaai/vox-node) snippet');
     expect(node).toContain("hope.stt.createStreamSession({ agentSlug: 'asr' })");
     expect(node).toContain("socket.on('transcript'");
