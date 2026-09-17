@@ -236,13 +236,20 @@ test.describe('Users Management (backend contract)', () => {
       }
     });
 
-    test('U2 · POST /admin/users creates a user (minimal identity payload)', async ({ request }) => {
+    test('U2 · POST /admin/users creates a user (minimal identity payload, tenant-less)', async ({ request }) => {
       username = uniqueUsername();
       // This case exercises the minimal identity-only create. The optional
       // `email` field is whitelisted on CreateUserRequest and
       // upserted onto the user profile — verified end-to-end in the
       // "V1/V2 — gap fixes" block below.
-      const res = await authPost(request, saGlobalToken, '/api/v1/admin/users', {
+      //
+      // TASK-983 R6 / OD-4: the membership-less payload is legal ONLY with no
+      // tenant context — a super admin creating a tenant-less platform user.
+      // The same body sent by a caller acting inside a tenant is a 400
+      // (`USER_ROLE_REQUIRED`), pinned in the R6 block below. Hence `saToken`
+      // (no tenant) rather than `saGlobalToken`; the membership this user
+      // needs is what U2a and U11 then assign.
+      const res = await authPost(request, saToken, '/api/v1/admin/users', {
         username,
         password: 'Password123!',
         isServiceAccount: false,
@@ -451,7 +458,10 @@ test.describe('Users Management (backend contract)', () => {
     test('V1 · POST /admin/users with `email` persists onto the user profile', async ({ request }) => {
       const username = uniqueUsername();
       const email = `${username}@example.test`;
-      const res = await authPost(request, saGlobalToken, '/api/v1/admin/users', {
+      // Tenant-less create (TASK-983 R6 / OD-4) — see the U2 note; V2 below
+      // then reconciles this user's departments, which a create-time
+      // department would interfere with.
+      const res = await authPost(request, saToken, '/api/v1/admin/users', {
         username,
         password: 'Password123!',
         isServiceAccount: false,
@@ -498,6 +508,80 @@ test.describe('Users Management (backend contract)', () => {
         'exactly the one remaining department',
       ).toEqual([d2.id]);
       expect(listed2[0]?.isPrimary, 'the surviving membership is primary').toBe(true);
+    });
+  });
+  // -------------------------------------------------------------------------
+  // R6 (TASK-983 / OD-4) — a tenant-scoped create must carry its membership.
+  //
+  // `User` has no `tenantId`: membership IS the role assignment + department
+  // pair, so a tenant admin who created a user without them produced a row
+  // belonging to no tenant — one that could not sign in and that the same
+  // admin could not reopen (404 through `assertUserInScope`). The service now
+  // refuses it fail-closed, before any write.
+  // -------------------------------------------------------------------------
+  test.describe.serial('R6 · POST /admin/users — role + department are mandatory inside a tenant', () => {
+    let roleId = '';
+    let departmentId = '';
+    let createdId = '';
+
+    test.beforeAll(async ({ request }) => {
+      // Catalogs read with the SUPER-ADMIN token: this block is about the
+      // create contract, not about who may list roles.
+      const roles = asArray<RoleRow>(await (await authGet(request, saGlobalToken, '/api/v1/admin/rbac/roles')).json());
+      const role = roles.find((r) => r.name === 'DOCTOR') ?? roles.find((r) => r.name === 'NURSE') ?? roles.find((r) => r.name !== 'SUPER_ADMIN');
+      roleId = role?.id ?? '';
+      const depts = asArray<DepartmentRow>(await (await authGet(request, saGlobalToken, '/api/v1/admin/departments')).json());
+      departmentId = depts[0]?.id ?? '';
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (createdId) await authDelete(request, saGlobalToken, `/api/v1/admin/users/${createdId}`).catch(() => undefined);
+    });
+
+    test('omitting roleId → 400 USER_ROLE_REQUIRED', async ({ request }) => {
+      const res = await authPost(request, taToken, '/api/v1/admin/users', {
+        username: uniqueUsername(),
+        password: 'Password123!',
+        isServiceAccount: false,
+      });
+      expect(res.status(), `expected 400, got ${res.status()} ${await res.text()}`).toBe(400);
+      const body = (await res.json()) as { code?: string; message?: string | { code?: string } };
+      expect(JSON.stringify(body)).toContain('USER_ROLE_REQUIRED');
+    });
+
+    test('a role but no departmentId → 400 USER_DEPARTMENT_REQUIRED', async ({ request }) => {
+      test.skip(!roleId, 'no assignable role in the catalog');
+      const res = await authPost(request, taToken, '/api/v1/admin/users', {
+        username: uniqueUsername(),
+        password: 'Password123!',
+        isServiceAccount: false,
+        roleId,
+      });
+      expect(res.status(), `expected 400, got ${res.status()} ${await res.text()}`).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain('USER_DEPARTMENT_REQUIRED');
+    });
+
+    test('both supplied → 201 and the role assignment is readable', async ({ request }) => {
+      test.skip(!roleId || !departmentId, 'no assignable role/department in the catalog');
+      const username = uniqueUsername();
+      const res = await authPost(request, taToken, '/api/v1/admin/users', {
+        username,
+        password: 'Password123!',
+        isServiceAccount: false,
+        roleId,
+        departmentId,
+      });
+      expect([200, 201], `create failed: ${res.status()} ${await res.text()}`).toContain(res.status());
+      createdId = ((await res.json()) as { id: string }).id;
+      expect(createdId).toBeTruthy();
+
+      const roles = asArray<{ roleId?: string; role?: { id: string } }>(
+        await (await authGet(request, taToken, `/api/v1/admin/users/${createdId}/roles`)).json(),
+      );
+      expect(
+        roles.some((a) => a.roleId === roleId || a.role?.id === roleId),
+        'the create-time role assignment is present, so the user is a member of the tenant',
+      ).toBe(true);
     });
   });
 });
