@@ -29014,7 +29014,7 @@
             "service-account": []
           }
         ],
-        "summary": "TASK-983 R1/R4 — ONE whole-object `@Query()` binding.\n\nThis route used to bind `@Query('page')` and `@Query('limit')` and nothing\nelse, so the console grid's `search` / `searchFields` / `filters` / `sort`\nwere dropped by the framework before the handler ran. Named `@Query('x')`\nparams are invisible to the global validation pipe, so the request answered\n200 with the UNFILTERED page instead of 400 — a search for a slug that does\nnot exist returned every row. Binding the standard `PaginatedQuery` both\nforwards the params and puts them under `whitelist +\nforbidNonWhitelisted`.",
+        "summary": "List the SYSTEM model registry as one paginated page. The whole query object\nis bound (`search`, `searchFields`, `filters`, `sort`, `page`, `limit`) so\nthe grid's parameters reach the service and undeclared ones are rejected by\nthe global validation pipe; named `@Query('x')` bindings would silently drop\neverything but the named keys.",
         "tags": [
           "admin-ai-models"
         ]
