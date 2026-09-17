@@ -50,3 +50,39 @@ describe('stt-socket-protocol — the raw contract a developer follows without a
     expect(code).toContain('refresh-ticket');
   });
 });
+
+/**
+ * TASK-983 lane I — three facts a LIVE run of this exact walkthrough contradicted, pinned so the
+ * corrected copy cannot drift back. Measured on the dev gateway, 2026-09-17: session → ready →
+ * binary PCM → deliberate drop → refresh-ticket → resume → stop → finals → closed.
+ */
+describe('stt-socket-protocol — the live corrections', () => {
+  it('the session answers status "active", not "created"', () => {
+    const code = sttSessionCurlSnippet('asr', 'https://api.example.com');
+    expect(code).toContain('"status": "active"');
+    expect(code).not.toContain('"status": "created"');
+  });
+
+  it('the session example lists the fields the response really carries', () => {
+    const code = sttSessionCurlSnippet('asr', 'https://api.example.com');
+    for (const field of ['sessionId', 'wsUrl', 'ticket', 'ticketExpiresAt', 'agentVersionId', 'maxConcurrent', 'currentActive', 'voiceProfileSeeded']) {
+      expect(code, field).toContain(field);
+    }
+  });
+
+  it('`finalizing` is documented — a client that closes on it drops the last utterance', () => {
+    const status = STT_SOCKET_FRAMES.find((frame) => frame.type === 'status');
+    expect(status).toBeDefined();
+    // `StreamingSessionStatus` — packages/vox-node/src/types/stt.ts:80
+    for (const value of ['active', 'finalizing', 'closed', 'rejected']) {
+      expect(status!.note, value).toContain(value);
+    }
+    expect(sttRawWebSocketSnippet('asr', 'https://api.example.com')).toContain('finalizing');
+  });
+
+  it('websocat is labelled as a tool to install, and the SDK-free JS sample is offered as the first path', () => {
+    const code = sttSessionCurlSnippet('asr', 'https://api.example.com');
+    expect(code).toMatch(/install websocat/);
+    expect(code).toMatch(/fetch \+ WebSocket/);
+  });
+});

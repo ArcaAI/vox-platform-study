@@ -75,6 +75,27 @@ function selectTab(name: string): void {
   fireEvent.click(trigger);
 }
 
+/**
+ * TASK-983 lane I — the panel now has TWO levels of tabs: the LANE (Node · Browser · Manual ·
+ * Postman) and, inside a lane, the JOB (Batch · Realtime). `getAllByRole('tab')` therefore sees
+ * both, so every lane-level assertion scopes itself to the first tablist.
+ */
+function laneTabNames(): string[] {
+  return within(screen.getAllByRole('tablist')[0])
+    .getAllByRole('tab')
+    .map((tab) => tab.textContent);
+}
+
+/** Select the Batch or Realtime view inside whichever lane is open. */
+function selectJob(name: 'Batch' | 'Realtime' | 'Blocking' | 'Realtime (SSE)'): void {
+  const lists = screen.getAllByRole('tablist');
+  const jobList = lists.find((list) => within(list).queryByRole('tab', { name }) !== null);
+  if (!jobList) throw new Error(`no job view named ${name}`);
+  const trigger = within(jobList).getByRole('tab', { name });
+  fireEvent.mouseDown(trigger);
+  fireEvent.click(trigger);
+}
+
 function codeOf(label: string): string {
   return screen.getByRole('group', { name: label }).textContent ?? '';
 }
@@ -113,8 +134,8 @@ describe('IntegrationPanel — agent', () => {
     );
 
     expect(screen.getByText('POST /agents/clinic-summarizer/invocations')).toBeTruthy();
-    expect(screen.getByText(/\?mode=blocking/)).toBeTruthy();
-    expect(screen.getByRole('group', { name: /vox-node/i }).textContent).toContain("hope.agents.invoke('clinic-summarizer'");
+    expect(screen.getAllByText(/\?mode=blocking/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('group', { name: 'Node.js (@arcaai/vox-node) snippet' }).textContent).toContain("hope.agents.invoke('clinic-summarizer'");
     expect((screen.getByRole('link', { name: /api keys/i }) as HTMLAnchorElement).getAttribute('href')).toBe('/api-keys');
     expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
@@ -126,7 +147,8 @@ describe('IntegrationPanel — agent', () => {
 
     renderWithProviders(<IntegrationPanel kind="agent" slug="ner" task="NAMED_ENTITY_RECOGNITION" />);
     expect(screen.getByText('POST /agents/ner/invocations')).toBeTruthy();
-    expect(screen.queryByText(/\?mode=stream/)).toBeNull();
+    // One-shot: NER gets no Realtime view at all, in any lane.
+    expect(screen.queryByRole('tab', { name: 'Realtime (SSE)' })).toBeNull();
   });
 
   // Lanes C and D were built in parallel against a shared contract, and this is the seam between
@@ -236,11 +258,54 @@ describe('IntegrationPanel — the example body is derived, not invented', () =>
 // ---------------------------------------------------------------------------
 
 describe('IntegrationPanel — the four lanes', () => {
-  it('offers Node, Browser, HTTP and Postman, with Node first', () => {
+  /**
+   * TASK-983 lane I — `HTTP` and `Socket` became ONE **Manual** lane. Splitting them by transport
+   * made a developer read two tabs to discover that one held the whole answer; the axis that
+   * matters is the JOB, which is now the secondary control inside each lane.
+   */
+  it('offers Node, Browser, Manual and Postman, with Node first', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
 
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Postman']);
+    expect(laneTabNames()).toEqual(['Node', 'Browser', 'Manual', 'Postman']);
     expect(screen.getByRole('tab', { name: 'Node' }).getAttribute('data-state')).toBe('active');
+    expect(screen.queryByRole('tab', { name: 'HTTP' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Socket' })).toBeNull();
+  });
+
+  it('each lane splits by JOB, and a speech agent opens on the job it exists for', () => {
+    const { unmount } = renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    // Text generation answers one body by default, so Blocking leads.
+    expect(screen.getByRole('tab', { name: 'Blocking' }).getAttribute('data-state')).toBe('active');
+    expect(screen.getByRole('tab', { name: 'Realtime (SSE)' })).toBeTruthy();
+    unmount();
+
+    // A speech-to-text agent exists FOR live audio, so Realtime opens selected.
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    expect(screen.getByRole('tab', { name: 'Realtime' }).getAttribute('data-state')).toBe('active');
+    expect(screen.getByRole('tab', { name: 'Batch' })).toBeTruthy();
+  });
+
+  it('every lane names the exact scope its requests need, and where a scoped key comes from', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    for (const lane of ['Node', 'Browser', 'Manual']) {
+      selectTab(lane);
+      const notes = screen.getAllByText(/Scopes this lane needs:/);
+      expect(notes.length, lane).toBeGreaterThan(0);
+      expect(notes[0].textContent, lane).toContain('agent:invocation:write');
+      expect(notes[0].parentElement?.textContent, lane).toContain('/api-keys');
+    }
+  });
+
+  /**
+   * The scope crossing that produced a 403 in a live walkthrough: the batch job is started on one
+   * scope family and followed on another, and nothing said so.
+   */
+  it('the batch lane of a speech agent names BOTH scope families', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Manual');
+    selectJob('Batch');
+    const note = screen.getAllByText(/Scopes this lane needs:/)[0];
+    expect(note.textContent).toContain('stt:transcription:write');
   });
 
   it('the browser lane defaults to a session JWT and states the API-key exposure beneath it', () => {
@@ -254,7 +319,9 @@ describe('IntegrationPanel — the four lanes', () => {
     expect(primary).toContain('/api/v1');
     expect(codeOf('Browser (@arcaai/vox) API-key variant')).toContain('apiKey');
     expect(screen.getByText(/readable by anyone/i)).toBeTruthy();
-    expect(screen.getByText(/agent:invocation:write/)).toBeTruthy();
+    // Named twice on this lane now: once in the scope note above the request, once in the
+    // key-minting advice below it. Both are deliberate.
+    expect(screen.getAllByText(/agent:invocation:write/).length).toBeGreaterThan(0);
   });
 
   /**
@@ -287,18 +354,47 @@ describe('IntegrationPanel — the four lanes', () => {
     expect(screen.getByText(/useTtsPlayback/)).toBeTruthy();
   });
 
-  it('the HTTP lane is curl against the api/v1 prefix, and shows the stream call for text generation', () => {
+  it('the Manual lane is curl against the api/v1 prefix, blocking in one view and the stream in the other', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
-    selectTab('HTTP');
+    selectTab('Manual');
 
     const curl = codeOf('curl snippet');
     expect(curl).toContain('/api/v1/agents/clinic-summarizer/invocations');
     expect(curl).toContain('X-API-Key');
     expect(curl).toContain('"tone": "clinical"');
-    expect(curl).toContain('?mode=stream');
     expect(curl).not.toMatch(/"input"\s*:/);
     // The tenant binds to the credential; sending it too is the mistake this line prevents.
     expect(screen.getByText(/X-Tenant-Id/)).toBeTruthy();
+
+    selectJob('Realtime (SSE)');
+    const streamed = codeOf('Streamed invocation without an SDK (curl -N) snippet');
+    expect(streamed).toContain('?mode=stream');
+    // -N is not decoration: without it curl buffers the stream and the call reads as hung.
+    expect(streamed).toContain('curl -N');
+    expect(codeOf('Streamed invocation without an SDK (fetch) snippet')).toContain('response.body');
+    expect(screen.getByText(/does not resume/i)).toBeTruthy();
+  });
+
+  it('the Manual lane of a speech agent carries the whole batch job — multipart in, transcript out', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Manual');
+    selectJob('Batch');
+
+    const curl = codeOf('Batch transcription without an SDK (curl) snippet');
+    expect(curl).toContain('-F "file=@consultation.wav;type=audio/wav"');
+    expect(curl).toContain('/api/v1/audio/transcription-jobs/transcribe');
+    expect(curl).toContain('curl -N');
+    expect(codeOf('Batch transcription without an SDK (fetch) snippet')).toContain('FormData');
+    // The route the console used to print FIRST takes an id, not a file.
+    expect(screen.getAllByText(/two different routes/i).length).toBeGreaterThan(0);
+  });
+
+  it('the Manual lane of a speech agent keeps the realtime socket contract', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Manual');
+    // Realtime leads for this task, so no job switch is needed.
+    expect(screen.getByText(/Without the SDK — the contract, step by step/)).toBeTruthy();
+    expect(codeOf('Realtime STT without an SDK (fetch + WebSocket) snippet')).toContain('new WebSocket(');
   });
 
   it('NER offers no stream example in ANY lane', () => {
@@ -307,8 +403,10 @@ describe('IntegrationPanel — the four lanes', () => {
     expect(codeOf('Node.js (@arcaai/vox-node) snippet')).not.toContain('mode=stream');
     selectTab('Browser');
     expect(codeOf('Browser (@arcaai/vox) snippet')).not.toContain('stream(');
-    selectTab('HTTP');
+    selectTab('Manual');
     expect(codeOf('curl snippet')).not.toContain('mode=stream');
+    // And no Realtime view to switch to.
+    expect(screen.queryByRole('tab', { name: 'Realtime (SSE)' })).toBeNull();
   });
 
   it('the agent panel says the body is flat, and never claims an envelope', () => {
@@ -326,7 +424,7 @@ describe('IntegrationPanel — workflow', () => {
     expect(screen.getByText('async')).toBeTruthy();
     expect(screen.getByText('stream')).toBeTruthy();
     expect(screen.queryByText('socket')).toBeNull();
-    expect(screen.getByRole('group', { name: /vox-node/i }).textContent).toContain('discharge-summary');
+    expect(codeOf('Node.js (@arcaai/vox-node) snippet')).toContain('discharge-summary');
     expect((screen.getByRole('link', { name: /api keys/i }) as HTMLAnchorElement).getAttribute('href')).toBe('/api-keys');
   });
 
@@ -383,12 +481,12 @@ describe('IntegrationPanel — workflow', () => {
     expect(browser).not.toContain('mode=');
   });
 
-  it('the HTTP lane starts async, polls the run, and follows the SSE stream', async () => {
+  it('the Manual lane starts async, polls the run, and follows the SSE stream', async () => {
     stubSchemaFetch();
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    selectTab('HTTP');
+    selectTab('Manual');
     const curl = codeOf('curl snippet');
     expect(curl).toContain('/api/v1/workflows/discharge-summary/runs');
     expect(curl).toContain('"input"');
@@ -516,24 +614,34 @@ describe('IntegrationPanel — the developer portal is one link away', () => {
 // ---------------------------------------------------------------------------
 
 describe('IntegrationPanel — the Socket lane', () => {
-  it('the workflow panel gains a fifth tab, between HTTP and Postman', async () => {
+  /**
+   * TASK-983 lane I — the workflow half takes the SAME consolidation as the agent half: a panel
+   * with four lanes on one entity and five on the other would teach the transport split all over
+   * again. The socket material did not move out of the product; it moved to where a developer
+   * already is — the SDK options sit beside the SDK calls, and the no-SDK handshake sits in
+   * Manual with the rest of the no-SDK material.
+   */
+  it('the workflow panel offers the same four lanes as an agent', async () => {
     stubSchemaFetch();
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Socket', 'Postman']);
+    expect(laneTabNames()).toEqual(['Node', 'Browser', 'Manual', 'Postman']);
+    expect(screen.queryByRole('tab', { name: 'Socket' })).toBeNull();
   });
 
-  it('names transport: socket and the RUN-SCOPED stream-ticket route in all three snippets', async () => {
+  it('names transport: socket beside the SDK calls, and the RUN-SCOPED ticket in the Manual lane', async () => {
     stubSchemaFetch();
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    selectTab('Socket');
 
-    // `transport` is an OPTION on the methods already shown in the Node tab, never a new method.
+    // `transport` is an OPTION on the methods already shown in the Node lane, never a new method.
     expect(codeOf('Socket (@arcaai/vox-node) snippet')).toContain("transport: 'socket'");
+    selectTab('Browser');
     expect(codeOf('Socket (@arcaai/vox) snippet')).toContain("useWorkflowRun({ transport: 'socket' })");
+
+    selectTab('Manual');
     // The RUN-SCOPED route, not the JWT-only POST /auth/stream-ticket: this one takes an API key
     // and derives the scope server-side.
     const shell = codeOf('Socket handshake (websocat) snippet');
@@ -546,9 +654,9 @@ describe('IntegrationPanel — the Socket lane', () => {
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    selectTab('Socket');
+    selectTab('Manual');
 
-    const lane = screen.getByRole('tabpanel').textContent ?? '';
+    const lane = screen.getAllByRole('tabpanel')[0].textContent ?? '';
     // Rendered from the shared constants, never paraphrased: the SSE tab and this one must not
     // give a developer two different explanations of the same choice.
     expect(lane).toContain(SOCKET_LANE_RATIONALE);
@@ -558,14 +666,14 @@ describe('IntegrationPanel — the Socket lane', () => {
     expect(lane).toMatch(/Node 22\+/);
   });
 
-  it("an STT agent's Browser lane carries a real capture snippet, and its Socket lane drives hope.stt", () => {
+  it("an STT agent's Browser lane carries a real capture snippet, and its Realtime views drive hope.stt", () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
 
-    // Realtime is what a speech-to-text agent is FOR, so the socket lane leads and is selected
-    // on open; the batch lanes follow. The header names the realtime session route before the
-    // batch route for the same reason.
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Socket', 'Node', 'Browser', 'HTTP', 'Postman']);
-    expect(screen.getByRole('tab', { name: 'Socket' }).getAttribute('aria-selected')).toBe('true');
+    // Realtime is what a speech-to-text agent is FOR, so the Realtime VIEW opens selected inside
+    // every lane; the lanes themselves are the same four as everywhere else. The header names the
+    // realtime session route before the batch route for the same reason.
+    expect(laneTabNames()).toEqual(['Node', 'Browser', 'Manual', 'Postman']);
+    expect(screen.getByRole('tab', { name: 'Realtime' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText(/POST \/audio\/transcription-jobs\/stream\/session/)).toBeTruthy();
     expect(screen.getAllByText(/\/ws\/stt\/stream/).length).toBeGreaterThan(0);
 
@@ -576,9 +684,9 @@ describe('IntegrationPanel — the Socket lane', () => {
     expect(browser).toContain("audio.start({ agentSlug: 'asr' })");
     expect(browser).toContain('useArcaAudio');
 
-    selectTab('Socket');
-    // The manual path comes BEFORE any SDK call: the routes, the handshake, every frame, and two
-    // no-SDK samples — a developer without the SDK sets the socket up from this lane alone.
+    selectTab('Manual');
+    // The manual path is the whole Manual lane now: the routes, the handshake, every frame, and
+    // two no-SDK samples — a developer without the SDK sets the socket up from this lane alone.
     expect(screen.getByText('Without the SDK — the contract, step by step')).toBeTruthy();
     expect(screen.getByRole('table', { name: /every frame on the realtime STT socket/i })).toBeTruthy();
     for (const type of ['ready', 'transcript', 'stop', 'resume', 'resumed', 'resume_failed', 'close']) {
@@ -590,11 +698,13 @@ describe('IntegrationPanel — the Socket lane', () => {
     const raw = codeOf('Realtime STT without an SDK (fetch + WebSocket) snippet');
     expect(raw).toContain('new WebSocket(');
     expect(raw).not.toContain('@arcaai/');
+    // The runtime floor applies wherever a socket is offered.
+    expect(screen.getAllByRole('tabpanel')[0].textContent ?? '').toContain(SOCKET_RUNTIME_FLOOR);
+
+    selectTab('Node');
     const node = codeOf('Realtime STT (@arcaai/vox-node) snippet');
     expect(node).toContain("hope.stt.createStreamSession({ agentSlug: 'asr' })");
     expect(node).toContain("socket.on('transcript'");
-    // The runtime floor applies wherever a socket is offered.
-    expect(screen.getByRole('tabpanel').textContent ?? '').toContain(SOCKET_RUNTIME_FLOOR);
   });
 
   /**
@@ -602,10 +712,11 @@ describe('IntegrationPanel — the Socket lane', () => {
    * path for synthesis, and inventing one would be the worst failure this panel can have — it
    * carries the authority of the product.
    */
-  it('a TTS agent still gets prose, no snippet, and no Socket lane', () => {
+  it('a TTS agent still gets prose, no snippet, and no Realtime view', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="voice" task="TEXT_TO_SPEECH" />);
 
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Postman']);
+    expect(laneTabNames()).toEqual(['Node', 'Browser', 'Manual', 'Postman']);
+    expect(screen.queryByRole('tab', { name: /^Realtime/ })).toBeNull();
     selectTab('Browser');
     expect(screen.queryAllByRole('group')).toHaveLength(0);
     expect(screen.getByText(/no browser path by slug/i)).toBeTruthy();
@@ -623,8 +734,8 @@ describe('IntegrationPanel — the Socket lane', () => {
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    expect(screen.getByRole('tab', { name: 'Socket' })).toBeTruthy();
-    // The badges print the gateway's own lowercase spelling; the tab is `Socket`.
+    // Never a badge and never a request. The socket material lives in the Node, Browser and
+    // Manual lanes beside the transport it is an option on — it was never a `?mode=` value.
     expect(screen.queryByText('socket')).toBeNull();
 
     selectTab('Postman');
@@ -696,7 +807,7 @@ describe('IntegrationPanel — the Postman manifest', () => {
   it('the curl lane and the collection agree on the base URL', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
 
-    selectTab('HTTP');
+    selectTab('Manual');
     const curl = codeOf('curl snippet');
 
     selectTab('Postman');
@@ -713,7 +824,7 @@ describe('IntegrationPanel — the Postman manifest', () => {
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    selectTab('HTTP');
+    selectTab('Manual');
     const curl = codeOf('curl snippet');
 
     selectTab('Postman');
@@ -730,7 +841,7 @@ describe('IntegrationPanel — the Postman manifest', () => {
 // ---------------------------------------------------------------------------
 
 describe('IntegrationPanel — accessibility of the five-lane panel', () => {
-  it('has no axe violations on the Socket lane', async () => {
+  it('has no axe violations on the Manual lane', async () => {
     stubSchemaFetch();
     renderWithProviders(
       <main>
@@ -739,7 +850,7 @@ describe('IntegrationPanel — accessibility of the five-lane panel', () => {
     );
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
-    selectTab('Socket');
+    selectTab('Manual');
     expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
 
@@ -765,6 +876,111 @@ describe('IntegrationPanel — accessibility of the five-lane panel', () => {
       </main>,
     );
 
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-983 lane I — the two jobs, in every lane
+// ---------------------------------------------------------------------------
+
+describe('IntegrationPanel — batch and realtime are both complete', () => {
+  it("the Node lane's batch view walks the whole job, not just the request that starts it", () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Node');
+    selectJob('Batch');
+
+    const code = codeOf('Batch transcription (@arcaai/vox-node) snippet');
+    expect(code).toContain("hope.agents.transcribe('asr'");
+    // The 201 is the start of the job, not the end of the integration — and the methods that
+    // follow it are on the AGENTS plane. `hope.jobs.*` addresses `consultations/jobs/{id}` and
+    // 404s on a transcription job id, which is exactly the mistake this assertion prevents.
+    expect(code).toMatch(/hope\.agents\.(waitForTranscription|subscribeTranscription)/);
+    expect(code).not.toMatch(/hope\.jobs\.\w+\(/);
+    expect(code).toContain('resultText');
+  });
+
+  it('the batch steps are the same four in every lane that shows them', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    for (const lane of ['Node', 'Manual']) {
+      selectTab(lane);
+      selectJob('Batch');
+      const panel = screen.getAllByRole('tabpanel').map((node) => node.textContent ?? '').join(' ');
+      expect(panel, lane).toContain('Upload the audio and start the job');
+      expect(panel, lane).toContain('Read the transcript');
+    }
+  });
+
+  it('the batch job frame table names every frame the stream carries', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    selectTab('Manual');
+    selectJob('Batch');
+
+    const table = screen.getByRole('table', { name: /batch transcription job/i });
+    for (const type of ['status', 'progress', 'chunk', 'transcript', 'error']) {
+      expect(within(table).getAllByText(type, { selector: 'td' }).length, type).toBeGreaterThan(0);
+    }
+  });
+
+  it('a streamed invocation states its frames, its heartbeat and that it does not resume', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    selectTab('Manual');
+    selectJob('Realtime (SSE)');
+
+    const table = screen.getByRole('table', { name: /streamed invocation/i });
+    for (const event of ['meta', 'chunk', 'done', 'error']) {
+      expect(within(table).getAllByText(event, { selector: 'td' }).length, event).toBeGreaterThan(0);
+    }
+    const panel = screen.getAllByRole('tabpanel').map((node) => node.textContent ?? '').join(' ');
+    expect(panel).toMatch(/:keepalive/);
+    expect(panel).toMatch(/does not resume/i);
+  });
+
+  /** The honest absence: an invocation has no job id to poll, and nobody should invent one. */
+  it('says the agent plane has no job mode, on the blocking view where a developer looks for one', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    expect(screen.getAllByText(/no job mode on the agent plane/i).length).toBeGreaterThan(0);
+    selectTab('Manual');
+    expect(screen.getAllByText(/no job mode on the agent plane/i).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A live run of this exact walkthrough was refused with a 400 per prompt placeholder, one call
+   * at a time, because the example carried none of them. When `GET /agents/{slug}` reports them,
+   * the rendered body carries every name at once.
+   */
+  it('prompt variables the instruction binds are filled into the example when the summary reports them', () => {
+    renderWithProviders(
+      <IntegrationPanel
+        kind="agent"
+        slug="clinic-summarizer"
+        task="TEXT_GENERATION"
+        inputSchema={AGENT_INPUT_SCHEMA}
+        requiredVariables={['language', 'safe_age', 'visit_type']}
+      />,
+    );
+
+    const node = codeOf('Node.js (@arcaai/vox-node) snippet');
+    for (const name of ['language', 'safe_age', 'visit_type']) {
+      expect(node, name).toContain(name);
+    }
+    expect(screen.getByText(/binds 3 variables/i)).toBeTruthy();
+  });
+
+  it('without them the panel warns rather than pretending the schema is the whole contract', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    expect(screen.getByText(/may bind variables its/i)).toBeTruthy();
+  });
+
+  it('has no axe violations on a speech agent, in either job view', async () => {
+    renderWithProviders(
+      <main>
+        <IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />
+      </main>,
+    );
+    selectTab('Manual');
+    expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
+    selectJob('Batch');
     expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
 });
