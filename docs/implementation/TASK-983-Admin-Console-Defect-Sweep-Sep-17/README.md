@@ -320,12 +320,25 @@ Live proof on the dev gateway (watch mode, after the merges):
 | R2, R10, R11, R9 | screenshots under `evidence/lane-{B,D,F}-*.png` from the lane consoles; lane G's pass recorded in prose in the TASK-975 README |
 
 
+### 5.1 Second full gate pass — after lanes I, J, TASK-965 WS-2/3/4 and the artifact regeneration (`scratchpad/gates2.log`)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/workflow-contract test`, `@arcaai/database test` | exit 0 |
+| `@arcaai/applications test` | 14367 passed, 10 skipped, **0 failed tests**; the same 1 file needs the live test DB (`membership-bounded-sync.integration.test.ts`, reproduced alone) |
+| `@arcaai/applications lint` / `typecheck` | exit 0 / 0 |
+| `@arcaai/api test` / `typecheck` | exit 0 / 0; `lint` had 1 prettier error in WS-2's controller → fixed `a5dc31322` |
+| `@arcaai/vox-node test` / `typecheck`, `@arcaai/vox test` / `typecheck` | exit 0 |
+| `@arcaai/admin-console test` | 3573 passed, 2 failed in workflow-studio tests that queried a single vox-node group (the Node lane is now per job) → relaxed `571d3ca58`, both files 39/39; `lint` / `typecheck` exit 0 |
+| Artifact drift checks | `api:openapi:check` OK; `api:portal:check` no drift (673 admin / 202 business ops); `gen:admin:check` no drift (49 areas, 431 routes, 456 schemas) |
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Second gate pass green (§5.1) after two test relaxations and one prettier fix; status stays Review — awaiting owner sign-off; not pushed |
 | 2026-09-17 | Lanes I and J merged (§4.13), TASK-965 WS-4 merged (agents grid one row per lineage, `969c85b0f`), artifacts regenerated (`829b72e6f`), guidance re-followed on the final tree (§4.14); five worktrees removed |
 | 2026-09-17 | Owner: batch vs realtime guidance for both SDKs and a merged Manual (HTTP + Socket) lane, Postman must drive both — lane I spawned; guidance followed by hand (§4.12): 5 defects found, lane J spawned for `requiredVariables`, the all-at-once 400 and the vox-node upload bug; TASK-965 WS-2 merged (`3249b7823`), `hidden` added to lineage rows, WS-4 spawned |
 | 2026-09-17 | Owner: the guidance must cover the manual, no-SDK socket setup — §4.11 added to the Socket lane. TASK-965 WS-3 merged (`f6ed13d2d`) |
