@@ -27,7 +27,7 @@ import {
 } from '../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import { buildAgentPromptScope } from './agent-prompt-scope';
-import { promptVariableSlot, type PromptVariableSlot } from './agent-required-variables';
+import { promptVariableSlot, splitBindings, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
 
 export interface AgentTextInvocationResult {
@@ -306,19 +306,21 @@ export class AgentInvocationService {
     // three instruction forms: the two single-body shapes pass straight through it (`selected:
     // []`), and a composite selects its fragments over THIS scope — the same object the
     // templates render against, so what a condition saw and what the prompt saw cannot differ.
+    const trigger = this.contextScopeFor(resolved, input.context);
     const composed = this.renderScoped(resolved.slug, () => {
-      const scope = buildAgentPromptScope({
+      // TASK-983 R9 — EVERY missing variable, in ONE refusal, BEFORE the render.
+      //
+      // Both halves, because the seeded agents use both: a placeholder the template reads
+      // directly, and an `instruction.variables` `{ path }` BINDING, which the scope builder
+      // resolves eagerly and which therefore used to throw before any template was looked at
+      // (the live 2026-09-17 finding on `general-medicine-summarization`, whose nine context
+      // paths are ALL bindings read under bare names).
+      const scope = this.assertPromptVariablesSupplied(resolved.slug, compiled.resolvedPrompt, {
         variables,
         input,
-        trigger: this.contextScopeFor(resolved, input.context),
+        trigger,
         templateRef: `agent:${resolved.slug}`,
       });
-      // TASK-983 R9 — EVERY missing placeholder, in one refusal, BEFORE the render.
-      // `renderTemplate` throws on the first one, so an agent whose instruction reads nine
-      // context paths was discoverable only as nine consecutive 400s (measured on the dev
-      // gateway, 2026-09-17). The diff runs over the SAME scope the render will use and the
-      // SAME traversal, so it can neither over- nor under-report what the render would reject.
-      this.assertPromptVariablesSupplied(resolved.slug, compiled.instruction, compiled.resolvedPrompt, scope);
       return composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${resolved.slug}` });
     });
     const systemPrompt = composed.prompt ?? undefined;
@@ -654,13 +656,34 @@ export class AgentInvocationService {
    */
   private assertPromptVariablesSupplied(
     agentSlug: string,
-    instruction: Record<string, unknown> | null,
     resolvedPrompt: ResolvedAgent['compiledConfig']['resolvedPrompt'],
-    scope: Readonly<Record<string, unknown>>,
-  ): void {
-    const missing = unresolvedPromptVariables(resolvedPrompt, scope);
-    if (missing.length === 0) return;
-    const boundNames = Object.keys(asRecord(asRecord(instruction).variables));
+    scopeInput: { variables: Record<string, unknown>; input: Record<string, unknown>; trigger?: Record<string, unknown>; templateRef: string },
+  ): Record<string, unknown> {
+    // The roots alone (`trigger` / `context` / `input`), with no variables — so nothing is
+    // resolved yet and nothing can throw. This is the scope a BINDING is resolved against.
+    const roots = buildAgentPromptScope({ input: scopeInput.input, trigger: scopeInput.trigger, templateRef: scopeInput.templateRef });
+    const { resolvable, unresolved } = splitBindings(scopeInput.variables, roots);
+    // Built from the bindings that DO resolve, so the builder cannot raise and the template diff
+    // below sees exactly what the render will see. A name whose binding failed is absent here,
+    // which is correct: it is missing, and it is named by its PATH rather than by itself.
+    const scope = buildAgentPromptScope({ ...scopeInput, variables: resolvable });
+    const failedNames = new Set(unresolved.map((binding) => binding.name));
+    const missing = [
+      ...unresolved.map((binding) => binding.path),
+      // A bare `{{language}}` whose binding just failed is not a second finding — the caller
+      // cannot supply `language`, it supplies `trigger.context.language`. Reporting both would
+      // send them to a field that does not exist.
+      ...unresolvedPromptVariables(resolvedPrompt, scope).filter((path) => {
+        const [root, ...rest] = path.split('.');
+        if (rest.length === 0) return !failedNames.has(root as string);
+        if (root === 'variables' && rest.length === 1) return !failedNames.has(rest[0] as string);
+        return true;
+      }),
+    ]
+      .filter((path, index, all) => all.indexOf(path) === index)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (missing.length === 0) return scope;
+    const boundNames = Object.keys(scopeInput.variables);
     const suppliedUnder: Record<string, PromptVariableSlot> = {};
     for (const path of missing) {
       const slot = promptVariableSlot(path, boundNames);

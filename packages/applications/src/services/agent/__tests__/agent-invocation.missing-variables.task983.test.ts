@@ -155,3 +155,83 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * TASK-983 follow-up (live, 2026-09-17) — the SEEDED agent still answered the OLD per-path 400
+ * after the first fix landed, and the reason was not the artifact's missing frozen list (the
+ * invocation path never read it — it diffs the artifact's own `resolvedPrompt`). It is that
+ * `general-medicine-summarization` does not reference its nine context paths from the template
+ * at all: it BINDS them (`instruction.variables[name] = { path: 'trigger.context.<name>' }`,
+ * `seed/25-agents.ts:338-349`) and the template reads the bare names. `buildAgentPromptScope`
+ * resolves every binding EAGERLY while the scope is built, so it threw on the first one before
+ * the diff could run — exactly the fallback the first fix documented, and exactly the experience
+ * the ticket set out to end.
+ *
+ * So the bindings are now part of the same single refusal. Pinned on a LEGACY artifact (no
+ * `requiredVariables` key, as every row published before this ticket carries).
+ */
+const NINE = [
+  'trigger.context.chief_complaint',
+  'trigger.context.current_department',
+  'trigger.context.formatted_previous_visits',
+  'trigger.context.formatted_vitals',
+  'trigger.context.language',
+  'trigger.context.safe_age',
+  'trigger.context.safe_dob',
+  'trigger.context.safe_gender',
+  'trigger.context.visit_type',
+];
+
+/** The seeded shape: nine `{ path }` bindings + two `{ value }` constants, read as BARE names. */
+const seededInstruction = {
+  promptTemplateId: 'tpl-general-medicine',
+  promptVersionNumber: 1,
+  variables: {
+    ...Object.fromEntries(NINE.map((path) => [path.split('.').pop() as string, { path }])),
+    new_visit_headings: { value: 'S/O/A/P' },
+    revisit_headings: { value: 'S/O/A/P' },
+  },
+};
+
+const seededAgent = resolved({
+  instruction: seededInstruction,
+  resolvedPrompt: {
+    source: 'template',
+    promptTemplateId: 'tpl-general-medicine',
+    promptVersionNumber: 1,
+    content:
+      'Visit {{visit_type}} in {{current_department}}, language {{language}}. Patient {{safe_age}} {{safe_dob}} {{safe_gender}}. ' +
+      'Complaint {{chief_complaint}}. Vitals {{formatted_vitals}}. Prior {{formatted_previous_visits}}. Headings {{new_visit_headings}}/{{revisit_headings}}.',
+  },
+  // A LEGACY artifact: published before this ticket, so no `requiredVariables` was frozen.
+});
+
+describe('the seeded general-medicine agent — bindings are part of the SAME refusal', () => {
+  it('answers ONE 400 naming all nine bound paths for `{ text }` alone', async () => {
+    const response = await refusal(seededAgent, { text: 'productive cough for three days' });
+
+    expect(response.code).toBe('PROMPT_VARIABLES_MISSING');
+    expect(response.missingVariables).toEqual(NINE);
+    // Each one is a context path — never the bare name the template happens to read it under,
+    // which is not what a caller can supply.
+    expect(response.suppliedUnder).toEqual(Object.fromEntries(NINE.map((path) => [path, 'context'])));
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('narrows to what is still missing as the caller fills the context in', async () => {
+    const response = await refusal(seededAgent, {
+      text: 't',
+      context: { context: { language: 'en', visit_type: 'new', current_department: 'General Medicine' } },
+    });
+
+    expect(response.missingVariables).toEqual(NINE.filter((path) => !/language|visit_type|current_department/.test(path)));
+  });
+
+  it('runs once the whole context is supplied — and renders the bound bare names', async () => {
+    const context = { context: Object.fromEntries(NINE.map((path) => [path.split('.').pop() as string, 'x'])) };
+    await service().invokeText(seededAgent, TENANT, { text: 't', context }, 'blocking');
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(String((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt)).toContain('Headings S/O/A/P/S/O/A/P');
+  });
+});
