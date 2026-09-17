@@ -2,12 +2,142 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, SYSTEM_TENANT_ID } from '@arcaai/database';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
-import { Repository } from '../../../common';
+import { Repository, formatFindAllProps } from '../../../common';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { AgentEntity } from '../../../entities';
 import { AgentTask, ResourceStatusType, WorkflowDefinitionStatus } from '../../../enums';
+import { DbFilters } from '../../../interfaces';
 import { AgentEntityMapper } from '../../../mappers';
 import { Agent } from '../../../models';
+
+/**
+ * TASK-965 (OD-965-3) — ONE version row of a lineage, projected. Deliberately not an
+ * `AgentEntity`: a lineage list needs four scalars per version and would otherwise drag every
+ * row's `instruction` / `compiledConfig` / `validationReport` JSON across the wire to render a
+ * badge.
+ */
+export interface AgentLineageVersionRef {
+  id: string;
+  versionNumber: number;
+  status: WorkflowDefinitionStatus;
+  publishedAt: Date | null;
+  /** Who last wrote the row. On the ACTIVE row that is the publisher — `publish()` stamps `updatedBy`. */
+  publishedBy: string | null;
+  updatedAt: Date;
+  modelId: string | null;
+  compiledConfigChecksum: string | null;
+}
+
+/** TASK-965 (OD-965-3) — one SLUG and everything a lineage list row has to say about it. */
+export interface AgentLineage {
+  slug: string;
+  name: string;
+  task: AgentTask;
+  versionCount: number;
+  latestVersionNumber: number;
+  deprecatedCount: number;
+  /** The one PUBLISHED row this slug serves, or `null` — a lineage whose active version was deprecated or deleted. */
+  active: AgentLineageVersionRef | null;
+  /** The newest OPEN (DRAFT/VALIDATED) row, or `null`. What "Continue draft vM" continues. */
+  draft: AgentLineageVersionRef | null;
+  origin: { sourceTenantId: string | null; sourceSlug: string | null };
+  tags: string[];
+  /** The newest touch ANYWHERE in the lineage. */
+  updatedAt: Date;
+}
+
+export interface AgentLineageQuery {
+  page?: number;
+  limit?: number;
+  task?: AgentTask;
+  filters?: DbFilters;
+  search?: string;
+  searchFields?: string[];
+}
+
+/**
+ * The columns a lineage projection reads. Every heavy JSON column (`instruction`, `parameters`,
+ * `tools`, `inputSchema`, `outputSchema`, `compiledConfig`, `validationReport`) is ABSENT on
+ * purpose: this read walks every live version row of a tenant to fold them, so pulling the
+ * authored bodies would make the cheapest screen in the console the most expensive query.
+ */
+const AGENT_LINEAGE_SELECT = {
+  id: true,
+  tenantId: true,
+  slug: true,
+  name: true,
+  task: true,
+  versionNumber: true,
+  status: true,
+  isActive: true,
+  modelId: true,
+  compiledConfigChecksum: true,
+  publishedAt: true,
+  deprecatedAt: true,
+  sourceTenantId: true,
+  sourceSlug: true,
+  tags: true,
+  updatedAt: true,
+  updatedBy: true,
+} as const;
+
+type AgentLineageRow = {
+  id: string;
+  tenantId: string;
+  slug: string;
+  name: string;
+  task: AgentTask;
+  versionNumber: number;
+  status: WorkflowDefinitionStatus;
+  isActive: boolean;
+  modelId: string | null;
+  compiledConfigChecksum: string | null;
+  publishedAt: Date | null;
+  deprecatedAt: Date | null;
+  sourceTenantId: string | null;
+  sourceSlug: string | null;
+  tags: string[];
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
+const OPEN_STATUSES: ReadonlySet<WorkflowDefinitionStatus> = new Set([WorkflowDefinitionStatus.DRAFT, WorkflowDefinitionStatus.VALIDATED]);
+
+function agentVersionRef(row: AgentLineageRow): AgentLineageVersionRef {
+  return {
+    id: row.id,
+    versionNumber: row.versionNumber,
+    status: row.status,
+    publishedAt: row.publishedAt ?? null,
+    publishedBy: row.updatedBy ?? null,
+    updatedAt: row.updatedAt,
+    modelId: row.modelId ?? null,
+    compiledConfigChecksum: row.compiledConfigChecksum ?? null,
+  };
+}
+
+/** Fold one slug's version rows (any order) into the lineage a list row renders. */
+export function foldAgentLineage(rows: readonly AgentLineageRow[]): AgentLineage {
+  const byVersionDesc = [...rows].sort((a, b) => b.versionNumber - a.versionNumber);
+  const active = byVersionDesc.find((row) => row.status === WorkflowDefinitionStatus.PUBLISHED && row.isActive) ?? null;
+  const draft = byVersionDesc.find((row) => OPEN_STATUSES.has(row.status)) ?? null;
+  // The ACTIVE row names the lineage — that is the version the tenant is serving, so its name is
+  // the one an integrator sees. With none active, the newest row is the only honest answer.
+  const naming = active ?? byVersionDesc[0];
+  return {
+    slug: naming.slug,
+    name: naming.name,
+    task: naming.task,
+    versionCount: rows.length,
+    latestVersionNumber: byVersionDesc[0].versionNumber,
+    deprecatedCount: rows.filter((row) => row.status === WorkflowDefinitionStatus.DEPRECATED).length,
+    active: active ? agentVersionRef(active) : null,
+    draft: draft ? agentVersionRef(draft) : null,
+    origin: { sourceTenantId: naming.sourceTenantId ?? null, sourceSlug: naming.sourceSlug ?? null },
+    tags: naming.tags ?? [],
+    updatedAt: rows.reduce((newest, row) => (row.updatedAt > newest ? row.updatedAt : newest), rows[0].updatedAt),
+  };
+}
 
 /**
  * `Agent` — rows ARE versions (TASK-863). Tenant-scoped and soft-deletable.
@@ -212,6 +342,61 @@ export class AgentRepository extends Repository<AgentEntity, Agent> {
     });
     const mapper = AgentEntityMapper.getInstance();
     return rows.filter((row) => row.tenantId === tenantId).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * TASK-965 (OD-965-3) — the caller's agents ONE ROW PER SLUG, paginated BY SLUG.
+   *
+   * `findAllForTenant` above answers one row per VERSION, which is what the console renders
+   * today: an agent with four versions is four near-identical grid rows, every count is a count
+   * of versions, and a page boundary can split a lineage in half. Folding client-side cannot fix
+   * that — the rows that belong to a lineage may be on another page — so the fold happens here
+   * and `count` is a count of LINEAGES.
+   *
+   * The fold is in memory over the tenant's live version rows: a `groupBy` cannot answer "the
+   * active row's id and the newest draft's id" in one query, and the population is bounded by
+   * what one tenant authored. {@link AGENT_LINEAGE_SELECT} keeps that read to scalars.
+   *
+   * `task` is a first-class narrowing (the console's primary facet); `filters` / `search` are the
+   * ordinary grammar and narrow the VERSION ROWS, so a lineage is listed when any of its live
+   * versions match. Ordering is `name` then `slug`, both ascending — stable, and independent of
+   * which version happens to be newest.
+   */
+  async findLineagesForTenant(tenantId: string, query: AgentLineageQuery = {}): Promise<{ data: AgentLineage[]; count: number }> {
+    // The SAME skip/where derivation every other list route uses, so a page number means the
+    // same thing here as it does on `GET admin/workflow-definitions`.
+    const { skip, take, where } = formatFindAllProps({
+      page: query.page,
+      limit: query.limit,
+      filters: query.filters,
+      search: query.search,
+      searchFields: query.searchFields,
+    });
+    const rows: AgentLineageRow[] = await this.db.findMany({
+      where: {
+        ...(where as Record<string, unknown>),
+        ...(query.task ? { task: query.task } : {}),
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      select: AGENT_LINEAGE_SELECT,
+      orderBy: [{ slug: 'asc' }, { versionNumber: 'desc' }],
+    });
+
+    const bySlug = new Map<string, AgentLineageRow[]>();
+    for (const row of rows) {
+      // Defence in depth, exactly as the reads above: a call made with no CLS tenant is one the
+      // extension could not filter at all.
+      if (row.tenantId !== tenantId) continue;
+      const group = bySlug.get(row.slug);
+      if (group) group.push(row);
+      else bySlug.set(row.slug, [row]);
+    }
+
+    const lineages = [...bySlug.values()]
+      .map((group) => foldAgentLineage(group))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
+
+    return { data: take ? lineages.slice(skip, skip + take) : lineages, count: lineages.length };
   }
 
   /**
