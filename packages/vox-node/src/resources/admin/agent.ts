@@ -10,10 +10,11 @@
 
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
-import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
+import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
   AgentAssignmentResponse,
   AgentBundleResponse,
+  AgentLineageResponse,
   AgentResponse,
   AgentSyncResponse,
   AgentTestAckResponse,
@@ -40,7 +41,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AgentAdminController, AgentAssignmentAdminController, AgentPromoteToSystemController
- * (22 routes). Several controllers sharing one scope share one
+ * (24 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -210,6 +211,22 @@ export class AdminAgentResource extends AdminResource {
       path: `admin/agents/${encodePathSegment(String(id))}`,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Make an already-PUBLISHED version the ACTIVE one for its slug (rollback)
+   *
+   * Moves the `isActive` pointer and demotes the sibling that held it — the demoted version stays PUBLISHED and can be activated again. The published bytes are never touched, which is why this is allowed on an immutable row where an edit is not. Without it the only way back to an older version was to branch and republish it, which mints yet another version row. Every assignment naming this slug follows the pointer, so the departments that used vN now get this version.
+   *
+   * `POST /api/v1/admin/agents/{id}/activate` — `AgentAdminController.activate`.
+   */
+  activate(id: string, options: AdminRequestOptions = {}): Promise<AgentResponse> {
+    return this.request<AgentResponse>({
+      method: 'POST',
+      path: `admin/agents/${encodePathSegment(String(id))}/activate`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -389,6 +406,40 @@ export class AdminAgentResource extends AdminResource {
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
+  }
+
+  /**
+   * List the caller tenant’s agent LINEAGES (one row per slug)
+   *
+   * The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/agents` stays the per-VERSION read a Versions tab needs — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `task` narrows to one agent task; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.
+   *
+   * `GET /api/v1/admin/agents/lineages` — `AgentAdminController.fetchLineages`.
+   *
+   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link fetchLineagesIterate} to walk every page.
+   */
+  fetchLineages(
+    options: AdminListOptions & {
+      query?: AdminListQuery & { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION' };
+    } = {},
+  ): Promise<PaginatedPage<AgentLineageResponse>> {
+    return this.listPage<AgentLineageResponse>('admin/agents/lineages', options);
+  }
+
+  /**
+   * List the caller tenant’s agent LINEAGES (one row per slug)
+   *
+   * The register shape: one row per slug carrying the ACTIVE published version, the newest open draft, the version counts and what the slug SERVES (tenant default / departments / tag selectors). `GET admin/agents` stays the per-VERSION read a Versions tab needs — grouping that one client-side is wrong at a page boundary, because `count` and the page slice here are LINEAGES, not rows. `task` narrows to one agent task; the inherited `filters`/`search` grammar narrows the VERSION rows, so a lineage is listed when any of its live versions match.
+   *
+   * `GET /api/v1/admin/agents/lineages` — `AgentAdminController.fetchLineages`.
+   *
+   * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
+   */
+  fetchLineagesIterate(
+    options: AdminListOptions & {
+      query?: AdminListQuery & { task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION' };
+    } = {},
+  ): AsyncGenerator<AgentLineageResponse, void, undefined> {
+    return this.listAll<AgentLineageResponse>('admin/agents/lineages', options);
   }
 
   /**

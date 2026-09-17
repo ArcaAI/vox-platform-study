@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 444 component schemas the generated surface transitively
+ * Only the 456 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -84,6 +84,59 @@ export interface AgentFindingResponse {
   message: string;
   path: string;
   severity: 'ERROR' | 'WARNING';
+}
+
+export interface AgentLineageActiveResponse {
+  compiledConfigChecksum?: string | null;
+  id: string;
+  modelSlug?: string | null;
+  /** ISO timestamp. */
+  publishedAt?: string | null;
+  /** The user that published this version (`updatedBy`, stamped by publish). */
+  publishedBy?: string | null;
+  versionNumber: number;
+}
+
+export interface AgentLineageAssignmentResponse {
+  /** How many departments assign this slug. */
+  departmentCount: number;
+  /** How many TAG-QUALIFIED assignments (any tier) name this slug. */
+  selectorCount: number;
+  /** The tenant tier’s UNQUALIFIED assignment for this task names this slug. */
+  tenantDefault: boolean;
+}
+
+export interface AgentLineageDraftResponse {
+  id: string;
+  status: 'DRAFT' | 'VALIDATED';
+  /** ISO timestamp. */
+  updatedAt: string;
+  versionNumber: number;
+}
+
+export interface AgentLineageOriginResponse {
+  sourceSlug?: string | null;
+  sourceTenantId?: string | null;
+}
+
+export interface AgentLineageResponse {
+  active?: AgentLineageActiveResponse;
+  assignment: AgentLineageAssignmentResponse;
+  deprecatedCount: number;
+  draft?: AgentLineageDraftResponse;
+  /** A platform service agent (allow-listed slug) the business plane never lists; admin surfaces render it flagged, never as a tenant’s own lineage. */
+  hidden: boolean;
+  latestVersionNumber: number;
+  /** The ACTIVE version’s name, or the newest version’s when nothing is active. */
+  name: string;
+  origin: AgentLineageOriginResponse;
+  slug: string;
+  tags: string[];
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
+  /** ISO timestamp — the newest touch anywhere in the lineage. */
+  updatedAt: string;
+  /** Live (non-deleted) version rows in this lineage. */
+  versionCount: number;
 }
 
 export interface AgentPromotionResponse {
@@ -3527,6 +3580,7 @@ export interface NodePromptUpdateResponse {
   compiledConfig?: Record<string, unknown> | null;
   compiledConfigChecksum?: string | null;
   createdAt: string;
+  createdBy?: string | null;
   /** The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did. */
   currentRegistryChecksum: string;
   deprecatedAt?: string | null;
@@ -3561,6 +3615,7 @@ export interface NodePromptUpdateResponse {
   templateLocked: boolean;
   tenantId: string;
   updatedAt: string;
+  updatedBy?: string | null;
   validatedAt?: string | null;
   /** The last server-side ValidationReport. */
   validationReport?: Record<string, unknown> | null;
@@ -3627,6 +3682,16 @@ export interface OpenSocketsResponse {
   refreshedAt: string;
   /** Total sockets across the platform (currently mirrors `open`). */
   total: number;
+}
+
+export interface PaginatedAgentLineageResponse {
+  /** Total number of items */
+  count: number;
+  data: AgentLineageResponse[];
+  /** Number of items per page */
+  limit: number;
+  /** Page number */
+  page: number;
 }
 
 export interface PaginatedAgentPromotionResponse {
@@ -3849,6 +3914,16 @@ export interface PaginatedWorkflowDefinitionResponse {
   /** Total number of items */
   count: number;
   data: WorkflowDefinitionResponse[];
+  /** Number of items per page */
+  limit: number;
+  /** Page number */
+  page: number;
+}
+
+export interface PaginatedWorkflowLineageResponse {
+  /** Total number of items */
+  count: number;
+  data: WorkflowLineageResponse[];
   /** Number of items per page */
   limit: number;
   /** Page number */
@@ -7179,6 +7254,7 @@ export interface WorkflowDefinitionResponse {
   compiledConfig?: Record<string, unknown> | null;
   compiledConfigChecksum?: string | null;
   createdAt: string;
+  createdBy?: string | null;
   /** The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did. */
   currentRegistryChecksum: string;
   deprecatedAt?: string | null;
@@ -7207,12 +7283,66 @@ export interface WorkflowDefinitionResponse {
   templateLocked: boolean;
   tenantId: string;
   updatedAt: string;
+  updatedBy?: string | null;
   validatedAt?: string | null;
   /** The last server-side ValidationReport. */
   validationReport?: Record<string, unknown> | null;
   /** Optimistic-concurrency version (`_version`). */
   version: number;
   versionNumber: number;
+}
+
+export interface WorkflowLineageActiveResponse {
+  compiledConfigChecksum?: string | null;
+  id: string;
+  /** ISO timestamp. */
+  publishedAt?: string | null;
+  /** The user that published this version (`updatedBy`, stamped by publish). */
+  publishedBy?: string | null;
+  /** The node-registry checksum stamped at publish; compare against the running one for drift. */
+  registryChecksum?: string | null;
+  versionNumber: number;
+}
+
+export interface WorkflowLineageAssignmentResponse {
+  /** How many departments assign this slug. */
+  departmentCount: number;
+  /** How many TAG-QUALIFIED assignments (any tier) name this slug. */
+  selectorCount: number;
+  /** The tenant tier’s UNQUALIFIED assignment for this palette names this slug. */
+  tenantDefault: boolean;
+}
+
+export interface WorkflowLineageDraftResponse {
+  id: string;
+  status: 'DRAFT' | 'VALIDATED';
+  /** ISO timestamp. */
+  updatedAt: string;
+  versionNumber: number;
+}
+
+export interface WorkflowLineageOriginResponse {
+  sourceTemplateSlug?: string | null;
+  /** True when the tenant has not diverged, so a super-admin re-sync may refresh it. */
+  templateLocked: boolean;
+}
+
+export interface WorkflowLineageResponse {
+  active?: WorkflowLineageActiveResponse;
+  assignment: WorkflowLineageAssignmentResponse;
+  deprecatedCount: number;
+  draft?: WorkflowLineageDraftResponse;
+  latestVersionNumber: number;
+  /** The ACTIVE version’s name, or the newest version’s when nothing is active. */
+  name: string;
+  origin: WorkflowLineageOriginResponse;
+  paletteKey: string;
+  slug: string;
+  tags: string[];
+  /** ISO timestamp — the newest touch anywhere in the lineage. */
+  updatedAt: string;
+  /** Live (non-deleted) version rows in this lineage. */
+  versionCount: number;
 }
 
 export interface WorkflowNodeEvalGateResponse {
