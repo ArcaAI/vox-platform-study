@@ -156,6 +156,18 @@ Verify/judge stages stay at opus or above; discovery was sonnet (this section's 
 | R3 | First read the scope badge on `/ai-providers` (is a working tenant still set?); then, as super admin with NO working tenant, `PUT admin/providers/stt/sarvam?tenantId=<SYSTEM>` while a tenant `stt/sarvam` row exists; capture status + body; repeat for one text provider | §2.2 hypotheses 1–3 |
 | R7 | Capture the failing download request URL from the network pane | §2.5 chain |
 
+### 3.4a W0 results (orchestrator, 2026-09-17, dev gateway `localhost:8868` + read-only cluster checks)
+
+| Item | Result | Consequence |
+|---|---|---|
+| R1/R4 ai-models | `GET admin/ai-models/list?limit=3&sort=name:desc` and `…&search=zzzz-no-such-model&searchFields=name,slug` return the same 33 rows in the same order as the bare call | §2.1 confirmed; lane A |
+| R4 dna / consultations | `admin/dna-writing-styles?doctorId=no-such-doctor` → 0 of 7; `admin/consultations?departmentId=does-not-exist` → 0 of 8; `?status=SIGNED` → 0 (none signed); an invalid status is a 400 naming the enum | filters work at the API; the console traces clean (§2.1). Lane A hardens the e2e; a repro from the owner decides OD-3 |
+| R3 providers | Tenant ARCAAI `PUT admin/providers/stt/sarvam?tenantId=<ARCAAI>` (If-Match "0") → 200; then super admin `PUT …?tenantId=<SYSTEM>` (If-Match "1") → 200, `keyVersion` 1, `_version` 2; the same with `x-tenant-id: <ARCAAI>` still set → 200 | no API defect; the block is console scope (§2.2 hypothesis 1) and, on the cluster, most likely the weak-ETag defect below. Lane B. Residue: the dev SYSTEM `stt/sarvam` row now holds a dummy key (`hasKey: true`, still `enabled: false`); the tenant row was deleted; `reset` is not offered for cloud providers |
+| R5 approve | Cluster DB: 178 APPROVED rows, **all pinned**; the only non-approved rows are one DRAFT (Global "DNA Writing Style Analysis Prompt") and one PUBLISHED (ARCAAI "Radioly Report V2"). Dev: approving the DRAFT DNA template with `If-Match: "1"` → 200, APPROVED, pinned v3. Cluster gateway log: no `approve` request in 3 days — the click never left the browser. Through the ingress (`api.taphuynh.dev`): uncompressed GET → `etag: "1"`; browser-like (`accept-encoding: gzip`) → `etag: W/"1"` + `content-encoding: gzip`. The console discards weak validators (`shared/api/http.ts:157-158` → `etag: null`) and the governance tab disables Approve on a null etag (`governance-tab.tsx:353`) | **Root cause of R5 (and of every disabled/refused If-Match write in the deployed console): the compressing ingress weakens the ETag and the console throws it away.** Lane C: console normalises `W/"n"` → `"n"`; gateway adds `Cache-Control: no-transform` beside every ETag; the self-heal + migration stay as hardening. Seed hypothesis §2.3 ruled out for the cluster |
+| R7 buckets | `GET storage/buckets/hope-recordings-arcaai/files/2026%2F09%2Ffile.wav` → 400 `Invalid file key: path traversal not allowed` | §2.5 confirmed; lane E |
+
+Cluster access used: `psql` read-only SELECTs in `hope-postgres-0`, `kubectl logs` on the API pod, and the seeded super-admin login on `api.taphuynh.dev` for two GETs. Nothing on the cluster was written.
+
 ### 3.5 Decisions taken (owner may override)
 
 | # | Decision | Why |
@@ -200,3 +212,4 @@ _Not started._
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | W0 done (§3.4a): R5's live cause is the ingress weakening ETags + the console discarding weak validators, not seed data; lane C re-briefed. Eight worktrees `../hope-v2-983-{A..H}` (branches `task-983/<lane>`, node_modules + dist by symlink) spawned: A/B/C/D/F opus, E/G/H sonnet |
