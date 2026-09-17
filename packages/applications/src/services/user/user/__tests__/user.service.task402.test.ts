@@ -104,7 +104,7 @@ describe('UserService — password hashing on the CRUD paths', () => {
     service = buildService();
   });
 
-    // TASK-983 R6: these creates run inside a tenant (CLS `tenantId`), so they
+  // TASK-983 R6: these creates run inside a tenant (CLS `tenantId`), so they
   // now carry the mandatory role + department membership. The password
   // assertions are unchanged — which also proves the membership guard does not
   // mask the policy failures below.
@@ -120,7 +120,9 @@ describe('UserService — password hashing on the CRUD paths', () => {
     });
 
     it('rejects a policy-violating password with a 400 listing the unmet rules and never writes', async () => {
-      await expect(service.create({ username: 'bob', password: 'weak', isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any)).rejects.toMatchObject({
+      await expect(
+        service.create({ username: 'bob', password: 'weak', isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any),
+      ).rejects.toMatchObject({
         constructor: BadRequestException,
         message: expect.stringContaining('at least 12 characters'),
       });
@@ -135,7 +137,9 @@ describe('UserService — password hashing on the CRUD paths', () => {
       });
 
       // 12+ compliant against defaults, but short of the raised minimum.
-      await expect(service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any)).rejects.toThrow('at least 20 characters');
+      await expect(
+        service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any),
+      ).rejects.toThrow('at least 20 characters');
       expect(mockUserRepository.create).not.toHaveBeenCalled();
     });
 
