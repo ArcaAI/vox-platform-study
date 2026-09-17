@@ -253,6 +253,10 @@ Note on commit ids: a peer session rewrote every commit of this ticket on `dev-2
 
 Dev-stack incident, 2026-09-17 17:14: the gateway received a SIGTERM and stt/text/guardrail/nlp/harness died while the console I had restarted stayed up; the supervisor's exit trap only kills what it spawned, so the cause is outside this session. Recovered with `pnpm stack:dev -- api stt text guardrail nlp harness` after clearing the stale pid files; all six healthy within 25 s.
 
+### 4.11 Owner requirement: the manual (no-SDK) socket path — `45797581a`
+
+"The integration guidance must make clear that a developer who does not use the SDK will call the API and set up the socket manually." The STT Socket lane now opens with a "Without the SDK" section BEFORE any SDK sample: the four steps (open the session on an API key → open `/ws/stt/stream?sessionId&ticket` → stream PCM16 LE mono binary frames and read `transcript` frames → `stop`, and refresh-ticket + `resume` on reconnect), a table of every frame in both directions with a literal JSON example and its meaning (`ready`, binary audio, `audio`, `metadata`, `transcript`, `status`, `error`, `stop`, `resume`, `resumed`, `resume_failed`, `close`), a curl + websocat walkthrough, and a `fetch` + `WebSocket` sample with no SDK import. Data module `shared/docs/stt-socket-protocol.ts` (sourced from `transcription-job.controller.ts`, `stt-ws.gateway.ts`, `packages/vox-node/src/types/stt.ts`), pinned by `stt-socket-protocol.test.ts` (frames parse, both directions covered, snippets name the real routes and import no SDK). Panel + protocol tests 50/50; lint and tsc clean. Evidence `evidence/owner-check-socket-lane-*.png`.
+
 ## 5. Verification
 
 Owner rule (2026-09-17): no gating tests until everything is merged into `dev-2.2`. One full pass after the last merge, in the primary checkout (`scratchpad/gates.log`):
@@ -291,6 +295,7 @@ Live proof on the dev gateway (watch mode, after the merges):
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Owner: the guidance must cover the manual, no-SDK socket setup — §4.11 added to the Socket lane. TASK-965 WS-3 merged (`f6ed13d2d`) |
 | 2026-09-17 | Owner check: socket guidance moved to the front of a speech-to-text agent's Integration tab (§4.10); TASK-965 WS-2 and WS-3 lanes spawned for the duplicate-version rows (R12) |
 | 2026-09-17 | Console e2e: the owner's `next dev` on 5176 had died (no crash trace; the box was under gate + lane-server load) and, restarted, served a stale Turbopack dev cache that never hydrated the login form (two HMR-client chunk hashes) — restarted again with `.next` cleared via `pnpm stack:dev -- admin`; the three specs then ran; two stale `ai-models` selectors fixed; leftover e2e model rows retired; `rate-limit.enabled` restored to `true` |
 | 2026-09-17 | Lane D merged (§4.8); artifacts regenerated in worktree M and merged (§4.9); single gate pass green (§5); two post-merge test fixes; API e2e subset green; worktrees removed; status Review |
