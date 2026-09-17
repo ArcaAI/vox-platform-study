@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — plan approved 2026-09-13; **WS-1 done** (console hotfixes, this README §4.1); WS-2 … WS-7 pending |
+| Status | **In Progress** — plan approved 2026-09-13; **WS-1, WS-2, WS-3, WS-4 done** (merged into `dev-2.2` on 2026-09-17: `3249b7823` WS-2, `f6ed13d2d` WS-3, `969c85b0f` WS-4; lineage rows carry `hidden`, `230558e21`); WS-5 (Workflow Studio), WS-6 (model-B consistency), WS-7 (verification + docs) pending |
 | Type | bugfix + UX |
 | Branch | `dev-2.2` |
 | Screens | `/agents`, `/workflow-studio` (+ `/workflow-studio/assignments`); head+version screens `/prompt-templates`, `/context-schemas`, `/document-templates`, `/dna-writing-styles` reviewed for consistency |
@@ -563,6 +563,8 @@ aggregate (owner rule for this fan-out: run only the files this lane authored or
 Playwright `agents.spec.ts` cases that need a seeded DRAFT agent (they skip on this database).
 
 ## 6. Change History
+
+| 2026-09-17 | WS-2, WS-3 and WS-4 executed as wave 3 of TASK-983 (owner OD-9) and merged into `dev-2.2`; the Agents grid is one row per lineage; WS-2 findings from WS-4: `POST admin/agents/:id/activate` takes no If-Match, the versions route is `:id/versions` (no slug form), register `filters`/`sort` fold before grouping (tag facet dropped until a post-fold narrowing exists) — see §4.3 |
 
 | Date | Change |
 |---|---|

@@ -270,6 +270,24 @@ Done as a developer would, with curl, plain `fetch` + `WebSocket` (Node 24), the
 | Text generation, blocking + SSE | ✅ on `medical-ner` (`{ text }` → 200, `output.entities`); ❌ on `general-medicine-summarization`: 400 "instruction references `trigger.context.language`…", then `safe_age`, … — nine `trigger.context.*` placeholders, revealed one per call; `GET agents/{slug}` does not list them | lane J: `requiredVariables` on the agent summary + one 400 naming every missing placeholder (`PROMPT_VARIABLES_MISSING`); lane I: derive bodies from `inputSchema` and render `variables` in full |
 | API keys | a key minted by the tenant-less super admin answers 401 on every business route (bound to a human with no membership in the tenant); the seeded test key lacks `agent:invocation:write` | every lane names its exact scopes (`stt:transcription:write`, `agent:invocation:write`, …) and says to mint the key as a tenant user |
 
+### 4.13 Lanes I and J — integration guidance by job; `requiredVariables`; the SDK fixes — merged `d0bb740c9`, `bfd123cb2`, `608272da5`
+
+- **Lane I** (`apps/admin-console`): the agent half of `IntegrationPanel` is now four lanes — **Node** (`@arcaai/vox-node`), **Browser** (`@arcaai/vox`), **Manual** (HTTP + Socket merged), **Postman** — each organised as **Batch** / **Realtime** (Blocking / Realtime (SSE) for text generation; NER has no realtime view). New data modules `shared/docs/{gateway-scopes,batch-job-protocol,sse-frame-protocol}.ts` (routes, frames, scopes with file:line sources and tests that parse every example and cross-check every path against `route-manifest.json`); every lane names the exact API-key scope its requests need and says to mint the key as a tenant user; the Postman collection carries the multipart upload, the mediaId form, the job GET, the SSE progress, the stream session and refresh-ticket requests with the WebSocket handshake in the descriptions; `client-integration-guide.md` gained the batch job. Drift tests pin every printed SDK call to the real prototypes and option keys; `socket.stop()` (a deprecated alias whose old comment was wrong) is refused in favour of `finalize()`. Evidence `evidence/lane-I-*.png`.
+- **Lane J** (`workflow-contract`, `types`, `applications`, both SDKs): `collectPlaceholders` / `requiredPromptVariables` / `unresolvedPromptVariables` in the grammar; `compile()` freezes `requiredVariables`; `GET /agents/{slug}` lists them (legacy rows recomputed from `resolvedPrompt`); one `400 PROMPT_VARIABLES_MISSING` with `missingVariables` + `suppliedUnder` — the seeded agents BIND their nine `trigger.context.*` paths (`seed/25-agents.ts:338-349`) and the eager binding resolution used to fire first, so the fix splits resolvable from unresolvable bindings before the diff. `hope.agents.transcribe(slug, { file })` now uploads through `/audio/transcription-jobs/transcribe` with `agentSlug`; new `hope.agents.transcriptionJob` / `subscribeTranscription` / `waitForTranscription` (resolves on COMPLETED | FAILED | CANCELLED | DEAD); `AgentSummary.requiredVariables` in both SDK type sets. Known gap: the draft bench still reports bindings one at a time.
+- Post-merge: `agent-publish-dialog.task890.test.tsx` adapted to the job-first panel (`f2e721256`); the five API artifacts regenerated in a throwaway worktree (`829b72e6f`; +5 admin ops from WS-2, `requiredVariables` on the summary; all three drift checks clean).
+
+### 4.14 Guidance re-followed on the final tree (2026-09-17, dev gateway)
+
+| Path | Result |
+|---|---|
+| Realtime STT, no SDK (`manual-stt.mjs`) | ✅ ready → binary PCM → drop → refresh-ticket → `resumed { fromSeq: 5 }` → stop → `finalizing` → final → `closed` |
+| `@arcaai/vox-node`: `invoke('medical-ner')` | ✅ 200, `output.entities` |
+| `@arcaai/vox-node`: `transcribe(slug, { file })` → `waitForTranscription` | ✅ 201 QUEUED → COMPLETED in 26 s, `resultText` read |
+| `@arcaai/vox-node`: `createStreamSession` → `socket().connect()` / `sendPcm16` / `stop` | ✅ finals, `finalizing`, `closed` |
+| `GET /agents/general-medicine-summarization` | ✅ `requiredVariables` = the nine `trigger.context.*` paths |
+| `POST …/invocations` `{ text }` | ✅ ONE 400 `PROMPT_VARIABLES_MISSING` naming all nine with `suppliedUnder: context` |
+| `POST …/invocations` with all nine | ❌ 502 — environmental: the dev SYSTEM `llm/lm-studio` row carried the cluster hostname `hope-lmstudio:1234` (set to `127.0.0.1:1234/v1` here) and the restarted text service still reports "Connection error" to LM Studio while curl and the arcaenv Python reach it; the text service's provider URL comes from a plane I could not read without its service token. Needs the owner's look; not a guidance defect |
+
 ## 5. Verification
 
 Owner rule (2026-09-17): no gating tests until everything is merged into `dev-2.2`. One full pass after the last merge, in the primary checkout (`scratchpad/gates.log`):
@@ -308,6 +326,7 @@ Live proof on the dev gateway (watch mode, after the merges):
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Lanes I and J merged (§4.13), TASK-965 WS-4 merged (agents grid one row per lineage, `969c85b0f`), artifacts regenerated (`829b72e6f`), guidance re-followed on the final tree (§4.14); five worktrees removed |
 | 2026-09-17 | Owner: batch vs realtime guidance for both SDKs and a merged Manual (HTTP + Socket) lane, Postman must drive both — lane I spawned; guidance followed by hand (§4.12): 5 defects found, lane J spawned for `requiredVariables`, the all-at-once 400 and the vox-node upload bug; TASK-965 WS-2 merged (`3249b7823`), `hidden` added to lineage rows, WS-4 spawned |
 | 2026-09-17 | Owner: the guidance must cover the manual, no-SDK socket setup — §4.11 added to the Socket lane. TASK-965 WS-3 merged (`f6ed13d2d`) |
 | 2026-09-17 | Owner check: socket guidance moved to the front of a speech-to-text agent's Integration tab (§4.10); TASK-965 WS-2 and WS-3 lanes spawned for the duplicate-version rows (R12) |
