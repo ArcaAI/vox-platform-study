@@ -1,6 +1,6 @@
 /**
  * TASK-975 lane B's T8, landed under TASK-983 lane G (R9 gap 3) — the socket-lane snippets the
- * Integration panel's Socket tab renders must name methods, events and options that EXIST on the
+ * Integration panel's socket views render must name methods, events and options that EXIST on the
  * real SDKs. Mirrors `sdk-snippets.drift.test.ts`'s approach: check the SNIPPET TEXT against the
  * actual exported prototypes, rather than trusting each snippet was hand-verified once and never
  * touched again.

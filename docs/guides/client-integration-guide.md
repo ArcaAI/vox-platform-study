@@ -444,12 +444,18 @@ client -> server
 server -> client
 {"type":"ready","sessionId":"…","fromSeq":1}
 {"type":"transcript","text":"…","isFinal":false,"seq":7,"startTime":0.4,"endTime":1.1}
-{"type":"status","status":"transcribing","message":"…"}
+{"type":"status","status":"transcribing","message":"…"}   // also: active | finalizing | closed | rejected
 {"type":"resumed","sessionId":"…","fromSeq":43}
 {"type":"resume_failed","sessionId":"…","reason":"unknown_session"}
 {"type":"resume_failed","sessionId":"…","reason":"buffer_overflow","minAvailableSeq":10}
 {"type":"error","code":"…","message":"…"}
 ```
+
+`POST stream/session` answers `status: "active"`, not `"created"`, alongside `sessionId`, `wsUrl`,
+`ticket`, `ticketExpiresAt`, `sessionEpochMs`, `agentSlug`, `agentVersionId`, `maxConcurrent` and
+`currentActive`. And your `stop` is answered **twice**: first `{"type":"status","status":"finalizing"}`
+while the engine flushes what it buffered, then `{"type":"status","status":"closed"}` once the last
+finals have been delivered. A client that closes the socket on `finalizing` loses the last utterance.
 
 Resume is **in-band**, not a reconnect option: mint a fresh ticket (the old one is consumed),
 open a new socket, then send `{"type":"resume", sessionId, lastSeq}` where `lastSeq` is the
@@ -457,6 +463,50 @@ highest `seq` you actually saw (`RealtimeSttSocket.lastSeq`). A successful `resu
 buffered transcript with `seq > lastSeq` — never a duplicate flood. `resume_failed` means a real
 gap in the transcript (the buffer window was exceeded, or the session was never resumable), not a
 hiccup to retry blind.
+
+
+### Batch: a recording you already have
+
+A file is a different plane from a live session, and it is a **job**, not a request. Four steps:
+
+```bash
+# 1. Upload and start — ONE multipart request. This is the only route on the gateway that takes
+#    audio bytes. The `;type=` is required: without it curl sends application/octet-stream and the
+#    gateway answers 400 `Unsupported audio type`.
+JOB=$(curl -sS -X POST "$HOPE_API_URL/api/v1/audio/transcription-jobs/transcribe" \
+  -H "X-API-Key: $HOPE_API_KEY" \
+  -F "file=@consultation.wav;type=audio/wav" \
+  -F "agentSlug=clinic-asr")
+JOB_ID=$(printf '%s' "$JOB" | jq -r .id)
+# → { "id": "…", "status": "QUEUED", "sseUrl": "/api/v1/audio/transcription-jobs/<id>/stream", … }
+
+# 2. Follow it. -N is not optional — without it curl buffers the stream and the job looks stalled.
+curl -N -H "X-API-Key: $HOPE_API_KEY" "$HOPE_API_URL/api/v1/audio/transcription-jobs/$JOB_ID/stream"
+
+# 3. Or poll — and this is how you read the result after any reconnect.
+curl -sS -H "X-API-Key: $HOPE_API_KEY" "$HOPE_API_URL/api/v1/audio/transcription-jobs/$JOB_ID"
+# → { "status": "COMPLETED", "progress": 100, "resultText": "…", "resultMetadata": { … } }
+```
+
+Four things that decide whether this works:
+
+- **`POST /agents/{slug}/transcriptions` is the OTHER form.** It takes the `mediaId` of media that
+  already exists (a consultation recording) and has no multipart handler, so sending a file to it
+  is a 400 `mediaId is required`. There is no standalone media-upload route, so the multipart route
+  above is the first form to reach for, not the second.
+- **The two forms need different scopes**, and the job reads need the STT one either way:
+  `stt:transcription:write` for the upload, the job read and the stream; `agent:invocation:write`
+  for the `mediaId` form. A key minted for the `mediaId` form alone starts a job it cannot then
+  watch — the `sseUrl` in its own 201 is on the other plane.
+- **Frames carry their `type` inside the JSON**, as well as on the SSE `event:` line:
+  `status` (the first frame of every connection is a snapshot), `progress`, `chunk` per finished
+  segment, one `transcript` with the whole text, `error`. The stream closes on `COMPLETED`,
+  `FAILED`, `CANCELLED` or `DEAD`, and performs no `Last-Event-ID` replay — after a drop, re-open
+  and read the snapshot, then fetch the job for `resultText`.
+- **Check the ceilings once**, not per file: `GET /api/v1/audio/transcription-jobs/limits` answers
+  files per batch, minutes per recording, megabytes per file and in-flight jobs per user. Over the
+  size or duration ceiling is a 400; too many in flight is a 429; a file whose container records no
+  duration is refused fail-closed.
 
 ---
 

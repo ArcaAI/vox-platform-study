@@ -49,7 +49,7 @@
  * a realtime STT session (`hope.stt.*` + `RealtimeSttSocket`). Four WebSocket gateways and two
  * SDK socket clients shipped with zero mention anywhere in this console. Its two constants are
  * rendered from `shared/docs/socket-snippets` rather than restated here, so the SSE tab and the
- * Socket tab can never give a developer two different explanations of the same choice.
+ * Manual lane can never give a developer two different explanations of the same choice.
  *
  * The same ticket also closes the Browser lane's one honest-but-codeless cell: `SPEECH_TO_TEXT`
  * keeps its "no browser path by slug" framing — there genuinely is no `invoke()` for it — and
@@ -186,7 +186,7 @@ const AGENT_ENDPOINTS: Record<IntegrationAgentTask, EndpointDescriptor> = {
       session: '/audio/transcription-jobs/stream/session',
       socket: '/ws/stt/stream?sessionId={sessionId}&ticket={ticket}',
       note:
-        'POST the session route with { "agentSlug": "{slug}" } on an API key. It answers the sessionId and a SINGLE-USE ticket; open the socket with both, send PCM16 LE mono frames, and read transcript / status / error / resumed events. The Socket lane has the code.',
+        'POST the session route with { "agentSlug": "{slug}" } on an API key. It answers the sessionId and a SINGLE-USE ticket; open the socket with both, send PCM16 LE mono frames, and read transcript / status / error / resumed events. The Manual lane has the whole contract.',
     },
   },
   TEXT_TO_SPEECH: { method: 'POST', path: '/agents/{slug}/speech' },
