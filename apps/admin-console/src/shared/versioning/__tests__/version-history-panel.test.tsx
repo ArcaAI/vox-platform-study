@@ -44,6 +44,12 @@ const VERSIONS: VersionRow[] = [
   { id: 'v3', versionNumber: 3, status: 'DRAFT', updatedAt: '2026-04-02T10:00:00.000Z' },
 ];
 
+/** Radix menus open on pointerdown, not click (the console's own row-menu test helper). */
+function openRowMenu(rowIndex: number, version: string) {
+  const trigger = within(screen.getAllByRole('listitem')[rowIndex]).getByRole('button', { name: `Actions for ${version}` });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+}
+
 describe('VersionHistoryPanel', () => {
   it('lists versions newest first with their status', () => {
     renderWithProviders(<VersionHistoryPanel versions={VERSIONS} />);
@@ -67,26 +73,25 @@ describe('VersionHistoryPanel', () => {
     expect(screen.getByText('Pinned v4')).toBeDefined();
   });
 
-  it('renders the caller-supplied row actions and calls back with the row', () => {
+  it('renders the caller-supplied row actions and calls back with the row', async () => {
     const onSelect = vi.fn();
     renderWithProviders(
       <VersionHistoryPanel versions={VERSIONS} actions={(row) => [{ key: 'activate', label: `Activate v${row.versionNumber}`, onSelect }]} />,
     );
-    const menu = within(screen.getAllByRole('listitem')[2]).getByRole('button', { name: /Actions for v1/ });
-    fireEvent.click(menu);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Activate v1' }));
+    openRowMenu(2, 'v1');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Activate v1' }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ versionNumber: 1 }));
   });
 
-  it('keeps a visible reason on a disabled action (rule 11 §5)', () => {
+  it('keeps a visible reason on a disabled action (rule 11 §5)', async () => {
     renderWithProviders(
       <VersionHistoryPanel
         versions={VERSIONS}
         actions={() => [{ key: 'activate', label: 'Activate', disabled: true, disabledReason: 'Already the active version', onSelect: () => {} }]}
       />,
     );
-    fireEvent.click(within(screen.getAllByRole('listitem')[1]).getByRole('button', { name: /Actions for v2/ }));
-    expect(screen.getByText('Already the active version')).toBeDefined();
+    openRowMenu(1, 'v2');
+    expect(await screen.findByText('Already the active version')).toBeDefined();
   });
 
   it('exposes the detail disclosure with aria-expanded and toggles it from the keyboard', () => {
