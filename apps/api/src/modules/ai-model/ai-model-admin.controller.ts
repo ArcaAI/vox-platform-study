@@ -8,6 +8,7 @@ import {
   ModelInventoryService,
   ModelResponse,
   PaginatedModelResponse,
+  PaginatedQuery,
   SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
   UpdateModelRequest,
@@ -114,14 +115,59 @@ export class AiModelAdminController {
     return this.aiModelService.getAllForAdmin();
   }
 
+  /**
+   * TASK-983 R1/R4 — ONE whole-object `@Query()` binding.
+   *
+   * This route used to bind `@Query('page')` and `@Query('limit')` and nothing
+   * else, so the console grid's `search` / `searchFields` / `filters` / `sort`
+   * were dropped by the framework before the handler ran. Named `@Query('x')`
+   * params are invisible to the global validation pipe, so the request answered
+   * 200 with the UNFILTERED page instead of 400 — a search for a slug that does
+   * not exist returned every row. Binding the standard `PaginatedQuery` both
+   * forwards the params and puts them under `whitelist +
+   * forbidNonWhitelisted`.
+   */
   @ApiEndpoint({
     returnedModel: PaginatedModelResponse,
     path: 'list',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
-  async list(@Query('page') page?: string, @Query('limit') limit?: string): Promise<PaginatedModelResponse> {
-    return this.aiModelService.list(page ? parseInt(page, 10) : 1, limit ? parseInt(limit, 10) : 20);
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number. The list contract is 1-based (`skip = (page - 1) * limit`); 0 and 1 both select the first page.',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10)' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Free-text term matched against `searchFields` (case-insensitive contains).',
+  })
+  @ApiQuery({
+    name: 'searchFields',
+    required: false,
+    type: String,
+    description: 'Comma-separated columns the `search` term targets — the registry grid sends `name,slug`. Without it, `search` matches nothing.',
+  })
+  @ApiQuery({
+    name: 'filters',
+    required: false,
+    type: String,
+    description:
+      "';'-separated `field[op]:value` tokens, e.g. `deploymentKind[in]:CLOUD|SELF_HOSTED;availability[equals]:AVAILABLE`. The [operator] is " +
+      'REQUIRED and the operator set is closed; an unknown operator or an invalid enum member is a 400. `tenantId` is not honoured — the ' +
+      'registry is pinned to the SYSTEM tenant.',
+  })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    type: String,
+    description: 'Comma-separated `field:asc|desc`, e.g. `name:desc`. Defaults to `name:asc`.',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request — malformed pagination, filter token, or an undeclared query parameter.' })
+  async list(@Query() query: PaginatedQuery): Promise<PaginatedModelResponse> {
+    return this.aiModelService.list(query);
   }
 
   @ApiEndpoint({

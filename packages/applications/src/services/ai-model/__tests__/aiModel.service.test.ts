@@ -621,7 +621,7 @@ describe('AiModelService', () => {
       mockModelRepository.findAll.mockResolvedValue(models);
       mockModelRepository.count.mockResolvedValue(1);
 
-      const result = await service.list(1, 20);
+      const result = await service.list({ page: 1, limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);

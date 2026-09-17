@@ -206,9 +206,21 @@ describe('AiModelsScreen — the HF-organised catalogue grid', () => {
 
 describe('AiModelsScreen — register / edit / retire', () => {
   it('registers a model by POSTing the registry payload — library, served-by and deployment kind travel; localPath never does', async () => {
+    // TASK-983 R1: the registered row must appear WITHOUT a page reload. The
+    // create mutation invalidates the `['ai-models']` prefix, so the list GET
+    // replays; this stub answers the replay with the new row, exactly as the
+    // gateway does once `list` honours the grid's sort/search/filters. Before
+    // the fix the server answered name-sorted page 1 regardless of the grid's
+    // state, so the row could land off-screen and the admin had to go looking
+    // for it — which is what "must refresh the page" was.
+    const REGISTERED: AiModel = { ...MODEL, id: 'm-9', name: 'Medical NER', slug: 'medical-ner' };
+    let registered = false;
     const calls = stubFetch((url, method) => {
-      if (method === 'POST') return Response.json({ ...MODEL, id: 'm-9' });
-      return Response.json(envelope([]));
+      if (method === 'POST') {
+        registered = true;
+        return Response.json(REGISTERED);
+      }
+      return Response.json(envelope(registered ? [REGISTERED] : []));
     });
     renderWithProviders(<AiModelsScreen />);
     await screen.findByText('No models registered yet');
@@ -245,6 +257,15 @@ describe('AiModelsScreen — register / edit / retire', () => {
     });
     expect(post?.body).not.toHaveProperty('localPath');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // No reload, no remount: the invalidated list refetches and the row renders
+    // in the SAME mounted screen.
+    expect(await screen.findByText('Medical NER')).toBeDefined();
+    expect(screen.getByText('medical-ner')).toBeDefined();
+    expect(screen.queryByText('No models registered yet')).toBeNull();
+    // ...and it got there through a REFETCH, not an optimistic client-side push.
+    const listCalls = calls.filter((call) => call.method === 'GET' && call.url.includes('/admin/ai-models/list'));
+    expect(listCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('edits a model with an If-Match PATCH derived from the read ETag, carrying the registry fields', async () => {

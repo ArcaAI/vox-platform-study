@@ -6,7 +6,7 @@
  * and plain delegation to `AiModelService`, including the OCC `If-Match` fold.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
+import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { RequestMethod, HttpStatus } from '@nestjs/common';
 import { AiModelAdminController } from '../ai-model-admin.controller';
 
@@ -193,5 +193,47 @@ describe('AiModelAdminController inventory + platform-default (TASK-860)', () =>
 
     expect(setPlatformDefaultFor).toHaveBeenCalledWith('m1', { tasks: ['SPEECH_TO_TEXT'] });
     expect(result).toEqual(expect.objectContaining({ isPlatformDefaultFor: ['SPEECH_TO_TEXT'] }));
+  });
+});
+
+// =============================================================================
+// TASK-983 R1/R4 — the list route must accept the standard PaginatedQuery
+// =============================================================================
+/**
+ * The defect: `list(@Query('page'), @Query('limit'))` bound TWO named params and
+ * nothing else, so the grid's `search` / `searchFields` / `filters` / `sort`
+ * were dropped by the framework before the handler ran — silently, because
+ * individual `@Query('x')` bindings never trip `forbidNonWhitelisted`. The fix
+ * is one whole-object `@Query() query: PaginatedQuery` binding, which is also
+ * what makes the global validation pipe police the params.
+ */
+// `RouteParamtypes.QUERY`. The enum lives at `@nestjs/common/enums/route-paramtypes.enum`
+// and is not re-exported from the package root, so the value is spelled out here
+// rather than reached for through a deep internal path.
+const QUERY_PARAMTYPE = 4;
+
+describe('AiModelAdminController list — PaginatedQuery (TASK-983)', () => {
+  it('binds ONE whole-object @Query (no named page/limit params)', () => {
+    const args = Reflect.getMetadata(ROUTE_ARGS_METADATA, AiModelAdminController, 'list') as Record<string, { index: number; data?: unknown }>;
+    const queryArgs = Object.entries(args ?? {}).filter(([key]) => key.startsWith(`${QUERY_PARAMTYPE}:`));
+    expect(queryArgs).toHaveLength(1);
+    // `data === undefined` is what distinguishes `@Query()` from `@Query('page')`.
+    expect(queryArgs[0][1].data).toBeUndefined();
+  });
+
+  it('documents search / searchFields / filters / sort alongside page / limit', () => {
+    const params = (Reflect.getMetadata('swagger/apiParameters', AiModelAdminController.prototype.list) ?? []) as { name: string }[];
+    const names = params.map((param) => param.name);
+    expect(names).toEqual(expect.arrayContaining(['page', 'limit', 'search', 'searchFields', 'filters', 'sort']));
+  });
+
+  it('forwards the whole query — search, searchFields, filters and sort included — to AiModelService.list', async () => {
+    const list = vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 3, totalPages: 0 });
+    const controller = new AiModelAdminController({ list } as never, {} as never, {} as never);
+
+    const query = { page: 1, limit: 3, search: 'whisper', searchFields: 'name,slug', filters: 'deploymentKind[in]:CLOUD', sort: 'name:desc' };
+    await controller.list(query);
+
+    expect(list).toHaveBeenCalledWith(query);
   });
 });
