@@ -26,6 +26,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useContextSchemas } from '../api/hooks';
 import type { ConsultationContextSchema } from '../api/types';
 import { CreateSchemaForm } from './create-schema-form';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 function SchemaRow({ schema }: { schema: ConsultationContextSchema }) {
   return (
@@ -109,7 +110,7 @@ export function ContextSchemasList() {
       )}
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className={DIALOG_SIZE_CLASS.md}>
           <DialogHeader>
             <DialogTitle>New context schema</DialogTitle>
             <DialogDescription>

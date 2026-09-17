@@ -15,6 +15,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useAllowedOrigin, useCreateAllowedOrigin, useUpdateAllowedOrigin } from '../api';
 import type { CreateAllowedOriginRequest, TenantAllowedOrigin, UpdateAllowedOriginRequest } from '../api';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 /** FR-2 — only a SUPER_ADMIN may register or escalate into a wildcard/pattern origin; the server 403s a non-elevated attempt on both create and update. */
 const WILDCARD_REASON = 'Wildcard patterns are managed by platform administrators.';
@@ -246,7 +247,7 @@ export function AllowedOriginFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] flex-col sm:max-w-[50vw]">
+      <DialogContent className={DIALOG_SIZE_CLASS.lg}>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit allowed origin' : 'Register allowed origin'}</DialogTitle>
           <DialogDescription>

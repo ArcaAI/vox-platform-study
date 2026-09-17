@@ -54,6 +54,7 @@ import { PublishConfirmDialog } from './publish-confirm-dialog';
 import { SchemaUsagesLine } from './schema-usages-line';
 import { SettingsForm } from './settings-form';
 import { VersionsPanel } from './versions-panel';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 
 const TAB_VALUES = ['definition', 'versions'] as const;
 type SchemaTab = (typeof TAB_VALUES)[number];
@@ -337,7 +338,7 @@ function ContextSchemaDetailBody({ id }: { id: string }) {
       />
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className={DIALOG_SIZE_CLASS.md}>
           <DialogHeader>
             <DialogTitle>Rename &amp; settings</DialogTitle>
             <DialogDescription>
