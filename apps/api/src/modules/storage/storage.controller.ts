@@ -44,6 +44,7 @@ import {
   UpdateBucketRequest,
   UpdateBucketResponse,
 } from './dto';
+import { assertSafeObjectKey } from './object-key.guard';
 
 /** Lifetime of presigned download URLs (mirrors the S3 service default). */
 const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
@@ -219,9 +220,7 @@ export class StorageController {
     @Query('key') key?: string,
   ): Promise<FileUploadResponse> {
     const fileKey = key || file.originalname;
-    if (/[.]{2}|[/\\]/.test(fileKey)) {
-      throw new BadRequestException('Invalid file key: path traversal not allowed');
-    }
+    assertSafeObjectKey(fileKey);
 
     // The route is @TenantOwnedResource-guarded on :name, so `bucketName` is an
     // already-validated, tenant-owned PHYSICAL bucket. Resolve the record by
@@ -291,9 +290,7 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'File info with presigned download URL', type: FileInfoResponse })
   @CanRead('Storage')
   async getFileInfo(@Param('name') bucketName: string, @Param('key') key: string): Promise<FileInfoResponse> {
-    if (/[.]{2}|[/\\]/.test(key)) {
-      throw new BadRequestException('Invalid file key: path traversal not allowed');
-    }
+    assertSafeObjectKey(key);
     const url = await this.blobStorage.presignGet({ bucket: bucketName, key, expiresInSeconds: PRESIGNED_GET_EXPIRY_SECONDS });
     return { key, url };
   }
@@ -306,9 +303,7 @@ export class StorageController {
   @ApiResponse({ status: 200, description: 'File deleted', type: DeleteFileResponse })
   @CanDelete('Storage')
   async deleteFile(@Param('name') bucketName: string, @Param('key') key: string): Promise<DeleteFileResponse> {
-    if (/[.]{2}|[/\\]/.test(key)) {
-      throw new BadRequestException('Invalid file key: path traversal not allowed');
-    }
+    assertSafeObjectKey(key);
     await this.blobStorage.deleteObject({ bucket: bucketName, key });
     return { deleted: true, key };
   }

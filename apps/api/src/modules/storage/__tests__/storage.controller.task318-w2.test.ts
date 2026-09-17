@@ -14,6 +14,15 @@
  *  - F-18 (MED, path traversal): `getFileInfo` and `deleteFile` must reject a
  *         `:key` containing `..`, `/` or `\`, mirroring the existing check in
  *         `uploadFile`/`createBucket`.
+ *
+ * TASK-983 R7 / OD-5 amendment (2026-09-17): F-18's original guard rejected
+ * ANY `/` in `:key`, which 400'd every real object key — every
+ * `TenantBucket.pathPattern` is date-segmented (`{yyyy}/{MM}/{dd}`), so a
+ * legitimate key always contains internal `/`. Owner decision OD-5 approved
+ * relaxing the guard (now the shared `assertSafeObjectKey` helper,
+ * `object-key.guard.ts`) to allow internal `/` while STILL rejecting a `..`
+ * segment, a leading `/`, and any `\` — `TRAVERSAL_KEYS` below is unchanged
+ * because all three of its cases hit one of those retained rejections.
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -156,6 +165,23 @@ describe('StorageController tenant scoping & traversal hardening', () => {
       await expect(controller.uploadFile('arcaai-bucket', createMockFile(), '../escape.txt')).rejects.toBeInstanceOf(BadRequestException);
       expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
     });
+
+    // TASK-983 R7 / OD-5 — a date-segmented key must upload, not 400.
+    it('accepts a date-segmented nested key (OD-5)', async () => {
+      const bucket = createMockBucketResponse({ name: 'arcaai-bucket' });
+      mockTenantBucketService.getBucketByName.mockResolvedValue(bucket);
+      mockMediaService.create.mockResolvedValue({ id: 'media-456' });
+      mockBlobStorage.putObject.mockResolvedValue(undefined);
+
+      const file = createMockFile();
+
+      const result = await controller.uploadFile('arcaai-bucket', file, '2026/09/17/recording.wav');
+
+      expect(mockBlobStorage.putObject).toHaveBeenCalledWith(
+        expect.objectContaining({ bucket: 'arcaai-bucket', key: '2026/09/17/recording.wav' }),
+      );
+      expect(result.key).toBe('2026/09/17/recording.wav');
+    });
   });
 
   // F-18 --------------------------------------------------------------------
@@ -177,6 +203,21 @@ describe('StorageController tenant scoping & traversal hardening', () => {
         expiresInSeconds: 3600,
       });
     });
+
+    // TASK-983 R7 / OD-5 — this is the exact live defect: a nested,
+    // date-segmented key 400'd before OD-5 relaxed the guard.
+    it('returns a presigned url for a date-segmented nested key (OD-5)', async () => {
+      mockBlobStorage.presignGet.mockResolvedValue('https://signed.example/nested-url');
+
+      const result = await controller.getFileInfo('arcaai-bucket', '2026/09/17/recording.wav');
+
+      expect(result).toEqual({ key: '2026/09/17/recording.wav', url: 'https://signed.example/nested-url' });
+      expect(mockBlobStorage.presignGet).toHaveBeenCalledWith({
+        bucket: 'arcaai-bucket',
+        key: '2026/09/17/recording.wav',
+        expiresInSeconds: 3600,
+      });
+    });
   });
 
   describe('F-18 deleteFile — rejects traversal keys', () => {
@@ -192,6 +233,16 @@ describe('StorageController tenant scoping & traversal hardening', () => {
 
       expect(result).toEqual({ deleted: true, key: 'recording.wav' });
       expect(mockBlobStorage.deleteObject).toHaveBeenCalledWith({ bucket: 'arcaai-bucket', key: 'recording.wav' });
+    });
+
+    // TASK-983 R7 / OD-5 — nested key must delete, not 400.
+    it('deletes a date-segmented nested key (OD-5)', async () => {
+      mockBlobStorage.deleteObject.mockResolvedValue(undefined);
+
+      const result = await controller.deleteFile('arcaai-bucket', '2026/09/17/recording.wav');
+
+      expect(result).toEqual({ deleted: true, key: '2026/09/17/recording.wav' });
+      expect(mockBlobStorage.deleteObject).toHaveBeenCalledWith({ bucket: 'arcaai-bucket', key: '2026/09/17/recording.wav' });
     });
   });
 });
