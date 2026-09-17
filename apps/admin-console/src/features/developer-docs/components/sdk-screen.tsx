@@ -152,7 +152,7 @@ export function SdkScreen() {
                 protocol, full stop — unlike a workflow run, where SSE stays the default because it is the only lane that resumes on its own.{' '}
                 <code className="font-mono text-xs">globalThis.WebSocket</code> is still a hard floor: Node 22+, Bun, Deno, or an edge runtime, or
                 this throws <code className="font-mono text-xs">SocketUnavailableError</code> rather than importing a polyfill or quietly serving
-                a transport nobody asked for. See the Socket lane on a published SPEECH_TO_TEXT agent&apos;s Integration tab for the
+                a transport nobody asked for. See the Manual lane on a published SPEECH_TO_TEXT agent&apos;s Integration tab for the
                 session-ticket details.
               </p>
             </div>
@@ -218,7 +218,7 @@ export function SdkScreen() {
                 completes all at once. <code className="font-mono text-xs">globalThis.WebSocket</code> is the same hard floor this option relies
                 on as <code className="font-mono text-xs">@arcaai/vox-node</code> above — this SDK throws{' '}
                 <code className="font-mono text-xs">SocketUnavailableError</code> rather than silently falling back to SSE on a runtime that lacks
-                it. See the Socket lane on a published workflow&apos;s Integration tab for the run-scoped ticket route this option mints.
+                it. See the Manual lane on a published workflow&apos;s Integration tab for the run-scoped ticket route this option mints.
               </p>
             </div>
 

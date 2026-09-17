@@ -129,9 +129,31 @@ export function agentVoxNodeSnippet(slug: string, task: SdkSnippetAgentTask, opt
 
   const lines = [...HEADER_LINES, CLIENT_WITH_BASE_URL, ``, `const { output } = await hope.agents.invoke('${slug}', ${jsonBlock(invocationBody(options), 0)});`];
   if (options?.streamable !== false) {
-    lines.push(``, `// …or token by token, over the same route:`, `for await (const frame of hope.agents.invokeAndStream('${slug}', { text: '…' })) {`, `  // meta → chunk… → done`, `}`);
+    lines.push(``, `// …or token by token, over the same route — see the Realtime view:`, `//   hope.agents.invokeAndStream('${slug}', …)`);
   }
   return lines.join('\n');
+}
+
+/**
+ * The REALTIME half of the Node lane for a TEXT_GENERATION agent: the same route, read as a
+ * stream. Kept separate from {@link agentVoxNodeSnippet} so the panel's Batch and Realtime views
+ * each print one complete thing rather than one snippet containing both jobs.
+ */
+export function agentVoxNodeStreamSnippet(slug: string, options?: AgentSnippetOptions): string {
+  return [
+    ...HEADER_LINES,
+    CLIENT_WITH_BASE_URL,
+    ``,
+    `// The SAME route as the blocking call, read as a stream. Frames share the workflow-run`,
+    `// envelope; the last one carries the output in \`payload\`.`,
+    `for await (const frame of hope.agents.invokeAndStream('${slug}', ${jsonBlock(invocationBody(options), 0)})) {`,
+    `  // meta → chunk… → done`,
+    `}`,
+    ``,
+    `// No resume: an invocation has no run id to reconnect against. Pass the same`,
+    `// \`idempotencyKey\` to JOIN the in-flight invocation rather than start a second one.`,
+    `//   hope.agents.invokeAndStream('${slug}', input, { idempotencyKey })`,
+  ].join('\n');
 }
 
 /**
@@ -197,9 +219,27 @@ export function agentVoxSnippet(slug: string, credential: VoxBrowserCredential, 
     `const { output } = await invoke('${slug}', ${jsonBlock(invocationBody(options), 0)});`,
   ];
   if (options?.streamable !== false) {
-    lines.push(``, `for await (const frame of stream('${slug}', { text: '…' })) {`, `  // meta → chunk… → done. No resume: an invocation has no run id.`, `}`);
+    lines.push(``, `// …or token by token, over the same route — see the Realtime view: stream('${slug}', …)`);
   }
   return lines.join('\n');
+}
+
+/** The REALTIME half of the Browser lane: `useAgentInvocation().stream`, the same route as `invoke`. */
+export function agentVoxStreamSnippet(slug: string, options?: AgentSnippetOptions): string {
+  return [
+    `import { AgenticProvider, useAgentInvocation } from '@arcaai/vox/core';`,
+    ``,
+    `// baseUrl INCLUDES /api/v1 here — @arcaai/vox-node adds the prefix for you, this SDK does not.`,
+    browserConfigLine('accessToken'),
+    `// <AgenticProvider config={config}>…</AgenticProvider>`,
+    ``,
+    `// …in any component under that provider:`,
+    `const { stream } = useAgentInvocation();`,
+    ``,
+    `for await (const frame of stream('${slug}', ${jsonBlock(invocationBody(options), 0)})) {`,
+    `  // meta → chunk… → done. No resume: an invocation has no run id.`,
+    `}`,
+  ].join('\n');
 }
 
 /**
@@ -266,12 +306,16 @@ export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, option
   }
 
   if (task === 'SPEECH_TO_TEXT') {
+    // The whole batch job — upload, follow, read — lives in `batch-job-protocol.ts`, because a
+    // `mediaId` body alone was a dead end: nothing on this gateway hands a developer one, and the
+    // `sseUrl` the 201 answers is on a different scope family. This branch is kept only so the
+    // per-task switch stays exhaustive; the panel renders `sttBatchCurlSnippet` instead.
     return [
       ...curlEnvLines(baseUrl),
       ...CREDENTIAL_COMMENT,
       ``,
-      `# 201 → { id, status, agentSlug, agentVersionId, sseUrl }. \`mediaId\` is an already-uploaded`,
-      `# recording; follow \`sseUrl\` for progress.`,
+      `# 201 → { id, status, agentSlug, agentVersionId, sseUrl }. \`mediaId\` is media that ALREADY`,
+      `# exists; to transcribe a FILE, upload it to POST audio/transcription-jobs/transcribe.`,
       ...curlPost(`${base}/transcriptions`, jsonBlock({ mediaId: '…' }, 6)),
     ].join('\n');
   }
@@ -287,12 +331,7 @@ export function agentCurlSnippet(slug: string, task: SdkSnippetAgentTask, option
     ...curlPost(`${base}/invocations`, body),
   ];
   if (options?.streamable !== false) {
-    lines.push(
-      ``,
-      `# Token stream: real event:/data:/id: frames, :keepalive every 15s, first frame \`meta\`,`,
-      `# last \`done\`. There is no resume — an invocation has no run id to reconnect to.`,
-      ...curlPost(`${base}/invocations?mode=stream`, body, { extraFlags: ' -N' }),
-    );
+    lines.push(``, `# Streaming the same route is the Realtime view: POST …/invocations?mode=stream with curl -N.`);
   }
   return lines.join('\n');
 }

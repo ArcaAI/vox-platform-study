@@ -49,7 +49,7 @@
  * a realtime STT session (`hope.stt.*` + `RealtimeSttSocket`). Four WebSocket gateways and two
  * SDK socket clients shipped with zero mention anywhere in this console. Its two constants are
  * rendered from `shared/docs/socket-snippets` rather than restated here, so the SSE tab and the
- * Socket tab can never give a developer two different explanations of the same choice.
+ * Manual lane can never give a developer two different explanations of the same choice.
  *
  * The same ticket also closes the Browser lane's one honest-but-codeless cell: `SPEECH_TO_TEXT`
  * keeps its "no browser path by slug" framing — there genuinely is no `invoke()` for it — and
@@ -90,13 +90,32 @@ import { buildPostmanCollection, type PostmanCollection, type PostmanItem } from
 import {
   agentCurlSnippet,
   agentVoxNodeSnippet,
+  agentVoxNodeStreamSnippet,
   agentVoxSnippet,
+  agentVoxStreamSnippet,
   workflowCurlSnippet,
   workflowVoxNodeSnippet,
   workflowVoxSnippet,
   type AgentSnippetOptions,
   type SdkSnippetAgentTask,
 } from '@/shared/docs/sdk-snippets';
+import {
+  BATCH_STT_STEPS,
+  MEDIA_ID_NOTE,
+  BATCH_JOB_SSE_FRAMES,
+  sttBatchCurlSnippet,
+  sttBatchFetchSnippet,
+  sttBatchVoxNodeSnippet,
+} from '@/shared/docs/batch-job-protocol';
+import {
+  AGENT_SSE_FRAMES,
+  AGENT_SSE_HEARTBEAT_MS,
+  AGENT_STREAM_RESUME_NOTE,
+  NO_TEXT_JOB_MODE_NOTE,
+  agentSseCurlSnippet,
+  agentSseFetchSnippet,
+} from '@/shared/docs/sse-frame-protocol';
+import { API_KEY_MINT_NOTE, scopeNote, type GatewayRouteKey } from '@/shared/docs/gateway-scopes';
 import {
   SOCKET_LANE_RATIONALE,
   SOCKET_RUNTIME_FLOOR,
@@ -130,6 +149,13 @@ const NODE_LABEL = 'Node.js (@arcaai/vox-node) snippet';
 const BROWSER_LABEL = 'Browser (@arcaai/vox) snippet';
 const BROWSER_KEY_LABEL = 'Browser (@arcaai/vox) API-key variant';
 const CURL_LABEL = 'curl snippet';
+const BATCH_NODE_LABEL = 'Batch transcription (@arcaai/vox-node) snippet';
+const BATCH_SHELL_LABEL = 'Batch transcription without an SDK (curl) snippet';
+const BATCH_JS_LABEL = 'Batch transcription without an SDK (fetch) snippet';
+const STREAM_NODE_LABEL = 'Streamed invocation (@arcaai/vox-node) snippet';
+const STREAM_BROWSER_LABEL = 'Streamed invocation (@arcaai/vox) snippet';
+const STREAM_SHELL_LABEL = 'Streamed invocation without an SDK (curl -N) snippet';
+const STREAM_JS_LABEL = 'Streamed invocation without an SDK (fetch) snippet';
 const POSTMAN_LABEL = 'Postman collection JSON';
 const SOCKET_NODE_LABEL = 'Socket (@arcaai/vox-node) snippet';
 const SOCKET_BROWSER_LABEL = 'Socket (@arcaai/vox) snippet';
@@ -160,7 +186,7 @@ const AGENT_ENDPOINTS: Record<IntegrationAgentTask, EndpointDescriptor> = {
       session: '/audio/transcription-jobs/stream/session',
       socket: '/ws/stt/stream?sessionId={sessionId}&ticket={ticket}',
       note:
-        'POST the session route with { "agentSlug": "{slug}" } on an API key. It answers the sessionId and a SINGLE-USE ticket; open the socket with both, send PCM16 LE mono frames, and read transcript / status / error / resumed events. The Socket lane has the code.',
+        'POST the session route with { "agentSlug": "{slug}" } on an API key. It answers the sessionId and a SINGLE-USE ticket; open the socket with both, send PCM16 LE mono frames, and read transcript / status / error / resumed events. The Manual lane has the whole contract.',
     },
   },
   TEXT_TO_SPEECH: { method: 'POST', path: '/agents/{slug}/speech' },
@@ -257,58 +283,95 @@ function Callout({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * `socket` is OPTIONAL and sits between HTTP and Postman: a socket is a real transport for a
- * workflow run and for a realtime STT session, and for nothing else this panel describes. An
- * always-present tab would have had to explain its own emptiness on three tasks out of four.
+ * The four lanes, in the order a developer chooses between them: the two SDKs, then the gateway
+ * itself, then a file they can import.
+ *
+ * TASK-983 lane I — this used to be FIVE tabs, `Node · Browser · HTTP · Socket · Postman`, split
+ * by TRANSPORT. That is the wrong axis: a developer arrives with a job ("transcribe this
+ * recording", "stream tokens into my UI"), and a transport split makes them read two tabs to
+ * find out that one of them is the whole answer and the other is a dead end. HTTP and Socket are
+ * now one **Manual** lane — everything you do without an SDK, HTTP and WebSocket together — and
+ * each lane is split BY JOB instead (see {@link JobViews}).
  */
-function LaneTabs({
-  node,
-  browser,
-  http,
-  socket,
-  postman,
-  leadWithSocket = false,
-}: {
-  node: ReactNode;
-  browser: ReactNode;
-  http: ReactNode;
-  socket?: ReactNode;
-  postman: ReactNode;
-  /** The socket lane comes first and opens selected — for the task whose primary transport it is. */
-  leadWithSocket?: boolean;
-}) {
-  const socketLeads = Boolean(socket) && leadWithSocket;
-  const socketTrigger = socket ? <TabsTrigger value="socket">Socket</TabsTrigger> : null;
-  const socketContent = socket ? (
-    <TabsContent value="socket" className="flex flex-col gap-3">
-      {socket}
-    </TabsContent>
-  ) : null;
+function LaneTabs({ node, browser, manual, postman }: { node: ReactNode; browser: ReactNode; manual: ReactNode; postman: ReactNode }) {
   return (
-    <Tabs defaultValue={socketLeads ? 'socket' : 'node'} className="gap-3">
+    <Tabs defaultValue="node" className="gap-3">
       <TabsList variant="line">
-        {socketLeads ? socketTrigger : null}
         <TabsTrigger value="node">Node</TabsTrigger>
         <TabsTrigger value="browser">Browser</TabsTrigger>
-        <TabsTrigger value="http">HTTP</TabsTrigger>
-        {socketLeads ? null : socketTrigger}
+        <TabsTrigger value="manual">Manual</TabsTrigger>
         <TabsTrigger value="postman">Postman</TabsTrigger>
       </TabsList>
-      {socketLeads ? socketContent : null}
       <TabsContent value="node" className="flex flex-col gap-3">
         {node}
       </TabsContent>
       <TabsContent value="browser" className="flex flex-col gap-3">
         {browser}
       </TabsContent>
-      <TabsContent value="http" className="flex flex-col gap-3">
-        {http}
+      <TabsContent value="manual" className="flex flex-col gap-3">
+        {manual}
       </TabsContent>
-      {socketLeads ? null : socketContent}
       <TabsContent value="postman" className="flex flex-col gap-3">
         {postman}
       </TabsContent>
     </Tabs>
+  );
+}
+
+/**
+ * The secondary axis INSIDE a lane: the two jobs a task has.
+ *
+ * A segmented control rather than the outer underline (rule 11 §1 — the underline is the
+ * standard for the level above, and a second row of it would read as the same level). Radix
+ * drives it, so arrow keys and Home/End work exactly as on the lane tabs.
+ *
+ * `lead` is the job the task is FOR: a speech-to-text agent exists for live audio, so its
+ * Realtime view opens selected; a text-generation agent answers one body by default.
+ */
+function JobViews({
+  batch,
+  batchLabel,
+  realtime,
+  realtimeLabel,
+  lead = 'batch',
+  idPrefix,
+}: {
+  batch: ReactNode;
+  batchLabel: string;
+  realtime?: ReactNode;
+  realtimeLabel?: string;
+  lead?: 'batch' | 'realtime';
+  idPrefix: string;
+}) {
+  if (!realtime) return <>{batch}</>;
+  return (
+    <Tabs defaultValue={lead} className="gap-3">
+      <TabsList aria-label={`${idPrefix} — which job`}>
+        <TabsTrigger value="batch">{batchLabel}</TabsTrigger>
+        <TabsTrigger value="realtime">{realtimeLabel}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="batch" className="flex flex-col gap-3">
+        {batch}
+      </TabsContent>
+      <TabsContent value="realtime" className="flex flex-col gap-3">
+        {realtime}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * The one line that used to be missing from every lane.
+ *
+ * "An API key holding the business-plane scopes" is not something a developer can mint a key
+ * from — and the failure it produces is a 403 on the ONE request in the walkthrough that crossed
+ * a scope family, which reads as a broken example rather than a missing scope.
+ */
+function ScopeNote({ routes }: { routes: readonly GatewayRouteKey[] }) {
+  return (
+    <p className="text-muted-foreground text-xs">
+      <span className="text-foreground font-medium">{scopeNote(routes)}</span> {API_KEY_MINT_NOTE}
+    </p>
   );
 }
 
@@ -539,6 +602,13 @@ export interface AgentIntegrationProps {
    * agents whose prompt binds clinical context.
    */
   compiledConfig?: Record<string, unknown> | null;
+  /**
+   * TASK-983 lane I — the prompt placeholders this agent's instruction binds, as
+   * `GET /agents/{slug}` reports them. `inputSchema` never declares them, and the gateway names
+   * only ONE per refused call — so an example built without them costs a developer a 400 per
+   * placeholder. Absent (an older gateway) falls back to a sentence saying so.
+   */
+  requiredVariables?: readonly string[] | null;
 }
 
 /**
@@ -580,7 +650,133 @@ function BrowserAbsence({ task }: { task: IntegrationAgentTask }) {
   );
 }
 
-function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema, compiledConfig }: AgentIntegrationProps) {
+/**
+ * The batch walkthrough, rendered from `batch-job-protocol.ts` rather than restated — so the
+ * Node lane and the Manual lane cannot give a developer two different sets of steps.
+ */
+function BatchSteps() {
+  return (
+    <ol className="text-muted-foreground list-decimal space-y-1.5 pl-5 text-xs">
+      {BATCH_STT_STEPS.map((step) => (
+        <li key={step.title}>
+          <span className="text-foreground font-medium">{step.title}.</span> {step.detail}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Every frame on a batch job's SSE stream, with a literal example a developer can match against. */
+function BatchFrameTable() {
+  return (
+    <div className="overflow-x-auto rounded-md border">
+      <table className="w-full text-xs">
+        <caption className="sr-only">Every frame on a batch transcription job&apos;s SSE stream</caption>
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th scope="col" className="px-2 py-1.5 font-medium">Frame</th>
+            <th scope="col" className="px-2 py-1.5 font-medium">Example and meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          {BATCH_JOB_SSE_FRAMES.map((frame) => (
+            <tr key={frame.type} className="border-t align-top">
+              <td className="px-2 py-1.5 font-mono whitespace-nowrap">{frame.type}</td>
+              <td className="px-2 py-1.5">
+                <code className="bg-muted block rounded px-1.5 py-1 font-mono break-all">{frame.example}</code>
+                <p className="text-muted-foreground mt-1">{frame.note}</p>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The four frames `?mode=stream` relays, plus the heartbeat and the straight answer about resume. */
+function SseFrameTable() {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-xs">
+          <caption className="sr-only">Every frame on a streamed invocation</caption>
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th scope="col" className="px-2 py-1.5 font-medium">event:</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">data: and meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            {AGENT_SSE_FRAMES.map((frame) => (
+              <tr key={frame.event} className="border-t align-top">
+                <td className="px-2 py-1.5 font-mono whitespace-nowrap">
+                  {frame.event}
+                  {frame.terminal ? <span className="text-muted-foreground block font-sans">terminal</span> : null}
+                </td>
+                <td className="px-2 py-1.5">
+                  <code className="bg-muted block rounded px-1.5 py-1 font-mono break-all">{frame.data}</code>
+                  <p className="text-muted-foreground mt-1">{frame.note}</p>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        A <code className="font-mono">:keepalive</code> comment arrives every {AGENT_SSE_HEARTBEAT_MS / 1000}s so an idle proxy does not close the
+        connection. {AGENT_STREAM_RESUME_NOTE}
+      </p>
+    </div>
+  );
+}
+
+/** Said once, on the lane where a developer would otherwise go looking for a job id. */
+function NoJobModeNote() {
+  return <p className="text-muted-foreground text-xs">{NO_TEXT_JOB_MODE_NOTE}</p>;
+}
+
+/** Which of the two batch entry points takes a file — the question every STT lane opens with. */
+function BatchEntryNote() {
+  return (
+    <Callout title="A file and a mediaId are two different routes">
+      <p>{MEDIA_ID_NOTE}</p>
+    </Callout>
+  );
+}
+
+/**
+ * The third half of an invocation body.
+ *
+ * An agent's instruction binds prompt placeholders that `inputSchema` never declares, and the
+ * gateway reports them one per refused call — so filling them in by trial and error costs a 400
+ * per placeholder. When the summary carries them, the example above already has every name in it
+ * and this note says so; when it does not, the note is the warning.
+ */
+function PromptVariablesNote({ requiredVariables }: { requiredVariables?: readonly string[] | null }) {
+  if (requiredVariables && requiredVariables.length > 0) {
+    return (
+      <p className="text-muted-foreground text-xs">
+        This agent&apos;s prompt binds {requiredVariables.length} variable{requiredVariables.length === 1 ? '' : 's'} —{' '}
+        {requiredVariables.map((name, index) => (
+          <span key={name}>
+            {index > 0 ? ', ' : ''}
+            <code className="font-mono">{name}</code>
+          </span>
+        ))}
+        . The examples below already carry all of them under <code className="font-mono">variables</code>; a missing one is a 400 naming it.
+      </p>
+    );
+  }
+  return (
+    <p className="text-muted-foreground text-xs">
+      An agent&apos;s prompt may bind variables its <code className="font-mono">inputSchema</code> does not declare. A missing one is a 400 naming that
+      placeholder — send it under <code className="font-mono">variables</code> and re-send.
+    </p>
+  );
+}
+
+function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSchema, compiledConfig, requiredVariables }: AgentIntegrationProps) {
   const endpoint = AGENT_ENDPOINTS[task];
   const path = `${endpoint.method} ${endpoint.path.replace('{slug}', slug)}`;
   const snippetTask = snippetTaskOf(task);
@@ -595,12 +791,25 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
   // context. `context` is a SIBLING of `text` — the body stays flat.
   const contextExample = invocable ? agentContextExample(compiledConfig) : null;
   const schemaExample = invocable ? exampleBodyFromJsonSchema(inputSchema) : null;
-  const exampleBody = contextExample ? { ...(schemaExample ?? FLAT_MINIMUM_BODY), context: contextExample } : schemaExample;
+  const withContext = contextExample ? { ...(schemaExample ?? FLAT_MINIMUM_BODY), context: contextExample } : schemaExample;
+  // TASK-983 lane I — the THIRD half of the body. An agent's prompt binds placeholders that
+  // neither `inputSchema` nor the context schema declares, and the gateway reports them ONE per
+  // call — so a developer filling them in by trial and error meets a 400 per placeholder. When
+  // `GET /agents/{slug}` carries `requiredVariables`, every name is filled in here at once.
+  const exampleBody =
+    requiredVariables && requiredVariables.length > 0
+      ? {
+          ...(withContext ?? FLAT_MINIMUM_BODY),
+          variables: Object.fromEntries(requiredVariables.map((name) => [name, '…'])),
+        }
+      : withContext;
   // NER shares the route but is one-shot: `?mode=stream` on it is a 400 `MODE_UNSUPPORTED`.
   // `baseUrl` (TASK-975 C4): the HTTP lane used to print `https://your-gateway.example.com`
   // while the Postman tab two clicks away injected the console's real origin — two answers to
   // one question, in one panel.
-  const options: AgentSnippetOptions = { exampleBody, streamable: task === 'TEXT_GENERATION', baseUrl: publicEnv.apiHost };
+  const streamable = task === 'TEXT_GENERATION';
+  const options: AgentSnippetOptions = { exampleBody, streamable, baseUrl: publicEnv.apiHost };
+  const manualBody = exampleBody ?? FLAT_MINIMUM_BODY;
 
   const collection = buildPostmanCollection({
     kind: 'agent',
@@ -614,6 +823,8 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
     exampleBody: invocable ? exampleBody : null,
     baseUrl: publicEnv.apiHost,
   });
+
+  const isStt = task === 'SPEECH_TO_TEXT';
 
   return (
     <div className="flex flex-col gap-4">
@@ -641,7 +852,7 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
         {endpoint.note ? <p className="text-muted-foreground mt-1 text-xs">{endpoint.note}</p> : null}
         <p className="text-muted-foreground mt-1 text-xs">
           Resolves the active version of <code className="font-mono">{slug}</code>
-          {isActive && versionNumber ? ` (v${versionNumber}, this one)` : ''}. Reach it on an API key holding the business-plane scopes — never the admin plane.
+          {isActive && versionNumber ? ` (v${versionNumber}, this one)` : ''}. Every lane below names the exact scope its requests need.
         </p>
       </div>
 
@@ -669,48 +880,147 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
           The <code className="font-mono">{'{ "input": … }'}</code> envelope belongs to the workflow plane; sending it here is a 400 on every call.
         </p>
       </Callout>
+      {invocable ? <PromptVariablesNote requiredVariables={requiredVariables} /> : null}
+      {isStt ? <BatchEntryNote /> : null}
 
       <LaneTabs
-        leadWithSocket={task === 'SPEECH_TO_TEXT'}
-        node={<CodeBlock label={NODE_LABEL} caption="Invoke it from a backend with @arcaai/vox-node" code={agentVoxNodeSnippet(slug, snippetTask, options)} />}
+        node={
+          isStt ? (
+            <JobViews
+              idPrefix="Node"
+              lead="realtime"
+              batchLabel="Batch"
+              realtimeLabel="Realtime"
+              batch={
+                <>
+                  <ScopeNote routes={['transcriptionUpload', 'agentTranscriptions', 'transcriptionJobStream']} />
+                  <BatchSteps />
+                  <CodeBlock label={BATCH_NODE_LABEL} caption="Upload a recording, follow the job, read the transcript" code={sttBatchVoxNodeSnippet(slug)} />
+                </>
+              }
+              realtime={
+                <>
+                  <ScopeNote routes={['streamSessionCreate', 'streamSessionRefreshTicket']} />
+                  <SttSocketNote />
+                  <CodeBlock
+                    label={STT_SOCKET_LABEL}
+                    caption="Drive a live session from a server that ALREADY has audio — a telephony bridge, a recording relay"
+                    code={sttRealtimeVoxNodeSnippet(slug)}
+                  />
+                </>
+              }
+            />
+          ) : (
+            <JobViews
+              idPrefix="Node"
+              batchLabel={invocable ? 'Blocking' : 'Batch'}
+              realtimeLabel="Realtime (SSE)"
+              batch={
+                <>
+                  <ScopeNote routes={[task === 'TEXT_TO_SPEECH' ? 'agentSpeech' : 'agentInvocations']} />
+                  <CodeBlock label={NODE_LABEL} caption="Invoke it from a backend with @arcaai/vox-node" code={agentVoxNodeSnippet(slug, snippetTask, options)} />
+                  {invocable ? <NoJobModeNote /> : null}
+                </>
+              }
+              realtime={
+                streamable ? (
+                  <>
+                    <ScopeNote routes={['agentInvocations']} />
+                    <CodeBlock label={STREAM_NODE_LABEL} caption="The same route, read token by token" code={agentVoxNodeStreamSnippet(slug, options)} />
+                    <SseFrameTable />
+                  </>
+                ) : undefined
+              }
+            />
+          )
+        }
         browser={
           invocable ? (
-            <>
-              <CodeBlock label={BROWSER_LABEL} caption="Call it from a React app with @arcaai/vox" code={agentVoxSnippet(slug, 'accessToken', options)} />
-              <CodeBlock label={BROWSER_KEY_LABEL} code={agentVoxSnippet(slug, 'apiKey', options)} />
-              <p className="text-muted-foreground text-xs">
-                Prefer the signed-in user&apos;s session. A key shipped in a browser bundle is readable by anyone who opens the page — if you need one anyway,
-                mint it with <code className="font-mono">agent:invocation:write</code> alone, which bounds what a lifted key can do to invoking agents.
-              </p>
-            </>
+            <JobViews
+              idPrefix="Browser"
+              batchLabel="Blocking"
+              realtimeLabel="Realtime (SSE)"
+              batch={
+                <>
+                  <ScopeNote routes={['agentInvocations']} />
+                  <CodeBlock label={BROWSER_LABEL} caption="Call it from a React app with @arcaai/vox" code={agentVoxSnippet(slug, 'accessToken', options)} />
+                  <CodeBlock label={BROWSER_KEY_LABEL} code={agentVoxSnippet(slug, 'apiKey', options)} />
+                  <p className="text-muted-foreground text-xs">
+                    Prefer the signed-in user&apos;s session. A key shipped in a browser bundle is readable by anyone who opens the page — if you need one
+                    anyway, mint it with <code className="font-mono">agent:invocation:write</code> alone, which bounds what a lifted key can do to invoking
+                    agents.
+                  </p>
+                </>
+              }
+              realtime={
+                streamable ? (
+                  <>
+                    <ScopeNote routes={['agentInvocations']} />
+                    <CodeBlock label={STREAM_BROWSER_LABEL} caption="The same route, read token by token" code={agentVoxStreamSnippet(slug, options)} />
+                    <SseFrameTable />
+                  </>
+                ) : undefined
+              }
+            />
           ) : (
             <>
               <BrowserAbsence task={task} />
               {/* The absence note NAMES this call; printing it is what turns an accurate sentence
                   into something a developer can run. TTS deliberately gets no equivalent. */}
-              {task === 'SPEECH_TO_TEXT' ? (
+              {isStt ? (
                 <CodeBlock label={BROWSER_LABEL} caption="The capture session that path names, with @arcaai/vox" code={sttBrowserCaptureSnippet(slug)} />
               ) : null}
             </>
           )
         }
-        http={
-          <>
-            <CodeBlock label={CURL_LABEL} caption="Any HTTP client — the same body, on the api/v1 prefix" code={agentCurlSnippet(slug, snippetTask, options)} />
-          </>
-        }
-        socket={
-          task === 'SPEECH_TO_TEXT' ? (
-            <>
-              <SttSocketNote />
-              <SttSocketProtocol slug={slug} />
-              <CodeBlock
-                label={STT_SOCKET_LABEL}
-                caption="Drive a live session from a server that ALREADY has audio — a telephony bridge, a recording relay"
-                code={sttRealtimeVoxNodeSnippet(slug)}
-              />
-            </>
-          ) : undefined
+        manual={
+          isStt ? (
+            <JobViews
+              idPrefix="Manual"
+              lead="realtime"
+              batchLabel="Batch"
+              realtimeLabel="Realtime"
+              batch={
+                <>
+                  <ScopeNote routes={['transcriptionUpload', 'transcriptionJobGet', 'transcriptionJobStream']} />
+                  <BatchSteps />
+                  <BatchFrameTable />
+                  <CodeBlock label={BATCH_SHELL_LABEL} caption="Shell: upload the file, follow the job with curl -N, read the transcript" code={sttBatchCurlSnippet(slug, publicEnv.apiHost)} />
+                  <CodeBlock label={BATCH_JS_LABEL} caption="Any runtime with fetch — no SDK on the import line" code={sttBatchFetchSnippet(slug, publicEnv.apiHost)} />
+                </>
+              }
+              realtime={
+                <>
+                  <ScopeNote routes={['streamSessionCreate', 'streamSessionRefreshTicket']} />
+                  <SttSocketNote />
+                  <SttSocketProtocol slug={slug} />
+                </>
+              }
+            />
+          ) : (
+            <JobViews
+              idPrefix="Manual"
+              batchLabel={invocable ? 'Blocking' : 'Batch'}
+              realtimeLabel="Realtime (SSE)"
+              batch={
+                <>
+                  <ScopeNote routes={[task === 'TEXT_TO_SPEECH' ? 'agentSpeech' : 'agentInvocations']} />
+                  <CodeBlock label={CURL_LABEL} caption="Any HTTP client — the same body, on the api/v1 prefix" code={agentCurlSnippet(slug, snippetTask, options)} />
+                  {invocable ? <NoJobModeNote /> : null}
+                </>
+              }
+              realtime={
+                streamable ? (
+                  <>
+                    <ScopeNote routes={['agentInvocations']} />
+                    <SseFrameTable />
+                    <CodeBlock label={STREAM_SHELL_LABEL} caption="Shell: curl -N, because curl buffers a stream without it" code={agentSseCurlSnippet(slug, manualBody, publicEnv.apiHost)} />
+                    <CodeBlock label={STREAM_JS_LABEL} caption="Any runtime with fetch — EventSource cannot carry an API key" code={agentSseFetchSnippet(slug, manualBody, publicEnv.apiHost)} />
+                  </>
+                ) : undefined
+              }
+            />
+          )
         }
         postman={<PostmanLane collection={collection} slug={slug} />}
       />
@@ -869,28 +1179,33 @@ function WorkflowIntegration({ slug, isActive = true, exposable = true, paletteK
       </Callout>
 
       <LaneTabs
-        node={<CodeBlock label={NODE_LABEL} caption="Run it from a backend with @arcaai/vox-node" code={workflowVoxNodeSnippet(slug, exampleBody)} />}
+        node={
+          <>
+            <ScopeNote routes={['workflowRunStart', 'workflowRunGet']} />
+            <CodeBlock label={NODE_LABEL} caption="Run it from a backend with @arcaai/vox-node" code={workflowVoxNodeSnippet(slug, exampleBody)} />
+            <CodeBlock
+              label={SOCKET_NODE_LABEL}
+              caption="Buffered by a proxy? The same methods, over a socket — @arcaai/vox-node"
+              code={workflowSocketVoxNodeSnippet(slug)}
+            />
+          </>
+        }
         browser={
           <>
+            <ScopeNote routes={['workflowRunStart', 'workflowRunGet']} />
             <CodeBlock label={BROWSER_LABEL} caption="Start and follow a run from a React app with @arcaai/vox" code={workflowVoxSnippet(slug, exampleBody)} />
+            <CodeBlock label={SOCKET_BROWSER_LABEL} caption="The same option in a React app — @arcaai/vox" code={workflowSocketVoxSnippet(slug)} />
             <p className="text-muted-foreground text-xs">
               The browser starts a run asynchronously and watches it. Holding a blocking fetch open against the gateway&apos;s ~60s ceiling from a UI thread, or
               putting the whole event stream on a POST that cannot be resumed, are both worse than the 202-then-watch it does instead.
             </p>
           </>
         }
-        http={
-          <CodeBlock label={CURL_LABEL} caption="Any HTTP client — start, read, follow" code={workflowCurlSnippet(slug, exampleBody, modes, publicEnv.apiHost)} />
-        }
-        socket={
+        manual={
           <>
+            <ScopeNote routes={['workflowRunStart', 'workflowRunGet']} />
+            <CodeBlock label={CURL_LABEL} caption="Any HTTP client — start, read, follow" code={workflowCurlSnippet(slug, exampleBody, modes, publicEnv.apiHost)} />
             <WorkflowSocketRationale />
-            <CodeBlock
-              label={SOCKET_NODE_LABEL}
-              caption="One option on the methods the Node tab already shows — @arcaai/vox-node"
-              code={workflowSocketVoxNodeSnippet(slug)}
-            />
-            <CodeBlock label={SOCKET_BROWSER_LABEL} caption="The same option in a React app — @arcaai/vox" code={workflowSocketVoxSnippet(slug)} />
             <CodeBlock
               label={SOCKET_SHELL_LABEL}
               caption="Without an SDK: mint the RUN-SCOPED ticket, then open the url it answers"
