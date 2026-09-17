@@ -1874,7 +1874,7 @@ export interface CreateTenantRequest {
 }
 
 export interface CreateUserRequest {
-  /** Department to assign in the active tenant (membership) */
+  /** Department to assign in the active tenant (membership). REQUIRED for a HUMAN user whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_DEPARTMENT_REQUIRED. Service accounts are exempt, mirroring assertUserBelongsToTenant. */
   departmentId?: string;
   /** Email address (persisted on the user profile) */
   email?: string;
@@ -1887,7 +1887,7 @@ export interface CreateUserRequest {
   /** Password for the user */
   password: string;
   resourceStatus?: string;
-  /** Role to assign in the active tenant (membership) */
+  /** Role to assign in the active tenant (membership). REQUIRED whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_ROLE_REQUIRED, because a user with no role assignment belongs to no tenant and cannot sign in. A non-super-admin caller may not name the SUPER_ADMIN role (403). */
   roleId?: string;
   tenantId?: string;
   /** Username of the user */
