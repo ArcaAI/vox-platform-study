@@ -45,6 +45,43 @@ export function platformDefaultHint(connection: PlatformDefaultConnection | unde
   }
 }
 
+/**
+ * THE PLATFORM ROW, IN ONE LINE, ON EVERY TENANT-TIER CARD (TASK-983 R3).
+ *
+ * `platformDefaultHint` above answers "what serves me today", and only while the
+ * tenant is inheriting — so a tenant that brings its OWN key, or vetoes the
+ * provider, saw nothing at all about the platform row. That is half of "why is
+ * my key not being used", and the whole of "does the platform even have one".
+ * The panel higher up the tab carries the same facts in a table; this repeats
+ * the one row that belongs to the card an admin is actually typing into.
+ *
+ * PRESENCE ONLY, NEVER A VALUE. The source is the masked `platform-defaults`
+ * projection — the single SYSTEM read a tenant admin is allowed — which returns
+ * `hasKey` and never a key. Nothing here may grow into rendering one.
+ *
+ * `undefined` when there is no platform tier to describe (the platform tier
+ * itself, or a NAMED sibling: the cascade falls back for a PROVIDER, which is a
+ * fact about the default row, not about a sibling).
+ */
+export function platformDefaultSummary(connection: PlatformDefaultConnection | undefined): string {
+  if (!connection || connection.version === 0) return 'Platform default: not configured';
+
+  const state = `${connection.hasKey ? 'key set' : 'no key'} · ${connection.enabled ? 'enabled' : 'off'}`;
+  // Only the verdicts the row state does NOT already imply get a suffix: a
+  // keyless or switched-off platform row explains itself, and `inherited` is
+  // said in full by `platformDefaultHint` on the same card.
+  switch (connection.resolution) {
+    case 'vetoed':
+      return `Platform default: ${state} — blocked by your disabled connection`;
+    case 'not-entitled':
+      return `Platform default: ${state} — not included in your plan`;
+    case 'overridden':
+      return `Platform default: ${state} — your own key wins`;
+    default:
+      return `Platform default: ${state}`;
+  }
+}
+
 /** The non-secret half of a platform row worth showing: where it points. */
 function endpointOf(connection: PlatformDefaultConnection): string {
   return connection.baseUrl ?? connection.region ?? connection.deploymentName ?? '—';

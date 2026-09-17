@@ -30,6 +30,12 @@ import { AiProvidersScreen } from '../ai-providers-screen';
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
+// The tenant-tier scope notice re-reads the session through the router after it
+// clears the working tenant (TASK-983 R3) — the same thing the shell's own
+// banner does. There is no app router under the test harness.
+const routerRefresh = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }) }));
+
 beforeAll(() => {
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 });
@@ -377,6 +383,8 @@ describe('AiProvidersScreen — the working tenant decides the scope (R-12)', ()
       fireEvent.click(clear);
     });
     await waitFor(() => expect(calls.some((c) => c.url === '/api/auth/working-tenant' && c.method === 'DELETE')).toBe(true));
+    // and the session is re-read, so the screen lands on the platform tier.
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
   it('never offers a tenant admin a control it cannot use — the notice is elevated-only', async () => {
