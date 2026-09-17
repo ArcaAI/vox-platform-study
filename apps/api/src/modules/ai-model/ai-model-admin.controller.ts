@@ -138,12 +138,17 @@ export class AiModelAdminController {
     description: 'Page number. The list contract is 1-based (`skip = (page - 1) * limit`); 0 and 1 both select the first page.',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10)' })
-  @ApiQuery({ name: 'search', required: false, type: String, description: 'Free-text term matched against `searchFields` (case-insensitive contains).' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Free-text term matched against `searchFields` (case-insensitive contains).',
+  })
   @ApiQuery({
     name: 'searchFields',
     required: false,
     type: String,
-    description: "Comma-separated columns the `search` term targets — the registry grid sends `name,slug`. Without it, `search` matches nothing.",
+    description: 'Comma-separated columns the `search` term targets — the registry grid sends `name,slug`. Without it, `search` matches nothing.',
   })
   @ApiQuery({
     name: 'filters',
