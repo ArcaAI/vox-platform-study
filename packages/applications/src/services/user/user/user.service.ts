@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -29,6 +29,7 @@ import { ICryptoService } from '../../crypto/ICryptoService';
 import { IJwtRevocationService } from '../../auth/jwt-revocation.service';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { resolvePasswordPolicy, validatePasswordComplexity } from '../userPassword/password-policy';
+import { SUPER_ADMIN_ROLE } from '../../tenant/constants';
 
 /**
  * The Users resource's Prisma model name. Passed to
@@ -118,7 +119,82 @@ export class UserService extends BaseService implements IUserService {
     return rows.length;
   }
 
+  /**
+   * True when the active request user carries the `SUPER_ADMIN` role. Mirrors
+   * `UserRoleAssignmentService.isSuperAdmin()` — a missing CLS context or role
+   * list resolves to `false`, so the strictest branch applies by default.
+   */
+  private isSuperAdmin(): boolean {
+    const roles = this.requestUser?.roles;
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+  }
+
+  /**
+   * A non-SUPER_ADMIN caller may not grant the platform-wide SUPER_ADMIN role.
+   *
+   * `UserRoleAssignmentService.create` has enforced this for a while, but
+   * create-with-membership writes the assignment through the REPOSITORY, so it
+   * bypassed that service entirely. Read through the unscoped `baseClient`
+   * (`Role` is a SYSTEM shared-read model) and matched by NAME, so a
+   * tenant-cloned role that merely happens to be called `SUPER_ADMIN` cannot
+   * slip past either. An unknown role id is left to the FK to reject.
+   */
+  private async assertAssignableRoleTier(roleId: string): Promise<void> {
+    const role = (await this.databaseService.baseClient.role.findUnique({
+      where: { id: roleId },
+      select: { name: true },
+    })) as { name: string } | null;
+    if (role?.name === SUPER_ADMIN_ROLE) {
+      throw new ForbiddenException('Only a SUPER_ADMIN may assign the SUPER_ADMIN role');
+    }
+  }
+
+  /**
+   * TASK-983 R6 / OD-4 — a user created INSIDE a tenant must carry its
+   * membership, fail-closed, before anything is written.
+   *
+   * `User` has no `tenantId`: membership IS the `UserRoleAssignment` (+
+   * `UserDepartment`) pair, and `assertUserBelongsToTenant` requires both for a
+   * human account. A create without them therefore persisted a row belonging to
+   * no tenant — invisible to `fetchAllByTenantId`, 404 on every
+   * `admin/users/:id/*` sub-route through `assertUserInScope`, unable to log
+   * in, and unreachable by the very admin who had just created it. Same
+   * posture, and the same reasoning, as `ContextUserIdentityService` (TASK-950).
+   *
+   * Scope: only a caller ACTING inside a tenant. A caller with no working
+   * tenant is creating a tenant-less platform user and keeps the
+   * membership-less path (OD-4). Service accounts keep the department
+   * exemption, but not the role one — `assertUserBelongsToTenant` still needs
+   * their role assignment.
+   */
+  private async assertTenantMembershipSupplied(request: CreateUserRequest): Promise<void> {
+    if (!this.tenantId) return;
+
+    const { roleId, departmentId } = request;
+    if (!roleId) {
+      throw new BadRequestException({
+        code: 'USER_ROLE_REQUIRED',
+        message: 'A role is required when creating a user in a tenant: without one the user has no tenant membership and cannot sign in.',
+      });
+    }
+
+    if (!(request.isServiceAccount ?? false) && !departmentId) {
+      throw new BadRequestException({
+        code: 'USER_DEPARTMENT_REQUIRED',
+        message: 'A department is required when creating a user in a tenant. Only service accounts may be created without one.',
+      });
+    }
+
+    if (this.requestUser && !this.isSuperAdmin()) {
+      await this.assertAssignableRoleTier(roleId);
+    }
+  }
+
   async create(request: CreateUserRequest): Promise<UserEntity> {
+    // FIRST, before the password policy, the factory, the seat count and every
+    // write: a refused create must leave nothing behind.
+    await this.assertTenantMembershipSupplied(request);
+
     const { roleId, departmentId, isPrimaryDepartment, email, ...userRequest } = request;
     const wantsMembership = Boolean(roleId || departmentId);
 

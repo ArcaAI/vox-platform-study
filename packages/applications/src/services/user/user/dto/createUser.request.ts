@@ -35,16 +35,30 @@ export class CreateUserRequest extends BaseRequest {
   // only by the dedicated rotation flow, never through the generic create
   // payload.
 
-  // Optional membership. When supplied, the user is created
-  // together with an ENABLED UserRoleAssignment and/or UserDepartment in the
-  // ACTIVE tenant (taken from CLS, never the body) so a console-created user can
-  // satisfy the login invariant in one step. Created atomically.
-  @ApiProperty({ description: 'Role to assign in the active tenant (membership)', required: false })
+  // Membership. When supplied, the user is created together with an ENABLED
+  // UserRoleAssignment and/or UserDepartment in the ACTIVE tenant (taken from
+  // CLS, never the body), atomically, so the user satisfies the login
+  // invariant in one step.
+  //
+  // Optional to class-validator, MANDATORY in a tenant (TASK-983 R6 / OD-4):
+  // the rule depends on the CALLER's context, which a DTO decorator cannot
+  // see, so `UserService.create` enforces it — 400 `USER_ROLE_REQUIRED` /
+  // `USER_DEPARTMENT_REQUIRED`. Both stay optional on the wire only for the
+  // tenant-less platform-user create.
+  @ApiProperty({
+    description:
+      'Role to assign in the active tenant (membership). REQUIRED whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_ROLE_REQUIRED, because a user with no role assignment belongs to no tenant and cannot sign in. A non-super-admin caller may not name the SUPER_ADMIN role (403).',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   roleId?: string;
 
-  @ApiProperty({ description: 'Department to assign in the active tenant (membership)', required: false })
+  @ApiProperty({
+    description:
+      'Department to assign in the active tenant (membership). REQUIRED for a HUMAN user whenever the caller acts inside a tenant — omitting it is rejected with 400 USER_DEPARTMENT_REQUIRED. Service accounts are exempt, mirroring assertUserBelongsToTenant.',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   departmentId?: string;

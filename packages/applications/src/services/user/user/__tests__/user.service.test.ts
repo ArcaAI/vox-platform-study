@@ -41,7 +41,16 @@ const mockUserRepository = {
 // the atomic create-with-membership flow is covered in user.service.task331.test.ts.
 const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
-const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
+// TASK-983 R6: a create inside a tenant now takes the atomic
+// membership branch, so `$transaction` must actually run its callback, and the
+// SUPER_ADMIN tier guard reads `Role` through the base client.
+const TX = { __txSentinel: true };
+const mockDatabaseService = {
+  baseClient: {
+    $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)),
+    role: { findUnique: vi.fn(async () => ({ name: 'DOCTOR' })) },
+  },
+};
 // Profile upsert for the optional create-user email.
 const mockUserProfileService = { upsertByUserId: vi.fn() };
 // Create/update passwords are policy-checked + bcrypt-hashed;
@@ -182,6 +191,10 @@ describe('UserService', () => {
     );
   });
 
+  // TASK-983 R6 / OD-4: these creates run with a CLS tenant, where a role (and,
+  // for a human, a department) is mandatory — so every payload below carries
+  // its membership. The refusals themselves are pinned in
+  // user.service.task983.test.ts.
   describe('create', () => {
     it('should create a new user with all required fields', async () => {
       const newUser = createMockUserEntity({
@@ -196,6 +209,8 @@ describe('UserService', () => {
         username: 'newuser',
         password: 'Password123!',
         isServiceAccount: false,
+        roleId: 'role-1',
+        departmentId: 'dept-1',
       });
 
       // Verify the returned entity has correct data
@@ -213,6 +228,8 @@ describe('UserService', () => {
         password: 'Password123!',
         isServiceAccount: false,
         email: 'maya@acmehealth.org',
+        roleId: 'role-1',
+        departmentId: 'dept-1',
       });
 
       expect(mockUserProfileService.upsertByUserId).toHaveBeenCalledWith('new-user-id', { email: 'maya@acmehealth.org' });
@@ -222,7 +239,7 @@ describe('UserService', () => {
       const newUser = createMockUserEntity({ id: 'new-user-id' });
       mockUserRepository.create.mockResolvedValue(newUser);
 
-      await service.create({ username: 'noemail', password: 'Password123!', isServiceAccount: false });
+      await service.create({ username: 'noemail', password: 'Password123!', isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' });
 
       expect(mockUserProfileService.upsertByUserId).not.toHaveBeenCalled();
     });
@@ -235,6 +252,8 @@ describe('UserService', () => {
         username: 'newuser',
         password: 'Password123!',
         isServiceAccount: false,
+        roleId: 'role-1',
+        departmentId: 'dept-1',
       });
 
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -258,6 +277,8 @@ describe('UserService', () => {
           username: 'newuser',
           password: 'Password123!',
           isServiceAccount: false,
+          roleId: 'role-1',
+          departmentId: 'dept-1',
         }),
       ).rejects.toThrow('Failed to create UserEntity');
     });
@@ -274,6 +295,7 @@ describe('UserService', () => {
         username: 'api-service',
         password: 'ServicePassword123!',
         isServiceAccount: true,
+        roleId: 'role-1',
       });
 
       expect(result.isServiceAccount).toBe(true);
@@ -287,6 +309,8 @@ describe('UserService', () => {
           username: 'newuser',
           password: 'Password123!',
           isServiceAccount: false,
+          roleId: 'role-1',
+          departmentId: 'dept-1',
         }),
       ).rejects.toThrow('Database connection failed');
     });
