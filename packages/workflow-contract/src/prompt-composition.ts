@@ -34,7 +34,7 @@
  * renderer has ONE entry point and no `source` sniffing of its own.
  */
 import { evaluateCondition, expressionRootIdentifiers, parseExpression, type ExpressionValue } from './expressions';
-import { renderTemplate } from './template';
+import { collectPlaceholders, renderTemplate, resolveTemplatePath } from './template';
 
 /** The roots a `when` may read — the render scope's own (`buildAgentPromptScope`), by name. */
 export const AGENT_CONDITION_ROOTS: readonly string[] = Object.freeze(['context', 'trigger', 'input', 'vars', 'nodes', 'variables']);
@@ -178,6 +178,51 @@ export function composePrompt(
     renderTemplate(contentOf(fragment), scope, { templateRef: templateRef === null ? `#${fragment.key}` : `${templateRef}#${fragment.key}` }),
   );
   return { prompt: parts.join(join), selected: selected.map((fragment) => fragment.key), excluded };
+}
+
+/**
+ * TASK-983 (R9) — every placeholder a published instruction can ask for, as a sorted,
+ * de-duplicated list of paths WITHOUT a `default("…")`.
+ *
+ * EVERY fragment, conditional ones included: this is the PUBLISH-time projection, and publish
+ * cannot know which branch a future call will take. A caller reading it sees the worst case,
+ * which is the only honest thing to publish — `unresolvedPromptVariables` below is the
+ * per-call, selection-aware half.
+ */
+export function requiredPromptVariables(resolvedPrompt: ComposableResolvedPrompt): string[] {
+  if (resolvedPrompt === null || resolvedPrompt === undefined) return [];
+  const templates =
+    resolvedPrompt.source === 'composite'
+      ? (Array.isArray(resolvedPrompt.fragments) ? resolvedPrompt.fragments : []).map((fragment) => contentOf(fragment))
+      : [contentOf(resolvedPrompt)];
+  return collectPlaceholders(templates)
+    .filter((reference) => !reference.hasDefault)
+    .map((reference) => reference.path);
+}
+
+/**
+ * TASK-983 (R9) — the placeholders THIS call would fail on, all of them, before rendering.
+ *
+ * Selection runs first (`selectPromptFragments`, the same call `composePrompt` makes over the
+ * same scope), so a fragment this call excludes never asks for anything: reporting its variables
+ * would refuse a request that works. An empty selection returns `[]` rather than the union —
+ * that case is `PromptCompositionEmptyError`, a different failure with its own name.
+ *
+ * Resolution is `resolveTemplatePath`, the renderer's own traversal, so this list and what
+ * `renderTemplate` throws on cannot disagree.
+ */
+export function unresolvedPromptVariables(resolvedPrompt: ComposableResolvedPrompt, scope: Readonly<Record<string, unknown>>): string[] {
+  if (resolvedPrompt === null || resolvedPrompt === undefined) return [];
+  let templates: string[];
+  if (resolvedPrompt.source === 'composite') {
+    const fragments = Array.isArray(resolvedPrompt.fragments) ? resolvedPrompt.fragments : [];
+    templates = selectPromptFragments(fragments, scope).selected.map((fragment) => contentOf(fragment));
+  } else {
+    templates = [contentOf(resolvedPrompt)];
+  }
+  return collectPlaceholders(templates)
+    .filter((reference) => !reference.hasDefault && resolveTemplatePath(scope, reference.path) === undefined)
+    .map((reference) => reference.path);
 }
 
 /** The unconditional fragments' RAW content joined — what publish stamps as `content` (OD-3). */
