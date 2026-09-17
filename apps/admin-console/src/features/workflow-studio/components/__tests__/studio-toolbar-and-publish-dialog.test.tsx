@@ -225,7 +225,9 @@ describe('PublishDialog', () => {
     it('renders a copyable @arcaai/vox-node snippet naming the slug', async () => {
       stubWorkflowSchemaFetch();
       renderWithProviders(<PublishDialog open onOpenChange={vi.fn()} onConfirm={vi.fn()} published slug="discharge-summary" />);
-      const snippet = await screen.findByRole('group', { name: /vox-node/i });
+      // The Integration panel now shows the Node lane per JOB (TASK-983 lane I), so more than one
+      // vox-node group can be present; the first is the one this test always read.
+      const snippet = (await screen.findAllByRole('group', { name: /vox-node/i }))[0];
       expect(snippet.textContent).toContain('@arcaai/vox-node');
       expect(snippet.textContent).toContain('discharge-summary');
     });
