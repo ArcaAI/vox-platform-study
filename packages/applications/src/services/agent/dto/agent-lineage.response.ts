@@ -63,6 +63,7 @@ export class AgentLineageResponse {
   @ApiProperty({ type: AgentLineageAssignmentResponse }) assignment!: AgentLineageAssignmentResponse;
   @ApiProperty({ type: AgentLineageOriginResponse }) origin!: AgentLineageOriginResponse;
   @ApiProperty({ type: [String] }) tags!: string[];
+  @ApiProperty({ description: 'A platform service agent (allow-listed slug) the business plane never lists; admin surfaces render it flagged, never as a tenant’s own lineage.' }) hidden!: boolean;
   @ApiProperty({ description: 'ISO timestamp — the newest touch anywhere in the lineage.' }) updatedAt!: string;
 }
 

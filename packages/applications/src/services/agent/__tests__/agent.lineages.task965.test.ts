@@ -156,6 +156,22 @@ beforeEach(() => {
   mockAiModelRepository.findByTaskTypeSharedRead.mockResolvedValue([{ id: 'model-asr', slug: 'whisper-large-ml-en' }]);
 });
 
+import { PLATFORM_HIDDEN_AGENTS } from '../platform-hidden-agents';
+import { AgentDtoMapper } from '../agent.dto.mapper';
+
+describe('AgentLineageResponse.hidden (TASK-983 follow-up for WS-4)', () => {
+  const base = {
+    slug: 'x', name: 'X', task: 'TEXT_GENERATION', versionCount: 1, latestVersionNumber: 1, deprecatedCount: 0,
+    active: null, draft: null, origin: { sourceTenantId: null, sourceSlug: null }, tags: [], updatedAt: new Date(0),
+  };
+  const assignment = { tenantDefault: false, departmentCount: 0, selectorCount: 0 };
+  it('flags the platform hidden agent and nothing else', () => {
+    const hiddenSlug = Object.keys(PLATFORM_HIDDEN_AGENTS)[0] ?? 'dna-writing-style-analyst';
+    expect(AgentDtoMapper.toLineageResponse({ ...base, slug: hiddenSlug } as never, assignment).hidden).toBe(true);
+    expect(AgentDtoMapper.toLineageResponse({ ...base, slug: 'medical-ner' } as never, assignment).hidden).toBe(false);
+  });
+});
+
 describe('listLineages', () => {
   it('answers ONE row per slug, with the active/draft pointers, the counts and the model slug', async () => {
     mockAgentRepository.findLineagesForTenant.mockResolvedValue({ data: [lineage()], count: 1 });
