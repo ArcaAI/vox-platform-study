@@ -245,6 +245,14 @@ Controller binds one `@Query() query: PaginatedQuery`; the service applies `sear
 - Dev residue: the dev SYSTEM `stt/sarvam` row carries a dummy key from W0 and the e2e (enabled stays `false`); lane D's test user was soft-deleted; the platform `rate-limit.enabled` setting was switched off for the e2e runs and restored afterwards (§5).
 - Worktrees `../hope-v2-983-{A..H,M}` removed and their branches deleted after every branch was confirmed an ancestor of `dev-2.2`.
 
+### 4.10 Owner check on the local console (R9 follow-up) — `e74fe599f`
+
+The owner tested locally and found no socket instructions for a realtime ASR agent. Captured on the dev console (`evidence/owner-check-*.png`): the guidance existed, but the agent's Integration tab opened on the **Node** lane with the batch `transcribe` call and a `POST …/transcriptions` endpoint line, so the socket setup sat one click away behind the wrong endpoint. For `SPEECH_TO_TEXT` the Socket lane now comes first and opens selected, and the header names the realtime session route (`POST /audio/transcription-jobs/stream/session` → `/ws/stt/stream?sessionId&ticket`) before the batch route. Panel test 46/46; lint and tsc clean on the two files; captured live as `owner-check-agent-integration-socket-first.png`.
+
+Note on commit ids: a peer session rewrote every commit of this ticket on `dev-2.2` (identical trees, new SHAs, trailers stripped) and added two commits of its own (`5a53e82eb`, `cc83b699d`); the SHAs quoted in §4.1–4.9 are the pre-rewrite ones. `git log --grep task-983` finds the current ones.
+
+Dev-stack incident, 2026-09-17 17:14: the gateway received a SIGTERM and stt/text/guardrail/nlp/harness died while the console I had restarted stayed up; the supervisor's exit trap only kills what it spawned, so the cause is outside this session. Recovered with `pnpm stack:dev -- api stt text guardrail nlp harness` after clearing the stale pid files; all six healthy within 25 s.
+
 ## 5. Verification
 
 Owner rule (2026-09-17): no gating tests until everything is merged into `dev-2.2`. One full pass after the last merge, in the primary checkout (`scratchpad/gates.log`):
@@ -283,6 +291,7 @@ Live proof on the dev gateway (watch mode, after the merges):
 |---|---|
 | 2026-09-17 | Ticket opened; six discovery lanes (sonnet, read-only, no worktrees) returned; plan written with §3.5 decisions and §3.6 ODs; status Pending — awaiting owner go |
 | 2026-09-17 | Owner: "R8: remove it if it does not take any effect; for the rest, approve recommendations, go." OD-0..OD-10 closed as recommended, OD-6 → removal. Status In Progress; W0 started |
+| 2026-09-17 | Owner check: socket guidance moved to the front of a speech-to-text agent's Integration tab (§4.10); TASK-965 WS-2 and WS-3 lanes spawned for the duplicate-version rows (R12) |
 | 2026-09-17 | Console e2e: the owner's `next dev` on 5176 had died (no crash trace; the box was under gate + lane-server load) and, restarted, served a stale Turbopack dev cache that never hydrated the login form (two HMR-client chunk hashes) — restarted again with `.next` cleared via `pnpm stack:dev -- admin`; the three specs then ran; two stale `ai-models` selectors fixed; leftover e2e model rows retired; `rate-limit.enabled` restored to `true` |
 | 2026-09-17 | Lane D merged (§4.8); artifacts regenerated in worktree M and merged (§4.9); single gate pass green (§5); two post-merge test fixes; API e2e subset green; worktrees removed; status Review |
 | 2026-09-17 | Owner: "do NOT run any gating tests until things are merged completely to dev-2.2" — relayed to the running lanes; per-merge suite runs stopped; one gate pass after the last merge. Lanes F, H, A, B, G merged (§4.3–4.7); types, workflow-contract, applications, vox-node, vox rebuilt in the primary after H |
