@@ -99,6 +99,43 @@ describe('request', () => {
     expect(result.etag).toBe('"7"');
   });
 
+  // TASK-983 R5: behind a compressing intermediary (Cloudflare / Traefik in
+  // front of the deployed gateway) the proxy WEAKENS the validator it was
+  // given — `etag: W/"7"` together with `content-encoding: gzip`. The console
+  // used to drop any `W/` token, so every If-Match surface lost its ETag and
+  // either disabled its button (governance Approve) or sent no precondition
+  // (428). Normalising the weak form back to its strong opaque tag keeps the
+  // row version intact; the gateway only ever mints `"<n>"`, so the entity-tag
+  // inside the wrapper is byte-identical to what it stamped.
+  it('normalises a WEAK validator back to the strong form (compressing proxy)', async () => {
+    installFetchMock(() => Response.json({ id: 't-1', _version: 7 }, { headers: { etag: 'W/"7"' } }));
+
+    const result = await request<{ id: string }>('admin/tenants/t-1');
+
+    expect(result.etag).toBe('"7"');
+    expect(versionFromEtag(result.etag!)).toBe(7);
+  });
+
+  it('returns null when the response carries no ETag at all', async () => {
+    installFetchMock(() => Response.json({ id: 't-1' }));
+
+    const result = await request<{ id: string }>('admin/tenants/t-1');
+
+    expect(result.etag).toBeNull();
+  });
+
+  it('sends a normalised weak ETag as a STRONG If-Match on the next write', async () => {
+    // `@ExpectedVersion()` rejects `If-Match: W/"7"` with 400, so the wire
+    // value must be the strong form even when the read was weakened.
+    const calls = installFetchMock(() => Response.json({ id: 't-1', _version: 8 }, { headers: { etag: 'W/"8"' } }));
+
+    const read = await request<{ id: string }>('admin/tenants/t-1');
+    const result = await request<{ id: string }>('admin/tenants/t-1', { method: 'PATCH', body: { name: 'N' }, etag: read.etag! });
+
+    expect(calls[1].headers.get('if-match')).toBe('"8"');
+    expect(result.etag).toBe('"8"');
+  });
+
   it('sends JSON bodies and the If-Match header on mutations', async () => {
     const calls = installFetchMock(() => Response.json({ id: 't-1', _version: 8 }, { headers: { etag: '"8"' } }));
 

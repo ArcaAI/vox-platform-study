@@ -116,6 +116,33 @@ export function buildQuery(params?: QueryParams): string {
   return serialized ? `?${serialized}` : '';
 }
 
+/**
+ * Strong-form entity tag for a response validator, or null when the response
+ * carried none.
+ *
+ * The gateway only ever mints the STRONG form (`"<n>"` from the row's
+ * `_version` — `ETagInterceptor`), because `@ExpectedVersion()` rejects a weak
+ * `If-Match` with 400. But an intermediary that TRANSFORMS the body is required
+ * by RFC 9110 §8.8.1 to weaken the validator it forwards, and that is exactly
+ * what happens on the deployed console: Cloudflare/Traefik gzip the JSON and
+ * the browser sees `etag: W/"7"` with `content-encoding: gzip`, while the same
+ * row fetched uncompressed still carries `etag: "7"`.
+ *
+ * Dropping the weak token (what this did before TASK-983) left every If-Match
+ * surface without an ETag behind the proxy — the governance Approve button
+ * disabled itself, and the other OCC writes sent no precondition and took a
+ * 428. The transformation is on the BODY, never on the row: `_version` is what
+ * the opaque tag encodes, so unwrapping `W/` restores the byte-identical tag
+ * the gateway stamped. (The gateway now also answers `Cache-Control:
+ * no-transform` alongside every ETag so a compliant proxy stops transforming
+ * the body at all; this normalisation is the second line of defence, for the
+ * ones that ignore it.)
+ */
+function normalizeEtag(header: string | null): string | null {
+  if (!header) return null;
+  return header.startsWith('W/') ? header.slice(2) : header;
+}
+
 const PROXY_MOUNT = '/api/hope/';
 
 /** Proxied URL for a gateway path (relative to /api/v1, no leading slash). */
@@ -154,8 +181,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     throw await toGatewayError(response);
   }
 
-  const responseEtag = response.headers.get('etag');
-  const etag = responseEtag && !responseEtag.startsWith('W/') ? responseEtag : null;
+  const etag = normalizeEtag(response.headers.get('etag'));
   if (response.status === 204) {
     return { data: undefined as T, etag };
   }
