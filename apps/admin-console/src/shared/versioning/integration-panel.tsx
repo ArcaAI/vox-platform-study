@@ -106,6 +106,7 @@ import {
   workflowSocketVoxNodeSnippet,
   workflowSocketVoxSnippet,
 } from '@/shared/docs/socket-snippets';
+import { STT_SOCKET_FRAMES, STT_SOCKET_ROUTES, sttRawWebSocketSnippet, sttSessionCurlSnippet } from '@/shared/docs/stt-socket-protocol';
 
 const API_KEYS_HREF = '/api-keys';
 const INVOKE_GUIDE_HREF = '/developer/invoke';
@@ -330,6 +331,73 @@ function WorkflowSocketRationale() {
  * the workflow rationale above, which would be false here: a live session has no SSE lane to
  * prefer. `/ws/stt/stream` is the transport, not an alternative to one.
  */
+const STT_RAW_SHELL_LABEL = 'Realtime STT without an SDK (curl + websocat) snippet';
+const STT_RAW_JS_LABEL = 'Realtime STT without an SDK (fetch + WebSocket) snippet';
+
+/**
+ * The manual path: a developer who does not take an SDK calls the gateway directly and sets the
+ * socket up by hand, so the lane states the whole contract — the three routes, the handshake,
+ * and every frame in both directions — before it shows any SDK call. Data from
+ * `shared/docs/stt-socket-protocol`, never restated here.
+ */
+function SttSocketProtocol({ slug }: { slug: string }) {
+  return (
+    <section aria-labelledby="stt-socket-protocol-heading" className="flex flex-col gap-3">
+      <div>
+        <p id="stt-socket-protocol-heading" className="text-sm font-medium">
+          Without the SDK — the contract, step by step
+        </p>
+        <ol className="text-muted-foreground mt-1 list-decimal space-y-1 pl-5 text-xs">
+          <li>
+            <code className="font-mono">POST /api/v1{STT_SOCKET_ROUTES.createSession}</code> with <code className="font-mono">{'{ "agentSlug": "' + slug + '", "sampleRate": 16000 }'}</code> on an
+            API key holding the business-plane scopes. It answers <code className="font-mono">sessionId</code>, <code className="font-mono">wsUrl</code>, a SINGLE-USE{' '}
+            <code className="font-mono">ticket</code> and <code className="font-mono">ticketExpiresAt</code>.
+          </li>
+          <li>
+            Open <code className="font-mono">{STT_SOCKET_ROUTES.handshake}</code> on the gateway origin (<code className="font-mono">wss://</code>). The ticket is consumed by this
+            open; wait for <code className="font-mono">{'{ "type": "ready" }'}</code> before sending audio.
+          </li>
+          <li>
+            Send raw PCM16 LE mono audio at the session sample rate as BINARY frames, 20–100 ms each; read <code className="font-mono">transcript</code> frames — partials
+            with <code className="font-mono">isFinal: false</code>, finals with <code className="font-mono">isFinal: true</code>.
+          </li>
+          <li>
+            Send <code className="font-mono">{'{ "type": "stop" }'}</code> at the end of speech and wait for <code className="font-mono">status: closed</code>. To reconnect, mint a
+            fresh ticket on <code className="font-mono">POST /api/v1{STT_SOCKET_ROUTES.refreshTicket}</code>, reopen, and send <code className="font-mono">resume</code> with
+            your last <code className="font-mono">seq</code>.
+          </li>
+        </ol>
+      </div>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-xs">
+          <caption className="sr-only">Every frame on the realtime STT socket, both directions</caption>
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th scope="col" className="px-2 py-1.5 font-medium">Direction</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">Frame</th>
+              <th scope="col" className="px-2 py-1.5 font-medium">Example and meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STT_SOCKET_FRAMES.map((frame) => (
+              <tr key={`${frame.direction}-${frame.type}`} className="border-t align-top">
+                <td className="text-muted-foreground px-2 py-1.5 whitespace-nowrap">{frame.direction}</td>
+                <td className="px-2 py-1.5 font-mono whitespace-nowrap">{frame.type}</td>
+                <td className="px-2 py-1.5">
+                  <code className="bg-muted block rounded px-1.5 py-1 font-mono break-all">{frame.example}</code>
+                  <p className="text-muted-foreground mt-1">{frame.note}</p>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <CodeBlock label={STT_RAW_SHELL_LABEL} caption="Shell: open the session with curl, stream with websocat (curl cannot speak WebSocket)" code={sttSessionCurlSnippet(slug)} />
+      <CodeBlock label={STT_RAW_JS_LABEL} caption="Any JavaScript runtime with fetch + WebSocket — no SDK on the import line" code={sttRawWebSocketSnippet(slug)} />
+    </section>
+  );
+}
+
 function SttSocketNote() {
   return (
     <Callout title="Here the socket IS the transport">
@@ -635,6 +703,7 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
           task === 'SPEECH_TO_TEXT' ? (
             <>
               <SttSocketNote />
+              <SttSocketProtocol slug={slug} />
               <CodeBlock
                 label={STT_SOCKET_LABEL}
                 caption="Drive a live session from a server that ALREADY has audio — a telephony bridge, a recording relay"
