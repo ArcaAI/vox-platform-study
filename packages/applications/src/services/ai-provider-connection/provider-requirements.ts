@@ -143,6 +143,26 @@ export const PROVIDER_REQUIREMENTS: Readonly<Record<string, ProviderRequirement>
     why: 'Bedrock is addressed per region — the region is part of the endpoint, not a preference — and the account is keyed.',
   },
 
+  // ── stt cloud vendors: an endpoint AND a key, neither defaulted ───────────
+  //
+  // TASK-983 R2. TASK-880 deleted the `stt.sarvam.baseUrl` / `stt.openai.baseUrl`
+  // platform settings and moved the endpoint onto the connection row beside the
+  // key. Both loaders read exactly that row and raise `CloudASRAuthError` when
+  // either half is missing — inside a Dramatiq worker, as a 503, long after the
+  // save that should have refused it. The endpoint is required rather than
+  // DEFAULTED because the public `api.sarvam.ai` / `api.openai.com` carry no BAA:
+  // a PHI platform must not pick a non-PHI-safe host on an operator's behalf, and
+  // the seeded SYSTEM placeholders (disabled, with a baseUrl already set) stay
+  // legal either way.
+  'stt:sarvam': {
+    columns: ['baseUrl', 'apiKey'],
+    why: 'Sarvam ASR is BYOK-only with no env fallback, and `sarvam_loader.py` reads the endpoint off the SAME row as the key — so a keyed row without one loads nothing, and defaulting it would silently point PHI at the public api.sarvam.ai, which carries no BAA.',
+  },
+  'stt:openai': {
+    columns: ['baseUrl', 'apiKey'],
+    why: 'OpenAI ASR is BYOK-only with no env fallback, and `openai_loader.py` takes the endpoint from the row — which is also how the Azure-OpenAI-compatible deployments this loader exists to reach are addressed, so there is no one default that could stand in for it.',
+  },
+
   // ── embeddings: the platform's own dense-embeddings server ────────────────
   //
   // TASK-952 D-1c. Deliberately NO `apiKey`: TEI authenticates nobody, and the

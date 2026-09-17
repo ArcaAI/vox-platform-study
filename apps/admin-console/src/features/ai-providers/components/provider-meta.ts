@@ -187,7 +187,17 @@ const LLM_PROVIDERS: readonly ProviderMeta[] = [
  * (`connection-models-editor.tsx`, TASK-890 §3.1), not a value to re-type
  * into a text box here. The `extraJson.model` column and the gateway API are
  * unchanged and still accept the key; only this console stops offering the
- * pin. Sarvam had no other field, so its card is now `fields: []`.
+ * pin.
+ *
+ * TASK-983 R2 corrects what that left behind. Removing Sarvam's only field made
+ * its card `fields: []`, and the card then had nowhere to type the ONE value the
+ * runtime cannot start without: TASK-880 deleted the `stt.sarvam.baseUrl` /
+ * `stt.openai.baseUrl` platform settings and moved the endpoint onto the
+ * connection ROW, where `sarvam_loader.py` and `openai_loader.py` both refuse to
+ * load without it. So every CLOUD card here declares `baseUrl`, and none of them
+ * calls it optional — `PROVIDER_REQUIREMENTS` refuses an enabled row without one.
+ * (`azure-speech` is the exception that proves it: Speech is addressed by REGION,
+ * and its endpoint really is an optional override.)
  */
 const STT_PROVIDERS: readonly ProviderMeta[] = [
   {
@@ -211,12 +221,13 @@ const STT_PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 'sarvam',
     label: 'Sarvam',
-    fields: [],
+    hint: 'The public api.sarvam.ai carries no BAA and is not PHI-safe — point this at your enterprise Sarvam endpoint.',
+    fields: [{ name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.sarvam.ai' }],
   },
   {
     id: 'openai',
     label: 'OpenAI',
-    fields: [{ name: 'baseUrl', label: 'Base URL (optional)', placeholder: 'https://api.openai.com/v1' }],
+    fields: [{ name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1' }],
   },
 ];
 
