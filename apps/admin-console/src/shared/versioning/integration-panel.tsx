@@ -141,11 +141,27 @@ interface EndpointDescriptor {
   method: 'POST';
   path: string;
   note?: string;
+  /**
+   * The realtime lane, where a task has one. A speech-to-text agent is FOR live audio, so its
+   * header names the session route and the socket before the batch route — otherwise the first
+   * thing a developer reads is the wrong endpoint for the thing they came to do.
+   */
+  realtime?: { session: string; socket: string; note: string };
 }
 
 const AGENT_ENDPOINTS: Record<IntegrationAgentTask, EndpointDescriptor> = {
   TEXT_GENERATION: { method: 'POST', path: '/agents/{slug}/invocations', note: '?mode=blocking (default) or ?mode=stream for SSE' },
-  SPEECH_TO_TEXT: { method: 'POST', path: '/agents/{slug}/transcriptions' },
+  SPEECH_TO_TEXT: {
+    method: 'POST',
+    path: '/agents/{slug}/transcriptions',
+    note: 'Batch: recorded audio in, an sseUrl for progress out. Live audio uses the realtime session above.',
+    realtime: {
+      session: '/audio/transcription-jobs/stream/session',
+      socket: '/ws/stt/stream?sessionId={sessionId}&ticket={ticket}',
+      note:
+        'POST the session route with { "agentSlug": "{slug}" } on an API key. It answers the sessionId and a SINGLE-USE ticket; open the socket with both, send PCM16 LE mono frames, and read transcript / status / error / resumed events. The Socket lane has the code.',
+    },
+  },
   TEXT_TO_SPEECH: { method: 'POST', path: '/agents/{slug}/speech' },
   // The SAME route as text generation, deliberately without the `?mode=stream` note: token
   // classification is one-shot, and `mode=stream` on it is a 400, not a slower answer.
@@ -250,22 +266,34 @@ function LaneTabs({
   http,
   socket,
   postman,
+  leadWithSocket = false,
 }: {
   node: ReactNode;
   browser: ReactNode;
   http: ReactNode;
   socket?: ReactNode;
   postman: ReactNode;
+  /** The socket lane comes first and opens selected — for the task whose primary transport it is. */
+  leadWithSocket?: boolean;
 }) {
+  const socketLeads = Boolean(socket) && leadWithSocket;
+  const socketTrigger = socket ? <TabsTrigger value="socket">Socket</TabsTrigger> : null;
+  const socketContent = socket ? (
+    <TabsContent value="socket" className="flex flex-col gap-3">
+      {socket}
+    </TabsContent>
+  ) : null;
   return (
-    <Tabs defaultValue="node" className="gap-3">
+    <Tabs defaultValue={socketLeads ? 'socket' : 'node'} className="gap-3">
       <TabsList variant="line">
+        {socketLeads ? socketTrigger : null}
         <TabsTrigger value="node">Node</TabsTrigger>
         <TabsTrigger value="browser">Browser</TabsTrigger>
         <TabsTrigger value="http">HTTP</TabsTrigger>
-        {socket ? <TabsTrigger value="socket">Socket</TabsTrigger> : null}
+        {socketLeads ? null : socketTrigger}
         <TabsTrigger value="postman">Postman</TabsTrigger>
       </TabsList>
+      {socketLeads ? socketContent : null}
       <TabsContent value="node" className="flex flex-col gap-3">
         {node}
       </TabsContent>
@@ -275,11 +303,7 @@ function LaneTabs({
       <TabsContent value="http" className="flex flex-col gap-3">
         {http}
       </TabsContent>
-      {socket ? (
-        <TabsContent value="socket" className="flex flex-col gap-3">
-          {socket}
-        </TabsContent>
-      ) : null}
+      {socketLeads ? null : socketContent}
       <TabsContent value="postman" className="flex flex-col gap-3">
         {postman}
       </TabsContent>
@@ -528,8 +552,20 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
       {!isActive ? <NotActiveNote slug={slug} /> : null}
       {/* Captions, not headings: the panel is hosted under a drawer/dialog title and a heading
           here would skip a level (rule 11 §6). */}
+      {endpoint.realtime ? (
+        <div>
+          <FieldDescription>Realtime session (WebSocket)</FieldDescription>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <code className="bg-muted rounded-md border px-2 py-1 font-mono text-xs">{`POST ${endpoint.realtime.session}`}</code>
+            <CopyButton value={`POST ${endpoint.realtime.session}`} label="Copy the realtime session route" />
+            <span className="text-muted-foreground text-xs">then</span>
+            <code className="bg-muted rounded-md border px-2 py-1 font-mono text-xs">{endpoint.realtime.socket}</code>
+          </div>
+          <p className="text-muted-foreground mt-1 text-xs">{endpoint.realtime.note.replace('{slug}', slug)}</p>
+        </div>
+      ) : null}
       <div>
-        <FieldDescription>Endpoint</FieldDescription>
+        <FieldDescription>{endpoint.realtime ? 'Batch endpoint' : 'Endpoint'}</FieldDescription>
         <div className="mt-1 flex items-center gap-2">
           <code className="bg-muted rounded-md border px-2 py-1 font-mono text-xs">{path}</code>
           <CopyButton value={path} label="Copy the endpoint" />
@@ -567,6 +603,7 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
       </Callout>
 
       <LaneTabs
+        leadWithSocket={task === 'SPEECH_TO_TEXT'}
         node={<CodeBlock label={NODE_LABEL} caption="Invoke it from a backend with @arcaai/vox-node" code={agentVoxNodeSnippet(slug, snippetTask, options)} />}
         browser={
           invocable ? (

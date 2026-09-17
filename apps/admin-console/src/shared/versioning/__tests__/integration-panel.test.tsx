@@ -561,7 +561,13 @@ describe('IntegrationPanel — the Socket lane', () => {
   it("an STT agent's Browser lane carries a real capture snippet, and its Socket lane drives hope.stt", () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
 
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Node', 'Browser', 'HTTP', 'Socket', 'Postman']);
+    // Realtime is what a speech-to-text agent is FOR, so the socket lane leads and is selected
+    // on open; the batch lanes follow. The header names the realtime session route before the
+    // batch route for the same reason.
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Socket', 'Node', 'Browser', 'HTTP', 'Postman']);
+    expect(screen.getByRole('tab', { name: 'Socket' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText(/POST \/audio\/transcription-jobs\/stream\/session/)).toBeTruthy();
+    expect(screen.getAllByText(/\/ws\/stt\/stream/).length).toBeGreaterThan(0);
 
     selectTab('Browser');
     const browser = codeOf('Browser (@arcaai/vox) snippet');
