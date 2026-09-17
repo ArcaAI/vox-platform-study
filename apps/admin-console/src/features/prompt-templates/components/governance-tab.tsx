@@ -410,24 +410,35 @@ export function GovernanceTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
-    <section className="flex min-h-0 flex-col gap-3">
+    <section className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-medium">Prompt governance</h2>
         <p className="text-muted-foreground text-sm">
           Version history, field-level diffs and clinical approval for this tenant&apos;s prompt templates.
         </p>
       </div>
-      <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+      {/* Two panes side by side from `lg` up, each scrolling on its own (the
+          list Card is `lg:h-full`, the detail column below). Stacked below
+          `lg` there is only one column, so the GRID is the single scroller and
+          the panes scroll with the page — never both, which would nest two
+          scroll areas inside one panel (rule 11 §1). */}
+      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:overflow-hidden">
         <GovernanceList selectedId={selectedId} onSelect={setSelectedId} />
-        {selectedId ? (
-          <TemplateGovernanceDetail id={selectedId} />
-        ) : (
-          <EmptyState
-            icon={IconFileText}
-            title="Select a template"
-            description="Choose a prompt template to inspect its versions, diffs and approval state."
-          />
-        )}
+        {/* tabIndex + role/aria-label: unselected, this scroll container holds
+            only the empty state and has no focusable content of its own, so
+            without them a keyboard user cannot scroll it (WCAG 2.1.1) — the
+            same fix the DetailDrawer body region carries. */}
+        <div className="min-h-0 lg:overflow-y-auto" tabIndex={0} role="region" aria-label="Template governance detail">
+          {selectedId ? (
+            <TemplateGovernanceDetail id={selectedId} />
+          ) : (
+            <EmptyState
+              icon={IconFileText}
+              title="Select a template"
+              description="Choose a prompt template to inspect its versions, diffs and approval state."
+            />
+          )}
+        </div>
       </div>
     </section>
   );

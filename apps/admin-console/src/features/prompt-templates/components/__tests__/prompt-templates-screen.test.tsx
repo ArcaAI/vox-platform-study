@@ -711,6 +711,29 @@ describe('PromptTemplatesScreen', () => {
       expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
     });
 
+    /**
+     * R10: the tab is a fill-height master-detail pane, not a scrolling
+     * document, so the page frame must hand it the height instead of becoming
+     * the single scroller for header + list + detail. `contentMode` is not
+     * observable as a prop, so assert what it RENDERS — the ScreenTemplate
+     * content region is a growing flex column in `fill` mode and an
+     * `overflow-y-auto` box in `scroll` mode.
+     */
+    it('renders the governance tab in the fill-height content mode', async () => {
+      permissionRules = [{ action: 'manage', subject: 'PromptTemplate' }];
+      stubTemplates(tenantAdminHandler);
+      renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=governance' });
+
+      const section = (await screen.findByRole('heading', { name: /prompt governance/i })).closest('section')!;
+      const tabPanel = section.parentElement!;
+      const contentRegion = tabPanel.parentElement!;
+      expect(contentRegion.className).toContain('flex-1');
+      expect(contentRegion.className).toContain('min-h-0');
+      expect(contentRegion.className).toContain('flex-col');
+      // The page frame is NOT the scroller — the two columns are.
+      expect(contentRegion.className).not.toContain('overflow-y-auto');
+    });
+
     it('is visible to a TENANT admin holding manage:PromptTemplate', async () => {
       permissionRules = [{ action: 'manage', subject: 'PromptTemplate' }];
       stubTemplates(tenantAdminHandler);
