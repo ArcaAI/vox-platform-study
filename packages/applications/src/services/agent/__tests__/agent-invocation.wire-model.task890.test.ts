@@ -79,7 +79,6 @@ function resolved(over: { frozen?: string | null; models?: ResolvedAgentModel[];
       inputSchema: { type: 'object' },
       outputSchema: { type: 'string' },
       tools: [],
-      protocols: ['http'],
     },
     models: over.models ?? [],
     guardrail: { enabled: true },

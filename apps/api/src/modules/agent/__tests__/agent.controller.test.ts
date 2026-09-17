@@ -31,7 +31,6 @@ const RESOLVED = {
     inputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http', 'http-sse'],
   },
   models: [],
   // TASK-890 §3.14 — `AgentResolverService` always answers this (absence normalises to ON).
@@ -498,7 +497,6 @@ describe('AgentController — TASK-930 §2.4: NER invocations share the route', 
       task: 'NAMED_ENTITY_RECOGNITION',
       service: null,
       model: { id: 'm', slug: 'medical-ner', provider: 'built-in', taskType: 'TOKEN_CLASSIFICATION' },
-      protocols: ['http'],
     },
   };
 

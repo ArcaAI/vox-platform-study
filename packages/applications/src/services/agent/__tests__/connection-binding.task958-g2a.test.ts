@@ -62,7 +62,6 @@ const ttsAgent = (models: ResolvedAgentModel[]): ResolvedAgent => ({
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http'],
   },
   models,
   guardrail: { enabled: true },
@@ -214,7 +213,6 @@ function agentHarness(resolveCredential: (options?: { connectionId?: string }) =
       inputSchema: { type: 'object' },
       outputSchema: { type: 'object' },
       tools: [],
-      protocols: ['http'],
     },
   };
   const agentRepository = { findPublishedActiveBySlug: vi.fn(async () => entity) };

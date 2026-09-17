@@ -66,7 +66,6 @@ const publishedRow = (over: Record<string, unknown> = {}) => ({
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http'],
   },
   ...over,
 });
@@ -143,7 +142,6 @@ const resolvedAgent = (slug: string, wireModelId: string): ResolvedAgent =>
       inputSchema: { type: 'object' },
       outputSchema: { type: 'object' },
       tools: [],
-      protocols: ['http'],
     },
     models: [model({ wireModelId })],
   }) as ResolvedAgent;

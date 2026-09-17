@@ -300,7 +300,9 @@ describe('publish — fails closed', () => {
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
     const published = await makeService().publish('agent-1', {});
     expect(published.status).toBe('PUBLISHED');
-    expect(published.compiledConfig).toMatchObject({ service: 'stt', protocols: ['http', 'socket'] });
+    expect(published.compiledConfig).toMatchObject({ service: 'stt' });
+    // TASK-983 OD-6 — `protocols` never governed anything at runtime; compile() no longer stamps it.
+    expect(published.compiledConfig).not.toHaveProperty('protocols');
   });
 
   it('refuses MODEL_UNAVAILABLE for a cloud model with no enabled provider connection at tenant or SYSTEM', async () => {
@@ -487,8 +489,10 @@ describe('listPublished', () => {
     ]);
     mockAssignments.resolve.mockResolvedValue({ agentSlug: 'clinic-summarizer', source: 'tenant' });
     const [summary] = await makeService().listPublished();
-    expect(summary).toMatchObject({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION', isTenantDefault: true, protocols: ['http', 'http-sse'] });
+    expect(summary).toMatchObject({ slug: 'clinic-summarizer', task: 'TEXT_GENERATION', isTenantDefault: true });
     expect(summary.inputSchema).toMatchObject({ type: 'object' });
+    // TASK-983 OD-6 — `protocols` never governed anything at runtime; the business summary no longer carries it.
+    expect(summary).not.toHaveProperty('protocols');
   });
 });
 
@@ -947,13 +951,14 @@ describe('publish — a NAMED_ENTITY_RECOGNITION agent (TASK-930 §2.2)', () => 
     const published = await makeService().publish('agent-1', {});
 
     expect(published.status).toBe('PUBLISHED');
-    const compiled = published.compiledConfig as unknown as { task: string; service: string | null; protocols: string[] };
+    const compiled = published.compiledConfig as unknown as { task: string; service: string | null };
     expect(compiled.task).toBe('NAMED_ENTITY_RECOGNITION');
     // `null`, not `'llm'`: inventing a service here is how a NER agent would start resolving
     // (and metering) against a credential tier that does not govern it.
     expect(compiled.service).toBeNull();
-    // One-shot — nothing to stream, so `?mode=stream` is a 400 rather than a slower answer.
-    expect(compiled.protocols).toEqual(['http']);
+    // TASK-983 OD-6 — `protocols` never governed the one-shot refusal (that is hand-written in
+    // `AgentController.invokeNer`'s own `mode === 'stream'` check); compile() no longer stamps it.
+    expect(compiled).not.toHaveProperty('protocols');
     // No provider connection is consulted at all for a platform-self-hosted row.
     expect(mockProviderConnections.resolveConnection).not.toHaveBeenCalled();
   });

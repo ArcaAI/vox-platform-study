@@ -73,7 +73,6 @@ const AGENT = {
   isTenantDefault: true,
   inputSchema: { type: 'object', properties: { note: { type: 'string' } } },
   outputSchema: { type: 'object' },
-  protocols: ['invocation'],
 };
 
 function client(fetchImpl: typeof fetch, extra: Record<string, unknown> = {}): HopeClient {

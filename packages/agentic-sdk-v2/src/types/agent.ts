@@ -33,8 +33,8 @@ export interface SelectableAgent {
   inputSchema?: Record<string, unknown>;
   /** JSON Schema of the invocation output. */
   outputSchema?: Record<string, unknown>;
-  /** Wire protocols the agent is reachable over (e.g. `'invocation'`, `'speech'`, `'transcription'`, `'stream-session'`). */
-  protocols?: string[];
+  // TASK-983 OD-6 — `protocols` (a static per-task constant) is REMOVED: the gateway never
+  // enforced it. See `docs/operations/deprecation-register.md` §SDK.
 }
 
 /** An ASR (`SPEECH_TO_TEXT`) Agent — what `audio.start({ agentSlug })` selects. */

@@ -75,17 +75,11 @@ export const AGENT_TASK_MODEL_TASK_TYPE: Readonly<Record<AgentTask, string>> = O
  */
 export const PROMPT_VARIABLE_PATH_PATTERN = '^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$';
 
-export type AgentProtocol = 'http' | 'http-sse' | 'socket';
-
-/** The invocation protocols each task publishes (TASK-863 §3.5). */
-export const AGENT_PROTOCOLS: Readonly<Record<AgentTask, readonly AgentProtocol[]>> = Object.freeze({
-  SPEECH_TO_TEXT: Object.freeze(['http', 'socket'] as const),
-  TEXT_GENERATION: Object.freeze(['http', 'http-sse'] as const),
-  TEXT_TO_SPEECH: Object.freeze(['http', 'http-sse'] as const),
-  // TASK-930 — one-shot: the whole document is classified in a single pass, so there is nothing
-  // to stream and no session to hold open. `?mode=stream` on a NER agent is refused, not degraded.
-  NAMED_ENTITY_RECOGNITION: Object.freeze(['http'] as const),
-});
+// TASK-983 OD-6 — `AgentProtocol` / `AGENT_PROTOCOLS` (TASK-863 §3.5) REMOVED. It was a static
+// per-task table (`SPEECH_TO_TEXT: ['http','socket']`, …) that nothing ever enforced: no gateway
+// dispatch path, no `stt-ws.gateway.ts` check, read it. The one real mode refusal (`?mode=stream`
+// on a NAMED_ENTITY_RECOGNITION agent → 400 `MODE_UNSUPPORTED`) is hand-written in
+// `AgentController.invokeNer`. See `docs/operations/deprecation-register.md` §SDK.
 
 export function isAgentTask(value: unknown): value is AgentTask {
   return typeof value === 'string' && (AGENT_TASKS as readonly string[]).includes(value);

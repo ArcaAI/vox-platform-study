@@ -140,7 +140,9 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       expect(ner.task).toBe('NAMED_ENTITY_RECOGNITION');
       expect(ner.modelSlug).toBe('medical-ner');
       const compiled = buildCompiledConfig(ner, modelRef('medical-ner'), [], null) as Record<string, any>;
-      expect(compiled.protocols).toEqual(['http']);
+      // TASK-983 OD-6 — `protocols` (per-task, never enforced) is REMOVED; NER's one-shot
+      // posture is enforced in `AgentController.invokeNer`, not stamped into `compiledConfig`.
+      expect(compiled).not.toHaveProperty('protocols');
       expect(compiled.inputSchema).toEqual(NER_IO_DEFAULTS.inputSchema);
       expect(compiled.outputSchema).toEqual(NER_IO_DEFAULTS.outputSchema);
       expect(compiled.inputSchema).toEqual({

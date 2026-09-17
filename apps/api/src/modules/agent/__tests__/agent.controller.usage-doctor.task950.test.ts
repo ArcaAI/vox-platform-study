@@ -47,7 +47,6 @@ const RESOLVED = {
     inputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
     outputSchema: { type: 'object' },
     tools: [],
-    protocols: ['http', 'http-sse'],
   },
   models: [],
   guardrail: { enabled: true },

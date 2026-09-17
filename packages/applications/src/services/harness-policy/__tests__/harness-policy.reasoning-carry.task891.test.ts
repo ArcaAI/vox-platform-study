@@ -106,7 +106,6 @@ const agentRepository = {
         inputSchema: { type: 'object' },
         outputSchema: { type: 'object' },
         tools: [],
-        protocols: ['http'],
       },
     };
   }),
@@ -219,7 +218,6 @@ describe('resolveTextFallbackSelection — the fallback carries ITS OWN posture'
         inputSchema: { type: 'object' },
         outputSchema: { type: 'object' },
         tools: [],
-        protocols: ['http'],
       },
     }));
 
