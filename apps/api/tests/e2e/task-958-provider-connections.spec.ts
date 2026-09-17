@@ -34,6 +34,13 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const BASE = '/api/v1/admin/providers/llm';
+/**
+ * TASK-983 R3 runs on STT Sarvam because that is the row the owner reported —
+ * and because nothing else in the e2e suite asserts the SYSTEM `stt/sarvam`
+ * key state, so bumping its (monotonic, un-restorable) `keyVersion` disturbs
+ * no other spec.
+ */
+const STT_BASE = '/api/v1/admin/providers/stt';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /** The named sibling this suite creates and removes. */
 const SIBLING = 'openai-research';
@@ -263,6 +270,75 @@ test.describe('TASK-958 — multiple provider connections per tenant', () => {
     const message = JSON.stringify(await res.json());
     expect(message).toContain('connection');
     expect(message, 'the slug is not a provider and must not be described as one').not.toContain("provider 'openai-not-saved-at-all'");
+  });
+
+  /**
+   * (31) TASK-983 R3 — a TENANT row does not lock the PLATFORM row of the same
+   * provider.
+   *
+   * The owner reported being unable to change the platform Sarvam key once a
+   * tenant admin had configured one for their tenant. Every layer traced clean
+   * (`crossTenantLane` writes SYSTEM through the unscoped client, both unique
+   * indexes include `tenantId`, `assertWriteAllowed` is role-only) and no test
+   * covered this INTERLEAVING, which is why the claim could only be argued
+   * about. Now it is pinned: tenant writes first, the platform write still
+   * succeeds and bumps its own `keyVersion`, and the tenant's row is not
+   * touched by it.
+   *
+   * Both writes keep `enabled: false` — a disabled row is exempt from
+   * `PROVIDER_REQUIREMENTS` (the veto must stay expressible), and a key written
+   * to a disabled row still rotates `keyVersion`, which is the half this case
+   * is about.
+   */
+  test('(31) a tenant Sarvam key does not block the platform Sarvam key — and the platform write leaves the tenant row alone', async ({
+    request,
+  }) => {
+    const readSarvam = (token: string, tenantId?: string) =>
+      request.get(`${STT_BASE}/sarvam${tenantId ? `?tenantId=${tenantId}` : ''}`, { headers: bearer(token) });
+
+    // 1. The tenant configures its own row — the state the owner was in.
+    const tenantBefore = await readSarvam(tenantAdminToken);
+    expect(tenantBefore.status()).toBe(200);
+    const tenantPrior = (await tenantBefore.json()) as { version: number; keyVersion: number | null };
+    const tenantWrite = await request.put(`${STT_BASE}/sarvam`, {
+      headers: { ...bearer(tenantAdminToken), 'If-Match': tenantBefore.headers()['etag'] ?? `"${tenantPrior.version}"` },
+      data: { apiKey: 'tenant-sarvam-key-task983', baseUrl: 'https://tenant.enterprise.sarvam.example', enabled: false },
+    });
+    expect(tenantWrite.status(), await tenantWrite.text()).toBe(200);
+    const tenantRow = (await tenantWrite.json()) as { version: number; keyVersion: number | null; hasKey: boolean; tenantId: string };
+    expect(tenantRow.hasKey).toBe(true);
+    expect(tenantRow.tenantId).not.toBe(SYSTEM_TENANT_ID);
+
+    // 2. The platform admin now rotates the SYSTEM key for the SAME provider.
+    const systemBefore = await readSarvam(superAdminToken, SYSTEM_TENANT_ID);
+    expect(systemBefore.status()).toBe(200);
+    const systemPrior = (await systemBefore.json()) as { version: number; keyVersion: number | null };
+    const systemWrite = await request.put(`${STT_BASE}/sarvam?tenantId=${SYSTEM_TENANT_ID}`, {
+      headers: { ...bearer(superAdminToken), 'If-Match': systemBefore.headers()['etag'] ?? `"${systemPrior.version}"` },
+      data: { apiKey: 'platform-sarvam-key-task983', baseUrl: 'https://platform.enterprise.sarvam.example', enabled: false },
+    });
+    expect(systemWrite.status(), await systemWrite.text()).toBe(200);
+    const systemRow = (await systemWrite.json()) as { tenantId: string; keyVersion: number | null; hasKey: boolean };
+    expect(systemRow.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(systemRow.hasKey).toBe(true);
+    expect(systemRow.keyVersion ?? 0, 'the platform key did not rotate').toBeGreaterThan(systemPrior.keyVersion ?? 0);
+
+    // 3. …and the tenant's own row is exactly as the tenant left it.
+    const tenantAfter = await readSarvam(tenantAdminToken);
+    expect(tenantAfter.status()).toBe(200);
+    const tenantFinal = (await tenantAfter.json()) as { version: number; keyVersion: number | null; baseUrl: string | null; hasKey: boolean };
+    expect(tenantFinal.version).toBe(tenantRow.version);
+    expect(tenantFinal.keyVersion).toBe(tenantRow.keyVersion);
+    expect(tenantFinal.baseUrl).toBe('https://tenant.enterprise.sarvam.example');
+    expect(tenantFinal.hasKey).toBe(true);
+
+    // CLEANUP: the tenant row is this test's own creation when the seed had
+    // none. The SYSTEM row is seeded and stays — `keyVersion` is monotonic and
+    // there is nothing to restore, which is why this runs on a provider no
+    // other spec reads.
+    if ((tenantPrior.version ?? 0) === 0) {
+      await request.delete(`${STT_BASE}/sarvam`, { headers: bearer(tenantAdminToken) });
+    }
   });
 
   /** (27) D-9 — the platform tier is one row per provider, named after it. */
