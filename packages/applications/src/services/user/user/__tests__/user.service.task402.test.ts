@@ -34,7 +34,9 @@ const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
 const TX = { __txSentinel: true };
 const $transaction = vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
-const mockDatabaseService = { baseClient: { $transaction } };
+// `Role` lookup for the SUPER_ADMIN tier guard (TASK-983).
+const roleFindUnique = vi.fn(async () => ({ name: 'DOCTOR' }));
+const mockDatabaseService = { baseClient: { $transaction, role: { findUnique: roleFindUnique } } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
 
 // Recognizable, reversible fake bcrypt so assertions can prove BOTH "not
@@ -102,9 +104,13 @@ describe('UserService — password hashing on the CRUD paths', () => {
     service = buildService();
   });
 
+    // TASK-983 R6: these creates run inside a tenant (CLS `tenantId`), so they
+  // now carry the mandatory role + department membership. The password
+  // assertions are unchanged — which also proves the membership guard does not
+  // mask the policy failures below.
   describe('create()', () => {
     it('hashes the creation-time password before persistence and stamps passwordChangedAt', async () => {
-      await service.create({ username: 'alice', password: STRONG_PW, isServiceAccount: false });
+      await service.create({ username: 'alice', password: STRONG_PW, isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any);
 
       expect(mockCryptoService.hash).toHaveBeenCalledWith(STRONG_PW);
       const persisted = mockUserRepository.create.mock.calls[0][0];
@@ -114,7 +120,7 @@ describe('UserService — password hashing on the CRUD paths', () => {
     });
 
     it('rejects a policy-violating password with a 400 listing the unmet rules and never writes', async () => {
-      await expect(service.create({ username: 'bob', password: 'weak', isServiceAccount: false })).rejects.toMatchObject({
+      await expect(service.create({ username: 'bob', password: 'weak', isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any)).rejects.toMatchObject({
         constructor: BadRequestException,
         message: expect.stringContaining('at least 12 characters'),
       });
@@ -129,12 +135,12 @@ describe('UserService — password hashing on the CRUD paths', () => {
       });
 
       // 12+ compliant against defaults, but short of the raised minimum.
-      await expect(service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false })).rejects.toThrow('at least 20 characters');
+      await expect(service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false, roleId: 'role-1', departmentId: 'dept-1' } as any)).rejects.toThrow('at least 20 characters');
       expect(mockUserRepository.create).not.toHaveBeenCalled();
     });
 
     it('hashes on the atomic create-with-membership branch too', async () => {
-      await service.create({ username: 'dave', password: STRONG_PW, roleId: 'role-1' } as any);
+      await service.create({ username: 'dave', password: STRONG_PW, roleId: 'role-1', departmentId: 'dept-1' } as any);
 
       expect($transaction).toHaveBeenCalledTimes(1);
       const persisted = mockUserRepository.create.mock.calls[0][0];
