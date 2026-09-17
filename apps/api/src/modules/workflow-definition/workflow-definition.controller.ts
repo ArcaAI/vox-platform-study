@@ -292,7 +292,10 @@ export class WorkflowDefinitionController {
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
   @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
-  @ApiResponse({ status: 409, description: 'The row is the ACTIVE published version of its slug; deleting it would orphan every assignment on the slug.' })
+  @ApiResponse({
+    status: 409,
+    description: 'The row is the ACTIVE published version of its slug; deleting it would orphan every assignment on the slug.',
+  })
   async delete(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.deleteById(id);
   }
