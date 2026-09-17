@@ -30,7 +30,10 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 // its resolved value; if the callback throws, the promise rejects (Postgres
 // rollback semantics — no committed rows, no post-commit side effects).
 const $transaction = vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
-const mockDatabaseService = { baseClient: { $transaction } };
+// `Role` lookup for the SUPER_ADMIN tier guard (TASK-983): every create in
+// this file names an ordinary tenant role.
+const roleFindUnique = vi.fn(async () => ({ name: 'DOCTOR' }));
+const mockDatabaseService = { baseClient: { $transaction, role: { findUnique: roleFindUnique } } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
 // Create-time passwords are hashed; behavior pinned in task402 spec.
 const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
@@ -122,10 +125,14 @@ describe('UserService — create-with-membership', () => {
     expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.anything());
   });
 
-  it('creates only a role membership when departmentId is omitted', async () => {
+  // TASK-983 R6 / OD-4: a HUMAN create without a department is now refused
+  // (`USER_DEPARTMENT_REQUIRED`, pinned in user.service.task983.test.ts). The
+  // role-only shape survives for SERVICE ACCOUNTS, which `assertUserBelongsToTenant`
+  // exempts from the department half.
+  it('creates only a role membership for a service account when departmentId is omitted', async () => {
     const service = buildService();
 
-    await service.create({ username: 'roleonly', password: 'Password123!', roleId: 'role-1' } as any);
+    await service.create({ username: 'roleonly', password: 'Password123!', isServiceAccount: true, roleId: 'role-1' } as any);
 
     expect($transaction).toHaveBeenCalledTimes(1);
     expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalledTimes(1);
@@ -144,7 +151,10 @@ describe('UserService — create-with-membership', () => {
     expect(mockUserRepository.create).not.toHaveBeenCalled();
   });
 
-  it('leaves the no-membership create path unchanged (repository.create without a transaction)', async () => {
+  // The membership-less path survives only OUTSIDE a tenant (a super admin
+  // creating a tenant-less platform user) — TASK-983 OD-4.
+  it('leaves the tenant-less no-membership create path unchanged (repository.create without a transaction)', async () => {
+    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['SUPER_ADMIN'] } : null));
     const service = buildService();
 
     const result = await service.create({ username: 'plain', password: 'Password123!' } as any);
