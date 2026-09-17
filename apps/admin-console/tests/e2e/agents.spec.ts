@@ -5,6 +5,12 @@
  * wizard directly (the Studio's create-agent deep link), and the publish confirm → integration
  * dialog. Skips with actionable messages when the app or gateway is down. Follows
  * `prompt-templates.spec.ts`'s shape.
+ *
+ * TASK-965 WS-4 — the grid is now the LINEAGE register: one row per slug, versions inside the
+ * drawer. The two cases at the end of the "grid" block pin exactly that against the seed, since
+ * it is the shape a unit test cannot prove: the register folds `realtime-transcription`'s v2
+ * PUBLISHED/active and v1 DEPRECATED into ONE row (the owner's report), and the drawer's Versions
+ * tab lists both.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -43,7 +49,7 @@ test.describe('agents — grid', () => {
     await expect(page.getByRole('grid', { name: 'Agents' })).toBeVisible();
   });
 
-  test('a row opens the console-wide detail slide-over with the five tabs', async ({ page }) => {
+  test('a row opens the console-wide lineage slide-over with the six tabs', async ({ page }) => {
     await page.goto(GRID_URL);
     await waitForSettled(page);
     const rows = page.getByRole('grid', { name: 'Agents' }).locator('[data-slot="data-grid-row"]');
@@ -51,9 +57,35 @@ test.describe('agents — grid', () => {
     await rows.first().click();
     const drawer = page.getByRole('dialog');
     await expect(drawer).toBeVisible();
-    for (const tab of ['Overview', 'Configuration', 'Versions', 'Test run', 'Usage']) {
+    for (const tab of ['Overview', 'Versions', 'Draft', 'Assignments', 'Integration', 'Test run']) {
       await expect(drawer.getByRole('tab', { name: tab })).toBeVisible();
     }
+  });
+
+  test('a lineage with several versions is ONE row, not one row per version (TASK-965 WS-4)', async ({ page }) => {
+    // The reported symptom, against the seed: `realtime-transcription` carries v2 PUBLISHED and
+    // active over v1 DEPRECATED in the tenants that have branched it.
+    await page.goto(`${GRID_URL}?search=realtime-transcription`);
+    await waitForSettled(page);
+    const slugCell = page.getByRole('grid', { name: 'Agents' }).getByText('realtime-transcription', { exact: true });
+    test.skip((await slugCell.count()) === 0, 'this tenant has no realtime-transcription agent');
+    await expect(slugCell).toHaveCount(1);
+  });
+
+  test('the lineage drawer’s Versions tab lists every version of the slug (TASK-965 WS-4)', async ({ page }) => {
+    await page.goto(`${GRID_URL}?slug=realtime-transcription`);
+    const drawer = page.getByRole('dialog');
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('tab', { name: 'Versions' }).click();
+    const versions = drawer.getByRole('list', { name: /Versions of realtime-transcription/ });
+    await expect(versions).toBeVisible();
+    const rows = versions.getByRole('listitem');
+    await expect(rows.first()).toBeVisible();
+    // Exactly one version may be ACTIVE, and the drawer's caption names it.
+    await expect(drawer.getByText(/runs the ACTIVE version|resolves to nothing/)).toBeVisible();
+    test.skip((await rows.count()) < 2, 'this tenant has a single version of realtime-transcription');
+    await expect(versions.getByText('v2', { exact: true })).toBeVisible();
+    await expect(versions.getByText('v1', { exact: true })).toBeVisible();
   });
 
   test('?create=1 opens the create wizard directly (the Studio create-agent deep link)', async ({ page }) => {
@@ -120,6 +152,7 @@ test.describe('agents — draft test bench and publish (TASK-890 §3.8/§3.9)', 
     await waitForSettled(page);
     // A seeded DRAFT row is a precondition this spec does not create itself — Studio/backend
     // seeds own that; skip cleanly when none exists rather than asserting a false negative.
+    // TASK-965 WS-4 — the grid's "Open draft" column badges the lineage's one open draft.
     const draftBadge = page.getByRole('grid', { name: 'Agents' }).getByText('Draft', { exact: true }).first();
     test.skip((await draftBadge.count()) === 0, 'no seeded DRAFT agent — nothing to test against');
     await draftBadge.click();

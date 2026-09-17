@@ -458,6 +458,63 @@ Files: `packages/ui/src/components/workflow-canvas/{types.ts,workflow-canvas.tsx
 `features/agents/components/{agent-detail.tsx,agent-publish-dialog.tsx}`. Tests added: 7 (panel), 2 (agent
 Integration tab), 4 (studio Integration + binding edge + node names), 2 (short id), 1 (canvas binding edge).
 
+### 4.3 WS-4 — the Agents screen on the lineage model (2026-09-17)
+
+Owner, looking at the grid: *"still seeing duplicated entries for different versions (Realtime
+transcription v2 Published Active / v1 Deprecated) — very bad UX as admins will create more
+versions."* Delivered against the WS-2 register and the WS-3 kit, on branch `task-965/WS4`.
+
+TDD: `agents-lineage.task965.test.tsx` was written first and was **10/10 RED** against the
+unchanged screen (the implementation was moved aside and the HEAD files restored to prove it),
+then GREEN; a case for the legacy `?agent=` link was added afterwards (11 total).
+
+| Change | Rows | Where |
+|---|---|---|
+| The grid reads `GET admin/agents/lineages` through `AdminDataGrid`: **one row per slug** — Agent (name + slug) · Task · **Active version** (`v2` + `ActiveBadge`, or the `None active` warning) · **Open draft** (`v3` + `LifecycleStatusBadge`) · **Versions** (count + "(n deprecated)") · **Serves** (`AssignmentBadges`) · **Origin** · Tags · Updated. Paging and search are server-side; the header counts AGENTS | AG-13, AG-14, AG-17 | `agents-screen.tsx` |
+| The Versions column can no longer be hidden, and the persisted column layout can no longer make two lineages look identical | AG-20 | `agents-screen.tsx` |
+| The deep link is `?slug=` — a lineage, not a version row that a later publish supersedes. `/agents?agent=<id>` is resolved to its slug and rewritten for one release (the Studio's agent inspector already linked `?slug=`) | AG-21 | `agents-screen.tsx` |
+| The drawer is keyed by SLUG and rebuilt on the kit: **Overview · Versions · Draft · Assignments · Integration · Test run**. Header = name, slug, task, `ActiveBadge`, `AssignmentBadges`, `OriginBadge`, hidden flag; meta names the served and draft versions | AG-1, AG-16 | `agent-detail.tsx` |
+| **Versions tab** = `VersionHistoryPanel` with row actions **Activate** (PUBLISHED and not active → `ActivateVersionDialog` → `POST :id/activate`), **Deprecate**, **New draft from vN**, **Discard draft**, **Delete** (deprecated rows, type-to-confirm), **Compare with vN-1** (`VersionCompareDialog` over the frozen compiled config), **Export vN**, plus `Open vN` | AG-2, AG-18, OD-965-1, OD-965-7 | `agent-detail.tsx` |
+| "New draft" is offered only where no draft is open, and is disabled with a visible reason while one is — the mechanism by which a slug accumulated identical-looking drafts | AG-19, OD-965-9 | `agent-detail.tsx` |
+| The draft edit form surfaces a 412 as the inline `OccConflictAlert` whose Reload re-seeds the buffer from the row as it now is, instead of a toast that reuses the stale ETag | AG-5 | `agent-detail.tsx` |
+| **Assignments tab**: every assignment row for the task with its scope (department resolved to a name), selector tags, the slug it names, a "This agent" marker and **Remove**; the tenant-default control with its tag selector; and the fail-closed sentence when nothing is assigned | AG-9, AG-15, AG-16, AG-3 | `agent-detail.tsx` |
+| A platform service agent (`hidden: true`) is listed and flagged, and is offered no tenant verbs at all — no publish, no branch, no assignment write, no version row menu | TASK-974 D-1 | `agents-screen.tsx`, `agent-detail.tsx` |
+| Segment-scoped `loading.tsx` (skeleton shaped like the grid) and `error.tsx` | AG-23 | `app/(console)/(tenant)/agents/` |
+| `AgentStatusBadge`, `AgentOwnerBadge`, `isClonedFromPlatform` and `STATUS_VARIANT` **removed** as orphans of this change — `LifecycleStatusBadge` / `ActiveBadge` / `OriginBadge` replace them, and `DEPRECATED` stops being `destructive` (INV-1). `AgentTaskBadge` and `AgentHiddenBadge` stay | INV-1 | `agent-status-badge.tsx` |
+
+Files changed (10): `apps/admin-console/src/features/agents/api/{types.ts,keys.ts,client.ts,hooks.ts}`,
+`.../components/{agents-screen.tsx,agent-detail.tsx,agent-status-badge.tsx}`,
+`apps/admin-console/src/app/(console)/(tenant)/agents/{loading.tsx,error.tsx}`,
+`apps/admin-console/tests/e2e/agents.spec.ts`. Tests: 1 new file (11 cases) + 5 existing files
+updated to the lineage shape, none deleted.
+
+**Three findings on the WS-2 contract** (none worked around silently):
+
+1. **`POST admin/agents/:id/activate` takes no `If-Match`.** The plan brief said it needed one;
+   `AgentAdminController` declares no `@RequiresIfMatch()` on it (deliberately — the file's own
+   header says state transitions are not CAS writes), and `AgentService.activate(id)` takes no
+   expected version. The console sends none.
+2. **`GET admin/agents/:slug/versions` does not exist** — the route is `:id/versions` and takes a
+   version ROW id. The lineage row carries an id only for its ACTIVE version and its OPEN DRAFT,
+   so a lineage whose versions are *all* published-but-inactive or deprecated has no anchor id on
+   the wire — and that is exactly the lineage an admin opens in order to ACTIVATE one.
+   `useAgentLineageVersions` falls back to the per-version list route for that case; the honest
+   fix is a version id (or slug addressing) on the register.
+3. **`filters` and `sort` on the register are applied to the VERSION ROWS, before the fold**
+   (`AgentRepository.findLineagesForTenant`), and `sort` is then ignored entirely (the fold always
+   orders by name). A predicate that differs between the versions of one slug — `status`, `tags`,
+   `name` — would not merely narrow the list: it would drop rows from the fold and rewrite the
+   lineage's own `active`, `draft`, `versionCount` and `deprecatedCount`. So the screen wires only
+   the fold-safe narrowings: the first-class `task` facet, `search` over `slug`, and the
+   `slug[iequals]` deep-link lookup. **The TASK-884 tag facet is therefore gone**, and its two
+   tests were rewritten to pin that (a stale `f` tags rule narrows nothing and corrupts nothing)
+   rather than deleted. A lineage-level `tags` narrowing applied AFTER the fold would restore it.
+
+Also not done here, deliberately: **AG-7** (the create wizard's "Create & publish" still bypasses
+the publish dialog) and **AG-10** (no cost line on the published test bench) — both are listed
+under WS-4 in §3.3 but outside this lane's brief, which scoped the grid, the drawer, the tests and
+the runtime proof.
+
 ## 5. Verification
 
 ### 5.1 WS-1 evidence (2026-09-13)
@@ -486,6 +543,25 @@ Screenshots (session scratchpad): `v-1-fresh.png`, `v-2-after-save.png`, `v-3-pu
 
 Screenshots: `b-1-studio-canvas.png`, `b-2-studio-integration.png`, `b-3-agent-integration.png`.
 
+### 5.3 WS-4 evidence (2026-09-17)
+
+| Gate | Command | Result |
+|---|---|---|
+| RED | `npx vitest run src/features/agents/components/__tests__/agents-lineage.task965.test.tsx` with the implementation moved aside and the HEAD files restored | `Test Files 1 failed (1) · Tests 10 failed (10)` |
+| GREEN (new file) | same command, implementation restored (+1 case added after) | `Test Files 1 passed (1) · Tests 11 passed (11)` |
+| Feature suite | `npx vitest run src/features/agents` | `Test Files 1 failed | 24 passed (25) · Tests 1 failed | 174 passed (175)` — the one failure is **pre-existing and out of scope**: `agent-publish-dialog.task890.test.tsx > a speech-to-text agent shows the transcriptions endpoint` fails on `shared/versioning/integration-panel.tsx`, which this lane did not touch (`git diff HEAD` is empty for it) and which another lane owns |
+| Lint | `npx eslint src/features/agents "src/app/(console)/(tenant)/agents" tests/e2e/agents.spec.ts` | exit 0 |
+| Typecheck | `npx tsc --noEmit -p tsconfig.json` (apps/admin-console) | exit 0 |
+| Runtime, super admin, working tenant **ArcaAI** | headless Playwright against this lane's console on :5180 and the owner's gateway on :8868 | the register answers **28 lineages** for 28+ version rows; the grid renders **one row per slug**, header `28 agents · 26 versions on this page`, server pager `Showing 1–25 of 28`; **`realtime-transcription` is ONE row** where it used to be two, and its drawer's Versions tab lists `v2 Published · Active` over `v1 Deprecated`. Both themes captured |
+
+Screenshots (committed): `evidence/ws4-grid-all-{light,dark}.png` (the whole register),
+`evidence/ws4-grid-{light,dark}.png` (the reported lineage, searched), and
+`evidence/ws4-drawer-versions-{light,dark}.png` (v2 active over v1 deprecated, in one drawer).
+
+Not verified by this lane: the full `pnpm --filter @arcaai/admin-console build lint test`
+aggregate (owner rule for this fan-out: run only the files this lane authored or edited), and the
+Playwright `agents.spec.ts` cases that need a seeded DRAFT agent (they skip on this database).
+
 ## 6. Change History
 
 | Date | Change |
@@ -494,3 +570,4 @@ Screenshots: `b-1-studio-canvas.png`, `b-2-studio-integration.png`, `b-3-agent-i
 | 2026-09-13 | All six lanes returned; P1 claims re-verified against source and runtime (G2, G8, G9 probed); defect register §2.4 (77 findings), target UX §3.1, nine owner decisions §3.2, seven workstreams §3.3 and the route contract §3.4 written. Status → Review. |
 | 2026-09-13 | Owner approved every §3.2 recommendation ("approve all recommendations, start WS-1"). **WS-1 delivered** (§4.1, §5.1): 12 console fixes, 6 new test files (22 cases, RED → GREEN), 743/743 feature tests, lint + typecheck + build green, tenant-admin runtime pass. Status → In Progress (WS-2 next: backend lineage API per §3.4). |
 | 2026-09-13 | **WS-1 addendum** (§4.2, §5.2) on two owner reports: the persistent Integration surface pulled forward from WS-3/4/5 (`shared/versioning/IntegrationPanel`, agent drawer tab, studio header dialog, both publish dialogs on the same panel); root cause of the invisible trigger → agent connection on `Platform Default — Summarization` (the editor dropped every secondary-input binding edge before the canvas) fixed with a dashed, labelled, non-deletable `binding` edge kind in the shared canvas; authored node ids no longer sliced ("rigger"). 758/758 console tests, 63/63 canvas tests, lint/typecheck/build green, runtime pass. |
+| 2026-09-17 | **WS-4 delivered** (§4.3, §5.3): the Agents screen on the lineage model — one row per slug in the grid, a slug-keyed drawer on the WS-3 kit with Activate/Deprecate/New-draft/Discard/Compare on the Versions tab, the assignment tab, the inline OCC alert, `loading.tsx`/`error.tsx`, and the legacy `?agent=` link resolved to `?slug=`. 11 new cases (RED → GREEN) plus 5 existing test files updated; runtime proof on the ArcaAI tenant that `realtime-transcription` v2/v1 is now ONE row. Three WS-2 contract findings recorded in §4.3 (no `If-Match` on activate; no slug-addressed versions route and no version id on a lineage with neither an active version nor a draft; pre-fold `filters`/ignored `sort`, which cost the TASK-884 tag facet). |
