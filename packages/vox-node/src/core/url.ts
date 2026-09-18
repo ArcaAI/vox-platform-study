@@ -43,8 +43,19 @@ const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set([
 /** The gateway's global route prefix (`app.setGlobalPrefix('api/v1', ...)`). */
 const API_PREFIX = 'api/v1';
 
-/** Query parameter values accepted by {@link buildUrl}. */
-export type QueryValue = string | number | boolean | undefined | null;
+/** A single query parameter value. */
+export type QueryPrimitive = string | number | boolean;
+
+/**
+ * Query parameter values accepted by {@link buildUrl}.
+ *
+ * A LIST is a first-class value here, not a convenience: routes that take a
+ * selection declare `type: [String]` and the generated admin surface renders
+ * that faithfully as `string[]` (today only `admin/users/export`'s `ids`, but
+ * the next such route would break the build the same way if this union did not
+ * admit it). Serialized as a REPEATED param — see {@link buildQueryString}.
+ */
+export type QueryValue = QueryPrimitive | undefined | null | readonly QueryPrimitive[];
 
 /** Options for {@link buildUrl}. */
 export interface BuildUrlOptions {
@@ -87,6 +98,17 @@ function buildQueryString(query: Record<string, QueryValue>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null) continue;
+    // A list is repeated (`?ids=a&ids=b`), never joined. `String(['a','b'])`
+    // would answer `a,b`, which the gateway does accept — `parseIdsQuery`
+    // splits on commas — but lossily: one item containing a comma and the set
+    // the server rebuilds is not the set that was sent. An EMPTY list appends
+    // nothing, so it vanishes from the URL rather than arriving as `ids=`,
+    // which is what lets the gateway read it as "no selection" (the same
+    // reason `parseIdsQuery` answers `undefined` rather than `[]`).
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, String(item));
+      continue;
+    }
     params.append(key, String(value));
   }
   return params.toString();
