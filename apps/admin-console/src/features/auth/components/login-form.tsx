@@ -17,9 +17,11 @@ interface LoginFormProps {
   redirectTo: string;
   /** Surfaced from a failed /api/auth/sso/callback redirect (?error=...). */
   initialError?: string;
+  /** ?reason=expired — the console sent the operator here, they did not fail to sign in. */
+  sessionExpired?: boolean;
 }
 
-export function LoginForm({ redirectTo, initialError }: LoginFormProps) {
+export function LoginForm({ redirectTo, initialError, sessionExpired = false }: LoginFormProps) {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -203,6 +205,13 @@ export function LoginForm({ redirectTo, initialError }: LoginFormProps) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {sessionExpired && !error ? (
+            <Alert>
+              <IconClockExclamation />
+              <AlertTitle>Your session expired</AlertTitle>
+              <AlertDescription>Sign in to continue where you left off.</AlertDescription>
+            </Alert>
+          ) : null}
           {error ? (
             <Alert variant="destructive">
               <IconAlertCircle />
