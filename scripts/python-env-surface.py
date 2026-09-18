@@ -704,7 +704,41 @@ _STT_CREDENTIAL_ENV_CLOSED = (
     "solely so the tests that assert the env path stays closed can construct it."
 )
 
+# — six OTel settings fields that TASK-987 (R-2) retired and the deprecation
+#: register schedules for removal in R4 (`docs/operations/deprecation-register.md`
+#: rows for the `*_OTEL_ENABLED` family, `TTS_OTEL_LOGS_ENABLED` and
+#: `TTS_OTEL_INSECURE`). Observability moved to `packages/py-obs`, where the
+#: PRESENCE of `OTEL_EXPORTER_OTLP_ENDPOINT` is the one enable signal and
+#: `insecure` is derived from that endpoint's URL scheme — so there is nothing
+#: left for any of these fields to feed.
+#:
+#: They are compatibility tombstones, not a stalled migration: the register
+#: deliberately kept the NAMES for one release because `hope-v2-dev` still set
+#: several of them, and deleting them silently would have turned telemetry off
+#: for services that had just been given it. Deletion is the R4 action, and the
+#: self-cleaning rule above is what will force it — an entry here fails the
+#: check the moment its field is gone.
+#:
+#: Narrower than the register reads, and deliberately so: this list names the
+#: dead FIELDS only. `harness:Settings.otel_enabled` is absent because it is
+#: still read (via `otel_tracing_enabled`, which gates Temporal's
+#: `TracingInterceptor` — F-19), which is exactly why the dev overlay still
+#: sets `HARNESS_OTEL_ENABLED=true`.
+_OTEL_R2_TOMBSTONE = (
+    "retired by TASK-987 R-2 and scheduled for removal in R4 (see "
+    "docs/operations/deprecation-register.md); hope_obs enables on the presence "
+    "of OTEL_EXPORTER_OTLP_ENDPOINT and derives `insecure` from its URL scheme, "
+    "so the field feeds nothing. The name is held one release as a "
+    "compatibility tombstone."
+)
+
 INTENTIONALLY_UNREAD: dict[str, str] = {
+    "guardrail:Settings.otel_exporter_endpoint": _OTEL_R2_TOMBSTONE,
+    "harness:Settings.otel_insecure": _OTEL_R2_TOMBSTONE,
+    "nlp:NLPServiceConfig.otel_enabled": _OTEL_R2_TOMBSTONE,
+    "nlp:NLPServiceConfig.traces_enabled": _OTEL_R2_TOMBSTONE,
+    "tts:Settings.otel_insecure": _OTEL_R2_TOMBSTONE,
+    "tts:Settings.otel_logs_enabled": _OTEL_R2_TOMBSTONE,
     "stt:Settings.huggingface_token": _STT_CREDENTIAL_ENV_CLOSED,
     "stt:Settings.model_s3_endpoint": _STT_CREDENTIAL_ENV_CLOSED,
     "stt:Settings.model_s3_access_key": _STT_CREDENTIAL_ENV_CLOSED,
