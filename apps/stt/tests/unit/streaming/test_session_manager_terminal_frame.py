@@ -15,7 +15,7 @@ pins the STT-side properties that half depends on.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
