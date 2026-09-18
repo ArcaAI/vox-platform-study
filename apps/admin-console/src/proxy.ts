@@ -42,7 +42,14 @@ export default function proxy(request: NextRequest): NextResponse {
   }
 
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    // `x-session-expired` marks a 401 minted because the session is GONE, as
+    // opposed to a gateway authorization / step-up failure on a live session —
+    // the bodies cannot be told apart, since both read "Unauthorized". The same
+    // header is stamped by `hope-proxy.ts`, but this branch short-circuits it:
+    // a missing cookie never reaches a route handler, and that is the commonest
+    // way a session ends, because `clearSession()` deletes the cookie and every
+    // request after the first one lands here.
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401, headers: { 'x-session-expired': '1' } });
   }
 
   const loginUrl = request.nextUrl.clone();

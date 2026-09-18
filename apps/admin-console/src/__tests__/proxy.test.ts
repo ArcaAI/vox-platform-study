@@ -26,6 +26,19 @@ describe('proxy (public register/verify-email routes)', () => {
     const response = proxy(requestFor('/api/hope/admin/tenants'));
     expect(response.status).toBe(401);
   });
+
+  /**
+   * This 401 short-circuits `handleProxy`, so the BFF's own `x-session-expired`
+   * header never gets a chance to be stamped — and a missing cookie is the
+   * COMMONEST way a session ends (`clearSession()` deletes it, so every request
+   * after the first lands here). Without the header the console cannot tell
+   * session loss from an authorization failure, and the operator is left on a
+   * dead screen: the exact defect TASK-988 exists to fix.
+   */
+  it('marks that API 401 as session loss so the client redirects to /login', () => {
+    const response = proxy(requestFor('/api/hope/admin/tenants'));
+    expect(response.headers.get('x-session-expired')).toBe('1');
+  });
 });
 
 describe('proxy (public SSO and password-reset routes)', () => {
