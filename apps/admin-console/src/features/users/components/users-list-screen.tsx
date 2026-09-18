@@ -258,11 +258,23 @@ export function UsersListScreen() {
     );
   }
 
-  /** Export the current filtered view (not just the selection) — the gateway export takes ListParams. */
-  function handleExport() {
+  /**
+   * Export, at one of two explicit SCOPES. `'selected'` names the checked rows
+   * in `ids` (the gateway narrows its tenant-scoped query to them);
+   * `'all'` exports the whole filtered view. Each scope has its OWN button and
+   * its own label — the scope is never changed silently under one label.
+   */
+  function handleExport(scope: 'selected' | 'all') {
     exportUsersMutation.mutate(
       // The tenant filter travels as a dedicated query param (see listParams note above).
-      { ...listParams, format: 'csv', ...(filterTenantId ? { tenantId: filterTenantId } : {}) },
+      {
+        ...listParams,
+        format: 'csv',
+        ...(filterTenantId ? { tenantId: filterTenantId } : {}),
+        // Comma-joined, and only when something is actually selected: an empty
+        // `ids=` would read as "export the empty set", not "export everything".
+        ...(scope === 'selected' && selectedIds.length > 0 ? { ids: selectedIds.join(',') } : {}),
+      },
       {
         onSuccess: ({ blob, contentDisposition }) => {
           const filename = filenameFromDisposition(contentDisposition) ?? 'users.csv';
@@ -388,9 +400,9 @@ export function UsersListScreen() {
         <IconTrash aria-hidden />
         Delete
       </Button>
-      <Button variant="outline" size="sm" onClick={handleExport} disabled={exportUsersMutation.isPending}>
+      <Button variant="outline" size="sm" onClick={() => handleExport('selected')} disabled={exportUsersMutation.isPending}>
         <IconDownload aria-hidden />
-        Export
+        Export selected ({selectedIds.length})
       </Button>
       <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelection({})}>
         Clear selection
@@ -407,10 +419,19 @@ export function UsersListScreen() {
             title="Users"
             meta={data ? <span>{formatNumber(totalCount)} users</span> : <Skeleton className="h-4 w-16" />}
             actions={
-              <Button onClick={() => setCreateOpen(true)}>
-                <IconPlus aria-hidden />
-                New user
-              </Button>
+              <>
+                {/* Full-view export. The action bar's twin is selection-scoped and
+                    only exists while rows are checked, so this is the only place
+                    "everything the filters match" is reachable. */}
+                <Button variant="outline" onClick={() => handleExport('all')} disabled={exportUsersMutation.isPending}>
+                  <IconDownload aria-hidden />
+                  Export all
+                </Button>
+                <Button onClick={() => setCreateOpen(true)}>
+                  <IconPlus aria-hidden />
+                  New user
+                </Button>
+              </>
             }
           />
         }

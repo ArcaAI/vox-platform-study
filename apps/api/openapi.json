@@ -48844,6 +48844,7 @@
     },
     "/api/v1/admin/users/bulk": {
       "delete": {
+        "description": "Deletes every id that resolves inside the caller tenant and reports the rest under `failed` — the call never throws mid-batch, so a partial result is observable and the failed ids are retryable idempotently. Each id runs the same by-id tenant-scope guard as `DELETE /admin/users/:id`, so a cross-tenant id is recorded as failed and is NEVER deleted. CASL-gated by the class-level manage:User.",
         "operationId": "UserController_bulkDelete",
         "parameters": [],
         "requestBody": {
@@ -48866,6 +48867,9 @@
               }
             },
             "description": "Deleting a BulkDeleteUsersResponse (bulk delete)"
+          },
+          "400": {
+            "description": "Bad request — `ids` must be a non-empty array of strings"
           }
         },
         "security": [
@@ -48876,7 +48880,7 @@
             "service-account": []
           }
         ],
-        "summary": "Bulk delete users with partial-failure semantics: per-id catch (not a\n`throw` on the first failure), returning the structured\n`BulkDeleteUsersResponse` so admin tooling can report exact partial\nprogress and retry only the failed ids idempotently.\n\nWhy per-id catch (not a Prisma `$transaction`):\n  - `IUserService.deleteById` doesn't accept a transaction client; the\n    `applications` layer would need a new overload to thread one\n    through. That's a cross-package surface change and out of scope\n    for an apps/api hygiene sweep.\n  - Admin UX wants visibility into _which_ id failed; transactional\n    roll-back collapses that into a single error message.\n\nIf a future requirement demands all-or-nothing semantics, callers can\ninspect `failed.length > 0` and trigger their own compensating\nworkflow against the `succeeded` set.",
+        "summary": "Delete many users in one call (partial-failure envelope)",
         "tags": [
           "admin-users"
         ]
@@ -48925,7 +48929,7 @@
     },
     "/api/v1/admin/users/export": {
       "get": {
-        "description": "Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. Capped at 10000 rows (FLAG). CASL-gated by the class-level manage:User.",
+        "description": "Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. Pass `ids` to export an explicit SELECTION instead of the whole view: the id set NARROWS the same tenant-scoped query, so an id outside the caller scope is simply absent from the file (it is never a by-id fetch). Capped at 10000 rows (FLAG). CASL-gated by the class-level manage:User.",
         "operationId": "UserController_exportUsers",
         "parameters": [
           {
@@ -49011,6 +49015,23 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated user ids to export (the console selection). Narrows, never widens.",
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "example": [
+                "0197f1e6-5b8e-7a1c-9c3d-2b6f0a1d4e55"
+              ],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 10000,
+              "type": "array"
             }
           }
         ],

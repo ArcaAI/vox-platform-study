@@ -317,7 +317,7 @@ describe('UsersListScreen', () => {
 
     await screen.findByText('mia.okafor');
     fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /export selected/i }));
 
     await waitFor(() => {
       const exportCall = calls.find((call) => call.url.includes('/admin/users/export'));
@@ -396,7 +396,8 @@ describe('UsersListScreen', () => {
     });
   });
 
-  it('exports the current view as CSV from the bulk action bar', async () => {
+  /** Shared harness for the two export scopes: stub the blob download + URL/anchor globals. */
+  function stubExportFetch() {
     const createObjectURL = vi.fn(() => 'blob:users');
     const revokeObjectURL = vi.fn();
     // happy-dom would actually navigate the anchor; intercept the download click.
@@ -411,22 +412,61 @@ describe('UsersListScreen', () => {
       return undefined;
     });
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    return { calls, createObjectURL, revokeObjectURL, anchorClick };
+  }
+
+  // TASK-986 R6 — the export scope must follow the SELECTION, and the label
+  // must say which scope is about to run (rule 11 §5: no silent scope change
+  // under an unchanged label).
+  it('exports ONLY the selected rows from the bulk action bar, naming them in `ids`', async () => {
+    const { calls, createObjectURL, revokeObjectURL, anchorClick } = stubExportFetch();
     renderWithProviders(<UsersListScreen />);
 
     await screen.findByText('mia.okafor');
-    // Export lives in the selection action bar — reveal it by selecting a row.
+    // Export-selected lives in the selection action bar — reveal it by selecting a row.
     fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
-    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /export selected \(1\)/i }));
 
     await waitFor(() => {
       const exportCall = calls.find((call) => call.url.includes('/admin/users/export'));
       expect(exportCall).toBeDefined();
-      expect(queryOf(exportCall!.url).get('format')).toBe('csv');
+      const q = queryOf(exportCall!.url);
+      expect(q.get('format')).toBe('csv');
+      expect(q.get('ids')).toBe('u-1');
     });
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(anchorClick).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:users');
     anchorClick.mockRestore();
+  });
+
+  it('exports the whole filtered view from the header Export all — no `ids` param', async () => {
+    const { calls, anchorClick } = stubExportFetch();
+    renderWithProviders(<UsersListScreen />);
+
+    await screen.findByText('mia.okafor');
+    fireEvent.click(await screen.findByRole('button', { name: /export all/i }));
+
+    await waitFor(() => {
+      const exportCall = calls.find((call) => call.url.includes('/admin/users/export'));
+      expect(exportCall).toBeDefined();
+      const q = queryOf(exportCall!.url);
+      expect(q.get('format')).toBe('csv');
+      expect(q.get('ids')).toBeNull();
+    });
+    anchorClick.mockRestore();
+  });
+
+  it('counts every selected row in the action-bar export label', async () => {
+    stubExportFetch();
+    renderWithProviders(<UsersListScreen />);
+
+    await screen.findByText('mia.okafor');
+    // Re-query between clicks: selecting a row re-renders the virtual grid.
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[1]);
+
+    expect(await screen.findByRole('button', { name: /export selected \(2\)/i })).toBeDefined();
   });
 
   it('creates a user through the dialog and navigates to the new detail page', async () => {
