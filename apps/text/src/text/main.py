@@ -48,9 +48,15 @@ def _build_observability_config(settings: Settings) -> ObservabilityConfig:
     them from the process environment a second time; `OTEL_SERVICE_NAME` still
     overrides `service_name` via `from_env` itself.
     """
+    base = ObservabilityConfig.from_env("text", service_version="2.0.0")
     return replace(
-        ObservabilityConfig.from_env("text", service_version="2.0.0"),
-        otlp_endpoint=settings.otel_exporter_endpoint.strip() or None,
+        base,
+        # `or base.otlp_endpoint`, never `or None` (TASK-987 F-22). R-2 makes the
+        # canonical `OTEL_EXPORTER_OTLP_ENDPOINT` the enable signal, and
+        # `from_env` has already resolved it. Overwriting with `None` when the
+        # TEXT_-prefixed name happens to be unset would discard it and take this
+        # service dark on a manifest that sets only the canonical name.
+        otlp_endpoint=settings.otel_exporter_endpoint.strip() or base.otlp_endpoint,
         service_namespace=settings.otel_service_namespace,
         deployment_environment=settings.otel_deployment_environment,
         log_level=settings.log_level,
