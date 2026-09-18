@@ -29,11 +29,12 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps
 import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
-import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
+import { GLOBAL_TENANT_KEY, SEED_TENANT_ID, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
 import { ITenantReferenceSetService } from './reference-set/ITenantReferenceSetService';
+import { IBillingService } from '../billing/IBillingService';
 
 /**
  * Reserved system tenant that owns the platform-wide AI model catalog (the
@@ -91,6 +92,14 @@ export class TenantService extends BaseService implements ITenantService {
      * step above LOGS rather than hides, because that is exactly the state proof #9 looks for.
      */
     @Optional() @Inject(ITenantReferenceSetService) private readonly referenceSet?: ITenantReferenceSetService,
+    /**
+     * TASK-986 (owner ruling D-7) — the `TenantPlanHistory` writer. `@Optional()`
+     * + trailing, the same house convention as `referenceSet` above: production
+     * DI supplies it through `TenantServiceModule`, the positional unit
+     * fixtures do not, and a missing writer degrades to a logged warning rather
+     * than failing a plan write that has already committed.
+     */
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -149,17 +158,15 @@ export class TenantService extends BaseService implements ITenantService {
       });
     }
 
-    try {
-      // Write the plan's storageQuotaBytes onto the primary
-      // system bucket now that buckets exist.
-      await this.tenantBucketService.applyPlanStorageQuota(tenant.id, tenant.plan ?? null);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Failed to apply plan storage quota for new tenant',
-        tenantId: tenant.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    // Write the plan's storageQuotaBytes onto the primary
+    // system bucket now that buckets exist.
+    await this.applyPlanStorageQuotaBestEffort(tenant.id, tenant.plan ?? null);
+
+    // TASK-986 (owner ruling D-7) — open the tenant's FIRST plan-history
+    // window. `TenantPlanHistory` is what the invoice engine prorates the plan
+    // fee from; before this call its only writer had zero production callers,
+    // so every tenant billed against an empty history.
+    await this.recordPlanChangeBestEffort(tenant.id, tenant.plan ?? null, 'initial');
 
     try {
       await this.provisionDefaultDepartment(tenant.id);
@@ -667,6 +674,27 @@ export class TenantService extends BaseService implements ITenantService {
   async update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
 
+    // TASK-986 W1 (owner ruling D-5) — ALL PATCH edits are blocked on the two
+    // reserved rows. This method previously called no reserved guard at all,
+    // so `{"resourceStatus":"DISABLED"}` deactivated the platform tier, and a
+    // `key` rename disarmed the suspend/archive/delete guard for Global.
+    this.assertNotSystemTenant(tenant, 'edited');
+
+    // TASK-986 W2 (owner decision D-1) — `plan` is a SUPER_ADMIN-only FIELD.
+    // The route decorator (`@CanAny(['manage','Tenant'],['update','Tenant'])`)
+    // cannot express "every field but this one": the seed grants a tenant admin
+    // `update:Tenant` on its OWN id, which would otherwise let it raise its own
+    // plan — and "entitlements bound what a tenant MAY set; they never supply a
+    // value" (`00-project-context.md`). Existence is resolved by the `findById`
+    // above FIRST, so an unknown id is still a 404 and this gate is never an
+    // existence oracle (rule 05 §"Imperative Privilege Checks"). It fires only
+    // on an ACTUAL change: echoing the stored plan back is not a plan change.
+    const previousPlan = tenant.plan ?? null;
+    const requestsPlanChange = request.plan !== undefined && request.plan !== previousPlan;
+    if (requestsPlanChange && !this.isSuperAdmin()) {
+      throw new ForbiddenException('Only a platform administrator can change a tenant plan.');
+    }
+
     const previousData = tenant.toObject();
     // `expectedVersion` is the CAS predicate input only — keep it out of
     // `updateEntity` so it is never written onto the entity or staged for
@@ -696,6 +724,25 @@ export class TenantService extends BaseService implements ITenantService {
     // `OptimisticConcurrencyException`. We deliberately drop the legacy
     // `tenantRepository.update(id, tenant)` write path, which bypassed OCC.
     const updatedTenant = await this.tenantRepository.updateWithVersion(id, tenant, expectedVersion);
+
+    // TASK-986 (owner ruling D-7) — a plan change is not just a column write.
+    // `TenantPlanHistory` is what the invoice engine prorates the plan fee
+    // from, and the bucket quota is derived from the plan; neither was wired to
+    // this path before, so an upgraded tenant billed against an EMPTY history
+    // and kept its old storage ceiling. Best-effort, like every other side
+    // effect on this service: the plan write itself has already committed.
+    //
+    // Both writes go through TENANT-SCOPED repositories, and a super admin
+    // editing tenant B while their working tenant is A carries A in CLS — the
+    // tenant-scope extension would then refuse the explicit `tenantId: B` as a
+    // mismatch. So rebind CLS to the row we just legitimately wrote, and
+    // restore it before the audit broadcast below (which attributes to CLS).
+    if (requestsPlanChange) {
+      await this.runForTenant(updatedTenant.id, async () => {
+        await this.recordPlanChangeBestEffort(updatedTenant.id, updatedTenant.plan ?? null, 'plan-updated');
+        await this.applyPlanStorageQuotaBestEffort(updatedTenant.id, updatedTenant.plan ?? null);
+      });
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedTenant.id,
@@ -735,15 +782,27 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * (#1 / DEF-ADM-002) — blocks lifecycle mutations against the
-   * reserved system tenant. The system tenant is identified either by its
-   * `key` equal to `__GLOBAL__` (compared case-insensitively, mirroring the
-   * DEF-ADM-001 key protection) or by the reserved `SYSTEM_TENANT_ID`.
+   * (#1 / DEF-ADM-002) — blocks mutations against either RESERVED tenant:
+   * SYSTEM (`00000000-…`, the configuration tier) and Global (`50000000-…`,
+   * the platform-admin playground).
+   *
+   * Matching is by IMMUTABLE ID first (TASK-986 W1). Before that, Global was
+   * recognised only by its `key` being `__GLOBAL__` — and `key` is writable
+   * through this very service's PATCH, so renaming the row permanently
+   * disarmed the guard for it. The case-insensitive key check is KEPT beside
+   * the id check as defence in depth (a reserved key on any other row is
+   * treated as reserved too).
+   *
+   * This is a 403, not the 404-over-403 cross-tenant posture: the existence of
+   * these two rows is not a secret — both ids are declared constants.
+   *
+   * @param action - Verb phrase for the message, so `update()` does not have
+   *   to claim the caller tried to suspend anything.
    */
-  private assertNotSystemTenant(tenant: TenantEntity): void {
+  private assertNotSystemTenant(tenant: TenantEntity, action = 'suspended, archived, or deleted'): void {
     const isGlobalKey = (tenant.key ?? '').toUpperCase() === GLOBAL_TENANT_KEY.toUpperCase();
-    if (isGlobalKey || tenant.id === SYSTEM_TENANT_ID) {
-      throw new ForbiddenException('The system tenant cannot be suspended, archived, or deleted.');
+    if (isGlobalKey || tenant.id === SYSTEM_TENANT_ID || tenant.id === SEED_TENANT_ID) {
+      throw new ForbiddenException(`The system tenant cannot be ${action}.`);
     }
   }
 
@@ -1156,6 +1215,70 @@ export class TenantService extends BaseService implements ITenantService {
       summaries24h,
       totalConsultations,
     };
+  }
+
+  /**
+   * TASK-986 — run `work` with CLS bound to `tenantId`, restoring the caller's
+   * binding afterwards.
+   *
+   * The tenant-scope Prisma extension reads CLS: with a working tenant set, a
+   * super admin's CLS names tenant A while the row being written belongs to
+   * tenant B, and an explicit `tenantId: B` is then refused as a mismatch. The
+   * same rebind is what `create()` does for its provisioning steps and what
+   * `EntitlementsLifecycleService.runForTenant` does for the sweep — the
+   * difference is that this one restores, because the audit broadcast that
+   * follows must still be attributed to the caller's context.
+   */
+  private async runForTenant<T>(tenantId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.clsService.get('tenantId');
+    this.clsService.set('tenantId', tenantId);
+    try {
+      return await work();
+    } finally {
+      this.clsService.set('tenantId', previous);
+    }
+  }
+
+  /**
+   * TASK-986 (owner ruling D-7) — append a `TenantPlanHistory` segment for a
+   * plan transition. Idempotent in the writer (re-recording the plan already in
+   * force is a no-op), so callers do not have to pre-check.
+   *
+   * Best-effort by design: this runs AFTER the plan column is committed, so a
+   * failure here must not turn a successful plan change into a 500. It is
+   * logged instead — the repair is a re-record, not a rollback.
+   */
+  private async recordPlanChangeBestEffort(tenantId: string, plan: TenantPlan | null, changeReason: string): Promise<void> {
+    try {
+      await this.billing?.recordPlanChange(tenantId, plan, new Date(), changeReason);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to record the tenant plan change in TenantPlanHistory',
+        tenantId,
+        plan,
+        changeReason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-986 (owner ruling D-7) — (re-)derive the primary system bucket's quota
+   * from the tenant's plan. Previously called only at creation, which left an
+   * upgraded tenant on its old storage ceiling. Best-effort for the same reason
+   * as {@link recordPlanChangeBestEffort}.
+   */
+  private async applyPlanStorageQuotaBestEffort(tenantId: string, plan: TenantPlan | null): Promise<void> {
+    try {
+      await this.tenantBucketService.applyPlanStorageQuota(tenantId, plan);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to apply the plan storage quota',
+        tenantId,
+        plan,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

@@ -53555,6 +53555,9 @@
             },
             "description": "Updating a TenantResponse by id"
           },
+          "403": {
+            "description": "Either the row is a RESERVED tenant (SYSTEM / Global — no PATCH is accepted), or the body changes `plan` and the caller is not a platform administrator."
+          },
           "404": {
             "description": "Tenant not found"
           },

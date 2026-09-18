@@ -2,7 +2,18 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconArchive, IconBuildings, IconDots, IconEye, IconFilterOff, IconPlayerPause, IconPlus, IconRestore, IconTrash } from '@tabler/icons-react';
+import {
+  IconArchive,
+  IconBuildings,
+  IconDots,
+  IconEye,
+  IconFilterOff,
+  IconLock,
+  IconPlayerPause,
+  IconPlus,
+  IconRestore,
+  IconTrash,
+} from '@tabler/icons-react';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -24,6 +35,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useTenants } from '../api/hooks';
 import type { Tenant } from '../api/types';
+import { isReservedTenant, RESERVED_TENANT_REASON } from '../reserved';
 import { CreateTenantDialog } from './create-tenant-dialog';
 import { PLAN_FILTER_OPTIONS, TenantPlanBadge } from './plan-badge';
 import { TenantLifecycleDialogs, type LifecycleAction, type LifecycleRequest } from './tenant-lifecycle-dialogs';
@@ -41,6 +53,10 @@ const STATUS_OPTIONS: FilterOption[] = [
 
 function RowActions({ tenant, onView, onAction }: { tenant: Tenant; onView: () => void; onAction: (action: LifecycleAction) => void }) {
   const status = tenant.resourceStatus;
+  // TASK-986 W1 (owner ruling D-5) — the gateway answers 403 to every
+  // lifecycle transition on the two reserved rows, so the menu offers View
+  // only and states the reason instead of a control that can only fail.
+  const reserved = isReservedTenant(tenant.id);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -54,30 +70,42 @@ function RowActions({ tenant, onView, onAction }: { tenant: Tenant; onView: () =
           <IconEye aria-hidden />
           View
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {status === 'ENABLED' ? (
-          <DropdownMenuItem onSelect={() => onAction('suspend')}>
-            <IconPlayerPause aria-hidden />
-            Suspend
-          </DropdownMenuItem>
-        ) : null}
-        {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
-          <DropdownMenuItem onSelect={() => onAction('restore')}>
-            <IconRestore aria-hidden />
-            Restore
-          </DropdownMenuItem>
-        ) : null}
-        {status !== 'ARCHIVED' ? (
-          <DropdownMenuItem onSelect={() => onAction('archive')}>
-            <IconArchive aria-hidden />
-            Archive
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>
-          <IconTrash aria-hidden />
-          Delete
-        </DropdownMenuItem>
+        {reserved ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="text-muted-foreground flex items-start gap-2 px-2 py-1.5 text-xs">
+              <IconLock aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span>{RESERVED_TENANT_REASON}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <DropdownMenuSeparator />
+            {status === 'ENABLED' ? (
+              <DropdownMenuItem onSelect={() => onAction('suspend')}>
+                <IconPlayerPause aria-hidden />
+                Suspend
+              </DropdownMenuItem>
+            ) : null}
+            {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
+              <DropdownMenuItem onSelect={() => onAction('restore')}>
+                <IconRestore aria-hidden />
+                Restore
+              </DropdownMenuItem>
+            ) : null}
+            {status !== 'ARCHIVED' ? (
+              <DropdownMenuItem onSelect={() => onAction('archive')}>
+                <IconArchive aria-hidden />
+                Archive
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>
+              <IconTrash aria-hidden />
+              Delete
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -457,7 +457,13 @@ describe('EntitlementsScreen', () => {
     );
   });
 
-  it('triggers a plan downgrade for the loaded tenant behind a confirm', async () => {
+  /**
+   * TASK-986 W2 (R1) — the control keeps its route (`POST …/downgrade`) but is
+   * re-labelled "Change plan": it offers all four plans, so an UPGRADE through
+   * it used to be presented as a destructive downgrade and reported
+   * "Downgrade to Enterprise complete".
+   */
+  it('changes the plan for the loaded tenant behind a confirm', async () => {
     const calls = stubEntitlements((call) => {
       if (call.method === 'POST' && call.url.endsWith('/admin/entitlements/tenants/t-1/downgrade')) {
         return Response.json({
@@ -473,9 +479,9 @@ describe('EntitlementsScreen', () => {
     });
     renderWithProviders(<EntitlementsScreen />, { searchParams: '?tab=overrides&tenant=t-1' });
 
-    fireEvent.click(await screen.findByRole('button', { name: /trigger downgrade/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^change plan$/i }));
     const dialog = await screen.findByRole('alertdialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /trigger downgrade/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^change plan$/i }));
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/admin/entitlements/tenants/t-1/downgrade'));
