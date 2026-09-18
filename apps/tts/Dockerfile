@@ -90,6 +90,10 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
+# TASK-987: `hope_obs` is the shared logging/tracing runtime this service now
+# declares, so `uv sync --frozen` needs it on disk or layer 1 fails with
+# "Distribution not found at: file:///app/packages/py-obs".
+COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package tts --extra kokoro ${TTS_EXTRAS} --no-dev --no-install-project --no-editable \
         ${UV_NO_CUDA_SKIPS}
