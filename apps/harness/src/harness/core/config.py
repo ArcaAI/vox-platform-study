@@ -699,22 +699,27 @@ class Settings(BaseSettings):
 
     @property
     def otel_tracing_enabled(self) -> bool:
-        """The real gate: the master switch AND a configured collector endpoint.
+        """The pre-TASK-987 gate: the master switch AND a configured collector endpoint.
 
         ``otel_enabled`` alone is not enough — flipping it on with no endpoint
         set must stay a no-op (never require a reachable collector to
-        start). Both ``core/observability.py`` and ``temporal/client.py`` read
-        this property rather than ``otel_enabled`` directly.
+        start). ``temporal/client.py`` still reads this property for its
+        ``TracingInterceptor`` wiring, deliberately left untouched by TASK-987.
+        The FastAPI app and the worker no longer do: since TASK-987, both build
+        their ``hope_obs.ObservabilityConfig`` from ``otel_exporter_endpoint``
+        directly (endpoint presence alone is the enable signal — R-2), with
+        ``otel_enabled=False`` honoured for one release as a deprecated VETO —
+        see ``core/observability.py::build_observability_config``.
         """
         return self.otel_enabled and bool(self.otel_exporter_endpoint)
 
     # Observability — traces. Prometheus metrics + the
     # trajectory spine cover most of the observability need, but neither one
     # replaces distributed tracing across FastAPI request handling and the
-    # Temporal workflow/activity spans. ``_add_otel_context`` in core/logging.py
-    # is no longer inert: `core/observability.py` is the consumer that installs a
-    # TracerProvider (default OFF), after which every log line carries
-    # the active trace/span id.
+    # Temporal workflow/activity spans. TASK-987 moved the tracer/log
+    # implementation into the shared `hope_obs` package; `core/observability.py`
+    # now only maps `Settings` onto `hope_obs.ObservabilityConfig` (default OFF),
+    # after which every log line carries the active trace/span id.
     #
     # Default OFF and requires an explicit endpoint (not just the flag) — a
     # bare ``HARNESS_OTEL_ENABLED=true`` with no collector configured must not

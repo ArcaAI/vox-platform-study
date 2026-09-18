@@ -68,12 +68,16 @@ dependencies = [
     # control events, and streams token deltas, as conforming envelopes onto a Redis
     # Stream. Same workspace dependency apps/text already carries for the same contract.
     "hope-async-contract",
+    # --- TASK-987: shared logging + tracing runtime, replacing core/logging.py's
+    # --- hand-rolled structlog chain and core/observability.py's tracer setup.
+    "hope-obs",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
 hope-async-contract = { workspace = true }
+hope-obs = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
@@ -293,6 +297,7 @@ pythonpath = [
     "../../packages/py-runtime-models/src",
     "../../packages/py-workflow-contract/src",
     "../../packages/py-async-contract/src",
+    "../../packages/py-obs/src",
     "../../scripts/pytest-support",
 ]
 addopts = [

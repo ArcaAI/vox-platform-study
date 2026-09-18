@@ -1,13 +1,20 @@
-"""OpenTelemetry tracing setup for harness.
+"""OpenTelemetry tracing setup for harness (TASK-636, ported for TASK-987).
 
-Before this, harness had NO ``TracerProvider`` anywhere — the only
-``opentelemetry`` reference in the service was a comment in ``core/config.py``
-explaining that none was ever constructed, which meant ``core/logging.py``'s
-``_add_otel_context`` structlog processor was always reading ``INVALID_SPAN``.
-This suite covers the FastAPI side (``core/observability.py``) and the
-Temporal side (``temporal/client.py``'s ``TracingInterceptor`` wiring),
-including their coexistence with the OBS-06 Temporal metrics ``Runtime``
-(``temporal/metrics.py``), which must still be built exactly once per process.
+Before TASK-636, harness had NO ``TracerProvider`` anywhere. TASK-987 moved
+the actual tracer/exporter/instrumentation implementation into the shared
+``hope_obs`` package (R-1..R-8) — harness's own job is now only to (a) map
+its ``Settings`` onto an ``hope_obs.ObservabilityConfig``
+(``core/observability.py::build_observability_config``) and (b) wire that
+config into ``create_app()`` / ``run_worker()`` at the right point.
+
+This suite therefore covers HARNESS'S OWN wiring — the config mapping, the
+deprecated-flag veto, and that ``create_app()``/the worker actually install
+what ``build_observability_config`` says to — not ``hope_obs`` internals
+(sampler construction, exporter degrade-to-off, the PHI hook itself), which
+are ``packages/py-obs/tests``' job. It also still covers the Temporal side
+(``temporal/client.py``'s ``TracingInterceptor`` wiring), including its
+coexistence with the OBS-06 Temporal metrics ``Runtime``
+(``temporal/metrics.py``), neither of which this ticket touched.
 """
 
 from __future__ import annotations
@@ -15,11 +22,16 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from opentelemetry.sdk.trace import TracerProvider
 from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from harness.core.config import Settings
-from harness.core.observability import build_tracer_provider, setup_opentelemetry
+from harness.core.observability import (
+    OTEL_ENABLED_ENV_VAR,
+    build_observability_config,
+    otel_enabled_flag_is_set,
+)
+from harness.main import create_app
 from harness.temporal.client import _tracing_interceptors
 from harness.temporal.metrics import build_runtime, reset_runtime_for_tests
 
@@ -32,7 +44,8 @@ def _enabled_settings(**overrides: Any) -> Settings:
     )
 
 
-# -- (a)/(b) the gate: off by default, on only when BOTH flag and endpoint are set ---
+# -- (a)/(b) the OLD gate — Settings.otel_tracing_enabled, unchanged, still read
+# -- by temporal/client.py's TracingInterceptor wiring (deliberately untouched) ---
 
 
 class TestOtelTracingEnabledGate:
@@ -53,92 +66,131 @@ class TestOtelTracingEnabledGate:
         assert _enabled_settings().otel_tracing_enabled is True
 
 
-# -- build_tracer_provider ------------------------------------------------------------
+# -- build_observability_config — the new R-2 mapping ----------------------------------
 
 
-class TestBuildTracerProvider:
-    def test_returns_none_when_disabled(self) -> None:
-        assert build_tracer_provider(Settings()) is None
+class TestBuildObservabilityConfig:
+    def test_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
 
-    def test_returns_provider_when_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # A unit test must not mutate the real process-global tracer provider.
-        monkeypatch.setattr("harness.core.observability.trace.set_tracer_provider", lambda *_: None)
+        config = build_observability_config(Settings())
 
-        provider = build_tracer_provider(_enabled_settings())
+        assert config.tracing_enabled is False
+        assert config.otlp_endpoint is None
 
-        assert provider is not None
+    def test_endpoint_alone_enables_tracing_r2(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """R-2: endpoint presence alone is the enable signal — no flag required.
+
+        This is the F-01/F-02 fix generalised: a manifest that sets only
+        ``HARNESS_OTEL_EXPORTER_ENDPOINT`` (never ``HARNESS_OTEL_ENABLED``) now
+        gets tracing, where the pre-TASK-987 code stayed dark.
+        """
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
+
+        config = build_observability_config(settings)
+
+        assert config.tracing_enabled is True
+        assert config.otlp_endpoint == "http://localhost:4317"
+
+    def test_deprecated_flag_false_vetoes_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A live manifest that sets HARNESS_OTEL_ENABLED=false to keep tracing off
+        despite an endpoint on a shared config map must keep working for one release.
+        """
+        monkeypatch.setenv(OTEL_ENABLED_ENV_VAR, "false")
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
+
+        config = build_observability_config(settings)
+
+        assert config.tracing_enabled is False
+        assert config.otlp_endpoint is None
+
+    def test_deprecated_flag_true_is_a_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Setting the flag to true changes nothing under R-2 — the endpoint alone
+        already enables tracing; the flag is not required and does not add a veto.
+        """
+        monkeypatch.setenv(OTEL_ENABLED_ENV_VAR, "true")
+
+        config = build_observability_config(_enabled_settings())
+
+        assert config.tracing_enabled is True
+
+    def test_carries_over_settings_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Settings resolve through hope_settings_sources (.env.<NODE_ENV> included);
+        ObservabilityConfig.from_env reads bare os.getenv and would miss a
+        file-only value, so every OTel-shaped field must come from `settings`.
+        """
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+        settings = _enabled_settings(
+            otel_service_name="custom-harness",
+            otel_service_namespace="custom-ns",
+            otel_deployment_environment="staging",
+            log_level="debug",
+        )
+
+        config = build_observability_config(settings)
+
+        assert config.service_name == "custom-harness"
+        assert config.service_namespace == "custom-ns"
+        assert config.deployment_environment == "staging"
+        assert config.log_level == "debug"
+
+    def test_otel_enabled_flag_is_set_detects_presence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+        assert otel_enabled_flag_is_set() is False
+
+        monkeypatch.setenv(OTEL_ENABLED_ENV_VAR, "false")
+        assert otel_enabled_flag_is_set() is True
+
+
+# -- create_app() wiring: tracing installs (or doesn't) exactly as configured ----------
+
+
+class TestCreateAppObservabilityWiring:
+    def test_tracer_provider_absent_when_tracing_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+
+        app = create_app(settings_override=Settings())
+
+        assert app.state.tracer_provider is None
+
+    def test_tracer_provider_present_when_endpoint_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """(c) The R-2 wiring: an endpoint alone, no flag, still installs a real
+        TracerProvider — this is the F-01 fix at the integration layer.
+        """
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
+
+        app = create_app(settings_override=settings)
+
+        assert isinstance(app.state.tracer_provider, TracerProvider)
 
     def test_never_raises_when_exporter_construction_fails(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """(d) an unreachable/misconfigured collector must degrade, not crash."""
+        """(d) an unreachable/misconfigured collector must degrade, not crash boot."""
 
         def _boom(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError("collector unreachable")
 
-        monkeypatch.setattr("harness.core.observability.OTLPSpanExporter", _boom)
+        monkeypatch.setattr("hope_obs.tracing.OTLPSpanExporter", _boom)
+        monkeypatch.delenv(OTEL_ENABLED_ENV_VAR, raising=False)
 
-        result = build_tracer_provider(_enabled_settings())
+        app = create_app(settings_override=_enabled_settings())  # must not raise
 
-        assert result is None
-
-
-# -- FastAPI wiring: the PHI hook must reach the instrumentor -------------------------
-
-
-class TestSetupOpentelemetryFastapi:
-    def test_no_instrumentation_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        called = False
-
-        def _fake_instrument_app(*_args: Any, **_kwargs: Any) -> None:
-            nonlocal called
-            called = True
-
-        monkeypatch.setattr(
-            "harness.core.observability.FastAPIInstrumentor.instrument_app",
-            _fake_instrument_app,
-        )
-
-        app = FastAPI()
-        setup_opentelemetry(app, Settings())
-
-        assert called is False
         assert app.state.tracer_provider is None
 
-    def test_phi_hook_passed_to_instrumentor(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """(c) the PHI sanitisation hook must be wired into FastAPI instrumentation."""
-        monkeypatch.setattr("harness.core.observability.trace.set_tracer_provider", lambda *_: None)
+    def test_deprecated_flag_veto_reaches_create_app(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(OTEL_ENABLED_ENV_VAR, "false")
+        settings = Settings(otel_enabled=False, otel_exporter_endpoint="http://localhost:4317")
 
-        captured: dict[str, Any] = {}
-
-        def _fake_instrument_app(_app: FastAPI, **kwargs: Any) -> None:
-            captured.update(kwargs)
-
-        monkeypatch.setattr(
-            "harness.core.observability.FastAPIInstrumentor.instrument_app",
-            _fake_instrument_app,
-        )
-
-        app = FastAPI()
-        setup_opentelemetry(app, _enabled_settings())
-
-        from harness.core.observability import _phi_sanitization_hook
-
-        assert captured.get("server_request_hook") is _phi_sanitization_hook
-        assert app.state.tracer_provider is not None
-
-    def test_setup_does_not_raise_when_tracer_provider_build_fails(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """(d) mirrors the same guarantee at the FastAPI wiring layer."""
-
-        def _boom(*_args: Any, **_kwargs: Any) -> Any:
-            raise RuntimeError("collector unreachable")
-
-        monkeypatch.setattr("harness.core.observability.OTLPSpanExporter", _boom)
-
-        app = FastAPI()
-        setup_opentelemetry(app, _enabled_settings())  # must not raise
+        app = create_app(settings_override=settings)
 
         assert app.state.tracer_provider is None
 
@@ -204,23 +256,17 @@ class TestDeploymentEnvironmentIsNotHardcoded:
     """
 
     def test_defaults_to_development_never_production(self, monkeypatch) -> None:
-        from harness.core.config import Settings
-
         monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
         monkeypatch.delenv("NODE_ENV", raising=False)
 
         assert Settings().otel_deployment_environment == "development"
 
     def test_reads_deployment_environment(self, monkeypatch) -> None:
-        from harness.core.config import Settings
-
         monkeypatch.setenv("DEPLOYMENT_ENVIRONMENT", "staging")
 
         assert Settings().otel_deployment_environment == "staging"
 
     def test_falls_back_to_node_env(self, monkeypatch) -> None:
-        from harness.core.config import Settings
-
         monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
         monkeypatch.setenv("NODE_ENV", "test")
 
