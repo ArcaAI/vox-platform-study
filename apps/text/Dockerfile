@@ -50,6 +50,11 @@ COPY packages/py-otel ./packages/py-otel
 # sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-async-contract". Zero runtime deps.
 COPY packages/py-async-contract ./packages/py-async-contract
+# Shared logging & tracing runtime (`hope-obs`, TASK-987). Same workspace
+# path-dependency rule again: text declares it in [tool.uv.sources], so `uv
+# sync` needs it on disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-obs".
+COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package text --no-dev --no-install-project --no-editable
 
