@@ -192,6 +192,41 @@ class _SessionRuntime:
 
 
 @dataclass
+class _EngineBinding:
+    """One engine's ASR callable plus the worker state that engine implies.
+
+    TASK-985 M-34 — an engine switch used to assign `worker._asr_pipeline` and
+    `worker._active_pipeline_id` and stop there, so a session that failed over
+    ran the FALLBACK decoder against the PRIMARY's initial prompt, language pin,
+    decode window, lexicon, punctuation config and gloss. The prompt case is the
+    sharpest: `_load_asr_pipeline` composes a bilingual priming prompt for a
+    whisper.cpp code-switch pair, and handing that to a CT2 model which wants a
+    pinned language is the M-32-shaped trap.
+
+    Front-end GEOMETRY (`partial_window_s`, `max_utterance_sec`) is carried here
+    but applied at the next utterance boundary, never mid-utterance: those are
+    preprocessor properties, and changing the tail length while an utterance is
+    open corrupts the LocalAgreement window the commit policy is comparing
+    against.
+
+    Deliberately NOT carried: `_previous_text` / `_last_final_tail`. Those are
+    clinical continuity, not engine state — the previous engine's words are the
+    right prior for the next utterance, whichever engine decodes it. Do not
+    "fix" that by resetting them here.
+    """
+
+    asr_callable: StreamingAsrCallable
+    pipeline_config: Any
+    initial_prompt: str | None
+    postprocessing_config: Any = None
+    max_decode_window_sec: float | None = None
+    language: str | None = None
+    gloss_callable: Any = None
+    partial_window_s: float | None = None
+    max_utterance_sec: float | None = None
+
+
+@dataclass
 class _StashedTeardown:
     """A teardown summary waiting for the gateway's DELETE (TASK-985 M-23).
 
@@ -206,6 +241,13 @@ class _StashedTeardown:
     summary: dict[str, Any]
     expires_at: float
     pushed_back: bool = False
+
+
+def _positive_float(value: Any) -> float | None:
+    """A real, positive number, or ``None``. ``bool`` is excluded (it is an int)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value > 0 else None
 
 
 def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
@@ -421,6 +463,9 @@ class SessionManager:
         # TASK-985 M-24 — consecutive empty decodes of buffers that carried
         # speech, per session. See ``_note_decode_outcome``.
         self._empty_decode_streaks: dict[str, int] = {}
+        # TASK-985 M-34 — front-end geometry a switch asked for, waiting for the
+        # next utterance boundary. See ``_adopt_pending_front_end_geometry``.
+        self._pending_front_end_geometry: dict[str, _EngineBinding] = {}
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -1544,14 +1589,37 @@ class SessionManager:
         Wires the three injected primitives against this manager: lazily build
         the fallback ASR callable, swap the reference the inference worker reads,
         and publish the ``provider_switched`` status result.
+
+        TASK-985 — two premises a reader of this code is likely to carry in, and
+        both are wrong today:
+
+        * **"The chain has two entries."** The resolver takes ``chain[0]`` only
+          (``build-resolved-asr-spec.ts``), the wire carries a single
+          ``spec: AsrSpecCore | null``, and ``fallback_runtime_key`` is a
+          scalar. The agent's SECOND declared fallback (the CT2 turbo) is dead
+          config: dropped with no diagnostic, and unreachable however this
+          controller behaves. Carrying the full ordered chain is L-CONTRACT's
+          change, not this file's.
+
+        * **"So the fallback is a different engine."** It is not. The one
+          surviving entry is the q8_0 sibling of the very same fine-tune, which
+          shares every failure mode of the primary — and it would not be reached
+          anyway, because this controller arms on EXCEPTIONS while the failure
+          actually observed is a decoder returning empty output. M-24 (previous
+          commit) is what makes empty output raise; a genuinely heterogeneous
+          fallback is expressible today as ``parameters.fallback.agentSlug``
+          (``fallbackOf()`` ``kind: 'agent'`` gives it its own engine, decode
+          parameters, prompt and windows) — and it needs the state
+          re-derivation below to be SAFE, which is why M-34 lands before any
+          heterogeneous fallback is configured, not after.
         """
 
-        async def _build_fallback() -> StreamingAsrCallable:
+        async def _build_fallback() -> _EngineBinding:
             return await self._build_fallback_asr_callable(
                 session_id, fallback_pipeline_id, tenant_id
             )
 
-        async def _build_primary() -> StreamingAsrCallable:
+        async def _build_primary() -> _EngineBinding:
             # Rebuild the PRIMARY ASR callable so a user-initiated
             # switch BACK to the primary engine is possible. Symmetric to the
             # fallback builder; reuses the session's in-memory BYO overrides.
@@ -1559,18 +1627,87 @@ class SessionManager:
                 session_id, primary_pipeline_id, tenant_id
             )
 
-        def _apply(new_callable: StreamingAsrCallable, pipeline_id: str | None) -> None:
+        def _apply(binding: Any, pipeline_id: str | None) -> None:
+            # `binding` is an `_EngineBinding` from either builder above. The
+            # controller treats it as opaque (it only ever hands back what the
+            # builder returned), which is what lets the swap carry state
+            # without the controller knowing about pipeline specs.
+            #
+            # A BARE callable is still accepted: a caller that substitutes its
+            # own builder (tests do) gets the old callable-only behaviour rather
+            # than a crash. `isinstance`, not `getattr` — a mock answers every
+            # attribute, so a `getattr(..., "asr_callable", binding)` probe would
+            # silently install an auto-created attribute as the ASR pipeline.
+            is_binding = isinstance(binding, _EngineBinding)
             worker = self._inference_workers.get(session_id)
             if worker is not None:
                 # The inference worker reads this reference each utterance; a
                 # plain reassignment is the whole "seamless swap".
-                worker._asr_pipeline = new_callable
+                worker._asr_pipeline = binding.asr_callable if is_binding else binding
                 # The per-utterance provenance stamp moves with the
                 # callable, in this same synchronous body. Do NOT split these
                 # two assignments, add an await between them, or introduce a
                 # second update path: any divergence attributes utterances to
                 # the wrong engine, which is worse than no attribution.
                 worker._active_pipeline_id = pipeline_id
+                # TASK-985 M-34 — and neither may these. The same argument the
+                # provenance stamp makes applies verbatim to the prompt, the
+                # decode window and the lexicon: a HALF-APPLIED switch is worse
+                # than none, because the session then runs one engine's decoder
+                # against another engine's decode parameters. Re-derived from
+                # the target's OWN spec (already resolved, already in memory —
+                # no DB read, no model reload).
+                if is_binding:
+                    worker._initial_prompt = binding.initial_prompt
+                    worker._max_decode_window_sec = binding.max_decode_window_sec
+                    worker._language = binding.language
+                    # The script guard is DERIVED from the pin, so reassigning
+                    # the pin without it would leave the new engine judged
+                    # against the old engine's script expectation.
+                    from stt.pipeline.language_modes import is_latin_script_language
+
+                    worker._expects_latin_script = is_latin_script_language(binding.language)
+                    worker._postprocessing_config = binding.postprocessing_config
+                    worker._punctuation_config = (
+                        binding.postprocessing_config.punctuation
+                        if binding.postprocessing_config is not None
+                        else None
+                    )
+                    # Built once per binding by the worker's own builder, so the
+                    # masking/keying rules cannot drift from construction.
+                    try:
+                        worker._lexicon_corrector = worker._build_lexicon_corrector(
+                            binding.postprocessing_config
+                        )
+                    except Exception as exc:  # noqa: BLE001 — never fail a swap
+                        logger.warning(
+                            "stt.stream.switch_lexicon_rebuild_failed",
+                            session_id=session_id,
+                            error=str(exc),
+                        )
+                    worker._gloss_callable = binding.gloss_callable
+                    # The signature probe re-runs on its own: it is keyed on
+                    # callable identity, which just changed.
+
+            if is_binding:
+                # Front-end geometry is a PREPROCESSOR property and changing it
+                # mid-utterance corrupts the LocalAgreement window, so it is
+                # stashed and adopted at the next utterance boundary.
+                self._pending_front_end_geometry[session_id] = binding
+
+            # TASK-985 N-2 — reset the commit policy and cancel the in-flight
+            # partial, in this same synchronous body. For an AUTO switch this is
+            # already implied (the reset at the last utterance final ran before
+            # the failing decode), but a MANUAL switch arrives on the control
+            # stream MID-utterance, and `LocalAgreementPolicy` would then compute
+            # `stable_chars` as the agreed prefix of one hypothesis from engine A
+            # and one from engine B.
+            self._cancel_partial(session_id)
+            self._reset_commit_policy(session_id)
+            # A new engine starts with a clean empty-decode record (M-24): the
+            # streak is evidence about the engine that just left.
+            self._empty_decode_streaks.pop(session_id, None)
+
             # TASK-874 — the engine-TIME span boundary belongs in this same
             # synchronous body, and for the same reason: this is the instant the
             # live engine changes. Placing it at the earlier `_load_asr_pipeline`
@@ -1690,47 +1827,102 @@ class SessionManager:
         session_id: str,
         fallback_pipeline_id: str | None,
         tenant_id: str | None,
-    ) -> StreamingAsrCallable:
-        """Load the fallback pipeline and build a warm ASR callable.
+    ) -> _EngineBinding:
+        """Load the fallback pipeline and build a warm engine binding.
 
         Resolved LAZILY (only when a switch actually fires) so a configured-but-
         never-used fallback costs nothing. Reuses the session's in-memory BYO
         ``provider_overrides`` so the fallback engine honours the tenant's key.
+
+        TASK-985 M-34 — this returns the whole BINDING, not just the callable.
+        It always loaded the fallback's own ``PipelineSpec`` and resolved its
+        own prompt (``_load_asr_pipeline`` runs ``resolve_mode_for_engine``
+        against the engine that actually loaded) and then discarded everything
+        but the callable, so the switch swapped the decoder and left the
+        primary's prompt, language pin, decode window, lexicon and punctuation
+        config in place. The data was already in hand; only the plumbing was
+        missing. Nothing here re-RESOLVES anything — for a spec-driven session
+        `_load_pipeline_config` reads the in-memory `ResolvedSpecBundle`, so
+        there is no DB read and no second model resolution.
         """
         if not fallback_pipeline_id:
             raise RuntimeError("No fallback pipeline configured for this session")
         fb_config = await self._load_pipeline_config(fallback_pipeline_id, tenant_id=tenant_id)
         overrides = self._provider_overrides.get(session_id)
-        asr_callable, _ = await self._load_asr_pipeline(
+        asr_callable, initial_prompt = await self._load_asr_pipeline(
             fb_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
         if asr_callable is None:
             raise RuntimeError(
                 f"Fallback pipeline '{fallback_pipeline_id}' produced no ASR callable"
             )
-        return asr_callable
+        return await self._binding_from_pipeline_config(
+            session_id, asr_callable, fb_config, initial_prompt
+        )
+
+    async def _binding_from_pipeline_config(
+        self,
+        session_id: str,
+        asr_callable: StreamingAsrCallable,
+        pipeline_config: Any,
+        initial_prompt: str | None,
+    ) -> _EngineBinding:
+        """Package one engine's callable with the worker state it implies.
+
+        TASK-985 M-34. Everything read here is read from the TARGET engine's own
+        spec, in the same places ``_assemble_session_runtime`` reads them at
+        session create — so a switched session is configured the way a session
+        that had STARTED on this engine would be.
+        """
+        inference_cfg = getattr(pipeline_config, "inference", None)
+        postprocessing = getattr(pipeline_config, "postprocessing", None)
+        streaming_cfg = getattr(pipeline_config, "streaming", None)
+        language = getattr(inference_cfg, "language", None)
+        window = getattr(inference_cfg, "max_decode_window_sec", None)
+        return _EngineBinding(
+            asr_callable=asr_callable,
+            pipeline_config=pipeline_config,
+            initial_prompt=initial_prompt,
+            postprocessing_config=postprocessing,
+            # Coerced exactly as `StreamingInferenceWorker.__init__` coerces
+            # them, so a re-derived worker is indistinguishable from one that
+            # had been constructed on this engine.
+            max_decode_window_sec=(
+                float(window)
+                if isinstance(window, (int, float)) and not isinstance(window, bool)
+                else None
+            ),
+            language=(language.strip() if isinstance(language, str) and language.strip() else None),
+            gloss_callable=await self._load_gloss_pipeline(pipeline_config, session_id),
+            partial_window_s=_positive_float(getattr(streaming_cfg, "partial_window_s", None)),
+            max_utterance_sec=_positive_float(getattr(streaming_cfg, "max_utterance_sec", None)),
+        )
 
     async def _build_primary_asr_callable(
         self,
         session_id: str,
         primary_pipeline_id: str,
         tenant_id: str | None,
-    ) -> StreamingAsrCallable:
-        """Load the primary pipeline and build a warm ASR callable.
+    ) -> _EngineBinding:
+        """Load the primary pipeline and build a warm engine binding.
 
         Symmetric to ``_build_fallback_asr_callable`` — used when a user switches
         BACK to the primary engine. Resolved LAZILY (only when a switch-back
         actually fires). Reuses the session's in-memory BYO ``provider_overrides``
-        so the primary engine honours the tenant's key.
+        so the primary engine honours the tenant's key. Symmetric in the M-34
+        sense too: switching back must restore the primary's prompt and geometry,
+        not leave the fallback's behind.
         """
         p_config = await self._load_pipeline_config(primary_pipeline_id, tenant_id=tenant_id)
         overrides = self._provider_overrides.get(session_id)
-        asr_callable, _ = await self._load_asr_pipeline(
+        asr_callable, initial_prompt = await self._load_asr_pipeline(
             p_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
         if asr_callable is None:
             raise RuntimeError(f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable")
-        return asr_callable
+        return await self._binding_from_pipeline_config(
+            session_id, asr_callable, p_config, initial_prompt
+        )
 
     def _seed_voice_profiles(
         self, tracker: Any, session_id: str, model_slug: str | None
@@ -1834,6 +2026,7 @@ class SessionManager:
         self._provider_overrides.pop(session_id, None)
         self._session_voice_profiles.pop(session_id, None)
         self._empty_decode_streaks.pop(session_id, None)
+        self._pending_front_end_geometry.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
@@ -3136,6 +3329,58 @@ class SessionManager:
 
         return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
 
+    def _adopt_pending_front_end_geometry(
+        self, session_id: str, preprocessor: StreamingPreprocessor | None
+    ) -> None:
+        """Apply a switched engine's front-end geometry at an utterance boundary.
+
+        TASK-985 M-34. ``partial_window_s`` and ``max_utterance_sec`` belong to
+        the PREPROCESSOR, and changing the tail length while an utterance is
+        open corrupts the LocalAgreement window the commit policy compares
+        hypotheses against — so the switch stashes them and this adopts them at
+        the next ``is_final``, which is exactly when the policy is reset anyway.
+
+        Applied through a public preprocessor API when one exists (the L-SEG
+        request on this ticket). Until then the switched geometry is logged
+        rather than reached into: the preprocessor's windows are read in several
+        derived forms (`_max_utterance_frames`, the partial cadence), and
+        setting the backing fields from here would set some of them and leave
+        the rest — the same half-applied state this whole change exists to stop.
+        """
+        binding = self._pending_front_end_geometry.pop(session_id, None)
+        if binding is None or preprocessor is None:
+            return
+        if binding.partial_window_s is None and binding.max_utterance_sec is None:
+            return
+        apply_geometry = getattr(preprocessor, "apply_geometry", None)
+        if callable(apply_geometry):
+            try:
+                apply_geometry(
+                    partial_window_s=binding.partial_window_s,
+                    max_utterance_sec=binding.max_utterance_sec,
+                )
+                logger.info(
+                    "stt.stream.switch_geometry_adopted",
+                    session_id=session_id,
+                    partial_window_s=binding.partial_window_s,
+                    max_utterance_sec=binding.max_utterance_sec,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 — geometry must not break audio
+                logger.warning(
+                    "stt.stream.switch_geometry_apply_failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+                return
+        logger.warning(
+            "stt.stream.switch_geometry_unapplied",
+            session_id=session_id,
+            partial_window_s=binding.partial_window_s,
+            max_utterance_sec=binding.max_utterance_sec,
+            reason="preprocessor exposes no apply_geometry()",
+        )
+
     def _decode_carried_speech(self, utterance: AudioUtterance) -> bool:
         """Did the buffer just decoded actually contain speech?
 
@@ -3523,6 +3768,11 @@ class SessionManager:
                         self._cancel_partial(session.session_id)
                         # Next utterance starts a fresh policy
                         self._reset_commit_policy(session.session_id)
+                        # TASK-985 M-34 — an utterance boundary is the only
+                        # safe moment to change the front-end's geometry.
+                        self._adopt_pending_front_end_geometry(
+                            session.session_id, preprocessor
+                        )
                         # Block partials for next utterance until this final publishes
                         gate = self._final_published_gates.get(session.session_id)
                         if gate is not None:
