@@ -37,6 +37,15 @@ export interface ExportUsersParams extends ListParams {
   format: UserExportFormat;
   /** Membership-based tenant scope (in-page tenant filter). */
   tenantId?: string;
+  /**
+   * Comma-separated user ids — the grid selection (same shape as `filters` /
+   * `sort` / `searchFields`, because `ListParams` is scalar-valued and the
+   * gateway query string carries scalars only). OMIT it to export the whole
+   * filtered view; never send an empty string, which would read as "export the
+   * empty set". The gateway treats the set as a NARROWING filter on the
+   * caller's tenant-scoped query, never as a by-id fetch.
+   */
+  ids?: string;
 }
 
 export interface BulkUserActionRequest {

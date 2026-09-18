@@ -417,7 +417,9 @@ export class AdminUserResource extends AdminResource {
   }
 
   /**
-   * Bulk delete users with partial-failure semantics: per-id catch (not a `throw` on the first failure), returning the structured `BulkDeleteUsersResponse` so admin tooling can report exact partial progress and retry only the failed ids idempotently. Why per-id catch (not a Prisma `$transaction`): - `IUserService.deleteById` doesn't accept a transaction client; the `applications` layer would need a new overload to thread one through. That's a cross-package surface change and out of scope for an apps/api hygiene sweep. - Admin UX wants visibility into _which_ id failed; transactional roll-back collapses that into a single error message. If a future requirement demands all-or-nothing semantics, callers can inspect `failed.length > 0` and trigger their own compensating workflow against the `succeeded` set.
+   * Delete many users in one call (partial-failure envelope)
+   *
+   * Deletes every id that resolves inside the caller tenant and reports the rest under `failed` — the call never throws mid-batch, so a partial result is observable and the failed ids are retryable idempotently. Each id runs the same by-id tenant-scope guard as `DELETE /admin/users/:id`, so a cross-tenant id is recorded as failed and is NEVER deleted. CASL-gated by the class-level manage:User.
    *
    * `DELETE /api/v1/admin/users/bulk` — `UserController.bulkDelete`.
    */
@@ -451,7 +453,7 @@ export class AdminUserResource extends AdminResource {
   /**
    * Export users (csv | xlsx | pdf)
    *
-   * Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. Capped at 10000 rows (FLAG). CASL-gated by the class-level manage:User.
+   * Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. Pass `ids` to export an explicit SELECTION instead of the whole view: the id set NARROWS the same tenant-scoped query, so an id outside the caller scope is simply absent from the file (it is never a by-id fetch). Capped at 10000 rows (FLAG). CASL-gated by the class-level manage:User.
    *
    * `GET /api/v1/admin/users/export` — `UserController.exportUsers`.
    *
@@ -462,6 +464,7 @@ export class AdminUserResource extends AdminResource {
       query?: {
         filters?: string;
         format?: 'csv' | 'xlsx' | 'pdf';
+        ids?: string[];
         limit?: number;
         page?: number;
         search?: string;

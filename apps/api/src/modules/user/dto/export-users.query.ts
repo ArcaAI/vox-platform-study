@@ -1,7 +1,24 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 import { PaginatedQuery } from '@arcaai/applications';
 import type { UserExportFormat } from '../user-export.service';
+
+/**
+ * `?ids=a,b` (or a repeated `?ids=a&ids=b`) -> `['a','b']`; an empty selection
+ * is `undefined` ("no id scope"), never `[]` — an empty array would otherwise
+ * read as "export the empty set". Mirrors `parseTagsQuery` in
+ * `prompt-management.controller.ts`, the house shape for a list-valued query
+ * param (the gateway query string carries scalars only).
+ */
+function parseIdsQuery(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const ids = (Array.isArray(raw) ? raw : [raw])
+    .flatMap((value) => String(value).split(','))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return ids.length > 0 ? ids : undefined;
+}
 
 /**
  * Query for `GET /admin/users/export`. Extends the shared `PaginatedQuery` so
@@ -25,4 +42,29 @@ export class ExportUsersQuery extends PaginatedQuery {
   @IsOptional()
   @IsString()
   tenantId?: string;
+
+  /**
+   * Scope the export to an explicit SELECTION of users — the console's
+   * "Export selected (N)" action. NARROWS the tenant-scoped set the export
+   * already reads; it never becomes a by-id fetch, so naming an id can only
+   * ever remove rows from the result, never reach one outside the caller's
+   * scope (see `collectExportRows`).
+   *
+   * `@IsUUID` is not decoration: the id set is composed into an `id[in]:…`
+   * token of the CSV filter grammar, whose separators are `;` `|` `[` `]:`.
+   * Constraining every item to a UUID makes a filter-injection token
+   * unrepresentable at the edge rather than relying on the grammar to be
+   * hostile-input-safe. `ArrayMaxSize` matches the export row cap.
+   */
+  @ApiPropertyOptional({
+    description: 'Export only these user ids (comma-separated, or repeated). Narrows the tenant-scoped set; it never widens it.',
+    type: [String],
+    example: ['0197f1e6-5b8e-7a1c-9c3d-2b6f0a1d4e55'],
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseIdsQuery(value))
+  @IsArray()
+  @ArrayMaxSize(10000)
+  @IsUUID('all', { each: true })
+  ids?: string[];
 }
