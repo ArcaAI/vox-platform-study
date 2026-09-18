@@ -18,9 +18,11 @@
 import type {
   AiModelAsrProfile,
   AiModelAsrProfileDecoding,
+  AiModelAsrProfileDecodingPass,
   AsrSpecAudioFrontEnd,
   AsrSpecCore,
   AsrSpecDecoding,
+  AsrSpecDecodingPass,
   AsrSpecDecodingSource,
   AsrSpecFallback,
   AsrSpecInstruction,
@@ -35,7 +37,17 @@ import type {
   ResolvedAgentModel,
   ResolvedAsrSpec,
 } from '@arcaai/types';
-import { ASR_SPEC_ROLE_TASK_TYPE, RESOLVED_ASR_SPEC_SCHEMA_VERSION, parseAiModelAsrProfile } from '@arcaai/types';
+import {
+  AI_MODEL_ASR_PROFILE_DECODING_FLAGS,
+  AI_MODEL_ASR_PROFILE_PASSES,
+  AI_MODEL_ASR_PROFILE_PASS_FLAG_KEYS,
+  AI_MODEL_ASR_PROFILE_PASS_NUMERIC_KEYS,
+  ASR_SPEC_ROLE_TASK_TYPE,
+  RESOLVED_ASR_SPEC_SCHEMA_VERSION,
+  asrEngineLibrary,
+  isUnsupportedDecodeKnob,
+  parseAiModelAsrProfile,
+} from '@arcaai/types';
 import { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
 /**
@@ -66,7 +78,18 @@ export class AsrSpecBuildError extends Error {
 /** What an ASR row's `_metadata.asr` declared that this builder could not act on. */
 export interface AsrProfileRejection {
   modelSlug: string;
-  /** Dotted paths, from `parseAiModelAsrProfile` — an unknown key, a wrong type or an out-of-range value. */
+  /**
+   * Dotted paths, from `parseAiModelAsrProfile` — an unknown key, a wrong type or an
+   * out-of-range value.
+   *
+   * TASK-985 (M-14 / QW-3) widened this to a SECOND kind of "could not act on": a knob the
+   * row declared correctly, in range, that the engine this row runs **cannot honour at all**
+   * (`decoding.beamSize (unsupported by whisper.cpp)`). The caller's existing WARN line —
+   * "members this runtime ignored … the engine default applies until then" — is literally
+   * true of both, which is why they share one channel rather than growing a second callback
+   * nothing is wired to. The value is still CARRIED: `decoding.sources[key]` is stamped
+   * `unsupported:<library>` so a dumped session spec says so too.
+   */
   rejected: string[];
 }
 
@@ -264,7 +287,11 @@ function audioFrontEnd(parameters: Rec): AsrSpecAudioFrontEnd {
  * `hotwords` / `initialPrompt` are resolved beside them with the same rule.
  *
  * `beamSize` and `temperature` predate the profile and stay REQUIRED-but-nullable on the
- * wire; the six after them are omit-when-absent.
+ * wire; everything after them is omit-when-absent.
+ *
+ * TASK-985 extends the list with `entropyThreshold`, `maxTokens` and `audioCtx` (QW-8/QW-9).
+ * The BOOLEAN knobs fold identically and live in `AI_MODEL_ASR_PROFILE_DECODING_FLAGS`, which
+ * the row parser reads too — one list, so a knob cannot be known to one half and not the other.
  */
 const OPTIONAL_DECODING_KNOBS = [
   'noSpeechThreshold',
@@ -272,9 +299,53 @@ const OPTIONAL_DECODING_KNOBS = [
   'logprobThreshold',
   'noRepeatNgramSize',
   'prevTextContextWords',
+  // TASK-985 (QW-9) — `entropy_thold`, whisper.cpp's own degenerate-decode gate. A SEPARATE
+  // knob from `compressionRatioThreshold` above and never an alias of it: same default (2.4),
+  // opposite direction, different scale.
+  'entropyThreshold',
+  // TASK-985 (QW-8) — the whisper.cpp decode extras, at the FLAT (both-passes) level.
+  'maxTokens',
+  'audioCtx',
 ] as const;
 
 type Sources = Record<string, AsrSpecDecodingSource>;
+
+/**
+ * TASK-985 (QW-8) — ONE decode pass (`partial` / `final`), folded agent → row → absent.
+ *
+ * Returns `undefined` when neither tier narrowed anything, so the caller omits the key: an
+ * empty block and an absent one are one state and the wire carries one encoding of it. Every
+ * member stamps `sources` under its DOTTED path, so one map explains both levels.
+ */
+function decodingPass(
+  pass: (typeof AI_MODEL_ASR_PROFILE_PASSES)[number],
+  agentBlock: Rec,
+  profileBlock: AiModelAsrProfileDecodingPass | undefined,
+  sources: Sources,
+): AsrSpecDecodingPass | undefined {
+  const out: Rec = {};
+  for (const key of AI_MODEL_ASR_PROFILE_PASS_NUMERIC_KEYS) {
+    const agentValue = num(agentBlock[key]);
+    if (agentValue !== null) {
+      out[key] = agentValue;
+      sources[`${pass}.${key}`] = 'agent';
+      continue;
+    }
+    const modelValue = profileBlock?.[key];
+    if (typeof modelValue === 'number') {
+      out[key] = modelValue;
+      sources[`${pass}.${key}`] = 'model';
+    }
+  }
+  for (const key of AI_MODEL_ASR_PROFILE_PASS_FLAG_KEYS) {
+    const agentValue = typeof agentBlock[key] === 'boolean' ? (agentBlock[key] as boolean) : undefined;
+    const value = agentValue ?? profileBlock?.[key];
+    if (value === undefined) continue;
+    out[key] = value;
+    sources[`${pass}.${key}`] = agentValue !== undefined ? 'agent' : 'model';
+  }
+  return Object.keys(out).length > 0 ? (out as AsrSpecDecodingPass) : undefined;
+}
 
 function decoding(parameters: Rec, profile: AiModelAsrProfile, sources: Sources): AsrSpecDecoding {
   const d = rec(parameters.decoding);
@@ -315,23 +386,71 @@ function decoding(parameters: Rec, profile: AiModelAsrProfile, sources: Sources)
     const value = pick(key);
     if (value !== null) block[key] = value;
   }
-  const agentConditionOnPrevTokens = typeof d.conditionOnPrevTokens === 'boolean' ? d.conditionOnPrevTokens : undefined;
-  const conditionOnPrevTokens = agentConditionOnPrevTokens ?? p.conditionOnPrevTokens;
-  if (conditionOnPrevTokens !== undefined) {
-    sources.conditionOnPrevTokens = agentConditionOnPrevTokens !== undefined ? 'agent' : 'model';
-    block.conditionOnPrevTokens = conditionOnPrevTokens;
+  // The boolean knobs, folded on the same two tiers as the numeric ones. The list is the
+  // parser's own (`AI_MODEL_ASR_PROFILE_DECODING_FLAGS`), so a knob the row can store is
+  // always a knob this resolver folds. `conditionOnPrevTokens` predates TASK-985; the three
+  // after it are QW-8's whisper.cpp extras.
+  for (const key of AI_MODEL_ASR_PROFILE_DECODING_FLAGS) {
+    const agentValue = typeof d[key] === 'boolean' ? (d[key] as boolean) : undefined;
+    const value = agentValue ?? p[key];
+    if (value === undefined) continue;
+    sources[key] = agentValue !== undefined ? 'agent' : 'model';
+    block[key] = value;
   }
-  // TASK-946 (OD-1) — the hotword-prompt switch, folded on the same two tiers and with
-  // the same omit-when-absent rule. Absence is the whole point: it is what leaves the
-  // engine's own default (OFF for whisper.cpp) standing, so a row that says nothing gets
-  // the safe answer rather than the one that collapsed the ml-en fine-tune's script.
-  const agentHotwordsInPrompt = typeof d.hotwordsInPrompt === 'boolean' ? d.hotwordsInPrompt : undefined;
-  const hotwordsInPrompt = agentHotwordsInPrompt ?? p.hotwordsInPrompt;
-  if (hotwordsInPrompt !== undefined) {
-    sources.hotwordsInPrompt = agentHotwordsInPrompt !== undefined ? 'agent' : 'model';
-    block.hotwordsInPrompt = hotwordsInPrompt;
+  // TASK-985 (QW-8) — the two per-pass narrowings. Precedence INSIDE a pass is the same
+  // agent → row → absent; precedence BETWEEN levels (pass over flat) is applied by the
+  // runtime, which is the only half that knows which pass it is decoding.
+  for (const pass of AI_MODEL_ASR_PROFILE_PASSES) {
+    const passBlock = decodingPass(pass, rec(d[pass]), p[pass], sources);
+    if (passBlock) block[pass] = passBlock;
+  }
+  // TASK-946 (OD-1) / TASK-985 (owner decision OD-E) — the hotword-prompt switch is ONE
+  // TIER: the model row and nothing else.
+  //
+  // The agent read that used to sit here was dead by construction — `SPEECH_TO_TEXT`'s
+  // `parameters.decoding` schema is `additionalProperties: false` and declares no such key,
+  // so a draft carrying it fails publish validation and the branch could never fire. What it
+  // DID do was document a precedence the schema forbids, and a unit test asserted it. The
+  // exception to TASK-934 OD-4(a) is enforced by this ABSENCE rather than by a comment,
+  // because a rule enforced by a removed code path cannot drift: `sources.hotwordsInPrompt`
+  // can now only ever be `'model'`.
+  //
+  // Why one tier: "may this model's prompt carry a vocabulary list" is a fact about the
+  // WEIGHTS (measured 2 % Latin on the ml-en fine-tune with the terms appended, 100 %
+  // without). An agent may swap `modelId` underneath a switch it set, silently re-enabling
+  // that collapse on weights nobody measured with it. Absence still means the engine default,
+  // which for whisper.cpp is OFF.
+  if (p.hotwordsInPrompt !== undefined) {
+    sources.hotwordsInPrompt = 'model';
+    block.hotwordsInPrompt = p.hotwordsInPrompt;
   }
   return block;
+}
+
+/**
+ * TASK-985 (M-14 / QW-3) — re-stamp every knob this chain's ENGINE cannot honour.
+ *
+ * Runs after the folds above, over the finished `sources` map, so it sees the flat knobs and
+ * the per-pass ones in one place and cannot disagree with itself. It rewrites PROVENANCE only:
+ * the value still travels verbatim, because it is what the author asked for and dropping it
+ * would destroy that. What changes is that `sources[key]` stops naming a tier for a number no
+ * code will ever read — the defect that let `sources.beamSize: 'agent'` describe a beam width
+ * inert under a greedy whisper.cpp context, and made every A/B on it measure noise.
+ *
+ * Returns one reportable path per stamped knob, NAMING THE TIER that set it, so the caller's
+ * one warning line stays actionable for both: a row-tier value is fixed on the model row, an
+ * agent-tier value on the agent. The tier has to ride in the path because this module is pure —
+ * it owns no logger and the caller owns no precedence.
+ */
+function stampUnsupportedKnobs(sources: Sources, library: string): string[] {
+  const reported: string[] = [];
+  for (const key of Object.keys(sources)) {
+    if (!isUnsupportedDecodeKnob(library, key)) continue;
+    const where = sources[key] === 'agent' ? 'set by the AGENT, fix it there' : 'set by this model row';
+    reported.push(`decoding.${key} (${where}; ${library} never reads it)`);
+    sources[key] = `unsupported:${library}`;
+  }
+  return reported;
 }
 
 /**
@@ -408,10 +527,29 @@ function streaming(parameters: Rec): AsrSpecStreaming {
  *
  * The agent's hotword list wins WHOLE, never merged — a curated set is an author's decision,
  * and a silent union would put terms in the decode that neither tier asked for.
+ *
+ * TASK-985 (ST-3) — `initialPrompt` OVERRIDES, it never concatenates. One tier supplies the
+ * prompt and `sources.initialPrompt` names it. That is what the field has always CLAIMED;
+ * `apps/stt` additionally glued a module-level priming template in front of whatever arrived
+ * here, so the provenance stamp named one of two prompts actually served (N-2). The template
+ * belongs on the ROW (`_metadata.asr.initialPrompt`, resolved below), which is both the honest
+ * home for a per-fine-tune property and the instrument that makes the prompt A/B a
+ * configuration change instead of a code change.
+ *
+ * TASK-985 (M-57) — an EXPLICITLY EMPTY agent hotword list is a VETO, not silence. The old
+ * first line destroyed the distinction before the precedence branch could see it: `undefined`
+ * and `[]` both became `[]`, so a tenant that deliberately cleared its vocabulary silently got
+ * the model row's 20 terms back AND the lexicon correction stage they imply (`apps/stt`
+ * derives the stage's default from `bool(instruction.hotwords)`). Read the raw value once and
+ * branch on `Array.isArray` BEFORE filtering, so "said nothing" and "said none" stay two
+ * states all the way to the runtime.
  */
 function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: Sources): AsrSpecInstruction {
   const i = rec(agent.compiledConfig.instruction);
-  const agentHotwords = Array.isArray(i.hotwords) ? i.hotwords.filter((w): w is string => typeof w === 'string' && w.length > 0) : [];
+  // `undefined` = the agent expressed no opinion; an ARRAY = it decided, even when empty.
+  const declaredHotwords = Array.isArray(i.hotwords)
+    ? i.hotwords.filter((w): w is string => typeof w === 'string' && w.length > 0)
+    : undefined;
   const agentPrompt = str(i.initialPrompt);
   const profileHotwords = profile.decoding?.hotwords;
 
@@ -422,9 +560,11 @@ function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: 
     sources.initialPrompt = 'model';
   }
 
-  let hotwords = agentHotwords;
-  if (agentHotwords.length > 0) sources.hotwords = 'agent';
-  else if (profileHotwords !== undefined && profileHotwords.length > 0) {
+  let hotwords: string[] = [];
+  if (declaredHotwords !== undefined) {
+    hotwords = declaredHotwords;
+    sources.hotwords = 'agent';
+  } else if (profileHotwords !== undefined && profileHotwords.length > 0) {
     hotwords = [...profileHotwords];
     sources.hotwords = 'model';
   }
@@ -546,6 +686,11 @@ export function buildAsrSpecCore(
   assertDiarizationRunnable(agent, front, models.embedding);
   const decodingBlock = decoding(parameters, profile, sources);
   const instructionBlock = instruction(agent, profile, sources);
+  // TASK-985 (M-14) — provenance last, and per CHAIN: each chain runs its own engine, so the
+  // same knob can be honoured on the fallback and inert on the primary. Row-sourced
+  // unsupported knobs are reported through the profile channel; the value itself is untouched.
+  const unsupported = stampUnsupportedKnobs(sources, asrEngineLibrary(asrModel));
+  if (unsupported.length > 0) onProfileRejection?.({ modelSlug: asrModel.slug, rejected: unsupported });
   if (Object.keys(sources).length > 0) decodingBlock.sources = sources;
   return {
     runtimeKey: override?.runtimeKey ?? agent.agentVersionId,
@@ -580,11 +725,30 @@ export function buildAsrSpecCore(
 export function asrChainModels(
   agent: ResolvedAgent,
   fallbackAgent?: ResolvedAgent | null,
-): { primary: ResolvedAgentModel | undefined; fallback: ResolvedAgentModel | undefined } {
+): {
+  primary: ResolvedAgentModel | undefined;
+  /** @deprecated TASK-985 — `fallbackChain[0]`, kept so existing callers keep compiling. */
+  fallback: ResolvedAgentModel | undefined;
+  /**
+   * TASK-985 (M-49) — the WHOLE ordered fallback chain, lowest `priority` first.
+   *
+   * It used to stop at `[0]`, silently: the seeded agent declares two fallbacks and only the
+   * first — the q8_0 quantisation of the f16 primary — ever reached the wire. Same weights,
+   * same failure modes, so the one live fallback shared every cause that could take the
+   * primary down, and the genuinely different engine behind it was unreachable config.
+   *
+   * A named fallback AGENT supersedes the model chain rather than extending it (it is the
+   * explicit choice), so this is exactly one entry in that case.
+   */
+  fallbackChain: ResolvedAgentModel[];
+} {
   const primary = agent.models.find((m) => m.role === 'primary');
-  if (fallbackAgent) return { primary, fallback: fallbackAgent.models.find((m) => m.role === 'primary') };
+  if (fallbackAgent) {
+    const agentPrimary = fallbackAgent.models.find((m) => m.role === 'primary');
+    return { primary, fallback: agentPrimary, fallbackChain: agentPrimary ? [agentPrimary] : [] };
+  }
   const chain = agent.models.filter((m) => m.role === 'fallback').sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-  return { primary, fallback: chain[0] };
+  return { primary, fallback: chain[0], fallbackChain: chain };
 }
 
 function fallbackOf(
@@ -599,14 +763,34 @@ function fallbackOf(
     switchAfterConsecutiveFailures: num(f.switchAfterConsecutiveFailures) ?? AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
   };
   if (fallbackAgent) {
-    return { kind: 'agent', ...governance, spec: buildAsrSpecCore(fallbackAgent, undefined, onProfileRejection, connection) };
+    const core = buildAsrSpecCore(fallbackAgent, undefined, onProfileRejection, connection);
+    // TASK-985 (M-49) — a named fallback AGENT is the explicit choice and SUPERSEDES the
+    // agent's own `AgentModelFallback` rows; it does not extend them. That precedence is not
+    // new, but until now nothing said so out loud, so report the rows it displaces rather
+    // than discarding them in silence — the same honesty the chain itself buys.
+    const displaced = asrChainModels(agent).fallbackChain;
+    if (displaced.length > 0) {
+      onProfileRejection?.({
+        modelSlug: agent.slug,
+        rejected: displaced.map((m) => `fallback.models[${m.slug}] (superseded by parameters.fallback.agentSlug)`),
+      });
+    }
+    return { kind: 'agent', ...governance, chain: [core], spec: core };
   }
-  const first = asrChainModels(agent).fallback;
-  if (first) {
-    const runtimeKey = `${agent.agentVersionId}:fallback:${first.slug}`;
-    return { kind: 'model', ...governance, spec: buildAsrSpecCore(agent, { asr: first, runtimeKey }, onProfileRejection, connection) };
-  }
-  return { kind: 'none', ...governance, spec: null };
+  const chain = asrChainModels(agent).fallbackChain.map((model, index) =>
+    buildAsrSpecCore(
+      agent,
+      { asr: model, runtimeKey: `${agent.agentVersionId}:fallback:${model.slug}` },
+      onProfileRejection,
+      // TASK-985 — the caller resolves ONE credential per position, so only the first entry
+      // can claim it. Binding entry 2+ to entry 1's connection would spend the account that
+      // just failed on a different vendor's engine; leaving them unbound keeps the pre-958
+      // provider-id behaviour, which is what an unnamed connection has always meant.
+      index === 0 ? connection : null,
+    ),
+  );
+  if (chain.length > 0) return { kind: 'model', ...governance, chain, spec: chain[0] };
+  return { kind: 'none', ...governance, chain: [], spec: null };
 }
 
 export function buildResolvedAsrSpec(input: BuildResolvedAsrSpecInput): ResolvedAsrSpec {

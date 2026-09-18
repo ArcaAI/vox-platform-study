@@ -751,6 +751,16 @@ class InferenceConfig:
     compression_ratio_threshold: float | None = 2.4
     logprob_threshold: float | None = -1.0
     no_speech_threshold: float | None = 0.6
+    # TASK-985 (QW-9) — `ResolvedAsrSpec.decoding.entropyThreshold`, whisper.cpp's
+    # `entropy_thold`: the token-distribution entropy BELOW which a decode is degenerate.
+    #
+    # A DISTINCT field from `compression_ratio_threshold` above and never an alias of it.
+    # They share the default 2.4 and pywhispercpp's own schema comment calls one "similar
+    # to" the other, but they measure different quantities on different scales and compare
+    # in OPPOSITE directions — OpenAI's gzip gate rejects ABOVE the threshold, whisper.cpp's
+    # entropy gate rejects BELOW it — so mapping one onto the other would silently mean the
+    # opposite thing. `None` = nobody declared one, so the engine's own default stands.
+    entropy_threshold: float | None = None
     no_repeat_ngram_size: int = 3
     language: str | None = None  # None = auto-detect
     code_switching: bool = False  # Enable multilingual code-switching
@@ -790,6 +800,23 @@ class InferenceConfig:
     # ENGINE DEFAULT is OFF and a model row that tolerates the append opts in. The terms
     # themselves are unaffected — `hotwords` above still feeds the lexicon stage.
     hotwords_in_prompt: bool = False
+    # TASK-985 (QW-8) — `ResolvedAsrSpec.decoding.{…,partial,final}`, already in the
+    # ENGINE's own kwarg spelling (`suppress_nst`, `logprob_thold`, …) so the adapter merges
+    # them into its call and never maps a name.
+    #
+    # `decode_base` applies to BOTH passes; `decode_partial` / `decode_final` NARROW it.
+    # Precedence at decode time is: the library's neutral value → these dataclass fields →
+    # `decode_base` → `decode_<pass>`. The adapter applies it because it is the only half
+    # that knows which pass it is decoding — a partial re-decodes an OPEN utterance about
+    # three times a second and wants a cheap, bounded, single-segment decode, while a final
+    # decodes it once, for the record, and wants the full one.
+    #
+    # Empty = nothing was narrowed, which leaves the library's own defaults standing. They
+    # are per-call kwargs on a params object pywhispercpp REUSES between calls, so an
+    # adapter must pass every key it cares about explicitly rather than omitting it.
+    decode_base: dict[str, float | int | bool] = field(default_factory=dict)
+    decode_partial: dict[str, float | int | bool] = field(default_factory=dict)
+    decode_final: dict[str, float | int | bool] = field(default_factory=dict)
     prev_text_context_words: int = 50
     enable_prev_text_context: bool = True
     condition_on_prev_tokens: bool = False
@@ -894,18 +921,27 @@ class StreamingConfig:
     constructor default stands: the spec carries what the agent SAID and never
     restates an engine default.
 
-    TASK-880 — ``partial_window_s`` follows the same rule, but its source is the ASR
-    MODEL row (``metadata.partialWindowSec``) rather than the agent: the right tail
-    length is a property of the engine's force-emit window, not of a clinic's policy.
+    TASK-880 — ``partial_window_s`` follows the same rule. It ARRIVES on the ASR model
+    row (``metadata.partialWindowSec``) because the right tail length is mostly a property
+    of the engine, but since TASK-934 (OD-4) the value there is the EFFECTIVE one: an agent
+    that sets ``parameters.streaming.partialWindowSec`` overrides the row and the gateway
+    folds it into the same field, so this runtime reads one path and
+    ``decoding.sources.partialWindowSec`` says which tier won.
     """
 
     commit_policy: str = "none"
     partial_interval_s: float | None = None
     max_utterance_sec: int | None = None
-    # TASK-880 — `ResolvedAsrSpec.models.asr.metadata.partialWindowSec`. The tail of
-    # the live utterance decoded for PARTIALs, which should match the ASR row's
-    # force-emit window so the last partial and the final decode the SAME audio.
-    # `None` = the row declared none, so `StreamingPreprocessor`'s own default stands.
+    # TASK-880 — `ResolvedAsrSpec.models.asr.metadata.partialWindowSec`: the tail of the
+    # live utterance decoded for PARTIALs.
+    #
+    # TASK-985 (M-58) — this comment used to say the value "should match the ASR row's
+    # force-emit window so the last partial and the final decode the SAME audio". That rule
+    # was RETIRED by TASK-934 lane S, which decoupled the two into independent knobs after
+    # measuring that a short partial window is where the damage was (6 s partials scored 31 %
+    # garbage output against 0 % at 15 s) while the FINAL decode wants this fine-tune's
+    # measured 7 s accuracy window. They are free to differ and the seeded rows do differ.
+    # `None` = neither tier declared one, so `StreamingPreprocessor`'s own default stands.
     partial_window_s: float | None = None
 
 

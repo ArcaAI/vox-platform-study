@@ -134,11 +134,30 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // which stays 7s. `partialWindowSec` and `maxDecodeWindowSec` are no longer required to
     // match ("so the last partial and the final decode the SAME audio" — the old
     // `session_manager.py` comment): TASK-934 lane S decoupled them into two independent
-    // knobs. The final decode stays at this fine-tune's measured 7s accuracy window; the
-    // partial window widens to 15s because a SHORT partial window is where the damage
-    // actually was — 6s partials measured 31% garbage on English streaming output, 15s
-    // measured 0%. Live proof on the merged build: discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    // knobs. The final decode stays at this fine-tune's measured 7s accuracy window.
+    //
+    // TASK-985 (M-58) — the next sentence used to read "the partial window widens to 15s",
+    // arguing for a value this row has never carried: `partialWindowSec` below is 6. The
+    // MEASUREMENT behind that sentence stands (6s partials scored 31% garbage on English
+    // streaming output against 0% at 15s; discharge-clip WER 0.274 -> 0.081 on the merged
+    // build) — what is stale is the claim that this row acts on it. It does not, and the
+    // seeded agent narrows the tail further still (`streaming.partialWindowSec: 3`, the
+    // ALaaS Lane F2 latency arm), so the SERVED partial window is 3s, not 6 and not 15.
+    // Treat 6 as an unreverted experiment: widening it is a live A/B arm, not a fix.
+    // TASK-985 (ST-3) — `initialPrompt` carries the BILINGUAL PRIMING PROMPT this fine-tune is
+    // served with. It was a module constant in `apps/stt` (`language_modes._CODE_SWITCH_PROMPT_TEMPLATE`,
+    // rendered per language pair and gated by a hard-coded `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED`
+    // switch), which made it unreachable from configuration: a prompt A/B needed a code change and
+    // a deploy, so the owner decision it exists to inform could not be measured. A priming prompt
+    // is a per-FINE-TUNE property, so it belongs beside the weights.
+    //
+    // Two facts about how it resolves. The agent's own `instruction.initialPrompt` OVERRIDES this
+    // whole — the two are never concatenated, which is what makes `decoding.sources.initialPrompt`
+    // able to name one tier truthfully — so the seeded agent's prompt is what serves today and
+    // clearing that field is how an operator hands the decision back to this row. And the decoder
+    // window is 224 TOKENS (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin
+    // field is a sanity check only, and in Malayalam it bounds nothing.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, initialPrompt: 'You are a professional transcriber, fluent in Malayalam and English. You are listening to a recording in which a person is potentially speaking both Malayalam and English, and no other languages. They may be speaking only one of these languages. They may have a strong accent. You are to transcribe utterances of each language accordingly.', decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {
@@ -177,7 +196,20 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // on English, 15s measured 0%, and the last partial no longer needs to decode the same
     // span as the final now that the two are independent. Live proof on the merged build:
     // discharge-clip WER 0.274 -> 0.081.
-    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
+    // TASK-985 (ST-3) — `initialPrompt` carries the BILINGUAL PRIMING PROMPT this fine-tune is
+    // served with. It was a module constant in `apps/stt` (`language_modes._CODE_SWITCH_PROMPT_TEMPLATE`,
+    // rendered per language pair and gated by a hard-coded `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED`
+    // switch), which made it unreachable from configuration: a prompt A/B needed a code change and
+    // a deploy, so the owner decision it exists to inform could not be measured. A priming prompt
+    // is a per-FINE-TUNE property, so it belongs beside the weights.
+    //
+    // Two facts about how it resolves. The agent's own `instruction.initialPrompt` OVERRIDES this
+    // whole — the two are never concatenated, which is what makes `decoding.sources.initialPrompt`
+    // able to name one tier truthfully — so the seeded agent's prompt is what serves today and
+    // clearing that field is how an operator hands the decision back to this row. And the decoder
+    // window is 224 TOKENS (`n_text_ctx / 2`), not 1000 characters: the character cap on the admin
+    // field is a sanity check only, and in Malayalam it bounds nothing.
+    metaData: { asr: { maxDecodeWindowSec: 7, partialWindowSec: 6, initialPrompt: 'You are a professional transcriber, fluent in Malayalam and English. You are listening to a recording in which a person is potentially speaking both Malayalam and English, and no other languages. They may be speaking only one of these languages. They may have a strong accent. You are to transcribe utterances of each language accordingly.', decoding: { hotwords: ["ceftriaxone", "amoxicillin", "piperacillin-tazobactam", "vancomycin", "ceftazidime", "azithromycin", "metronidazole", "troponin", "creatinine", "metformin", "lisinopril", "atorvastatin", "bisoprolol", "apixaban", "furosemide", "levothyroxine", "salbutamol", "prednisolone", "amlodipine", "omeprazole"] } } },
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp', 'private-repo'],
   },
   {

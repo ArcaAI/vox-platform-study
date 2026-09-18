@@ -35,6 +35,23 @@ describe('buildResolvedAsrSpec — the committed contract fixture', () => {
   });
 });
 
+/**
+ * `platformDefault` with THREE ordered fallback rows, declared out of priority order so the
+ * sort is actually exercised. TASK-985 (M-49): before the chain travelled whole, only the
+ * lowest-priority entry existed on the wire.
+ */
+function withThreeChainEntries(): ResolvedAgent {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+  return {
+    ...base,
+    models: [
+      ...base.models,
+      { ...base.models[1], role: 'fallback', priority: 5, slug: 'later-fallback' },
+      { ...base.models[1], role: 'fallback', priority: -1, slug: 'first-fallback' },
+    ],
+  };
+}
+
 describe('buildResolvedAsrSpec — rules the fixture cannot show', () => {
   const base = (fixture.platformDefault as FixtureCase).input.agent;
 
@@ -53,19 +70,15 @@ describe('buildResolvedAsrSpec — rules the fixture cannot show', () => {
   it('with no fallback rows and no fallback agent the spec declares kind none and no target', () => {
     const agent: ResolvedAgent = { ...base, models: base.models.filter((m) => m.role !== 'fallback') };
     const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
-    expect(spec.fallback).toEqual({ kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, spec: null });
+    expect(spec.fallback).toEqual({ kind: 'none', autoSwitch: true, switchAfterConsecutiveFailures: 2, chain: [], spec: null });
   });
 
-  it('prefers the lowest-priority enabled fallback row', () => {
-    const agent: ResolvedAgent = {
-      ...base,
-      models: [
-        ...base.models,
-        { ...base.models[1], role: 'fallback', priority: 5, slug: 'later-fallback' },
-        { ...base.models[1], role: 'fallback', priority: -1, slug: 'first-fallback' },
-      ],
-    };
-    expect(buildResolvedAsrSpec({ agent, fallbackAgent: null }).fallback.spec?.models.asr.slug).toBe('first-fallback');
+  it('orders the fallback rows by priority', () => {
+    expect(buildResolvedAsrSpec({ agent: withThreeChainEntries(), fallbackAgent: null }).fallback.chain.map((c) => c.models.asr.slug)).toEqual([
+      'first-fallback',
+      'faster-whisper-large-v3-turbo-int8',
+      'later-fallback',
+    ]);
   });
 
   it('a fallback agent wins over the model chain (parameters.fallback.agentSlug is the explicit choice)', () => {
@@ -73,6 +86,78 @@ describe('buildResolvedAsrSpec — rules the fixture cannot show', () => {
     const spec = buildResolvedAsrSpec({ agent: base, fallbackAgent });
     expect(spec.fallback.kind).toBe('agent');
     expect(spec.fallback.spec?.runtimeKey).toBe(fallbackAgent.agentVersionId);
+  });
+});
+
+/**
+ * TASK-985 (M-49) — the fallback chain is ORDERED and travels WHOLE.
+ *
+ * It used to stop at `chain[0]`, silently. The seeded platform agent declares two fallbacks;
+ * only the first — the q8_0 quantisation of its own f16 primary — ever reached the wire, so
+ * the one live fallback shared every failure mode that could take the primary down and the
+ * genuinely different engine declared behind it was unreachable configuration. `spec` survives
+ * one release as `chain[0]` so the gateway, `apps/stt` and the committed fixture can ship in
+ * any order.
+ */
+describe('buildResolvedAsrSpec — the ordered fallback chain (M-49)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  it('carries EVERY declared fallback, not just the first', () => {
+    const chain = buildResolvedAsrSpec({ agent: withThreeChainEntries(), fallbackAgent: null }).fallback.chain;
+    expect(chain).toHaveLength(3);
+    // This is the whole finding: before the fix, `chain[1]` and `chain[2]` did not exist.
+    expect(chain[1].models.asr.slug).toBe('faster-whisper-large-v3-turbo-int8');
+    expect(chain[2].models.asr.slug).toBe('later-fallback');
+  });
+
+  it('gives every entry its own runtime key, so which engine is serving stays observable', () => {
+    const spec = buildResolvedAsrSpec({ agent: withThreeChainEntries(), fallbackAgent: null });
+    const keys = [spec.runtimeKey, ...spec.fallback.chain.map((c) => c.runtimeKey)];
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('resolves each entry against ITS OWN row profile rather than the primary’s', () => {
+    // The point of putting the decode profile on the row: a fallback engine gets its own
+    // parameters instead of inheriting parameters measured on different weights.
+    const agent: ResolvedAgent = {
+      ...base,
+      models: [
+        ...base.models.map((m) =>
+          m.role === 'primary'
+            ? { ...m, metaData: { asr: { decoding: { noSpeechThreshold: 0.4 } } } as never }
+            : m.role === 'fallback'
+              ? { ...m, metaData: { asr: { decoding: { noSpeechThreshold: 0.7 } } } as never }
+              : m,
+        ),
+        { ...base.models[1], role: 'fallback' as const, priority: 9, slug: 'third', metaData: { asr: { decoding: { noSpeechThreshold: 0.9 } } } as never },
+      ],
+    };
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
+    expect(spec.decoding.noSpeechThreshold).toBe(0.4);
+    expect(spec.fallback.chain.map((c) => c.decoding.noSpeechThreshold)).toEqual([0.7, 0.9]);
+  });
+
+  it('keeps `spec` as chain[0] for one release so both halves can deploy in either order', () => {
+    const spec = buildResolvedAsrSpec({ agent: withThreeChainEntries(), fallbackAgent: null });
+    expect(spec.fallback.spec).toEqual(spec.fallback.chain[0]);
+  });
+
+  it('a named fallback AGENT supersedes the model chain — one entry, and the displaced rows are reported', () => {
+    const fallbackAgent = (fixture.cloudWithAgentFallback as FixtureCase).input.fallbackAgent as ResolvedAgent;
+    const rejections: Array<{ modelSlug: string; rejected: string[] }> = [];
+    const spec = buildResolvedAsrSpec({ agent: base, fallbackAgent, onProfileRejection: (event) => rejections.push(event) });
+    expect(spec.fallback.kind).toBe('agent');
+    expect(spec.fallback.chain).toHaveLength(1);
+    // Not new precedence — newly AUDIBLE precedence. The rows are still displaced; the
+    // resolver just stops discarding them without saying so.
+    expect(rejections.some((r) => r.rejected.some((entry) => entry.includes('superseded by parameters.fallback.agentSlug')))).toBe(true);
+  });
+
+  it('declares an empty chain — never a one-entry chain of null — when there is nothing to switch to', () => {
+    const agent: ResolvedAgent = { ...base, models: base.models.filter((m) => m.role !== 'fallback') };
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent: null });
+    expect(spec.fallback.chain).toEqual([]);
+    expect(spec.fallback.spec).toBeNull();
   });
 });
 
@@ -376,7 +461,15 @@ describe('buildResolvedAsrSpec — AiModelAsrProfile precedence (OD-3)', () => {
       ),
       fallbackAgent: null,
     });
-    expect(spec.decoding.sources).toEqual({ beamSize: 'agent', noSpeechThreshold: 'model', initialPrompt: 'agent', hotwords: 'agent' });
+    // `beamSize` reads `unsupported:whisper.cpp`, NOT `agent`: this base agent's primary is a
+    // whisper.cpp row, whose sampling strategy is frozen greedy at `Model()` construction, so
+    // no code will ever read the 5 the agent set. Naming a tier for it is the M-14 lie.
+    expect(spec.decoding.sources).toEqual({
+      beamSize: 'unsupported:whisper.cpp',
+      noSpeechThreshold: 'model',
+      initialPrompt: 'agent',
+      hotwords: 'agent',
+    });
   });
 
   it('omits the sources map entirely when neither tier decided anything', () => {
@@ -401,20 +494,41 @@ describe('buildResolvedAsrSpec — AiModelAsrProfile precedence (OD-3)', () => {
     expect(spec.decoding.sources).toMatchObject({ hotwordsInPrompt: 'model' });
   });
 
-  it('lets the agent override the row in both directions', () => {
-    const off = buildResolvedAsrSpec({
+  // TASK-985 (owner decision OD-E) — this REPLACES a test that asserted the agent tier wins
+  // in both directions. That precedence was never reachable: `SPEECH_TO_TEXT`'s
+  // `parameters.decoding` schema is `additionalProperties: false` and declares no
+  // `hotwordsInPrompt`, so a draft carrying it fails publish validation. A green test
+  // documenting a rule the schema forbids is exactly the two-tier drift surface OD-E names,
+  // realised in CI — so the agent READ is gone and this pins its absence.
+  it('IGNORES an agent-tier hotwordsInPrompt — one tier, the model row (OD-E)', () => {
+    const spec = buildResolvedAsrSpec({
       agent: withProfile({ decoding: { hotwordsInPrompt: true } }, { decoding: { hotwordsInPrompt: false } }),
       fallbackAgent: null,
     });
-    expect(off.decoding.hotwordsInPrompt).toBe(false);
-    expect(off.decoding.sources).toMatchObject({ hotwordsInPrompt: 'agent' });
+    // The row said true and the (unreachable) agent value said false: the row wins, whole.
+    expect(spec.decoding.hotwordsInPrompt).toBe(true);
+    expect(spec.decoding.sources).toMatchObject({ hotwordsInPrompt: 'model' });
+  });
 
-    const on = buildResolvedAsrSpec({
-      agent: withProfile({ decoding: { hotwordsInPrompt: false } }, { decoding: { hotwordsInPrompt: true } }),
+  it('never stamps hotwordsInPrompt as `agent`, whatever the agent parameters carry', () => {
+    // The mechanical half of the OD-E exception: with no agent read, `'agent'` is not a value
+    // this field can take. A rule enforced by a removed code path cannot drift back.
+    for (const agentValue of [true, false]) {
+      const spec = buildResolvedAsrSpec({
+        agent: withProfile({ decoding: { hotwordsInPrompt: true } }, { decoding: { hotwordsInPrompt: agentValue } }),
+        fallbackAgent: null,
+      });
+      expect(spec.decoding.sources?.hotwordsInPrompt).toBe('model');
+    }
+  });
+
+  it('omits hotwordsInPrompt entirely when the ROW says nothing, even if the agent does', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { hotwords: ['ceftriaxone'] } }, { decoding: { hotwordsInPrompt: true } }),
       fallbackAgent: null,
     });
-    expect(on.decoding.hotwordsInPrompt).toBe(true);
-    expect(on.decoding.sources).toMatchObject({ hotwordsInPrompt: 'agent' });
+    expect(spec.decoding).not.toHaveProperty('hotwordsInPrompt');
+    expect(spec.decoding.sources).not.toHaveProperty('hotwordsInPrompt');
   });
 
   it('omits hotwordsInPrompt — never writes false — when neither tier declared it', () => {
@@ -489,7 +603,14 @@ describe('buildResolvedAsrSpec — AiModelAsrProfile precedence (OD-3)', () => {
       noRepeatNgramSize: 0,
       prevTextContextWords: 0,
     });
-    expect(spec.decoding.sources).toMatchObject({ noSpeechThreshold: 'agent', prevTextContextWords: 'agent', conditionOnPrevTokens: 'agent' });
+    // `conditionOnPrevTokens` is stamped rather than attributed: whisper.cpp's `no_context`
+    // governs its OWN prompt_past between internal windows, while our carry-forward is composed
+    // into `initial_prompt`, so the flag has no path to this decoder whoever set it.
+    expect(spec.decoding.sources).toMatchObject({
+      noSpeechThreshold: 'agent',
+      prevTextContextWords: 'agent',
+      conditionOnPrevTokens: 'unsupported:whisper.cpp',
+    });
   });
 
   it('drops an out-of-range or unknown profile member and reports it, rather than failing the session', () => {
@@ -679,5 +800,235 @@ describe('TASK-935 — postProcessing.lexicon rides the wire, its terms do not (
     const schema = AGENT_PARAMETER_SCHEMAS.SPEECH_TO_TEXT as { properties: Record<string, { properties: Record<string, { properties: Record<string, { minimum: number; maximum: number }> }> }> };
     const declared = schema.properties.postProcessing.properties.lexicon.properties.maxDistance;
     expect([declared.minimum, declared.maximum]).toEqual([0.1, 0.5]);
+  });
+});
+
+/**
+ * TASK-985 (M-57) — an explicitly EMPTY hotword list is a VETO, not silence.
+ *
+ * The resolver used to destroy the distinction on its first line: `undefined` and `[]` both
+ * became `[]` before the precedence branch ran, so a tenant that deliberately cleared its
+ * vocabulary silently got the assigned model row's 20 clinical terms back — AND the lexicon
+ * correction stage they imply, because `apps/stt` derives that stage's default from
+ * `bool(instruction.hotwords)`. "Said nothing" and "said none" must stay two states all the
+ * way to the runtime.
+ */
+describe('buildResolvedAsrSpec — explicitly-empty vs absent hotwords (M-57)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  /** `base` with the primary row carrying `hotwords` and the agent's instruction replaced. */
+  const withHotwords = (instruction: Record<string, unknown> | null): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr: { decoding: { hotwords: ['ceftriaxone', 'metformin'] } } } as never } : m)),
+    compiledConfig: { ...base.compiledConfig, instruction },
+  });
+
+  it('ABSENT ⇒ no opinion: the row’s terms flow through', () => {
+    const spec = buildResolvedAsrSpec({ agent: withHotwords({ initialPrompt: 'Clinical consultation.' }), fallbackAgent: null });
+    expect(spec.instruction.hotwords).toEqual(['ceftriaxone', 'metformin']);
+    expect(spec.decoding.sources).toMatchObject({ hotwords: 'model' });
+  });
+
+  it('EXPLICITLY EMPTY ⇒ a veto: the row’s terms do NOT come back', () => {
+    const spec = buildResolvedAsrSpec({ agent: withHotwords({ hotwords: [] }), fallbackAgent: null });
+    expect(spec.instruction.hotwords).toEqual([]);
+    // The agent DECIDED, so the provenance names it — `'model'` here would be the bug.
+    expect(spec.decoding.sources).toMatchObject({ hotwords: 'agent' });
+  });
+
+  it('a list whose every entry is unusable is still an explicit list, not silence', () => {
+    // `['', '   ']` survives the type filter as `[]`. An author who wrote a list wrote a list.
+    const spec = buildResolvedAsrSpec({ agent: withHotwords({ hotwords: ['', 42, null] }), fallbackAgent: null });
+    expect(spec.instruction.hotwords).toEqual([]);
+    expect(spec.decoding.sources).toMatchObject({ hotwords: 'agent' });
+  });
+
+  it('a non-array hotwords value is malformed, not a veto — it falls through to the row', () => {
+    const spec = buildResolvedAsrSpec({ agent: withHotwords({ hotwords: 'ceftriaxone' }), fallbackAgent: null });
+    expect(spec.instruction.hotwords).toEqual(['ceftriaxone', 'metformin']);
+    expect(spec.decoding.sources).toMatchObject({ hotwords: 'model' });
+  });
+
+  it('the seeded shape — no `hotwords` key at all — still inherits the row’s vocabulary', () => {
+    // The seed hazard this fix carries with it: `25-agents.ts` used to seed `hotwords: []`,
+    // which under the corrected semantics is a platform-wide veto that would have switched the
+    // correction stage OFF for every seeded tenant. The seed omits the key in the SAME commit,
+    // and this pins the resulting term count so the pair can never drift apart again.
+    const spec = buildResolvedAsrSpec({
+      agent: withHotwords({ initialPrompt: 'Clinical consultation between a clinician and a patient.' }),
+      fallbackAgent: null,
+    });
+    expect(spec.instruction.hotwords).toHaveLength(2);
+  });
+});
+
+/**
+ * TASK-985 (M-14 / QW-3) — knob honesty.
+ *
+ * `sources` answers "what decided the behaviour". For a knob the chain's engine never reads,
+ * the honest answer is "nothing did" — so it reads `unsupported:<library>` rather than naming
+ * a tier. The VALUE still travels: this map is provenance, not a filter, and dropping the
+ * number would destroy what the author asked for.
+ */
+describe('buildResolvedAsrSpec — unsupported decode knobs (M-14)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+  const withProfile = (asr: Record<string, unknown>, parameters: Record<string, unknown> = {}): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr } as never } : m)),
+    compiledConfig: { ...base.compiledConfig, parameters: { ...(base.compiledConfig.parameters as object), ...parameters } },
+  });
+
+  it.each(['beamSize', 'compressionRatioThreshold', 'noRepeatNgramSize', 'conditionOnPrevTokens'])(
+    'stamps decoding.%s as unsupported on a whisper.cpp chain',
+    (key) => {
+      const value = key === 'conditionOnPrevTokens' ? true : 2;
+      const spec = buildResolvedAsrSpec({ agent: withProfile({ decoding: { [key]: value } }), fallbackAgent: null });
+      expect(spec.decoding.sources?.[key]).toBe('unsupported:whisper.cpp');
+    },
+  );
+
+  it('keeps the VALUE on the wire — the stamp is provenance, never a filter', () => {
+    const spec = buildResolvedAsrSpec({ agent: withProfile({ decoding: { noRepeatNgramSize: 4 } }), fallbackAgent: null });
+    expect(spec.decoding.noRepeatNgramSize).toBe(4);
+    expect(spec.decoding.sources?.noRepeatNgramSize).toBe('unsupported:whisper.cpp');
+  });
+
+  it('leaves a knob the engine DOES read attributed to its tier', () => {
+    // whisper.cpp passes `temperature` on every call and honours `logprob_thold`; neither is
+    // a capability gap, so neither is stamped. The table is conservative on purpose — a knob
+    // that is merely unwired in an adapter is a bug to fix, not a capability to declare.
+    const spec = buildResolvedAsrSpec({ agent: withProfile({ decoding: { temperature: 0.2, logprobThreshold: -1.25 } }), fallbackAgent: null });
+    expect(spec.decoding.sources).toMatchObject({ temperature: 'model', logprobThreshold: 'model' });
+  });
+
+  it('is decided PER CHAIN: the same knob is inert on the primary and live on the fallback', () => {
+    // This is the asymmetry M-14 is really about. One agent, one `beamSize`, two engines.
+    const spec = buildResolvedAsrSpec({ agent: base, fallbackAgent: null });
+    expect(spec.decoding.sources?.beamSize).toBe('unsupported:whisper.cpp');
+    expect(spec.fallback.chain[0].decoding.sources?.beamSize).toBe('agent');
+  });
+
+  it('stamps the whisper.cpp-only extras as unsupported on a CTranslate2 chain', () => {
+    const spec = buildResolvedAsrSpec({ agent: base, fallbackAgent: null });
+    const ct2 = spec.fallback.chain[0];
+    expect(ct2.models.asr.libraryName).toBe('faster-whisper');
+    // Nothing set them here, so the assertion is about the TABLE, not this fixture: the CT2
+    // list must not contain `noRepeatNgramSize`, because CTranslate2 supports it and the
+    // adapter merely fails to forward it — a wiring fix, not a capability gap to freeze in.
+    expect(ct2.decoding.sources).not.toHaveProperty('noRepeatNgramSize');
+  });
+
+  it('reports every stamped knob to the caller, naming the tier that set it', () => {
+    const rejections: Array<{ modelSlug: string; rejected: string[] }> = [];
+    buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { noRepeatNgramSize: 4 } }, { decoding: { beamSize: 5 } }),
+      fallbackAgent: null,
+      onProfileRejection: (event) => rejections.push(event),
+    });
+    const lines = rejections.flatMap((r) => r.rejected);
+    expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('decoding.beamSize (set by the AGENT')]));
+    expect(lines).toEqual(expect.arrayContaining([expect.stringContaining('decoding.noRepeatNgramSize (set by this model row')]));
+  });
+
+  it('says nothing about an engine it has not established a table for', () => {
+    // Absence of a stamp means "not established", which is more honest than a guess — and it
+    // is exactly today's behaviour, so an unlisted engine is never regressed by this change.
+    const cloud = (fixture.cloudWithAgentFallback as FixtureCase).input;
+    const spec = buildResolvedAsrSpec(cloud);
+    expect(spec.models.asr.libraryName).toBe('azure-speech');
+    expect(JSON.stringify(spec.decoding.sources ?? {})).not.toContain('unsupported:');
+  });
+});
+
+/**
+ * TASK-985 (QW-8) — per-pass decode narrowing.
+ *
+ * A partial re-decodes an OPEN utterance roughly three times a second; a final decodes it
+ * once, for the record. They want different decodes, the runtime already branches on
+ * `is_final`, and until now the difference could only be expressed in code.
+ */
+describe('buildResolvedAsrSpec — per-pass decode blocks (QW-8)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+  const withProfile = (asr: Record<string, unknown>, parameters: Record<string, unknown> = {}): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr } as never } : m)),
+    compiledConfig: { ...base.compiledConfig, parameters: { ...(base.compiledConfig.parameters as object), ...parameters } },
+  });
+
+  it('carries both narrowings from the row, keyed by their dotted source path', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { partial: { singleSegment: true, maxTokens: 32 }, final: { singleSegment: false, maxTokens: 0 } } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding.partial).toEqual({ maxTokens: 32, singleSegment: true });
+    expect(spec.decoding.final).toEqual({ maxTokens: 0, singleSegment: false });
+    expect(spec.decoding.sources).toMatchObject({ 'partial.maxTokens': 'model', 'final.singleSegment': 'model' });
+  });
+
+  it('the agent wins INSIDE a pass, member by member', () => {
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { final: { maxTokens: 0, logprobThreshold: -1 } } }, { decoding: { final: { logprobThreshold: -1.25 } } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding.final).toEqual({ maxTokens: 0, logprobThreshold: -1.25 });
+    expect(spec.decoding.sources).toMatchObject({ 'final.logprobThreshold': 'agent', 'final.maxTokens': 'model' });
+  });
+
+  it('omits a pass block entirely when neither tier narrowed anything', () => {
+    // `apps/stt`'s mirror is `extra='forbid'` and reads absence as "no opinion", so an empty
+    // object here would be a second encoding of one state.
+    const spec = buildResolvedAsrSpec({ agent: withProfile({ decoding: { logprobThreshold: -1 } }), fallbackAgent: null });
+    expect(spec.decoding).not.toHaveProperty('partial');
+    expect(spec.decoding).not.toHaveProperty('final');
+  });
+
+  it('carries entropyThreshold as its OWN knob, never aliased onto compressionRatioThreshold', () => {
+    // They share the default 2.4 and pywhispercpp calls one "similar to" the other, but a gzip
+    // ratio rejects ABOVE the threshold and a token entropy rejects BELOW it. One key each.
+    const spec = buildResolvedAsrSpec({
+      agent: withProfile({ decoding: { entropyThreshold: 2.6, compressionRatioThreshold: 2.4 } }),
+      fallbackAgent: null,
+    });
+    expect(spec.decoding.entropyThreshold).toBe(2.6);
+    expect(spec.decoding.compressionRatioThreshold).toBe(2.4);
+    expect(spec.decoding.sources).toMatchObject({ entropyThreshold: 'model', compressionRatioThreshold: 'unsupported:whisper.cpp' });
+  });
+});
+
+/**
+ * TASK-985 (ST-3) — the decoder prompt OVERRIDES; it never concatenates.
+ *
+ * `sources.initialPrompt` can only name ONE tier, so composition would make it a lie — and it
+ * already was one: the gateway stamped a tier while `apps/stt` glued a module-level priming
+ * template in front of whatever arrived. Moving that template onto the ROW is what makes the
+ * prompt A/B a configuration change rather than a code change.
+ */
+describe('buildResolvedAsrSpec — the prompt overrides, never concatenates (ST-3)', () => {
+  const base = (fixture.platformDefault as FixtureCase).input.agent;
+
+  const withPrompts = (rowPrompt: string | undefined, agentPrompt: string | null): ResolvedAgent => ({
+    ...base,
+    models: base.models.map((m) => (m.role === 'primary' ? { ...m, metaData: { asr: rowPrompt === undefined ? {} : { initialPrompt: rowPrompt } } as never } : m)),
+    compiledConfig: { ...base.compiledConfig, instruction: agentPrompt === null ? null : { initialPrompt: agentPrompt } },
+  });
+
+  it('serves the agent’s prompt WHOLE when both tiers carry one', () => {
+    const spec = buildResolvedAsrSpec({ agent: withPrompts('ROW PROMPT', 'AGENT PROMPT'), fallbackAgent: null });
+    expect(spec.instruction.initialPrompt).toBe('AGENT PROMPT');
+    expect(spec.instruction.initialPrompt).not.toContain('ROW PROMPT');
+    expect(spec.decoding.sources).toMatchObject({ initialPrompt: 'agent' });
+  });
+
+  it('falls through to the row only when the agent is silent', () => {
+    const spec = buildResolvedAsrSpec({ agent: withPrompts('ROW PROMPT', null), fallbackAgent: null });
+    expect(spec.instruction.initialPrompt).toBe('ROW PROMPT');
+    expect(spec.decoding.sources).toMatchObject({ initialPrompt: 'model' });
+  });
+
+  it('keeps the row’s prompt visible as provenance even when the agent overrode it', () => {
+    // One dumped session spec has to explain itself: the effective prompt is in `instruction`,
+    // what the row recommended is on the model, and `sources` says which won.
+    const spec = buildResolvedAsrSpec({ agent: withPrompts('ROW PROMPT', 'AGENT PROMPT'), fallbackAgent: null });
+    expect(spec.models.asr.metadata?.initialPrompt).toBe('ROW PROMPT');
   });
 });
