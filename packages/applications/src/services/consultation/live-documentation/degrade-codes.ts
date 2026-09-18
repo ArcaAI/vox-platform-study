@@ -58,12 +58,50 @@ const CONTEXT_OVERFLOW =
 const TIMEOUT = /\btimed?[ _-]?out\b|\btimeout\b|budget[ _]exceeded|etimedout|econnaborted/i;
 const UNAVAILABLE = /econnrefused|econnreset|enotfound|ehostunreach|socket hang up|service unavailable|bad gateway|status code 5\d\d/i;
 
-/** The upstream error CODE, when the transport carried one (`{ code }`, or a JSON body's). */
+/** The JSON error body the transport carried, when it carried an object. */
+function responseBody(error: unknown): Record<string, unknown> | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { response } = error as { response?: { data?: unknown } };
+  const data = response?.data;
+  return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : undefined;
+}
+
+/** A `detail` that is an object — the provider-4xx shape's `{ error, code }` envelope. */
+function detailObject(body: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  const detail = body?.detail;
+  return typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : undefined;
+}
+
+/**
+ * The upstream error CODE, across every shape `apps/text` emits.
+ *
+ * `code` alone was not enough, and `data.code` was never right: text writes the code at
+ * `data.error_code` (its `TextError` handler) or at `data.detail.code` (a provider 4xx raised as
+ * a FastAPI `HTTPException` with a dict detail). `data.code` is kept because it costs nothing and
+ * a peer that does use it should not silently stop being understood.
+ */
 function upstreamCode(error: unknown): string {
   if (typeof error !== 'object' || error === null) return '';
-  const { code, response } = error as { code?: unknown; response?: { data?: unknown } };
-  const bodyCode = typeof response?.data === 'object' && response.data !== null ? (response.data as { code?: unknown }).code : undefined;
-  return [code, bodyCode].filter((value): value is string => typeof value === 'string').join(' ');
+  const { code } = error as { code?: unknown };
+  const body = responseBody(error);
+  return [code, body?.code, body?.error_code, detailObject(body)?.code].filter((value): value is string => typeof value === 'string').join(' ');
+}
+
+/**
+ * The upstream error MESSAGE, for WORDING checks only.
+ *
+ * Every engine phrases a context overflow differently and none hands back a machine-readable
+ * field for it, so the prose is the only signal when the code is the generic
+ * `PROVIDER_INVALID_REQUEST`. This value is matched against and NEVER returned: `degradeCode`
+ * answers from the closed vocabulary or its caller's fallback, which is what keeps a model's own
+ * refusal — and any clinical text in it — off a clinician-facing feed.
+ */
+function upstreamMessage(error: unknown): string {
+  const body = responseBody(error);
+  const detail = body?.detail;
+  if (typeof detail === 'string') return detail;
+  const nested = detailObject(body)?.error;
+  return typeof nested === 'string' ? nested : '';
 }
 
 /** The HTTP status, when the transport carried one. */
@@ -87,7 +125,7 @@ export function degradeCode(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? '');
   const codes = upstreamCode(error);
   const status = httpStatus(error);
-  const haystack = `${codes} ${message}`;
+  const haystack = `${codes} ${message} ${upstreamMessage(error)}`;
 
   if (/CONTEXT_WINDOW_EXCEEDED/i.test(codes)) return 'context_overflow';
   if (NO_CASE_NOTES.test(message)) return 'no_case_notes';
