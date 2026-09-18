@@ -71,3 +71,60 @@ describe('TASK-946 D6 — degradeCode', () => {
     expect(reason).not.toContain('Ada');
   });
 });
+
+/**
+ * The upstream code must be read from the shapes `apps/text` ACTUALLY emits.
+ *
+ * `upstreamCode()` looked for `response.data.code`. Text never writes that key. It has exactly
+ * two error shapes, and the code sits one level down in both:
+ *
+ * | error class | wire body | the code |
+ * |---|---|---|
+ * | `TextError` (`core/exception_handlers.py`) | `{"detail": msg, "error_code": CODE}` | `data.error_code` |
+ * | provider 4xx (`api/endpoints/generate.py`) | `{"detail": {"error": msg, "code": CODE}}` | `data.detail.code` |
+ *
+ * So no 422 ever matched `CONTEXT_WINDOW_EXCEEDED`, and every one of them fell through to the
+ * surface's terminal fallback — `generation_failed` on the flush, `pre_summary_failed` on the
+ * warm start. Measured on `hope-v2-dev` 2026-09-18: 45 provider 4xx in 24h, every one reported
+ * as a generic failure, which is why the cause could not be read off the clinician's feed or
+ * the gateway's logs.
+ *
+ * The original assertion above used `data.code` — a shape nothing produces — so the defect
+ * shipped with a green test. These cases pin the real bodies.
+ */
+describe('degradeCode — the upstream code as `apps/text` actually sends it', () => {
+  it('reads a provider 4xx context overflow from `detail.code`', () => {
+    const err = new HttpError('Request failed with status code 422', 'ERR_BAD_REQUEST', {
+      status: 422,
+      data: { detail: { error: 'Context size has been exceeded.', code: 'CONTEXT_WINDOW_EXCEEDED' } },
+    });
+    expect(degradeCode(err, LIVE_DEGRADE_FALLBACK)).toBe('context_overflow');
+  });
+
+  it('reads a TextError code from `error_code`', () => {
+    const err = new HttpError('Request failed with status code 422', 'ERR_BAD_REQUEST', {
+      status: 422,
+      data: { detail: 'The prompt was not classified as clinical content.', error_code: 'CONTENT_BLOCKED_NOT_MEDICAL' },
+    });
+    // Not a context overflow — it must NOT be misfiled as one, and it still carries no free text.
+    expect(degradeCode(err, PRE_SUMMARY_DEGRADE_FALLBACK)).toBe(PRE_SUMMARY_DEGRADE_FALLBACK);
+  });
+
+  it('classifies a provider 4xx whose message says "context length" via `detail.error`', () => {
+    const err = new HttpError('Request failed with status code 422', 'ERR_BAD_REQUEST', {
+      status: 422,
+      data: { detail: { error: 'prompt exceeds the context length of this model', code: 'PROVIDER_INVALID_REQUEST' } },
+    });
+    expect(degradeCode(err, LIVE_DEGRADE_FALLBACK)).toBe('context_overflow');
+  });
+
+  it('still never echoes free text from either nested shape', () => {
+    const err = new HttpError('Request failed with status code 422', 'ERR_BAD_REQUEST', {
+      status: 422,
+      data: { detail: { error: 'model refused: patient Ada Byron reports chest pain', code: 'PROVIDER_INVALID_REQUEST' } },
+    });
+    const reason = degradeCode(err, LIVE_DEGRADE_FALLBACK);
+    expect(reason).toBe(LIVE_DEGRADE_FALLBACK);
+    expect(reason).not.toContain('Ada');
+  });
+});
