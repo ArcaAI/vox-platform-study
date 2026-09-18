@@ -245,6 +245,10 @@ class MessageRecord:
     # LocalAgreement-2 committed-prefix length: text[:stable_chars] is settled,
     # text[stable_chars:] is the provisional tentative tail (None ⇒ not emitted).
     stable_chars: int | None = None
+    # M-42 — the decoder-reported inference duration for this segment (ms), when
+    # the wire carries it (``inferenceMs``/``inference_ms``; None when absent —
+    # the gateway did not always forward it, D7 §1.3 closes that at the source).
+    inference_ms: float | None = None
 
 
 @dataclass
@@ -265,6 +269,7 @@ def _classify(raw: dict[str, Any], recv_ms: float) -> MessageRecord:
             start_time=_num(raw.get("startTime", raw.get("start_time"))),
             end_time=_num(raw.get("endTime", raw.get("end_time"))),
             stable_chars=_stable_chars(raw),
+            inference_ms=_optional_num(raw.get("inferenceMs", raw.get("inference_ms"))),
         )
     if kind == "status":
         return MessageRecord(recv_ms=recv_ms, kind="status", status=str(raw.get("status") or ""))
@@ -282,6 +287,17 @@ def _num(v: Any) -> float:
         return float(v)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _optional_num(v: Any) -> float | None:
+    """Like ``_num`` but ``None`` on a missing/unparsable value (0.0 would lie
+    about an inference duration that was never reported)."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _stable_chars(raw: dict[str, Any]) -> int | None:
@@ -406,11 +422,13 @@ def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[s
 
     total = len(entries)
     revisions = 0
+    measurable = False  # M-11 honesty: did ANY frame report a committed prefix at all?
     prev: str | None = None  # last frame that actually reported a committed prefix
     for text, sc in entries:
         cur = _committed(text, sc)
         if not cur:  # no committed info this frame (tail-only) → prefix unchanged
             continue
+        measurable = True
         if prev is not None and not cur.startswith(prev):
             revisions += 1
         prev = cur
@@ -419,6 +437,11 @@ def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[s
         "partials": total,
         "revisions": revisions,
         "rate": round(revisions / denom, 4),
+        # M-11 fix — `rate == 0.0` is a vacuous "pass" when `measurable` is False:
+        # no partial in this run ever carried `stableChars > 0`, so the churn
+        # guardrail never actually ran on real committed-prefix data. Distinct from
+        # a run that genuinely held 0.0 churn WITH a measurable committed prefix.
+        "measurable": measurable,
     }
 
 
@@ -438,11 +461,37 @@ def seq_loss(seqs: list[int]) -> dict[str, Any]:
     }
 
 
+def partial_cadence_ms(ordered_events: Sequence[MessageRecord]) -> dict[str, float] | None:
+    """Deltas between consecutive PARTIAL receive times with no FINAL in
+    between (intra-utterance cadence).
+
+    M-42 — this is the retired Redis-direct latency harness's own
+    ``partial_cadence_ms`` definition, computed here on the WS gateway path
+    (the transport that harness never covered) instead. A ``final`` resets
+    the run: the next partial after a final belongs to a NEW utterance, so
+    its gap to the prior utterance's last partial is not cadence.
+    """
+    deltas: list[float] = []
+    prev_ms: float | None = None
+    for e in ordered_events:
+        if e.kind == "transcript_final":
+            prev_ms = None
+            continue
+        if e.kind != "transcript_partial":
+            continue
+        if prev_ms is not None:
+            deltas.append(e.recv_ms - prev_ms)
+        prev_ms = e.recv_ms
+    return _stats(deltas)
+
+
 def compute_metrics(
     frames: list[FrameRecord],
     events: list[MessageRecord],
     audio: ReplayAudio,
     frame_ms: float,
+    *,
+    session_create_ms: float | None = None,
 ) -> dict[str, Any]:
     frame_s = frame_ms / 1000.0
     ordered = sorted(events, key=lambda e: e.recv_ms)
@@ -494,6 +543,13 @@ def compute_metrics(
         "first_partial_ms": first_partial_ms,
         "ttfw_ms": ttfw_ms,
         "commit_latency_ms": _stats(commit_latencies),
+        # M-42 — cadence + decoder-reported inference time, on the WS gateway path
+        # (the retired Redis-direct harness measured these against a transport
+        # that no longer exists — see test_streaming_latency_harness.py's
+        # retirement notice).
+        "partial_cadence_ms": partial_cadence_ms(ordered),
+        "inference_ms": _stats([e.inference_ms for e in transcripts if e.inference_ms is not None]),
+        "session_create_ms": session_create_ms,
         # Full-caption revision (informational) + committed-region revision (the
         # churn guardrail — measures settled-text churn, excludes the tail).
         "partial_revision": partial_revision_rate([p.text for p in partials]),
@@ -599,11 +655,21 @@ async def _run_one_session(
     audio: ReplayAudio,
     frame_ms: float,
     timeout_s: float,
-) -> tuple[list[FrameRecord], list[MessageRecord], bool, str]:
-    """Create → WS → feed → collect. Returns (frames, events, closed, session_id)."""
+) -> tuple[list[FrameRecord], list[MessageRecord], bool, str, float]:
+    """Create → WS → feed → collect.
+
+    Returns ``(frames, events, closed, session_id, create_ms)`` — ``create_ms``
+    (BP-1) is the session-create POST's own wall time, measured separately
+    from the WS feed/receive clock so a cold model load hidden inside
+    session-create (M-17: a TTL-evicted model absorbs ~4.6s of cold reload
+    into the create call) is visible per-run rather than silently inflating
+    ``first_partial_ms``.
+    """
     import websockets
 
+    create_t0 = time.perf_counter()
     created = await _create_session(http, api_url, token)
+    create_ms = round((time.perf_counter() - create_t0) * 1000.0, 1)
     if isinstance(created, tuple):
         status, body = created
         pytest.skip(f"session bootstrap failed: HTTP {status} — {body}")
@@ -626,7 +692,34 @@ async def _run_one_session(
             recv_task.cancel()
     finally:
         await _delete_session(http, api_url, token, session_id)
-    return frames, cap.events, cap.closed.is_set(), session_id
+    return frames, cap.events, cap.closed.is_set(), session_id, create_ms
+
+
+async def _warmup_session(
+    http: Any,
+    api_url: str,
+    ws_origin: str,
+    token: str,
+    audio: ReplayAudio,
+    frame_ms: float,
+    *,
+    seconds: float = 5.0,
+    timeout_s: float = 20.0,
+) -> bool:
+    """Run one short throwaway session so the ASR model is resident before the
+    first MEASURED run (BP-1/M-17: an evicted model absorbs a ~4.6s cold
+    reload into the next session-create, which the scorecard had no warm-up
+    step to shield the first scored clip from). Best-effort: a warm-up
+    failure never blocks the measured run that follows it — this call
+    itself skips or raises for nothing.
+    """
+    try:
+        clip_len = min(len(audio.samples), int(seconds * _SAMPLE_RATE))
+        warm_clip = ReplayAudio(samples=audio.samples[:clip_len], source="warmup")
+        await _run_one_session(http, api_url, ws_origin, token, warm_clip, frame_ms, timeout_s)
+        return True
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -742,21 +835,16 @@ async def test_streaming_loss_latency_harness() -> None:
         # --- Warmup: load the ASR model so latency reflects transport ------
         warmed = False
         if warmup:
-            try:
-                warm_clip = ReplayAudio(samples=audio.samples[: 5 * _SAMPLE_RATE], source="warmup")
-                await _run_one_session(
-                    http, api_url, ws_origin, token, warm_clip, frame_ms, min(timeout_s, 20.0)
-                )
-                warmed = True
-            except Exception:
-                warmed = False  # best-effort; measured run proceeds regardless
+            warmed = await _warmup_session(
+                http, api_url, ws_origin, token, audio, frame_ms, timeout_s=min(timeout_s, 20.0)
+            )
 
         # --- Measured run --------------------------------------------------
-        frames, events, closed, session_id = await _run_one_session(
+        frames, events, closed, session_id, create_ms = await _run_one_session(
             http, api_url, ws_origin, token, audio, frame_ms, timeout_s
         )
 
-    metrics = compute_metrics(frames, events, audio, frame_ms)
+    metrics = compute_metrics(frames, events, audio, frame_ms, session_create_ms=create_ms)
     feed_span_s = (
         round((frames[-1].send_ms - frames[0].send_ms) / 1000.0, 2) if len(frames) > 1 else 0.0
     )
@@ -770,6 +858,7 @@ async def test_streaming_loss_latency_harness() -> None:
             "pipeline_id": _env("STREAM_PIPELINE_ID", "") or None,
             "session_id": session_id,
             "warmed": warmed,
+            "session_create_ms": create_ms,
         },
         "fixture": {
             "source": audio.source,

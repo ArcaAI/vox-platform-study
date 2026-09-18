@@ -1,4 +1,25 @@
-"""Realtime streaming latency replay harness.
+"""RETIRED (TASK-985 M-42) — Realtime streaming latency replay harness.
+
+**This module is retired and unconditionally skipped** (see ``pytestmark``
+below). It targets the RETIRED ``pipeline_id`` Redis Streams contract
+(TASK-861/865 moved session selection to a gateway-resolved ``agentSlug`` /
+``ResolvedAsrSpec`` — see ``06-python-services.md`` "apps/stt is on that
+default since TASK-861"), and its own docstring documents a
+``_PARTIAL_INTERVAL_S`` 1.0s design interval the code no longer has (partial
+cadence is 300ms today, seeded in ``ASR_PARAMETERS.streaming.partialIntervalMs``).
+Its two measurements this ticket still cares about — intra-utterance partial
+CADENCE and the decoder-reported ``inferenceMs`` — now live on the WS-gateway
+harness instead, where the transport is real:
+``test_streaming_loss_harness.py``'s ``partial_cadence_ms()`` and the
+``inference_ms`` field threaded through ``compute_metrics()`` /
+``MessageRecord.inference_ms`` (M-42). Left in place (not deleted) so its
+history and the wire-protocol notes below stay in git; do not add new call
+sites and do not un-skip it without first re-pointing it at the current
+contract.
+
+The original docstring follows verbatim as a historical record.
+
+---
 
 Replays a reference WAV (or a deterministic synthetic speech-like signal)
 into a RUNNING stt instance over the real Redis Streams wire protocol,
@@ -109,7 +130,22 @@ from stt.streaming.redis_streams import (
 )
 from stt.streaming.schemas import AudioEncoding, AudioFrame
 
-pytestmark = [pytest.mark.integration]
+# RETIRED (TASK-985 M-42): targets the retired pipeline_id Redis Streams
+# contract. See the module docstring for the replacement (the WS-gateway
+# harness's partial_cadence_ms() + inference_ms). Skip unconditionally rather
+# than delete, so the wire-protocol notes above stay discoverable in git.
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skip(
+        reason=(
+            "RETIRED (TASK-985 M-42): targets the retired pipeline_id Redis Streams "
+            "contract and documents a 1.0s partial interval the code no longer has "
+            "(300ms today). Cadence + inferenceMs now measured on the WS-gateway path "
+            "in test_streaming_loss_harness.py (partial_cadence_ms(), "
+            "MessageRecord.inference_ms)."
+        )
+    ),
+]
 
 _SAMPLE_RATE = 16000
 _AUDIO_STREAM_MAXLEN = 10_000  # mirrors the gateway's XADD MAXLEN ~ 10000
