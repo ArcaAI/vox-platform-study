@@ -299,6 +299,75 @@ const TEXT_GENERATION_PARAMETERS: NodeConfigSchema = Object.freeze({
   }),
 });
 
+/**
+ * TASK-985 (QW-8/QW-9) — the whisper.cpp decode extras an agent may set, declared ONCE
+ * and spread into both the flat `decoding` block and the two per-pass blocks.
+ *
+ * `entropyThreshold` is a DISTINCT knob from `compressionRatioThreshold` and must never be
+ * aliased onto it: they share the default 2.4 and pywhispercpp's own schema calls one
+ * "similar to" the other, but they measure different quantities on different scales and
+ * compare in OPPOSITE directions (gzip ratio rejects ABOVE, token entropy rejects BELOW).
+ */
+const ASR_DECODE_EXTRA_PROPERTIES = Object.freeze({
+  entropyThreshold: Object.freeze({
+    type: 'number',
+    minimum: 0,
+    maximum: 10,
+    description:
+      'TASK-985 — whisper.cpp `entropy_thold`: the token-distribution entropy BELOW which a decode is treated as degenerate. NOT the same quantity as `compressionRatioThreshold` (opposite direction, different scale) — set the one your engine honours. Optional; unset ⇒ the assigned model`s profile, then the engine default (2.4).',
+  }),
+  singleSegment: Object.freeze({
+    type: 'boolean',
+    description:
+      'TASK-985 — whisper.cpp `single_segment`: force one segment out of one decode. Upstream`s own streaming advice for an in-flight utterance. Optional.',
+  }),
+  suppressBlank: Object.freeze({ type: 'boolean', description: 'TASK-985 — whisper.cpp `suppress_blank`. Optional; engine default true.' }),
+  suppressNonSpeechTokens: Object.freeze({
+    type: 'boolean',
+    description: 'TASK-985 — whisper.cpp `suppress_nst`: drop `[music]`/`(laughter)`-class emissions. Optional; engine default false.',
+  }),
+  maxTokens: Object.freeze({
+    type: 'integer',
+    minimum: 0,
+    maximum: 224,
+    description:
+      'TASK-985 — whisper.cpp `max_tokens`: bound a runaway repetition loop AT the decoder instead of collapsing it afterwards. `0` = no limit; upstream`s streaming example ships 32. Optional.',
+  }),
+  audioCtx: Object.freeze({
+    type: 'integer',
+    minimum: 0,
+    maximum: 1500,
+    description:
+      'TASK-985 — whisper.cpp `audio_ctx`: encoder context frames. `0` = the full trained 1500, which is what upstream`s streaming example ships; truncating below the trained context is a documented cause of endless repetition, so treat any reduction as a measured arm. Optional.',
+  }),
+});
+
+/**
+ * TASK-985 (QW-8) — `decoding.partial` / `decoding.final`: the subset of the flat block a
+ * pass may narrow.
+ *
+ * A strict subset on purpose. `conditionOnPrevTokens`, `noRepeatNgramSize`,
+ * `prevTextContextWords` and `compressionRatioThreshold` are session- or engine-level
+ * policy rather than per-call kwargs, so narrowing them per pass would promise something
+ * no decoder can deliver.
+ */
+const ASR_DECODE_PASS_PROPERTY = (pass: 'partial' | 'final'): NodeConfigSchema =>
+  Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    description:
+      pass === 'partial'
+        ? 'TASK-985 — decode overrides for the PARTIAL pass (the in-flight re-decode of an open utterance). Narrows the flat `decoding` block above; anything unset here falls through to it, then to the engine default.'
+        : 'TASK-985 — decode overrides for the FINAL (committing) pass. Narrows the flat `decoding` block above; anything unset here falls through to it, then to the engine default.',
+    properties: Object.freeze({
+      beamSize: Object.freeze({ type: 'integer', minimum: 1, maximum: 10 }),
+      temperature: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
+      logprobThreshold: Object.freeze({ type: 'number', minimum: -10, maximum: 0 }),
+      ...ASR_DECODE_EXTRA_PROPERTIES,
+      noSpeechThreshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
+    }),
+  });
+
 const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/agents/SPEECH_TO_TEXT.parameters.schema.json',
@@ -489,6 +558,18 @@ const SPEECH_TO_TEXT_PARAMETERS: NodeConfigSchema = Object.freeze({
           description:
             'TASK-934 — how many words of already-committed text ride as decoder context on the next window. Optional; unset ⇒ the assigned model`s profile, then the engine default (50).',
         }),
+        // TASK-985 (QW-8/QW-9) — the whisper.cpp decode extras, at the agent tier. The
+        // ranges are the literal mirror of `AI_MODEL_ASR_PROFILE_DECODING_RANGES`
+        // (`@arcaai/types`), for the reason the six above are: two tiers feeding one
+        // engine kwarg must accept exactly the same values.
+        ...ASR_DECODE_EXTRA_PROPERTIES,
+        // TASK-985 (QW-8) — per-pass narrowing. A partial re-decodes an OPEN utterance
+        // roughly three times a second and a final decodes it once, for the record, so
+        // they want different decodes: a partial cheap, bounded and single-segment, a
+        // final the full one. Precedence is pass block → the flat block above → the
+        // engine default, and an absent member is "no opinion", never "off".
+        partial: ASR_DECODE_PASS_PROPERTY('partial'),
+        final: ASR_DECODE_PASS_PROPERTY('final'),
       }),
     }),
     postProcessing: Object.freeze({
@@ -746,7 +827,8 @@ const SPEECH_TO_TEXT_INSTRUCTION: NodeConfigSchema = Object.freeze({
     initialPrompt: Object.freeze({
       type: 'string',
       maxLength: 1000,
-      description: 'Decoder initial prompt (≤ 224 tokens; the character cap is a floor on nonsense).',
+      description:
+        'Decoder initial prompt. TASK-985 (N-4): the 1000-CHARACTER cap is a publish-time sanity check, NOT a token bound — Whisper`s decoder window is n_text_ctx/2 = 224 tokens and 1000 characters of Malayalam is several times that, so on the language that actually overflows this number bounds nothing. The real budget is derived from the loaded model at serve time and the carry-forward is evicted from the LEFT so this text survives. When the assigned model row carries `_metadata.asr.initialPrompt`, a value here OVERRIDES it whole — the two are never concatenated.',
     }),
     hotwords: Object.freeze({ type: 'array', maxItems: 64, items: Object.freeze({ type: 'string', minLength: 1, maxLength: 64 }) }),
   }),

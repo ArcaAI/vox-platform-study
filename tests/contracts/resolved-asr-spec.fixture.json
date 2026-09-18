@@ -1,5 +1,5 @@
 {
-  "$comment": "TASK-861 — the ResolvedAsrSpec cross-language contract fixture. `input` is what TASK-863's AgentResolverService returns (a ResolvedAgent, plus the resolved `parameters.fallback.agentSlug` agent when one is named); `expected` is what `buildResolvedAsrSpec()` (@arcaai/applications) MUST produce from it and what `apps/stt/src/stt/pipeline/spec.py` MUST validate and map. Both `tests/contracts/resolved-asr-spec-parity.contract.test.ts` and `apps/stt/tests/unit/test_resolved_spec_parity.py` read this file; change it with both suites open. TASK-977 — every audio front-end STAGE is now a declared agent opinion, OFF by default: `vad.enabled` is read from the agent (it used to be the literal `true`), `denoise.enabled` is declared rather than inferred from a bound model, and a stage the spec ships as OFF ships no model for it, so `apps/stt` warms none. `resample`/`normalize` are NOT stages and stay `true`. The cases below cover both polarities: `platformDefault` runs VAD on a bound model, `twoConnectionsOfOneVendor` denoises on a bound model, and `cloudWithAgentFallback` binds a denoise model with the stage off.",
+  "$comment": "TASK-861 — the ResolvedAsrSpec cross-language contract fixture. `input` is what TASK-863's AgentResolverService returns (a ResolvedAgent, plus the resolved `parameters.fallback.agentSlug` agent when one is named); `expected` is what `buildResolvedAsrSpec()` (@arcaai/applications) MUST produce from it and what `apps/stt/src/stt/pipeline/spec.py` MUST validate and map. Both `tests/contracts/resolved-asr-spec-parity.contract.test.ts` and `apps/stt/tests/unit/test_resolved_spec_parity.py` read this file; change it with both suites open. TASK-977 — every audio front-end STAGE is now a declared agent opinion, OFF by default: `vad.enabled` is read from the agent (it used to be the literal `true`), `denoise.enabled` is declared rather than inferred from a bound model, and a stage the spec ships as OFF ships no model for it, so `apps/stt` warms none. `resample`/`normalize` are NOT stages and stay `true`. The cases below cover both polarities: `platformDefault` runs VAD on a bound model, `twoConnectionsOfOneVendor` denoises on a bound model, and `cloudWithAgentFallback` binds a denoise model with the stage off. TASK-985 — two contract changes land here. (1) `fallback.chain` is the ORDERED fallback chain and now travels whole; `fallback.spec` is kept for one release as `chain[0]` so the gateway, `apps/stt` and this fixture can ship in either order. Before this the resolver took `chain[0]` and dropped the rest silently, so a declared second fallback was unreachable configuration (M-49). (2) `decoding.sources[key]` may now read `unsupported:<library>`, which is NOT a tier: it means a tier did decide the value and the engine THIS chain runs cannot honour it at all — `beamSize` on a whisper.cpp chain is inert because pywhispercpp freezes the sampling strategy at Model() construction and every loader builds a greedy context (M-14). Note the same knob resolving differently per chain in `platformDefault`: `unsupported:whisper.cpp` on the primary, `agent` on the CTranslate2 fallback, which does read it. The VALUE still travels verbatim either way — this map is provenance, not a filter.",
   "platformDefault": {
     "$comment": "The SYSTEM `platform-transcription` agent: GGUF whisper primary, Silero VAD, ECAPA diarization, one AgentModelFallback row (kind: model). TASK-880 — both ASR rows carry `AiModel._metadata.asr` decode geometry, which travels as `models.asr.metadata`: the whisper.cpp primary declares the 7s decode window and the 6s partial tail that used to be the platform keys `stt.whisperCpp.maxAudioSeconds` / `stt.streaming.partialWindowS`, and the CT2 fallback declares its OWN 30s window — which is the point of moving them onto the row. The other two cases omit `metadata` entirely. TASK-934 adds `decoding.sources`: the row declares the 6s partial tail, so `partialWindowSec: 'model'`; the agent declares beamSize, the prompt and the hotwords, so those read 'agent'. TASK-977 — `audioFrontEnd.vad.enabled` is declared `true` here, which is what keeps `models.vad` in the spec; this is the fixture’s positive VAD path. The SEEDED agent ships it `false` (owner decision D-1) — a contract fixture pins the SHAPE of an enabled stage, not the seed’s choice.",
     "input": {
@@ -241,7 +241,7 @@
         "temperature": null,
         "vadFilter": false,
         "sources": {
-          "beamSize": "agent",
+          "beamSize": "unsupported:whisper.cpp",
           "initialPrompt": "agent",
           "hotwords": "agent",
           "partialWindowSec": "model"
@@ -271,6 +271,118 @@
         "kind": "model",
         "autoSwitch": true,
         "switchAfterConsecutiveFailures": 2,
+        "chain": [
+          {
+            "runtimeKey": "0199a861-0000-7000-8000-000000000001:fallback:faster-whisper-large-v3-turbo-int8",
+            "agent": {
+              "slug": "platform-transcription",
+              "versionId": "0199a861-0000-7000-8000-000000000001",
+              "versionNumber": 1,
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "source": "platform-default"
+            },
+            "models": {
+              "asr": {
+                "role": "asr",
+                "slug": "faster-whisper-large-v3-turbo-int8",
+                "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+                "format": "FASTER_WHISPER",
+                "libraryName": "faster-whisper",
+                "sourceUri": "deepdml/faster-whisper-large-v3-turbo-ct2",
+                "sourceRevision": null,
+                "localPath": null,
+                "checksum": null,
+                "computeType": "int8",
+                "provider": null,
+                "tenantId": "00000000-0000-0000-0000-000000000000",
+                "metadata": {
+                  "maxDecodeWindowSec": 30
+                }
+              },
+              "vad": {
+                "role": "vad",
+                "slug": "silero-vad",
+                "taskType": "VOICE_ACTIVITY_DETECTION",
+                "format": "ONNX",
+                "libraryName": "onnxruntime",
+                "sourceUri": "onnx-community/silero-vad",
+                "sourceRevision": null,
+                "localPath": null,
+                "checksum": null,
+                "computeType": null,
+                "provider": null,
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              },
+              "embedding": {
+                "role": "embedding",
+                "slug": "ecapa-tdnn-voxceleb",
+                "taskType": "SPEAKER_EMBEDDING",
+                "format": "PYTORCH",
+                "libraryName": "speechbrain",
+                "sourceUri": "speechbrain/spkrec-ecapa-voxceleb",
+                "sourceRevision": null,
+                "localPath": null,
+                "checksum": null,
+                "computeType": null,
+                "provider": null,
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "audioFrontEnd": {
+              "vad": {
+                "enabled": true,
+                "threshold": 0.5,
+                "minSpeechMs": 120,
+                "minSilenceMs": 200
+              },
+              "denoise": {
+                "enabled": false,
+                "level": "off"
+              },
+              "diarization": {
+                "enabled": true,
+                "backend": "embedding",
+                "maxSpeakers": 2,
+                "matchThreshold": 0.6
+              },
+              "resample": true,
+              "normalize": true
+            },
+            "decoding": {
+              "languageMode": "ml-en",
+              "codeSwitching": true,
+              "wordTimestamps": true,
+              "beamSize": 5,
+              "temperature": null,
+              "vadFilter": false,
+              "sources": {
+                "beamSize": "agent",
+                "initialPrompt": "agent",
+                "hotwords": "agent"
+              }
+            },
+            "postProcessing": {
+              "punctuation": {
+                "enabled": true
+              },
+              "disfluency": false,
+              "stabilizer": true,
+              "merge": false
+            },
+            "streaming": {
+              "partialIntervalMs": 500,
+              "endpointing": "fixed",
+              "maxUtteranceSec": null
+            },
+            "instruction": {
+              "initialPrompt": "Clinical consultation. Medical terminology.",
+              "hotwords": [
+                "paracetamol",
+                "metformin"
+              ]
+            }
+          }
+        ],
         "spec": {
           "runtimeKey": "0199a861-0000-7000-8000-000000000001:fallback:faster-whisper-large-v3-turbo-int8",
           "agent": {
@@ -611,6 +723,78 @@
         "kind": "agent",
         "autoSwitch": false,
         "switchAfterConsecutiveFailures": 3,
+        "chain": [
+          {
+            "runtimeKey": "0199a861-0000-7000-8000-000000000001",
+            "agent": {
+              "slug": "platform-transcription",
+              "versionId": "0199a861-0000-7000-8000-000000000001",
+              "versionNumber": 1,
+              "tenantId": "00000000-0000-0000-0000-000000000000",
+              "source": "explicit"
+            },
+            "models": {
+              "asr": {
+                "role": "asr",
+                "slug": "arcaai-whisper-large-ml-en-gguf",
+                "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+                "format": "WHISPER_CPP",
+                "libraryName": "whisper.cpp",
+                "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF",
+                "sourceRevision": null,
+                "localPath": "/models/whisper-turbo-ml-en/ggml-model.gguf",
+                "checksum": "sha256:aaaa",
+                "computeType": "int8",
+                "provider": null,
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "audioFrontEnd": {
+              "vad": {
+                "enabled": false,
+                "threshold": null,
+                "minSpeechMs": null,
+                "minSilenceMs": null
+              },
+              "denoise": {
+                "enabled": false,
+                "level": "off"
+              },
+              "diarization": {
+                "enabled": false,
+                "backend": "embedding",
+                "maxSpeakers": null
+              },
+              "resample": true,
+              "normalize": true
+            },
+            "decoding": {
+              "languageMode": null,
+              "codeSwitching": false,
+              "wordTimestamps": false,
+              "beamSize": null,
+              "temperature": null,
+              "vadFilter": false
+            },
+            "postProcessing": {
+              "punctuation": {
+                "enabled": true
+              },
+              "disfluency": false,
+              "stabilizer": false,
+              "merge": false
+            },
+            "streaming": {
+              "partialIntervalMs": null,
+              "endpointing": "fixed",
+              "maxUtteranceSec": null
+            },
+            "instruction": {
+              "initialPrompt": null,
+              "hotwords": []
+            }
+          }
+        ],
         "spec": {
           "runtimeKey": "0199a861-0000-7000-8000-000000000001",
           "agent": {
@@ -881,6 +1065,7 @@
         "kind": "none",
         "autoSwitch": true,
         "switchAfterConsecutiveFailures": 2,
+        "chain": [],
         "spec": null
       }
     }
@@ -1053,14 +1238,14 @@
         "hotwordsInPrompt": true,
         "sources": {
           "partialWindowSec": "agent",
-          "beamSize": "agent",
+          "beamSize": "unsupported:whisper.cpp",
           "temperature": "model",
           "noSpeechThreshold": "agent",
-          "compressionRatioThreshold": "model",
+          "compressionRatioThreshold": "unsupported:whisper.cpp",
           "logprobThreshold": "model",
-          "noRepeatNgramSize": "model",
+          "noRepeatNgramSize": "unsupported:whisper.cpp",
           "prevTextContextWords": "model",
-          "conditionOnPrevTokens": "model",
+          "conditionOnPrevTokens": "unsupported:whisper.cpp",
           "hotwordsInPrompt": "model",
           "initialPrompt": "model",
           "hotwords": "model"
@@ -1090,6 +1275,7 @@
         "kind": "none",
         "autoSwitch": true,
         "switchAfterConsecutiveFailures": 2,
+        "chain": [],
         "spec": null
       }
     }
@@ -1268,14 +1454,14 @@
         "conditionOnPrevTokens": true,
         "sources": {
           "partialWindowSec": "agent",
-          "beamSize": "agent",
+          "beamSize": "unsupported:whisper.cpp",
           "temperature": "model",
           "noSpeechThreshold": "agent",
-          "compressionRatioThreshold": "model",
+          "compressionRatioThreshold": "unsupported:whisper.cpp",
           "logprobThreshold": "model",
-          "noRepeatNgramSize": "model",
+          "noRepeatNgramSize": "unsupported:whisper.cpp",
           "prevTextContextWords": "model",
-          "conditionOnPrevTokens": "model",
+          "conditionOnPrevTokens": "unsupported:whisper.cpp",
           "initialPrompt": "model",
           "hotwords": "model"
         }
@@ -1308,6 +1494,7 @@
         "kind": "none",
         "autoSwitch": true,
         "switchAfterConsecutiveFailures": 2,
+        "chain": [],
         "spec": null
       }
     }
@@ -1536,6 +1723,98 @@
         "kind": "model",
         "autoSwitch": false,
         "switchAfterConsecutiveFailures": 3,
+        "chain": [
+          {
+            "runtimeKey": "0199a861-0000-7000-8000-000000000011:fallback:azure-speech-stt-research",
+            "connectionId": "c0000002-0000-4000-8000-000000000002",
+            "connectionSlug": "azure-speech-research",
+            "connectionKey": "azure-speech:azure-speech-research",
+            "agent": {
+              "slug": "clinic-azure-transcription",
+              "versionId": "0199a861-0000-7000-8000-000000000011",
+              "versionNumber": 3,
+              "tenantId": "50000000-0000-0000-0000-000000000000",
+              "source": "explicit"
+            },
+            "models": {
+              "asr": {
+                "role": "asr",
+                "slug": "azure-speech-stt-research",
+                "taskType": "AUTOMATIC_SPEECH_RECOGNITION",
+                "format": "AZURE_SPEECH",
+                "libraryName": "azure-speech",
+                "sourceUri": "azure://speech",
+                "sourceRevision": null,
+                "localPath": null,
+                "checksum": null,
+                "computeType": null,
+                "provider": "azure-speech",
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              },
+              "denoise": {
+                "role": "denoise",
+                "slug": "rnnoise",
+                "taskType": "AUDIO_TO_AUDIO",
+                "format": "ONNX",
+                "libraryName": "pyrnnoise",
+                "sourceUri": "file:///opt/models/rnnoise",
+                "sourceRevision": null,
+                "localPath": "/opt/models/rnnoise",
+                "checksum": null,
+                "computeType": null,
+                "provider": null,
+                "tenantId": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "audioFrontEnd": {
+              "vad": {
+                "enabled": false,
+                "threshold": null,
+                "minSpeechMs": null,
+                "minSilenceMs": null
+              },
+              "denoise": {
+                "enabled": true,
+                "level": "high"
+              },
+              "diarization": {
+                "enabled": false,
+                "backend": "embedding",
+                "maxSpeakers": null
+              },
+              "resample": false,
+              "normalize": true
+            },
+            "decoding": {
+              "languageMode": "en",
+              "codeSwitching": false,
+              "wordTimestamps": false,
+              "beamSize": null,
+              "temperature": 0.2,
+              "vadFilter": false,
+              "sources": {
+                "temperature": "agent"
+              }
+            },
+            "postProcessing": {
+              "punctuation": {
+                "enabled": false
+              },
+              "disfluency": true,
+              "stabilizer": false,
+              "merge": true
+            },
+            "streaming": {
+              "partialIntervalMs": null,
+              "endpointing": "semantic",
+              "maxUtteranceSec": 30
+            },
+            "instruction": {
+              "initialPrompt": null,
+              "hotwords": []
+            }
+          }
+        ],
         "spec": {
           "runtimeKey": "0199a861-0000-7000-8000-000000000011:fallback:azure-speech-stt-research",
           "connectionId": "c0000002-0000-4000-8000-000000000002",

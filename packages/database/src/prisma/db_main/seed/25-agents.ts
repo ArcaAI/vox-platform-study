@@ -240,8 +240,11 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
 // ----------------------------------------------------------------------------------------------
 
 /**
- * Today's `platform-transcription` parameters (TASK-938: `wordTimestamps: true`, guarded by
- * the adapter's own pinned-language refusal rather than by this flag).
+ * The `realtime-transcription` agent's parameters (TASK-938: `wordTimestamps: true`, guarded
+ * by the adapter's own pinned-language refusal rather than by this flag).
+ *
+ * TASK-985 (M-58) — this block said "`platform-transcription`", a slug that exists nowhere in
+ * this repo; the agent is `realtime-transcription` (`ASR_AGENT_SLUG`, above).
  *
  * `minSpeechMs: 100` (TASK-934, OD-5): was 250, which re-imposed a value the engine author
  * had already retired (`dto.py:589-593`) — at 250ms a spoken yes/no (~150-250ms) is
@@ -253,10 +256,14 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
  * it carries no per-tenant override today, so the change is platform-wide until one exists):
  *   - `streaming.partialIntervalMs` 500 -> 300 ms: how often a partial is re-emitted.
  *   - `streaming.partialWindowSec` added at 3 s (was unset, so the model row's `partialWindowSec`
- *     6 s applied): overrides the assigned model's window to trade decode-tail length for
- *     latency. `agent-schemas.ts`'s own doc comment on this field measured MORE garbage partials
- *     at shorter tails (31% at 6s -> 0% at 15s going the OTHER direction), so this is a
- *     deliberate experiment, not a settled win — see the runbook's revert rule.
+ *     applied): overrides the assigned model's window to trade decode-tail length for latency.
+ *     TASK-985 (M-58) — the number named here was wrong in both directions. The ml-en GGUF rows
+ *     carry `partialWindowSec: 6`, not 15; and TASK-934 measured a SHORT partial tail as the
+ *     damage (31% garbage partials at 6 s against 0% at 15 s), so 3 s runs the experiment
+ *     TOWARDS the measured-worse end. It is a deliberate latency trade, not a settled win, and
+ *     it is a live A/B arm: revert it before attributing a partial-quality regression elsewhere.
+ *     The revert rule lives with the ALaaS runbook named below, in a SEPARATE repository — this
+ *     repo contains no `apps/audio-stream-svc`.
  *   - `audioFrontEnd.vad.minSilenceMs` 500 -> 350 ms: how long a gap ends an utterance for VAD.
  *   - `endpointing` stays `semantic` (unchanged) and `maxUtteranceSec` stays 60 (unchanged).
  * Full measurement protocol, the admin-console equivalent (this dev stack is already seeded, so
@@ -288,6 +295,14 @@ export const ASR_PARAMETERS = {
   // the `max_len=1, split_on_word=True` decode unless the language is pinned to a space-delimited
   // one (`_WORD_SPLIT_SAFE_LANGUAGES`), so an unpinned or Malayalam session silently keeps the
   // clean sentence-level decode and only a declared `en`/`vi` session pays for word splitting.
+  // TASK-985 (M-14) — `beamSize: 5` is INERT on this agent's engine and is kept deliberately.
+  // pywhispercpp fixes the sampling strategy at `Model()` construction and every loader builds a
+  // GREEDY context, so beam fields are never read; reaching beam search needs a second whisper
+  // context (a second full weight allocation), not a kwarg. The resolver now says so rather than
+  // claiming a tier for it — `decoding.sources.beamSize` resolves to `unsupported:whisper.cpp` on
+  // this chain and to `agent` on the CTranslate2 fallback, which does honour it. The value stays
+  // because it is the correct instruction for the fallback and because it is the live RED case
+  // the honesty test pins.
   decoding: { languageMode: 'ml-en', codeSwitching: true, wordTimestamps: true, beamSize: 5, temperature: 0 },
   // TASK-966 — `cadence-fast` is the EXACT name `stt.punctuation.service` routes to its direct
   // transformers loader; the previous `cadence-punctuation` binding selected the legacy wrapper
@@ -297,9 +312,26 @@ export const ASR_PARAMETERS = {
   streaming: { partialIntervalMs: 300, partialWindowSec: 3, endpointing: 'semantic', maxUtteranceSec: 60 },
   fallback: { autoSwitch: true, switchAfterConsecutiveFailures: 3 },
 };
+/**
+ * TASK-985 (M-57) — `hotwords` is ABSENT here, and that absence is load-bearing.
+ *
+ * The key used to be seeded as `[] as string[]`, which was harmless only because the
+ * resolver could not tell an empty list from a missing one: both collapsed to `[]` before
+ * the precedence branch ran, so the assigned model row's 20 clinical terms flowed through
+ * anyway. That collapse is now FIXED — an explicitly empty list is a tenant's VETO, and the
+ * runtime derives the lexicon correction stage's default from `bool(instruction.hotwords)`.
+ *
+ * Had the literal stayed, fixing M-57 would have turned the correction stage OFF for every
+ * seeded tenant, silently, and cut the row's vocabulary out of the decode with it. Omitting
+ * the key says what this agent actually means: no opinion, inherit the model row's terms.
+ * The two changes belong to one commit and must never be split.
+ *
+ * `initialPrompt` OVERRIDES the assigned model row's `_metadata.asr.initialPrompt` — one
+ * tier wins whole, they are never concatenated. Clearing it here is therefore how an
+ * operator hands the prompt decision back to the row (TASK-985 ST-3).
+ */
 export const ASR_INSTRUCTION = {
   initialPrompt: 'Clinical consultation between a clinician and a patient. English and Malayalam medical terminology.',
-  hotwords: [] as string[],
 };
 
 /**
@@ -467,14 +499,31 @@ function catalogue(tenantId: string, ids: (n: number) => string, generalMedicine
       tenantId,
       slug: 'realtime-transcription',
       name: 'Realtime transcription (whisper.cpp ML/EN)',
+      // TASK-985 (M-58) — the description used to claim "Silero VAD gating" and "the Q8_0 GGUF
+      // and the CTranslate2 turbo as fallbacks". Neither was true of what runs: TASK-977 (D-1)
+      // made VAD an opt-in stage and this agent leaves it OFF (`audioFrontEnd.vad.enabled:
+      // false`), and until TASK-985 carried the chain whole the gateway took `chain[0]` only, so
+      // the CT2 turbo was never reachable. Both are now accurate: VAD is off, and the chain is
+      // ordered and complete.
       description:
-        'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (F16), Silero VAD gating, Cadence punctuation; the Q8_0 GGUF and the CTranslate2 turbo as fallbacks.',
+        'Realtime + batch speech-to-text on the in-house Malayalam/English whisper.cpp GGUF (F16), energy segmentation (Silero VAD bound but OFF), Cadence punctuation; fallback chain: the Q8_0 GGUF, then the CTranslate2 turbo.',
       task: 'SPEECH_TO_TEXT',
       // TASK-938 (owner directive 2026-09-09): back to the F16 row, reverting TASK-930's move to
       // Q8_0. The two measured within 0.005 CER of each other (TASK-934), so this is not an
       // accuracy claim — it restores the weights that were serving before the 2026-09-06 baseline
       // so the live A/B has one variable fewer. Q8_0 stays first in the fallback chain.
       modelSlug: 'arcaai-whisper-large-ml-en-gguf',
+      // TASK-985 (M-49) — both entries are LIVE now. Until the chain travelled whole only
+      // `[0]` did, so the only reachable fallback was the q8_0 quantisation of this very
+      // primary: same weights, same failure modes, and therefore protection against exactly
+      // one class (the f16 artifact failing to load or OOM-ing) and nothing else. Entry 2 is
+      // a different RUNTIME over the same family — a genuinely independent decode path — and
+      // it only became reachable with the chain.
+      //
+      // Worth stating plainly, because it bounds what this chain can buy: `EngineSwitchController`
+      // arms on `ModelError` / `CloudASRTranscriptionError`, so a decoder that returns empty or
+      // truncated text is a SUCCESS to the switch and triggers no failover at all. The chain is
+      // availability insurance, not an accuracy backstop (OD-H).
       fallbackModelSlugs: ['arcaai-whisper-large-ml-en-gguf-q8_0', 'faster-whisper-large-v3-turbo-int8'],
       instruction: ASR_INSTRUCTION,
       parameters: ASR_PARAMETERS,

@@ -94,6 +94,10 @@ describe('parseAiModelAsrProfile — ranges (the value is dropped AND named)', (
     ['logprobThreshold', -1, -10.1, 0.1],
     ['noRepeatNgramSize', 0, -1, 11],
     ['prevTextContextWords', 50, -1, 201],
+    // TASK-985 (QW-8/QW-9) — the whisper.cpp decode extras.
+    ['entropyThreshold', 2.4, -0.1, 10.1],
+    ['maxTokens', 32, -1, 225],
+    ['audioCtx', 768, -1, 1501],
   ];
 
   it.each(decodingRanges)('decoding.%s accepts its range and rejects outside it', (key, ok, low, high) => {
@@ -105,7 +109,7 @@ describe('parseAiModelAsrProfile — ranges (the value is dropped AND named)', (
     }
   });
 
-  it.each(['beamSize', 'noRepeatNgramSize', 'prevTextContextWords'])('decoding.%s rejects a non-integer', (key) => {
+  it.each(['beamSize', 'noRepeatNgramSize', 'prevTextContextWords', 'maxTokens', 'audioCtx'])('decoding.%s rejects a non-integer', (key) => {
     const { profile, rejected } = parseAiModelAsrProfile({ decoding: { [key]: 2.5 } });
     expect(profile).not.toHaveProperty('decoding');
     expect(rejected).toEqual([`decoding.${key}`]);
@@ -201,6 +205,85 @@ describe('parseAiModelAsrProfile — decoding.hotwordsInPrompt (TASK-946 OD-1)',
 
   it('is a KNOWN key, so it is never reported as an unknown one', () => {
     const { rejected } = parseAiModelAsrProfile({ decoding: { hotwordsInPrompt: true, bestOf: 5 } });
+    expect(rejected).toEqual(['decoding.bestOf']);
+  });
+});
+
+/**
+ * TASK-985 (QW-8/QW-9) — the decode extras and the per-pass narrowing.
+ *
+ * Two things are being pinned here, and the second is the one that bites.
+ *
+ * 1. `entropyThreshold` is a SEPARATE key from `compressionRatioThreshold`. They share the
+ *    default 2.4 and pywhispercpp's own schema comment calls one "similar to" the other, but
+ *    OpenAI's gzip gate rejects text whose ratio is ABOVE the threshold while whisper.cpp's
+ *    entropy gate rejects a distribution whose entropy is BELOW it — different quantities, on
+ *    different scales, compared in opposite directions. Aliasing them would silently mean the
+ *    opposite thing on every row that set one.
+ * 2. `partial` / `final` are a strict SUBSET of the flat block, range-gated by the same table,
+ *    and an unknown key inside them is named with its dotted path rather than swallowed.
+ */
+describe('parseAiModelAsrProfile — decode extras and per-pass blocks (TASK-985)', () => {
+  it('keeps entropyThreshold and compressionRatioThreshold as two independent members', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { entropyThreshold: 2.6, compressionRatioThreshold: 2.4 } });
+    expect(profile.decoding).toEqual({ compressionRatioThreshold: 2.4, entropyThreshold: 2.6 });
+    expect(rejected).toEqual([]);
+  });
+
+  it.each(['singleSegment', 'suppressBlank', 'suppressNonSpeechTokens'])('decoding.%s is a boolean or nothing', (key) => {
+    expect(parseAiModelAsrProfile({ decoding: { [key]: true } }).profile.decoding).toEqual({ [key]: true });
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { [key]: 'yes' } });
+    expect(profile).not.toHaveProperty('decoding');
+    expect(rejected).toEqual([`decoding.${key}`]);
+  });
+
+  it('reads a full per-pass narrowing on both passes', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({
+      decoding: {
+        logprobThreshold: -1,
+        partial: { singleSegment: true, maxTokens: 32, audioCtx: 0 },
+        final: { singleSegment: false, maxTokens: 0, logprobThreshold: -1.25, entropyThreshold: 2.6 },
+      },
+    });
+    expect(rejected).toEqual([]);
+    expect(profile.decoding).toEqual({
+      logprobThreshold: -1,
+      partial: { maxTokens: 32, audioCtx: 0, singleSegment: true },
+      final: { logprobThreshold: -1.25, entropyThreshold: 2.6, maxTokens: 0, singleSegment: false },
+    });
+  });
+
+  it('range-gates a per-pass member against the SAME table as the flat one, and names its dotted path', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { final: { maxTokens: 225 } } });
+    expect(profile).not.toHaveProperty('decoding');
+    expect(rejected).toEqual(['decoding.final.maxTokens']);
+  });
+
+  it('refuses a per-pass member the flat block has but a pass may not narrow', () => {
+    // `conditionOnPrevTokens`, `noRepeatNgramSize`, `prevTextContextWords`,
+    // `compressionRatioThreshold`, `hotwords` and `hotwordsInPrompt` are session- or
+    // engine-level policy, not per-call kwargs: narrowing them per pass would promise
+    // something no decoder can deliver, so they are UNKNOWN keys inside a pass block.
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { final: { conditionOnPrevTokens: true, hotwordsInPrompt: true } } });
+    expect(profile).not.toHaveProperty('decoding');
+    expect(rejected).toEqual(['decoding.final.conditionOnPrevTokens', 'decoding.final.hotwordsInPrompt']);
+  });
+
+  it('omits an all-rejected pass block rather than emitting an empty object', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { logprobThreshold: -1, partial: { maxTokens: 999 } } });
+    expect(profile.decoding).toEqual({ logprobThreshold: -1 });
+    expect(profile.decoding).not.toHaveProperty('partial');
+    expect(rejected).toEqual(['decoding.partial.maxTokens']);
+  });
+
+  it('names a non-object pass block by its own path', () => {
+    const { profile, rejected } = parseAiModelAsrProfile({ decoding: { final: 'maxTokens=0' } });
+    expect(profile).not.toHaveProperty('decoding');
+    expect(rejected).toEqual(['decoding.final']);
+  });
+
+  it('treats `partial` and `final` as KNOWN keys, so they are never reported as unknown', () => {
+    const { rejected } = parseAiModelAsrProfile({ decoding: { partial: { maxTokens: 32 }, final: { maxTokens: 0 }, bestOf: 5 } });
     expect(rejected).toEqual(['decoding.bestOf']);
   });
 });

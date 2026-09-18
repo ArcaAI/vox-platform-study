@@ -27,10 +27,17 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    model_serializer,
+)
 from pydantic.alias_generators import to_camel
 
 from ..models.cache import DENOISE_ENGINE_BY_LIBRARY
@@ -117,6 +124,54 @@ class _Wire(BaseModel):
 
 AsrSpecModelRole = Literal["asr", "vad", "denoise", "embedding", "punctuation", "endpointing"]
 
+#: TASK-934 / TASK-985 — the mirror of ``AsrSpecDecodingSource`` in ``@arcaai/types``:
+#: which tier supplied a contested knob, or ``unsupported:<library>`` when a tier decided a
+#: value the chain's engine cannot honour at all. Constrained rather than free ``str`` so a
+#: typo on the gateway side is a validation error here, exactly as the old ``Literal`` was.
+AsrSpecDecodingSource = Annotated[
+    str, StringConstraints(pattern=r"^(agent|model|unsupported:[A-Za-z0-9._+-]+)$")
+]
+
+
+class AsrSpecDecodingPass(_Wire):
+    """TASK-985 (QW-8) — decode overrides for ONE pass (``partial`` or ``final``).
+
+    A strict SUBSET of the flat decode block: only knobs a decoder reads per call may be
+    narrowed per pass. ``condition_on_prev_tokens``, ``no_repeat_ngram_size``,
+    ``prev_text_context_words`` and ``compression_ratio_threshold`` are session- or
+    engine-level policy, so narrowing them per pass would promise what no decoder delivers.
+
+    Precedence, applied by the adapter because it is the only half that knows which pass it
+    is decoding: **this block → the flat block → the dataclass default.** Every member is
+    optional and omitted when unset, so "narrowed nothing" has one encoding.
+    """
+
+    OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "beam_size",
+            "temperature",
+            "logprob_threshold",
+            "entropy_threshold",
+            "no_speech_threshold",
+            "single_segment",
+            "suppress_blank",
+            "suppress_non_speech_tokens",
+            "max_tokens",
+            "audio_ctx",
+        }
+    )
+
+    beam_size: int | None = None
+    temperature: float | None = None
+    logprob_threshold: float | None = None
+    entropy_threshold: float | None = None
+    no_speech_threshold: float | None = None
+    single_segment: bool | None = None
+    suppress_blank: bool | None = None
+    suppress_non_speech_tokens: bool | None = None
+    max_tokens: int | None = None
+    audio_ctx: int | None = None
+
 
 class AsrSpecModelProfileDecoding(_Wire):
     """TASK-934 — the decode knobs an ASR ROW recommends (``AiModel._metadata.asr.decoding``).
@@ -142,6 +197,14 @@ class AsrSpecModelProfileDecoding(_Wire):
             "prev_text_context_words",
             "hotwords",
             "hotwords_in_prompt",
+            "entropy_threshold",
+            "single_segment",
+            "suppress_blank",
+            "suppress_non_speech_tokens",
+            "max_tokens",
+            "audio_ctx",
+            "partial",
+            "final",
         }
     )
 
@@ -154,6 +217,20 @@ class AsrSpecModelProfileDecoding(_Wire):
     no_repeat_ngram_size: int | None = None
     prev_text_context_words: int | None = None
     hotwords: list[str] | None = None
+    #: TASK-985 (QW-9) — whisper.cpp's ``entropy_thold``. NOT an alias of
+    #: ``compression_ratio_threshold`` above: same default (2.4), opposite direction,
+    #: different scale. Aliasing them would silently mean the opposite thing.
+    entropy_threshold: float | None = None
+    #: TASK-985 (QW-8) — the whisper.cpp decode extras, flat (both passes) …
+    single_segment: bool | None = None
+    suppress_blank: bool | None = None
+    suppress_non_speech_tokens: bool | None = None
+    max_tokens: int | None = None
+    audio_ctx: int | None = None
+    #: … and narrowed per pass. Carried here as PROVENANCE like everything else in this
+    #: class: the effective values are in ``decoding.partial`` / ``decoding.final``.
+    partial: AsrSpecDecodingPass | None = None
+    final: AsrSpecDecodingPass | None = None
     #: TASK-946 (OD-1) — the row's own recommendation for the hotword-prompt switch.
     #: Provenance only, like every other member here; the EFFECTIVE value is
     #: ``decoding.hotwords_in_prompt``, already folded by the gateway.
@@ -312,6 +389,14 @@ class AsrSpecDecoding(_Wire):
             "no_repeat_ngram_size",
             "prev_text_context_words",
             "hotwords_in_prompt",
+            "entropy_threshold",
+            "single_segment",
+            "suppress_blank",
+            "suppress_non_speech_tokens",
+            "max_tokens",
+            "audio_ctx",
+            "partial",
+            "final",
             "sources",
         }
     )
@@ -342,12 +427,34 @@ class AsrSpecDecoding(_Wire):
     #: :class:`InferenceConfig`'s default stands, and for whisper.cpp that default is
     #: OFF. It gates the PROMPT only — the terms still reach the lexicon stage.
     hotwords_in_prompt: bool | None = None
+    #: TASK-985 (QW-9) — whisper.cpp's ``entropy_thold``. A DISTINCT gate from
+    #: ``compression_ratio_threshold`` above, never an alias of it.
+    entropy_threshold: float | None = None
+    #: TASK-985 (QW-8) — the whisper.cpp decode extras, applied to BOTH passes …
+    single_segment: bool | None = None
+    suppress_blank: bool | None = None
+    suppress_non_speech_tokens: bool | None = None
+    max_tokens: int | None = None
+    audio_ctx: int | None = None
+    #: … and the two per-pass narrowings, already folded agent → row by the gateway.
+    #: Precedence at DECODE time is pass → flat → dataclass default, and the adapter
+    #: applies it because it is the only half that knows which pass it is running.
+    partial: AsrSpecDecodingPass | None = None
+    final: AsrSpecDecodingPass | None = None
     #: TASK-934 — which TIER supplied each contested knob (``"agent"`` = the agent's
     #: parameters, ``"model"`` = the ASR row's profile), keyed by the WIRE name. Also
     #: covers ``hotwords``, ``initialPrompt`` and ``partialWindowSec``, which travel in
     #: ``instruction`` / ``models.asr.metadata`` but are decided by the same precedence.
+    #:
+    #: TASK-985 (M-14) adds a THIRD answer that is not a tier: ``unsupported:<library>``
+    #: means a tier DID decide the value and the engine this chain runs cannot honour it,
+    #: so naming a tier would be a lie (``sources.beamSize: "agent"`` described a beam
+    #: width inert under the greedy whisper.cpp context every loader builds). The VALUE
+    #: still arrives verbatim — this map is provenance, not a filter. Per-pass knobs are
+    #: keyed by their dotted path (``final.maxTokens``).
+    #:
     #: OBSERVABILITY ONLY — never branch on it; the values themselves are already folded.
-    sources: dict[str, Literal["agent", "model"]] | None = None
+    sources: dict[str, AsrSpecDecodingSource] | None = None
 
 
 class AsrSpecPunctuation(_Wire):
@@ -460,10 +567,30 @@ class AsrSpecCore(_Wire):
 
 
 class AsrSpecFallback(_Wire):
+    """TASK-985 (M-49) — the ORDERED fallback chain, whole.
+
+    It used to lose every entry after the first: the gateway resolved the agent's
+    ``AgentModelFallback`` rows, took ``chain[0]`` and dropped the rest with no diagnostic.
+    The survivor was the q8_0 quantisation of the f16 primary — same weights, same failure
+    modes — so a failure that took the primary out ended the chain, and the genuinely
+    different engine declared behind it was unreachable configuration.
+
+    ``spec`` is kept for ONE release as ``chain[0]`` so the gateway, this service and the
+    committed contract fixture can ship in either order; read :func:`fallback_chain`, which
+    accepts both encodings, rather than either field directly.
+    """
+
     kind: Literal["none", "agent", "model"]
     auto_switch: bool
     switch_after_consecutive_failures: int = Field(ge=1)
-    spec: AsrSpecCore | None
+    #: Every fallback engine, in switch order. Empty for ``kind == "none"``; exactly one
+    #: entry for ``kind == "agent"`` (naming a fallback agent is the explicit choice and
+    #: SUPERSEDES the model chain rather than extending it). Defaulted rather than required
+    #: so a gateway that predates the field still validates.
+    chain: list[AsrSpecCore] = Field(default_factory=list)
+    #: .. deprecated:: TASK-985
+    #:     ``chain[0]``. Removed with the R4 sweep; registered in the deprecation register.
+    spec: AsrSpecCore | None = None
 
 
 class ResolvedAsrSpec(AsrSpecCore):
@@ -487,7 +614,60 @@ _TASK934_DECODING_FIELDS: tuple[tuple[str, str], ...] = (
     ("condition_on_prev_tokens", "condition_on_prev_tokens"),
     ("no_repeat_ngram_size", "no_repeat_ngram_size"),
     ("prev_text_context_words", "prev_text_context_words"),
+    # TASK-985 (QW-9) — whisper.cpp's own degenerate-decode gate, a peer of the two
+    # thresholds above and deliberately NOT an alias of `compression_ratio_threshold`.
+    ("entropy_threshold", "entropy_threshold"),
 )
+
+#: TASK-985 (QW-8) — ``AsrSpecDecoding`` field → the whisper.cpp **kwarg** it becomes.
+#:
+#: These land in ``InferenceConfig.decode_base`` rather than as named dataclass fields,
+#: because they are engine-specific decoder kwargs rather than cross-engine concepts: the
+#: adapter merges them straight into its call and never maps a name. Naming them here — at
+#: the wire → runtime boundary that already owns ``_TASK934_DECODING_FIELDS`` — is what keeps
+#: the spelling change in ONE place.
+_TASK985_DECODE_EXTRA_FIELDS: tuple[tuple[str, str], ...] = (
+    ("single_segment", "single_segment"),
+    ("suppress_blank", "suppress_blank"),
+    ("suppress_non_speech_tokens", "suppress_nst"),
+    ("max_tokens", "max_tokens"),
+    ("audio_ctx", "audio_ctx"),
+)
+
+#: TASK-985 (QW-8) — ``AsrSpecDecodingPass`` field → whisper.cpp kwarg, for the two per-pass
+#: dicts. A superset of the table above: a pass may also narrow the thresholds and the beam.
+_TASK985_PASS_FIELDS: tuple[tuple[str, str], ...] = (
+    ("beam_size", "beam_size"),
+    ("temperature", "temperature"),
+    ("logprob_threshold", "logprob_thold"),
+    ("entropy_threshold", "entropy_thold"),
+    ("no_speech_threshold", "no_speech_thold"),
+    *_TASK985_DECODE_EXTRA_FIELDS,
+)
+
+
+def _decode_pass_kwargs(block: AsrSpecDecodingPass | None) -> dict[str, float | int | bool]:
+    """One per-pass block, in the engine's own kwarg spelling. Absent members stay absent."""
+    if block is None:
+        return {}
+    out: dict[str, float | int | bool] = {}
+    for wire_field, engine_kwarg in _TASK985_PASS_FIELDS:
+        value = getattr(block, wire_field)
+        if value is not None:
+            out[engine_kwarg] = value
+    return out
+
+
+def fallback_chain(spec: ResolvedAsrSpec) -> list[AsrSpecCore]:
+    """TASK-985 (M-49) — the fallback chain, however the sender encoded it.
+
+    ``fallback.chain`` is the contract; ``fallback.spec`` is its one-release alias for
+    ``chain[0]``, so a gateway that predates the chain still yields a one-entry list here and
+    the two halves stay independently deployable. Read this, never either field.
+    """
+    if spec.fallback.chain:
+        return list(spec.fallback.chain)
+    return [spec.fallback.spec] if spec.fallback.spec is not None else []
 
 
 def _source_from_uri(uri: str) -> AiModelSource:
@@ -740,6 +920,24 @@ def pipeline_spec_from_resolved(core: AsrSpecCore) -> tuple[PipelineSpec, dict[s
     # lexicon stage below binds the same list.
     if decoding.hotwords_in_prompt is not None:
         inference_kwargs["hotwords_in_prompt"] = decoding.hotwords_in_prompt
+    # TASK-985 (QW-8) — the whisper.cpp decode extras, in the engine's own kwarg spelling so
+    # the adapter merges rather than maps. `decode_base` applies to both passes; the two pass
+    # dicts NARROW it, and the adapter applies that precedence because it is the only half
+    # that knows which pass it is decoding. An absent member stays absent all the way down,
+    # which is what leaves the library's own default standing.
+    decode_base: dict[str, float | int | bool] = {}
+    for _wire_field, _engine_kwarg in _TASK985_DECODE_EXTRA_FIELDS:
+        _value = getattr(decoding, _wire_field)
+        if _value is not None:
+            decode_base[_engine_kwarg] = _value
+    if decode_base:
+        inference_kwargs["decode_base"] = decode_base
+    _partial = _decode_pass_kwargs(decoding.partial)
+    if _partial:
+        inference_kwargs["decode_partial"] = _partial
+    _final = _decode_pass_kwargs(decoding.final)
+    if _final:
+        inference_kwargs["decode_final"] = _final
     inference = InferenceConfig(**inference_kwargs)  # type: ignore[arg-type]
 
     pp = core.post_processing
@@ -820,8 +1018,15 @@ class ResolvedSpecBundle:
         return self.spec.runtime_key
 
     @property
+    def fallback_runtime_keys(self) -> list[str]:
+        """TASK-985 (M-49) — every fallback engine's runtime key, in switch order."""
+        return [core.runtime_key for core in fallback_chain(self.spec)]
+
+    @property
     def fallback_runtime_key(self) -> str | None:
-        return self.spec.fallback.spec.runtime_key if self.spec.fallback.spec else None
+        """.. deprecated:: TASK-985 — the FIRST fallback only; read :attr:`fallback_runtime_keys`."""
+        keys = self.fallback_runtime_keys
+        return keys[0] if keys else None
 
 
 def bundle_from_resolved(raw: dict[str, Any] | ResolvedAsrSpec) -> ResolvedSpecBundle:
@@ -829,9 +1034,9 @@ def bundle_from_resolved(raw: dict[str, Any] | ResolvedAsrSpec) -> ResolvedSpecB
     spec = raw if isinstance(raw, ResolvedAsrSpec) else ResolvedAsrSpec.model_validate(raw)
     pipeline_specs: dict[str, PipelineSpec] = {}
     model_configs: dict[str, AiModelConfig] = {}
-    chains: list[AsrSpecCore] = [spec]
-    if spec.fallback.spec is not None:
-        chains.append(spec.fallback.spec)
+    # TASK-985 (M-49) — the WHOLE ordered chain, not just its head. The loop below was
+    # already generic; what was missing was everything after `fallback.spec`.
+    chains: list[AsrSpecCore] = [spec, *fallback_chain(spec)]
     for chain in chains:
         pipeline_spec, configs = pipeline_spec_from_resolved(chain)
         pipeline_specs[chain.runtime_key] = pipeline_spec
@@ -846,7 +1051,10 @@ def pipeline_config_from_bundle(bundle: ResolvedSpecBundle, runtime_key: str) ->
     bundle (never a silently substituted chain).
     """
     pipeline_spec = bundle.pipeline_specs[runtime_key]
-    core = bundle.spec if runtime_key == bundle.spec.runtime_key else bundle.spec.fallback.spec
+    core = next(
+        (c for c in (bundle.spec, *fallback_chain(bundle.spec)) if c.runtime_key == runtime_key),
+        None,
+    )
     assert core is not None  # the key came from pipeline_specs, so a chain exists
     now = datetime.now(UTC)
     return PipelineConfig(
@@ -867,6 +1075,8 @@ __all__ = [
     "RESOLVED_ASR_SPEC_SCHEMA_VERSION",
     "AsrSpecAgent",
     "AsrSpecCore",
+    "AsrSpecDecodingPass",
+    "AsrSpecDecodingSource",
     "AsrSpecFallback",
     "AsrSpecModel",
     "AsrSpecModelMetadata",
@@ -877,6 +1087,7 @@ __all__ = [
     "UnsupportedAsrSpecError",
     "UnsupportedDenoiseEngineError",
     "bundle_from_resolved",
+    "fallback_chain",
     "pipeline_config_from_bundle",
     "pipeline_spec_from_resolved",
     "to_ai_model_config",
