@@ -178,6 +178,17 @@ class SemanticEndpointer:
     def enabled(self) -> bool:
         return bool(self._config.enabled)
 
+    @property
+    def config(self) -> EndpointConfig:
+        """The configuration this endpointer applies.
+
+        TASK-985 (M-13): the preprocessor reports the segmentation numbers it
+        actually ran on (``StreamingPreprocessor.effective_segmentation``), and
+        the endpoint floor is one of them. Reading ``_config`` through a private
+        attribute from another module is how that report would rot.
+        """
+        return self._config
+
     def observe_hypothesis(self, text: str) -> None:
         """Record the latest running hypothesis (called on each partial)."""
         self._hypothesis = text or ""
@@ -192,6 +203,16 @@ class SemanticEndpointer:
         Returns ``should_endpoint=True`` only for a confident, complete turn once
         the trailing-silence floor is met. Every other path returns False so the
         caller falls through to the fixed ``min_silence_ms`` backstop.
+
+        TASK-985 (D2-N7): ``min_silence_ms`` used to be ACCEPTED and never read
+        — the caller computed the fixed backstop and passed it to no effect, so
+        a session could not configure a semantic floor at all. It is now the
+        clamp its own documentation describes (``min_endpoint_silence_ms`` is
+        "kept below the fixed backstop so a cut is 'earlier'"): the effective
+        floor is the LOWER of the two, which is a no-op whenever the configured
+        floor is already below the backstop (200 vs 350 on the served pipeline)
+        and stops a mis-set floor above it from making the semantic path
+        unreachable rather than merely early.
         """
         if not self._config.enabled:
             return EndpointDecision(False, 0.0, REASON_DISABLED)
@@ -205,7 +226,8 @@ class SemanticEndpointer:
 
         # Do not cut on the instant the last word lands — require a minimum
         # trailing silence (the target-min EOU latency floor).
-        if trailing_silence_ms < self._config.min_endpoint_silence_ms:
+        silence_floor_ms = min(float(self._config.min_endpoint_silence_ms), float(min_silence_ms))
+        if trailing_silence_ms < silence_floor_ms:
             return EndpointDecision(False, 0.0, REASON_SILENCE_FLOOR)
 
         # Hard safety veto: a trailing disfluency is never a turn boundary, even

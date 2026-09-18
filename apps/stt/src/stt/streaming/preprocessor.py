@@ -24,14 +24,51 @@ import structlog
 
 from stt.vad.dto import VADSessionState
 
+# TASK-985 (M-39, CL-3): the three counters these call — `stt_streaming_
+# utterances_total{reason,is_final}`, `stt_streaming_endpoint_decisions_total
+# {reason}` and `stt_streaming_vad_degraded_total{stage}` — are declared in the
+# SHARED `stt.core.metrics`, which this lane does not own. Binding them behind
+# an ImportError keeps the two halves independent: the call sites below are
+# written against the names that lane adds and no-op until it lands, so neither
+# half can break the audio loop on its own. Delete this fallback block — never
+# the call sites — once the counters exist.
+try:  # pragma: no cover - exercised by whichever half of the pair is present
+    from stt.core.metrics import streaming_endpoint_decision as _record_endpoint_decision
+    from stt.core.metrics import streaming_utterance_emitted as _record_utterance_emitted
+    from stt.core.metrics import streaming_vad_degraded as _record_vad_degraded
+except ImportError:
+
+    def _record_utterance_emitted(*, reason: str, is_final: bool) -> None:
+        return None
+
+    def _record_endpoint_decision(*, reason: str) -> None:
+        return None
+
+    def _record_vad_degraded(*, stage: str) -> None:
+        return None
+
+
 logger = structlog.get_logger(__name__)
 
 # Silero v5 constants
 _FRAME_SIZE_16K = 512  # 512 samples = 32 ms at 16 kHz
 _FRAME_SIZE_8K = 256
 _PRE_SPEECH_CONTEXT_MS = 300
-_ENERGY_FLOOR = 1e-4
+# TASK-985 (D2-N9) — one constant used to mean two incompatible things. The
+# energy gate compares an AMPLITUDE (RMS); the force-emit split search compares
+# a MEAN SQUARE (power). 1e-4 of amplitude is -80 dBFS; 1e-4 of power is an RMS
+# of 0.01, i.e. -40 dBFS. Both values are unchanged — only the names now say
+# which unit they are in.
+_ENERGY_FLOOR_RMS = 1e-4  # amplitude (RMS); divide-by-zero floor for the gate
+_SPLIT_ENERGY_FLOOR_MS = 1e-4  # mean square (power) == RMS 0.01
 _ENERGY_MULTIPLIER = 2.5
+# TASK-985 (M-07 / QW-13) — 0.015 RAW amplitude (about -36.5 dBFS): the loudest
+# room whose floor we still track, above which the EMA is clamped so it cannot
+# chase speech. It was ALWAYS a raw-amplitude number, but until QW-13 it clamped
+# a NORMALIZED measurement, so in any room quieter than 0.015 x 0.05 = -62 dBFS
+# it saturated and the "adaptive" gate became an absolute one at -53 dBFS of
+# room tone. `_run_energy_fallback` now measures in raw amplitude, which is the
+# unit this ceiling is written in.
 _FALLBACK_NOISE_FLOOR_MAX = 0.015
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15
 # TOTAL sub-threshold "dip" frames tolerated across a
@@ -64,6 +101,26 @@ _NORMALIZER_WINDOW_MS = 3000
 # amplifies room noise to full scale (false onsets via the energy fallback;
 # defeats the RMS hallucination gate downstream).
 _NORMALIZER_MIN_PEAK = 0.05
+# TASK-985 (ST-2, D2 3.4) — pre-VAD noise-floor VETO, purely subtractive: a
+# frame whose RAW energy sits at or below the adapted floor cannot be speech
+# however confidently Silero scores it, so its probability is zeroed BEFORE the
+# state machine sees it. It can never OPEN an utterance. 0.2 is the probability
+# a frame AT the adapted floor produces (floor / (2 * 2.5 * floor)), so the veto
+# bites only on frames the energy path itself calls room tone. Off by default
+# (`energy_veto_enabled`): whether it earns its place at all is MR-2 arm 3, and
+# a denoiser in "vad_only" scope can legitimately attenuate the gated frame.
+_ENERGY_VETO_PROB = 0.2
+
+# TASK-985 (M-39) — stable, PHI-free tags for WHY an utterance was cut. Five
+# distinct decisions reached `_emit_utterance` and recorded which one nowhere,
+# so a fragmented session and an over-long one looked identical from outside.
+REASON_SEMANTIC = "semantic"
+REASON_SILENCE_TIMER = "silence_timer"
+REASON_MAX_UTTERANCE_SMART = "max_utterance_smart"
+REASON_MAX_UTTERANCE_OVERLAP = "max_utterance_overlap"
+REASON_FLUSH = "flush"
+REASON_FLUSH_PENDING_ONSET = "flush_pending_onset"
+REASON_PARTIAL = "partial"
 
 # Default minimum wall-clock interval between successive PARTIAL
 # emissions. Lowered from the legacy hardcoded 1.0 s so newly-spoken words
@@ -104,6 +161,16 @@ class AudioUtterance:
     end_time: float  # seconds from session start
     utterance_index: int  # 0-based within the session
     is_final: bool = False  # True for confirmed segments (silence-detected or flush)
+    # TASK-985 (M-07 / QW-13) — the peak-normalizer gain in force when `samples`
+    # was emitted (1.0 when the stage is off, so the batch path and every
+    # pre-existing caller are byte-identical). `samples` is AMPLIFIED for the
+    # decoder; every downstream ENERGY threshold is a statement about the ROOM
+    # and must divide by this first, or a 20x-boosted quiet room measures as
+    # speech (the hallucination RMS gate in `inference.py` is the live case).
+    normalizer_gain: float = 1.0
+    # TASK-985 (M-39) — which decision cut this utterance; one of the module's
+    # `REASON_*` tags. PHI-free and bounded, so it is safe as a metric label.
+    endpoint_reason: str = "unknown"
 
 
 @dataclass
@@ -122,6 +189,12 @@ class _PreprocessorState:
     last_partial_emitted_at: float = 0.0
     total_samples_fed: int = 0
     utterance_count: int = 0
+    # TASK-985 (ST-2, D2 3.7) — speech probabilities for the buffered frames,
+    # aligned with `utterance_buffer` FROM THE END and bounded to the force-emit
+    # lookback. With Silero active the split search can then cut at a real pause
+    # (lowest probability) instead of at the lowest-energy frame, which is just
+    # as often a stop-consonant closure inside a word. Empty on the energy path.
+    vad_prob_ring: Any = None
 
 
 class StreamingPreprocessor:
@@ -163,6 +236,7 @@ class StreamingPreprocessor:
         partial_window_s: float = _DEFAULT_PARTIAL_WINDOW_S,
         partial_interval_s: float = _PARTIAL_INTERVAL_S,
         endpointer: Any | None = None,
+        energy_veto_enabled: bool = False,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -202,6 +276,18 @@ class StreamingPreprocessor:
         # ASR consumes) stays raw. "full" keeps the legacy denoised flow.
         self._denoise_scope = denoise_scope
         self._peak_tracker = 0.0001
+        # TASK-985 (M-07 / QW-13) — gain the peak normalizer applied to the most
+        # recent frame; 1.0 whenever `normalize` is off, so nothing moves on that
+        # path. The energy gate and the downstream hallucination RMS gate are
+        # thresholds on the ROOM and divide by it; the gain itself stays on the
+        # samples the DECODER sees, which is what the normalizer exists for.
+        self._normalizer_gain: float = 1.0
+        # TASK-985 (ST-2, D2 3.4) — the pre-VAD energy veto. Deliberately NOT
+        # wired to an agent field yet: MR-2 arm 3 decides whether it ships at
+        # all, and shipping a knob before the measurement that justifies it is
+        # how `speechPadMs` became inert (D2-N1). If MR-2 adopts it, it needs an
+        # `audioFrontEnd.vad.*` field and a mapping, not a literal here.
+        self._energy_veto_enabled = energy_veto_enabled
         vad_frame_size = _FRAME_SIZE_16K if self._target_sr >= 16000 else _FRAME_SIZE_8K
         if sample_rate != self._target_sr:
             self._frame_size = int(vad_frame_size * (sample_rate / self._target_sr))
@@ -276,14 +362,39 @@ class StreamingPreprocessor:
 
         # Internal state
         self._state = _PreprocessorState()
+        self._reset_prob_ring()
 
         self._processed_samples: list[np.ndarray] = []
+
+        # TASK-985 (M-39) — per-session cut-reason and endpoint-decision
+        # histograms. They answer §2.5 class 2 ("54 % of finals are <= 3 words")
+        # without Prometheus: a `silence_timer`-dominated session says the gap is
+        # too short, a `semantic`-dominated one says the punctuation heuristic is
+        # cutting mid-clause, a `max_utterance`-dominated one says the opposite.
+        from collections import Counter
+
+        self._cut_reasons: Any = Counter()
+        self._endpoint_decisions: Any = Counter()
+        self._vad_degraded: Any = Counter()
+        # Stages already warned about this session. TASK-985 (D2-N2): a
+        # persistently failing Silero logged a WARNING per 32 ms frame — ~31
+        # lines/s/session into Loki — which reads as noise rather than as the
+        # metric it should have been. Warn once, count every time.
+        self._vad_degraded_warned: set[str] = set()
+        self._summary_logged = False
 
     def reset(self) -> None:
         """Reset all accumulated state."""
         self._state = _PreprocessorState()
+        self._reset_prob_ring()
         self._processed_samples.clear()
         self._peak_tracker = 0.0001
+        self._normalizer_gain = 1.0
+        self._cut_reasons.clear()
+        self._endpoint_decisions.clear()
+        self._vad_degraded.clear()
+        self._vad_degraded_warned.clear()
+        self._summary_logged = False
         self._peak_window.clear()
         self._resample_carry = np.zeros(0, dtype=np.float32)
         self._fallback_noise_floor = 0.002
@@ -328,6 +439,66 @@ class StreamingPreprocessor:
         """
         return self._partial_window_s
 
+    @property
+    def normalizer_gain(self) -> float:
+        """Gain the peak normalizer is currently applying (1.0 when off)."""
+        return self._normalizer_gain
+
+    @property
+    def effective_segmentation(self) -> dict[str, Any]:
+        """The numbers this preprocessor is ACTUALLY running on.
+
+        TASK-985 (M-13). The agent row said ``minSilenceMs: 350`` and the
+        sessions ran on 500, because the builder read the agent's tuning only
+        inside ``if vad.enabled`` and substituted a hardware-profile literal
+        otherwise. Nothing in the session log could tell you. Rather than
+        duplicate the numbers at the call site — which is how they drifted —
+        the object that APPLIES them answers for them.
+
+        ``segmenter`` deliberately reports what LOADED, not what was declared:
+        a session whose Silero load failed runs on the energy fallback however
+        the agent is configured. Bounded keys, no PHI — safe to log verbatim.
+        """
+        endpointer = self._endpointer
+        endpointer_enabled = endpointer is not None and bool(getattr(endpointer, "enabled", False))
+        endpoint_config = getattr(endpointer, "config", None)
+        silero_active = self._vad_service is not None and bool(self._vad_service.is_loaded)
+        if endpointer_enabled:
+            endpointing = "semantic"
+        elif silero_active:
+            # `fixed` on Silero and `fixed` on the energy fallback are two
+            # different products — the silence run is anchored on the model's
+            # own neg-threshold hysteresis in one and on an energy proxy in the
+            # other. Report which one governed (D2 3.6).
+            endpointing = "vad"
+        else:
+            endpointing = "fixed"
+        return {
+            "segmenter": "silero" if silero_active else "energy",
+            "threshold": self._threshold,
+            "neg_threshold": self._neg_threshold,
+            "min_speech_ms": self._min_speech_duration_ms,
+            "min_silence_ms": self._min_silence_duration_ms,
+            "pre_speech_context_ms": round(self._pre_speech_frames * self._frame_duration_ms),
+            "max_utterance_ms": round(self._max_utterance_frames * self._frame_duration_ms),
+            "partial_window_s": self._partial_window_s,
+            "partial_interval_s": self._partial_interval_s,
+            "normalize": self._normalize,
+            "energy_veto": self._energy_veto_enabled,
+            "endpointing": endpointing,
+            "endpoint_min_silence_ms": getattr(endpoint_config, "min_endpoint_silence_ms", None),
+            "endpoint_min_words": getattr(endpoint_config, "min_words", None),
+        }
+
+    @property
+    def segmentation_summary(self) -> dict[str, Any]:
+        """Per-session cut-reason / decision histograms (TASK-985 M-39)."""
+        return {
+            "utterances": dict(self._cut_reasons),
+            "endpoint_decisions": dict(self._endpoint_decisions),
+            "vad_degraded": dict(self._vad_degraded),
+        }
+
     def drain_processed_samples(self) -> bytes:
         """Drain accumulated processed samples as int16 PCM bytes."""
         if not self._processed_samples:
@@ -349,6 +520,9 @@ class StreamingPreprocessor:
         frame_peak = float(np.abs(frame).max()) if len(frame) > 0 else 0.0
         self._peak_window.append(frame_peak)
         self._peak_tracker = max(max(self._peak_window), _NORMALIZER_MIN_PEAK)
+        # TASK-985 (QW-13): remember the scalar so the energy gates can undo it
+        # exactly. Bounded by the divisor floor, so it never exceeds 20x.
+        self._normalizer_gain = 1.0 / self._peak_tracker
         return frame / self._peak_tracker
 
     def _resample_frame(self, frame: np.ndarray) -> np.ndarray:
@@ -445,7 +619,7 @@ class StreamingPreprocessor:
             if self._denoiser is not None and getattr(self._denoiser, "in_fade_in", False):
                 prob = 0.0
             else:
-                prob = self._run_vad(vad_frame)
+                prob = self._apply_energy_veto(self._run_vad(vad_frame), vad_frame)
 
             # State machine: speech detection
             is_speech = prob >= self._threshold
@@ -458,13 +632,23 @@ class StreamingPreprocessor:
                         # Speech confirmed — start collecting
                         state.in_speech = True
                         state.silence_frames = 0
-                        state.utterance_start_time = (
-                            state.total_samples_fed - len(frame_f32) * state.speech_onset_frames
-                        ) / self._target_sr
 
                         # Include pre-speech context + current onset frame
                         state.utterance_buffer = list(state.pre_speech_ring)
                         state.utterance_buffer.append(frame_f32.copy())
+                        # TASK-985 (D2-N4): the buffer is SEEDED with the
+                        # pre-speech ring, so the onset frame is not where the
+                        # emitted audio begins — deriving the start from the
+                        # onset frame under-stated every utterance by the ring
+                        # (~320 ms on the served defaults) and made
+                        # `end_time - start_time` disagree with `len(samples)`.
+                        # The buffer is the only thing that knows.
+                        state.utterance_start_time = self._buffer_start_time(
+                            state.utterance_buffer,
+                            state.total_samples_fed / self._target_sr,
+                        )
+                        self._reset_prob_ring()
+                        state.vad_prob_ring.append(prob)
 
                         # Collect pre-speech context + onset frame for processed audio
                         self._processed_samples.extend(state.pre_speech_ring)
@@ -507,6 +691,7 @@ class StreamingPreprocessor:
                 frame_copy = frame_f32.copy()
                 state.utterance_buffer.append(frame_copy)
                 self._processed_samples.append(frame_copy)
+                state.vad_prob_ring.append(prob)
 
                 # Force-emit if utterance exceeds max duration to prevent websocket
                 # Whisper accuracy degradation on oversized segments.
@@ -528,7 +713,11 @@ class StreamingPreprocessor:
                             split_idx=split_idx,
                             carry_frames=len(carry),
                         )
-                        utt = self._emit_utterance(is_final=True, carry_buffer=carry)
+                        utt = self._emit_utterance(
+                            is_final=True,
+                            reason=REASON_MAX_UTTERANCE_SMART,
+                            carry_buffer=carry,
+                        )
                     else:
                         # Fallback: hard split with overlap
                         overlap_frames = int(self._force_emit_overlap_ms / self._frame_duration_ms)
@@ -539,7 +728,11 @@ class StreamingPreprocessor:
                             component="VAD",
                             overlap_frames=overlap_frames,
                         )
-                        utt = self._emit_utterance(is_final=True, carry_buffer=carry)
+                        utt = self._emit_utterance(
+                            is_final=True,
+                            reason=REASON_MAX_UTTERANCE_OVERLAP,
+                            carry_buffer=carry,
+                        )
                     if utt is not None:
                         utterances.append(utt)
                 else:
@@ -563,13 +756,24 @@ class StreamingPreprocessor:
                         # (or captures a tail the timer would strand); otherwise
                         # fall through to the fixed silence-offset backstop.
                         # Defensive (never raises); False when absent/disabled.
-                        if self._should_semantic_endpoint(state.silence_frames):
-                            utt = self._emit_utterance(is_final=True)
+                        should_cut, endpoint_reason = self._should_semantic_endpoint(
+                            state.silence_frames
+                        )
+                        # TASK-985 (M-39 / D2-N8): record the endpointer's own
+                        # PHI-free tag EVEN WHEN IT DOES NOT CUT. The four
+                        # negative tags are the only evidence that says whether
+                        # semantic endpointing ever fires on the served pipeline
+                        # — where the punctuation model is finals-only, so a
+                        # partial may carry no terminal punctuation at all.
+                        if endpoint_reason is not None:
+                            self._record_endpoint_reason(endpoint_reason)
+                        if should_cut:
+                            utt = self._emit_utterance(is_final=True, reason=REASON_SEMANTIC)
                             if utt is not None:
                                 utterances.append(utt)
                         elif state.silence_frames >= self._min_silence_frames:
                             # Speech ended — emit confirmed utterance
-                            utt = self._emit_utterance(is_final=True)
+                            utt = self._emit_utterance(is_final=True, reason=REASON_SILENCE_TIMER)
                             if utt is not None:
                                 utterances.append(utt)
                     else:
@@ -616,25 +820,32 @@ class StreamingPreprocessor:
 
         # Emit whatever is in the utterance buffer
         if state.in_speech and state.utterance_buffer:
-            return self._emit_utterance(is_final=True)
-
+            result = self._emit_utterance(is_final=True, reason=REASON_FLUSH)
         # Pending unconfirmed onset: the session stopped less than
         # min_speech_duration after the last word began. Those frames sit in
         # the pre-speech ring; discarding them loses the final word of the
         # consultation. Emit them as the final utterance.
         # Guard: >= 2 onset frames (64 ms) so a single above-threshold noise
         # blip at session stop does not ship a ring of ambient noise to ASR.
-        if state.speech_onset_frames >= 2 and state.pre_speech_ring:
+        # (TASK-985: once the energy gate measures RAW amplitude — QW-13 — a
+        # lone ambient blip can no longer clear the threshold at all, so this
+        # guard could safely drop to >= 1 and stop discarding 64 ms of a final
+        # word. That is a SECOND behaviour change riding on the first and is
+        # deliberately not taken here; revisit once MR-1 has the room-tone
+        # number.)
+        elif state.speech_onset_frames >= 2 and state.pre_speech_ring:
             state.utterance_buffer = list(state.pre_speech_ring)
             state.pre_speech_ring.clear()
             self._processed_samples.extend(state.utterance_buffer)
-            buffered = sum(len(f) for f in state.utterance_buffer)
-            state.utterance_start_time = max(
-                0.0, (state.total_samples_fed - buffered) / self._target_sr
+            state.utterance_start_time = self._buffer_start_time(
+                state.utterance_buffer, state.total_samples_fed / self._target_sr
             )
-            return self._emit_utterance(is_final=True)
+            result = self._emit_utterance(is_final=True, reason=REASON_FLUSH_PENDING_ONSET)
+        else:
+            result = None
 
-        return None
+        self._log_session_summary()
+        return result
 
     def _run_vad(self, frame: np.ndarray) -> float:
         """Run VAD on a single frame, returning speech probability.
@@ -642,7 +853,14 @@ class StreamingPreprocessor:
         If no VAD service is available, uses a lightweight energy-based
         fallback to preserve utterance segmentation.
         """
-        if self._vad_service is None or not self._vad_service.is_loaded:
+        if self._vad_service is None:
+            # No service was ever attached: the DECLARED configuration, not a
+            # degradation — `effective_segmentation["segmenter"]` already
+            # reports "energy" for it. A service that was MEANT to load and did
+            # not is counted where that is knowable, at the loader (CL-3).
+            return self._run_energy_fallback(frame)
+        if not self._vad_service.is_loaded:
+            self._note_vad_degraded("not_loaded", latch_count=True)
             return self._run_energy_fallback(frame)
 
         try:
@@ -655,12 +873,58 @@ class StreamingPreprocessor:
                 ),
             )
         except Exception as exc:
-            logger.warning(
-                "VAD inference error, using energy fallback",
-                session_id=self.session_id,
-                error=str(exc),
-            )
+            self._note_vad_degraded("inference", exc)
             return self._run_energy_fallback(frame)
+
+    def _note_vad_degraded(
+        self, stage: str, exc: Exception | None = None, *, latch_count: bool = False
+    ) -> None:
+        """Count a degraded frame; warn ONCE per stage per session.
+
+        TASK-985 (D2-N2). The per-frame ``logger.warning`` this replaces fired
+        every 32 ms — about 31 lines/s/session — so a broken Silero arrived as a
+        log flood rather than as a number anyone could alert on. Fail-open to
+        the energy path is still the right posture for a consultation, but only
+        because QW-13 made that path safe first: before it, degrading meant
+        degrading INTO the room-tone bug.
+
+        ``latch_count`` separates a SESSION fact from a per-frame FAULT RATE: an
+        unloaded model is one true statement about the session, counted once;
+        an ONNX exception is counted on every frame it happens, because how
+        often it happens is the whole signal.
+        """
+        already = stage in self._vad_degraded_warned
+        if not (latch_count and already):
+            self._vad_degraded[stage] += 1
+            _record_vad_degraded(stage=stage)
+        if already:
+            return
+        self._vad_degraded_warned.add(stage)
+        logger.warning(
+            "stt.streaming.vad_degraded",
+            session_id=self.session_id,
+            component="VAD",
+            stage=stage,
+            error=str(exc) if exc is not None else None,
+            detail="segmenting on the energy fallback for the rest of this session",
+        )
+
+    def _apply_energy_veto(self, prob: float, frame: np.ndarray) -> float:
+        """Zero a Silero probability on a frame the energy path calls room tone.
+
+        TASK-985 (ST-2, D2 3.4). Purely SUBTRACTIVE — it can never open an
+        utterance, only refuse one. Runs solely when Silero is the active
+        segmenter: on the fallback path ``prob`` already IS the energy
+        probability, and re-running the gate would double-step the noise-floor
+        EMA and its cooldown. Off unless ``energy_veto_enabled`` (MR-2 arm 3).
+        """
+        if not self._energy_veto_enabled:
+            return prob
+        if self._vad_service is None or not self._vad_service.is_loaded:
+            return prob
+        if self._run_energy_fallback(frame) < _ENERGY_VETO_PROB:
+            return 0.0
+        return prob
 
     def _run_energy_fallback(self, frame: np.ndarray) -> float:
         """Estimate speech probability from frame energy.
@@ -676,7 +940,17 @@ class StreamingPreprocessor:
         if frame.size == 0:
             return 0.0
 
-        rms = float(np.sqrt(np.mean(np.square(frame))))
+        # TASK-985 (M-07 / QW-13) — measure in RAW amplitude. `frame` has been
+        # through the peak normalizer, which boosts a quiet room by up to 20x;
+        # the noise-floor ceiling this gate adapts against has always been a raw
+        # number, so comparing the two made the "adaptive" floor saturate in
+        # exactly the quiet rooms it was meant to adapt to and turned the gate
+        # into an absolute detector at about -53 dBFS of room tone. Dividing by
+        # the gain is an exact undo of a known scalar, applied AFTER resample
+        # and denoise so the gate keeps both (gating the pre-normalization frame
+        # instead would re-admit the out-of-band HF energy the anti-alias filter
+        # removes, and throw away the whole point of denoise_scope="vad_only").
+        rms = float(np.sqrt(np.mean(np.square(frame)))) / max(self._normalizer_gain, 1e-9)
         if not np.isfinite(rms):
             return 0.0
 
@@ -693,28 +967,37 @@ class StreamingPreprocessor:
         if state.noise_floor_cooldown > 0:
             state.noise_floor_cooldown -= 1
 
-        adaptive_threshold = max(_ENERGY_FLOOR, self._fallback_noise_floor * _ENERGY_MULTIPLIER)
+        adaptive_threshold = max(_ENERGY_FLOOR_RMS, self._fallback_noise_floor * _ENERGY_MULTIPLIER)
         probability = rms / (adaptive_threshold * 2.0)
         return float(np.clip(probability, 0.0, 1.0))
 
-    def _should_semantic_endpoint(self, silence_frames: int) -> bool:
+    def _should_semantic_endpoint(self, silence_frames: int) -> tuple[bool, str | None]:
         """Ask the semantic endpointer whether to cut now.
 
-        Returns True only when an attached, ENABLED endpointer signals a
-        confident complete turn for the current trailing silence. Fail-safe: no
-        endpointer / disabled / any error → False, so the caller falls through to
-        the fixed silence-offset backstop. NEVER raises out of ``feed()``.
+        Returns ``(should_cut, reason)``. ``should_cut`` is True only when an
+        attached, ENABLED endpointer signals a confident complete turn for the
+        current trailing silence. Fail-safe: no endpointer / disabled / any
+        error → False, so the caller falls through to the fixed silence-offset
+        backstop. NEVER raises out of ``feed()``.
+
+        TASK-985 (M-39 / D2-N8): ``reason`` is the endpointer's own PHI-free
+        tag, which used to be computed and thrown away at this one call site —
+        ``None`` only when no endpointer object exists and therefore nothing was
+        decided. The four NEGATIVE tags are what says whether semantic
+        endpointing ever fires at all on the served pipeline.
         """
         endpointer = self._endpointer
-        if endpointer is None or not getattr(endpointer, "enabled", False):
-            return False
+        if endpointer is None:
+            return False, None
+        if not getattr(endpointer, "enabled", False):
+            return False, "disabled"
         try:
             trailing_silence_ms = silence_frames * self._frame_duration_ms
             decision = endpointer.decide(
                 trailing_silence_ms=trailing_silence_ms,
                 min_silence_ms=self._min_silence_duration_ms,
             )
-            return bool(decision.should_endpoint)
+            return bool(decision.should_endpoint), str(decision.reason)
         except Exception as exc:  # noqa: BLE001 — degrade to the fixed timer
             logger.warning(
                 "Semantic endpoint decision failed, using fixed silence timer",
@@ -722,7 +1005,12 @@ class StreamingPreprocessor:
                 component="ENDPOINT",
                 error=str(exc),
             )
-            return False
+            return False, "error"
+
+    def _record_endpoint_reason(self, reason: str) -> None:
+        """Record one endpoint decision — cut or not (TASK-985 M-39)."""
+        self._endpoint_decisions[reason] += 1
+        _record_endpoint_decision(reason=reason)
 
     def _reset_endpointer(self) -> None:
         """Clear the endpointer's observed hypothesis at an utterance boundary."""
@@ -763,8 +1051,13 @@ class StreamingPreprocessor:
         if now - state.last_partial_emitted_at < self._partial_interval_s:
             return None
 
-        # Check minimum audio duration
-        buffer_duration_s = len(state.utterance_buffer) * self._frame_size / self._target_sr
+        # Check minimum audio duration.
+        # TASK-985 (D2-N12): count SAMPLES, not frames x the INPUT-rate frame
+        # size. The buffered frames are post-resample, so the old expression
+        # overstated the duration by sample_rate/target_sr — 3x on a 48 kHz
+        # uplink, firing partials on 0.17 s of audio instead of 0.5 s. Dormant
+        # only because the browser resamples to 16 kHz before sending.
+        buffer_duration_s = sum(len(f) for f in state.utterance_buffer) / self._target_sr
         if buffer_duration_s < _PARTIAL_MIN_AUDIO_S:
             return None
 
@@ -784,10 +1077,12 @@ class StreamingPreprocessor:
         samples = np.concatenate(window_frames)
 
         end_time = state.total_samples_fed / self._target_sr
-        trimmed = len(window_frames) < len(state.utterance_buffer)
-        start_time = (
-            end_time - (len(samples) / self._target_sr) if trimmed else state.utterance_start_time
-        )
+        # TASK-985 (D2-N4): ONE rule for both branches. The trimmed branch was
+        # already correct; the untrimmed one reported the onset frame, which is
+        # ~320 ms after the buffered audio actually starts — so `start_time`
+        # JUMPED by the pre-speech ring at the first trimmed partial and fed a
+        # phantom window slide into the commit policy on every utterance.
+        start_time = self._buffer_start_time(window_frames, end_time)
 
         partial = AudioUtterance(
             samples=samples,
@@ -796,22 +1091,125 @@ class StreamingPreprocessor:
             end_time=end_time,
             utterance_index=state.utterance_count,
             is_final=False,
+            normalizer_gain=self._normalizer_gain,
+            endpoint_reason=REASON_PARTIAL,
         )
 
         state.last_partial_emitted_at = now
         return partial
 
+    def _buffer_start_time(self, buffer: list[np.ndarray], end_time: float) -> float:
+        """Session time at which ``buffer``'s FIRST sample was fed.
+
+        TASK-985 (D2-N4) — the one rule every emit path uses, so that
+        ``end_time - start_time`` always equals ``len(samples) / sample_rate``.
+        Deriving a start from the onset frame instead ignores the pre-speech
+        ring the buffer is seeded with, which is ~320 ms on the served defaults
+        and is read downstream as a real window slide.
+        """
+        buffered = sum(len(f) for f in buffer)
+        return max(0.0, end_time - buffered / self._target_sr)
+
+    def _prob_ring_maxlen(self) -> int:
+        return max(1, int(self._force_emit_lookback_ms / self._frame_duration_ms))
+
+    def _reset_prob_ring(self) -> None:
+        """Drop the probability ring at an utterance boundary (TASK-985 ST-2)."""
+        from collections import deque
+
+        self._state.vad_prob_ring = deque(maxlen=self._prob_ring_maxlen())
+
+    def _trim_prob_ring(self, keep: int) -> None:
+        """Keep only the last ``keep`` probabilities, preserving end-alignment."""
+        from collections import deque
+
+        ring = self._state.vad_prob_ring
+        tail = list(ring)[-keep:] if keep > 0 else []
+        self._state.vad_prob_ring = deque(tail, maxlen=self._prob_ring_maxlen())
+
+    def _find_lowest_probability_pause(
+        self, buffer: list[np.ndarray], search_start: int
+    ) -> int | None:
+        """Lowest-probability frame in the lookback, if it is a genuine pause.
+
+        The ring is aligned with ``buffer`` FROM THE END, so a ring shorter than
+        the buffer (the pre-speech frames carry no probability of their own)
+        maps cleanly. Returns None when Silero is not the active segmenter or
+        when no frame in the window is below the off-threshold — on the energy
+        path the probabilities ARE the energy measure, so preferring their
+        minimum would only restate the energy search less legibly.
+        """
+        if self._vad_service is None or not self._vad_service.is_loaded:
+            return None
+        ring = self._state.vad_prob_ring
+        if not ring:
+            return None
+        probs = list(ring)
+        offset = len(buffer) - len(probs)
+        if offset < 0:
+            return None
+
+        # Never index 0: `buffer[:0]` is empty, so a split there emits nothing
+        # and silently drops the whole utterance. (The energy search below can
+        # still return 0 whenever the buffer is shorter than the lookback — a
+        # pre-existing hazard this lane reports rather than widens.)
+        first_valid = max(search_start, 1)
+
+        best_idx: int | None = None
+        best_prob = float("inf")
+        for i, prob in enumerate(probs):
+            buf_idx = offset + i
+            if buf_idx < first_valid or buf_idx >= len(buffer):
+                continue
+            if prob < self._neg_threshold and prob < best_prob:
+                best_prob = prob
+                best_idx = buf_idx
+        return best_idx
+
+    def _log_session_summary(self) -> None:
+        """One INFO line per session with the segmentation it actually ran.
+
+        TASK-985 (M-39). This is what makes a single scorecard run explicable
+        without Prometheus: a `silence_timer`-dominated histogram says the
+        silence gap is too short, a `semantic`-dominated one says the
+        punctuation heuristic is cutting mid-clause, a `max_utterance`-dominated
+        one says the opposite problem. Emitted once, even if flush is retried.
+        """
+        if self._summary_logged:
+            return
+        self._summary_logged = True
+        logger.info(
+            "stt.streaming.session_summary",
+            session_id=self.session_id,
+            component="VAD",
+            **self.effective_segmentation,
+            **self.segmentation_summary,
+        )
+
     def _find_best_split_point(self, buffer: list[np.ndarray]) -> int | None:
-        """Find lowest-energy frame in the last lookback window.
+        """Find the best frame in the last lookback window to cut at.
 
         Returns the buffer index to split at, or None if no good point found.
+
+        TASK-985 (ST-2, D2 3.7): when Silero is the active segmenter, prefer the
+        lowest SPEECH PROBABILITY frame that is actually below the off-threshold
+        — a real pause. A low-ENERGY frame is just as often a stop-consonant
+        closure INSIDE a word, which is why the energy split pays 120 ms of
+        carry to compensate. The probability search is gated on a frame the
+        model itself calls non-speech, so a plateau of uniformly high
+        probabilities (no pause in the window) falls through to the energy
+        search unchanged rather than cutting at an arbitrary minimum.
         """
         lookback_frames = int(self._force_emit_lookback_ms / self._frame_duration_ms)
         search_start = max(0, len(buffer) - lookback_frames)
 
+        pause_idx = self._find_lowest_probability_pause(buffer, search_start)
+        if pause_idx is not None:
+            return pause_idx
+
         # Compute mean energy of full buffer for comparison
         mean_energy = float(np.mean([np.mean(f**2) for f in buffer]))
-        if mean_energy < _ENERGY_FLOOR:
+        if mean_energy < _SPLIT_ENERGY_FLOOR_MS:
             return None
 
         threshold = mean_energy * _SPLIT_ENERGY_RATIO
@@ -827,9 +1225,19 @@ class StreamingPreprocessor:
         return best_idx
 
     def _emit_utterance(
-        self, is_final: bool, carry_buffer: list[np.ndarray] | None = None
+        self,
+        is_final: bool,
+        *,
+        reason: str,
+        carry_buffer: list[np.ndarray] | None = None,
     ) -> AudioUtterance | None:
-        """Concatenate buffered frames into an AudioUtterance and reset state."""
+        """Concatenate buffered frames into an AudioUtterance and reset state.
+
+        ``reason`` is required and PHI-free: five distinct decisions reach this
+        method and until TASK-985 (M-39) none of them was recorded, so a
+        fragmented session and an over-long one were indistinguishable from
+        outside the process.
+        """
         state = self._state
 
         if not state.utterance_buffer:
@@ -840,15 +1248,25 @@ class StreamingPreprocessor:
 
         end_time = state.total_samples_fed / self._target_sr
         utt_index = state.utterance_count
+        # TASK-985 (D2-N4): `start_time` must DESCRIBE `samples`. Derived from
+        # the buffer, the same rule the carry path below already used — the
+        # onset-frame arithmetic it replaces ignored the pre-speech ring the
+        # buffer is seeded with and under-stated every utterance by ~320 ms.
+        start_time = self._buffer_start_time(state.utterance_buffer, end_time)
 
         utterance = AudioUtterance(
             samples=samples,
             sample_rate=self._target_sr,
-            start_time=state.utterance_start_time,
+            start_time=start_time,
             end_time=end_time,
             utterance_index=utt_index,
             is_final=is_final,
+            normalizer_gain=self._normalizer_gain,
+            endpoint_reason=reason,
         )
+
+        self._cut_reasons[reason] += 1
+        _record_utterance_emitted(reason=reason, is_final=is_final)
 
         if self._denoiser is not None:
             logger.debug(
@@ -863,11 +1281,12 @@ class StreamingPreprocessor:
             session_id=self.session_id,
             component="VAD",
             index=utt_index,
-            start_s=round(state.utterance_start_time, 3),
+            start_s=round(start_time, 3),
             end_s=round(end_time, 3),
-            duration_s=round(end_time - state.utterance_start_time, 3),
+            duration_s=round(end_time - start_time, 3),
             samples=len(samples),
             is_final=is_final,
+            reason=reason,
         )
 
         # Reset for next utterance
@@ -878,13 +1297,24 @@ class StreamingPreprocessor:
             state.in_speech = True
             carry_duration = sum(len(f) for f in carry_buffer) / self._target_sr
             state.utterance_start_time = end_time - carry_duration
+            # The ring stays aligned with the buffer FROM THE END, and every
+            # carry ends where the emitted buffer did, so keeping its tail is
+            # enough — no slicing of a parallel per-utterance list.
+            self._trim_prob_ring(len(carry_buffer))
+            # TASK-985 (D2-N10): the onset path arms this timer for exactly this
+            # reason. Leaving it at 0.0 while `in_speech` stays True made the
+            # very next frame emit a partial over the carry alone — audio that
+            # was just published as a final.
+            state.last_partial_emitted_at = time.monotonic()
         else:
             state.in_speech = False
             state.speech_onset_frames = 0
             state.onset_gap = 0
+            state.utterance_start_time = start_time
+            self._reset_prob_ring()
+            state.last_partial_emitted_at = 0.0
         state.silence_frames = 0
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
-        state.last_partial_emitted_at = 0.0
         state.utterance_count += 1
 
         # Drop the observed hypothesis at the utterance boundary;
