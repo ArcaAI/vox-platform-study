@@ -13,11 +13,11 @@ function sanitizeRedirect(from: string | undefined): string {
   return '/dashboard';
 }
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ from?: string; error?: string }> }) {
-  const { from, error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ from?: string; error?: string; reason?: string }> }) {
+  const { from, error, reason } = await searchParams;
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
-      <LoginForm redirectTo={sanitizeRedirect(from)} initialError={error} />
+      <LoginForm redirectTo={sanitizeRedirect(from)} initialError={error} sessionExpired={reason === 'expired'} />
     </main>
   );
 }
