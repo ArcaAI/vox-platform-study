@@ -350,7 +350,17 @@ class TestBatchHandler:
         await handler("5-0")
 
         assert session.metadata.last_stream_id == "5-0"
-        mgr._redis.hset.assert_any_await("stt:session:s1", "last_stream_id", "5-0")
+        # TASK-985 M-66 — `last_seq` is persisted on the SAME cadence as
+        # `last_stream_id` (the XACK cadence), in ONE mapping HSET rather than the
+        # old positional field/value call. Without it the `record_frame` seq guard
+        # is cosmetic after a crash: `last_seq` would be whatever the PERIODIC
+        # persist left behind, and every redelivered entry between the two is
+        # re-counted — which is billed audio. Asserting the mapping shape is what
+        # keeps the two fields from drifting back apart.
+        mgr._redis.hset.assert_any_await(
+            "stt:session:s1",
+            mapping={"last_stream_id": "5-0", "last_seq": str(session.last_seq)},
+        )
 
     @pytest.mark.asyncio
     async def test_trims_audio_stream_with_minid(self):

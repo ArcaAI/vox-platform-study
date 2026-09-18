@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import inspect
 import json
 import os
@@ -24,6 +25,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -285,6 +287,55 @@ def _spec_model_config_of(
         return None
     bundle = _spec_bundles_of(manager).get(session_id)
     return bundle.model_configs.get(slug) if bundle is not None else None
+
+
+# TASK-985 BP-1 — the SESSION's configuration fingerprint (L-EVAL's gate reads
+# it; `streaming_quality.FINGERPRINT_FIELDS` compares BY NAME, so these keys are
+# a contract and are camelCase to match it).
+#
+# M-15 is the reason it exists: the committed evaluation baseline and the served
+# configuration drifted apart six times over, every `_note` still described the
+# 2026-09-09 config, and nothing in the log could settle which one had actually
+# run — so `e3d61eefb` flipped the pair priming prompt on and moved English WER
+# 27x with no gate able to see it. The fix is that the fingerprint is written by
+# the SESSION and compared by machine: there is no human transcription step left
+# in the loop that could drift. Never re-derive it from the seed.
+FINGERPRINT_EVENT = "stt.streaming.fingerprint"
+
+
+def _prompt_hash(prompt: str | None) -> str | None:
+    """A stable digest of the COMPOSED priming prompt — never its text.
+
+    The prompt carries the tenant's authored instruction and its hotword list,
+    which is clinical vocabulary, so the text may not be logged. A digest still
+    answers the only question the gate asks: did the two runs decode under the
+    same conditioning?
+    """
+    if not prompt:
+        return None
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+
+
+@lru_cache(maxsize=1)
+def _image_build_id() -> str | None:
+    """`version+sha8` of the RUNNING image, or ``None`` outside a built image.
+
+    This is the identity that pins the compiled whisper.cpp binding: the binding
+    is built into the image, and nothing in `pywhispercpp` exposes its own
+    upstream commit at runtime. Read once per process — the reader caches, and
+    an unbuilt tree (local dev, CI) has no file and answers ``0.0.0-...``.
+    """
+    try:
+        from hope_env import BuildInfoReader
+
+        info = BuildInfoReader().get_build_info()
+        sha = (getattr(info, "git_commit_sha", None) or "")[:8]
+        version = getattr(info, "version", None)
+        if not version:
+            return None
+        return f"{version}+{sha}" if sha else str(version)
+    except Exception:  # noqa: BLE001 — a fingerprint field is never worth a raise
+        return None
 
 
 def _declared_compute_type(loaded_model: Any) -> str | None:
@@ -975,6 +1026,18 @@ class SessionManager:
             fields.update(effective)
         logger.info("stt.streaming.windows", **fields)
 
+        # BP-1 — the same facts, plus the ones the line above cannot express,
+        # under the field NAMES the baseline gate compares by.
+        self._log_session_fingerprint(
+            session_id=session_id,
+            pipeline_config=pipeline_config,
+            preprocessor=preprocessor,
+            effective=effective if isinstance(effective, dict) else {},
+            max_decode_window_sec=max_decode_window_sec,
+            initial_prompt=initial_prompt,
+            vad_enabled=vad_service is not None,
+        )
+
         return _SessionRuntime(
             publisher=publisher,
             preprocessor=preprocessor,
@@ -986,6 +1049,96 @@ class SessionManager:
             target_sr=target_sr,
             effective_diarization=effective_diarization,
         )
+
+    def _log_session_fingerprint(
+        self,
+        *,
+        session_id: str,
+        pipeline_config: Any,
+        preprocessor: Any,
+        effective: dict[str, Any],
+        max_decode_window_sec: float | None,
+        initial_prompt: str | None,
+        vad_enabled: bool,
+    ) -> None:
+        """Emit the BP-1 session fingerprint (see :data:`FINGERPRINT_EVENT`).
+
+        One INFO line per session, bounded keys, no PHI — the prompt is a DIGEST
+        and the model is named by slug and digest, never by content.
+
+        Sourcing rules, because "where did this number come from" is the whole
+        point of the gate:
+
+        * geometry comes from the PREPROCESSOR (the object that applies it),
+          never re-derived here — re-deriving is how M-13's 350-vs-500 ms drift
+          happened;
+        * ``agentVersion`` is the session's runtime key, which IS the
+          ``agentVersionId`` the gateway resolved the spec against;
+        * the two prompt flags are read from ``language_modes`` at call time, so
+          a flag flip like ``e3d61eefb`` shows up in the NEXT session's line
+          rather than in nobody's;
+        * ``sdkOperatingPoint`` is ``None`` on purpose. It names the CALLER
+          (``harness`` / ``scribe`` / ``playground``) and nothing on the wire
+          declares it to STT today. A null is "not captured", which the gate
+          treats as not-comparable for that field; guessing it here would be the
+          re-derivation this whole event exists to abolish.
+
+        Never raises: a fingerprint is diagnostic, and a log line must not be
+        able to fail a session (the same rule the ``fields`` merge above states).
+        """
+        try:
+            from stt.pipeline.language_modes import (
+                WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED,
+                WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED,
+            )
+
+            slug = _spec_asr_slug(pipeline_config)
+            model_config = _spec_model_config_of(self, session_id, slug)
+            bundle = _spec_bundles_of(self).get(session_id)
+            partial_interval_s = effective.get(
+                "partial_interval_s", getattr(preprocessor, "partial_interval_s", None)
+            )
+            engine_format = getattr(model_config, "format", None)
+            engine = getattr(engine_format, "value", engine_format)
+            build = _image_build_id()
+            device = getattr(model_config, "device", None) or getattr(
+                self._profile, "asr_device", None
+            )
+            logger.info(
+                FINGERPRINT_EVENT,
+                session_id=session_id,
+                agentVersion=bundle.runtime_key if bundle is not None else None,
+                modelSlug=slug,
+                # `checksum` is the weights' own digest where the row carries one;
+                # `source_revision` is the next-best identity (a pinned HF revision
+                # or version tag) and is what a LOCAL bucket-staged row has.
+                modelDigest=getattr(model_config, "checksum", None)
+                or getattr(model_config, "source_revision", None),
+                maxDecodeWindowSec=max_decode_window_sec,
+                partialWindowSec=effective.get(
+                    "partial_window_s", getattr(preprocessor, "partial_window_s", None)
+                ),
+                partialIntervalMs=(
+                    round(float(partial_interval_s) * 1000.0)
+                    if isinstance(partial_interval_s, (int, float))
+                    and not isinstance(partial_interval_s, bool)
+                    else None
+                ),
+                endpointing=effective.get("endpointing"),
+                vadEnabled=vad_enabled,
+                promptHash=_prompt_hash(initial_prompt),
+                pairPromptEnabled=WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED,
+                singlePromptEnabled=WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED,
+                engineBuild=f"{engine}@{build}" if engine and build else build,
+                device=normalize_device(device) if isinstance(device, str) else None,
+                sdkOperatingPoint=None,
+            )
+        except Exception as exc:  # noqa: BLE001 — diagnostics never fail a session
+            logger.debug(
+                "stt.streaming.fingerprint_failed",
+                session_id=session_id,
+                error=str(exc),
+            )
 
     async def _get_pipeline_embedding_service(self, hf_model_id: str) -> Any:
         """Resolve (and cache) a per-pipeline speaker-embedding service.
@@ -1755,6 +1908,38 @@ class SessionManager:
                             session_id=session_id,
                             error=str(exc),
                         )
+                    # And the state DERIVED from the two configs just
+                    # reassigned. Reassigning a config without re-deriving what
+                    # the worker computed from it at construction is the same
+                    # half-applied switch one level down — it survives every
+                    # test whose worker is a namespace double, because a field
+                    # nobody assigned is a field nobody misses.
+                    #
+                    # `_partial_lexicon_corrector` (D5-N7) is the width-1
+                    # corrector the PARTIAL path reads; left behind, the session
+                    # snaps partials to the OLD engine's terms while its finals
+                    # use the new ones. `_uses_cadence_fast` is an exact-name
+                    # match on `_punctuation_config.model`, and `_republish_
+                    # punctuated` reads that same config: both gate the
+                    # punctuated-final follow-up on every final.
+                    try:
+                        worker._partial_lexicon_corrector = worker._build_lexicon_corrector(
+                            binding.postprocessing_config, single_token_only=True
+                        )
+                    except Exception as exc:  # noqa: BLE001 — never fail a swap
+                        logger.warning(
+                            "stt.stream.switch_lexicon_rebuild_failed",
+                            session_id=session_id,
+                            partial=True,
+                            error=str(exc),
+                        )
+                    worker._uses_cadence_fast = worker._resolve_uses_cadence_fast()
+                    worker._republish_punctuated = (
+                        getattr(
+                            worker._punctuation_config, "republish_after_publish", False
+                        )
+                        is True
+                    )
                     worker._gloss_callable = binding.gloss_callable
                     # The signature probe re-runs on its own: it is keyed on
                     # callable identity, which just changed.

@@ -244,6 +244,15 @@ class TestCreateSessionCommitPolicy:
         cfg = MagicMock()
         cfg.streaming.commit_policy = "local_agreement_2"
         cfg.preprocessing.vad.enabled = False
+        # TASK-985 M-13 — the agent's segmentation TUNING is now read whether or
+        # not the Silero stage is on (the energy fallback is still a segmenter and
+        # obeys the same four numbers), so these have to be real numbers. Left as
+        # bare MagicMocks the preprocessor's hysteresis (`max(threshold - gap,
+        # 0.01)`) raises TypeError inside session assembly. `VadConfig` types them
+        # with float/int defaults, so a MagicMock here is a double artefact.
+        cfg.preprocessing.vad.threshold = 0.6
+        cfg.preprocessing.vad.min_speech_duration_ms = 100
+        cfg.preprocessing.vad.min_silence_duration_ms = 100
         cfg.preprocessing.target_sample_rate = 16000
         cfg.preprocessing.denoise.enabled = False
         cfg.preprocessing.normalize = False
