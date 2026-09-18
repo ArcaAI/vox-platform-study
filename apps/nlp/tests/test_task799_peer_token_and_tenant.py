@@ -67,7 +67,9 @@ async def _run_lifespan(lifespan_module, monkeypatch: pytest.MonkeyPatch) -> Non
     """Enter and exit `lifespan` with every side effect stubbed out."""
     from fastapi import FastAPI
 
-    monkeypatch.setattr(lifespan_module, "setup_opentelemetry", lambda app: None)
+    # `setup_opentelemetry` is no longer stubbed here because the lifespan no
+    # longer calls it: observability moved into the app factory (TASK-987 B-1),
+    # since middleware cannot be added once the lifespan is running.
     monkeypatch.setattr(lifespan_module, "shutdown_opentelemetry", lambda app: None)
 
     class _FakeWebSocketManager:
