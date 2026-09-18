@@ -54,11 +54,14 @@ dependencies = [
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
+    # --- Shared logging & tracing runtime (TASK-987 R-1) ---
+    "hope-obs",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
+hope-obs = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
@@ -161,6 +164,7 @@ pythonpath = [
     "src",
     "../../packages/py-env/src",
     "../../packages/py-runtime-models/src",
+    "../../packages/py-obs/src",
     "../../scripts/pytest-support",
 ]
 addopts = [
