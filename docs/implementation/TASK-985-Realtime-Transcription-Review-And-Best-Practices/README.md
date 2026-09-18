@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | `Review` — core report written 2026-09-18 13:20 local; a deepening pass (per-area fix designs, best practices, SOTA options) runs after the 17:00 usage reset and will expand §3–§5 |
+| **Status** | `In Progress` — review complete 2026-09-18; implementation wave opened 2026-09-19 (owner directive: execute Waves 1–3, orchestrator runs all realtime measurement, owner decides the 13 owner calls). **Root cause of the accuracy collapse isolated by measurement — see §2.7.** Nine area dossiers produced; file-owned implementation lanes in flight. |
 | **Branch** | `dev-2.2` (reviewed at `c4fd0a680`, live dev DB, k3s `hope-v2-dev`, 2026-09-18) |
 | **Classification** | `review` (docs). No code change in this ticket; follow-up tickets carry the changes. |
 | **Owner request** | 2026-09-18: "help me review and evaluate the realtime transcription with current architecture/implementation. we need best practices to have max accuracy and performance." |
@@ -220,6 +220,116 @@ None of these classes is measured by any gate on record (the English gate scores
 - Measurement primitives worth keeping: the loss harness measures on a single monotonic clock with drift-free real-time pacing (`test_streaming_loss_harness.py:17-24, 318-347`); `committed_revision_rate` skips `stableChars=0` tails and is pinned by tests (`test_streaming_quality_scorecard.py:121-169`); the ml-en gate is keyed `<slug>@<window>` and reads the decode window from the baseline entry (`test_mlen_quality_gate.py:180-183`).
 - The SDK owns a correct drain primitive (`SttWebSocketClient.stopAndDrain`, used by `StreamingBackendSTTProvider.destroy()`; the defect is only in the default constants and in consumers that bypass it); stop releases the mic synchronously before the bounded drain (`useArcaAudio.ts:1332-1344, 1433`; `SttWebSocketClient.ts:584-692`); the 5 s silent-uplink watchdog (`useArcaAudio.ts:614-658`); the scribe language picker filters catalogue `auto` and maps `__auto__` to nothing (`scribe-footer.tsx:61-102`); the playground acquires the mic before minting the 30 s ticket and latches audio loss across reconnects (`use-live-stt-session.ts:223-250, 342-349`); `LiveTranscript` is accessibility-aware (interim `aria-live=off`, finals announced, glosses merged by `utteranceIndex`, virtualized with jump-to-live).
 
+### 2.7 Root cause of the accuracy collapse — measured and isolated (2026-09-19, TASK-985 implementation wave)
+
+The review left the collapse unattributed because the served session differed from the baseline in six
+variables at once (§2.3). It is now attributed to ONE of them, by measurement on the local stack.
+
+**Method.** Five sibling `SPEECH_TO_TEXT` agents were cloned into the Global playground tenant
+(`t985-arm-{a..e}`, no SYSTEM write), each differing from the served `realtime-transcription` row in one
+field, and the streaming quality scorecard was run against each through the WS gateway on the three
+committed English clinical fixtures (N=1, quiet stack, MPS f16, warm model). Arm A is a faithful clone of
+the served configuration and reproduced the served numbers exactly, which validates the design.
+
+| arm | `languageMode` | resolves to | agent `initialPrompt` | cardiology | discharge | medication | keyterm recall |
+|---|---|---|---|---|---|---|---|
+| A (= served today) | `ml-en` | `language=None` + **pair prompt** | on | 0.885 | 0.935 | 0.918 | 0/21 |
+| D | `ml-en` | `language=None` + **pair prompt** | off | 0.689 | 0.855 | 0.836 | 2/21 |
+| E | `auto` | `language=None`, **no prompt** | on | **0.033** | **0.048** | **0.131** | 21/21 |
+| B | `en` | `language='en'`, no prompt | on | **0.033** | **0.048** | **0.131** | 21/21 |
+| C | `en` | `language='en'`, no prompt | off | **0.033** | **0.048** | **0.098** | 19/21 |
+
+**Arm E is the decisive arm.** `resolve_mode_for_engine` (`language_modes.py:427-470`) returns, for
+whisper.cpp, `ResolvedInference(language=None, code_switching=False, streaming_english_gloss=False)` for
+`auto` and the SAME value plus `initial_prompt=pair_prompt` for `ml-en`. The two are identical except for
+the prompt, and BOTH leave the language unpinned. So E vs A is a clean single-variable comparison of the
+pair priming prompt — the comparison §3 BP-2 assumed would need a code edit.
+
+**The single-variable property was verified downstream too, not just at the resolver.** At
+`session_manager.py:2249-2279` the resolved mode sets `inference_config.language`, `.code_switching` and
+`.streaming_english_gloss`, and separately captures `code_switch_prompt = resolved.initial_prompt`. For
+BOTH `auto` and `ml-en` the first three are `None` / `False` / `False`; `code_switch_prompt` is the ONLY
+value that differs, and its sole consumer is `compose_prompt(code_switch_prompt, initial_prompt)`. The
+adapter's own mode lookup (`whisper_cpp_asr.py:360`) keys on the RESOLVED `language`, which is `None` in
+both arms, so it takes the same branch. No other behavioural divergence exists between the two arms.
+
+**Conclusion: the pair priming prompt alone causes the collapse.**
+- Pinning the language is NOT required to fix it — arm E is unpinned and scores 0.033.
+- Stacking the agent `initialPrompt` on top of the pair prompt makes it worse (D -> A).
+- With no pair prompt the agent prompt is neutral (B ~ C ~ E).
+- Arm D emitted MALAYALAM SCRIPT into English clinical audio (`"62-ക"`, `"-യയയൻ"`, `"കൽ എയക്കുക"`),
+  reproducing M-09's independent-LID-per-window mechanism on demand.
+
+**The commit.** `git log -S'WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = True'` returns **`e3d61eefb`**
+("feat(TASK-938): the owner's ASR decode configuration (f16, 6s partials, prompts on)"). At the baseline
+commit `0c865ccfb` the flag reads `False` (`language_modes.py:230`); today it reads `True` (`:255`). That
+single flip is the difference between the committed baseline and the served collapse, and it explains why
+the 2026-09-09 capture — `ml-en` with the prompt OFF — recorded exactly arm E's numbers. It also settles
+M-15: the baseline is not merely stale, it describes a configuration that WORKS while the served path does
+not.
+
+**Six of the review's six candidate variables are eliminated** as causes of the English collapse:
+`partialWindowSec` (3 vs 15), `partialIntervalMs` (300 vs 500), compute (f16 vs q8_0), `vad.enabled`,
+the punctuation model, and — additionally — the agent `initialPrompt` and the 20 row hotwords with the
+lexicon stage, all of which are ON in arm E at 0.033.
+
+**Why the clinic has not reported catastrophic transcription — and the hazard this creates.**
+The browser SDK sends `languageMode: 'auto'` on every undeclared session (**M-02**), which resolves to
+arm E. M-02 is therefore accidentally MASKING this defect on the scribe surface: the collapse is LATENT
+for English audio, not live.
+
+> **HARD SEQUENCING CONSTRAINT.** Shipping **QW-2** (fix M-02 so the agent's `ml-en` reaches the scribe)
+> WITHOUT first disabling the pair prompt moves every clinical scribe session from 0.033 to 0.885 WER — a
+> 27x regression. QW-2's stated goal, "agent ml-en reaches the scribe", is precisely the harmful outcome
+> until the prompt is fixed. QW-2 must land WITH or AFTER the prompt fix, never before it.
+
+**Scope limit.** All three fixtures are English clinical reads; `STT_MLEN_EVAL_DIR` is unset on this
+machine and the 24 ml-en clips are real clinical audio held outside git, so no Malayalam or code-switched
+arm was run. The pair prompt exists for code-switched audio, so in principle it could help there. The
+external record now points the other way on that too (see the OD-B row in §4 and the F9-M2 correction in
+Appendix C): re-fetched, the cited Indic prompt-tuning paper reads Malayalam baseline 134.40% ->
+fine-tuned no-prompt **35.15%** -> fine-tuned WITH prompt **35.74% (worse)**, and the ASCEND code-switch
+rows read 12.21% no-prompt vs 15.63% with-prompt. Together with TASK-946's internal 77%-content-loss arm,
+nothing on record supports the pair prompt helping either Malayalam or code-switched audio.
+
+
+#### 2.7.1 The Malayalam half, measured (2026-09-19) — OD-B answered in both languages
+
+§2.7's arms were English-only, and the pair priming prompt exists for CODE-SWITCHED audio, so the honest
+scope limit was that it might help there. The owner supplied five aligned clips from a Malayalam-English
+clinical talk (probiotics / microbiome / antibiotics), 16 kHz mono, each with a reference transcript, and
+they are genuinely code-switched — e.g. `"ഹലോ everyone, I am Dr Manoj Johnson, lifestyle physician"`,
+`"antibiotic എടുക്കുമ്പോൾ gastric related ഒക്കെ balance ചെയ്യാൻ"`.
+
+The SAME two sibling agents were used, so this is the same single-variable comparison as §2.7 — arm A
+(`ml-en`: `language=None` + pair prompt) against arm E (`auto`: `language=None`, no prompt). Metric is CER
+(§5: primary for Malayalam and code-switch), computed against the supplied references.
+
+| clip | ref chars | CER — prompt ON | CER — prompt OFF | hyp chars ON -> OFF | finals ON |
+|---|---|---|---|---|---|
+| 0001 | 211 | 0.896 | **0.474** | 31 -> 134 | 1 |
+| 0002 | 203 | 0.946 | **0.695** | 14 -> 81 | 1 |
+| 0003 | 199 | 1.000 | **0.940** | 0 -> 23 | **0** |
+| 0013 | 236 | 0.924 | **0.720** | 26 -> 100 | 1 |
+| 0015 | 302 | 0.904 | **0.722** | 43 -> 132 | 1 |
+| **mean** | | **0.934** | **0.710** | ~3-4x more content | |
+
+**The pair prompt is harmful on code-switched Malayalam too.** With it ON the decoder returned 31 / 14 / 0 /
+26 / 43 characters against references of 211 / 203 / 199 / 236 / 302, and one clip produced NO final at all.
+So the last caveat on OD-B is closed: the prompt is net-harmful in both languages, which is also the
+direction of the external record (F9-M2 re-fetch: Malayalam 35.15 % no-prompt vs 35.74 % with-prompt;
+ASCEND code-switch 12.21 % vs 15.63 %).
+
+**What this does NOT say.** Arm E's CER of 0.47-0.94 is still poor in absolute terms. Removing the prompt
+recovers most of the LOST CONTENT; it does not make the served fine-tune good at this audio. Script
+fidelity is independently bad in both arms — on clip 0001 the reference is 52.1 % Latin and the hypothesis
+9.3 %, while on clip 0015 the reference is 0 % Latin and the hypothesis 28.8 %. That is a model/LID problem
+(M-09, and D9's option table), not a prompt problem, and it is not addressed by OD-B.
+
+**Fixture provenance.** The clips are an owner-supplied recording of a named clinician, held OUTSIDE the
+repository. They are NOT committed, and the driver reads them by absolute path, matching the
+`STT_MLEN_EVAL_DIR` posture in `apps/stt/tests/integration/README-mlen-eval.md`.
+
 ## 3. Best practices
 
 Every external number cites its F9 practice id; Appendix C lists the source, URL, year and whether the page was fetched or only seen in search results.
@@ -277,7 +387,7 @@ Recommendation first; each row presents the evidence and asks rather than overri
 | Id | Decision | Recommendation | Evidence | Record |
 |---|---|---|---|---|
 | OD-A | `partialWindowSec` for the served agents (3 vs 6 vs 15) | Measure before choosing: do not touch the seed until BP-2 reports; then promote the winner and remove the agent-level override if the row value wins. If a value must be chosen before that, 15 is the only measured point with 0 % garbage partials on the three-point curve (31 % at 6 s, 10 % at 10 s, 0 % at 15 s), at the cost of first-partial latency moving with the window (TASK-934 recorded commit p50 rising ~0.8 s when the window widened); 3 is extrapolated past the harmful end of that curve | M-01; `session_manager.py:489-495`; `25-agents.ts:255-259`; today's finals are independent of this knob | TASK-938 R-2 (Review), TASK-946 §7 (undone), Lane F2 `ea174814e` (protocol never run) |
-| OD-B | Pair priming prompt on ml-en (module switch ON) | Measure per BP-2. The closest measurement on record (SINGLE priming prompt + agent prompt, pinned `en`, TASK-946 OD-2, `language_modes.py:238-244`) lost 77 % of content; the served PAIR prompt on unpinned ml-en has no number at all, and today's deletion-dominated collapse is consistent with a prompt effect but does not prove it. Whatever wins, the template moves to the model row and the module switches are deleted | M-10, M-09; `language_modes.py:208,230 (at 0c865ccfb),255`; `mlen_scorecard_baseline.json:11` | TASK-946 OD-2 ("pending its own measured A/B") |
+| OD-B | Pair priming prompt on ml-en (module switch ON) | **ANSWERED BY MEASUREMENT 2026-09-19 (§2.7) — recommend OFF.** Arm E (`auto`) vs arm A (`ml-en`) is a single-variable comparison of the pair prompt (both resolve to `language=None`; they differ only in `initial_prompt`). With the prompt: 0.885 / 0.935 / 0.918 medical_wer, keyterm 0/21. Without it: 0.033 / 0.048 / 0.131, keyterm 21/21. The flag was flipped True by `e3d61eefb`; it reads False at the baseline commit, which is why the 2026-09-09 capture recorded the good numbers. Recommended: (1) set `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False` now — a one-line revert of that flag; (2) ST-3 moves the template to `AiModel._metadata.asr.initialPrompt` so it becomes governed configuration, A/B-able per tenant without a deploy; (3) Malayalam remains unmeasured here, but the external record now points the same way (F9-M2 re-fetch: ml fine-tuned no-prompt 35.15 % vs with-prompt 35.74 %; ASCEND code-switch 12.21 % vs 15.63 %) as does TASK-946's 77 % content-loss arm. **APPLIED 2026-09-19 on owner approval** — `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False`, with the measurement recorded at the flag. Confirmed in BOTH languages (see §2.7.1). | §2.7 arms A/D/E; `language_modes.py:427-470`; `e3d61eefb` vs `0c865ccfb:language_modes.py:230` | TASK-946 OD-2 (now answered for English) |
 | OD-C | VAD OFF by default (energy endpointing) | Run BP-7 and BP-4b arm (2) as the owed listening pass; the energy gate reads normalized audio and opens on room tone (M-07, fixed independently by QW-13), and no reference streaming stack uses energy as the endpointer (F9-V1/V2). Recommend Silero ON with the F9-V1 settings if the room-tone test confirms | M-07, M-13; `preprocessor.py:351,696`; F9-V1/V2 | TASK-977 D-1(b) (accepted "pending the listening pass") |
 | OD-D | Commit rule for TASK-937 R-3 | (a) N-of-M agreement with timestamp-anchored slicing (ST-1), because the exact-prefix alignment collapses to 0 on real audio and the UI cannot show a settled prefix at all today (M-27) | M-08, M-27; `commit_policy.py:200,271,321`; F9-S2 | TASK-937 OD-2 (unanswered) |
 | OD-E | `hotwordsInPrompt` tiers: one (model row only, M-35) vs two (agent then model, TASK-946 §7 plan per TASK-934 OD-4(a)) | One tier on the model row: the switch is a property of the fine-tune, the agent-tier read is dead today, and two tiers add a drift surface | M-35; `build-resolved-asr-spec.ts:328`; `agent-schemas.ts:423` | TASK-946 §7 vs TASK-937 R-4 (in conflict) |
@@ -304,7 +414,70 @@ Recommendation first; each row presents the evidence and asks rather than overri
 
 ## 6. Implementation Summary
 
-`Pending`. This ticket changes no code. Follow-up tickets are expected for: BP-1/BP-2/BP-3 (baseline re-capture, geometry and prompt matrix, SDK operating point), BP-4/BP-4b (corpus replay and agent-field A/Bs), BP-5 (observability), BP-8 (browser capture A/B), QW-1 (tail race), QW-2 (SDK defaults), QW-3 (knob honesty), QW-6 (rollout hygiene), QW-9 (decoding gates on finals), QW-10 (repetition guard), QW-11 (reconnect ring buffer), QW-12 (nightly gate), QW-13 (room-tone false onsets), and the ST-1/ST-2 redesign once OD-A to OD-D are answered. TASK-937 lane F scope must widen to M-34; TASK-937 R-3 acceptance must include M-27 and the OD-K sequencing.
+**Status: in flight (2026-09-19).** This section is the execution record for the Waves 1-3 implementation
+wave. The review's original line — "this ticket changes no code" — is superseded by the owner directive of
+2026-09-19.
+
+### 6.1 How the work is partitioned — by FILE, not by item
+
+A file-ownership analysis over §2.4's own `file:line` citations found that the 22 QW/ST items form **ONE
+connected component**: `apps/stt/src/stt/streaming/session_manager.py` is touched by 10 items,
+`seed/25-agents.ts` by 7, `seed/ai-models/audio.ts` by 6, `whisper_cpp_asr.py` by 8. **No partition of the
+item set into non-overlapping lanes exists.** Lanes are therefore defined by FILE OWNERSHIP, with each lane
+implementing whatever items fall inside its files and raising a *cross-lane patch request* for anything
+outside them. The orchestrator routes those requests and owns every shared surface (merges, DB writes,
+the dev stack, and all realtime transcription measurement).
+
+| Lane | Owns | Items |
+|---|---|---|
+| L-OBS | `core/metrics.py`, `packages/py-obs/.../middleware.py` | BP-5 metric contract, M-19, M-44, M-45 |
+| L-CONTRACT | `packages/types`, `workflow-contract/agent-schemas.ts`, `build-resolved-asr-spec.ts`, `pipeline/spec.py`+`dto.py`, both seed files | QW-3, QW-8/9 schema, ST-3 row slot, M-14, M-35, M-49, M-57, M-58 |
+| L-DECODE | `streaming/whisper_cpp_asr.py`, `faster_whisper_asr.py`, `whisper_cpp_loader.py` | D4-N6 segment timestamps, M-14, QW-8, M-24 adapter half, M-62 |
+| L-SEG | `streaming/preprocessor.py`, `semantic_endpointer.py`, `vad/**` | QW-13, M-07, M-13, M-39, ST-2, D2-N4 |
+| L-LEX | `postprocessing/lexicon.py` | QW-7 (redirected), M-31 |
+| L-INFER | `streaming/inference.py`, `local_agreement_streamer.py` | M-09 prompt budget, QW-10, D3-N1, D4-N3, M-41 |
+| L-SESSION | `streaming/session_manager.py`, `session.py`, `redis_streams.py`, `engine_switch.py`, `api/routes.py`, `main.py` | QW-1 tail latch, M-23, M-24 session half, M-29, M-34, M-64/65/66, QW-4/OD-F, D2-CL1 |
+| L-GATEWAY | `apps/api/.../streaming/**`, `streamingAudioBridge`, `stt-gateway.descriptors.ts` | M-03 gateway half, M-22, M-38, M-47, M-48, M-64, M-67, M-68, ST-5 |
+| L-SDK | `packages/agentic-sdk-v2`, `packages/stt`, `packages/room`, `vox-node` socket, playground, `apps/example` | QW-2, QW-11, M-05, M-27 transport half, M-33, M-36, M-53/54/55/56/63/69 |
+| L-EVAL | `apps/stt/tests/integration/**`, `.gitlab/ci/test.yml`, `ci-gates.md` | BP-1 fingerprint, QW-12, ST-4, M-11, M-15, M-16, M-42 |
+| L-COMMIT *(pending L-DECODE)* | `streaming/commit_policy.py` | ST-1, M-08, D4-N1, D2-N5 |
+| L-DEPLOY *(pending TASK-990)* | `apps/stt/docker/Dockerfile`, `.gitlab/ci/build.yml` | QW-6 CI scoping, M-51, M-52, M-60 |
+
+Lanes write code and tests but **do not run them** — a fresh worktree has no `node_modules`, and per the
+owner directive no gating test runs until the work is merged to `dev-2.2`.
+
+### 6.2 Merge order (constraint-driven, not arbitrary)
+
+1. **L-OBS** — defines the metric surface every other lane's call sites reference.
+2. **L-CONTRACT** — the resolved-spec and schema shape L-DECODE/L-INFER/L-SESSION code against (D8: the chain type change precedes M-34). **Invariant: M-57 and the seed `hotwords: []` removal must be in ONE commit — split, they turn the lexicon stage off platform-wide.**
+3. **L-DECODE** — emits per-segment timestamps, which unblocks L-COMMIT.
+4. **L-SEG** — adds `normalizer_gain` and fixes `start_time`; L-INFER consumes the field, L-COMMIT depends on the slide fix. **Internal: QW-13 merges with or before the M-13 threshold change (0.6 -> 0.5 LOWERS the onset bar).**
+5. **L-LEX** — independent.
+6. **L-INFER** — needs L-SEG's field, L-DECODE's kwargs, L-OBS's metrics, L-CONTRACT's schema.
+7. **L-SESSION** — **internal order is mandatory: the tail LATCH before the in-band terminal frame**, because the frame makes `_on_frame` the first finalizer and moves the tail flush later, widening the race.
+8. **L-GATEWAY** — needs L-SESSION's teardown-summary stash (which brings DELETE into today's 204 window).
+9. **L-SDK** — last. Two reasons: `quietWindowMs: 0` before the latch is a pure latency regression, and QW-2 must not precede the prompt fix (see below).
+10. **L-EVAL** — after the code, so the baseline fingerprint describes what is actually served.
+11. **L-COMMIT**, then **L-DEPLOY**.
+
+### 6.3 The hard sequencing constraint
+
+> **QW-2 must never merge before the pair-prompt fix.** §2.7 measured that the SDK's `languageMode: 'auto'`
+> is currently masking the collapse: `auto` scores 0.033/0.048/0.131 while the agent's `ml-en` scores
+> 0.885/0.935/0.918. QW-2's stated goal — "agent ml-en reaches the scribe" — is therefore the harmful
+> outcome until OD-B is applied. Landing QW-2 alone is a 27x accuracy regression on the primary clinical
+> surface.
+
+### 6.4 Orchestrator-only actions (not delegated)
+
+All realtime transcription measurement; every merge into `dev-2.2`; DB writes (the
+`stt.modelCache.ttlSeconds = 3600` SYSTEM write, the disposable `t985-arm-*` sibling agents in the Global
+playground tenant, and their removal); `pnpm install` / `db:push` / `db:seed`; starting or restarting the
+local dev stack; and the post-merge quality gates.
+
+**Cleanup owed:** the five `t985-arm-{a..e}` agents in the Global tenant are disposable measurement
+fixtures and must be deleted once BP-2's arms are no longer being re-run.
+
 
 **Appendix A: refuted, do not re-raise.**
 
@@ -402,10 +575,74 @@ Recommendation first; each row presents the evidence and asks rather than overri
 
 Not verified at all (the research notes record the attempt): Pipecat Smart Turn `stop_secs` docs (404 twice); Speechmatics custom-dictionary pages (search-only, not cited in a wave). Numbers to treat as self-reported: WhisperPipe's 89 ms and 4.8 % (2.5 h of audio); Simul-Whisper's LocalAgreement comparison (European languages only).
 
+
+**Appendix E — Area design dossiers (the deepening pass) and the corrections they made to §3.**
+
+Nine read-only area authors produced per-area fix designs, SOTA options and test plans, each verified
+against the code rather than against this document's prose. They live in `design/` beside this README
+(`D1`..`D9`, plus `00-orchestrator-measurement-log.md`, the orchestrator's raw measurement record). They are
+SUPPORTING MATERIAL for this one ticket, not per-fix documents: the actionable content is summarised here
+and in §3/§4, and the dossiers carry the derivations.
+
+| Dossier | Area | Load-bearing content |
+|---|---|---|
+| D1 | Browser capture & transport | QW-2 is FOUR default sites in one chain, not one; QW-11 ring buffer on the already-unregistered reconnect callbacks; fix the tail drain ONCE in `stopAndDrainOnce()` |
+| D2 | Segmentation & endpointing | QW-13 must scale the gate by normalizer gain, NOT read the pre-normalization frame; the real cause is a RAW constant clamping a NORMALIZED EMA |
+| D3 | Decoding & language | The verified pywhispercpp parameter table; the 224-token budget derived from the binding; the silent-re-decode defect |
+| D4 | Commit policy, geometry & UX | Per-segment timestamps are already returned and discarded — that, not word timestamps, is what unblocks ST-1 |
+| D5 | Clinical vocabulary & Malayalam | QW-7's direction is arithmetically impossible; the missing axis is a word-of-the-language gate |
+| D6 | Serving, GPU & lifecycle | TTL/warm-on-boot split; CUDA arch; the capacity-reconciler defect; the stale Dockerfile/test pair that agree with each other |
+| D7 | Observability & evaluation | The metric contract every other lane codes against; the BP-1 fingerprint read from the session, never the seed |
+| D8 | Reliability & session lifecycle | The exact tail-race interleaving and the latch invariant; the lane split and merge order |
+| D9 | SOTA engines & streaming policies | The ranked engine table; no self-hostable streaming 2026 engine speaks Malayalam; AlignAtt needs PyTorch, not CT2 |
+
+**Corrections these dossiers made to §3's own recommendations.** Each was verified against code or a
+re-fetched source, and each would have caused harm if implemented as written:
+
+| §3 item | What §3 says | What the verification found |
+|---|---|---|
+| QW-7 | "exact key AND grapheme <= 0.4 plus a common-word stop-list" (tighten) | No single strict bound can admit `Atorvacetam` (needs >= 0.4167) and reject `creating` (needs < 0.30). The bound is not the lever; the missing axis is "is the candidate a word of the language?", and with it the bound should be RELAXED. Tightening removes the true positives the stage exists for. |
+| QW-9 | decoding gates on FINALS | A logprob/entropy gate with `temperature_inc=0` DROPS a failing final. Gates on finals are deletion; deletion is already the dominant error class (53/52/51 deletions of ~61 reference words, §2.7). Build the plumbing, measure as an arm, do not enable by default. |
+| QW-4 | `audio_ctx` 768 floor as a free speedup | Upstream streaming ships `audio_ctx = 0`, and truncation is a documented cause of endless repetition. Recommendation reversed: expose as a row knob at the library default. |
+| QW-4 | "set `memory_size_mb` on the whisper.cpp rows" | ALREADY DONE in both the seed (`ai-models/audio.ts`, 19 assignments) and the live DB (f16 GGUF = 1700). Verify, do not re-implement. |
+| M-25 | "readiness that ignores draining" | The drain mechanism is fully BUILT and merely UNWIRED: `POST /internal/streaming/drain` exists and `/health/ready` already 503s on `is_draining`; the deployment repo points readiness AND liveness at `/api/v1/health`, which returns 200 unconditionally because its handler is annotated `-> dict[str, Any]`. Remedy is three manifest lines, not app code. (Co-ordinated with the TASK-990 session, which owns `base/stt.yaml`.) |
+| M-21 | "no dashboard and no alert covers the streaming path" | Partially shipped after the review was written — `hope-v2-deployment@main 68833de` (TASK-989) added a platform dashboard and an `stt_realtime` alert group. Only first-partial/commit-latency/lag and the DCGM join remain missing. |
+| M-39 | "'semantic' endpointing is a 200 ms period-triggered heuristic" | `cadence-fast` never punctuates partials, and `observe_hypothesis` is at least one decode stale while partials are suppressed during silence — so it judges text that predates the pause. The heuristic largely does not fire at all. |
+| F9-M2 | cited as evidence FOR prompt-tuning Indic Whisper | Re-fetched: Malayalam baseline 134.40 % -> fine-tuned no-prompt **35.15 %** -> fine-tuned WITH prompt **35.74 % (worse)**. The gain is fine-tuning, not prompting, and prompting hurt Malayalam at two of three model sizes. ASCEND code-switch: 12.21 % no-prompt vs 15.63 % with-prompt. This corroborates §2.7 and weakens OD-I. |
+| ST-1 | blocked because the ml-en model refuses word timestamps | It is not blocked. `Model.transcribe()` already returns `Segment(t0, t1, text, probability)` and `_build_result` discards those timings three lines before use, emitting one synthetic span. Sentence-granularity anchors are available with the clean decode unchanged. |
+| ST-6 | "the agent declares two fallbacks ... the CT2 row is dead config" | Sharper: because only `chain[0]` is carried, the CT2 turbo is already unreachable, so the only LIVE fallback is the q8_0 sibling of the same weights — which shares every failure mode and would not trigger anyway, since the controller arms on exceptions, not on empty output. |
+| ST-7 | "dictionary is tenant content cascaded per the rules" | Content is CLONED, never cascaded at runtime (`00-project-context.md`). Reword; do not widen `SYSTEM_SHARED_READ_MODELS`. Also F9-K2's 64.9 % was measured with a dictionary-augmented LLM, not a string matcher — split the claim. |
+| ST-9 | "prototype AlignAtt on the CT2 or PyTorch lane" | CT2 CANNOT host AlignAtt (`Whisper.align()` is post-hoc; `generate()` exposes no per-step attention), and neither can whisper.cpp. PyTorch only — and those weights (`arcaai-whisper-large-ml-en`, SAFETENSOR) do exist and are seeded. |
+
+**New defects found during the deepening pass** (beyond §2.4's M-01..M-69), highest severity first:
+
+| Id | Claim | Evidence | Sev |
+|---|---|---|---|
+| D2-N4 | `AudioUtterance.start_time` does not describe `samples` — the buffer is seeded with the pre-speech ring but the start is computed from the onset frame, so it is ~320 ms short on EVERY utterance and jumps at the first trimmed partial | `preprocessor.py:466-467,461-463,228` vs `:788-790` | high |
+| D2-N5 | That feeds a ~320 ms PHANTOM SLIDE into the commit policy every utterance, freezing tokens whose audio never left the window — an independent contributor to M-08 | `commit_policy.py:256-259,283-306` | high |
+| D4-N6 | Per-segment timestamps are returned by the binding and discarded; one synthetic span is emitted instead. Enabler for ST-1 | `whisper_cpp_asr.py:770-782`, `:641` | high |
+| D6-N1 | The capacity reconciler can release an IN-CREATION session's slot during a cold model load | `session_manager.py:4910-4947`; deployment runbook `:842-849` | high |
+| D3-N1 | An internal `TypeError` causes a silent re-decode **with no prompt and no window**, which is then published | `inference.py:860-868` | high |
+| D4-N1 | The `_align` collapse is ABSORBING: with an empty committed list the loop is `range(0)`, so content alignment can never run again and the freeze is `min(estimate, 0) = 0` | `commit_policy.py:197-200,319` | high |
+| D8-N1 | `ModelError` raised on the tail path can never arm the fallback — both handlers swallow it | `session_manager.py:3486-3493,3565-3571` | med |
+| D5-N1 | `hotwordsInPrompt` is unwritable from BOTH tiers (agent schema is `additionalProperties:false`; the DTO has no field, so `forbidNonWhitelisted` returns 400), which makes BP-4b arm 3 unrunnable as written | `agent-schemas.ts:420-495`; `asr-profile.request.ts` | med |
+| D5-N2 | A green test asserts an agent-tier `hotwordsInPrompt` precedence the schema makes unreachable | `build-resolved-asr-spec.test.ts:406-410` | med |
+| D6-N2 | `service-runtime.descriptors.ts` header comment claims 3600 as the source-of-truth default while the file registers 600 | `:15` vs `:41` | med |
+| D6-N3 | `whisper-large-en-medical-260726-merged-gguf-q8_0` declares `memorySizeMb` 1700, identical to its f16 sibling, where the ml-en pair shows 1700/900 | `ai-models/audio.ts:256` vs `:295` | low |
+| D2-N7 | `SemanticEndpointer.decide(min_silence_ms=...)` is accepted and never used, so forwarding `minSilenceMs` does not move the semantic cut point | `semantic_endpointer.py:189` vs `:196-219` | med |
+| ORCH-N1 | `AiModel.availability` reports `MISSING` for all four ml-en rows ("no bucketPrefix — the row has never been published") while the f16 GGUF row serves every live consultation; the scanner is bucket-oriented and its verdict is meaningless for HUGGINGFACE-sourced rows | live dev DB, `availabilityCheckedAt` 2026-09-18 17:00 | med |
+| ORCH-N2 | Nothing detects a WEDGED transcription loop (audio flowing, decodes stopped): `/health/live` is a static 200 by design. TASK-990 explicitly declines this; it belongs here | `health/api/routes.py`; deployment `base/stt.yaml:328` | med |
+
+(D1, D2, D4, D5, D6, D7, D8 each carry further low-severity rows in their dossiers.)
+
+
 ## 7. Change History
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | **Implementation wave opened** on owner directive (Waves 1–3; orchestrator owns all realtime transcription measurement and every shared surface; agents barred from running transcription tests). Nine read-only area dossiers produced (capture/transport, segmentation, decoding/language, commit/UX, clinical vocabulary, serving/GPU, observability/evaluation, reliability/lifecycle, SOTA engines). File-owned implementation lanes opened in isolated worktrees, because a file-ownership analysis proved the 22 QW/ST items form ONE connected component through `session_manager.py`, the seed files and `whisper_cpp_asr.py` — no zero-overlap partition by item exists. |
+| 2026-09-19 | **Root cause of the accuracy collapse isolated (§2.7).** Five Global-playground sibling agents; arm A reproduced the served numbers exactly, arm E isolated the pair priming prompt as the single cause (0.885→0.033 medical_wer, keyterm 0/21→21/21). Traced to `e3d61eefb`. Six candidate variables eliminated. M-02 found to be MASKING the defect on the scribe surface, making QW-2 order-dependent: shipping it before the prompt fix would be a 27x regression. OD-B answered for English. |
+| 2026-09-19 | **Corrections to the review found while implementing.** M-25: the drain mechanism is fully BUILT and merely UNWIRED (readiness and liveness both point at `/api/v1/health`, which returns 200 unconditionally) — remedy is three manifest lines, not app code; co-ordinated with the TASK-990 session, which took `base/stt.yaml`. QW-4: `memorySizeMb` is ALREADY set in both seed and DB — verify, do not re-implement. QW-7: D5 proved arithmetically that tightening the lexicon bound cannot admit `Atorvacetam` while rejecting `creating`; the missing axis is a word-of-the-language gate and the bound should be RELAXED. QW-9: D3 warns decode gates on FINALS increase deletion, which is already the dominant error class. QW-4/`audio_ctx`: D3 reversed the recommendation (upstream ships 0; truncation causes endless repetition). M-21: partially shipped already by TASK-989. F9-M2: re-fetched, the paper says prompting HURT Malayalam. New high-severity defects found: D2-N4/N5 (a ~320 ms phantom slide fed to the commit policy every utterance), D4-N6 (per-segment timestamps discarded, which is what actually unblocks ST-1), and a capacity reconciler that can release an in-creation session's slot. |
 | 2026-09-18 13:20 | **Core report written** from run `wf_26a5a8a4-00d` (31 agents, 0 errors, 63 min; 68 findings confirmed, 1 refuted, critic asked one revision). The deepening pass is scheduled for after the 17:00 usage reset (5-hour window at 83 %, weekly Fable at 73 %): area authors and critic run on the Opus tier, integrator and revision on the session model at high effort. |
 | 2026-09-18 12:06 | **Resumed** by the one-shot cron: `Workflow({scriptPath: <hardened v2 script>, resumeFromRunId: 'wf_26a5a8a4-00d'})` → task `wo3r7j4bm`; usage window 3 % at launch; recurring checkpoint cron re-armed as `39041375` (pause at ≥ 88 %). |
 | 2026-09-18 08:09 | **Paused.** The 11 Review lenses returned (journal `results=11`: 88 raw findings — F1 8, F2 12, F3 12, F4 8, F5 13, F6 12, F7 10, F8 13; F9 38 practices + 13 anti-patterns; F10 local scorecard RAN on the served config (3 clips, MPS); F11 10 error classes). The dedup agent was in flight when the 5-hour window reached 91 % (64 % at launch, 80 % after the lenses), so the run was stopped with `TaskStop("wir8u28zm")`; dedup re-runs on resume. The verification stage was redesigned for the resume: one refuter + one classifier per lens batch (≤ 12 findings, about 18 agents) instead of two agents per finding (~130), null-tolerant, in the hardened script named in §6. One-shot resume cron `be4db13f` fires at 12:06 local; the recurring checkpoint cron was deleted to save budget and is re-armed on resume. |

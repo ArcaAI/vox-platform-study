@@ -252,7 +252,31 @@ def build_single_language_prompt(language: str) -> str:
 # baseline entry (window_s alone does not distinguish prompt state — see the
 # scorecard's own `_note`). Flip one at a time when measuring; the behaviour of each
 # is covered by its own test.
-WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = True
+# TASK-985 (owner decision OD-B, 2026-09-19): OFF, on measured evidence in BOTH
+# languages. Arm E (`auto`) vs arm A (`ml-en`) is a single-variable comparison of
+# THIS flag — `resolve_mode_for_engine` returns the same `language=None`,
+# `code_switching=False`, `streaming_english_gloss=False` for both, and
+# `session_manager.py:2249-2279` consumes the difference only through
+# `compose_prompt`. Measured on the served f16 GGUF:
+#
+#   English clinical reads   medical_wer  ON 0.885 / 0.935 / 0.918   OFF 0.033 / 0.048 / 0.131
+#                            keyterm recall       ON 0/21                    OFF 21/21
+#   Malayalam-English CER    ON 0.896/0.946/1.000/0.924/0.904
+#                            OFF 0.474/0.695/0.940/0.720/0.722   (mean 0.934 -> 0.710)
+#
+# The ON arm returned 31/14/0/26/43 characters against references of
+# 211/203/199/236/302 — one clip produced no final at all. External evidence
+# agrees: the Indic prompt-tuning paper reads Malayalam 35.15 % no-prompt vs
+# 35.74 % WITH prompt, and ASCEND code-switch 12.21 % vs 15.63 %.
+#
+# This flag was flipped True by `e3d61eefb`; it reads False at the baseline
+# commit `0c865ccfb`, which is why that capture recorded the good numbers.
+#
+# This literal is an interim: ST-3 moves the template to
+# `AiModel._metadata.asr.initialPrompt` so prompt state becomes governed
+# configuration, per-tenant and A/B-able without a deploy. Delete this switch
+# then, via the deprecation register.
+WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = False
 WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED = False
 
 
