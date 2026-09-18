@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Waves 0-3 merged, verification lane running |
+| **Status** | Review — all waves merged; two blocking findings fixed; open items in §8.V |
 | **Type** | `infrastructure` (+ `bugfix` for the P0 items) |
 | **Branch** | `dev-2.2` |
 | **Scope** | `apps/{stt,text,guardrail,nlp,harness,tts}`, new `packages/py-obs`, and the `arca/hope-v2-deployment` repo |
@@ -969,7 +969,7 @@ as the reason the module was once duplicated per service. Do not "save time" by 
 _In progress. Per lane: branch, merge commit, files changed, gate commands with pasted output, and
 anything left unmerged (stated at the top, never buried)._
 
-### Lane D1 — turn telemetry on — COMPLETE, awaiting merge approval
+### Lane D1 — turn telemetry on — COMPLETE, MERGED
 
 | | |
 |---|---|
@@ -1006,7 +1006,7 @@ gates are now satisfied. Adding a fourth unread variable would have been F-02 in
 **Bonus.** `hope-harness-config` is consumed by `hope-harness-worker` as well as `hope-harness`,
 so the Temporal worker gets the endpoint too — an unplanned down payment on R-6.
 
-### Lane H — tts — COMPLETE, verified, awaiting merge
+### Lane H — tts — COMPLETE, verified, MERGED
 
 | | |
 |---|---|
@@ -1091,6 +1091,80 @@ gates its `TracingInterceptor` on the old AND-form, so removing `HARNESS_OTEL_EN
 Temporal spans while the app and worker tracer stayed on. Retiring those two variables is a
 follow-up that depends on F-19, not on this ticket.
 
+### Lane V — adversarial verification — COMPLETE. Verdict: **"Not sound. Do not close."**
+
+It was right, and the ticket is better for it. Two blocking findings, both reproduced by the
+orchestrator before any fix:
+
+**B-1 — one of six services had none of the standard at runtime.** `apps/nlp` called
+`configure_observability` from inside its **lifespan**, not its app factory. Starlette builds
+`middleware_stack` on the first `__call__` and the lifespan scope IS a `__call__`, so
+`add_middleware` raises by then; `hope_obs` catches it and degrades to a single warning — which
+`.env.test`'s `LOG_LEVEL=error` suppresses entirely. Confirmed directly:
+
+```
+before: ['CORSMiddleware', 'ServiceAuthMiddleware']
+after:  ['CORSMiddleware', 'RequestContextMiddleware', 'AccessLogMiddleware', 'ServiceAuthMiddleware']
+```
+
+NLP had no `request.start`/`request.complete`, no `request_id`, no `tenant_id`, no `duration_ms`
+and no echoed `X-Request-ID` — while 696 of its own tests passed. F-06 and F-07 were open for a
+sixth of the fleet and nothing said so. Fixed in `37e2a5487`, with `setup_logging()` moved to the
+top of `get_app()` (the image entrypoint is `uvicorn --factory nlp.app:get_app`, so `main.py`'s
+import-time call never ran there). Proven end to end:
+
+```json
+{"event": "request.complete", "request_id": "REQ-NLP-PROOF", "tenant_id": "TEN-nlp-1", "duration_ms": 3.01, ...}
+```
+
+**B-2 — the parity gate had been widened to accept B-1.** `_fastapi_lifespan_targets`'s own
+docstring said it followed the `lifespan=` keyword because otherwise the traversal "would falsely
+conclude NLP never configures observability at all." It would not have been false. The gate saw the
+defect and was changed to pass over it — which is worse than no gate, because it makes the blindness
+permanent and looks like coverage. Widening removed; RED proof with the factory call taken out again:
+
+```
+AssertionError: apps/nlp: no path from its FastAPI app factory to
+`hope_obs.configure_observability` was found by tracing calls
+```
+
+**Three more, fixed in `13abb4a7c`:**
+
+- `apps/text/Dockerfile` baked `TEXT_OTEL_EXPORTER_ENDPOINT=http://localhost:4317` — **F-22 surviving
+  in image ENV rather than code.** Masked in `hope-v2-dev` only because that overlay still sets the
+  variable; `eks/aws-dev` and `eks/aws-prod` supply only the canonical name, so text would have
+  exported to its own pod there.
+- `apps/nlp/Dockerfile` baked `OTEL_EXPORTER_OTLP_ENDPOINT` (so the image traced by default
+  everywhere, contradicting "the default is off in both worlds") and
+  `deployment.environment=production`, which NLP merges **over** the shared resource for metrics —
+  metrics saying `production` while traces said `dev`, in one process.
+- guardrail had silently renamed itself `hope-guardrail` → `guardrail`, leaving the manifest variable
+  read by nothing. Restored, and gated on `model_fields_set` — the field's real default would
+  otherwise beat the canonical `OTEL_SERVICE_NAME`, which is **the F-22 shape one field over**.
+
+**It also verified claims this ticket had been trusting**, and they held: R-5 is empirically complete
+(no executable `LoggerProvider`/`OTLPLogExporter` anywhere; `opentelemetry-instrumentation-logging`
+gone from every manifest and the lock), F-04 is genuinely closed (real recording provider, correct
+`-worker` suffix), R-2's corrected unroutable-endpoint behaviour is exactly as the table says, and
+the F-18 "nothing depends on those attributes" claim is true — it searched every dashboard and alert
+rule and found **zero** references, before or after.
+
+#### Open items — recorded, not fixed
+
+| Item | Why it is not fixed here |
+|---|---|
+| **`error=str(exc)`** in `AccessLogMiddleware` is the one unbounded free-text field in the new log shape, on the plane the collector no longer filters. Its own comment argues the type is the safe part, then logs the message too | A real change to the emitter contract; needs an owner call on whether to drop it, truncate it, or keep it |
+| **F-21 is wider than §8 recorded.** Exposed: stt, text, guardrail, nlp. Protected: harness, tts. And unsetting the variable does NOT help — `hope_env.load_env()` re-injects it on every `get_settings()` | Env samples + `turbo.json` are a shared surface and the right fix is per-service `<SVC>_OTEL_SERVICE_NAME` values, which needs the audit above to be acted on deliberately |
+| **F-19** — harness's `temporal/client.py` still gates on the old AND-form | Blocks retiring the last two `HARNESS_OTEL_*` variables; Temporal wiring, deliberately out of scope |
+| **`tracesToLogsV2`'s `service_name` label** has never matched any label Alloy creates, so "View Logs" from a span has always returned zero rows. This ticket adds a second mismatch on the value | Pre-existing; fixing the label alone will not make the link work |
+| **stt's `OTEL_ENABLED` is an enabler, not a veto** — the other services treat the deprecated flag as OFF-only, so the fleet ships two meanings for one contract | Defensible (it preserves stt's old behaviour) but the standard states one meaning; needs a decision, not a patch |
+| **`telemetry.sdk.language`** is emitted by `hope_obs` and is not on the collector allow-list, so it is dropped in transit | Harmless; either stop emitting it or allow-list it |
+
+**§7's "verified by … a live trace" remains unticked and unverifiable from here:** the local
+observability stack is not running, other sessions share this machine, and
+**`hope-v2-deployment@main` is still local and unpushed** — so unless someone has pushed since, the
+cluster has neither D1 nor D2 and four services are still dark there.
+
 ### Orchestrator-owned documentation and the F-18 upstream half — DONE
 
 Landed on `dev-2.2` while Wave 2/3 ran (none of these files belongs to a lane):
@@ -1158,7 +1232,7 @@ removed and their branches deleted after merging, in that order.
 | **F-17 Dockerfiles** | guardrail and tts were the last two missing the COPY; added. STT needed it in four places |
 | **F-16 lazy exporter** | `import hope_obs`: **498 → 350 modules**, gRPC no longer loaded until `build_tracer_provider` runs. Two tests patched `hope_obs.tracing.OTLPSpanExporter`, which no longer exists as a module attribute — repointed at the source module, which is the correct target for a lazily imported symbol |
 
-### Lane G — harness — COMPLETE, verified, awaiting merge
+### Lane G — harness — COMPLETE, verified, MERGED
 
 | | |
 |---|---|
@@ -1195,7 +1269,7 @@ a service that did not import.
 **Its two findings both reached past its own lane** — see **F-17** (Dockerfile COPY, found through a
 real failing test) and the second `uv lock`, now added to §7. Neither was in any brief.
 
-### Lane E — nlp — COMPLETE, verified, awaiting merge
+### Lane E — nlp — COMPLETE, verified, MERGED
 
 | | |
 |---|---|
@@ -1230,7 +1304,7 @@ Also reported: `.env.test` sets `OTEL_SERVICE_NAME=api-gateway` fleet-wide, whic
 Python service's test environment. Harmless once a test isolates it, and worth knowing before someone
 debugs a wrongly-named span in a test run.
 
-### Lane C — guardrail — COMPLETE, verified, awaiting merge
+### Lane C — guardrail — COMPLETE, verified, MERGED
 
 | | |
 |---|---|
@@ -1266,7 +1340,7 @@ in-place processor-list mutation). A per-test autouse reset of the package's `_S
 silently empties `capture_logs()` for any logger cached before the reconfiguration. The lane hit this,
 reverted it, and left a note in its `conftest.py`.
 
-### Lane F — `packages/py-obs` — COMPLETE, awaiting merge approval
+### Lane F — `packages/py-obs` — COMPLETE, MERGED
 
 | | |
 |---|---|
