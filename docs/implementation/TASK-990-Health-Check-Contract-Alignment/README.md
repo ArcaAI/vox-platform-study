@@ -175,5 +175,7 @@ _(filled in as lanes land)_
 | 2026-09-18 | Ticket opened. Audit of all apps/services + k8s probes + Argo recorded; 17 findings, 5 live defects. |
 | 2026-09-18 | F13 landed on `dev-2.2` (85146a554): dead duplicate health controller deleted; `pnpm api:build` 12/12 green. |
 | 2026-09-19 | DEPLOY lane landed on `task-990/probe-alignment` (5 commits): STT probes repointed, smoke test repointed, Vault/Temporal/Temporal-UI liveness added, `progressDeadlineSeconds` on all 26 Deployments, README corrected, new `probes` CI gate (`scripts/check-probes.py`) proven to fail on `main`. preStop drain resumed separately. |
+| 2026-09-19 | hope-v2-deployment main @ 9077e9d PUSHED. Pipeline 1244 green (12 jobs incl. the new `probes` gate). Argo auto-synced; stt/temporal/temporal-ui rolled; PostSync smoke test 9/9. Live: stt `/health/ready` and `/health/live` answer 200, `/internal/streaming/drain` answers 401 without a token. |
+| 2026-09-19 | F15 closed: `verify-dev` added to `.gitlab/ci/deploy.yml` — polls the dev gateway until it reports THIS pipeline's sha8, closing the CI→cluster loop with no new credential. GitLab CI lint: valid, no warnings. `promote-dev`'s dev environment gained a `url`. |
 | 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
 | 2026-09-18 | Decisions D-1..D-5 recorded. F9 re-specified (contract, not status codes); F16 downgraded to a note; preStop drain + D-3 auth added to the DEPLOY lane. |
