@@ -29,8 +29,14 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         "/api/v1/health",
         "/api/v1/health/live",
         "/api/v1/health/ready",
+        # TASK-990 F7: the fourth route of the gateway's health contract. An
+        # unexempted path is answered 401 by this middleware BEFORE FastAPI can
+        # route it (and 428 by the tenant precondition below it), so a probe
+        # pointed here would fail for the wrong reason.
+        "/api/v1/health/startup",
     }
 )
+
 
 # `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped work
 # (owner directive 2026-08-16): a guardrail/billing decision must be attributable,

@@ -1,14 +1,22 @@
-"""Health check API routes."""
+"""Health check API routes.
+
+The HOPE four-route health contract (TASK-990): ``/health`` is the detailed,
+informational endpoint and is ALWAYS 200; ``/health/live``, ``/health/ready``
+and ``/health/startup`` are the three probe routes, and are the only ones
+allowed to refuse. ``/live`` and ``/ready`` are backward-compatible aliases.
+"""
 
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from functools import lru_cache
 from typing import Any, cast
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from hope_env import BuildInfoReader
 from sqlalchemy import text
 
 from stt.core.config.settings import get_settings
@@ -22,6 +30,39 @@ internal_router = APIRouter(prefix="/internal", tags=["internal"])
 
 # Track startup time
 _startup_time = datetime.utcnow()
+
+#: Distinguishes "attribute absent" from "attribute present and None". The
+#: startup marker `app.state.service_release_task` is legitimately ``None`` when
+#: gateway registration is disabled, so ``getattr(..., None)`` would read a
+#: fully initialised app as still starting.
+_UNSET = object()
+
+
+@lru_cache(maxsize=1)
+def _service_version() -> str:
+    """The RUNNING artifact's version, read from ``/app/build-info.json``.
+
+    TASK-990 F6. ``settings.app_version`` defaults to the literal ``"2.0.0"``
+    and its own comment already says the authoritative version is the one in
+    ``build-info.json`` — this route simply never consulted it, so during a
+    rollout you could not tell which build replied. CI bakes the real identity
+    into every image (``docs/operations/build-info.schema.json``) and the
+    gateway already reports it this way
+    (``apps/api/src/modules/health/health.controller.ts``).
+
+    ``BuildInfoReader`` NEVER raises: an absent or malformed file (local dev,
+    ``pnpm stt:dev``) degrades to ``0.0.0-<branch-slug>.<sha8>`` derived from
+    git, or to ``0.0.0-unknown.unknown`` outside a checkout. Version reporting
+    must never become a new way for ``/health`` to fail.
+
+    Cached for the process lifetime: build identity is immutable artifact data,
+    not configuration — read once, never re-read per request.
+
+    Only ``version`` is surfaced. This route is auth-exempt and public; branch,
+    SHA and pipeline id are operator data that belong behind an admin-gated
+    surface, not on a probe endpoint.
+    """
+    return BuildInfoReader().get_build_info().version
 
 
 class HealthStatus(StrEnum):
@@ -44,7 +85,23 @@ class ComponentHealth:
 
 @router.get("/health")
 async def health_check() -> dict[str, Any]:
-    """Detailed health check with component status."""
+    """Detailed health check with component status.
+
+    INFORMATIONAL ONLY, and deliberately **always HTTP 200** — the verdict lives
+    in the body's ``status``, never in the status line. TASK-990 F1 recorded a
+    real defect here, but it was in the MANIFEST: readiness and liveness both
+    pointed at this route, which cannot fail, so both degraded to "something is
+    listening on 8861". The fix is repointing those probes at ``/health/ready``
+    (deployment repo), not making this route refuse — a misconfigured pod has to
+    stay able to REPORT that it is unwell, which is the same reason
+    ``EXEMPT_PATHS`` keeps it reachable when the service is failing closed
+    (``stt.core.middleware.auth``). The gateway answers the same way.
+
+    Failure is expressed on the other three routes: ``/health/live`` (process),
+    ``/health/ready`` (dependencies + the drain flag), ``/health/startup``
+    (initialisation).
+    """
+
     checks: dict[str, dict[str, Any]] = {}
     overall_status = HealthStatus.HEALTHY
 
@@ -79,7 +136,7 @@ async def health_check() -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": overall_status.value,
         "service": settings.app_name,
-        "version": settings.app_version,
+        "version": _service_version(),
         "uptime_seconds": round(uptime, 1),
         "timestamp": datetime.utcnow().isoformat(),
         "checks": checks,
@@ -103,6 +160,48 @@ async def health_check() -> dict[str, Any]:
 @router.get("/health/live")
 async def liveness_check() -> dict[str, str]:
     """Kubernetes liveness probe — always returns 200 if the process is running."""
+    return {"status": "healthy"}
+
+
+@router.get("/health/startup", response_model=None)
+async def startup_check(request: Request) -> dict[str, str] | JSONResponse:
+    """Kubernetes startup probe — has application initialisation finished?
+
+    TASK-990 F7: the fourth route of the gateway's health contract
+    (``apps/api/src/modules/health/health.controller.ts``), which the six Python
+    services were missing. It sits in a four-route contract where only THIS
+    route, ``/health/live`` and ``/health/ready`` may fail: ``/health`` is the
+    informational, ops-facing endpoint and is always 200.
+
+    The marker is ``app.state.service_release_task``. Every one of the six
+    services assigns it UNCONDITIONALLY inside its lifespan (it is ``None`` when
+    gateway registration is disabled, so the value says nothing — only its
+    PRESENCE does), and no ``create_app`` assigns it. So the attribute existing
+    means "this app's lifespan startup body ran to the point of announcing the
+    service", and its absence means the app was assembled without one. The same
+    marker is used by all six on purpose: six bespoke markers is six things to
+    get wrong, and ``tests/contracts/test_health_contract_parity.py`` pins this
+    one by name so removing it is a reviewed change rather than a silent
+    downgrade to an always-200 route.
+
+    Honest limitation, stated rather than buried: over HTTP in a normally
+    assembled app the 503 is not reachable, because Starlette does not route a
+    request until the lifespan's startup phase has RETURNED. While the app is
+    still starting the kubelet gets a connection that never answers and the
+    probe fails on ``timeoutSeconds`` — a probe failure either way, just not a
+    503 body. The branch earns its place on an app built WITHOUT its lifespan
+    (``uvicorn --lifespan off``, or a router mounted on a bare ``FastAPI()`` —
+    which is exactly how several of these services' own suites build test apps).
+
+    Deliberately NOT gated on model residency or on any dependency. Those are
+    ``/health/ready``'s job; re-checking them here would make a slow dependency
+    or a lazy model load look like a failed START and restart a healthy pod.
+    """
+    if getattr(request.app.state, "service_release_task", _UNSET) is _UNSET:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "message": "Service is still initializing"},
+        )
     return {"status": "healthy"}
 
 

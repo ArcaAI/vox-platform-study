@@ -114,6 +114,11 @@ class TestHealthCheckEndpoint:
             patch("stt.health.api.routes._check_redis") as mock_redis,
             patch("stt.health.api.routes._check_streaming") as mock_streaming,
             patch("stt.health.api.routes.settings") as mock_settings,
+            # TASK-990 F6: the reported version is the BUILD's, not
+            # `settings.app_version` — see `_service_version`'s docstring. Patch
+            # the (lru_cached) reader rather than the settings field, so this
+            # test cannot go green again by accident if the literal creeps back.
+            patch("stt.health.api.routes._service_version", return_value="0.0.0-test.deadbeef"),
         ):
 
             mock_settings.app_name = "stt"
@@ -128,7 +133,8 @@ class TestHealthCheckEndpoint:
 
             assert result["status"] == "healthy"
             assert result["service"] == "stt"
-            assert result["version"] == "1.0.0"
+            assert result["version"] == "0.0.0-test.deadbeef"
+            assert result["version"] != mock_settings.app_version
             assert "timestamp" in result
             assert "checks" in result
 
