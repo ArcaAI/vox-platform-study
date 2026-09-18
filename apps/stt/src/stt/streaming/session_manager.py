@@ -91,6 +91,14 @@ _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 # no more; the final itself is persisted through the normal result path.
 _HANDOVER_LOG_CHARS = 200
 
+# TASK-985 M-04 — headroom added to the inference-drain bound to get the
+# tail-wait bound (``_tail_wait_timeout_s``). The tail owner's own work is
+# flush + drain, and the drain is the bounded half; a waiter must therefore
+# outlast it by a margin or it times out on every session that merely used its
+# full drain budget. Five seconds is that margin, not a guess at how long a
+# decode takes.
+_TAIL_WAIT_GRACE_S = 5.0
+
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
@@ -328,12 +336,23 @@ class SessionManager:
         # Per-session lock serializing the four finalize
         # entrypoints so a second entrant is a no-op (no duplicate Media rows).
         self._finalize_locks: dict[str, asyncio.Lock] = {}
-        # F-32 — sessions whose closing tail has already been flushed+drained.
+        # F-32 / TASK-985 M-04 — the closing tail's COMPLETION latch, one
+        # `asyncio.Event` per session.
+        #
         # The flush/drain pair runs BEFORE (and outside) the finalize lock at
-        # every trigger site, so without this latch two near-simultaneous
-        # triggers both flush the preprocessor tail and both drain the queue —
-        # publishing the closing utterance twice. See ``_begin_tail_flush``.
-        self._tail_flush_started: set[str] = set()
+        # every trigger site, so without a latch two near-simultaneous triggers
+        # both flush the preprocessor tail and both drain the queue — publishing
+        # the closing utterance twice (F-32). A `set[str]` closed that, but it
+        # answers only "is someone else doing the tail?" while all four call
+        # sites read the answer as "is the tail DONE?" — which is how the
+        # closing utterance came to be CANCELLED mid-decode by a later
+        # finalizer's `remove_session` (TASK-985 M-04). Mutual exclusion without
+        # a happens-before edge is exactly half of what those call sites need.
+        #
+        # An Event supplies both: membership is still the test-and-set (see
+        # ``_begin_tail_flush``), and the later trigger now has something to
+        # AWAIT. Dropped in ``remove_session`` alongside the finalize lock.
+        self._tail_flush_done: dict[str, asyncio.Event] = {}
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -356,6 +375,18 @@ class SessionManager:
             self._inference_queue_maxsize = int(_settings.streaming_inference_queue_maxsize)
             self._inference_drain_timeout_s = float(_settings.streaming_inference_drain_timeout_s)
             self._inference_stop_timeout_s = float(_settings.streaming_inference_stop_timeout_s)
+            # TASK-985 M-04 — how long a LATER finalizer waits for the tail
+            # flush + drain claimed by an earlier one. DERIVED from the drain
+            # bound rather than declared beside it: the thing being waited for
+            # IS that drain, so a control-plane write that raises the drain
+            # ceiling must raise this with it or the wait starts timing out on
+            # exactly the slow sessions it exists for. An explicit
+            # `streaming_tail_wait_timeout_s` (not yet a settings field — see
+            # the L-CONFIG request in the ticket) overrides the derivation.
+            self._tail_wait_timeout_s = float(
+                getattr(_settings, "streaming_tail_wait_timeout_s", None)
+                or (self._inference_drain_timeout_s + _TAIL_WAIT_GRACE_S)
+            )
             self._transcript_persist_max_attempts = max(
                 1, int(_settings.streaming_transcript_persist_max_attempts)
             )
@@ -387,6 +418,7 @@ class SessionManager:
             self._inference_queue_maxsize = 64
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
+            self._tail_wait_timeout_s = 60.0 + _TAIL_WAIT_GRACE_S
             self._transcript_persist_max_attempts = 3
             self._transcript_persist_backoff_s = 0.5
             self._transcript_outbox_max_attempts = 10
@@ -1671,14 +1703,9 @@ class SessionManager:
             return None
 
         try:
-            # F-32 — flush the tail at most once per session (see
-            # ``_begin_tail_flush``); a later trigger goes straight to finalize.
-            if self._begin_tail_flush(session_id):
-                await self._flush_final_utterance(
-                    session=session,
-                    preprocessor=self._preprocessors.get(session_id),
-                )
-                await self._drain_inference_queue(session_id)
+            # F-32 / TASK-985 M-04 — flush the tail at most once per session,
+            # and WAIT for it when another trigger claimed it first.
+            await self._run_tail_flush(session, self._preprocessors.get(session_id))
             return await self._finalize_session(session)
         except Exception as exc:
             logger.error(
@@ -1750,8 +1777,16 @@ class SessionManager:
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
         # F-32 — drop the tail-flush latch with the session so a later session
-        # reusing the id gets its own tail flushed.
-        self._tail_flush_started.discard(session_id)
+        # reusing the id gets its own tail flushed. TASK-985 M-04: SET it on the
+        # way out. Removal is the end of this session's tail by definition, and
+        # a waiter that already holds a reference to the Event would otherwise
+        # sit out its full bound waiting for an owner that no longer exists.
+        # (Nothing here cancels the owner — `remove_session` is reached only
+        # from a finalizer that has passed the latch, or from a rollback where
+        # there is no tail.)
+        tail_done = self._tail_flush_done.pop(session_id, None)
+        if tail_done is not None:
+            tail_done.set()
         self._sessions.pop(session_id, None)
         # Release pipeline model pins so idle TTL can apply.
         pinned = self._session_pinned_models.pop(session_id, None)
@@ -3356,13 +3391,9 @@ class SessionManager:
                     seq=frame.seq,
                 )
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session.session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=preprocessor,
-                        )
-                        await self._drain_inference_queue(session.session_id)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, preprocessor)
                     await self._finalize_session(session)
                 except Exception as exc:
                     logger.error(
@@ -3398,13 +3429,9 @@ class SessionManager:
                         await publisher.publish_status("finalizing")
 
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session.session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=preprocessor,
-                        )
-                        await self._drain_inference_queue(session.session_id)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, preprocessor)
                     await self._finalize_session(session)
                 except Exception as exc:
                     logger.error(
@@ -3492,7 +3519,7 @@ class SessionManager:
                 error=str(exc),
             )
 
-    def _begin_tail_flush(self, session_id: str) -> bool:
+    def _begin_tail_flush(self, session_id: str) -> tuple[bool, asyncio.Event]:
         """Claim the one-and-only tail flush/drain for ``session_id``.
 
         F-32. ``_flush_final_utterance`` + ``_drain_inference_queue`` run before
@@ -3504,21 +3531,97 @@ class SessionManager:
 
         This is a test-and-set with NO ``await`` between the membership check and
         the insert: the asyncio event loop is single-threaded, so the pair is
-        atomic with respect to every other coroutine. Returns ``True`` for the
-        caller that owns the tail (it must flush + drain), ``False`` for every
-        later trigger (it skips straight to ``_finalize_session``, which stays
-        lock-serialized and idempotent). The flag is dropped in
-        ``remove_session`` alongside the finalize lock.
+        atomic with respect to every other coroutine.
+
+        TASK-985 M-04 — it returns ``(owned, done_event)``, not a bare bool.
+        ``owned`` is the unchanged F-32 mutual exclusion: exactly one caller
+        flushes and drains, and it MUST ``done_event.set()`` in a ``finally``.
+        ``done_event`` is the part F-32 lacked — a HAPPENS-BEFORE edge. Every
+        later trigger awaits it (bounded, via :meth:`_await_tail_flush`) before
+        finalizing, because ``False`` used to be read as "the tail is done" when
+        it only ever meant "someone else started it". Under that reading the
+        later trigger published the terminal ``closed`` status, built
+        ``transcript.json`` and called ``remove_session`` — which cancels the
+        inference loop and with it the tail decode still running inside the
+        first trigger. The closing utterance was lost from the captions, the
+        transcript and the durable record, while the billed audio seconds were
+        unaffected.
+
+        Both entries are dropped in ``remove_session`` alongside the finalize
+        lock.
         """
-        if session_id in self._tail_flush_started:
+        existing = self._tail_flush_done.get(session_id)
+        if existing is not None:
             logger.info(
-                "Tail flush already performed for this session; skipping duplicate "
-                "flush/drain and proceeding to finalize",
+                "Tail flush already claimed for this session; waiting for it to "
+                "complete before finalizing",
                 session_id=session_id,
+                already_done=existing.is_set(),
+            )
+            return (False, existing)
+        event = asyncio.Event()
+        self._tail_flush_done[session_id] = event
+        return (True, event)
+
+    async def _await_tail_flush(self, session_id: str, tail_done: asyncio.Event) -> bool:
+        """Wait (bounded, non-fatal) for another trigger's tail flush + drain.
+
+        Returns ``True`` when the tail completed, ``False`` on timeout.
+
+        BOUNDED and NON-FATAL by design. A wedged teardown holds a GPU slot,
+        a model pin and a capacity slot for the life of the process, which is a
+        strictly worse outcome than one lost tail utterance — so a timeout logs
+        at ERROR and lets the caller finalize anyway.
+
+        Note for the ``_on_frame`` caller: this runs on the single ingestion
+        dispatch loop, so while it waits the consumer stops XACK'ing
+        ``stt:audio``. Under the in-band terminal-frame design (M-29) the frame
+        that brought us here is the LAST entry on that stream, so there is
+        nothing left to starve; the bound caps the pathological case regardless.
+        """
+        if tail_done.is_set():
+            return True
+        try:
+            await asyncio.wait_for(tail_done.wait(), timeout=self._tail_wait_timeout_s)
+            return True
+        except TimeoutError:
+            # L-OBS request: `stt_stream_tail_wait_timeout_total`. Until that
+            # counter exists this ERROR is the only signal, so it carries the
+            # bound it exceeded rather than just naming the session.
+            logger.error(
+                "stt.stream.tail_wait_timeout",
+                session_id=session_id,
+                timeout_s=self._tail_wait_timeout_s,
             )
             return False
-        self._tail_flush_started.add(session_id)
-        return True
+
+    async def _run_tail_flush(
+        self,
+        session: StreamSession,
+        preprocessor: StreamingPreprocessor | None,
+    ) -> None:
+        """The tail flush + drain, claimed once and awaited by every other trigger.
+
+        TASK-985 M-04 — the ONE body all four finalize triggers share, so the
+        latch protocol cannot be half-implemented at one of them. A fifth
+        trigger added later gets the invariant by calling this instead of
+        re-deriving it.
+
+        ``finally: set()`` is the deadlock guard, not tidiness:
+        ``_flush_final_utterance`` swallows its own exceptions but
+        ``_drain_inference_queue`` does not, and the reaper must always be able
+        to finish.
+        """
+        session_id = session.session_id
+        owned, tail_done = self._begin_tail_flush(session_id)
+        if owned:
+            try:
+                await self._flush_final_utterance(session=session, preprocessor=preprocessor)
+                await self._drain_inference_queue(session_id)
+            finally:
+                tail_done.set()
+        else:
+            await self._await_tail_flush(session_id, tail_done)
 
     async def _flush_final_utterance(
         self,
@@ -4278,6 +4381,26 @@ class SessionManager:
         if session.status == SessionStatus.CLOSED:
             return None
 
+        # TASK-985 M-04 — the invariant this method's own docstring asserts
+        # ("callers must drain the inference queue BEFORE calling this
+        # method"), enforced HERE as well as at the four callers.
+        #
+        # The callers all go through `_run_tail_flush`, so in practice this is
+        # already satisfied on entry. It is repeated at the sink because this is
+        # the method that states the contract and the one whose violation is
+        # expensive: everything below — the terminal `closed` status the
+        # gateway's caption subscription COMPLETES on, `build_transcript_json`,
+        # the durable persist, `remove_session` — is unrecoverable once run. A
+        # fifth finalize trigger added later inherits the guarantee instead of
+        # having to remember it.
+        #
+        # An absent latch entry means NOBODY claimed a tail for this session
+        # (e.g. a recovered session finalized before any trigger ran), so there
+        # is nothing to wait for and no reason to block.
+        tail_done = self._tail_flush_done.get(session.session_id)
+        if tail_done is not None and not tail_done.is_set():
+            await self._await_tail_flush(session.session_id, tail_done)
+
         publisher = self._publishers.get(session.session_id)
         raw_audio_uri: str | None = None
         processed_audio_uri: str | None = None
@@ -4750,13 +4873,9 @@ class SessionManager:
                     timeout_s=timeout_s,
                 )
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=self._preprocessors.get(session_id),
-                        )
-                        await self._drain_inference_queue(session_id)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, self._preprocessors.get(session_id))
                     teardown_summary = await self._finalize_session(session)
                     # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:
