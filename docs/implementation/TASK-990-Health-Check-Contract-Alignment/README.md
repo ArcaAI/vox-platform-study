@@ -115,6 +115,29 @@ at is the ABSENCE of post-deploy verification, which is F15.
 `0m` for every pod, and all 13 HPAs sit on `FailedGetResourceMetric`. Repairing it is a
 cluster-addon change outside both repos and needs an owner call.
 
+**D-6 — F12 WITHDRAWN. The PDBs are correct as they stand; change nothing.**
+The finding as written ("all 14 PDBs are `minAvailable: 0`, they permit full disruption") was
+true only of `base/` and the k3s overlays, and that made it the wrong conclusion:
+
+- `eks/overlays/aws-prod` (via `components/scale-30-users`) ALREADY ships real budgets wherever
+  replicas > 1 — `hope-api` 2, `hope-stt` 3, and 1 for admin-console/guardrail/harness/
+  harness-worker/nlp/tts/lmstudio. Genuine singletons stay 0. So the machinery exists and is
+  applied where it means something.
+- `scripts/check-capacity.py` already enforces BOTH halves: it fails `minAvailable >= 1` on a
+  single-replica workload ("blocks every node drain") and fails `minAvailable: 0` on an HA one.
+  Raising `base/` to 1 would turn that existing gate red for 14 workloads.
+- On the one-node k3s dev cluster it would be actively harmful: `kubectl drain` is the only way
+  to reboot VM 200, and a `minAvailable: 1` PDB on a `replicas: 1` pod hangs it forever.
+
+`minAvailable: 0` is the correct value for a base that ships `replicas: 1`. If disruption
+protection is ever wanted on dev, the answer is a second replica, not a `minAvailable` bump —
+and the dev HPAs that would provide it are inert (see D-5).
+
+**D-7 — process note.** Two mid-flight instructions were sent to the wrong lanes (the F9 revision
+reached DEPLOY, the preStop instruction reached PY-HEALTH). Both were re-sent to the correct lane.
+DEPLOY stayed inside its file boundary and flagged the misrouted message rather than acting on it,
+which is the behaviour the lane briefs ask for and the reason the error cost nothing.
+
 ## Implementation Plan — lanes
 
 One writer per worktree; the orchestrator owns merges, pushes and cluster verification.
@@ -151,4 +174,6 @@ _(filled in as lanes land)_
 |---|---|
 | 2026-09-18 | Ticket opened. Audit of all apps/services + k8s probes + Argo recorded; 17 findings, 5 live defects. |
 | 2026-09-18 | F13 landed on `dev-2.2` (85146a554): dead duplicate health controller deleted; `pnpm api:build` 12/12 green. |
+| 2026-09-19 | DEPLOY lane landed on `task-990/probe-alignment` (5 commits): STT probes repointed, smoke test repointed, Vault/Temporal/Temporal-UI liveness added, `progressDeadlineSeconds` on all 26 Deployments, README corrected, new `probes` CI gate (`scripts/check-probes.py`) proven to fail on `main`. preStop drain resumed separately. |
+| 2026-09-19 | D-6 recorded: F12 WITHDRAWN — the PDBs are correct; the finding's premise was incomplete. D-7 records a lane-routing error and its containment. |
 | 2026-09-18 | Decisions D-1..D-5 recorded. F9 re-specified (contract, not status codes); F16 downgraded to a note; preStop drain + D-3 auth added to the DEPLOY lane. |
