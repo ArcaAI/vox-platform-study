@@ -26,13 +26,19 @@ import asyncio
 import os
 import signal
 import threading
+import time
+from collections.abc import Callable
+from pathlib import Path
 from types import FrameType
 from typing import Any
 
+import dramatiq
 import httpx
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
 from hope_obs import configure_worker_observability
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from stt.core.config.settings import get_settings
 from stt.core.logging import get_logger
@@ -56,6 +62,265 @@ broker = configure_broker(settings.redis_url)
 # Import actors to register them with the broker
 # These imports MUST happen after broker configuration
 from stt.transcription.workers import transcribe_file  # noqa: E402, F401
+
+# ── Liveness heartbeat (TASK-990 F10) ───────────────────────────────────────
+#
+# WHERE THIS RUNS, AND WHY IT IS NOT IN `main()`
+#
+# The image runs `python -m dramatiq stt.worker` (docker/Dockerfile, worker
+# stage), NOT `stt.worker.main()`. The dramatiq CLI forks `--processes N`
+# children; each child IMPORTS this module, builds its own `Worker`, and calls
+# `worker.start()`. Anything started inside `main()` therefore never runs in the
+# deployed container. The heartbeat is installed as broker middleware at module
+# import instead, and started from `after_worker_boot` — so it runs under the
+# CLI *and* under `main()`, from inside each worker process.
+#
+# WHAT THE OLD PROBE PROVED (nothing useful)
+#
+# The manifest probes :9191 — dramatiq's Prometheus exposition server, which the
+# CLI runs in a SEPARATE forked process from the workers. A `tcpSocket :9191`
+# check is green while every worker process is wedged.
+#
+# WHAT THIS PROVES, AND WHAT IT DOES NOT
+#
+# The probe reads the file's MTIME (`find <dir> -type f -mmin -1`), so the file
+# must be REWRITTEN each tick; a probe that merely checked existence would pass
+# forever after the first write. A fresh file proves, for THIS process:
+#   * the process exists and its interpreter is still scheduling threads — a
+#     hard deadlock, a GIL held forever inside a C extension (ONNX/CUDA), a
+#     SIGSTOP or a frozen container all stop the touch;
+#   * no ConsumerThread or WorkerThread has exited (checked every tick, against
+#     the live sets — consumers are added lazily as queues are declared);
+#   * the process is not wedged in the one sense we can honestly detect: EVERY
+#     worker thread in-flight on a message for longer than `stall_after_s`.
+#
+# It does NOT prove messages are flowing. An idle queue is the normal state, so
+# requiring progress would restart a healthy worker every time the queue drains;
+# and a ConsumerThread blocked forever inside a socket read still reports
+# `is_alive()`. The stall rule is the honest middle ground: it fires only when
+# no further progress is POSSIBLE in this process.
+#
+# The stall rule is deliberately ALL threads, not any. `stall_after_s` defaults
+# to twice the job time limit (`TimeLimit(transcription_timeout_seconds)`), so a
+# thread that trips it has already outlived the interrupt dramatiq raises to
+# stop it — which is exactly the case TimeLimit cannot recover from, because the
+# interrupt cannot land while the thread is inside a C extension. Killing the
+# pod then loses nothing: those messages are past their limit and are redelivered.
+# Withholding on ONE stuck thread would restart a pod whose other threads are
+# still completing jobs.
+#
+# One file PER PROCESS, named after the PID. With `--processes N` a single
+# shared file lets one healthy fork mask a hung sibling — the exact hole this
+# closes. The probe must therefore require that EVERY file is fresh (command in
+# `docker/Dockerfile`, worker stage). A fork that DIES needs no heartbeat: the
+# dramatiq master shuts the whole container down when a child exits unexpectedly.
+#
+# Interval is 15s against a 60s probe window (the harness Temporal worker's
+# numbers — apps/harness/src/harness/temporal/worker.py), so three consecutive
+# misses are needed before a restart and one slow tick under load is survivable.
+HEARTBEAT_DIR = Path("/tmp/stt-worker-heartbeat")  # noqa: S108 - container-local, not shared
+
+
+class WorkerHeartbeatSettings(BaseSettings):
+    """Liveness knobs. Defaults must be WORKING defaults.
+
+    Per-concern `BaseSettings` with an explicit `env_prefix`, the pattern
+    06-python-services.md §Configuration prescribes. This is a container-local
+    liveness mechanism — not an engine, model, endpoint or credential — so
+    defaults here are correct and are not the hardcoded-configuration smell that
+    rule forbids: an unset variable must never silently disable the probe.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="STT_WORKER_HEARTBEAT_", extra="ignore")
+
+    directory: Path = Field(
+        default=HEARTBEAT_DIR,
+        description="Directory holding one heartbeat file per worker process, named by PID.",
+    )
+    interval_s: float = Field(
+        default=15.0,
+        gt=0,
+        description="Seconds between heartbeat writes. Must divide the probe window at least 3x.",
+    )
+    stall_after_s: float = Field(
+        default_factory=lambda: float(get_settings().transcription_timeout_seconds * 2),
+        gt=0,
+        description=(
+            "Withhold the heartbeat once EVERY worker thread has been in-flight this long. "
+            "Defaults to twice the job time limit, so only work that outlived its own "
+            "TimeLimit interrupt counts as wedged."
+        ),
+    )
+
+
+class WorkerHeartbeat:
+    """Touches one file per worker process while that process can still progress."""
+
+    def __init__(
+        self,
+        worker: Any,
+        *,
+        directory: Path,
+        interval_s: float,
+        stall_after_s: float,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._worker = worker
+        self.path = Path(directory) / str(os.getpid())
+        self._interval_s = interval_s
+        self._stall_after_s = stall_after_s
+        self._clock = clock
+        self._in_flight: dict[int, float] = {}
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._withheld = False
+
+    # -- dramatiq message hooks ---------------------------------------------
+
+    def message_started(self, ident: int | None = None) -> None:
+        with self._lock:
+            self._in_flight[ident if ident is not None else threading.get_ident()] = self._clock()
+
+    def message_finished(self, ident: int | None = None) -> None:
+        with self._lock:
+            self._in_flight.pop(ident if ident is not None else threading.get_ident(), None)
+
+    @property
+    def in_flight_count(self) -> int:
+        with self._lock:
+            return len(self._in_flight)
+
+    # -- liveness -----------------------------------------------------------
+
+    def _dead_threads(self) -> list[str]:
+        """Re-read the live sets every tick: consumers are added as queues are declared."""
+        dead = [
+            f"consumer:{name}"
+            for name, thread in dict(getattr(self._worker, "consumers", {})).items()
+            if not thread.is_alive()
+        ]
+        dead += [
+            f"worker:{index}"
+            for index, thread in enumerate(list(getattr(self._worker, "workers", [])))
+            if not thread.is_alive()
+        ]
+        return dead
+
+    def _is_wedged(self) -> bool:
+        worker_threads = len(list(getattr(self._worker, "workers", [])))
+        if worker_threads == 0:
+            return False
+
+        now = self._clock()
+        with self._lock:
+            started = list(self._in_flight.values())
+
+        if len(started) < worker_threads:
+            return False  # at least one thread is free to pick up the next message
+        return all(now - start >= self._stall_after_s for start in started)
+
+    def tick(self) -> bool:
+        """One iteration. Returns whether the heartbeat was written. Never raises."""
+        dead = self._dead_threads()
+        if dead:
+            self._withhold("thread_exited", threads=dead)
+            return False
+
+        if self._is_wedged():
+            self._withhold("all_worker_threads_stalled", stall_after_s=self._stall_after_s)
+            return False
+
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.touch()
+        except OSError as exc:  # pragma: no cover - defensive
+            # Never raise: a heartbeat write failure must not take down a worker
+            # that is otherwise processing correctly. A persistent failure ages
+            # the file out and restarts the pod, which is the intended outcome.
+            self._withhold("write_failed", error=str(exc))
+            return False
+
+        if self._withheld:
+            logger.info("stt.worker.heartbeat_resumed", path=str(self.path))
+            self._withheld = False
+        return True
+
+    def _withhold(self, reason: str, **fields: Any) -> None:
+        """Log the transition only — a withheld tick repeats every interval."""
+        if not self._withheld:
+            logger.error(
+                "stt.worker.heartbeat_withheld", reason=reason, path=str(self.path), **fields
+            )
+            self._withheld = True
+
+    def run(self) -> None:
+        """Write, THEN wait — otherwise the probe races the first interval at startup."""
+        while not self._stop_event.is_set():
+            self.tick()
+            self._stop_event.wait(self._interval_s)
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self.run, name="stt-worker-heartbeat", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop ticking and remove the file: a lingering process must not look live."""
+        self._stop_event.set()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join(timeout=self._interval_s + 5.0)
+        try:
+            self.path.unlink(missing_ok=True)
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.warning("stt.worker.heartbeat_cleanup_failed", error=str(exc))
+
+
+class WorkerHeartbeatMiddleware(dramatiq.Middleware):
+    """Starts the heartbeat inside every worker process and feeds it message events."""
+
+    def __init__(self, settings: WorkerHeartbeatSettings | None = None) -> None:
+        self._settings = settings or WorkerHeartbeatSettings()
+        self.heartbeat: WorkerHeartbeat | None = None
+
+    def after_worker_boot(self, broker: Any, worker: Any) -> None:
+        self.heartbeat = WorkerHeartbeat(
+            worker,
+            directory=self._settings.directory,
+            interval_s=self._settings.interval_s,
+            stall_after_s=self._settings.stall_after_s,
+        )
+        self.heartbeat.start()
+        logger.info(
+            "stt.worker.heartbeat_started",
+            path=str(self.heartbeat.path),
+            interval_s=self._settings.interval_s,
+            stall_after_s=self._settings.stall_after_s,
+        )
+
+    def before_worker_shutdown(self, broker: Any, worker: Any) -> None:
+        if self.heartbeat is not None:
+            self.heartbeat.stop()
+            self.heartbeat = None
+
+    def before_process_message(self, broker: Any, message: Any) -> None:
+        if self.heartbeat is not None:
+            self.heartbeat.message_started()
+
+    def after_process_message(
+        self, broker: Any, message: Any, *, result: Any = None, exception: Any = None
+    ) -> None:
+        if self.heartbeat is not None:
+            self.heartbeat.message_finished()
+
+    def after_skip_message(self, broker: Any, message: Any) -> None:
+        if self.heartbeat is not None:
+            self.heartbeat.message_finished()
+
+
+broker.add_middleware(WorkerHeartbeatMiddleware())
 
 
 async def initialize_services() -> None:
