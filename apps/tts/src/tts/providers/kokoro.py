@@ -150,6 +150,13 @@ class KokoroProvider:
     # an adapter that says nothing fails it.
     credential_posture = CredentialPosture.SELF_HOST
     is_configured = True  # Self-hosted engine needs no credential
+    #: TASK-990 F5. This engine loads its weights on FIRST USE and releases them
+    #: when idle (`ModelCache`, TTL), so `health()` answering False is an
+    #: expected steady state rather than a fault. `/health/ready` reads this to
+    #: tell the two apart; without it a truthful `health()` would make a lazily
+    #: unloaded pod permanently NotReady whenever `TTS_WARMUP_ENABLED` is false
+    #: — which is the default.
+    loads_on_demand = True
 
     @classmethod
     def from_spec(
@@ -309,7 +316,32 @@ class KokoroProvider:
         await asyncio.to_thread(lambda: list(pipeline("warm up.", voice=voice)))
 
     async def health(self) -> bool:
-        return True
+        """True once the pipeline is RESIDENT in this process.
+
+        TASK-990 F5. This used to be ``return True``, unconditionally, with no
+        check that ``_get_pipeline_async()`` had ever completed. Combined with
+        ``TTS_WARMUP_ENABLED`` defaulting to false, that made a TTS pod report
+        Ready — and take traffic — before any Kokoro weight was in memory, so
+        the first real request paid the entire cold load. The health signal
+        asserted something it had never measured.
+
+        What it measures now is residency and only residency. It deliberately
+        does NOT attempt a load: a probe that loads ~1.2 GB of weights as a side
+        effect would turn every readiness poll into the cold start it is
+        supposed to report on, and would make an idle, TTL-evicted pipeline
+        reload on a timer forever.
+
+        False therefore means "not resident", which is NOT the same as "broken",
+        and the two must not be conflated by the caller. The class attribute
+        ``loads_on_demand`` is the discriminator that lets ``/health/ready`` report this as
+        degraded-but-ready rather than pulling the pod from the Service
+        endpoints (see ``tts.api.endpoints.health.readiness``). A genuinely
+        broken mount never reaches this method at all: ``resolve_kokoro_paths``
+        raises at CONSTRUCTION when the published weights are absent.
+        """
+        if self._injected is not None:
+            return True
+        return "kokoro" in self._cache.cached_keys()
 
     async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         """Stream the utterance segment by segment.
