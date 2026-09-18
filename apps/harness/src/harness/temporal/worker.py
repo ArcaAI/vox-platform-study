@@ -223,9 +223,17 @@ async def _flush_compute_metering_forever(
 # Liveness heartbeat ────────────────────────────────────────────────────────
 #
 # The worker serves no HTTP, so it has no endpoint for a kubelet httpGet probe.
-# The alternative in this repo — stt-v2-worker's manifest — ships NO probes at
-# all, which means a wedged worker is never restarted. That is the gap this
-# closes, so it deliberately does not copy that pattern.
+#
+# The alternative in this repo used to be stt-worker's manifest, which probes
+# port 9191 — the Dramatiq Prometheus exporter, which dramatiq forks as a
+# SEPARATE process from the workers. A TCP check there proves the exporter is
+# listening, not that anything is consuming the queue, so a wedged worker was
+# never restarted. (An earlier version of this comment said that manifest
+# shipped no probes at all; it ships weak ones, which is worse, because they
+# look like coverage. Corrected under TASK-990.)
+#
+# That gap is now closed on both workers: stt-worker grew the same
+# heartbeat-file mechanism under TASK-990, modelled on this one.
 #
 # Instead the worker touches a file on a timer and the manifest execs
 # `find <file> -mmin -1`. The file's MTIME is the signal: if the asyncio loop
