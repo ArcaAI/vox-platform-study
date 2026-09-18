@@ -69,7 +69,13 @@ class NLPMetrics:
     @contextmanager
     def track_inference(self, model_name: str) -> Generator[None, None, None]:
         """Context manager that records inference duration and counts."""
-        attrs = {"model": model_name}
+        # `hope.*` namespace (TASK-987 R-7 / F-18): the OTel Collector's
+        # `redaction/phi` processor is an ALLOW-LIST over all three pipelines, and
+        # bare `model`/`entity_type`/`label` are not on it — these attributes were
+        # being dropped in transit, so the metrics arrived without the dimensions
+        # that make them useful. Prometheus-native labels below are NOT renamed:
+        # Prometheus scrapes them directly and never touches the collector.
+        attrs = {"hope.model": model_name}
         self.inference_count.add(1, attrs)
         self.active_inferences.add(1, attrs)
         start = time.perf_counter()
@@ -86,7 +92,7 @@ class NLPMetrics:
     def record_entities(
         self, entity_count: int, entity_type: str, model: str = "token_classifier"
     ) -> None:
-        self.entity_count.add(entity_count, {"entity_type": entity_type, "model": model})
+        self.entity_count.add(entity_count, {"hope.entity_type": entity_type, "hope.model": model})
         # The OTel counter above is exported via OTLP gRPC only
         # (not Prometheus-scrapable — see the module docstring). The
         # platform-metrics backend reads Prometheus, so this call ALSO feeds
@@ -94,10 +100,10 @@ class NLPMetrics:
         NLP_ENTITIES_TOTAL.labels(model=model, entity_type=entity_type).inc(entity_count)
 
     def record_confidence(self, score: float, model: str, label: str = "") -> None:
-        self.classification_confidence.record(score, {"model": model, "label": label})
+        self.classification_confidence.record(score, {"hope.model": model, "hope.label": label})
 
     def record_model_load(self, model_name: str, duration_ms: float) -> None:
-        self.model_load_duration.record(duration_ms, {"model": model_name})
+        self.model_load_duration.record(duration_ms, {"hope.model": model_name})
 
 
 nlp_metrics = NLPMetrics()
