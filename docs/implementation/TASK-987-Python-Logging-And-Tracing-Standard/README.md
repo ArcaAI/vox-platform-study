@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Wave 0 |
+| **Status** | In Progress — Wave 1 |
 | **Type** | `infrastructure` (+ `bugfix` for the P0 items) |
 | **Branch** | `dev-2.2` |
 | **Scope** | `apps/{stt,text,guardrail,nlp,harness,tts}`, new `packages/py-obs`, and the `arca/hope-v2-deployment` repo |
@@ -892,5 +892,6 @@ exception for lane P.
 | Date | Change |
 |---|---|
 | 2026-09-18 | Ticket created. Review of all six Python services recorded as F-01…F-15; standard defined in §3; nine-lane multi-agent plan with disjoint ownership, model tiers and merge order defined in §5-§7. Status: Pending — awaiting approval to spawn Wave 0. |
+| 2026-09-18 | **Wave 0 merged; Wave 1 spawned.** Lane F → `dev-2.2` (`27895c820`), gates re-run green after the merge, worktree removed. Lane D1 → `hope-v2-deployment@main` (`79e5a64`), overlay re-rendered OK; **local only, not pushed, so the cluster is unchanged until someone pushes**. Shared surfaces wired by the orchestrator in `56f876cbd`: workspace member, `uv lock` (+39/-0, one new package, **no version moved** — confirming lane F's dependency bounds), `py-obs:*` scripts, `OTEL_TRACES_SAMPLER_ARG` in `turbo.json`, and `pip install packages/py-obs` in all seven Python CI jobs; `hope_obs` editable-installed into `arcaenv`. Six service lanes spawned in worktrees `../hope-v2-t987-{stt,text,guardrail,nlp,harness,tts}` with `.env.dev`/`.env.test` copied in. Merge-target rule is now standing: `dev-2.2` for `hope-v2`, `main` for `hope-v2-deployment`. |
 | 2026-09-18 | **Wave 0 complete, both lanes verified, neither merged** (awaiting confirmation of the merge targets). Lane D1 `e4a3dfb`; lane F `09ab5b00c`. R-2 and §6.1 corrected: the "unroutable endpoint → tracer_provider is None" assertion was unimplementable and is now split into configuration vs runtime export failure. As-built API additions recorded in §3 R-1. Lane C brief gains the `GUARDRAIL_V2_LOG_LEVEL` workaround; lane E brief records the decision to keep NLP's `MeterProvider` local; lane P gains the paired-gate assertion. |
 | 2026-09-18 | Ticket committed to `dev-2.2` as `20526448a` so every worktree branches from a base that already contains it. **Wave 0 spawned.** Lane F (`opus-5`/high) in worktree `../hope-v2-t987-obs`, branch `task-987-py-obs`. Lane D1 (`sonnet-5`/medium) in `hope-v2-deployment`, branch `task-987-enable-otel` off `main`. Status: In Progress. |
