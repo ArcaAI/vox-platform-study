@@ -74,16 +74,21 @@ class TestForcedBoundaryDedup:
         assert r1.text == "no no no"
         assert r2.text == "no no no"
 
-    async def test_overlap_window_bounds_match_length(self):
-        # 0.25 s overlap → at most 2 words may be stripped even if more match.
+    async def test_the_window_is_three_words_regardless_of_overlap_duration(self):
+        """TASK-985 CL-6 — the word cap no longer scales with ``overlap_s``.
+
+        It used to: ``min(3, int(overlap_s * 4.0) + 1)``, using the overlap as a
+        proxy for how much speech was decoded twice. Once the segmentation lane
+        derives ``start_time`` from the emitted buffer (D2-N4) the overlap also
+        contains the pre-speech ring — ~320 ms of SILENCE — so it stops being that
+        proxy. A 0.25 s overlap used to cap the window at 2 words and let a 3-word
+        echo through; it is now the flat 3 of QW-10 (a).
+        """
         worker = _make_worker(["alpha beta gamma delta epsilon", "gamma delta epsilon zeta"])
         await worker.process_utterance("s1", _utt(0.0, 10.0, 0))
         r2 = await worker.process_utterance("s1", _utt(9.75, 15.0, 1))
 
-        # max_words = min(12, int(0.25*4)+1) = 2 → only a ≤2-word prefix can
-        # match; "gamma delta epsilon" (3 words) exceeds the window, and no
-        # shorter prefix of the current text matches the tail — untouched.
-        assert r2.text == "gamma delta epsilon zeta"
+        assert r2.text == "zeta"
 
     async def test_empty_previous_final_disables_dedup(self):
         worker = _make_worker(["", "severe pain again"])
