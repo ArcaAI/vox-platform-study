@@ -1,15 +1,22 @@
 /**
  * Client-side reaction to a dead session.
  *
- * The BFF already clears the cookie and answers `401 {"message":"Session
- * expired"}`, but the app's only two login redirects (proxy.ts's cookie gate
- * and the console layout's server guard) need a DOCUMENT navigation to fire.
- * An operator already sitting on a screen never performs one, so the screen
- * fills with "Session expired" cards and stays there — TASK-988 D-1.
+ * The BFF already clears the cookie and answers 401, but the app's only two
+ * login redirects (proxy.ts's cookie gate and the console layout's server
+ * guard) need a DOCUMENT navigation to fire. An operator already sitting on a
+ * screen never performs one, so the screen fills with "Session expired" cards
+ * and stays there — TASK-988 D-1.
  */
 
-/** The body `handleProxy` returns once refresh is unrecoverable. */
-export const SESSION_EXPIRED_MESSAGE = 'Session expired';
+/**
+ * Response header the BFF stamps on its OWN 401s — the missing-cookie branch
+ * and the refresh-is-unrecoverable branch — and never on a passthrough of the
+ * gateway's answer. It is the signal because the bodies are ambiguous: the
+ * missing-cookie branch says `"Unauthorized"`, which is exactly what the
+ * gateway says when a step-up re-auth fails. `toClientResponse` copies only an
+ * allowlist of gateway headers, so the gateway cannot forge this one.
+ */
+const SESSION_EXPIRED_HEADER = 'x-session-expired';
 
 /** Screens reachable without a session; redirecting from one would loop. */
 const PUBLIC_PATHS = new Set(['/login', '/register', '/verify-email', '/reset-password']);
@@ -44,14 +51,13 @@ export function redirectToLogin(): void {
 }
 
 /**
- * A 401 from the BFF proxy. ONLY the expiry body redirects: once a rotation
- * has succeeded, `handleProxy` passes the GATEWAY's own 401 straight through
- * and deliberately keeps the session, because that 401 is a step-up re-auth
- * failure (a mistyped password on a credential reveal). Logging the operator
- * out for a typo would be worse than the bug this fixes — so an unrecognised
- * or unreadable body does nothing.
+ * A 401 from the BFF proxy. Without the header it is a step-up re-auth failure
+ * (a mistyped password on a credential reveal), which `handleProxy` passes
+ * through with the session deliberately intact — logging the operator out for
+ * a typo would be worse than the bug this fixes. The body is never consulted,
+ * so an unreadable one changes nothing either way.
  */
-export function reportUnauthorized(message: string | undefined): void {
-  if (message !== SESSION_EXPIRED_MESSAGE) return;
+export function reportUnauthorized(response: Response): void {
+  if (!response.headers.has(SESSION_EXPIRED_HEADER)) return;
   redirectToLogin();
 }
