@@ -34,6 +34,16 @@ const baseSession: SessionPayload = {
   },
 };
 
+/**
+ * A distinct refresh token per refresh-exercising test: a settled rotation
+ * stays answerable for a grace window (`ROTATION_MEMO_MS` in `refresh.ts`),
+ * and that memo is module state — sharing one token across tests would let an
+ * earlier test's rotation answer a later one.
+ */
+function sessionWithRefreshToken(refreshToken: string): SessionPayload {
+  return { ...baseSession, refreshToken };
+}
+
 async function seedSession(session: SessionPayload): Promise<void> {
   cookieJar.set(SESSION_COOKIE_NAME, { name: SESSION_COOKIE_NAME, value: await sealSession(session) });
 }
@@ -254,10 +264,10 @@ describe('handleProxy', () => {
   });
 
   it('refreshes once on 401 and retries with the new access token', async () => {
-    await seedSession(baseSession);
+    await seedSession(sessionWithRefreshToken('refresh-retry'));
     const calls = installFetchMock((call) => {
       if (call.url === `${API}/api/v1/auth/refresh`) {
-        expect(JSON.parse(call.body ?? '{}')).toEqual({ refreshToken: 'refresh-1' });
+        expect(JSON.parse(call.body ?? '{}')).toEqual({ refreshToken: 'refresh-retry' });
         return Response.json({ token: 'access-2', refreshToken: 'refresh-2' });
       }
       if (call.headers.get('authorization') === 'Bearer access-2') {
@@ -279,7 +289,7 @@ describe('handleProxy', () => {
   });
 
   it('keeps the session and passes the gateway 401 through when a refreshed token still 401s (step-up re-auth failure)', async () => {
-    await seedSession(baseSession);
+    await seedSession(sessionWithRefreshToken('refresh-stepup'));
     installFetchMock((call) => {
       if (call.url === `${API}/api/v1/auth/refresh`) {
         return Response.json({ token: 'access-2', refreshToken: 'refresh-2' });
@@ -304,7 +314,7 @@ describe('handleProxy', () => {
   });
 
   it('clears the session and returns 401 when the refresh is rejected', async () => {
-    await seedSession(baseSession);
+    await seedSession(sessionWithRefreshToken('refresh-reject'));
     installFetchMock((call) => {
       if (call.url === `${API}/api/v1/auth/refresh`) {
         return Response.json({ message: 'Invalid or expired refresh token' }, { status: 401 });
@@ -319,7 +329,7 @@ describe('handleProxy', () => {
   });
 
   it('single-flights concurrent refreshes', async () => {
-    await seedSession(baseSession);
+    await seedSession(sessionWithRefreshToken('refresh-concurrent'));
     let refreshCalls = 0;
     installFetchMock(async (call) => {
       if (call.url === `${API}/api/v1/auth/refresh`) {
