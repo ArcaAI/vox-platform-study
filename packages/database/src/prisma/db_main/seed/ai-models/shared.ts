@@ -495,6 +495,18 @@ export interface AiModelSeed {
     clinicalTaxonomy?: ClinicalTaxonomy;
     entailment?: EntailmentCalibration;
     supportedGenerationParams?: GenerationParamName[];
+    /**
+     * The context window this row is SERVED with, in tokens (owner directive 2026-09-18:
+     * every text-generation task runs against a declared window).
+     *
+     * A platform declaration, not a vendor maximum: `gemma-4-e2b-it-qat` can load at 131,072,
+     * and the number here is the one the deployment actually loads it at
+     * (`LMS_CONTEXT` -> `lms load --context-length`). The two must agree, because this is what
+     * the live lane budgets against before it dispatches — declaring more than is served turns
+     * a pre-dispatch check into a 422 from the engine, which is the failure it exists to
+     * prevent.
+     */
+    contextLength?: number;
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;

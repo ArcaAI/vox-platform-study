@@ -95,7 +95,7 @@ export class CatalogueModelResponse {
   @ApiProperty({ description: 'When that observation was taken ("at that point of time").', nullable: true }) readinessCheckedAt: Date | null;
   @ApiProperty({ description: 'Non-secret detail behind the readiness verdict.', nullable: true }) readinessDetail: string | null;
   @ApiProperty({ description: 'What the model accepts, for the authoring form.', type: Object })
-  capabilities: { supportedGenerationParams?: string[]; supportsSsml?: boolean };
+  capabilities: { supportedGenerationParams?: string[]; supportsSsml?: boolean; contextLength?: number };
   @ApiProperty({
     description:
       'Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — window geometry, decode thresholds, ' +

@@ -52,6 +52,27 @@ const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'max
 const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERATION_PARAMS, 'reasoning'];
 
 /**
+ * The context window the LM Studio rows are SERVED with (owner directive 2026-09-18).
+ *
+ * One constant, because the number has to agree with `LMS_CONTEXT` in the deployment repo's
+ * `base/lmstudio.yaml` (and its dev overlay), which is what `lms load --context-length`
+ * actually loads the weights at. Declaring a window the engine was not loaded with is worse
+ * than declaring none: the live lane would budget against a number the engine will reject.
+ *
+ * It is a BUDGET, and the invariant is one-directional: it must never EXCEED what the engine
+ * was loaded with. Under-claiming is safe (the lane simply leaves headroom unused);
+ * over-claiming is the bug, because the lane would pass a pre-dispatch check and the engine
+ * would still answer `exceed_context_size_error`.
+ *
+ * For the PRELOADED model (`LMS_LOAD` = `gemma-4-e2b-it-qat`) the two are equal by
+ * construction — `LMS_CONTEXT` is this number. The E4B row is NOT preloaded: LM Studio
+ * JIT-loads it on first use, without the flag, on an engine default that is larger (the
+ * catalogue reports 131,072). So 16384 there is a deliberate conservative floor, not a
+ * statement about how it was loaded.
+ */
+const LM_STUDIO_CONTEXT_LENGTH = 16384;
+
+/**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
  * granite-guardian safety LLM, four Gemma 4 rows on LM Studio, and the Azure
  * OpenAI cloud row. Retired here (see `retired.ts`): `lms-gemma-4-12b-qat`,
@@ -178,7 +199,12 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 2048,
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'default', 'summarization', 'mmproj'],
-    metaData: { hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf', supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS },
+    metaData: {
+      hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf',
+      supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS,
+      // Matches `LMS_CONTEXT` in the deployment repo's lmstudio manifest. Keep them equal.
+      contextLength: LM_STUDIO_CONTEXT_LENGTH,
+    },
   },
   {
     // The E4B tier of the catalogue, and the harness LLM-as-judge's alternate.
@@ -212,7 +238,12 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 3072,
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'mmproj', 'judge'],
-    metaData: { hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf', supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS },
+    metaData: {
+      hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf',
+      supportedGenerationParams: LM_STUDIO_GENERATION_PARAMS,
+      // Matches `LMS_CONTEXT` in the deployment repo's lmstudio manifest. Keep them equal.
+      contextLength: LM_STUDIO_CONTEXT_LENGTH,
+    },
   },
 
   // =========================================================================
