@@ -30,6 +30,26 @@ This is a floor, not a lock. A test that IS about auth overrides it normally —
 ``test_auth_middleware.py::test_enforcement_fires_from_canonical_env``) or by
 setting ``app.state.settings.service_token`` after construction — and the restore
 below undoes that too.
+
+TASK-987: ``create_app()`` now ALSO calls into ``hope_obs`` (logging + request
+middleware + tracing), because the two ASGI middlewares it installs must be
+added before the app serves its first request — the old ``lifespan``-time
+``setup_logging`` call ran too late for that. ``hope_obs.configure_logging`` is
+deliberately idempotent (its own R-3 contract): the FIRST ``create_app()`` call
+in this pytest session configures the root logger once, at ``settings.log_level``
+(``"info"`` unless a manifest sets ``GUARDRAIL_V2_LOG_LEVEL``), and every later
+call is a no-op. Do NOT add a per-test reset for this here — it looks tidier but
+it is not: ``structlog.testing.capture_logs`` (used by
+``test_task892_internal_token_startup.py``) keeps working across
+``cache_logger_on_first_use=True`` specifically by MUTATING the currently
+configured processors list in place rather than replacing it; forcing a fresh
+``structlog.configure(...)`` call every test (a *new* list each time) makes any
+logger a PRIOR test already cached — e.g. ``guardrail.main``'s module-level
+``logger`` — hold a stale reference that ``capture_logs`` never touches, so its
+capture silently empties out. Confirmed by reproducing exactly that failure
+while implementing this ticket. A test that needs an isolated log capture
+should redirect the existing handler's stream instead (see
+``test_task987_observability.py::_attach_capture``), not force a reconfigure.
 """
 
 from __future__ import annotations
@@ -43,7 +63,7 @@ import pytest
 # See scripts/pytest-support/hope_worktree_guard.py.
 from hope_worktree_guard import assert_source_tree
 
-assert_source_tree(["guardrail", "hope_env", "hope_runtime_models"], __file__)
+assert_source_tree(["guardrail", "hope_env", "hope_runtime_models", "hope_obs"], __file__)
 
 
 @pytest.fixture(autouse=True)

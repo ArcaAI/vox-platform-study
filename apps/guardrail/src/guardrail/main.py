@@ -24,7 +24,7 @@ from guardrail.core.config import Settings, get_settings
 from guardrail.core.effective_config import (
     CONFIG_INVALIDATION_CHANNEL as EFFECTIVE_CONFIG_INVALIDATION_CHANNEL,
 )
-from guardrail.core.logging import get_logger, setup_logging
+from guardrail.core.logging import get_logger
 from guardrail.core.metrics import record_config_cache_event
 
 logger = get_logger(__name__)
@@ -247,7 +247,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, LLM providers."""
     settings: Settings = app.state.settings
 
-    setup_logging(settings.log_level)
+    # Logging is already configured by `setup_observability` in `create_app`
+    # (TASK-987) — it must run before the app's first ASGI call so the request
+    # middlewares it installs are in place before anything is served, which is
+    # earlier than this lifespan coroutine ever runs.
 
     # Startup assertion (TASK-892 C3) — before any I/O, so an in-cluster
     # refusal never opens a connection it cannot authenticate.
@@ -441,6 +444,19 @@ def create_app() -> FastAPI:
 
     app.add_middleware(ServiceAuthMiddleware)
 
+    # Logging, request context (request_id/tenant_id), the structured access
+    # log, and tracing — all via `hope_obs` (TASK-987). Added AFTER
+    # `ServiceAuthMiddleware` so its two ASGI middlewares end up OUTERMOST
+    # (Starlette builds the stack last-added-outermost): a request rejected by
+    # auth still gets a request_id and an access-log line. This must happen
+    # here, in `create_app`, and not in the `lifespan` above — Starlette
+    # compiles the middleware stack on the app's first ASGI call, which
+    # includes the lifespan startup event itself, so middleware added inside
+    # `lifespan` would be too late.
+    from guardrail.core.observability import setup_observability
+
+    setup_observability(app, settings)
+
     # Include routers
     from guardrail.api.endpoints.groundedness import router as groundedness_router
     from guardrail.api.endpoints.guardrails import router as guardrails_router
@@ -466,21 +482,6 @@ def create_app() -> FastAPI:
     app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
     app.include_router(realtime_router, prefix="/api/v1", tags=["realtime"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
-
-    # OpenTelemetry tracing. Default-OFF: both the master
-    # switch AND a non-empty collector endpoint are required, so an unset
-    # endpoint can never make a truthy flag start dialing a collector that
-    # was never configured.
-    if settings.otel_enabled and settings.otel_exporter_endpoint:
-        from guardrail.core.observability import setup_opentelemetry
-
-        setup_opentelemetry(
-            app,
-            endpoint=settings.otel_exporter_endpoint,
-            service_name=settings.otel_service_name,
-        )
-    else:
-        app.state.tracer_provider = None
 
     # Metrics endpoint
     if settings.metrics_enabled:
