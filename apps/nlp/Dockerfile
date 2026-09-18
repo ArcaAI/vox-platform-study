@@ -88,6 +88,11 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
+# Shared logging & tracing runtime (`hope-obs`, TASK-987). Same workspace
+# path-dependency rule as py-env/py-runtime-models above: `apps/nlp/pyproject.toml`
+# now declares `hope-obs`, so `uv sync --frozen --package nlp` needs it on disk
+# or layer 1 fails with "Distribution not found at: file:///app/packages/py-obs".
+COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package nlp --no-dev --no-install-project --no-editable \
         ${UV_NO_CUDA_SKIPS}
