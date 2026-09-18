@@ -17,6 +17,19 @@ const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'cache-control'] as 
 
 const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
 
+/**
+ * Marks a 401 the BFF itself minted because the session is gone, as opposed to
+ * a passthrough of the gateway's own 401 — which may be an authorization or
+ * step-up failure on a perfectly live session. The client redirects to /login
+ * on this header, because the bodies cannot tell the two apart: a missing
+ * cookie and a gateway authorization failure both read "Unauthorized".
+ * `FORWARDED_RESPONSE_HEADERS` is an allowlist, so the gateway can never
+ * inject it — keep it that way.
+ */
+function sessionLost(message: string): Response {
+  return Response.json({ message }, { status: 401, headers: { 'x-session-expired': '1' } });
+}
+
 function buildHeaders(request: Request, session: SessionPayload): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -79,7 +92,7 @@ function toClientResponse(gatewayResponse: Response): Response {
 export async function handleProxy(request: Request, path: string[]): Promise<Response> {
   const session = await getSession();
   if (!session) {
-    return Response.json({ message: 'Unauthorized' }, { status: 401 });
+    return sessionLost('Unauthorized');
   }
 
   const { search } = new URL(request.url);
@@ -123,5 +136,5 @@ export async function handleProxy(request: Request, path: string[]): Promise<Res
   }
 
   await clearSession();
-  return Response.json({ message: 'Session expired' }, { status: 401 });
+  return sessionLost('Session expired');
 }
