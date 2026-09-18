@@ -225,6 +225,28 @@ is an observability gap nobody notices until they need it",
 unconditionally (`observability-config.yaml` job list), so a `false` anywhere presents as
 `TargetDown`. No service has it false today; the flag is a live foot-gun, not a live defect.
 
+#### F-16 (P2) — `hope_obs` imports the OTLP gRPC exporter eagerly (found by lane H, 2026-09-18)
+
+`hope_obs/__init__.py` → `runtime.py` → `tracing.py` imports
+`opentelemetry.exporter.otlp.proto.grpc.trace_exporter` at module scope, which transitively pulls
+`opentelemetry.sdk.metrics` and the whole gRPC C-extension stack. Measured by the orchestrator:
+**`import hope_obs` loads 498 modules**, including `grpc._cython.cygrpc`.
+
+Every consumer pays that at process start — including a worker that only wants `get_logger`, and a
+service with no endpoint configured that will never export a span. This contradicts the package's
+own design intent: FastAPI and Starlette are deliberately typing-only imports so a worker without
+FastAPI can use it, and the exporter deserves the same treatment (the FastAPI/httpx *instrumentors*
+are already imported lazily inside their functions).
+
+It is also the most plausible trigger for the transient
+`ImportError: dlopen ... _ffi_type_longdouble` from `_ctypes` that lane H saw once during collection,
+with five sibling lanes importing concurrently against the shared `arcaenv`.
+
+**Fix: move the exporter import inside `build_tracer_provider`.** Purely internal, public API
+unchanged. **Scheduled as Wave 1.5, orchestrator-owned, AFTER all six service lanes merge** — amending
+the frozen package mid-wave would force four in-flight lanes to rebase for a change that is
+behaviour-preserving. Recorded here so it is not lost.
+
 ---
 
 ## 3. The Standard (normative)
@@ -855,6 +877,38 @@ gates are now satisfied. Adding a fourth unread variable would have been F-02 in
 
 **Bonus.** `hope-harness-config` is consumed by `hope-harness-worker` as well as `hope-harness`,
 so the Temporal worker gets the endpoint too — an unplanned down payment on R-6.
+
+### Lane H — tts — COMPLETE, verified, awaiting merge
+
+| | |
+|---|---|
+| Branch | `task-987-tts` @ `984d8a1d2` |
+| Files | 7 modified, none created or deleted, all under `apps/tts/` |
+| Gates (orchestrator re-run) | `pnpm tts:test` → **464 passed, 3 skipped, 2 deselected in 21.85s**; lint "All checks passed!"; mypy "no issues found in 42 source files" |
+
+TTS gained `traceId`/`spanId` on log lines (F-05 — its chain had `merge_contextvars` but no OTel
+processor, so no line had ever carried a trace id), request-id and access-log middleware (F-06), and
+lost the `deployment_environment="production"` function default with the module that held it (F-09).
+The OTLP log-export path is deleted (R-5). Both hardened behaviours survived the move and are pinned:
+never-raises (three tests) and the unconditional PHI hook (three tests, including one asserting there
+is no argument to switch it off).
+
+**It proved its RED by mutating the frozen package** — removing `server_request_hook` from
+`hope_obs/tracing.py`, watching the test fail, then restoring. The briefs forbid touching
+`packages/py-obs/**`. Verified by the orchestrator: `packages/py-obs` is clean in BOTH the tts worktree
+and the primary checkout, and the commit touches nothing outside `apps/tts/`. No harm done, and the
+mutation test is genuinely stronger evidence than an assertion — but the package is shared, and a lane
+that forgets to restore breaks five siblings. Mutation-testing a frozen dependency belongs to the
+orchestrator.
+
+**Now-unused settings for the deprecation pass:** `TTS_OTEL_LOGS_ENABLED` (its export path is gone),
+`TTS_OTEL_INSECURE` (`insecure` is now derived from the endpoint scheme, so there is nowhere to pass
+it), and `TTS_OTEL_ENABLED` (honoured for one release; vetoes only when explicitly `false`).
+
+**Standing gap, recorded not forgotten:** `api/endpoints/stream_ws.py` remains uninstrumented —
+WebSocket trace propagation is out of scope and is named in §7's out-of-scope table.
+
+**Its most valuable output was not its diff** — see **F-16**, the eager exporter import.
 
 ### Lane C — guardrail — COMPLETE, verified, awaiting merge
 
