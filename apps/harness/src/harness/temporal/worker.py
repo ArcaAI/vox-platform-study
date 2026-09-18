@@ -22,10 +22,12 @@ from typing import Any
 import httpx
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import configure_worker_observability
 from temporalio.worker import Worker
 
 from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
-from harness.core.logging import get_logger, setup_logging
+from harness.core.logging import get_logger
+from harness.core.observability import build_observability_config, warn_if_otel_enabled_flag_set
 from harness.core.redis_client import build_invalidation_redis
 from harness.temporal.activities import (
     DOCUMENT_ACTIVITIES,
@@ -305,17 +307,19 @@ async def run_worker() -> None:
     rolled is not killed mid-activity.
     """
     settings = get_settings()
-    setup_logging(settings.log_level)
+
+    # The worker is its own process, separate from the FastAPI app, so it
+    # needs its own TracerProvider installed for the TracingInterceptor wired
+    # in `get_temporal_client` (below) to export workflow/activity spans
+    # instead of no-oping (TASK-987 R-6 worker parity — previously this
+    # process installed a logger but no tracer, so its spans never recorded
+    # and its log lines never carried a traceId). No-op when tracing is off
+    # (default) or the collector is unreachable. `observability.shutdown()`
+    # runs in the `finally` block below so buffered spans flush on SIGTERM.
+    observability = configure_worker_observability(build_observability_config(settings))
+    warn_if_otel_enabled_flag_set()
+
     _assert_claim_check_store_is_deployable(settings)
-
-    # The worker is its own process, separate from the
-    # FastAPI app, so it needs its own TracerProvider installed for the
-    # TracingInterceptor wired in `get_temporal_client` (below) to export
-    # workflow/activity spans instead of no-oping. No-op when tracing is off
-    # (default) or the collector is unreachable.
-    from harness.core.observability import build_tracer_provider
-
-    build_tracer_provider(settings)
 
     logger.info(
         "harness.worker.connecting",
@@ -434,6 +438,10 @@ async def run_worker() -> None:
         await _flush_compute_metering_once(compute_samples)
         await stop_registration(service_release_task)
         await service_release_http_client.aclose()
+        # Flushes any buffered spans (BatchSpanProcessor) before the process exits —
+        # otherwise the window a crash-loop investigation needs is exactly the one
+        # lost. Never raises; a no-op when tracing was off.
+        observability.shutdown()
     logger.info("harness.worker.stopped")
 
 
