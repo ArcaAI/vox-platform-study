@@ -55,22 +55,27 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * The context window the LM Studio rows are SERVED with (owner directive 2026-09-18).
  *
  * One constant, because the number has to agree with `LMS_CONTEXT` in the deployment repo's
- * `base/lmstudio.yaml` (and its dev overlay), which is what `lms load --context-length`
- * actually loads the weights at. Declaring a window the engine was not loaded with is worse
- * than declaring none: the live lane would budget against a number the engine will reject.
+ * `base/lmstudio.yaml`, which is what `lms load --context-length` loads the weights at. The
+ * dev overlay no longer patches it: this is the DEFAULT for every environment, and an
+ * environment that must differ overrides it there rather than here.
  *
  * It is a BUDGET, and the invariant is one-directional: it must never EXCEED what the engine
  * was loaded with. Under-claiming is safe (the lane simply leaves headroom unused);
  * over-claiming is the bug, because the lane would pass a pre-dispatch check and the engine
  * would still answer `exceed_context_size_error`.
  *
- * For the PRELOADED model (`LMS_LOAD` = `gemma-4-e2b-it-qat`) the two are equal by
- * construction — `LMS_CONTEXT` is this number. The E4B row is NOT preloaded: LM Studio
- * JIT-loads it on first use, without the flag, on an engine default that is larger (the
- * catalogue reports 131,072). So 16384 there is a deliberate conservative floor, not a
- * statement about how it was loaded.
+ * 131071 is one below the 131072 both gemma rows report as their maximum, so there is exactly
+ * one token of slack against the engine's own ceiling. That is deliberate but it is also the
+ * whole margin: raising this to the reported maximum, or declaring it on a row LM Studio
+ * JIT-loads on some other default, breaks the invariant in the direction that bites.
+ *
+ * Residency, which is the constraint that actually binds: LM Studio gives each of its
+ * `LMS_PARALLEL` slots the FULL context rather than dividing it (measured — a single request
+ * was served the whole configured window), so KV-cache memory scales with
+ * `context x parallel`. At the 2026-09-18 settings (131071 x 10) that is far more than one
+ * RTX 2000 Ada holds; see the ticket README.
  */
-const LM_STUDIO_CONTEXT_LENGTH = 16384;
+const LM_STUDIO_CONTEXT_LENGTH = 131071;
 
 /**
  * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
