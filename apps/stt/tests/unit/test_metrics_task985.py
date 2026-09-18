@@ -30,7 +30,16 @@ class TestUtteranceReasonEnum:
 
     def test_utterance_reasons_is_the_closed_five_value_set(self):
         assert m.UTTERANCE_REASONS == frozenset(
-            {"max_duration", "semantic", "silence_timeout", "force_flush", "recovery"}
+            {
+                "semantic",
+                "silence_timer",
+                "max_utterance_smart",
+                "max_utterance_overlap",
+                "flush",
+                "flush_pending_onset",
+                "partial",
+                "recovery",
+            }
         )
 
     def test_frame_level_endpoint_reasons_are_not_utterance_reasons(self):
@@ -49,6 +58,38 @@ class TestUtteranceReasonEnum:
 
 class TestRecordUtterance:
     """stt_streaming_utterances_total{is_final,engine,reason} — M-45's ratio denominator."""
+
+    def test_the_reason_set_mirrors_the_code_that_emits_it(self):
+        """TASK-985 — the label set follows the implementation, never a guess.
+
+        This enum was first written from a read of the pre-TASK-985 preprocessor
+        and named five reasons; the segmentation lane then implemented seven,
+        overlapping on exactly `semantic`. Because `record_utterance` validates,
+        that mismatch surfaced as 53 hard `ValueError`s the first time the counter
+        was wired — loudly, which is the point of the guard, but only after the
+        two halves had already merged. Pinning the parity here makes a new emit
+        path that forgets this list a CI failure instead.
+
+        `recovery` is emitted by the crash-recovery branch in `session_manager`,
+        not by the preprocessor, so it is the one member with no `REASON_*`
+        constant on the other side.
+        """
+        from stt.streaming import preprocessor as pp
+
+        emitted = {
+            value
+            for name, value in vars(pp).items()
+            if name.startswith("REASON_") and isinstance(value, str)
+        }
+        assert emitted, "preprocessor declares no REASON_* constants — did they move?"
+        assert emitted <= m.UTTERANCE_REASONS, (
+            f"preprocessor emits reasons the metric would reject: "
+            f"{sorted(emitted - m.UTTERANCE_REASONS)}"
+        )
+        assert m.UTTERANCE_REASONS - emitted == {"recovery"}, (
+            f"metric declares reasons nothing emits: "
+            f"{sorted(m.UTTERANCE_REASONS - emitted - {'recovery'})}"
+        )
 
     @pytest.mark.parametrize("reason", sorted(m.UTTERANCE_REASONS))
     def test_records_each_closed_reason(self, reason: str):
@@ -81,10 +122,10 @@ class TestRecordUtterance:
         """`engine` is a format-derived enum owned by asr_engines.py /
         resolve_usage_attribution, not this function's to police — passing an
         engine string this module has never seen must not raise."""
-        labels = {"is_final": "true", "engine": "some_future_engine", "reason": "force_flush"}
+        labels = {"is_final": "true", "engine": "some_future_engine", "reason": "flush"}
         before = _val("stt_streaming_utterances_total", labels)
 
-        m.record_utterance(is_final=True, engine="some_future_engine", reason="force_flush")
+        m.record_utterance(is_final=True, engine="some_future_engine", reason="flush")
 
         assert _val("stt_streaming_utterances_total", labels) == before + 1
 

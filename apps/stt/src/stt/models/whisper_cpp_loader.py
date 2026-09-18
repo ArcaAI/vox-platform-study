@@ -24,6 +24,7 @@ import glob
 import logging
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
@@ -97,7 +98,14 @@ class WhisperCppLoader(BaseModelLoader):
         # `whisper_context_default_params()` stands, which is also why this runtime
         # does not assume the kernel is on or off by default.
         row_context_params = self._row_context_params(model_config)
-        context_params = {"use_gpu": use_gpu, **row_context_params}
+        # Annotated `Any` deliberately: pywhispercpp declares this parameter as
+        # `ContextParams`, but its own constructor accepts a plain mapping and
+        # applies the keys onto `whisper_context_default_params()`. Before the row
+        # knobs existed this was an inline dict literal in call position, which
+        # mypy inferred narrowly enough to pass; hoisting it to a named variable
+        # makes it `dict[str, object]` and the mismatch visible. The runtime
+        # contract is unchanged — only the declaration is now honest.
+        context_params: Any = {"use_gpu": use_gpu, **row_context_params}
 
         try:
             handle = await asyncio.to_thread(

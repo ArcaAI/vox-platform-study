@@ -178,18 +178,37 @@ STREAMING_UTTERANCES_TOTAL = Counter(
 # `EndpointDecision.reason` that can pair with `should_endpoint=True` is
 # `REASON_ENDPOINT`, so `REASON_SEMANTIC` below never needs the sub-reason to
 # stay bounded.
-REASON_MAX_DURATION = "max_duration"  # force-emit: utterance hit _max_utterance_frames
-REASON_SEMANTIC = "semantic"  # _should_semantic_endpoint() returned True
-REASON_SILENCE_TIMEOUT = "silence_timeout"  # fixed-timer backstop
-REASON_FORCE_FLUSH = "force_flush"  # tail flush at session stop (preprocessor.flush())
+# TASK-985 (orchestrator integration, 2026-09-19) — these MIRROR
+# `stt.streaming.preprocessor.REASON_*`, which is the source of truth because it
+# is the code that emits them. The first draft of this enum was written from a
+# read of the pre-TASK-985 preprocessor and guessed five names; the segmentation
+# lane then implemented seven, overlapping on exactly one (`semantic`). Wiring
+# the counter turned that mismatch into 53 hard `ValueError`s — the guard did its
+# job, and the fix is for the label set to follow the implementation rather than
+# the other way round. `test_metrics_task985.py` pins the parity, so a new emit
+# path that forgets this list fails in CI instead of at runtime.
+#
+# Still deliberately NARROWER than `EndpointDecision.reason` (7 per-FRAME "why not
+# yet" values inside the 300 ms partial cadence — effectively unbounded in volume):
+# those live on `stt_streaming_endpoint_decisions_total`, never here.
+REASON_SEMANTIC = "semantic"  # the semantic endpointer cut it
+REASON_SILENCE_TIMER = "silence_timer"  # fixed-timer backstop
+REASON_MAX_UTTERANCE_SMART = "max_utterance_smart"  # cap hit, split at the quietest frame
+REASON_MAX_UTTERANCE_OVERLAP = "max_utterance_overlap"  # cap hit, split with carry-over
+REASON_FLUSH = "flush"  # tail flush at session stop
+REASON_FLUSH_PENDING_ONSET = "flush_pending_onset"  # tail flush of unconfirmed onset audio
+REASON_PARTIAL = "partial"  # a partial window, not an utterance close
 REASON_RECOVERY = "recovery"  # crash-recovery single-segment reconstruction
 
 UTTERANCE_REASONS = frozenset(
     {
-        REASON_MAX_DURATION,
         REASON_SEMANTIC,
-        REASON_SILENCE_TIMEOUT,
-        REASON_FORCE_FLUSH,
+        REASON_SILENCE_TIMER,
+        REASON_MAX_UTTERANCE_SMART,
+        REASON_MAX_UTTERANCE_OVERLAP,
+        REASON_FLUSH,
+        REASON_FLUSH_PENDING_ONSET,
+        REASON_PARTIAL,
         REASON_RECOVERY,
     }
 )
@@ -221,6 +240,92 @@ def record_utterance(*, is_final: bool, engine: str, reason: str) -> None:
     STREAMING_UTTERANCES_TOTAL.labels(
         is_final="true" if is_final else "false", engine=engine, reason=reason
     ).inc()
+
+
+# TASK-985 (orchestrator integration, 2026-09-19) — the segmentation lane's
+# call sites import these three names; they are added here, in the module that
+# OWNS the metric surface, rather than by widening that lane's reach.
+#
+# `streaming_utterance_emitted` is a thin adapter over `record_utterance`, NOT a
+# second counter: `preprocessor._emit_utterance()` is the single funnel every
+# emit path crosses, which is exactly the ONE call site the design note above
+# demands. It passes `engine="unknown"` because the preprocessor genuinely does
+# not hold the engine (its `__init__` takes no such parameter) — a value
+# `record_utterance`'s own contract sanctions. Threading the real engine in at
+# construction is a follow-up for whoever owns the preprocessor's construction
+# site; until then the series is correct in volume and unsplit by engine.
+def streaming_utterance_emitted(*, reason: str, is_final: bool) -> None:
+    """Preprocessor-facing alias for :func:`record_utterance` (no engine at hand)."""
+    record_utterance(is_final=is_final, engine="unknown", reason=reason)
+
+
+# M-39 — the per-FRAME endpoint decision, on its OWN series keyed to the 7-value
+# `EndpointDecision.reason` set, exactly as the note on
+# `STREAMING_UTTERANCES_TOTAL` requires: these are "why not yet" decisions taken
+# inside the 300 ms partial cadence, so they must never become a label on the
+# utterance counter.
+ENDPOINT_DECISION_REASONS = frozenset(
+    {
+        "disabled",
+        "no_hypothesis",
+        "too_short",
+        "below_silence_floor",
+        "incomplete_trailing_filler",
+        "low_confidence",
+        "endpoint",
+        # `preprocessor.py:1008` — the endpointer raised and segmentation degraded
+        # to the fixed timer. A real production reason, and one worth seeing.
+        "error",
+    }
+)
+
+#: Bucket for a reason this module has not been taught yet. See the note on
+#: :func:`streaming_endpoint_decision` for why these two counters clamp instead
+#: of raising.
+REASON_OTHER = "other"
+
+STREAMING_ENDPOINT_DECISIONS_TOTAL = Counter(
+    "stt_streaming_endpoint_decisions_total",
+    "Semantic-endpointer decisions in streaming mode, by reason",
+    ["reason"],
+)
+
+
+def streaming_endpoint_decision(*, reason: str) -> None:
+    """Record one semantic-endpointer decision (M-39's cut-reason telemetry).
+
+    CLAMPS an undeclared reason to ``"other"`` rather than raising, unlike
+    :func:`record_utterance`. This is called from inside the per-FRAME audio loop
+    (every 32 ms, per session), and the segmentation lane deliberately bound its
+    metric calls behind an ImportError so that "neither half can break the audio
+    loop on its own". A label guard that raises there would undo exactly that: a
+    reason nobody taught this module would stop transcription rather than produce
+    a slightly wrong chart. Cardinality is still bounded — unknowns collapse into
+    one series — and the bucket being non-zero is itself the signal to come and
+    add the name.
+    """
+    if reason not in ENDPOINT_DECISION_REASONS:
+        reason = REASON_OTHER
+    STREAMING_ENDPOINT_DECISIONS_TOTAL.labels(reason=reason).inc()
+
+
+# D2-N2 — a failing Silero previously logged a WARNING every 32 ms with no
+# counter. `stage` is closed and small: the model never loaded, or an inference
+# raised.
+VAD_DEGRADED_STAGES = frozenset({"not_loaded", "inference"})
+
+STREAMING_VAD_DEGRADED_TOTAL = Counter(
+    "stt_streaming_vad_degraded_total",
+    "Frames on which VAD was unavailable and segmentation fell back to energy",
+    ["stage"],
+)
+
+
+def streaming_vad_degraded(*, stage: str) -> None:
+    """Record one VAD-degraded frame (fell back to the energy gate)."""
+    if stage not in VAD_DEGRADED_STAGES:
+        stage = REASON_OTHER  # per-frame hot path — clamp, never raise (see above)
+    STREAMING_VAD_DEGRADED_TOTAL.labels(stage=stage).inc()
 
 
 # TASK-985 M-26 — lock-ACQUISITION wait, not hold time. Time the interval at

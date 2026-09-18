@@ -47,6 +47,17 @@ DEFAULT_EXCLUDED_ACCESS_LOG_PATHS: frozenset[str] = frozenset(
         "/api/v1/health",
         "/api/v1/health/live",
         "/api/v1/health/ready",
+        # TASK-985 (orchestrator integration, 2026-09-19) — the LEGACY probe
+        # aliases. `stt/health/api/routes.py` serves `/ready` and `/live` beside
+        # the `/health/*` spellings as "backward-compatible aliases for existing
+        # Kubernetes probe configs", and a cluster still pointed at one of them
+        # produces exactly the chatter M-44 names. Omitting them excluded the new
+        # spellings while leaving the old ones spamming — the half-fix is worse
+        # than none, because it looks done.
+        "/ready",
+        "/live",
+        "/api/v1/ready",
+        "/api/v1/live",
         "/metrics",
     }
 )
