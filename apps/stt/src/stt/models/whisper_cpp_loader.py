@@ -88,12 +88,23 @@ class WhisperCppLoader(BaseModelLoader):
         # hardware the run never touched.
         device = self._get_device(model_config.device or "auto") if use_gpu else "cpu"
 
+        # Context params the MODEL ROW declares. `flash_attn` is a whisper.cpp
+        # CONSTRUCTION-time choice (a `whisper_context_params` field, not a decode
+        # kwarg), so it can only be made here — the streaming adapter cannot reach
+        # it, which is why this knob was never set despite the CUDA image already
+        # building the kernel. It is a row-level knob, never a literal and never an
+        # env var: ABSENT means the row has no opinion and whisper.cpp's own
+        # `whisper_context_default_params()` stands, which is also why this runtime
+        # does not assume the kernel is on or off by default.
+        row_context_params = self._row_context_params(model_config)
+        context_params = {"use_gpu": use_gpu, **row_context_params}
+
         try:
             handle = await asyncio.to_thread(
                 Model,
                 model=gguf_path,
                 n_threads=num_threads,
-                context_params={"use_gpu": use_gpu},
+                context_params=context_params,
                 print_progress=False,
                 print_realtime=False,
             )
@@ -130,8 +141,31 @@ class WhisperCppLoader(BaseModelLoader):
                 # The row's own quantisation (TASK-934): the engine binding log
                 # reads it so it reports the weights that actually loaded.
                 "compute_type": model_config.compute_type,
+                # Replayed by the streaming adapter's Metal-poison recovery, which
+                # recreates this context in place. Without it the RECOVERY path
+                # would build a context with different construction-time params
+                # from the one that was loaded — i.e. a configuration nobody chose,
+                # reached only on the unhappy path. Empty when the row declared
+                # nothing, so the recovery call omits the argument entirely.
+                "context_params": row_context_params,
             },
         )
+
+    @staticmethod
+    def _row_context_params(model_config: AiModelConfig) -> dict[str, object]:
+        """The `whisper_context_params` fields this MODEL ROW declares.
+
+        Read defensively: a spec built by a gateway that predates the field simply
+        declares nothing, which is the same as "no opinion" and leaves whisper.cpp's
+        own context defaults standing. `use_gpu` is NOT here — it is derived from
+        the row's device by the caller and must not be overridable independently,
+        or a row could bill GPU seconds for a CPU run.
+        """
+        params: dict[str, object] = {}
+        flash_attn = getattr(model_config, "flash_attn", None)
+        if isinstance(flash_attn, bool):
+            params["flash_attn"] = flash_attn
+        return params
 
     @staticmethod
     def _select_gguf_file(repo_dir: str, model_config: AiModelConfig) -> str:
