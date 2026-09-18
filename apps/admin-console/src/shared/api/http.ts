@@ -6,6 +6,8 @@
  * error body, and the If-Match/ETag optimistic-concurrency contract.
  */
 
+import { reportUnauthorized } from '@/shared/auth/session-expiry';
+
 /** Offset-paginated list envelope (PaginatedResponse in @arcaai/applications). */
 export interface Paginated<T> {
   data: T[];
@@ -77,7 +79,7 @@ export class GatewayError extends Error {
   }
 }
 
-async function toGatewayError(response: Response): Promise<GatewayError> {
+async function parseGatewayError(response: Response): Promise<GatewayError> {
   const fallback = `Request failed with status ${response.status}`;
   try {
     const body = (await response.json()) as GatewayErrorBody;
@@ -86,6 +88,16 @@ async function toGatewayError(response: Response): Promise<GatewayError> {
   } catch {
     return new GatewayError(response.status, fallback);
   }
+}
+
+async function toGatewayError(response: Response): Promise<GatewayError> {
+  const error = await parseGatewayError(response);
+  // Every proxied call — query, imperative write, blob download — funnels
+  // through here, so this is the one place that sees an expired session
+  // whoever asked for it. `reportUnauthorized` reads the BFF's own
+  // `x-session-expired` header to tell expiry from a step-up re-auth failure.
+  if (error.isUnauthorized) reportUnauthorized(response);
+  return error;
 }
 
 /**

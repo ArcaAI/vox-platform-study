@@ -6,6 +6,7 @@ import { ThemeProvider } from 'next-themes';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Toaster } from '@arcaai/ui/components/shadcn/sonner';
 import { retryQuery } from '@/shared/api';
+import { useSessionHeartbeat } from '@/shared/auth/hooks';
 import type { SafeSession } from '@/server/safe-user';
 
 /**
@@ -20,6 +21,10 @@ import type { SafeSession } from '@/server/safe-user';
 const themeScriptProps = typeof window === 'undefined' ? undefined : ({ type: 'application/json' } as const);
 
 export function Providers({ children, session }: { children: ReactNode; session?: SafeSession }) {
+  // Rotate ahead of the access token's TTL. Mounted here because Providers
+  // wraps the console and nothing else, so it never runs pre-session.
+  useSessionHeartbeat();
+
   // One client per browser session; useState keeps it stable across renders.
   // Runs on the server render AND the client render, so seeding the cache
   // here (rather than in an effect) makes both agree on the very first
