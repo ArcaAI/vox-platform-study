@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 346,
+  "distinctNames": 350,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2679,7 +2679,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "Enable OpenTelemetry distributed tracing"
+          "description": "DEPRECATED (TASK-987): set OTEL_EXPORTER_OTLP_ENDPOINT instead."
         },
         {
           "name": "OTEL_EXPORTER_ENDPOINT",
@@ -2691,7 +2691,7 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:4317",
-          "description": "OTLP gRPC collector endpoint"
+          "description": "DEPRECATED (TASK-987): set OTEL_EXPORTER_OTLP_ENDPOINT instead."
         },
         {
           "name": "PARAKEET_CPP_LIBRARY_PATH__MOVED_TO_CONTROL_PLANE",
@@ -3290,6 +3290,42 @@
           "dataType": "number",
           "default": 4,
           "description": "Number of Dramatiq worker threads per process"
+        },
+        {
+          "name": "STT_WORKER_HEARTBEAT_DIRECTORY",
+          "aliases": [],
+          "class": "WorkerHeartbeatSettings",
+          "field": "directory",
+          "prefix": "STT_WORKER_HEARTBEAT_",
+          "required": false,
+          "secret": false,
+          "dataType": "string",
+          "default": "/tmp/stt-worker-heartbeat",
+          "description": "Directory holding one heartbeat file per worker process, named by PID."
+        },
+        {
+          "name": "STT_WORKER_HEARTBEAT_INTERVAL_S",
+          "aliases": [],
+          "class": "WorkerHeartbeatSettings",
+          "field": "interval_s",
+          "prefix": "STT_WORKER_HEARTBEAT_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 15.0,
+          "description": "Seconds between heartbeat writes. Must divide the probe window at least 3x."
+        },
+        {
+          "name": "STT_WORKER_HEARTBEAT_STALL_AFTER_S",
+          "aliases": [],
+          "class": "WorkerHeartbeatSettings",
+          "field": "stall_after_s",
+          "prefix": "STT_WORKER_HEARTBEAT_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 1200.0,
+          "description": "Withhold the heartbeat once EVERY worker thread has been in-flight this long. Defaults to twice the job time limit, so only work that outlived its own TimeLimit interrupt counts as wedged."
         }
       ]
     },
@@ -3605,7 +3641,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "Observability. Default OFF (never require a reachable collector to boot/serve). `otel_exporter_endpoint` defaults to empty (no hardcoded localhost target) so tracing activates ONLY when BOTH `otel_enabled` AND an endpoint are explicitly set \u2014 see `main.create_app`. TTS receives clinical text to synthesise, so `core/observability.py` wires a PHI-redaction hook into every span."
+          "description": "`otel_enabled` is DEPRECATED (TASK-987 R-2: an endpoint's presence is the only enable signal, there is no boolean) but still HONOURED for one release \u2014 see `build_observability_config`'s deprecation-warning path."
         },
         {
           "name": "TTS_OTEL_EXPORTER_ENDPOINT",
@@ -3629,7 +3665,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "true",
-          "description": ""
+          "description": "NOW UNUSED (TASK-987, reported for the deprecation register): `otel_insecure` \u2014 `hope_obs.ObservabilityConfig.insecure` is a derived property of the endpoint's URL scheme, never a separate flag (R-2), so there is nothing left to pass this to. `otel_logs_enabled` \u2014 the OTLP log-export path it gated is deleted outright (R-5); Alloy already tails stdout to Loki. Both fields are kept (not read) rather than removed \u2014 deleting them is an orchestrator-owned deprecation-register action."
         },
         {
           "name": "TTS_OTEL_LOGS_ENABLED",
@@ -3711,11 +3747,11 @@
       "apps/guardrail/src/guardrail/main.py",
       "apps/harness/src/harness/core/config.py",
       "apps/stt/src/stt/core/service_auth.py",
-      "apps/stt/src/stt/core/telemetry.py",
       "apps/stt/src/stt/main.py",
       "apps/stt/src/stt/worker.py",
       "apps/tts/src/tts/core/config.py",
-      "apps/tts/src/tts/core/service_auth.py"
+      "apps/tts/src/tts/core/service_auth.py",
+      "packages/py-obs/src/hope_obs/config.py"
     ],
     "HARNESS_GOLDEN_SET_PATH": [
       "apps/harness/eval/promptfoo/tests.py"
@@ -3776,6 +3812,9 @@
     ],
     "OPENAI_BASE_URL": [
       "apps/harness/eval/promptfoo/provider.py"
+    ],
+    "OTEL_TRACES_SAMPLER_ARG": [
+      "packages/py-obs/src/hope_obs/config.py"
     ],
     "QDRANT_API_KEY": [
       "infrastructure/docker/scripts/init-qdrant-collections.py"

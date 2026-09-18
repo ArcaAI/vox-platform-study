@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 142 |
+| Declared keys (distinct) | 140 |
 | … of which required (`failMode: closed`) | 26 |
 | … of which secret | 25 |
-| … tier `env` | 112 |
+| … tier `env` | 110 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 21 |
-| Python declared fields | 301 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 346 |
-| `turbo.json#globalEnv` entries | 495 |
+| Python declared fields | 304 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 350 |
+| `turbo.json#globalEnv` entries | 498 |
 
 ## Variables — the TypeScript platform surface
 
@@ -145,8 +145,6 @@ disagree with those declarations.
 | `STORAGE_PLATFORM_DEFAULT_CREDENTIALS` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Operator-set JSON `{ accessKeyId, secretAccessKey }` at the Vault path recorded in the SYSTEM row's `credentialsRef` (default `platform/storage/minio`). Never stored in the database and never returned by any API. |
 | `STT_PORT` | `env` | no | `8861` | `apps/stt` | Port apps/stt binds (test: 8961). |
 | `STT_URL` | `env` | no | `http://localhost:8861` | `apps/api` | Speech-to-text service base URL (apps/stt, port 8861). |
-| `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
-| `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
@@ -433,6 +431,9 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | — |
 | `STT_OTEL_SERVICE_NAME` | `apps/stt` | no | no | `stt` | commented | `OTEL_SERVICE_NAME` |
 | `STT_PORT` | `apps/stt` | no | no | `8861` | commented | `PORT` |
+| `STT_WORKER_HEARTBEAT_DIRECTORY` | `apps/stt` | no | no | `/tmp/stt-worker-heartbeat` | commented | — |
+| `STT_WORKER_HEARTBEAT_INTERVAL_S` | `apps/stt` | no | no | `15` | commented | — |
+| `STT_WORKER_HEARTBEAT_STALL_AFTER_S` | `apps/stt` | no | no | `1200` | commented | — |
 | `TEMPORAL_ADDRESS` | `apps/harness` | no | no | `localhost:7233` | commented | — |
 | `TEMPORAL_CONNECT_TIMEOUT_S` | `apps/harness` | no | no | `5` | commented | — |
 | `TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
@@ -490,7 +491,7 @@ promotion into its service’s `BaseSettings`.
 
 | Variable | Read by |
 |---|---|
-| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/core/telemetry.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py` |
+| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py`, `packages/py-obs/src/hope_obs/config.py` |
 | `HARNESS_GOLDEN_SET_PATH` | `apps/harness/eval/promptfoo/tests.py` |
 | `HARNESS_LLM_BACKOFF_BASE_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_LLM_BACKOFF_JITTER_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
@@ -510,6 +511,7 @@ promotion into its service’s `BaseSettings`.
 | `OMP_NUM_THREADS` | `apps/stt/src/stt/main.py` |
 | `OPENAI_API_KEY` | `apps/harness/eval/promptfoo/provider.py` |
 | `OPENAI_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
+| `OTEL_TRACES_SAMPLER_ARG` | `packages/py-obs/src/hope_obs/config.py` |
 | `QDRANT_API_KEY` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_HOST` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_HTTPS` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
