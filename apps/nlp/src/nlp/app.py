@@ -5,8 +5,8 @@ from fastapi.responses import JSONResponse
 from nlp.api import api_router
 from nlp.core.config import settings
 from nlp.core.internal_auth import assert_internal_access_token
-from nlp.core.logging import get_logger
-from nlp.core.observability import setup_prometheus
+from nlp.core.logging import get_logger, setup_logging
+from nlp.core.observability import setup_opentelemetry, setup_prometheus
 from nlp.lifespan import lifespan
 from nlp.utils import is_production
 
@@ -14,6 +14,13 @@ logger = get_logger(__name__)
 
 
 def get_app() -> FastAPI:
+    # Logging FIRST, before anything in this factory can emit (TASK-987 B-1).
+    # The container ENTRYPOINT is `uvicorn --factory nlp.app:get_app`, so
+    # `nlp/main.py`'s import-time `setup_logging()` never runs in the image and
+    # every line below would otherwise be unconfigured console text. Idempotent,
+    # so the later `setup_opentelemetry` call re-entering it is free.
+    setup_logging()
+
     # The container's ENTRYPOINT is `uvicorn --factory nlp.app:get_app`, so this
     # factory IS the start path: a deployed process with no internal credential
     # refuses to start here rather than serving compiled defaults in silence
@@ -44,6 +51,18 @@ def get_app() -> FastAPI:
     from nlp.api.middleware.auth import ServiceAuthMiddleware
 
     app.add_middleware(ServiceAuthMiddleware)
+
+    # Observability HERE, in the factory — never from the lifespan (TASK-987
+    # B-1). Starlette builds `middleware_stack` on the first `__call__`, and the
+    # lifespan scope IS a `__call__`, so an `add_middleware` from inside the
+    # lifespan raises "Cannot add middleware after an application has started".
+    # `hope_obs` catches that and degrades to a single warning, so the failure is
+    # silent: NLP shipped with no request-context and no access-log middleware,
+    # no `request_id`, no `tenant_id`, no `duration_ms` and no echoed
+    # `X-Request-ID`, while its suite stayed green. Added after ServiceAuth and
+    # before CORS so the stack matches stt's proven order (CORS outermost,
+    # request context inside it, auth innermost).
+    setup_opentelemetry(app)
 
     app.add_middleware(
         CORSMiddleware,
