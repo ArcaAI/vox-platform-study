@@ -55,13 +55,12 @@ async function rotate(refreshToken: string): Promise<RefreshTokenResponse | null
 }
 
 /** The in-flight (or recently settled) rotation of this token, starting one if needed. */
-function rotationFor(refreshToken: string): Rotation {
+function rotationFor(key: string, refreshToken: string): Rotation {
   const now = Date.now();
-  for (const [key, entry] of rotations) {
-    if (entry.expiresAt <= now) rotations.delete(key);
+  for (const [staleKey, entry] of rotations) {
+    if (entry.expiresAt <= now) rotations.delete(staleKey);
   }
 
-  const key = rotationKey(refreshToken);
   const existing = rotations.get(key);
   if (existing) return existing;
 
@@ -80,6 +79,34 @@ function rotationFor(refreshToken: string): Rotation {
 }
 
 /**
+ * The NEWEST token pair in this token's rotation lineage, rotating it if
+ * nothing has yet.
+ *
+ * A memo entry freezes one pair, but the cookie can move past it: each tab
+ * heartbeats on its own unsynchronised schedule, so rotating A->B and then
+ * B->C inside one memo window is ordinary rather than exotic. A straggler
+ * still holding A must not be handed B — the gateway consumed it at the second
+ * rotation, so resealing it would regress the cookie and make the NEXT
+ * rotation look like reuse. Every rotation's product is the KEY of the next
+ * one, so the chain is already recorded here; follow it to the end.
+ */
+async function newestTokensFor(refreshToken: string): Promise<RefreshTokenResponse | null> {
+  const key = rotationKey(refreshToken);
+  const walked = new Set([key]);
+  let tokens = await rotationFor(key, refreshToken).tokens;
+  while (tokens) {
+    const nextKey = rotationKey(tokens.refreshToken);
+    // `walked` only guards against a gateway that hands back a token already
+    // in this chain; the lineage itself cannot loop.
+    const next = walked.has(nextKey) ? undefined : rotations.get(nextKey);
+    if (!next) break;
+    walked.add(nextKey);
+    tokens = await next.tokens;
+  }
+  return tokens;
+}
+
+/**
  * Rotates the session's refresh token via the gateway and reseals the cookie.
  * Returns the updated session, or null (with the cookie cleared) when the
  * gateway rejects the rotation.
@@ -92,7 +119,7 @@ export async function refreshSession(session: SessionPayload): Promise<SessionPa
   const current = (await getSession()) ?? session;
   if (current.refreshToken !== session.refreshToken) return current;
 
-  const tokens = await rotationFor(session.refreshToken).tokens;
+  const tokens = await newestTokensFor(session.refreshToken);
   if (!tokens) {
     await clearSession();
     return null;

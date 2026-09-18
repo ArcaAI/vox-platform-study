@@ -92,6 +92,10 @@ describe('handleProxy', () => {
     const response = await handleProxy(new Request('http://console.local/api/hope/admin/tenants'), ['admin', 'tenants']);
     expect(response.status).toBe(401);
     expect(calls).toHaveLength(0);
+    // A missing/undecryptable cookie IS session loss, but its body reads
+    // "Unauthorized" — textually identical to a gateway authorization 401.
+    // The header is the only thing that tells the client to redirect.
+    expect(response.headers.get('x-session-expired')).toBe('1');
   });
 
   it('forwards GET with bearer token, query string, no-store and manual redirects', async () => {
@@ -311,6 +315,8 @@ describe('handleProxy', () => {
     expect(await response.json()).toEqual({ message: 'Step-up re-authentication failed: incorrect password.' });
     // …and a mistyped step-up password must NOT log the user out.
     expect(await getSession()).not.toBeNull();
+    // A passthrough of the gateway's own 401 must never be marked as expiry.
+    expect(response.headers.get('x-session-expired')).toBeNull();
   });
 
   it('clears the session and returns 401 when the refresh is rejected', async () => {
@@ -325,6 +331,7 @@ describe('handleProxy', () => {
     const response = await handleProxy(new Request('http://console.local/api/hope/admin/users'), ['admin', 'users']);
 
     expect(response.status).toBe(401);
+    expect(response.headers.get('x-session-expired')).toBe('1');
     expect(await getSession()).toBeNull();
   });
 

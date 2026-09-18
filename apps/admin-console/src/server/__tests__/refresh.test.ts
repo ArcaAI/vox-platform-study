@@ -179,6 +179,34 @@ describe('refreshSession', () => {
     expect(await sessionIn(second.jar)).toMatchObject({ refreshToken: 'refresh-bob-next' });
   });
 
+  // A memo entry freezes ONE pair, but the cookie moves on: each tab runs its
+  // own unsynchronised heartbeat, so a second rotation inside the 30s window
+  // is ordinary. A straggler still holding the oldest token must not be handed
+  // the pair that has since been rotated away — resealing it would regress the
+  // cookie to a token the gateway has already consumed, and the NEXT rotation
+  // would then look like reuse and revoke the family.
+  it('hands a caller two rotations behind the newest pair, not the one its own token produced', async () => {
+    const first = sessionFor('lineage');
+    const second: SessionPayload = { ...first, accessToken: 'access-second', refreshToken: 'refresh-second' };
+    const [firstCookie, secondCookie] = await Promise.all([sealSession(first), sealSession(second)]);
+    const calls = installFetchMock((call) => {
+      const { refreshToken } = JSON.parse(call.body ?? '{}') as { refreshToken: string };
+      return refreshToken === 'refresh-lineage'
+        ? Response.json({ token: 'access-second', refreshToken: 'refresh-second' })
+        : Response.json({ token: 'access-third', refreshToken: 'refresh-third' });
+    });
+
+    await withRequest(firstCookie, () => refreshSession(first));
+    await withRequest(secondCookie, () => refreshSession(second));
+    // Still holding the ORIGINAL token: in flight since before either rotation.
+    const straggler = await withRequest(firstCookie, () => refreshSession(first));
+
+    expect(calls).toHaveLength(2);
+    expect(straggler.result?.accessToken).toBe('access-third');
+    expect(straggler.result?.refreshToken).toBe('refresh-third');
+    expect(await sessionIn(straggler.jar)).toMatchObject({ refreshToken: 'refresh-third' });
+  });
+
   it('clears the cookie and returns null when the gateway rejects the rotation', async () => {
     const session = sessionFor('rejected');
     const cookie = await sealSession(session);
