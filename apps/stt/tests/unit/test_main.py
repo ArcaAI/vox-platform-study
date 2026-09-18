@@ -26,6 +26,9 @@ class TestCreateApp:
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
             mock_settings.otel_enabled = False
+            mock_settings.otel_exporter_endpoint = "http://localhost:4317"
+            mock_settings.otel_service_name = "stt"
+            mock_settings.log_level = "INFO"
             mock_settings.metrics_enabled = False
 
             app = create_app()
@@ -42,6 +45,9 @@ class TestCreateApp:
             mock_settings.debug = True
             mock_settings.cors_origins = ["*"]
             mock_settings.otel_enabled = False
+            mock_settings.otel_exporter_endpoint = "http://localhost:4317"
+            mock_settings.otel_service_name = "stt"
+            mock_settings.log_level = "INFO"
             mock_settings.metrics_enabled = False
 
             app = create_app()
@@ -58,6 +64,9 @@ class TestCreateApp:
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
             mock_settings.otel_enabled = False
+            mock_settings.otel_exporter_endpoint = "http://localhost:4317"
+            mock_settings.otel_service_name = "stt"
+            mock_settings.log_level = "INFO"
             mock_settings.metrics_enabled = False
 
             app = create_app()
@@ -74,6 +83,9 @@ class TestCreateApp:
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
             mock_settings.otel_enabled = False
+            mock_settings.otel_exporter_endpoint = "http://localhost:4317"
+            mock_settings.otel_service_name = "stt"
+            mock_settings.log_level = "INFO"
             mock_settings.metrics_enabled = False
 
             app = create_app()
@@ -92,6 +104,9 @@ class TestCreateApp:
             mock_settings.debug = False
             mock_settings.cors_origins = ["*"]
             mock_settings.otel_enabled = False
+            mock_settings.otel_exporter_endpoint = "http://localhost:4317"
+            mock_settings.otel_service_name = "stt"
+            mock_settings.log_level = "INFO"
             mock_settings.metrics_enabled = False
 
             app = create_app()
