@@ -84,13 +84,8 @@ LABEL maintainer="HOPE Team" \
 ENV PYTHONPATH="/app/src" \
     ENVIRONMENT=production \
     LOG_LEVEL=info \
-    TEXT_OTEL_ENABLED=false \
-    TEXT_OTEL_EXPORTER_ENDPOINT=http://localhost:4317 \
     TEXT_OTEL_SERVICE_NAME=text \
-    TEXT_OTEL_SERVICE_NAMESPACE=hope \
-    TEXT_OTEL_DEPLOYMENT_ENVIRONMENT=production \
-    TEXT_OTEL_INSECURE=true \
-    TEXT_OTEL_LOGS_ENABLED=true
+    TEXT_OTEL_SERVICE_NAMESPACE=hope
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/text/src ./src

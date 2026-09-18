@@ -114,10 +114,27 @@ def build_observability_config(settings: Settings) -> ObservabilityConfig:
             # happens to be configured beside it.
             endpoint = None
 
+    base = ObservabilityConfig.from_env("guardrail")
     return replace(
-        ObservabilityConfig.from_env("guardrail"),
+        base,
         log_level=settings.log_level,
         otlp_endpoint=endpoint,
+        # `service_name` from guardrail's OWN settings (TASK-987, found by the
+        # verification lane). `Settings.otel_service_name` reads
+        # GUARDRAIL_V2_OTEL_SERVICE_NAME, which `base/guardrail.yaml` sets to
+        # `hope-guardrail`. Omitting it here silently renamed this service to
+        # `guardrail` in every span and log line while the manifest still said
+        # otherwise — and left that manifest variable read by nothing.
+        # Only when the prefixed variable was EXPLICITLY set. The field carries
+        # a real default (`"guardrail"`), so `or base.service_name` would never
+        # fall through and would beat the canonical `OTEL_SERVICE_NAME` that
+        # `from_env` already honoured — the F-22 shape again, one field over: a
+        # default masking absence.
+        service_name=(
+            settings.otel_service_name
+            if "otel_service_name" in settings.model_fields_set
+            else base.service_name
+        ),
     )
 
 
