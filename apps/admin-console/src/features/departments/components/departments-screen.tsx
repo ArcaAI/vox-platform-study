@@ -52,6 +52,10 @@ function DepartmentsBody() {
   // Drawer state: `creating` opens the create form, `editingId` the edit form.
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // A row-menu "Delete department" opens the same edit drawer with its own
+  // type-to-confirm dialog already up, so the destructive flow (confirm copy,
+  // token match, has-children 400 handling) has exactly one implementation.
+  const [confirmDeleteOnOpen, setConfirmDeleteOnOpen] = useState(false);
   // Compact tiers reach the tree through a toggleable drawer instead of a pane.
   const [treeOpen, setTreeOpen] = useState(false);
 
@@ -98,6 +102,16 @@ function DepartmentsBody() {
       selectedId={selectedId}
       onSelect={(id) => {
         void setSelectedParam(id);
+        setTreeOpen(false);
+      }}
+      onEdit={(id) => {
+        setConfirmDeleteOnOpen(false);
+        setEditingId(id);
+        setTreeOpen(false);
+      }}
+      onDelete={(id) => {
+        setConfirmDeleteOnOpen(true);
+        setEditingId(id);
         setTreeOpen(false);
       }}
     />
@@ -226,10 +240,12 @@ function DepartmentsBody() {
         departmentId={editingId}
         creating={creating}
         departments={departments}
+        confirmDeleteOnOpen={confirmDeleteOnOpen}
         onOpenChange={(open) => {
           if (open) return;
           setCreating(false);
           setEditingId(null);
+          setConfirmDeleteOnOpen(false);
         }}
         onCreated={(created) => {
           setCreating(false);
@@ -237,6 +253,7 @@ function DepartmentsBody() {
         }}
         onDeleted={() => {
           setEditingId(null);
+          setConfirmDeleteOnOpen(false);
           void setSelectedParam(null);
         }}
       />

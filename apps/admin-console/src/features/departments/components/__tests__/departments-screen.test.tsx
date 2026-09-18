@@ -294,6 +294,43 @@ describe('DepartmentsScreen', () => {
     );
   });
 
+  it('offers delete directly from a hierarchy row, without hunting through the prompt-config pane', async () => {
+    const calls = stubDepartments((call) => {
+      if (call.method === 'DELETE' && pathOf(call) === '/api/hope/admin/departments/dep-radio') return Response.json(RADIOLOGY);
+      if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/departments/dep-radio') {
+        return Response.json(RADIOLOGY, { headers: { etag: '"2"' } });
+      }
+      if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/departments/dep-radio/users') {
+        return Response.json({ data: [], count: 0, limit: 25, page: 0 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<DepartmentsScreen />);
+
+    // The row's own action menu is the discoverable path: a user looking to
+    // delete a department must not have to know that the only Delete lives
+    // behind the "Edit" button of the Prompt config pane.
+    // Radix opens the menu on pointerdown, not click (matches openRowMenu in
+    // the api-keys suite).
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'Open actions for Radiology' }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: 'mouse',
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Delete department' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+
+    fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: 'RAD' } });
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === 'DELETE' && pathOf(call) === '/api/hope/admin/departments/dep-radio')).toBe(true),
+    );
+  });
+
   it('shows the neutral empty state with the create CTA when no departments exist', async () => {
     stubDepartments((call) => {
       const path = pathOf(call);

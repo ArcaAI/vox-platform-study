@@ -308,6 +308,7 @@ export function DepartmentDetailDrawer({
   departmentId,
   creating,
   departments,
+  confirmDeleteOnOpen = false,
   onOpenChange,
   onCreated,
   onDeleted,
@@ -315,6 +316,12 @@ export function DepartmentDetailDrawer({
   departmentId: string | null;
   creating: boolean;
   departments: Department[];
+  /**
+   * Opens straight into the type-to-confirm dialog — set when the caller came
+   * from a row menu's "Delete department" rather than from Edit. The drawer is
+   * keyed on the department id upstream, so this is read once per mount.
+   */
+  confirmDeleteOnOpen?: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (department: Department) => void;
   onDeleted: () => void;
@@ -323,6 +330,12 @@ export function DepartmentDetailDrawer({
   const detail = useDepartment(creating ? '' : (departmentId ?? ''));
   const deleteDepartment = useDeleteDepartment();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // A row-menu delete ARMS the confirm rather than opening it outright: the
+  // dialog may only appear once the detail read has landed, because its
+  // type-to-confirm token is the department's code. Opening it while the read
+  // is still in flight would hand ConfirmDialog an empty token, which disables
+  // the guard and turns a two-step destructive action into a single click.
+  const [armedDelete, setArmedDelete] = useState(confirmDeleteOnOpen);
 
   // Create mode: a single form, no detail read, no delete.
   if (creating) {
@@ -336,6 +349,13 @@ export function DepartmentDetailDrawer({
   const department = detail.data?.data ?? null;
   const title = department ? `Edit: ${department.name || department.code || department.id}` : 'Edit';
   const confirmToken = department ? department.code || department.name || department.id : '';
+
+  // Render-time derived-state transition (the pattern used by departments-screen
+  // for its search draft): fire the armed confirm the moment the row is known.
+  if (armedDelete && department) {
+    setArmedDelete(false);
+    setConfirmingDelete(true);
+  }
 
   function handleDeleteConfirmed() {
     if (!department) return;
