@@ -663,6 +663,12 @@ suite). It must assert, for **all six** services, by static inspection — no ap
   `pythonpath`, and every `conftest.py` names `hope_obs` in `assert_source_tree`.
 - No `*_OTEL_ENABLED` name is *required* for export in any service (each must export on endpoint
   presence alone).
+- **Paired gates never travel alone.** Lane D1 observed that harness computes
+  `otel_tracing_enabled = otel_enabled AND bool(otel_exporter_endpoint)`, so a manifest that sets
+  one of the pair stays silently off — F-01's failure mode surviving the fix. Assert that no
+  service's export decision depends on two independently-settable variables. Under R-2 this is
+  satisfied by construction (endpoint presence is the only gate); the assertion is what keeps it
+  true after the next edit.
 
 Explain in the test's module docstring what each assertion protects, naming the finding id
 (F-01…F-15). A parity test nobody understands gets deleted the first time it goes red.
@@ -777,8 +783,45 @@ as the reason the module was once duplicated per service. Do not "save time" by 
 
 ## 8. Implementation Summary
 
-_Pending — filled in as lanes land. Per lane: branch, merge commit into `dev-2.2`, files changed,
-gate commands with pasted output, and anything left unmerged (stated at the top, never buried)._
+_In progress. Per lane: branch, merge commit, files changed, gate commands with pasted output, and
+anything left unmerged (stated at the top, never buried)._
+
+### Lane D1 — turn telemetry on — COMPLETE, awaiting merge approval
+
+| | |
+|---|---|
+| Repo / branch | `arca/hope-v2-deployment` @ `task-987-enable-otel`, commit `e4a3dfb` |
+| Merge target | `main` — **not yet merged; awaiting user confirmation of the target branch** |
+| Files changed | `deployment/k8s/overlays/dev/kustomization.yaml` only (+70 lines). `base/guardrail.yaml` deliberately **unchanged** |
+
+**Approach.** Base keeps `GUARDRAIL_V2_OTEL_ENABLED: "false"` — correct under rule 09's
+"base is portable, overlays carry identity" — and `overlays/dev` overrides it with a
+strategic-merge patch. `containers[].env` has `patchMergeKey: name`, so the entry replaces base's
+in place rather than appending a duplicate.
+
+**Orchestrator verification (not the lane's own claims).** Re-rendered the overlay and counted
+occurrences: each of the seven variables appears exactly once, with no surviving `"false"` for
+guardrail. `base/guardrail.yaml` confirmed byte-identical to `main`. Patch hygiene confirmed:
+full-resource strategic-merge patches, no index-based JSON6902 env paths, all comments outside
+the `patch: |` literals. `standalone` / `staging` / `prod` overlays still render.
+
+| Service | Enable | Endpoint | Delivery |
+|---|---|---|---|
+| guardrail | `GUARDRAIL_V2_OTEL_ENABLED=true` | `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT` | Deployment env patch |
+| nlp | `NLP_OTEL_ENABLED=true` | *already supplied* — `OTEL_EXPORTER_OTLP_ENDPOINT` via `hope-platform-config` | Deployment env patch (flag only) |
+| harness | `HARNESS_OTEL_ENABLED=true` | `HARNESS_OTEL_EXPORTER_ENDPOINT` | `hope-harness-config` merge |
+| tts | `TTS_OTEL_ENABLED=true` | `TTS_OTEL_EXPORTER_ENDPOINT` | Deployment env patch |
+
+The nlp decision is the one worth recording: the lane did **not** add a redundant
+`NLP_OTLP_ENDPOINT` literal, because `NLPServiceConfig.otlp_endpoint` declares
+`AliasChoices("NLP_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT")` and the pod already consumes
+`hope-platform-config`, which carries that name. Verified in the render: the nlp pod's `envFrom`
+resolves to `hope-platform-config-bm96hb992m`, which holds `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_TRACES_ENABLED=true` and `OTEL_METRICS_ENABLED=true` — so all three of NLP's independent
+gates are now satisfied. Adding a fourth unread variable would have been F-02 in miniature.
+
+**Bonus.** `hope-harness-config` is consumed by `hope-harness-worker` as well as `hope-harness`,
+so the Temporal worker gets the endpoint too — an unplanned down payment on R-6.
 
 ---
 
