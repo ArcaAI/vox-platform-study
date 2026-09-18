@@ -15,7 +15,9 @@ class TestHealth:
         body = resp.json()
         assert body["status"] == "healthy"
         assert body["service"] == "tts"
-        assert body["version"] == "0.1.0"
+        # TASK-990 F6: the RUNNING image's identity, not a source literal.
+        # Pinned precisely in test_task990_health_contract.py.
+        assert body["version"]
 
     @pytest.mark.asyncio
     async def test_liveness(self, async_client):

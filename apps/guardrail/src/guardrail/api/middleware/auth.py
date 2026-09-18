@@ -26,11 +26,17 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         "/api/health",
         "/api/health/ready",
         "/api/health/live",
+        # TASK-990 F7: the fourth route of the gateway's health contract. An
+        # unexempted path is answered 401 by this middleware BEFORE FastAPI can
+        # route it, so a probe pointed here would fail for the wrong reason.
+        # This router is mounted at BOTH prefixes, so BOTH spellings are needed.
+        "/api/health/startup",
         # /api/v1/health alias — every other python service exposes health at
         # the v1 path; kept exempt like its /api/health counterpart above.
         "/api/v1/health",
         "/api/v1/health/ready",
         "/api/v1/health/live",
+        "/api/v1/health/startup",
         "/metrics",
         "/docs",
         "/redoc",

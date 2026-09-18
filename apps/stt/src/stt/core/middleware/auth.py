@@ -31,6 +31,11 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
         "/api/v1/health",
         "/api/v1/health/live",
         "/api/v1/health/ready",
+        # TASK-990 F7: the fourth route of the gateway's health contract. An
+        # unexempted path is answered 401 by this middleware BEFORE FastAPI can
+        # route it, so a probe pointed here would fail for the wrong reason —
+        # verified live: `GET /api/v1/health/startup` answered 401, not 404.
+        "/api/v1/health/startup",
         # Backward-compatible probe aliases kept for existing k8s configs
         # (`health/api/routes.py` serves both spellings).
         "/api/v1/live",
