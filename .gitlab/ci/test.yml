@@ -673,7 +673,33 @@ test-observability-parity:
       when: never
     - !reference [.rules-always, rules]
 
+# ── Health-check contract parity gate (pytest, TASK-990) ─────────────────────
+# Same posture as the observability gate above and for the same reason: static
+# inspection only (pure `ast`/`pathlib`), so it needs pytest and nothing else,
+# and it runs on EVERY pipeline rather than behind a per-service rule. A service
+# drifting off the four-route health contract — or reporting a hardcoded version
+# instead of the image's build identity — must fail even when that service's own
+# suite is skipped. Deliberately NOT gated on SKIP_TESTS_PY.
+test-health-contract-parity:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs: []
+  script:
+    - pip install --quiet --retries 5 --timeout 120 pytest
+    - python -m pytest tests/contracts/test_health_contract_parity.py -v --tb=short --junitxml=junit-health-contract-parity.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-health-contract-parity.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - !reference [.rules-always, rules]
+
 test-tts:
+
   stage: test
   image: python:3.11-slim
   tags: [test]
