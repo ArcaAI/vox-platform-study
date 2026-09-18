@@ -35,6 +35,10 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.33 /uv /uvx /bin/
 # else comes from PyPI. Other workspace members need not be present.
 COPY pyproject.toml ./
 COPY packages/py-env ./packages/py-env
+# TASK-987: hope-obs is a workspace source in apps/stt/pyproject.toml, so this
+# image needs it on disk for the same reason py-env is here. Flagged by the
+# lane-P parity gate, whose F-17 check covers the six PRIMARY Dockerfiles only.
+COPY packages/py-obs ./packages/py-obs
 COPY packages/py-runtime-models ./packages/py-runtime-models
 COPY packages/py-otel ./packages/py-otel
 COPY apps/stt/pyproject.toml apps/stt/README.md ./apps/stt/

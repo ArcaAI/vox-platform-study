@@ -648,6 +648,31 @@ test-text:
 # ── TTS tests (pytest) ──────────────────────────────────────────────────────
 # Hermetic — providers/models are mocked/injected, so no DB/Redis/Azure needed.
 
+# ── Observability parity gate (pytest, TASK-987) ─────────────────────────────
+# Static inspection only: no app boot, no network, no service imports, no ML
+# deps — pure `ast`/`tomllib`/`pathlib`. So it needs pytest and nothing else,
+# and it runs on EVERY pipeline rather than behind a per-service rule: the whole
+# point is to catch a service drifting off the shared observability contract,
+# and a drift in one service must fail even when that service's own suite is
+# skipped. Deliberately NOT gated on SKIP_TESTS_PY for the same reason.
+test-observability-parity:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs: []
+  script:
+    - pip install --quiet --retries 5 --timeout 120 pytest
+    - python -m pytest tests/contracts/test_observability_parity.py -v --tb=short --junitxml=junit-observability-parity.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-observability-parity.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - !reference [.rules-always, rules]
+
 test-tts:
   stage: test
   image: python:3.11-slim
