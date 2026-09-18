@@ -125,8 +125,17 @@ transcription could not be joined to the request that enqueued it.
 
 ### 9. Know what survives the collector
 
-The collector's `redaction/phi` processor is an **allow-list** over traces, metrics **and** logs.
-Anything not named in it is dropped. Consequences that surprise people:
+The collector's `redaction/phi` processor is an **allow-list** over traces, metrics and logs.
+Anything not named in it is dropped.
+
+> **But no Python log reaches it any more.** Rule 7 sends every Python log line to stdout for Alloy,
+> which does no content inspection at all (`stage.cri {}` and nothing else) — so the collector's
+> allow-list protects **traces and metrics**, and the log plane's only control is emitter-side
+> discipline: rule 5, rule 6, and `redact_id`. Do not read this section as "my log lines are
+> filtered". They are not. The collector's `logs` pipeline still exists and now carries only the
+> NestJS gateway.
+
+Consequences that surprise people:
 
 - `exception.message` and `exception.stacktrace` are **not** allowed — they embed payloads. An
   exception's *type* reaches Tempo; its message does not. Put the (PHI-free) detail on the log line.
@@ -177,4 +186,4 @@ pnpm <svc>:test           # a service's suite, which the parity gate runs within
 - `packages/py-obs/README.md` — the package's own reference
 - `packages/py-otel/README.md` — W3C context across Redis-Stream boundaries
 - `.claude/rules/06-python-services.md` — the wider Python service conventions
-- `docs/implementation/TASK-987-Python-Logging-And-Tracing-Standard/README.md` — the review this came from, findings F-01…F-21
+- `docs/implementation/TASK-987-Python-Logging-And-Tracing-Standard/README.md` — the review this came from, findings F-01…F-23
