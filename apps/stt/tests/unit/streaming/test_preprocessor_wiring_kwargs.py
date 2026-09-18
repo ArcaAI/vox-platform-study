@@ -2,10 +2,14 @@
 
 Pins the contract of ``SessionManager._build_preprocessor_vad_kwargs``:
 
-- H4: when the pipeline has NO VAD config, ``min_silence_duration_ms`` comes
-  from the hardware ``ExecutionProfile`` (500 ms on every profile) instead of
-  the preprocessor's legacy hardcoded 700 ms.
-- Pipeline YAML still wins when VAD is configured (per-pipeline override).
+- TASK-985 M-13: the agent's segmentation tuning is read whether or not the
+  Silero stage is ENABLED. Only the model is gated by ``vad.enabled``; the
+  energy fallback is still a segmenter and obeys the same four numbers. The
+  hardware-profile substitute (a literal 500 ms on all five profiles) that used
+  to run in the disabled branch is deleted along with the field, so the admin
+  UI can no longer show 350 ms while 500 ms runs.
+- With no pipeline config at all, the kwargs are OMITTED and the
+  preprocessor's own constructor defaults stand.
 - TASK-877: the partial-emit CADENCE is a per-session AGENT value, not a setting.
 - TASK-880: the partial decode WINDOW is a per-model value (the ASR row's
   `_metadata.asr.partialWindowSec`), not a setting either.
@@ -16,10 +20,9 @@ from unittest.mock import MagicMock
 from stt.streaming.session_manager import SessionManager
 
 
-def _make_mgr(vad_silence_threshold_ms: int = 500) -> MagicMock:
+def _make_mgr() -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
-    mgr._profile.vad_silence_threshold_ms = vad_silence_threshold_ms
     return mgr
 
 
@@ -50,27 +53,48 @@ def _make_pipeline_config(vad_enabled: bool, **vad_overrides) -> MagicMock:
 
 
 class TestBuildPreprocessorVadKwargs:
-    def test_no_pipeline_config_uses_profile_silence_threshold(self):
-        """H4: without a pipeline, the profile's 500 ms applies (not 700)."""
-        mgr = _make_mgr(vad_silence_threshold_ms=500)
+    def test_no_pipeline_config_omits_the_segmentation_kwargs(self):
+        """With nothing declared, the preprocessor's own defaults stand.
+
+        TASK-985 M-13 — this used to substitute the hardware profile's
+        `vad_silence_threshold_ms`. A hardware profile describes the DEVICE; the
+        right silence window is a property of the clinician's speech.
+        """
+        mgr = _make_mgr()
 
         kwargs = SessionManager._build_preprocessor_vad_kwargs(mgr, None)
 
-        assert kwargs["min_silence_duration_ms"] == 500
+        assert "min_silence_duration_ms" not in kwargs
+        assert "threshold" not in kwargs
 
-    def test_vad_disabled_uses_profile_silence_threshold(self):
-        """VAD disabled in YAML → energy-fallback segmentation still uses the
-        profile silence threshold."""
-        mgr = _make_mgr(vad_silence_threshold_ms=500)
-        config = _make_pipeline_config(vad_enabled=False)
+    def test_the_agents_tuning_is_read_even_when_vad_is_disabled(self):
+        """TASK-985 M-13 — the loss was entirely in one `if`.
+
+        The spec mapper writes the agent's threshold / min_speech / min_silence
+        / padding into `VadConfig` regardless of `enabled`, so a served session
+        really did hold `min_silence_duration_ms == 350` — and the disabled
+        branch threw it away for a profile literal of 500. The energy fallback
+        reached by a disabled Silero stage is still a segmenter and obeys the
+        same numbers.
+        """
+        mgr = _make_mgr()
+        config = _make_pipeline_config(
+            vad_enabled=False,
+            threshold=0.5,
+            min_speech_duration_ms=100,
+            min_silence_duration_ms=350,
+        )
 
         kwargs = SessionManager._build_preprocessor_vad_kwargs(mgr, config)
 
-        assert kwargs["min_silence_duration_ms"] == 500
+        assert kwargs["threshold"] == 0.5
+        assert kwargs["min_speech_duration_ms"] == 100
+        assert kwargs["min_silence_duration_ms"] == 350
+        assert kwargs["pre_speech_context_ms"] == 500
 
     def test_pipeline_yaml_wins_when_vad_configured(self):
-        """Per-pipeline YAML values override the profile default."""
-        mgr = _make_mgr(vad_silence_threshold_ms=500)
+        """Per-pipeline values reach the preprocessor."""
+        mgr = _make_mgr()
         config = _make_pipeline_config(
             vad_enabled=True,
             threshold=0.7,

@@ -29,7 +29,6 @@ def session_manager():
 
         profile = MagicMock(spec=ExecutionProfile)
         profile.max_concurrent_streams = 5
-        profile.vad_silence_threshold_ms = 500
         redis = AsyncMock()
         return SessionManager(redis=redis, profile=profile)
 

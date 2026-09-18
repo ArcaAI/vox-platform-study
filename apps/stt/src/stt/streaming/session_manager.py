@@ -656,8 +656,21 @@ class SessionManager:
             partial_interval_s, bool
         ):
             kwargs["partial_interval_s"] = float(partial_interval_s)
-        if pipeline_config and pipeline_config.preprocessing.vad.enabled:
-            vad_cfg = pipeline_config.preprocessing.vad
+        # TASK-985 M-13 — the agent's segmentation TUNING is read whether or not
+        # the Silero stage is on. Only the MODEL is gated by `vad.enabled`
+        # (`_load_vad_service`): the energy fallback is still a segmenter and it
+        # obeys the same four numbers.
+        #
+        # This `if` was the whole of the loss. The spec mapper carries the
+        # tuning regardless of `enabled` (`spec.py` writes threshold,
+        # min_speech, min_silence and padding into `VadConfig` whenever the
+        # agent stated them), so a served session really did hold
+        # `min_silence_duration_ms == 350` — and the `else` below substituted a
+        # hardware-profile literal of 500 on all five profiles. The admin UI
+        # showed 350 ms while 500 ms ran, and the seed comment recording the
+        # change described something that had never executed.
+        vad_cfg = getattr(getattr(pipeline_config, "preprocessing", None), "vad", None)
+        if vad_cfg is not None:
             kwargs["threshold"] = vad_cfg.threshold
             kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
             kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
@@ -669,8 +682,10 @@ class SessionManager:
                 kwargs["force_emit_lookback_ms"] = vad_cfg.force_emit_lookback_ms
             if hasattr(vad_cfg, "force_emit_overlap_ms"):
                 kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
-        else:
-            kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
+        # No `else`: with no pipeline config at all the preprocessor's own
+        # constructor defaults stand, which is the rule every other knob on this
+        # path already follows. A hardware profile describes the DEVICE, not the
+        # clinician's speech.
         # The agent's utterance cap outranks the front-end's force-emit window: it
         # is the session-level bound the agent asked for, applied last so it wins.
         max_utterance_sec = getattr(spec_streaming, "max_utterance_sec", None)
@@ -925,12 +940,35 @@ class SessionManager:
         # experiment could not tell whether a model-row edit had reached the
         # runtime at all; this is that answer, in the log, beside the row that
         # was supposed to supply it.
+        #
+        # TASK-985 CL-2 — and the SEGMENTATION numbers beside them, for the same
+        # reason, because M-13 was the same failure one layer down: the admin UI
+        # showed 350 ms while 500 ms ran, and nothing in the log could settle it.
+        # The values are read from the object that APPLIES them rather than
+        # re-derived at this call site — re-deriving them here is how the two
+        # drifted apart in the first place.
+        #
+        # This line is also the session's configuration FINGERPRINT for the
+        # evaluation baseline: an A/B whose arms cannot be told apart in the log
+        # is not a measurement. Hence the prompt STATE (never the prompt text —
+        # it is tenant-authored and can carry clinical vocabulary) and the
+        # decoder identity alongside the geometry. One line per session, bounded
+        # keys, no PHI.
+        segmentation: dict[str, Any] = {}
+        effective = getattr(preprocessor, "effective_segmentation", None)
+        if isinstance(effective, dict):
+            segmentation = effective
         logger.info(
             "stt.streaming.windows",
             session_id=session_id,
             model_slug=_spec_asr_slug(pipeline_config),
             partial_window_s=preprocessor.partial_window_s,
             max_decode_window_sec=max_decode_window_sec,
+            initial_prompt_chars=len(initial_prompt) if initial_prompt else 0,
+            has_initial_prompt=bool(initial_prompt),
+            language=getattr(inference_cfg, "language", None),
+            vad_model_loaded=vad_service is not None,
+            **segmentation,
         )
 
         return _SessionRuntime(
@@ -1429,7 +1467,14 @@ class SessionManager:
             inference_worker = runtime.inference_worker
 
             session.processed_sample_rate = runtime.target_sr
-            session._vad_active = runtime.vad_enabled
+            # TASK-985 CL-4 — what LOADED, not what was DECLARED. `vad_enabled`
+            # is the agent's flag; `_load_vad_service` swallows a load failure
+            # and returns None, so a session running the energy fallback used to
+            # persist `vad_active=True` and say so for the rest of its life. The
+            # sibling log line two hundred lines above already gets this right
+            # (`has_vad=runtime.vad_service is not None`), which is exactly how
+            # the inconsistency stayed invisible.
+            session._vad_active = runtime.vad_service is not None
 
             metadata.diarization = runtime.effective_diarization
             await session.force_persist()
@@ -5325,7 +5370,9 @@ class SessionManager:
                     asr_pipeline = runtime.asr_pipeline
 
                     session.processed_sample_rate = runtime.target_sr
-                    session._vad_active = runtime.vad_enabled
+                    # TASK-985 CL-4 — same rule on the recovery path: what
+                    # LOADED, not what was declared.
+                    session._vad_active = runtime.vad_service is not None
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
                     # warm VAD state. Deferred — VAD starts cold but
