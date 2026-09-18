@@ -29,6 +29,17 @@ from text.providers.base import ProviderRegistry
 #: pod buried the lines that answer real questions. These tests are about the LOG
 #: LINE, not the handler, so they ask for something unrouted — a 404 still
 #: traverses RequestContext + AccessLog and carries the same fields.
+#: An unrouted path does NOT reliably answer 404. Five of the six services run a
+#: service-token middleware that refuses an UNKNOWN path BEFORE FastAPI can route
+#: it, so the same request is 401 there — and on guardrail the reject branch is
+#: only reached when `accepted_service_tokens` is non-empty, which makes the status
+#: depend on whether an env file supplied a token. Asserting either one pins the
+#: ENVIRONMENT, not the behaviour. These tests are about the LOG LINE, and both
+#: statuses traverse RequestContext and AccessLog identically, so accept both.
+#: (TASK-990 F7 found `/api/v1/health/startup` the same way: a missing route
+#: wearing an auth error's clothes.)
+_UNROUTED_STATUSES = (401, 404)
+
 _NON_PROBE_PATH = "/api/v1/__access_log_subject__"
 
 # ── Shared fixtures ──
@@ -144,7 +155,7 @@ class TestRequestCompleteLogged:
         with structlog.testing.capture_logs() as cap_logs:
             resp = await client.get(_NON_PROBE_PATH)
 
-        assert resp.status_code == 404  # unrouted on purpose — see _NON_PROBE_PATH
+        assert resp.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
         complete_logs = [
             log_line for log_line in cap_logs if log_line.get("event") == "request.complete"
         ]
@@ -154,7 +165,7 @@ class TestRequestCompleteLogged:
         log = complete_logs[0]
         assert log["method"] == "GET"
         assert log["path"] == _NON_PROBE_PATH
-        assert log["status_code"] == 404
+        assert log["status_code"] in _UNROUTED_STATUSES
         assert "duration_ms" in log
 
 

@@ -116,6 +116,17 @@ class TestTracingEnableSignal:
 #: A path no router claims. TASK-985 M-44 excluded every probe spelling
 #: from the access log, so a test that needs "some request" rather than "a
 #: probe" has to ask for something unrouted.
+#: An unrouted path does NOT reliably answer 404. Five of the six services run a
+#: service-token middleware that refuses an UNKNOWN path BEFORE FastAPI can route
+#: it, so the same request is 401 there — and on guardrail the reject branch is
+#: only reached when `accepted_service_tokens` is non-empty, which makes the status
+#: depend on whether an env file supplied a token. Asserting either one pins the
+#: ENVIRONMENT, not the behaviour. These tests are about the LOG LINE, and both
+#: statuses traverse RequestContext and AccessLog identically, so accept both.
+#: (TASK-990 F7 found `/api/v1/health/startup` the same way: a missing route
+#: wearing an auth error's clothes.)
+_UNROUTED_STATUSES = (401, 404)
+
 _NON_PROBE_PATH = "/api/v1/__access_log_subject__"
 
 
@@ -136,7 +147,7 @@ class TestRequestContextAndAccessLog:
         # unrouted path exercises the same middleware and asserts the same
         # fields: a 404 still traverses RequestContext + AccessLog.
         response = client.get(_NON_PROBE_PATH)
-        assert response.status_code == 404
+        assert response.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
 
         lines = _json_lines(capsys.readouterr().out)
         complete = [line for line in lines if line.get("event") == "request.complete"]
@@ -167,7 +178,7 @@ class TestRequestContextAndAccessLog:
 
         capsys.readouterr()
         response = client.get(_NON_PROBE_PATH, headers={"X-Tenant-Id": "tenant-abc"})
-        assert response.status_code == 404  # see the note on the duration test
+        assert response.status_code in _UNROUTED_STATUSES  # see _UNROUTED_STATUSES
 
         lines = _json_lines(capsys.readouterr().out)
         complete = [line for line in lines if line.get("event") == "request.complete"]
