@@ -104,10 +104,15 @@ class TestModelGeometryReachesTheRuntime:
     def test_each_chain_carries_its_own_geometry(self) -> None:
         """The fallback chain decodes on ITS row's window, never the primary's."""
         spec = _spec_with_asr_metadata({"maxDecodeWindowSec": 7, "partialWindowSec": 15})
-        spec["fallback"]["spec"]["models"]["asr"]["metadata"] = {
-            "maxDecodeWindowSec": 30,
-            "partialWindowSec": 30,
-        }
+        # TASK-985 (M-49) — the fallback is now an ORDERED CHAIN, and `fallback.spec`
+        # is a one-release alias for `chain[0]`. `fallback_chain()` prefers the chain,
+        # so writing only the alias left this asserting against the fixture's own
+        # `chain[0]` and silently measuring the wrong entry. Set both: the chain is
+        # the contract, the alias is what a gateway that predates it still sends.
+        fallback_metadata = {"maxDecodeWindowSec": 30, "partialWindowSec": 30}
+        spec["fallback"]["spec"]["models"]["asr"]["metadata"] = dict(fallback_metadata)
+        for entry in spec["fallback"]["chain"]:
+            entry["models"]["asr"]["metadata"] = dict(fallback_metadata)
         bundle = bundle_from_resolved(spec)
 
         primary = bundle.pipeline_specs[bundle.spec.runtime_key]

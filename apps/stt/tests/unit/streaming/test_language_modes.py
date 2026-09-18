@@ -148,23 +148,48 @@ def test_whisper_cpp_code_switch_via_prompt() -> None:
 def test_resolve_whisper_cpp_pair_unpinned_but_primed() -> None:
     """A pair NEVER pins a language; with the switch on it is primed instead.
 
-    TASK-938 turned the pair switch ON, which matters precisely because of the
-    first assertion: pinning the primary of a pair would bias the secondary's
-    script, so the bilingual prompt is the ONLY bias correction a code-switch
-    session gets. With it off (the state through 2026-09-09) the decoder had no
-    language signal at all and re-ran its own LID per decode window."""
+    TASK-985 (OD-B, 2026-09-19) turned the pair switch back OFF on measured
+    evidence, so "primed" is now the MONKEYPATCHED arm below rather than the
+    shipped one. The unpinned half is unchanged and is the load-bearing half:
+    pinning the primary of a pair would bias the secondary's script.
+
+    Why the priming went: arm E (`auto`) and arm A (`ml-en`) resolve identically
+    EXCEPT for `initial_prompt`, which makes them a single-variable comparison of
+    this prompt. English clinical reads scored `medical_wer` 0.885/0.935/0.918
+    with it against 0.033/0.048/0.131 without, keyterm recall 0/21 against 21/21;
+    five code-switched Malayalam-English clips scored CER 0.934 mean against
+    0.710, returning 31/14/0/26/43 characters against references of
+    211/203/199/236/302 — one clip produced no final at all."""
     resolved = resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
     assert resolved.language is None
     assert resolved.code_switching is False
     assert resolved.streaming_english_gloss is False
-    assert resolved.initial_prompt is not None
-    assert "Malayalam" in resolved.initial_prompt
-    assert "English" in resolved.initial_prompt
+    assert resolved.initial_prompt is None
 
     vi = resolve_mode_for_engine("vi-en", AiModelFormat.WHISPER_CPP)
     assert vi.language is None
-    assert vi.initial_prompt is not None
-    assert "Vietnamese" in vi.initial_prompt
+    assert vi.initial_prompt is None
+
+
+def test_task985_the_pair_prompt_is_still_reachable_when_switched_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OD-B turned the prompt off; it must stay BUILDABLE as the A/B instrument.
+
+    The switch is what makes the measurement re-runnable without a code change,
+    so a regression that deleted the template rather than disabling it would take
+    the instrument with it. ST-3 moves this template onto
+    `AiModel._metadata.asr.initialPrompt`, at which point this test follows it.
+    """
+    import stt.pipeline.language_modes as lm
+
+    monkeypatch.setattr(lm, "WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED", True)
+
+    resolved = lm.resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
+    assert resolved.language is None
+    assert resolved.initial_prompt is not None
+    assert "Malayalam" in resolved.initial_prompt
+    assert "English" in resolved.initial_prompt
 
 
 def test_resolve_whisper_cpp_single_pins_and_does_not_prime() -> None:
@@ -194,14 +219,20 @@ def test_task946_only_the_pair_priming_prompt_ships_on() -> None:
     the SINGLE-language one back OFF and leaves the PAIR one ON.
 
     They stay two switches for the reason A3 gave — they are different experiments and
-    must be flippable apart (the two tests below prove they still are). The pair prompt
-    is a code-switch pair's ONLY bias correction and has not been measured on this
-    fine-tune, so it is untouched pending its own A/B. This assertion is the SHIPPED
-    state, deliberately pinned so a change of decode behaviour is a visible test edit
-    and not a silent one."""
+    must be flippable apart (the tests below prove they still are). This assertion is the
+    SHIPPED state, deliberately pinned so a change of decode behaviour is a visible test
+    edit and not a silent one.
+
+    TASK-985 (OD-B, owner-approved 2026-09-19) is that visible edit: the PAIR prompt is
+    now OFF too. It was the one arm the earlier note called unmeasured, and measuring it
+    is what settled it — net-harmful in BOTH languages (see
+    `test_resolve_whisper_cpp_pair_unpinned_but_primed` for the numbers, and TASK-985
+    §2.7 / §2.7.1). `WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED = True` was introduced by
+    `e3d61eefb`; it reads False at the baseline commit `0c865ccfb`, which is why that
+    capture recorded the good numbers this assertion now protects."""
     import stt.pipeline.language_modes as lm
 
-    assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is True
+    assert lm.WHISPER_CPP_PAIR_PRIMING_PROMPT_ENABLED is False
     assert lm.WHISPER_CPP_SINGLE_PRIMING_PROMPT_ENABLED is False
 
 

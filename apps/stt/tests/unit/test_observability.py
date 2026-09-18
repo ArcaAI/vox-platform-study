@@ -113,6 +113,12 @@ class TestTracingEnableSignal:
 # ---------------------------------------------------------------------------
 
 
+#: A path no router claims. TASK-985 M-44 excluded every probe spelling
+#: from the access log, so a test that needs "some request" rather than "a
+#: probe" has to ask for something unrouted.
+_NON_PROBE_PATH = "/api/v1/__access_log_subject__"
+
+
 class TestRequestContextAndAccessLog:
     def test_a_request_emits_one_request_complete_line_with_request_id_and_duration(
         self, monkeypatch, capsys
@@ -123,8 +129,14 @@ class TestRequestContextAndAccessLog:
         client = TestClient(app)
 
         capsys.readouterr()  # discard anything logged while building the app
-        response = client.get("/api/v1/health")
-        assert response.status_code == 200
+        # TASK-985 M-44 — every route this app serves under `/health*` (and the
+        # `/ready` / `/live` aliases) is a PROBE path, excluded from the access
+        # log by design, so a probe endpoint can no longer stand in for "a
+        # request". The subject here is the LOG LINE, not the handler, so an
+        # unrouted path exercises the same middleware and asserts the same
+        # fields: a 404 still traverses RequestContext + AccessLog.
+        response = client.get(_NON_PROBE_PATH)
+        assert response.status_code == 404
 
         lines = _json_lines(capsys.readouterr().out)
         complete = [line for line in lines if line.get("event") == "request.complete"]
@@ -154,8 +166,8 @@ class TestRequestContextAndAccessLog:
         client = TestClient(app)
 
         capsys.readouterr()
-        response = client.get("/api/v1/health", headers={"X-Tenant-Id": "tenant-abc"})
-        assert response.status_code == 200
+        response = client.get(_NON_PROBE_PATH, headers={"X-Tenant-Id": "tenant-abc"})
+        assert response.status_code == 404  # see the note on the duration test
 
         lines = _json_lines(capsys.readouterr().out)
         complete = [line for line in lines if line.get("event") == "request.complete"]
@@ -170,12 +182,41 @@ class TestRequestContextAndAccessLog:
         client = TestClient(app)
 
         capsys.readouterr()
-        client.get("/api/v1/health")
+        client.get(_NON_PROBE_PATH)
 
         lines = _json_lines(capsys.readouterr().out)
         complete = [line for line in lines if line.get("event") == "request.complete"]
         assert len(complete) == 1
         assert "tenant_id" not in complete[0]
+
+    def test_probe_paths_are_excluded_from_the_access_log(self, monkeypatch, capsys):
+        """TASK-985 M-44 — the exclusion the three tests above work around.
+
+        913 `request.complete` lines an hour on an IDLE pod buried the one
+        `stt.streaming.windows` line that answers "did the row edit reach the
+        runtime?". Every probe spelling must be silent, INCLUDING the legacy
+        `/ready` and `/live` aliases the health router keeps for existing
+        Kubernetes probe configs: excluding only the `/health*` forms would leave
+        a cluster pointed at an alias still spamming, which looks fixed and is not.
+        """
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        app = create_app(_settings())
+        client = TestClient(app)
+
+        capsys.readouterr()
+        for path in (
+            "/api/v1/health",
+            "/api/v1/health/live",
+            "/api/v1/health/ready",
+            "/api/v1/ready",
+            "/api/v1/live",
+        ):
+            client.get(path)
+
+        lines = _json_lines(capsys.readouterr().out)
+        assert [line for line in lines if line.get("event") == "request.complete"] == []
+        assert [line for line in lines if line.get("event") == "request.start"] == []
 
 
 # ---------------------------------------------------------------------------

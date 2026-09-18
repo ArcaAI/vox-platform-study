@@ -129,8 +129,14 @@ def test_provenance_round_trips_and_is_inert(tuned) -> None:
     """`decoding.sources` and the row's raw recommendation are OBSERVABILITY, never arguments."""
     spec = ResolvedAsrSpec.model_validate(tuned)
     assert spec.decoding.sources is not None
-    assert spec.decoding.sources["beamSize"] == "agent"
-    assert spec.decoding.sources["conditionOnPrevTokens"] == "model"
+    # TASK-985 (M-14) — this used to read "agent", and that was the defect: the agent
+    # DID decide a beam width, and the greedy whisper.cpp context every loader builds
+    # cannot honour it (the sampling strategy is frozen at `Model` construction), so
+    # naming a tier described a knob that does not run. `unsupported:<library>` is not
+    # a fourth tier — the value still travels verbatim; this map is provenance, and it
+    # now tells the truth about which engine will act on it.
+    assert spec.decoding.sources["beamSize"] == "unsupported:whisper.cpp"
+    assert spec.decoding.sources["conditionOnPrevTokens"] == "unsupported:whisper.cpp"
     metadata = spec.models.asr.metadata
     assert metadata is not None and metadata.decoding is not None
     assert metadata.decoding.beam_size == 1  # what the ROW recommended, not what won
