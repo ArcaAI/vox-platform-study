@@ -1,0 +1,62 @@
+{
+  "_comment": "ST-4 fixture class registry (TASK-985 D7 dossier / BP-1..QW-12). SCAFFOLDING ONLY: this file adds no audio. Each class self-skips with a clear reason when its files are absent, exactly like the existing clinical/*.wav fixtures already do in test_streaming_quality_scorecard.py. The orchestrator (or a future ticket) drops real, de-identified audio into these directories/env vars; nothing in this manifest invents a reference transcript or a keyterm list.",
+  "schema_version": 1,
+  "classes": {
+    "stop_flush": {
+      "description": "Short single-final clinical reads (the existing 3-clip cardiology/discharge/medication set). The STOP-FLUSH regression-gate class (M-11): noisier by design because one final IS the whole utterance.",
+      "dir": "clinical",
+      "pattern": "*.gt.txt",
+      "gate_class": "stop_flush",
+      "committed": true
+    },
+    "steady_state": {
+      "description": ">=60s continuous multi-final clinical speech. The STEADY-STATE gate class (M-11): tighter bounds, averages over many commits instead of the cold-open/tail-flush transient the stop-flush clips are dominated by.",
+      "dir": "clinical/steady-state",
+      "pattern": "*.gt.txt",
+      "min_duration_s": 60,
+      "gate_class": "steady_state",
+      "committed": false,
+      "skip_reason": "no >=60s steady-state clip committed yet (ST-4 scaffolding only -- real clinical audio is never committed to git)"
+    },
+    "noise_augmented": {
+      "description": "Deterministic noise-augmented variants of the stop-flush English clips (additive noise at fixed SNR, reproducible seed).",
+      "dir": "clinical/noise-augmented",
+      "pattern": "*.gt.txt",
+      "gate_class": "stop_flush",
+      "committed": false,
+      "skip_reason": "no noise-augmented clip variants committed yet (ST-4 scaffolding only)"
+    },
+    "silence": {
+      "description": "Silence-only clip -- a negative control that must never emit a spurious final.",
+      "dir": "clinical/negative",
+      "file_glob": "silence*.wav",
+      "gate_class": "negative",
+      "committed": false,
+      "skip_reason": "no silence-only clip committed yet (ST-4 scaffolding only)"
+    },
+    "room_tone": {
+      "description": "Room-tone-only clip -- a negative control that must never emit a spurious final (BP-7/QW-13 companion).",
+      "dir": "clinical/negative",
+      "file_glob": "room_tone*.wav",
+      "gate_class": "negative",
+      "committed": false,
+      "skip_reason": "no room-tone clip committed yet (ST-4 scaffolding only)"
+    },
+    "two_speaker": {
+      "description": "One real de-identified two-speaker WAV with forced-alignment turns -- the diarization baseline M-12 names as null today.",
+      "dir": "clinical",
+      "file": "two_speaker_consult_01.wav",
+      "turns_file": "two_speaker_consult_01.turns.json",
+      "gate_class": "diarization",
+      "committed": false,
+      "skip_reason": "two_speaker_consult_01.turns.json is committed but the WAV is not (ST-4 scaffolding only -- real audio is never committed to git)"
+    },
+    "ml_en": {
+      "description": "The 24 de-identified ml-en clinical clips (owner-supplied, held outside git) scored THROUGH THE WS GATEWAY with CER + Latin ratio -- distinct from test_mlen_quality_gate.py's offline single-utterance model-only gate (M-12's 'the ml-en gate is offline, single-utterance, prompts off').",
+      "env_dir": "STT_MLEN_EVAL_DIR",
+      "gate_class": "ml_en",
+      "committed": false,
+      "skip_reason_needs_env": "STT_MLEN_EVAL_DIR is not set (ST-4 scaffolding only)"
+    }
+  }
+}
