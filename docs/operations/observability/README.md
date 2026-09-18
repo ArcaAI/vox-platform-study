@@ -103,7 +103,7 @@ Written to stay correct regardless of which alerts currently exist or fire:
   [`../telemetry-phi-guardrails.md`](../telemetry-phi-guardrails.md). The telemetry plane is a
   separate system from the usage ledger and the HIPAA audit log and must never carry clinical
   content — that page is the four-layer defense (pinned `NO_CONTENT`, an attribute allow-list, an
-  OTel Collector deny-list, and CI assertions) that keeps it that way.
+  OTel Collector **allow**-list, and CI assertions) that keeps it that way.
 
 ## Related
 
