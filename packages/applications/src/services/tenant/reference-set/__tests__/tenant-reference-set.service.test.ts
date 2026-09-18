@@ -38,7 +38,14 @@ const calls: string[] = [];
 
 const agentRepository = { findSystemReferences: vi.fn() };
 const promptTemplateRepository = { findSystemReferences: vi.fn() };
-const assignmentRepository = { findAllForScope: vi.fn(), findForScopeSelector: vi.fn() };
+const assignmentRepository = {
+  findAllForScope: vi.fn(),
+  findForScopeSelector: vi.fn(),
+  // TASK-986 R3 — `copyAgentAssignments` now also runs a read-only scan over every SYSTEM row
+  // (any scope) to report a DEPARTMENT-scope omission; the DEPARTMENT-scope behaviour itself is
+  // pinned in `tenant-reference-set.agent-assignments-department-scope.task986.test.ts`.
+  findAll: vi.fn(),
+};
 const workflowDefinitionRepository = { findSystemTemplates: vi.fn() };
 // TASK-930 §6.3 — the seventh kind. Empty here: what it copies is pinned by its own suite
 // (`tenant-reference-set.workflow-assignments.task930.test.ts`); this file pins the ORDER.
@@ -171,6 +178,7 @@ beforeEach(() => {
     task === AgentTask.TEXT_GENERATION ? [{ agentSlug: 'platform-summarization', selectorKey: '' }] : [],
   );
   assignmentRepository.findForScopeSelector.mockResolvedValue(null);
+  assignmentRepository.findAll.mockResolvedValue([]);
   workflowDefinitionRepository.findSystemTemplates.mockResolvedValue([{ slug: 'platform-default-summarization' }]);
   documentTemplateRepository.findAll.mockResolvedValue([
     {

@@ -27,7 +27,13 @@ const TENANT = 'tenant-1';
 
 const agentRepository = { findSystemReferences: vi.fn() };
 const promptTemplateRepository = { findSystemReferences: vi.fn(async () => []) };
-const assignmentRepository = { findAllForScope: vi.fn(async () => []), findForScopeSelector: vi.fn(async () => null) };
+const assignmentRepository = {
+  findAllForScope: vi.fn(async () => []),
+  findForScopeSelector: vi.fn(async () => null),
+  // TASK-986 R3 — `copyAgentAssignments` now also runs a read-only scan over every SYSTEM row
+  // (any scope) to report a DEPARTMENT-scope omission; empty here, unrelated to this file's focus.
+  findAll: vi.fn(async () => []),
+};
 const workflowDefinitionRepository = { findSystemTemplates: vi.fn(async () => []) };
 const workflowAssignmentRepository = { findAll: vi.fn(async () => []), findForScopeSelector: vi.fn(async () => null) };
 const contextSchemaRepository = { findAll: vi.fn(async () => []), findByTenantAndSlug: vi.fn(async () => null) };
