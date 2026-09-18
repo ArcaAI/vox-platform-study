@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — investigation complete, plan awaiting owner approval |
+| **Status** | `Completed` — all six items resolved and merged to `dev-2.2`; two e2e specs written but not yet run |
 | **Type** | `bugfix` (5 defects) + `feature` (1 new capability) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-09-18 |
@@ -285,7 +285,124 @@ Out of scope per the standing exclusion: `apps/compat-playground`, `apps/quick-c
 
 ## 6. Implementation Summary
 
-_Not started — awaiting owner approval of §3._
+Four write lanes: three in isolated worktrees (merged `--no-ff`, worktrees removed), one
+(departments) taken by the orchestrator in the primary checkout because it needed a live UI
+reproduction. Every lane's claims were re-verified by the orchestrator against source, the live
+dev DB, or live HTTP — reports were not relayed on trust.
+
+### R1 — plan assignment
+`TenantService.update` gained an imperative super-admin gate on the `plan` FIELD, firing only when
+the value actually changes and resolved AFTER `findById` so an unknown id still 404s
+(`// AUTH-NOTE:` at `tenant.controller.ts:245`). The console gained its one plan editor
+(`features/tenants/components/change-plan-dialog.tsx`), wiring the previously caller-less
+`useUpdateTenant()`. The entitlements control was relabelled from the destructive
+"Trigger downgrade" to a neutral "Change plan" with a deep link to the authoritative editor; the
+API route was not renamed.
+
+### R2 — reserved tenant lockdown
+`assertNotSystemTenant` now matches BOTH reserved ids directly (`SYSTEM_TENANT_ID ||
+SEED_TENANT_ID`), keeping the `__GLOBAL__` key check as defence in depth, and `update()` calls it
+after `findById` — so every PATCH against either row is refused (D-5). `UpdateTenantRequest.key`
+gained the reserved-key validator, closing the rename-then-disarm chain. The console hides the
+lifecycle actions on those rows behind a visible locked notice.
+
+### R3 — reference set
+No copier change: cloning already worked and OD-M stands (D-3). Closed one latent gap —
+`copyAgentAssignments` now REPORTS DEPARTMENT-scope SYSTEM rows in `summary.warnings` instead of
+dropping them silently, symmetric with `copyWorkflowAssignments`. Enriching SYSTEM is deferred to
+its own ticket (D-4).
+
+**Latent bug found by the tenant lane:** `tenant.service.test.ts` was passing the prompt-version
+repository into constructor slot 12, where the reference set belongs, so `referenceSet.provision`
+threw a swallowed `TypeError` on every create in that suite. Corrected, plus a behavioural test
+that `create` really does call `provision` — previously only a source-text grep proved that wiring,
+and the dependency is `@Optional()`.
+
+### R4 — department delete
+**No backend defect existed.** Proven live: a tenant admin can create and delete a department
+(201 → 200, row to `DELETED`); an unknown id answers 404 not 403; and the only business guard
+("has ENABLED children") could not have fired, because every department in the tenant is a
+childless root. The defect was DISCOVERABILITY — the sole route to delete was the "Edit" button
+inside the *Prompt config* pane. Each hierarchy row now carries the console's standard row-action
+menu (Edit / Delete), reusing the drawer's existing type-to-confirm flow.
+
+A row-menu delete ARMS the confirm rather than opening it: the first implementation opened it
+immediately, before the detail read landed, which handed `ConfirmDialog` an empty
+`typeToConfirm` token — disabling the guard and collapsing a two-step destructive action into one
+click. The new test caught it.
+
+### R5 — delete selected users
+Root cause was NestJS/Express route shadowing: `delete` (`path: '/:id'`) was declared before
+`bulkDelete` (`path: 'bulk'`), so `DELETE /admin/users/bulk` was captured by the id handler and
+404'd for EVERY caller. `bulkDelete` now precedes `delete`, carrying an explanatory comment
+modelled on the one that already protects `GET export` from the same fate. The suite missed this
+because the unit test calls `controller.bulkDelete(...)` as a method, bypassing routing; a real-HTTP
+e2e spec now covers it.
+
+### R6 — export honours the selection
+`ids` added to both `ExportUsersParams` (console) and `ExportUsersQuery` (gateway).
+`collectExportRows` folds the selection into the existing filter set as an `id[in]:…` token — a
+FILTER, never a lookup — so the tenant branch that picks `fetchAll` vs `fetchAllByTenantId` is
+untouched and naming an id can only REMOVE rows. A foreign id yields 200 with that row absent, not
+404: an export is a set read, not a by-id route. The action bar reads "Export selected (N)" and a
+separate "Export all" was added to the header, because the action bar renders only when rows are
+selected and relabelling the single button would have deleted full-view export outright.
+
+**Defect found and fixed by the orchestrator after merge:** the lane validated each id with
+`@IsUUID('all')`, which enforces the version nibble. This platform's reserved rows are NOT
+version-compliant uuids — `60000000-…` (system user) and `70000000-…` (every seeded account) carry
+version `0`. Proven live: a selection containing a seeded id answered
+`400 each value in ids must be a UUID` while a runtime uuidv7 id answered 200, i.e. the feature
+worked for runtime rows and failed for every seeded user. Replaced with a hex-and-hyphens shape
+match, which preserves the reason the constraint exists (the grammar separators `;` `|` `[` `]:`
+stay unrepresentable, so a filter-injection token still cannot be built) and is pinned by
+`export-users.query.task986.test.ts`.
+
+### D-7 — billing and storage on the plan-change path
+`recordPlanChange` had ZERO production callers, so `TenantPlanHistory` was never written and plan-fee
+proration ran against an empty table; `applyPlanStorageQuota` ran only at tenant creation. Both are
+now wired into create / update / downgrade / trial-expiry, best-effort after the plan column commits.
+The update path rebinds CLS to the TARGET tenant for those two side effects (a super admin editing
+tenant B while working in tenant A would otherwise have had the history row silently rejected by the
+tenant-scope extension) and restores it before the audit broadcast. No backfill, per the ruling.
+
+### Verification (actual output, not assertions)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/applications` build | exit 0 |
+| `@arcaai/applications` test | **901 files / 14,415 tests pass**; 1 pre-existing failure (`membership-bounded-sync.integration.test.ts`, live-DB, reproduced on the UNTOUCHED primary before any merge) |
+| `pnpm api:build` | 12/12 tasks |
+| api tenant+user modules | 24 files / 324 tests pass |
+| admin-console lint | 0 warnings |
+| admin-console test | 366 files / **3,587 tests pass** |
+| admin-console build | compiled, 95/95 pages |
+| `api:openapi:check` | OK |
+| `api:portal:check` | no drift (673 admin / 202 business ops) |
+| `vox-node gen:admin:check` | no drift (49 areas, 431 routes, 456 schemas) |
+| `route-manifest.json` | byte-identical — no authz metadata changed |
+
+### Live verification against the dev gateway (:8868)
+
+| Probe | Before | After |
+|---|---|---|
+| `DELETE /admin/users/bulk {"ids":[]}` | `404 User not found` | `400 ids must contain at least 1 elements` (handler reached) |
+| `PATCH /admin/tenants/00000000-… {"resourceStatus":"DISABLED"}` | would have disabled the platform tier | `403 The system tenant cannot be edited.` |
+| `PATCH /admin/tenants/50000000-… {"key":"NOTGLOBAL"}` | would have disarmed the guard | `403` |
+| tenant admin PATCHes own `plan` | `200` (the hole) | `403 Only a platform administrator can change a tenant plan.` |
+| super admin changes a plan | no console path | `200` + a `TenantPlanHistory` row (table was empty) |
+| export with 2 own + 1 foreign seeded id | n/a | `200`, both own rows, foreign row absent |
+| department delete via row menu | affordance absent | row menu → confirm → `DELETE 200` → toast |
+
+Reserved rows remain at `_version: 1`, confirming the 403s wrote nothing. ArcaAI's plan was moved
+PRO and restored to ENTERPRISE. Probe departments `ZZTMP986`/`B`/`C` are left soft-deleted in dev.
+
+### Not done
+- **The two new e2e specs have never been executed** (`task-986-tenant-plan-and-reserved.spec.ts`,
+  `task-986-users-bulk-and-export.spec.ts`). The e2e harness needs the isolated test infra on
+  :5433/:6380, which is occupied by unrelated containers on this host. Expect first-run adjustments.
+- A pre-existing spec, `users-bulk-role-export.spec.ts`, creates users with no role or department,
+  which the gateway should reject with 400 — it may already be red, independently of this ticket.
 
 ---
 
@@ -294,3 +411,4 @@ _Not started — awaiting owner approval of §3._
 | Date | Change |
 |---|---|
 | 2026-09-18 | Ticket opened. Five parallel read-only investigation lanes; findings re-verified against source, live dev DB and live HTTP probes. R5 root cause (route shadowing) and R4 backend-works both reproduced live. Plan drafted; seven owner decisions raised. |
+| 2026-09-18 | Owner resolved D-1..D-7. Four write lanes implemented and merged `--no-ff` into `dev-2.2`; worktrees removed. Two defects found DURING implementation and fixed: the export id validator rejected every seeded/reserved id, and the departments row-menu delete initially opened its confirm with an empty type-to-confirm token. All gates green except one pre-existing live-DB integration test. Seven live probes recorded in §6. |
