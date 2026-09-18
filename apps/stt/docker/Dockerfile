@@ -62,6 +62,13 @@ COPY packages/py-env ./packages/py-env
 # file:///app/packages/py-otel". Its only dep (opentelemetry-api) is already in
 # the lock, so it costs no meaningful layer-cache churn.
 COPY packages/py-otel ./packages/py-otel
+# Shared logging & tracing runtime (`hope-obs`, TASK-987). Same workspace
+# path-dependency rule: stt now declares `hope-obs`, so `uv sync` needs it on
+# disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-obs". Its deps (structlog, the opentelemetry SDK/
+# exporter/instrumentation packages) are already in the lock via stt's own
+# direct dependencies, so it costs no meaningful layer-cache churn.
+COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package stt --no-dev --no-install-project --no-editable
 
@@ -147,6 +154,7 @@ COPY apps/tts/pyproject.toml ./apps/tts/
 COPY packages/py-runtime-models ./packages/py-runtime-models
 COPY packages/py-env ./packages/py-env
 COPY packages/py-otel ./packages/py-otel
+COPY packages/py-obs ./packages/py-obs
 # Generate overrides that tell uv to skip most nvidia-* pip packages and triton.
 #
 # Why this is safe (verified by codebase audit of apps/stt/src/):
@@ -311,12 +319,12 @@ RUN set -eu; \
     printf '%s\n' "$ldd_output" | grep -qiE "libcudart|libcublas" \
       || { echo "FATAL: pywhispercpp linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }
 
-# The two workspace path deps (hope-runtime-models, hope-env) resolve as EDITABLE
-# under `uv pip install` (tool.uv.sources workspace=true) — an
-# `__editable__.<pkg>.pth` in site-packages whose sole content is an absolute path
-# to the build tree (/build/packages/*/src). The ml-runtime/worker stages copy
-# ONLY /opt/venv (never /build), so that link dangles at import time:
-# `ModuleNotFoundError: No module named 'hope_env'`. Re-install both as plain,
+# The workspace path deps (hope-runtime-models, hope-env, hope-otel, hope-obs)
+# resolve as EDITABLE under `uv pip install` (tool.uv.sources workspace=true) —
+# an `__editable__.<pkg>.pth` in site-packages whose sole content is an absolute
+# path to the build tree (/build/packages/*/src). The ml-runtime/worker stages
+# copy ONLY /opt/venv (never /build), so that link dangles at import time:
+# `ModuleNotFoundError: No module named 'hope_env'`. Re-install all as plain,
 # baked-in wheels so their code lives INSIDE site-packages and survives the
 # venv-only copy — the `uv pip install` analogue of the CPU builder's
 # `uv sync --no-editable`. --no-sources treats the paths as ordinary local dirs
@@ -328,7 +336,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --reinstall-package hope-runtime-models \
         --reinstall-package hope-env \
         --reinstall-package hope-otel \
-        ./packages/py-runtime-models ./packages/py-env ./packages/py-otel
+        --reinstall-package hope-obs \
+        ./packages/py-runtime-models ./packages/py-env ./packages/py-otel ./packages/py-obs
 
 RUN find /opt/venv \( \
         -name "__pycache__" \

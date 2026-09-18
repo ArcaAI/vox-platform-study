@@ -15,7 +15,7 @@ Pure and synchronous: no I/O, no database, no await. It only reshapes what it wa
 
 PHI log hygiene: this path handles a clinician's display name and user / profile identifiers.
 No log record emitted here may contain any of them — identifiers are redacted via
-:func:`stt.core.logging.redact_id` (deterministic hash prefix, so lines stay correlatable) and
+:func:`hope_obs.redact_id` (deterministic hash prefix, so lines stay correlatable) and
 the label is only ever logged as a boolean.
 """
 
@@ -25,8 +25,7 @@ import logging
 from typing import Any
 
 import numpy as np
-
-from stt.core.logging import redact_id
+from hope_obs import redact_id
 
 logger = logging.getLogger(__name__)
 

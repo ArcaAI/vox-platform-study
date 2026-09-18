@@ -5,13 +5,18 @@ Observed live 2026-08-08: Loki's ``service_name`` label set contained
 ``OTEL_SERVICE_NAME`` unconditionally, but the worker Deployment already sets
 that variable to ``hope-stt-v2-worker``. The doubled label pollutes the label
 space and breaks any dashboard variable built on ``service_name``.
+
+TASK-987: the rule itself moved to ``hope_obs.runtime.worker_service_name`` —
+``stt.worker`` no longer carries a local ``_worker_service_name`` helper, it
+calls ``hope_obs.configure_worker_observability`` directly. This file is kept
+(rather than deleted) as a service-level regression pin on the SAME incident,
+now against the shared implementation every worker in the fleet uses.
 """
 
 from __future__ import annotations
 
 import pytest
-
-from stt.worker import _worker_service_name
+from hope_obs.runtime import worker_service_name as _worker_service_name
 
 
 @pytest.mark.parametrize(

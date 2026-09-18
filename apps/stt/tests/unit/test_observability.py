@@ -1,417 +1,377 @@
-"""TDD tests for STT observability: logging, trace context, OTLP export.
+"""TDD tests for STT's adoption of `hope_obs` (TASK-987 lane A — F-04, F-08, F-13).
 
-Follows Red-Green-Refactor. Tests are grouped by implementation unit.
+STT's own logging/tracing implementation is DELETED (`stt.core.logging`,
+`stt.core.telemetry` are now thin adapters over `hope_obs`); these tests pin
+the WIRING — that `stt.main` / `stt.worker` actually call into `hope_obs`
+correctly — not that `hope_obs` itself behaves correctly (that is
+`packages/py-obs/tests/`, already hermetic and green).
+
+Superseded assertions from the pre-adoption version of this file are gone
+outright, not merely reshaped: OTLP *log* export (`setup_telemetry_logs`,
+`LoggerProvider`, `OTLPLogExporter`, `LoggingInstrumentor`) is deleted from
+every service by R-5 (stdout -> Alloy -> Loki is the one log path now), so
+there is no implementation left to assert against. The behaviours that
+survive from the old suite — idempotent setup, stdlib records joining the
+structured JSON chain, otel trace-context injection when a span is active,
+resilience to a bad exporter — are ported here against the adopted
+implementation instead of the deleted local one.
 """
 
 from __future__ import annotations
 
-import io
 import json
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import pytest
 import structlog
+from fastapi.testclient import TestClient
+from hope_obs import WorkerObservability, configure_worker_observability
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+
+from stt.core.config.settings import Settings
+from stt.core.telemetry import build_observability_config
+from stt.main import create_app
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _capture_stdlib_log(logger_name: str, message: str, *, level: int = logging.INFO) -> str:
-    """Emit a stdlib log and return whatever the root handler wrote."""
-    root = logging.getLogger()
-    buf = io.StringIO()
-    handler = logging.StreamHandler(buf)
-    handler.setFormatter(
-        root.handlers[0].formatter if root.handlers else logging.Formatter("%(message)s")
-    )
-    root.addHandler(handler)
-    try:
-        logging.getLogger(logger_name).log(level, message)
-        return buf.getvalue()
-    finally:
-        root.removeHandler(handler)
-
-
 def _reset_logging() -> None:
-    """Remove all handlers from root logger and reset structlog."""
+    """Undo `configure_logging`'s idempotence guard and root-handler state.
+
+    Every test in this file configures logging itself (directly, via
+    `create_app()`, or via `configure_worker_observability`) and must not
+    inherit handlers — or the idempotence guard — from a previous test or
+    from the module-level `configure_logging` call `stt.main` makes at
+    import time.
+    """
     root = logging.getLogger()
-    for h in root.handlers[:]:
-        root.removeHandler(h)
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
     structlog.reset_defaults()
 
-    import stt.core.logging as _mod
+    import hope_obs.logging as _hope_logging
 
-    _mod._SETUP_DONE = False
-
-
-# ---------------------------------------------------------------------------
-# Unit 1: _add_otel_context processor
-# ---------------------------------------------------------------------------
+    _hope_logging._SETUP_DONE = False
 
 
-class TestAddOtelContext:
-    """Tests for the _add_otel_context structlog processor."""
+@pytest.fixture(autouse=True)
+def _isolated_logging():
+    _reset_logging()
+    yield
+    _reset_logging()
 
-    def setup_method(self):
-        _reset_logging()
 
-    def teardown_method(self):
-        _reset_logging()
+def _json_lines(text: str) -> list[dict]:
+    return [json.loads(line) for line in text.strip().splitlines() if line.strip()]
 
-    def test_injects_trace_ids_when_span_active(self):
-        """RED → GREEN: Processor should add traceId/spanId when a span is active."""
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
 
-        from stt.core.logging import _add_otel_context
+def _settings(**overrides: object) -> Settings:
+    """A real `Settings` instance — never a bare `MagicMock`.
 
-        provider = TracerProvider()
-        trace.set_tracer_provider(provider)
-        tracer = trace.get_tracer("test")
-
-        with tracer.start_as_current_span("test-span") as span:
-            ctx = span.get_span_context()
-            event_dict: dict = {"event": "hello"}
-            result = _add_otel_context(None, "info", event_dict)
-
-            assert "traceId" in result
-            assert "spanId" in result
-            assert result["traceId"] == format(ctx.trace_id, "032x")
-            assert result["spanId"] == format(ctx.span_id, "016x")
-            assert len(result["traceId"]) == 32
-            assert len(result["spanId"]) == 16
-
-        provider.shutdown()
-
-    def test_skips_when_no_active_span(self):
-        """RED → GREEN: Processor should not inject when no span is active."""
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-
-        from stt.core.logging import _add_otel_context
-
-        provider = TracerProvider()
-        trace.set_tracer_provider(provider)
-
-        event_dict: dict = {"event": "hello"}
-        result = _add_otel_context(None, "info", event_dict)
-
-        assert "traceId" not in result
-        assert "spanId" not in result
-        assert result["event"] == "hello"
-
-        provider.shutdown()
-
-    def test_skips_when_otel_import_fails(self):
-        """RED → GREEN: Processor should silently no-op when opentelemetry not available."""
-        from stt.core.logging import _add_otel_context
-
-        with patch.dict("sys.modules", {"opentelemetry": None, "opentelemetry.trace": None}):
-            event_dict: dict = {"event": "hello"}
-            result = _add_otel_context(None, "info", event_dict)
-
-            assert "traceId" not in result
-            assert result["event"] == "hello"
+    `build_observability_config` reads `otel_service_name` / `log_level` off
+    whatever it is handed; a `MagicMock` without those attributes set would
+    silently poison the JSON logging chain (a non-serialisable `service`
+    field) rather than fail loudly, which is worse than the extra setup here.
+    """
+    return Settings(otel_enabled=False, **overrides)
 
 
 # ---------------------------------------------------------------------------
-# Unit 2: ProcessorFormatter stdlib bridge
+# R-2 / F-01 — endpoint presence is the ONLY enable signal
 # ---------------------------------------------------------------------------
 
 
-class TestProcessorFormatterBridge:
-    """Tests for stdlib → structlog ProcessorFormatter bridge."""
+class TestTracingEnableSignal:
+    def test_boots_with_no_endpoint_and_exports_nothing(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
 
-    def setup_method(self):
-        _reset_logging()
+        app = create_app(_settings())
 
-    def teardown_method(self):
-        _reset_logging()
+        assert app.state.tracer_provider is None
 
-    def test_stdlib_logger_produces_json_after_setup(self):
-        """RED → GREEN: stdlib logging.getLogger().info() should produce JSON."""
-        from stt.core.logging import setup_logging
+    def test_boots_with_an_unroutable_endpoint_and_still_serves_health(self, monkeypatch):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
 
-        setup_logging("info")
+        app = create_app(_settings())
 
-        output = _capture_stdlib_log("test.stdlib", "hello from stdlib")
-        assert output.strip(), "Expected output on stdout"
+        # OTLP/gRPC connects lazily — an unroutable collector is a RUNTIME
+        # export failure, not a configuration failure (hope_obs R-2), so
+        # tracing stays ON at configure time.
+        assert isinstance(app.state.tracer_provider, TracerProvider)
 
-        parsed = json.loads(output.strip())
-        assert parsed["event"] == "hello from stdlib"
+        client = TestClient(app)
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
 
-    def test_stdlib_logger_includes_timestamp_and_level(self):
-        """RED → GREEN: stdlib log JSON should have timestamp and level."""
-        from stt.core.logging import setup_logging
 
-        setup_logging("info")
+# ---------------------------------------------------------------------------
+# R-4 — request context + access log, pure ASGI
+# ---------------------------------------------------------------------------
 
-        output = _capture_stdlib_log("test.stdlib.ts", "timestamped")
-        parsed = json.loads(output.strip())
 
-        assert "timestamp" in parsed
-        assert "level" in parsed
-        assert parsed["level"] == "info"
+class TestRequestContextAndAccessLog:
+    def test_a_request_emits_one_request_complete_line_with_request_id_and_duration(
+        self, monkeypatch, capsys
+    ):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
 
-    def test_structlog_logger_still_produces_json(self):
-        """RED → GREEN: structlog loggers must not regress — still JSON."""
-        from stt.core.logging import get_logger, setup_logging
+        app = create_app(_settings())
+        client = TestClient(app)
 
-        setup_logging("info")
+        capsys.readouterr()  # discard anything logged while building the app
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
 
-        buf = io.StringIO()
-        handler = logging.StreamHandler(buf)
-        root = logging.getLogger()
-        handler.setFormatter(root.handlers[0].formatter if root.handlers else None)
-        root.addHandler(handler)
+        lines = _json_lines(capsys.readouterr().out)
+        complete = [line for line in lines if line.get("event") == "request.complete"]
+        assert len(complete) == 1
+        assert complete[0]["request_id"]
+        assert isinstance(complete[0]["duration_ms"], (int, float))
 
+    def test_inbound_x_request_id_is_echoed_unchanged_exactly_once(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        app = create_app(_settings())
+        client = TestClient(app)
+
+        response = client.get("/api/v1/health", headers={"X-Request-ID": "caller-supplied-id"})
+
+        assert response.status_code == 200
+        assert response.headers["x-request-id"] == "caller-supplied-id"
+        echoed = [
+            value for key, value in response.headers.multi_items() if key.lower() == "x-request-id"
+        ]
+        assert echoed == ["caller-supplied-id"]
+
+    def test_inbound_x_tenant_id_appears_as_tenant_id_on_the_log_line(self, monkeypatch, capsys):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        app = create_app(_settings())
+        client = TestClient(app)
+
+        capsys.readouterr()
+        response = client.get("/api/v1/health", headers={"X-Tenant-Id": "tenant-abc"})
+        assert response.status_code == 200
+
+        lines = _json_lines(capsys.readouterr().out)
+        complete = [line for line in lines if line.get("event") == "request.complete"]
+        assert len(complete) == 1
+        assert complete[0]["tenant_id"] == "tenant-abc"
+
+    def test_no_tenant_header_means_no_tenant_id_field(self, monkeypatch, capsys):
+        """F-07's other half: absent is absent — never a default tenant."""
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        app = create_app(_settings())
+        client = TestClient(app)
+
+        capsys.readouterr()
+        client.get("/api/v1/health")
+
+        lines = _json_lines(capsys.readouterr().out)
+        complete = [line for line in lines if line.get("event") == "request.complete"]
+        assert len(complete) == 1
+        assert "tenant_id" not in complete[0]
+
+
+# ---------------------------------------------------------------------------
+# F-08 — pure ASGI, never BaseHTTPMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestPureAsgiMiddleware:
+    def test_the_old_basehttpmiddleware_request_id_and_logging_modules_are_gone(self):
+        with pytest.raises(ModuleNotFoundError):
+            import stt.core.middleware.request_id  # noqa: F401
+
+        with pytest.raises(ModuleNotFoundError):
+            import stt.core.middleware.logging  # noqa: F401
+
+    def test_create_app_installs_the_shared_asgi_middlewares(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        from hope_obs.middleware import AccessLogMiddleware, RequestContextMiddleware
+
+        app = create_app(_settings())
+
+        classes = [entry.cls for entry in app.user_middleware]
+        assert RequestContextMiddleware in classes
+        assert AccessLogMiddleware in classes
+
+
+# ---------------------------------------------------------------------------
+# F-13 — the PHI server_request_hook, on the one service whose payloads
+# are clinical audio
+# ---------------------------------------------------------------------------
+
+
+class TestPhiRequestHook:
+    def test_fastapi_instrumentation_carries_the_phi_hook(self, monkeypatch):
+        """STT never passed `server_request_hook` before adoption. `hope_obs`
+        passes it UNCONDITIONALLY, so the fix is inherent to wiring through
+        `configure_observability` — this pins that the wiring actually
+        happened, rather than STT still calling `FastAPIInstrumentor` bare.
+        """
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+
+        with patch.object(
+            FastAPIInstrumentor, "instrument_app", wraps=FastAPIInstrumentor.instrument_app
+        ) as mock_instrument:
+            create_app(_settings())
+
+        mock_instrument.assert_called_once()
+        _, kwargs = mock_instrument.call_args
+        assert kwargs.get("server_request_hook") is not None
+
+
+# ---------------------------------------------------------------------------
+# F-04 — the worker installs a REAL TracerProvider, not just a log exporter
+# ---------------------------------------------------------------------------
+
+
+class TestWorkerTracerProvider:
+    def test_configure_worker_observability_installs_a_recording_tracer_provider(self, monkeypatch):
+        """Before TASK-987, `stt.worker` called `setup_telemetry_logs` only:
+        there was no `TracerProvider` in the worker process, so every span it
+        opened was non-recording and its log lines carried no `traceId` — a
+        batch transcription could not be joined to the request that enqueued
+        it. This is the exact composition `stt.worker` performs at import
+        time: `configure_worker_observability(build_observability_config(settings))`.
+        """
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+
+        handle = configure_worker_observability(build_observability_config(_settings()))
         try:
-            get_logger("test.structlog").info("structlog msg")
-            output = buf.getvalue()
+            assert isinstance(handle, WorkerObservability)
+            assert isinstance(handle.tracer_provider, TracerProvider)
+
+            tracer = handle.tracer_provider.get_tracer("test")
+            with tracer.start_as_current_span("probe") as span:
+                assert span.is_recording()
         finally:
-            root.removeHandler(handler)
+            handle.shutdown()
 
-        assert output.strip()
-        parsed = json.loads(output.strip())
-        assert parsed["event"] == "structlog msg"
+    def test_worker_service_name_gets_the_no_double_suffix_treatment(self, monkeypatch):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
 
-    def test_stdlib_logger_includes_otel_context_when_span_active(self):
-        """RED → GREEN: stdlib logs inside active span should have traceId."""
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-
-        from stt.core.logging import setup_logging
-
-        setup_logging("info")
-        provider = TracerProvider()
-        trace.set_tracer_provider(provider)
-        tracer = trace.get_tracer("test")
-
-        with tracer.start_as_current_span("test-span"):
-            output = _capture_stdlib_log("test.otel", "traced log")
-
-        parsed = json.loads(output.strip())
-        assert "traceId" in parsed
-        assert len(parsed["traceId"]) == 32
-
-        provider.shutdown()
-
-    def test_contextvars_visible_in_stdlib_logs(self):
-        """RED → GREEN: structlog contextvars should appear in stdlib logs."""
-        from stt.core.logging import setup_logging
-
-        setup_logging("info")
-
-        structlog.contextvars.bind_contextvars(request_id="req-123")
-        try:
-            output = _capture_stdlib_log("test.ctx", "with context")
-        finally:
-            structlog.contextvars.clear_contextvars()
-
-        parsed = json.loads(output.strip())
-        assert parsed.get("request_id") == "req-123"
-
-
-# ---------------------------------------------------------------------------
-# Unit 3: OTLP log export pipeline
-# ---------------------------------------------------------------------------
-
-
-class TestOtlpLogExport:
-    """Tests for LoggerProvider + OTLPLogExporter pipeline in telemetry.py."""
-
-    def setup_method(self):
-        _reset_logging()
-
-    def teardown_method(self):
-        _reset_logging()
-        from opentelemetry import trace
-        from opentelemetry.instrumentation.logging import LoggingInstrumentor
-
-        try:
-            LoggingInstrumentor().uninstrument()
-        except Exception:
-            pass
-        trace.set_tracer_provider(trace.NoOpTracerProvider())
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    @patch("stt.core.telemetry.OTLPSpanExporter")
-    def test_setup_telemetry_creates_logger_provider_when_enabled(self, _span_exp, _log_exp):
-        """RED → GREEN: setup_telemetry should create a LoggerProvider."""
-        from opentelemetry.sdk._logs import LoggerProvider
-
-        from stt.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        result = setup_telemetry(app, endpoint="http://localhost:4317", service_name="stt-test")
-
-        assert result is not None
-        assert isinstance(result.logger_provider, LoggerProvider)
-
-        result.logger_provider.shutdown()
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    @patch("stt.core.telemetry.OTLPSpanExporter")
-    def test_setup_telemetry_adds_logging_handler_to_root(self, _span_exp, _log_exp):
-        """RED → GREEN: A LoggingHandler should be added to the root logger."""
-        from opentelemetry.sdk._logs import LoggingHandler
-
-        from stt.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        result = setup_telemetry(app, endpoint="http://localhost:4317", service_name="stt-test")
-
-        root = logging.getLogger()
-        otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
-        assert len(otel_handlers) >= 1
-
-        result.logger_provider.shutdown()
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    @patch("stt.core.telemetry.OTLPSpanExporter")
-    def test_setup_telemetry_instruments_logging(self, _span_exp, _log_exp):
-        """RED → GREEN: LoggingInstrumentor should be activated."""
-        from opentelemetry.instrumentation.logging import LoggingInstrumentor
-
-        from stt.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        result = setup_telemetry(app, endpoint="http://localhost:4317", service_name="stt-test")
-
-        assert LoggingInstrumentor().is_instrumented_by_opentelemetry
-
-        LoggingInstrumentor().uninstrument()
-        result.logger_provider.shutdown()
-
-    def test_setup_telemetry_skips_log_pipeline_when_disabled(self):
-        """RED → GREEN: When otel_enabled is effectively false, returns None."""
-        from stt.core.telemetry import setup_telemetry_logs
-
-        result = setup_telemetry_logs(enabled=False)
-        assert result is None
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    @patch("stt.core.telemetry.OTLPSpanExporter")
-    def test_log_records_include_resource_attributes(self, _span_exp, _log_exp):
-        """RED → GREEN: Log records should carry service.name resource."""
-        from opentelemetry.sdk.resources import SERVICE_NAME
-
-        from stt.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        result = setup_telemetry(app, endpoint="http://localhost:4317", service_name="stt-test")
-
-        resource = result.logger_provider.resource
-        assert resource.attributes.get(SERVICE_NAME) == "stt-test"
-
-        result.logger_provider.shutdown()
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    @patch("stt.core.telemetry.OTLPSpanExporter")
-    def test_logger_provider_shutdown_is_safe(self, _span_exp, _log_exp):
-        """RED → GREEN: Calling shutdown should not raise."""
-        from stt.core.telemetry import setup_telemetry
-
-        app = MagicMock()
-        result = setup_telemetry(app, endpoint="http://localhost:4317", service_name="stt-test")
-
-        result.logger_provider.force_flush()
-        result.logger_provider.shutdown()
-
-
-# ---------------------------------------------------------------------------
-# Unit 4: Worker subprocess log pipeline
-# ---------------------------------------------------------------------------
-
-
-class TestWorkerLogPipeline:
-    """Tests for worker-specific telemetry setup (log pipeline only, no FastAPI)."""
-
-    def setup_method(self):
-        _reset_logging()
-
-    def teardown_method(self):
-        _reset_logging()
-
-    def test_worker_setup_logging_produces_json(self):
-        """RED → GREEN: Worker's setup_logging should produce JSON on stdout."""
-        from stt.core.logging import setup_logging
-
-        setup_logging("info")
-        output = _capture_stdlib_log("worker.test", "worker log")
-        parsed = json.loads(output.strip())
-        assert parsed["event"] == "worker log"
-
-    @patch("stt.core.telemetry.OTLPLogExporter")
-    def test_worker_creates_log_pipeline_when_enabled(self, _log_exp):
-        """RED → GREEN: setup_telemetry_logs should create LoggerProvider."""
-        from opentelemetry.sdk._logs import LoggerProvider
-
-        from stt.core.telemetry import setup_telemetry_logs
-
-        result = setup_telemetry_logs(
-            enabled=True,
-            endpoint="http://localhost:4317",
-            service_name="stt-worker-test",
+        handle = configure_worker_observability(
+            build_observability_config(_settings(otel_service_name="stt"))
         )
+        try:
+            assert handle.tracer_provider.resource.attributes["service.name"] == "stt-worker"
+        finally:
+            handle.shutdown()
 
-        assert result is not None
-        assert isinstance(result, LoggerProvider)
+        # An operator-named worker (in-cluster: OTEL_SERVICE_NAME=hope-stt-v2-worker
+        # on the worker Deployment) must not be mangled into "…-worker-worker".
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "hope-stt-v2-worker")
+        handle2 = configure_worker_observability(build_observability_config(_settings()))
+        try:
+            assert (
+                handle2.tracer_provider.resource.attributes["service.name"] == "hope-stt-v2-worker"
+            )
+        finally:
+            handle2.shutdown()
 
-        result.shutdown()
+    def test_no_tracer_provider_when_no_endpoint_configured(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
 
-    def test_worker_skips_log_pipeline_when_disabled(self):
-        """RED → GREEN: setup_telemetry_logs(enabled=False) returns None."""
-        from stt.core.telemetry import setup_telemetry_logs
+        handle = configure_worker_observability(build_observability_config(_settings()))
+        try:
+            assert handle.tracer_provider is None
+        finally:
+            handle.shutdown()  # never raises, even with nothing to flush
 
-        result = setup_telemetry_logs(enabled=False)
-        assert result is None
+
+class TestWorkerModuleWiring:
+    """Structural pins on `stt.worker` itself (imported as-is, no reload —
+    reloading would re-run its dramatiq broker/actor registration side
+    effects, which is not what these tests are about).
+    """
+
+    def test_worker_module_installs_a_worker_observability_handle(self):
+        import stt.worker as worker_module
+
+        assert isinstance(worker_module._worker_observability, WorkerObservability)
+
+    def test_worker_shutdown_path_flushes_the_observability_handle(self):
+        import inspect
+
+        import stt.worker as worker_module
+
+        source = inspect.getsource(worker_module.main)
+        assert "_worker_observability.shutdown()" in source
+
+    def test_the_old_worker_service_name_helper_is_gone(self):
+        import stt.worker as worker_module
+
+        assert not hasattr(worker_module, "_worker_service_name")
 
 
 # ---------------------------------------------------------------------------
-# Edge cases
+# redact_id moved to hope_obs outright (single prior caller)
 # ---------------------------------------------------------------------------
 
 
-class TestEdgeCases:
-    """Edge case and error handling tests."""
+class TestRedactIdMovedToHopeObs:
+    def test_stt_core_logging_no_longer_defines_redact_id(self):
+        import stt.core.logging as stt_logging
 
-    def setup_method(self):
-        _reset_logging()
+        assert not hasattr(stt_logging, "redact_id")
 
-    def teardown_method(self):
-        _reset_logging()
+    def test_preseed_imports_redact_id_from_hope_obs(self):
+        import stt.diarization.preseed as preseed_module
 
-    def test_otel_context_processor_handles_exception_gracefully(self):
-        """RED → GREEN: _add_otel_context should not raise on internal errors."""
-        from stt.core.logging import _add_otel_context
+        assert preseed_module.redact_id.__module__ == "hope_obs.phi"
 
-        with patch("stt.core.logging.trace") as mock_trace:
-            mock_trace.get_current_span.side_effect = RuntimeError("boom")
-            event_dict: dict = {"event": "safe"}
-            result = _add_otel_context(None, "info", event_dict)
-            assert result["event"] == "safe"
-            assert "traceId" not in result
 
-    def test_setup_logging_idempotent(self):
-        """RED → GREEN: Calling setup_logging twice should not duplicate handlers."""
-        from stt.core.logging import setup_logging
+# ---------------------------------------------------------------------------
+# R-3 — behaviours ported from the deleted local implementation
+# ---------------------------------------------------------------------------
 
-        setup_logging("info")
+
+class TestLoggingChainPortedBehaviour:
+    """The parts of the pre-adoption suite that still apply: idempotent
+    setup, stdlib records joining the JSON chain, otel context injection,
+    and resilience to a bad exporter. Exercised through `create_app()`
+    rather than a local `setup_logging`/`_add_otel_context`, both deleted.
+    """
+
+    def test_configure_logging_is_idempotent_across_repeated_app_creation(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+        create_app(_settings())
         count_after_first = len(logging.getLogger().handlers)
 
-        setup_logging("info")
+        create_app(_settings())
         count_after_second = len(logging.getLogger().handlers)
 
-        assert count_after_second == count_after_first
+        assert count_after_second == count_after_first == 1
 
-    def test_otlp_exporter_failure_does_not_crash_logging(self):
-        """RED → GREEN: If OTLP collector is unreachable, logs still go to stdout."""
-        from stt.core.logging import setup_logging
+    def test_stdlib_logger_produces_json_after_app_creation(self, monkeypatch, capsys):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
 
-        setup_logging("info")
+        create_app(_settings())
 
-        output = _capture_stdlib_log("test.resilience", "still works")
-        parsed = json.loads(output.strip())
-        assert parsed["event"] == "still works"
+        capsys.readouterr()
+        logging.getLogger("httpx").warning("third-party record")
+        parsed = _json_lines(capsys.readouterr().out)
+
+        assert len(parsed) == 1
+        assert parsed[0]["event"] == "third-party record"
+        assert "timestamp" in parsed[0]
+        assert parsed[0]["level"] == "warning"
+
+    def test_an_unroutable_exporter_does_not_break_logging(self, monkeypatch, capsys):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+
+        create_app(_settings())
+
+        capsys.readouterr()
+        logging.getLogger("stt.test").info("still works")
+        parsed = _json_lines(capsys.readouterr().out)
+
+        assert any(line.get("event") == "still works" for line in parsed)

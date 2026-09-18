@@ -47,7 +47,7 @@ import pytest
 # See scripts/pytest-support/hope_worktree_guard.py.
 from hope_worktree_guard import assert_source_tree
 
-assert_source_tree(["stt", "hope_env", "hope_otel", "hope_runtime_models"], __file__)
+assert_source_tree(["stt", "hope_env", "hope_otel", "hope_obs", "hope_runtime_models"], __file__)
 
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
 TEST_DB_PORT = 5433
