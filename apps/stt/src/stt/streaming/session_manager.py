@@ -466,6 +466,10 @@ class SessionManager:
         # TASK-985 M-34 — front-end geometry a switch asked for, waiting for the
         # next utterance boundary. See ``_adopt_pending_front_end_geometry``.
         self._pending_front_end_geometry: dict[str, _EngineBinding] = {}
+        # TASK-985 N-1 — sessions that hold a capacity slot but are not yet in
+        # `self._sessions` (they are inside `create_session`, typically behind a
+        # cold model load). See ``_reconcile_capacity_guard``.
+        self._creating: set[str] = set()
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -1229,6 +1233,18 @@ class SessionManager:
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
             return None
+        # TASK-985 N-1 — the session holds a capacity slot from HERE, but only
+        # enters `self._sessions` at the end of the block below. In between
+        # there is a cold model load — measured at ~4.6 s locally and 16.4 s on
+        # the cluster — and the heartbeat's `_reconcile_capacity_guard` runs
+        # every 10 s and releases every guard id it cannot find in
+        # `self._sessions`. A session merely mid-creation was therefore
+        # indistinguishable from a genuinely leaked slot: the slot was freed
+        # while the session went on to live, so the cap was silently exceeded
+        # and the later `remove_session` release was a no-op. The deployment
+        # runbook already documents the resulting 503 as a known, reproduced
+        # symptom of a cold start.
+        self._creating.add(session_id)
         try:
             # TASK-861 — the agent path: register the spec bundle FIRST so every
             # loader below resolves from it, and let the spec govern the keys.
@@ -1512,6 +1528,11 @@ class SessionManager:
             )
             await self.remove_session(session_id)
             raise
+        finally:
+            # Discarded on BOTH paths: on success the session is now in
+            # `self._sessions` (so the reconciler finds it there), and on
+            # failure `remove_session` has already released the slot.
+            self._creating.discard(session_id)
 
     def get_session(self, session_id: str) -> StreamSession | None:
         """Retrieve an active session by ID, or ``None``."""
@@ -3683,7 +3704,23 @@ class SessionManager:
         async def _on_batch(last_id: str) -> None:
             session.metadata.last_stream_id = last_id
             try:
-                await self._redis.hset(session_meta_key(session_id), "last_stream_id", last_id)
+                # TASK-985 M-66 — `last_seq` is persisted on the SAME cadence as
+                # `last_stream_id`, which is the cadence of the XACK. Without
+                # this the seq guard in `record_frame` is cosmetic on the path
+                # that matters: after a crash `last_seq` is whatever the
+                # PERIODIC persist left behind, which can be well behind the
+                # frames actually counted, and the redelivered entries between
+                # the two are re-counted regardless of the guard. This is what
+                # bounds the residual double-count to a single `_on_batch`
+                # window (COUNT 100 — sub-second of audio), and it is the half
+                # most likely to be dropped as tidying.
+                await self._redis.hset(
+                    session_meta_key(session_id),
+                    mapping={
+                        "last_stream_id": last_id,
+                        "last_seq": str(session.last_seq),
+                    },
+                )
             except Exception as exc:
                 logger.debug(
                     "Failed to persist last_stream_id (non-fatal)",
@@ -3758,7 +3795,7 @@ class SessionManager:
 
                 processed_pcm = preprocessor.drain_processed_samples()
                 if processed_pcm:
-                    session.processed_audio_buffer.extend(processed_pcm)
+                    session.append_processed_audio(processed_pcm)
                     if session.processed_sample_rate is None:
                         session.processed_sample_rate = preprocessor.target_sample_rate
 
@@ -4147,7 +4184,7 @@ class SessionManager:
 
             remaining_pcm = preprocessor.drain_processed_samples()
             if remaining_pcm:
-                session.processed_audio_buffer.extend(remaining_pcm)
+                session.append_processed_audio(remaining_pcm)
                 if session.processed_sample_rate is None:
                     session.processed_sample_rate = preprocessor.target_sample_rate
 
@@ -5714,10 +5751,21 @@ class SessionManager:
             pass
 
     async def _reconcile_capacity_guard(self) -> None:
-        """Self-heal leaked capacity slots that are not present in session maps."""
+        """Self-heal leaked capacity slots that are not present in session maps.
+
+        TASK-985 N-1 — a session in CREATION holds a slot and is deliberately
+        not yet in ``self._sessions``; it is not a leak, and releasing it
+        silently exceeds the cap. ``_creating`` is registered before the
+        capacity admission completes, so the reconciler never sees a gap —
+        preferred over a time-based grace window, which would have to be longer
+        than the slowest cold load to be correct and would mask a real leak for
+        that long.
+        """
         guard_ids = set(self._capacity_guard.active_session_ids)
         tracked_ids = set(self._sessions.keys())
-        leaked_ids = guard_ids - tracked_ids
+        # getattr guard, same posture as `_draining`: pre-existing fixtures
+        # build managers that predate this set.
+        leaked_ids = guard_ids - tracked_ids - set(getattr(self, "_creating", ()))
         if not leaked_ids:
             return
 

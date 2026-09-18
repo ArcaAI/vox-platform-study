@@ -125,7 +125,21 @@ class StreamSession:
         self.audio_buffer: bytearray = bytearray()
 
         # Processed audio buffer (post-preprocess: normalize + resample + optional denoise) for MinIO upload
+        #
+        # TASK-985 M-65 — capped on the SAME bound as `audio_buffer`, which it
+        # had never been: `audio_buffer` is capped and `ring_buffer` is capped
+        # at 30 s, but `_on_frame` extended this one unconditionally. At 16 kHz
+        # mono s16 the pair runs ~230 MB per session-hour, and the capacity
+        # guard admits 20 streams.
+        #
+        # A cap, NOT "drop the prefix already uploaded": `complete.wav` is
+        # encoded from the WHOLE buffer at finalize, and that WAV is a clinical
+        # artifact and PHI. Bounding memory without changing how the artifact is
+        # assembled is its own ticket (multipart completion over the snapshot
+        # chunks, with byte-identity against the current path as the acceptance
+        # test).
         self.processed_audio_buffer: bytearray = bytearray()
+        self._processed_buffer_warned: bool = False
         self.processed_sample_rate: int | None = None
         self._denoise_active: bool = False  # Deprecated: use len(processed_audio_buffer) > 0
         self._vad_active: bool = False
@@ -139,6 +153,15 @@ class StreamSession:
         # itself is the in-band terminal frame, which is the gateway's half.
         self.frames_dropped_after_finalize: int = 0
         self._dropped_after_finalize_warned: bool = False
+
+        # TASK-985 M-66 — frames refused by `record_frame`'s seq guard (a
+        # redelivery of audio already counted) and frames the platform never
+        # saw (a gap in the gateway's monotonic seq). Counted rather than
+        # silently absorbed, because the first is money and the second is
+        # coverage, and both used to be invisible.
+        self.frames_redelivered: int = 0
+        self.frames_missing: int = 0
+        self._redelivery_warned: bool = False
 
         # Ring buffer overflow throttle state
         self._overflow_window_start: float = 0.0
@@ -220,7 +243,45 @@ class StreamSession:
         Updates sequence tracking, sample counts, duration, and
         last-activity timestamp. Does **not** trigger Redis persistence —
         call :meth:`persist_if_needed` separately.
+
+        TASK-985 M-66 — a frame whose ``seq`` is not greater than the highest
+        already counted is REFUSED, and that is a billing rule, not a
+        defensive one.
+
+        ``total_duration_seconds`` is the invoice: it becomes the
+        ``AUDIO_SECOND`` component of the ``transcribe.stream`` ledger row. The
+        ingestion consumer XACKs entries AFTER dispatching them, so a worker
+        that dies in between leaves them in the PEL, and recovery's first-pass
+        ``XAUTOCLAIM(min_idle 0, force=True)`` redelivers them — which added
+        their duration a second time. Billing on delivery count is billing on a
+        transport artifact.
+
+        Distinctness is decidable here with no new state and no coordination:
+        the gateway assigns a monotonic ``seq`` once per frame and it rides on
+        the stream entry, so ``seq <= last_seq`` means audio the platform
+        already accepted and already billed.
         """
+        if seq <= self._metadata.last_seq:
+            # No samples, no duration, no buffer append — the bytes are already
+            # in `audio_buffer` from the first delivery.
+            self.frames_redelivered += 1
+            if not self._redelivery_warned:
+                self._redelivery_warned = True
+                logger.warning(
+                    "stt.stream.audio_frame_redelivered",
+                    session_id=self.session_id,
+                    seq=seq,
+                    last_seq=self._metadata.last_seq,
+                )
+            return
+
+        # A GAP means entries the platform never saw (trimmed, or dropped
+        # before XADD). Recorded so coverage is DERIVABLE at teardown rather
+        # than inferred from a duration that looks plausible either way.
+        gap = seq - self._metadata.last_seq - 1
+        if gap > 0 and self._metadata.last_seq >= 0:
+            self.frames_missing += gap
+
         self._metadata.last_seq = seq
         num_samples = len(data) // 2  # pcm_s16le: 2 bytes per sample
         self._metadata.total_samples_received += num_samples
@@ -272,6 +333,28 @@ class StreamSession:
             else:
                 self._overflow_acc_bytes += overflow
                 self._overflow_acc_events += 1
+
+    def append_processed_audio(self, pcm: bytes) -> None:
+        """Append post-preprocess PCM, enforcing the same cap as ``audio_buffer``.
+
+        TASK-985 M-65 — the ONE way to grow ``processed_audio_buffer``, so the
+        cap cannot be bypassed by a new call site the way the old direct
+        ``.extend()`` calls bypassed it by existing. Warns exactly once, like
+        its raw-audio sibling.
+        """
+        if not pcm:
+            return
+        if len(self.processed_audio_buffer) + len(pcm) <= self._max_audio_buffer_bytes:
+            self.processed_audio_buffer.extend(pcm)
+            return
+        if not self._processed_buffer_warned:
+            self._processed_buffer_warned = True
+            logger.warning(
+                "Processed audio buffer cap reached — new processed frames will be dropped",
+                session_id=self.session_id,
+                buffer_bytes=len(self.processed_audio_buffer),
+                cap_bytes=self._max_audio_buffer_bytes,
+            )
 
     def _flush_overflow_summary_if_pending(self) -> None:
         """Emit a final overflow summary if throttled stats are pending."""
