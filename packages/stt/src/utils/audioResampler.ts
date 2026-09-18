@@ -520,11 +520,20 @@ export function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
 // the ASR receives carries a periodic discontinuity at every frame boundary —
 // ~12 per second of speech.
 //
-// `createStreamingResampler` closes that by carrying the trailing input samples
-// of each call into the next, so the kernel always sees real signal on both
-// sides of a boundary. It is additive: `prepareFloat32ForWhisper` /
-// `resampleSinc` remain the stateless entry points for callers that genuinely
-// resample one complete buffer (batch/offline paths).
+// `createStreamingResampler` closes that by keeping a guard region of input on
+// BOTH sides of the emitted span: the previous frame's tail as left context,
+// and a short hold-back at the right so the last output of a frame still has
+// real signal under the forward half of its kernel. Carrying only the LEFT
+// history is not enough — it moves the seam from both edges of a frame to one,
+// which is quieter and just as wrong.
+//
+// The result is exact, not approximate: a signal pushed frame by frame produces
+// the SAME samples as one whole-buffer `resampleSinc` of the same signal, which
+// is what `audioResampler.streaming.task985.test.ts` asserts.
+//
+// It is additive: `prepareFloat32ForWhisper` / `resampleSinc` remain the
+// stateless entry points for callers that genuinely resample one complete
+// buffer (batch/offline paths).
 // ---------------------------------------------------------------------------
 
 /**
@@ -543,16 +552,24 @@ export interface StreamingResampler {
   /**
    * Resample one captured frame, continuing from the previous call.
    *
-   * Returns only the NEW output samples — the portion of the convolution that
-   * covers the retained history is dropped, so concatenating every returned
-   * frame reproduces the stream exactly once, with no gap and no repeat.
+   * Returns only the NEW output samples, so concatenating every returned frame
+   * reproduces the stream exactly once, with no gap and no repeat.
    *
-   * Up to one output period of input may be held back to keep the conversion
-   * rate-exact (no accumulating drift); {@link StreamingResampler.flush}
-   * releases it at end of stream.
+   * A short guard region of input is held back each call — one kernel reach,
+   * rounded up to a whole input period — because the last output of a frame
+   * needs signal that has not arrived yet. That is real added latency, and it is
+   * small: **~2 ms at 48 kHz, ~10 ms at 44.1 kHz**, against capture frames of
+   * 80 ms and a stop-drain quiet window of 250 ms.
+   * {@link StreamingResampler.flush} releases it at end of stream.
    */
   push(frame: Float32Array): Float32Array;
-  /** Release the sub-period remainder held by {@link StreamingResampler.push}, and reset. */
+  /**
+   * Release the held-back guard region, and reset.
+   *
+   * These are the final outputs of the stream, edge-truncated exactly as a
+   * one-shot conversion of the whole signal truncates its own last samples —
+   * there is genuinely no audio to the right of them.
+   */
   flush(): Float32Array;
   /** Forget all history — the next `push` is treated as the start of a stream. */
   reset(): void;
@@ -588,8 +605,8 @@ export function createStreamingResampler(fromRate: number, toRate: number): Stre
 
   // `resampleSinc` itself falls back to direct kernel evaluation above this many
   // branches, and that path has no fixed polyphase geometry to derive an exact
-  // history length from. Degrade to today's stateless behaviour rather than
-  // guess a history that would corrupt the alignment.
+  // window from. Degrade to the stateless behaviour rather than guess a
+  // geometry that would corrupt the alignment.
   if (!ratesArePolyphase || branches > MAX_POLYPHASE_BRANCHES) {
     return {
       fromRate,
@@ -600,39 +617,70 @@ export function createStreamingResampler(fromRate: number, toRate: number): Stre
     };
   }
 
-  // How far back the widest polyphase branch reaches, rounded UP to a whole
-  // number of input periods so `historySamples * toRate / fromRate` is an exact
-  // integer — that exactness is what makes the skip below lossless.
+  // How far the kernel reaches from the sample it is centred on, in INPUT
+  // samples, rounded UP to a whole number of input periods.
   //
-  // Derived from the bank geometry rather than hardcoded: the prototype kernel
-  // is `SINC_TAPS_PER_BRANCH * max(branches, step) + 1` taps long and splits
-  // into `branches` branches, so the look-back is ~32x the decimation ratio.
+  // The same number serves both directions, and it must: the kernel is
+  // symmetric. `resampleWithBank` writes it causally — output `m` reads
+  // `input[anchor - j]` for `j < branchLength`, where
+  // `anchor = floor((m*step + center)/branches)` sits half a kernel AHEAD of the
+  // output's own time position — so the reach is `branchLength - 1` behind the
+  // anchor and `center/branches` ahead of the output position, each bounded by
+  // `protoLength / branches`.
+  //
+  // Rounding to a whole input period is what keeps every index below exact:
+  // with `guardSamples` a multiple of `step`, a window that starts on the period
+  // grid produces outputs whose polyphase PHASE is identical to the same
+  // absolute outputs of a whole-signal conversion (`lo * branches ≡ 0 mod
+  // branches`), so a windowed run reproduces the un-windowed one sample for
+  // sample rather than approximately.
+  //
   // At 48k -> 16k that is 99 samples (~2 ms); at 44.1k -> 16k, 441 (~10 ms).
   const protoLength = SINC_TAPS_PER_BRANCH * Math.max(branches, step) + 1;
-  const historySamples = step * Math.ceil(protoLength / (branches * step));
+  const guardSamples = step * Math.ceil(protoLength / (branches * step));
 
-  let history = EMPTY_FRAME;
-  /** Input samples received but not yet consumed; always fewer than `step`. */
-  let pending = EMPTY_FRAME;
+  /**
+   * Input received so far and not yet dropped. Its first `emitted` samples have
+   * already produced output and are retained only as left context.
+   */
+  let buffer = EMPTY_FRAME;
+  /** Input samples whose outputs have been emitted. Always a multiple of `step`. */
+  let emitted = 0;
 
   const resetState = (): void => {
-    history = EMPTY_FRAME;
-    pending = EMPTY_FRAME;
+    buffer = EMPTY_FRAME;
+    emitted = 0;
   };
 
-  /** Resample `history ++ chunk` and return only the part that covers `chunk`. */
-  const convert = (chunk: Float32Array): Float32Array => {
-    const extended = new Float32Array(history.length + chunk.length);
-    extended.set(history);
-    extended.set(chunk, history.length);
+  const floorToStep = (value: number): number => Math.floor(value / step) * step;
 
-    const resampled = resampleSinc(extended, fromRate, toRate);
-    // Exact because `history.length` is always a whole multiple of `step`.
-    const skip = (history.length / step) * branches;
+  /**
+   * Convert from `lo` to the end of the buffer and return the outputs covering
+   * input `[emitted, until)`.
+   *
+   * The window deliberately extends PAST `until`: those extra samples are not
+   * emitted, they are what gives the last emitted output its right-hand kernel
+   * support. Without them the tail of every frame is convolved against silence
+   * that is not in the signal — which is the same defect as the stateless path,
+   * just moved from both edges of a frame to one.
+   */
+  const emitThrough = (until: number): Float32Array => {
+    const lo = Math.max(0, emitted - guardSamples);
+    const converted = resampleSinc(buffer.subarray(lo), fromRate, toRate);
 
-    history = extended.length > historySamples ? extended.slice(extended.length - historySamples) : extended;
+    // Exact: `emitted`, `until` and `lo` are all multiples of `step`.
+    const startOut = ((emitted - lo) / step) * branches;
+    const endOut = Math.min(((until - lo) / step) * branches, converted.length);
+    emitted = until;
 
-    return resampled.subarray(skip);
+    // Drop input that is now older than the left context anyone will need.
+    const drop = Math.max(0, emitted - guardSamples);
+    if (drop > 0) {
+      buffer = buffer.slice(drop);
+      emitted -= drop;
+    }
+
+    return endOut > startOut ? converted.subarray(startOut, endOut) : EMPTY_FRAME;
   };
 
   return {
@@ -642,47 +690,34 @@ export function createStreamingResampler(fromRate: number, toRate: number): Stre
     push(frame: Float32Array): Float32Array {
       if (frame.length === 0) return EMPTY_FRAME;
 
-      let buffered: Float32Array;
-      if (pending.length === 0) {
-        buffered = frame;
-      } else {
-        buffered = new Float32Array(pending.length + frame.length);
-        buffered.set(pending);
-        buffered.set(frame, pending.length);
-      }
+      const grown = new Float32Array(buffer.length + frame.length);
+      grown.set(buffer);
+      grown.set(frame, buffer.length);
+      buffer = grown;
 
-      // Consume whole input periods only. The remainder (< step samples, i.e.
-      // < 1/16000 s of output) waits for the next frame, which is what keeps the
-      // conversion rate-EXACT: rounding a partial period every frame would shed
-      // a fraction of a sample per frame and drift the timeline over a
-      // consultation-length session.
-      const consumable = Math.floor(buffered.length / step) * step;
-      if (consumable === 0) {
-        pending = buffered;
-        return EMPTY_FRAME;
-      }
+      // Emit only what is fully supported on BOTH sides: hold back the guard
+      // region at the right, and stay on the input-period grid so no fraction
+      // of a sample is shed per frame (which would drift the timeline over a
+      // consultation-length session).
+      const until = floorToStep(buffer.length - guardSamples);
+      if (until <= emitted) return EMPTY_FRAME;
 
-      pending = consumable < buffered.length ? buffered.slice(consumable) : EMPTY_FRAME;
-      return convert(consumable === buffered.length ? buffered : buffered.subarray(0, consumable));
+      return emitThrough(until);
     },
 
     flush(): Float32Array {
-      const remainder = pending.length;
-      if (remainder === 0) {
+      if (buffer.length <= emitted) {
         resetState();
         return EMPTY_FRAME;
       }
-      // Pad the sub-period remainder out to one whole period so the polyphase
-      // geometry still holds, then keep only the outputs that the REAL samples
-      // cover. At 48 kHz this is at most 2 input samples; it exists so the very
-      // last fraction of a period is not silently dropped at end of stream.
-      const padded = new Float32Array(step);
-      padded.set(pending);
-      pending = EMPTY_FRAME;
-      const converted = convert(padded);
-      const keep = Math.round((remainder * branches) / step);
+      // End of stream: there is no more audio to the right, so the guard is
+      // released and the final outputs are edge-truncated — exactly as a
+      // one-shot conversion of the whole signal truncates its own last samples.
+      const lo = Math.max(0, emitted - guardSamples);
+      const converted = resampleSinc(buffer.subarray(lo), fromRate, toRate);
+      const startOut = ((emitted - lo) / step) * branches;
       resetState();
-      return keep >= converted.length ? converted : converted.subarray(0, keep);
+      return startOut < converted.length ? converted.subarray(startOut) : EMPTY_FRAME;
     },
 
     reset: resetState,
