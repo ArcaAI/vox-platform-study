@@ -42,7 +42,8 @@ apps/harness/
 |   |-- core/
 |   |   |-- config.py              # pydantic-settings: Settings (HARNESS_*) + Temporal/Safety/Phi/
 |   |   |                          #   Retrieval/ClaimCheck/Mcp sub-configs
-|   |   |-- logging.py             # structlog JSON logging (+ OTel trace context)
+|   |   |-- logging.py             # DEPRECATED shim: `get_logger` re-exported from `hope_obs`
+|   |   |-- observability.py       # maps Settings -> hope_obs.ObservabilityConfig (TASK-987)
 |   |   `-- llm_concurrency.py     # shared per-endpoint LLM concurrency governor + rate-limit retry
 |   |-- api/endpoints/
 |   |   |-- health.py              # GET /health, /health/live, /health/ready

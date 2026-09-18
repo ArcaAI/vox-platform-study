@@ -1,84 +1,26 @@
-"""Structured logging configuration using structlog.
+"""DEPRECATED — thin re-export shim over ``hope_obs`` (TASK-987).
 
-Mirrors the text-service logging setup so harness logs are JSON-structured, carry
-OpenTelemetry trace context when tracing is active, and integrate cleanly with
-uvicorn.
+Harness's hand-rolled structlog chain (JSON output, ``_add_otel_context``,
+uvicorn taming) is now ``hope_obs.logging`` — one implementation shared by all
+six Python services instead of six hand-rolled copies (TASK-987 R-3). This
+module is kept for ONE release only because ``from harness.core.logging
+import get_logger`` is the import path used across the rest of this service
+(``api/endpoints/*``, ``temporal/*``, ``tools/*``, ``sensors/*``,
+``guides/*``, ``services/*``); rewriting every call site in the same change
+that adopts ``hope_obs`` would balloon the diff for no behavioural gain.
+
+New code should import ``hope_obs`` directly:
+
+    from hope_obs import get_logger
+
+``setup_logging`` is gone — logging is now configured once, in
+``harness.main.create_app`` / ``harness.temporal.worker.run_worker``, via
+``hope_obs.configure_observability`` / ``configure_worker_observability``.
+Register this shim's removal in ``docs/operations/deprecation-register.md``.
 """
 
 from __future__ import annotations
 
-import logging
-import sys
-from collections.abc import MutableMapping
-from typing import Any, cast
+from hope_obs import get_logger
 
-import structlog
-
-
-def _add_otel_context(
-    logger: object, method_name: str, event_dict: MutableMapping[str, Any]
-) -> MutableMapping[str, Any]:
-    """Inject OpenTelemetry trace context into every log entry.
-
-    When OTel is not active the import succeeds but ``get_current_span()``
-    returns ``INVALID_SPAN`` whose trace_id is 0 — we skip injection in that
-    case so logs stay clean when tracing is disabled.
-    """
-    try:
-        from opentelemetry import trace
-
-        span = trace.get_current_span()
-        ctx = span.get_span_context()
-        if ctx and ctx.trace_id != 0:
-            event_dict["traceId"] = format(ctx.trace_id, "032x")
-            event_dict["spanId"] = format(ctx.span_id, "016x")
-    except Exception:
-        pass
-    return event_dict
-
-
-def _configure_uvicorn_logging() -> None:
-    """Tame uvicorn loggers to prevent duplicate and unstructured output."""
-    logging.getLogger("uvicorn.access").disabled = True
-    uv_error = logging.getLogger("uvicorn.error")
-    uv_error.handlers = []
-    uv_error.propagate = True
-
-
-def setup_logging(log_level: str = "info") -> None:
-    """Configure structlog with JSON output for production."""
-
-    level = getattr(logging, log_level.upper(), logging.INFO)
-
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            _add_otel_context,
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.stdlib.BoundLogger,
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
-
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=level,
-    )
-
-    _configure_uvicorn_logging()
-
-
-def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Get a bound logger instance."""
-    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))
+__all__ = ["get_logger"]

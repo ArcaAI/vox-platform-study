@@ -248,7 +248,13 @@ async def ping_activity(payload: PingInput) -> PingResult:
     activities like this one — never in the workflow body.
     """
     info = activity.info()
-    activity.logger.info("harness.ping_activity.invoked", extra={"message": payload.message})
+    # NOT `extra={"message": ...}` — "message" is a reserved `LogRecord` attribute
+    # (stdlib `Logger.makeRecord` raises `KeyError` the moment this logger is
+    # actually enabled for INFO, which TASK-987 now makes the default: logging is
+    # configured eagerly in `create_app()`/`configure_worker_observability`,
+    # where before it was only wired inside the async `lifespan`/worker entry and
+    # so never actually ran during the unit suite).
+    activity.logger.info("harness.ping_activity.invoked", extra={"ping_message": payload.message})
     return PingResult(message=f"pong: {payload.message}", task_queue=info.task_queue)
 
 

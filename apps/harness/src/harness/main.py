@@ -17,19 +17,26 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
+from hope_obs import configure_observability, shutdown_observability
 
 from harness.core.config import Settings, get_settings
-from harness.core.logging import get_logger, setup_logging
+from harness.core.logging import get_logger
+from harness.core.observability import build_observability_config, warn_if_otel_enabled_flag_set
 
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage shared resources: logging + a best-effort Temporal client."""
+    """Manage shared resources: a best-effort Temporal client.
+
+    Logging and tracing are configured earlier, synchronously in
+    ``create_app`` (via ``hope_obs.configure_observability``) — so every log
+    line this function emits, including ``harness.starting`` below, is
+    already structured JSON.
+    """
     settings: Settings = app.state.settings
 
-    setup_logging(settings.log_level)
     logger.info(
         "harness.starting",
         host=settings.host,
@@ -84,9 +91,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.service_release_http_client.aclose()
     app.state.temporal_client = None
 
-    from harness.core.observability import shutdown_opentelemetry
-
-    shutdown_opentelemetry(app)
+    shutdown_observability(app)
 
     logger.info("harness.shutdown_complete")
 
@@ -110,7 +115,13 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.temporal_client = None
-    app.state.tracer_provider = None
+
+    # Logging + request context + access log + tracing, in that order (R-2/R-3/
+    # R-4). Before the routers are wired and before CORS, so CORS ends up the
+    # OUTERMOST middleware (added last) and every request — including ones
+    # that fail auth or CORS itself — is still covered by the access log.
+    configure_observability(app, build_observability_config(settings))
+    warn_if_otel_enabled_flag_set()
 
     if settings.cors_enabled and settings.cors_origins:
         app.add_middleware(
@@ -134,11 +145,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(knowledge_router, prefix="/api/v1/internal")
     app.include_router(eval_router, prefix="/api/v1/internal")
     app.include_router(admin_router, prefix="/api/v1/internal/harness")
-
-    if settings.otel_tracing_enabled:
-        from harness.core.observability import setup_opentelemetry
-
-        setup_opentelemetry(app, settings)
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator

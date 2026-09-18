@@ -1,170 +1,100 @@
-"""OpenTelemetry tracing setup for harness.
+"""Harness's ``ObservabilityConfig`` mapping onto ``hope_obs`` (TASK-987).
 
-Before this module, harness had NO ``TracerProvider`` anywhere: the only
-``opentelemetry`` reference in the service was a comment in ``core/config.py``
-explaining that none was ever constructed. ``core/logging.py``'s
-``_add_otel_context`` structlog processor was consequently always reading
-``INVALID_SPAN`` (trace_id 0) and never stamping a trace/span id onto a log
-line.
+The tracing/logging IMPLEMENTATION — the ``TracerProvider``, the PHI
+sanitization hook, the structlog/stdlib bridge — lives entirely in
+``hope_obs`` now (R-1..R-8). This module's only remaining job is translating
+harness's own ``Settings`` into an ``hope_obs.ObservabilityConfig``:
 
-Two processes need a provider:
+* ``ObservabilityConfig.from_env`` reads bare ``os.getenv`` values. Harness's
+  ``Settings`` resolve through ``hope_settings_sources`` (init > host env >
+  Vault Agent ``secrets_dir`` > ``.env.<NODE_ENV>`` > default,
+  ``core/config.py``), so a value that only ever reached the process through
+  ``.env.dev`` would be INVISIBLE to a bare ``os.getenv`` call. Every
+  OTel-shaped field is therefore taken from ``settings`` instead;
+  ``from_env`` supplies only what ``Settings`` does not carry at all
+  (an ``OTEL_SERVICE_NAME`` override and ``OTEL_TRACES_SAMPLER_ARG``).
+* ``HARNESS_OTEL_ENABLED`` is deprecated — R-2's contract has no
+  ``*_OTEL_ENABLED`` boolean; ``HARNESS_OTEL_EXPORTER_ENDPOINT`` presence
+  alone is the enable signal. It is honoured for one more release as a
+  fail-closed VETO: a manifest that sets it to ``false`` to keep tracing off
+  despite an endpoint on a shared config map (``hope-harness-config``, which
+  ``hope-harness-worker`` also consumes) must keep working until the manifest
+  is updated (``docs/operations/deprecation-register.md``). Setting it to
+  ``true`` is a no-op under R-2 (the endpoint alone already enables tracing),
+  and either spelling being present at all logs one deprecation line.
 
-* the FastAPI app (``harness/main.py``) — traces inbound HTTP requests.
-* the Temporal worker (``temporal/worker.py``) — a SEPARATE process; without
-  its own provider, spans created by ``temporalio.contrib.opentelemetry
-  .TracingInterceptor`` (wired in ``temporal/client.py``) would resolve
-  against the SDK's default no-op provider and never export.
-
-Both call :func:`build_tracer_provider`. Default OFF: tracing
-requires ``HARNESS_OTEL_ENABLED=true`` AND a configured
-``HARNESS_OTEL_EXPORTER_ENDPOINT`` (``Settings.otel_tracing_enabled``), and a
-collector that is unreachable or an exporter that fails to construct degrades
-to no-tracing rather than blocking startup.
+Left DELIBERATELY unchanged by this module, per the TASK-987 lane G brief:
+``temporal/client.py``'s ``_tracing_interceptors`` still gates the Temporal
+``TracingInterceptor`` on ``Settings.otel_tracing_enabled`` — the pre-R-2 AND
+of ``otel_enabled`` and ``otel_exporter_endpoint``. In the live `dev` overlay
+both conditions already agree (TASK-987 lane D1 set both), so this is a
+transitional divergence between the FastAPI/worker tracer (R-2 gated) and the
+Temporal interceptor (old AND-gated), not a regression. Migrating
+``client.py`` to the same R-2 gate is out of this lane's scope — determinism
+and replay compatibility live in Temporal-adjacent code this ticket does not
+touch, and the brief was explicit: "keep `TracingInterceptor` wiring in
+`temporal/client.py` exactly as it is".
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import os
+from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-from harness.core.logging import get_logger
+from hope_obs import ObservabilityConfig, get_logger
 
 if TYPE_CHECKING:
-    from fastapi import FastAPI
-
     from harness.core.config import Settings
-
-logger = get_logger(__name__)
 
 _SERVICE_VERSION = "0.1.0"
 
-# Health/docs/metrics endpoints are noise in a trace backend — excluded the
-# same way Text excludes them (apps/text/src/text/core/observability.py).
-_EXCLUDED_URLS = (
-    "/api/v1/health,"
-    "/api/v1/health/live,"
-    "/api/v1/health/ready,"
-    "/api/v1/docs,"
-    "/api/v1/redoc,"
-    "/api/v1/openapi.json,"
-    "/metrics"
-)
+#: The deprecated flag this module still honours, for one release, as a veto.
+OTEL_ENABLED_ENV_VAR = "HARNESS_OTEL_ENABLED"
 
 
-def _phi_sanitization_hook(span: Any, scope: dict[str, Any]) -> None:
-    """Redact request/response body attributes on the FastAPI server span.
+def build_observability_config(settings: Settings) -> ObservabilityConfig:
+    """Resolve harness's ``ObservabilityConfig`` from ``Settings``.
 
-    A clinical-documentation service must never let a raw transcript/note
-    body reach the trace backend. Mirrors
-    ``apps/text/src/text/core/observability.py``'s hook.
+    Endpoint presence (``settings.otel_exporter_endpoint``) is the enable
+    signal (R-2). The deprecated ``HARNESS_OTEL_ENABLED=false`` is honoured
+    as a veto — see the module docstring — so a manifest that still sets it
+    keeps its current, deliberately-off behaviour until it migrates.
     """
-    if not span.is_recording():
-        return
-    for attr in ("http.request.body.content", "http.response.body.content"):
-        if span.attributes and attr in span.attributes:
-            span.set_attribute(attr, "[REDACTED]")
-
-
-def build_tracer_provider(settings: Settings) -> TracerProvider | None:
-    """Build the process ``TracerProvider`` and install it as the global provider.
-
-    Returns ``None`` — never raises — when tracing is off
-    (``Settings.otel_tracing_enabled`` is False, the default) or when the
-    OTLP exporter cannot be constructed, so a bad/unreachable collector
-    degrades to no-tracing instead of blocking startup.
-
-    Shared by the FastAPI app (``main.py``) and the Temporal worker
-    (``temporal/worker.py``): those are separate processes, so each must call
-    this itself to get its own provider installed as the process-global one
-    that ``opentelemetry.trace.get_tracer`` (used internally by
-    ``temporalio.contrib.opentelemetry.TracingInterceptor``, wired in
-    ``temporal/client.py``) resolves against.
-    """
-    if not settings.otel_tracing_enabled:
-        logger.info("harness.otel.tracing_disabled")
-        return None
-
-    try:
-        resource = Resource.create(
-            {
-                "service.name": settings.otel_service_name,
-                "service.version": _SERVICE_VERSION,
-                "service.namespace": settings.otel_service_namespace,
-                "deployment.environment": settings.otel_deployment_environment,
-                "telemetry.sdk.language": "python",
-            }
-        )
-        tracer_provider = TracerProvider(resource=resource)
-        span_exporter = OTLPSpanExporter(
-            endpoint=settings.otel_exporter_endpoint,
-            insecure=settings.otel_insecure,
-        )
-        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(tracer_provider)
-    except Exception as exc:  # noqa: BLE001 - an unreachable collector must not block startup
-        logger.warning(
-            "harness.otel.tracer_provider_setup_failed",
-            endpoint=settings.otel_exporter_endpoint,
-            error=str(exc),
-        )
-        return None
-
-    logger.info(
-        "harness.otel.tracer_provider_ready",
-        endpoint=settings.otel_exporter_endpoint,
+    config = replace(
+        ObservabilityConfig.from_env("harness", service_version=_SERVICE_VERSION),
         service_name=settings.otel_service_name,
+        service_namespace=settings.otel_service_namespace,
+        deployment_environment=settings.otel_deployment_environment,
+        otlp_endpoint=settings.otel_exporter_endpoint or None,
+        log_level=settings.log_level,
     )
-    return tracer_provider
+
+    if otel_enabled_flag_is_set() and not settings.otel_enabled and config.otlp_endpoint:
+        config = replace(config, otlp_endpoint=None)
+
+    return config
 
 
-def setup_opentelemetry(app: FastAPI, settings: Settings) -> None:
-    """Build the tracer provider and instrument the FastAPI app.
+def otel_enabled_flag_is_set() -> bool:
+    """Whether the deprecated ``HARNESS_OTEL_ENABLED`` var is set at all (any value)."""
+    return os.getenv(OTEL_ENABLED_ENV_VAR) is not None
 
-    Stores the provider (or ``None``) on ``app.state.tracer_provider`` for
-    :func:`shutdown_opentelemetry` to flush on teardown. A no-op — including
-    leaving ``app.state.tracer_provider`` as ``None`` — when tracing is off or
-    provider construction fails.
+
+def warn_if_otel_enabled_flag_set() -> None:
+    """Emit one deprecation line when the retired flag is still set. Never raises.
+
+    Call AFTER ``configure_observability``/``configure_worker_observability``
+    so the line itself is structured JSON through the chain it just installed,
+    rather than an unconfigured stdlib default.
     """
-    tracer_provider = build_tracer_provider(settings)
-    app.state.tracer_provider = tracer_provider
-    if tracer_provider is None:
+    if not otel_enabled_flag_is_set():
         return
-
-    try:
-        FastAPIInstrumentor.instrument_app(
-            app,
-            excluded_urls=_EXCLUDED_URLS,
-            server_request_hook=_phi_sanitization_hook,
-        )
-    except Exception as exc:  # noqa: BLE001 - instrumentation must not block startup
-        logger.warning("harness.otel.fastapi_instrumentation_failed", error=str(exc))
-
-
-def shutdown_opentelemetry(app: FastAPI) -> None:
-    """Flush and shut down the tracer provider, then uninstrument FastAPI.
-
-    Safe to call unconditionally from the lifespan teardown: no-ops when
-    ``app.state.tracer_provider`` is ``None`` (tracing was off or setup failed).
-    """
-    tracer_provider = getattr(app.state, "tracer_provider", None)
-    if tracer_provider is None:
-        return
-
-    try:
-        tracer_provider.force_flush(timeout_millis=5000)
-        tracer_provider.shutdown()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("harness.otel.tracer_provider_shutdown_failed", error=str(exc))
-
-    try:
-        FastAPIInstrumentor().uninstrument_app(app)
-    except Exception:  # noqa: BLE001 - best-effort cleanup
-        pass
-
-    logger.info("harness.otel.shutdown_complete")
+    get_logger(__name__).warning(
+        "harness.observability.otel_enabled_deprecated",
+        variable=OTEL_ENABLED_ENV_VAR,
+        detail=(
+            "HARNESS_OTEL_EXPORTER_ENDPOINT presence alone now enables tracing "
+            "(TASK-987 R-2); HARNESS_OTEL_ENABLED will be removed in a future release."
+        ),
+    )
