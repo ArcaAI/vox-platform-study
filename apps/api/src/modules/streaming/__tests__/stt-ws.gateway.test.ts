@@ -1,3 +1,4 @@
+import { STT_GATEWAY_DEFAULTS } from '@arcaai/applications';
 import { Logger } from '@nestjs/common';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +71,27 @@ const createMockSessionBinding = () => ({
   clear: vi.fn().mockResolvedValue(undefined),
 });
 
+/**
+ * TASK-985 — a settings facade that resolves every governed WS budget to its CODE DEFAULT.
+ *
+ * Why the suite needs one at all. The gateway's transport budgets resolve
+ * `governed row -> deprecated env seed -> code default`, so a gateway built with no settings
+ * facade falls through to whatever `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` happens to be in the
+ * ambient environment — and `pnpm test:unit` runs under `dotenv -e .env.test`. Before ST-5 that
+ * was invisible, because the env file restated the same 512 KiB the suite hardcoded; the moment
+ * the default was re-tuned to 32 KiB the two disagreed and seven back-pressure cases failed
+ * against a watermark no source file names.
+ *
+ * Pinning through the REGISTRY rather than the environment makes the suite assert the shipped
+ * resolution path end to end, and makes it immune to an env file it never meant to depend on.
+ */
+const createPinnedSettings = () => ({
+  hasSetting: vi.fn((key: string) => key in STT_GATEWAY_DEFAULTS),
+  getValueWithDefault: vi.fn(<T,>(key: string, fallback: T) =>
+    key in STT_GATEWAY_DEFAULTS ? (STT_GATEWAY_DEFAULTS[key as keyof typeof STT_GATEWAY_DEFAULTS] as unknown as T) : fallback,
+  ),
+});
+
 // Parks session ids whose upstream removal
 // failed on disconnect so they can be retried with backoff.
 const createMockRemovalRetry = () => ({
@@ -119,6 +141,11 @@ describe('SttWsGateway', () => {
       mockStreamTicketService as any,
       mockSessionBinding as any,
       mockRemovalRetry as any,
+      undefined,
+      undefined,
+      // TASK-985 — see `createPinnedSettings`: the governed budgets come from the registry, so
+      // no case in this file depends on an ambient environment variable.
+      createPinnedSettings() as any,
     );
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});

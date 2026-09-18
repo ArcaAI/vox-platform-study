@@ -540,24 +540,35 @@ const DATA_PLANE: SettingDescriptor[] = [
   envKnob('mqtt.user', 'string', 'Messaging', 'MQTT user', 'MQTT broker username. The password is a `vault-kv` secret (`MQTT_PASS`).'),
 ];
 
-/** Gateway streaming backpressure (`stt-ws.gateway.ts`, `tts-ws.gateway.ts`). */
+/**
+ * Gateway streaming backpressure (`tts-ws.gateway.ts`).
+ *
+ * TASK-985 ST-5 removed the two STT entries — `stt.ws.egressHighWatermarkBytes` and
+ * `stt.ws.resumeGraceMs` — because they were RETIERED to `global-kv`
+ * (`sttStreaming.egressHighWatermarkBytes` / `sttStreaming.resumeGraceMs`) and leaving the
+ * env-tier twins standing was not merely redundant, it was load-bearing in the wrong direction:
+ *
+ *   • an `env` descriptor is RENDERED into `.env.sample` with its `default`, so every generated
+ *     `.env.dev` / `.env.test` carried `STT_WS_EGRESS_HIGH_WATERMARK_BYTES=524288` — the RETIRED
+ *     value, written out as an explicit operator setting;
+ *   • the governed key honours that name for one release as a pre-resolution seed (stored row
+ *     wins, env loses, code default loses to env), so the explicit 524288 beat the new 32 KiB
+ *     code default in EVERY environment;
+ *   • net effect: the re-tune ST-5 shipped could never take effect anywhere, and the only place
+ *     it showed up was the gateway's own back-pressure unit suite.
+ *
+ * That is exactly the drift `SettingDescriptor.envOverride`'s contract forbids — "never set
+ * this on an `env` descriptor: there the key's own name IS its declaration, and a second
+ * spelling of the same fact is the drift the generator exists to remove". Two descriptors, two
+ * defaults, one variable.
+ *
+ * The NAME is not gone: `envOverride` on the governed descriptors keeps it in
+ * `turbo.json#globalEnv` as a READ (cache correctness) and keeps it working as a deprecated
+ * seed for one release — which is what `scripts/start-test-app.sh` relies on when it forces the
+ * watermark to 1 byte for isolated e2e runs. What is gone is the DECLARATION that restated a
+ * retired default into every env file.
+ */
 const STREAMING: SettingDescriptor[] = [
-  envKnob(
-    'stt.ws.egressHighWatermarkBytes',
-    'number',
-    'Streaming',
-    'STT WS egress high-water mark (bytes)',
-    'Buffered-amount threshold above which partial transcripts are dropped.',
-    524288,
-  ),
-  envKnob(
-    'stt.ws.resumeGraceMs',
-    'number',
-    'Streaming',
-    'STT WS resume grace (ms)',
-    'Window a disconnected STT session is held open for reconnect.',
-    15000,
-  ),
   envKnob(
     'tts.ws.egressHighWatermarkBytes',
     'number',
