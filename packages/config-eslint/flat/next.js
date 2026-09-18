@@ -75,9 +75,26 @@ const HANDROLLED_SHEET_PATH = {
  * deprecated (removed in R4) and the admin console, as the platform's own
  * first-party consumer, may not import them: VAD / denoise / ASR / NER are
  * server-side decisions of the tenant's agents, reached through `@arcaai/vox`
- * (`audio.start({ agentSlug })`). `@arcaai/stt` keeps two capture-only helpers
+ * (`audio.start({ agentSlug })`). `@arcaai/stt` keeps its capture-only helpers
  * reachable (PCM plumbing, no model) for the live-transcription playground;
  * everything else in it is banned.
+ *
+ * TASK-985 (M-55) added `createStreamingResampler` to that carve-out. The test is
+ * this docstring's own: PCM PLUMBING, NO MODEL. A polyphase sinc resampler is
+ * sample-rate conversion — the same class of thing as `float32ToInt16`, which is
+ * already allowed, and emphatically not VAD, denoise, ASR or NER. Nothing about it
+ * decides anything; it changes the rate of samples on their way to the tenant's
+ * server-side ASR agent, which still makes every decision.
+ *
+ * It is here because the playground captures at whatever rate the AudioContext
+ * actually granted and declares 16 kHz on the wire regardless. When those disagree
+ * the server receives audio at the wrong rate and the transcript reads as garbage —
+ * which presents as a MODEL failure and sends the reader hunting in the wrong place.
+ * Fixing that requires resampling in the browser; there is no server-side fix,
+ * because the rate is already wrong by the time the bytes are sent.
+ *
+ * This narrows nothing and widens no capability: if a future entry here is not
+ * plumbing by this same test, it does not belong, whatever it is called.
  */
 const CLIENT_AI_MESSAGE =
   'TASK-865: client-side AI is retired (removed in R4) — the browser never runs a model. Capture with @arcaai/vox useArcaAudio and let the tenant ASR Agent decide VAD/denoise/ASR server-side (audio.start({ agentSlug })). See .claude/rules/08-vox-sdk.md.';
@@ -87,7 +104,7 @@ const CLIENT_AI_PATHS = [
   { name: '@arcaai/noise-filter', message: CLIENT_AI_MESSAGE },
   { name: '@arcaai/med-ner', message: CLIENT_AI_MESSAGE },
   { name: '@arcaai/vox/plugins/med-ner', message: CLIENT_AI_MESSAGE },
-  { name: '@arcaai/stt', allowImportNames: ['createAudioCapture', 'float32ToInt16', 'AudioCaptureHandle'], message: CLIENT_AI_MESSAGE },
+  { name: '@arcaai/stt', allowImportNames: ['createAudioCapture', 'float32ToInt16', 'createStreamingResampler', 'AudioCaptureHandle'], message: CLIENT_AI_MESSAGE },
 ];
 
 /** @type {import('eslint').Linter.Config[]} */
