@@ -31,7 +31,11 @@ import structlog
 
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
-from stt.core.exceptions import ModelNotCacheServedError, SessionManagerDrainingError
+from stt.core.exceptions import (
+    ModelError,
+    ModelNotCacheServedError,
+    SessionManagerDrainingError,
+)
 from stt.core.metering import normalize_device
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
@@ -46,7 +50,7 @@ from stt.streaming.capacity_guard import CapacityGuard
 from stt.streaming.commit_policy import LocalAgreementPolicy, normalize_for_comparison
 from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 from stt.streaming.denoiser import StreamingDenoiser
-from stt.streaming.engine_switch import EngineSwitchController
+from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS, EngineSwitchController
 from stt.streaming.execution_profile import ExecutionProfile
 from stt.streaming.inference import StreamingInferenceWorker
 from stt.streaming.preprocessor import AudioUtterance, StreamingPreprocessor
@@ -90,6 +94,51 @@ _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 # transcript is PHI, so the record says enough to locate the divergence and
 # no more; the final itself is persisted through the normal result path.
 _HANDOVER_LOG_CHARS = 200
+
+# TASK-985 M-24 — how many CONSECUTIVE empty decodes of a buffer that carried
+# SPEECH are treated as engine failure rather than as a quiet room.
+#
+# The whole design turns on that qualifier. pywhispercpp discards
+# `whisper_full`'s return code, so an engine failure and a genuinely silent
+# utterance are the same value at the Python level: an empty segment list. A
+# fallback armed by silence would swap the engine mid-consultation for no
+# reason; a fallback that never arms leaves the declared chain unreachable by
+# construction, which is what the code does today.
+#
+# Counted PER SESSION here because that is the scope this module owns. The
+# poisoned thing is a per-MODEL-CONTEXT backend shared by every session on it,
+# so the adapter-side counter (L-DECODE's half, which also covers the two
+# unambiguous conditions — an unrecoverable rebuild and a still-poisoned
+# backend) arms sooner and is the primary signal. This one is the backstop that
+# works with the adapter exactly as it stands.
+_EMPTY_DECODE_FAILURE_STREAK = 3
+
+# RMS floor above which a decoded buffer is taken to have carried speech.
+# Mirrors the adapter's own `_EMPTY_SPAN_RMS_FLOOR`, which already makes this
+# distinction to gate its dead-zone retry. CAUTION, and it is why
+# `_decode_carried_speech` prefers a pre-normalization figure when the
+# preprocessor supplies one: `AudioUtterance.samples` is PEAK-NORMALIZED (gain
+# reaches 20x), so this threshold has been validated as a RETRY gate and never
+# as a SILENCE discriminator.
+_EMPTY_DECODE_SPEECH_RMS_FLOOR = 0.01
+
+# TASK-985 M-23 — how long an UNCLAIMED teardown summary is kept for the
+# gateway's DELETE, and how many may be held at once. Both are bootstrap
+# defaults of an in-memory map on a PHI service, so the cap is not optional:
+# the TTL bounds how stale a claim may be, the entry cap bounds the damage if
+# no DELETE ever comes. An expired entry is not dropped — it is pushed back to
+# the gateway (see `_sweep_teardown_summaries`), because a summary nobody came
+# for is a ledger row nobody wrote.
+_TEARDOWN_STASH_TTL_S = 120.0
+_TEARDOWN_STASH_MAX_ENTRIES = 256
+
+# TASK-985 M-04 — headroom added to the inference-drain bound to get the
+# tail-wait bound (``_tail_wait_timeout_s``). The tail owner's own work is
+# flush + drain, and the drain is the bounded half; a waiter must therefore
+# outlast it by a margin or it times out on every session that merely used its
+# full drain budget. Five seconds is that margin, not a guess at how long a
+# decode takes.
+_TAIL_WAIT_GRACE_S = 5.0
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
@@ -140,6 +189,65 @@ class _SessionRuntime:
     vad_enabled: bool
     target_sr: int
     effective_diarization: bool
+
+
+@dataclass
+class _EngineBinding:
+    """One engine's ASR callable plus the worker state that engine implies.
+
+    TASK-985 M-34 — an engine switch used to assign `worker._asr_pipeline` and
+    `worker._active_pipeline_id` and stop there, so a session that failed over
+    ran the FALLBACK decoder against the PRIMARY's initial prompt, language pin,
+    decode window, lexicon, punctuation config and gloss. The prompt case is the
+    sharpest: `_load_asr_pipeline` composes a bilingual priming prompt for a
+    whisper.cpp code-switch pair, and handing that to a CT2 model which wants a
+    pinned language is the M-32-shaped trap.
+
+    Front-end GEOMETRY (`partial_window_s`, `max_utterance_sec`) is carried here
+    but applied at the next utterance boundary, never mid-utterance: those are
+    preprocessor properties, and changing the tail length while an utterance is
+    open corrupts the LocalAgreement window the commit policy is comparing
+    against.
+
+    Deliberately NOT carried: `_previous_text` / `_last_final_tail`. Those are
+    clinical continuity, not engine state — the previous engine's words are the
+    right prior for the next utterance, whichever engine decodes it. Do not
+    "fix" that by resetting them here.
+    """
+
+    asr_callable: StreamingAsrCallable
+    pipeline_config: Any
+    initial_prompt: str | None
+    postprocessing_config: Any = None
+    max_decode_window_sec: float | None = None
+    language: str | None = None
+    gloss_callable: Any = None
+    partial_window_s: float | None = None
+    max_utterance_sec: float | None = None
+
+
+@dataclass
+class _StashedTeardown:
+    """A teardown summary waiting for the gateway's DELETE (TASK-985 M-23).
+
+    ``pushed_back`` records that this summary has ALREADY been POSTed to the
+    gateway by its finalizer (the idle reaper does that, because the reaper
+    fires precisely when the gateway is gone and a pod roll inside the stash TTL
+    would otherwise lose the row). The entry is still kept so a late DELETE can
+    claim it and let the gateway make its own ``interrupted`` call — but the
+    expiry sweep must not POST it a second time.
+    """
+
+    summary: dict[str, Any]
+    expires_at: float
+    pushed_back: bool = False
+
+
+def _positive_float(value: Any) -> float | None:
+    """A real, positive number, or ``None``. ``bool`` is excluded (it is an int)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value > 0 else None
 
 
 def _spec_bundles_of(manager: Any) -> dict[str, ResolvedSpecBundle]:
@@ -328,12 +436,40 @@ class SessionManager:
         # Per-session lock serializing the four finalize
         # entrypoints so a second entrant is a no-op (no duplicate Media rows).
         self._finalize_locks: dict[str, asyncio.Lock] = {}
-        # F-32 — sessions whose closing tail has already been flushed+drained.
+        # F-32 / TASK-985 M-04 — the closing tail's COMPLETION latch, one
+        # `asyncio.Event` per session.
+        #
         # The flush/drain pair runs BEFORE (and outside) the finalize lock at
-        # every trigger site, so without this latch two near-simultaneous
-        # triggers both flush the preprocessor tail and both drain the queue —
-        # publishing the closing utterance twice. See ``_begin_tail_flush``.
-        self._tail_flush_started: set[str] = set()
+        # every trigger site, so without a latch two near-simultaneous triggers
+        # both flush the preprocessor tail and both drain the queue — publishing
+        # the closing utterance twice (F-32). A `set[str]` closed that, but it
+        # answers only "is someone else doing the tail?" while all four call
+        # sites read the answer as "is the tail DONE?" — which is how the
+        # closing utterance came to be CANCELLED mid-decode by a later
+        # finalizer's `remove_session` (TASK-985 M-04). Mutual exclusion without
+        # a happens-before edge is exactly half of what those call sites need.
+        #
+        # An Event supplies both: membership is still the test-and-set (see
+        # ``_begin_tail_flush``), and the later trigger now has something to
+        # AWAIT. Dropped in ``remove_session`` alongside the finalize lock.
+        self._tail_flush_done: dict[str, asyncio.Event] = {}
+        # TASK-985 M-23 — teardown summaries built by a NON-HTTP finalizer,
+        # held for the gateway's DELETE to claim. Deliberately NOT dropped by
+        # ``remove_session``: the session is gone precisely when this matters.
+        self._pending_teardown_summaries: dict[str, _StashedTeardown] = {}
+        # Strong references to the fire-and-forget push-backs fired by stash
+        # eviction — without them the event loop may GC a task mid-flight.
+        self._stash_pushback_tasks: set[asyncio.Task[None]] = set()
+        # TASK-985 M-24 — consecutive empty decodes of buffers that carried
+        # speech, per session. See ``_note_decode_outcome``.
+        self._empty_decode_streaks: dict[str, int] = {}
+        # TASK-985 M-34 — front-end geometry a switch asked for, waiting for the
+        # next utterance boundary. See ``_adopt_pending_front_end_geometry``.
+        self._pending_front_end_geometry: dict[str, _EngineBinding] = {}
+        # TASK-985 N-1 — sessions that hold a capacity slot but are not yet in
+        # `self._sessions` (they are inside `create_session`, typically behind a
+        # cold model load). See ``_reconcile_capacity_guard``.
+        self._creating: set[str] = set()
         self._running = False
         # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
@@ -356,6 +492,18 @@ class SessionManager:
             self._inference_queue_maxsize = int(_settings.streaming_inference_queue_maxsize)
             self._inference_drain_timeout_s = float(_settings.streaming_inference_drain_timeout_s)
             self._inference_stop_timeout_s = float(_settings.streaming_inference_stop_timeout_s)
+            # TASK-985 M-04 — how long a LATER finalizer waits for the tail
+            # flush + drain claimed by an earlier one. DERIVED from the drain
+            # bound rather than declared beside it: the thing being waited for
+            # IS that drain, so a control-plane write that raises the drain
+            # ceiling must raise this with it or the wait starts timing out on
+            # exactly the slow sessions it exists for. An explicit
+            # `streaming_tail_wait_timeout_s` (not yet a settings field — see
+            # the L-CONFIG request in the ticket) overrides the derivation.
+            self._tail_wait_timeout_s = float(
+                getattr(_settings, "streaming_tail_wait_timeout_s", None)
+                or (self._inference_drain_timeout_s + _TAIL_WAIT_GRACE_S)
+            )
             self._transcript_persist_max_attempts = max(
                 1, int(_settings.streaming_transcript_persist_max_attempts)
             )
@@ -387,6 +535,7 @@ class SessionManager:
             self._inference_queue_maxsize = 64
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
+            self._tail_wait_timeout_s = 60.0 + _TAIL_WAIT_GRACE_S
             self._transcript_persist_max_attempts = 3
             self._transcript_persist_backoff_s = 0.5
             self._transcript_outbox_max_attempts = 10
@@ -507,8 +656,21 @@ class SessionManager:
             partial_interval_s, bool
         ):
             kwargs["partial_interval_s"] = float(partial_interval_s)
-        if pipeline_config and pipeline_config.preprocessing.vad.enabled:
-            vad_cfg = pipeline_config.preprocessing.vad
+        # TASK-985 M-13 — the agent's segmentation TUNING is read whether or not
+        # the Silero stage is on. Only the MODEL is gated by `vad.enabled`
+        # (`_load_vad_service`): the energy fallback is still a segmenter and it
+        # obeys the same four numbers.
+        #
+        # This `if` was the whole of the loss. The spec mapper carries the
+        # tuning regardless of `enabled` (`spec.py` writes threshold,
+        # min_speech, min_silence and padding into `VadConfig` whenever the
+        # agent stated them), so a served session really did hold
+        # `min_silence_duration_ms == 350` — and the `else` below substituted a
+        # hardware-profile literal of 500 on all five profiles. The admin UI
+        # showed 350 ms while 500 ms ran, and the seed comment recording the
+        # change described something that had never executed.
+        vad_cfg = getattr(getattr(pipeline_config, "preprocessing", None), "vad", None)
+        if vad_cfg is not None:
             kwargs["threshold"] = vad_cfg.threshold
             kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
             kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
@@ -520,8 +682,10 @@ class SessionManager:
                 kwargs["force_emit_lookback_ms"] = vad_cfg.force_emit_lookback_ms
             if hasattr(vad_cfg, "force_emit_overlap_ms"):
                 kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
-        else:
-            kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
+        # No `else`: with no pipeline config at all the preprocessor's own
+        # constructor defaults stand, which is the rule every other knob on this
+        # path already follows. A hardware profile describes the DEVICE, not the
+        # clinician's speech.
         # The agent's utterance cap outranks the front-end's force-emit window: it
         # is the session-level bound the agent asked for, applied last so it wins.
         max_utterance_sec = getattr(spec_streaming, "max_utterance_sec", None)
@@ -776,13 +940,40 @@ class SessionManager:
         # experiment could not tell whether a model-row edit had reached the
         # runtime at all; this is that answer, in the log, beside the row that
         # was supposed to supply it.
-        logger.info(
-            "stt.streaming.windows",
-            session_id=session_id,
-            model_slug=_spec_asr_slug(pipeline_config),
-            partial_window_s=preprocessor.partial_window_s,
-            max_decode_window_sec=max_decode_window_sec,
-        )
+        #
+        # TASK-985 CL-2 — and the SEGMENTATION numbers beside them, for the same
+        # reason, because M-13 was the same failure one layer down: the admin UI
+        # showed 350 ms while 500 ms ran, and nothing in the log could settle it.
+        # The values are read from the object that APPLIES them rather than
+        # re-derived at this call site — re-deriving them here is how the two
+        # drifted apart in the first place.
+        #
+        # This line is also the session's configuration FINGERPRINT for the
+        # evaluation baseline: an A/B whose arms cannot be told apart in the log
+        # is not a measurement. Hence the prompt STATE (never the prompt text —
+        # it is tenant-authored and can carry clinical vocabulary) and the
+        # decoder identity alongside the geometry. One line per session, bounded
+        # keys, no PHI.
+        fields: dict[str, Any] = {
+            "session_id": session_id,
+            "model_slug": _spec_asr_slug(pipeline_config),
+            "partial_window_s": preprocessor.partial_window_s,
+            "max_decode_window_sec": max_decode_window_sec,
+            "initial_prompt_chars": len(initial_prompt) if initial_prompt else 0,
+            "has_initial_prompt": bool(initial_prompt),
+            "language": getattr(inference_cfg, "language", None),
+            "vad_model_loaded": vad_service is not None,
+        }
+        # Merged into a dict rather than splatted as kwargs: the preprocessor's
+        # own view names `partial_window_s` too, and a duplicate keyword would
+        # raise TypeError and take the whole session create down over a LOG
+        # line. Its value wins for any key both sides carry — it is the object
+        # that actually applies them, which is the entire point of reading from
+        # it instead of re-deriving here.
+        effective = getattr(preprocessor, "effective_segmentation", None)
+        if isinstance(effective, dict):
+            fields.update(effective)
+        logger.info("stt.streaming.windows", **fields)
 
         return _SessionRuntime(
             publisher=publisher,
@@ -1084,6 +1275,18 @@ class SessionManager:
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
             return None
+        # TASK-985 N-1 — the session holds a capacity slot from HERE, but only
+        # enters `self._sessions` at the end of the block below. In between
+        # there is a cold model load — measured at ~4.6 s locally and 16.4 s on
+        # the cluster — and the heartbeat's `_reconcile_capacity_guard` runs
+        # every 10 s and releases every guard id it cannot find in
+        # `self._sessions`. A session merely mid-creation was therefore
+        # indistinguishable from a genuinely leaked slot: the slot was freed
+        # while the session went on to live, so the cap was silently exceeded
+        # and the later `remove_session` release was a no-op. The deployment
+        # runbook already documents the resulting 503 as a known, reproduced
+        # symptom of a cold start.
+        self._creating.add(session_id)
         try:
             # TASK-861 — the agent path: register the spec bundle FIRST so every
             # loader below resolves from it, and let the spec govern the keys.
@@ -1268,7 +1471,14 @@ class SessionManager:
             inference_worker = runtime.inference_worker
 
             session.processed_sample_rate = runtime.target_sr
-            session._vad_active = runtime.vad_enabled
+            # TASK-985 CL-4 — what LOADED, not what was DECLARED. `vad_enabled`
+            # is the agent's flag; `_load_vad_service` swallows a load failure
+            # and returns None, so a session running the energy fallback used to
+            # persist `vad_active=True` and say so for the rest of its life. The
+            # sibling log line two hundred lines above already gets this right
+            # (`has_vad=runtime.vad_service is not None`), which is exactly how
+            # the inconsistency stayed invisible.
+            session._vad_active = runtime.vad_service is not None
 
             metadata.diarization = runtime.effective_diarization
             await session.force_persist()
@@ -1367,6 +1577,11 @@ class SessionManager:
             )
             await self.remove_session(session_id)
             raise
+        finally:
+            # Discarded on BOTH paths: on success the session is now in
+            # `self._sessions` (so the reconciler finds it there), and on
+            # failure `remove_session` has already released the slot.
+            self._creating.discard(session_id)
 
     def get_session(self, session_id: str) -> StreamSession | None:
         """Retrieve an active session by ID, or ``None``."""
@@ -1444,14 +1659,37 @@ class SessionManager:
         Wires the three injected primitives against this manager: lazily build
         the fallback ASR callable, swap the reference the inference worker reads,
         and publish the ``provider_switched`` status result.
+
+        TASK-985 — two premises a reader of this code is likely to carry in, and
+        both are wrong today:
+
+        * **"The chain has two entries."** The resolver takes ``chain[0]`` only
+          (``build-resolved-asr-spec.ts``), the wire carries a single
+          ``spec: AsrSpecCore | null``, and ``fallback_runtime_key`` is a
+          scalar. The agent's SECOND declared fallback (the CT2 turbo) is dead
+          config: dropped with no diagnostic, and unreachable however this
+          controller behaves. Carrying the full ordered chain is L-CONTRACT's
+          change, not this file's.
+
+        * **"So the fallback is a different engine."** It is not. The one
+          surviving entry is the q8_0 sibling of the very same fine-tune, which
+          shares every failure mode of the primary — and it would not be reached
+          anyway, because this controller arms on EXCEPTIONS while the failure
+          actually observed is a decoder returning empty output. M-24 (previous
+          commit) is what makes empty output raise; a genuinely heterogeneous
+          fallback is expressible today as ``parameters.fallback.agentSlug``
+          (``fallbackOf()`` ``kind: 'agent'`` gives it its own engine, decode
+          parameters, prompt and windows) — and it needs the state
+          re-derivation below to be SAFE, which is why M-34 lands before any
+          heterogeneous fallback is configured, not after.
         """
 
-        async def _build_fallback() -> StreamingAsrCallable:
+        async def _build_fallback() -> _EngineBinding:
             return await self._build_fallback_asr_callable(
                 session_id, fallback_pipeline_id, tenant_id
             )
 
-        async def _build_primary() -> StreamingAsrCallable:
+        async def _build_primary() -> _EngineBinding:
             # Rebuild the PRIMARY ASR callable so a user-initiated
             # switch BACK to the primary engine is possible. Symmetric to the
             # fallback builder; reuses the session's in-memory BYO overrides.
@@ -1459,18 +1697,87 @@ class SessionManager:
                 session_id, primary_pipeline_id, tenant_id
             )
 
-        def _apply(new_callable: StreamingAsrCallable, pipeline_id: str | None) -> None:
+        def _apply(binding: Any, pipeline_id: str | None) -> None:
+            # `binding` is an `_EngineBinding` from either builder above. The
+            # controller treats it as opaque (it only ever hands back what the
+            # builder returned), which is what lets the swap carry state
+            # without the controller knowing about pipeline specs.
+            #
+            # A BARE callable is still accepted: a caller that substitutes its
+            # own builder (tests do) gets the old callable-only behaviour rather
+            # than a crash. `isinstance`, not `getattr` — a mock answers every
+            # attribute, so a `getattr(..., "asr_callable", binding)` probe would
+            # silently install an auto-created attribute as the ASR pipeline.
+            is_binding = isinstance(binding, _EngineBinding)
             worker = self._inference_workers.get(session_id)
             if worker is not None:
                 # The inference worker reads this reference each utterance; a
                 # plain reassignment is the whole "seamless swap".
-                worker._asr_pipeline = new_callable
+                worker._asr_pipeline = binding.asr_callable if is_binding else binding
                 # The per-utterance provenance stamp moves with the
                 # callable, in this same synchronous body. Do NOT split these
                 # two assignments, add an await between them, or introduce a
                 # second update path: any divergence attributes utterances to
                 # the wrong engine, which is worse than no attribution.
                 worker._active_pipeline_id = pipeline_id
+                # TASK-985 M-34 — and neither may these. The same argument the
+                # provenance stamp makes applies verbatim to the prompt, the
+                # decode window and the lexicon: a HALF-APPLIED switch is worse
+                # than none, because the session then runs one engine's decoder
+                # against another engine's decode parameters. Re-derived from
+                # the target's OWN spec (already resolved, already in memory —
+                # no DB read, no model reload).
+                if is_binding:
+                    worker._initial_prompt = binding.initial_prompt
+                    worker._max_decode_window_sec = binding.max_decode_window_sec
+                    worker._language = binding.language
+                    # The script guard is DERIVED from the pin, so reassigning
+                    # the pin without it would leave the new engine judged
+                    # against the old engine's script expectation.
+                    from stt.pipeline.language_modes import is_latin_script_language
+
+                    worker._expects_latin_script = is_latin_script_language(binding.language)
+                    worker._postprocessing_config = binding.postprocessing_config
+                    worker._punctuation_config = (
+                        binding.postprocessing_config.punctuation
+                        if binding.postprocessing_config is not None
+                        else None
+                    )
+                    # Built once per binding by the worker's own builder, so the
+                    # masking/keying rules cannot drift from construction.
+                    try:
+                        worker._lexicon_corrector = worker._build_lexicon_corrector(
+                            binding.postprocessing_config
+                        )
+                    except Exception as exc:  # noqa: BLE001 — never fail a swap
+                        logger.warning(
+                            "stt.stream.switch_lexicon_rebuild_failed",
+                            session_id=session_id,
+                            error=str(exc),
+                        )
+                    worker._gloss_callable = binding.gloss_callable
+                    # The signature probe re-runs on its own: it is keyed on
+                    # callable identity, which just changed.
+
+            if is_binding:
+                # Front-end geometry is a PREPROCESSOR property and changing it
+                # mid-utterance corrupts the LocalAgreement window, so it is
+                # stashed and adopted at the next utterance boundary.
+                self._pending_front_end_geometry[session_id] = binding
+
+            # TASK-985 N-2 — reset the commit policy and cancel the in-flight
+            # partial, in this same synchronous body. For an AUTO switch this is
+            # already implied (the reset at the last utterance final ran before
+            # the failing decode), but a MANUAL switch arrives on the control
+            # stream MID-utterance, and `LocalAgreementPolicy` would then compute
+            # `stable_chars` as the agreed prefix of one hypothesis from engine A
+            # and one from engine B.
+            self._cancel_partial(session_id)
+            self._reset_commit_policy(session_id)
+            # A new engine starts with a clean empty-decode record (M-24): the
+            # streak is evidence about the engine that just left.
+            self._empty_decode_streaks.pop(session_id, None)
+
             # TASK-874 — the engine-TIME span boundary belongs in this same
             # synchronous body, and for the same reason: this is the instant the
             # live engine changes. Placing it at the earlier `_load_asr_pipeline`
@@ -1590,47 +1897,102 @@ class SessionManager:
         session_id: str,
         fallback_pipeline_id: str | None,
         tenant_id: str | None,
-    ) -> StreamingAsrCallable:
-        """Load the fallback pipeline and build a warm ASR callable.
+    ) -> _EngineBinding:
+        """Load the fallback pipeline and build a warm engine binding.
 
         Resolved LAZILY (only when a switch actually fires) so a configured-but-
         never-used fallback costs nothing. Reuses the session's in-memory BYO
         ``provider_overrides`` so the fallback engine honours the tenant's key.
+
+        TASK-985 M-34 — this returns the whole BINDING, not just the callable.
+        It always loaded the fallback's own ``PipelineSpec`` and resolved its
+        own prompt (``_load_asr_pipeline`` runs ``resolve_mode_for_engine``
+        against the engine that actually loaded) and then discarded everything
+        but the callable, so the switch swapped the decoder and left the
+        primary's prompt, language pin, decode window, lexicon and punctuation
+        config in place. The data was already in hand; only the plumbing was
+        missing. Nothing here re-RESOLVES anything — for a spec-driven session
+        `_load_pipeline_config` reads the in-memory `ResolvedSpecBundle`, so
+        there is no DB read and no second model resolution.
         """
         if not fallback_pipeline_id:
             raise RuntimeError("No fallback pipeline configured for this session")
         fb_config = await self._load_pipeline_config(fallback_pipeline_id, tenant_id=tenant_id)
         overrides = self._provider_overrides.get(session_id)
-        asr_callable, _ = await self._load_asr_pipeline(
+        asr_callable, initial_prompt = await self._load_asr_pipeline(
             fb_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
         if asr_callable is None:
             raise RuntimeError(
                 f"Fallback pipeline '{fallback_pipeline_id}' produced no ASR callable"
             )
-        return asr_callable
+        return await self._binding_from_pipeline_config(
+            session_id, asr_callable, fb_config, initial_prompt
+        )
+
+    async def _binding_from_pipeline_config(
+        self,
+        session_id: str,
+        asr_callable: StreamingAsrCallable,
+        pipeline_config: Any,
+        initial_prompt: str | None,
+    ) -> _EngineBinding:
+        """Package one engine's callable with the worker state it implies.
+
+        TASK-985 M-34. Everything read here is read from the TARGET engine's own
+        spec, in the same places ``_assemble_session_runtime`` reads them at
+        session create — so a switched session is configured the way a session
+        that had STARTED on this engine would be.
+        """
+        inference_cfg = getattr(pipeline_config, "inference", None)
+        postprocessing = getattr(pipeline_config, "postprocessing", None)
+        streaming_cfg = getattr(pipeline_config, "streaming", None)
+        language = getattr(inference_cfg, "language", None)
+        window = getattr(inference_cfg, "max_decode_window_sec", None)
+        return _EngineBinding(
+            asr_callable=asr_callable,
+            pipeline_config=pipeline_config,
+            initial_prompt=initial_prompt,
+            postprocessing_config=postprocessing,
+            # Coerced exactly as `StreamingInferenceWorker.__init__` coerces
+            # them, so a re-derived worker is indistinguishable from one that
+            # had been constructed on this engine.
+            max_decode_window_sec=(
+                float(window)
+                if isinstance(window, (int, float)) and not isinstance(window, bool)
+                else None
+            ),
+            language=(language.strip() if isinstance(language, str) and language.strip() else None),
+            gloss_callable=await self._load_gloss_pipeline(pipeline_config, session_id),
+            partial_window_s=_positive_float(getattr(streaming_cfg, "partial_window_s", None)),
+            max_utterance_sec=_positive_float(getattr(streaming_cfg, "max_utterance_sec", None)),
+        )
 
     async def _build_primary_asr_callable(
         self,
         session_id: str,
         primary_pipeline_id: str,
         tenant_id: str | None,
-    ) -> StreamingAsrCallable:
-        """Load the primary pipeline and build a warm ASR callable.
+    ) -> _EngineBinding:
+        """Load the primary pipeline and build a warm engine binding.
 
         Symmetric to ``_build_fallback_asr_callable`` — used when a user switches
         BACK to the primary engine. Resolved LAZILY (only when a switch-back
         actually fires). Reuses the session's in-memory BYO ``provider_overrides``
-        so the primary engine honours the tenant's key.
+        so the primary engine honours the tenant's key. Symmetric in the M-34
+        sense too: switching back must restore the primary's prompt and geometry,
+        not leave the fallback's behind.
         """
         p_config = await self._load_pipeline_config(primary_pipeline_id, tenant_id=tenant_id)
         overrides = self._provider_overrides.get(session_id)
-        asr_callable, _ = await self._load_asr_pipeline(
+        asr_callable, initial_prompt = await self._load_asr_pipeline(
             p_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
         if asr_callable is None:
             raise RuntimeError(f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable")
-        return asr_callable
+        return await self._binding_from_pipeline_config(
+            session_id, asr_callable, p_config, initial_prompt
+        )
 
     def _seed_voice_profiles(
         self, tracker: Any, session_id: str, model_slug: str | None
@@ -1671,15 +2033,12 @@ class SessionManager:
             return None
 
         try:
-            # F-32 — flush the tail at most once per session (see
-            # ``_begin_tail_flush``); a later trigger goes straight to finalize.
-            if self._begin_tail_flush(session_id):
-                await self._flush_final_utterance(
-                    session=session,
-                    preprocessor=self._preprocessors.get(session_id),
-                )
-                await self._drain_inference_queue(session_id)
-            return await self._finalize_session(session)
+            # F-32 / TASK-985 M-04 — flush the tail at most once per session,
+            # and WAIT for it when another trigger claimed it first.
+            await self._run_tail_flush(session, self._preprocessors.get(session_id))
+            # TASK-985 M-23 — this caller RETURNS the summary to the gateway,
+            # so it is the one that emits the ledger row; nothing to stash.
+            return await self._finalize_session(session, stash_summary=False)
         except Exception as exc:
             logger.error(
                 "Failed to end session gracefully; forcing removal",
@@ -1736,6 +2095,8 @@ class SessionManager:
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
         self._session_voice_profiles.pop(session_id, None)
+        self._empty_decode_streaks.pop(session_id, None)
+        self._pending_front_end_geometry.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
@@ -1750,8 +2111,16 @@ class SessionManager:
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
         # F-32 — drop the tail-flush latch with the session so a later session
-        # reusing the id gets its own tail flushed.
-        self._tail_flush_started.discard(session_id)
+        # reusing the id gets its own tail flushed. TASK-985 M-04: SET it on the
+        # way out. Removal is the end of this session's tail by definition, and
+        # a waiter that already holds a reference to the Event would otherwise
+        # sit out its full bound waiting for an owner that no longer exists.
+        # (Nothing here cancels the owner — `remove_session` is reached only
+        # from a finalizer that has passed the latch, or from a rollback where
+        # there is no tail.)
+        tail_done = self._tail_flush_done.pop(session_id, None)
+        if tail_done is not None:
+            tail_done.set()
         self._sessions.pop(session_id, None)
         # Release pipeline model pins so idle TTL can apply.
         pinned = self._session_pinned_models.pop(session_id, None)
@@ -2963,10 +3332,21 @@ class SessionManager:
                         session.add_result(result)
                         session.utterance_count = utt.utterance_index + 1
                         self._check_final_handover(session.session_id, result.text)
+                    # TASK-985 M-24 — an empty decode of a buffer that carried
+                    # SPEECH is failure evidence, not a clean utterance. Left
+                    # counting as a success it also RESET the consecutive-failure
+                    # run, so the very silence the failure produces disarmed the
+                    # threshold switch: an alternating empty/non-empty pattern
+                    # could never reach it even once the empty decodes started
+                    # raising. Raises at the streak, inside this `try`, so the
+                    # classifier below sees it like any other engine failure.
+                    empty_with_speech = self._note_decode_outcome(
+                        session.session_id, utt, result
+                    )
                     # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
-                    if controller is not None:
+                    if controller is not None and not empty_with_speech:
                         controller.record_success()
                 except Exception as exc:
                     # Classify the failure through the engine-switch
@@ -3018,6 +3398,130 @@ class SessionManager:
                     queue.task_done()
 
         return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
+
+    def _adopt_pending_front_end_geometry(
+        self, session_id: str, preprocessor: StreamingPreprocessor | None
+    ) -> None:
+        """Apply a switched engine's front-end geometry at an utterance boundary.
+
+        TASK-985 M-34. ``partial_window_s`` and ``max_utterance_sec`` belong to
+        the PREPROCESSOR, and changing the tail length while an utterance is
+        open corrupts the LocalAgreement window the commit policy compares
+        hypotheses against — so the switch stashes them and this adopts them at
+        the next ``is_final``, which is exactly when the policy is reset anyway.
+
+        Applied through a public preprocessor API when one exists (the L-SEG
+        request on this ticket). Until then the switched geometry is logged
+        rather than reached into: the preprocessor's windows are read in several
+        derived forms (`_max_utterance_frames`, the partial cadence), and
+        setting the backing fields from here would set some of them and leave
+        the rest — the same half-applied state this whole change exists to stop.
+        """
+        binding = self._pending_front_end_geometry.pop(session_id, None)
+        if binding is None or preprocessor is None:
+            return
+        if binding.partial_window_s is None and binding.max_utterance_sec is None:
+            return
+        apply_geometry = getattr(preprocessor, "apply_geometry", None)
+        if callable(apply_geometry):
+            try:
+                apply_geometry(
+                    partial_window_s=binding.partial_window_s,
+                    max_utterance_sec=binding.max_utterance_sec,
+                )
+                logger.info(
+                    "stt.stream.switch_geometry_adopted",
+                    session_id=session_id,
+                    partial_window_s=binding.partial_window_s,
+                    max_utterance_sec=binding.max_utterance_sec,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 — geometry must not break audio
+                logger.warning(
+                    "stt.stream.switch_geometry_apply_failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+                return
+        logger.warning(
+            "stt.stream.switch_geometry_unapplied",
+            session_id=session_id,
+            partial_window_s=binding.partial_window_s,
+            max_utterance_sec=binding.max_utterance_sec,
+            reason="preprocessor exposes no apply_geometry()",
+        )
+
+    def _decode_carried_speech(self, utterance: AudioUtterance) -> bool:
+        """Did the buffer just decoded actually contain speech?
+
+        TASK-985 M-24 — the distinction the empty-decode heuristic rests on. A
+        silent utterance decoding to nothing is CORRECT behaviour and must never
+        arm a failover.
+
+        Prefers a pre-normalization RMS stamped by the preprocessor
+        (``source_rms``) when one is present — see the L-SEG request on this
+        ticket. ``AudioUtterance.samples`` is peak-normalized with a gain that
+        reaches 20x, so measuring it is measuring the normalizer as much as the
+        room. The fallback is still better than no test at all: the peak window
+        is floored, so a normalized silent frame does sit low.
+        """
+        source_rms = getattr(utterance, "source_rms", None)
+        if isinstance(source_rms, (int, float)) and not isinstance(source_rms, bool):
+            return float(source_rms) >= _EMPTY_DECODE_SPEECH_RMS_FLOOR
+        samples = getattr(utterance, "samples", None)
+        if samples is None or len(samples) == 0:
+            return False
+        try:
+            rms = float(np.sqrt(np.mean(np.square(np.asarray(samples, dtype=np.float32)))))
+        except Exception:  # noqa: BLE001 — a diagnostic must never break a decode
+            return False
+        return rms >= _EMPTY_DECODE_SPEECH_RMS_FLOOR
+
+    def _note_decode_outcome(self, session_id: str, utterance: AudioUtterance, result: Any) -> bool:
+        """Account one decode against the empty-with-speech failure streak.
+
+        Returns whether THIS decode was empty-with-speech, so the caller can
+        withhold ``record_success`` for it. Raises ``ModelError`` once the
+        streak reaches the threshold, which is what finally makes the declared
+        fallback chain reachable: ``EngineSwitchController`` arms on
+        ``CloudASRTranscriptionError`` / ``ModelError``, and whisper.cpp — the
+        primary engine class for every served session — can raise neither.
+
+        Prefers the adapter's own verdict (``result.empty_with_speech``, an
+        L-INFER request on this ticket) because it can exclude the known-benign
+        4.50-4.70 s dead-zone span, whose retry with a pulled-back boundary is
+        the one empty-with-speech case that is NOT an engine fault.
+        """
+        declared = getattr(result, "empty_with_speech", None)
+        if isinstance(declared, bool):
+            empty_with_speech = declared
+        else:
+            text = getattr(result, "text", None)
+            empty_with_speech = not (isinstance(text, str) and text.strip()) and (
+                self._decode_carried_speech(utterance)
+            )
+
+        if not empty_with_speech:
+            self._empty_decode_streaks.pop(session_id, None)
+            return False
+
+        streak = self._empty_decode_streaks.get(session_id, 0) + 1
+        self._empty_decode_streaks[session_id] = streak
+        threshold = int(getattr(self, "_empty_decode_failure_streak", _EMPTY_DECODE_FAILURE_STREAK))
+        logger.warning(
+            "stt.stream.empty_decode_with_speech",
+            session_id=session_id,
+            utterance_index=getattr(utterance, "utterance_index", None),
+            streak=streak,
+            threshold=threshold,
+        )
+        if streak >= threshold:
+            self._empty_decode_streaks.pop(session_id, None)
+            raise ModelError(
+                f"{streak} consecutive empty decodes of buffers carrying speech; "
+                "treating the ASR backend as failed"
+            )
+        return True
 
     async def _drain_inference_queue(self, session_id: str) -> None:
         """Wait for all pending utterances in the inference queue to finish.
@@ -3245,7 +3749,23 @@ class SessionManager:
         async def _on_batch(last_id: str) -> None:
             session.metadata.last_stream_id = last_id
             try:
-                await self._redis.hset(session_meta_key(session_id), "last_stream_id", last_id)
+                # TASK-985 M-66 — `last_seq` is persisted on the SAME cadence as
+                # `last_stream_id`, which is the cadence of the XACK. Without
+                # this the seq guard in `record_frame` is cosmetic on the path
+                # that matters: after a crash `last_seq` is whatever the
+                # PERIODIC persist left behind, which can be well behind the
+                # frames actually counted, and the redelivered entries between
+                # the two are re-counted regardless of the guard. This is what
+                # bounds the residual double-count to a single `_on_batch`
+                # window (COUNT 100 — sub-second of audio), and it is the half
+                # most likely to be dropped as tidying.
+                await self._redis.hset(
+                    session_meta_key(session_id),
+                    mapping={
+                        "last_stream_id": last_id,
+                        "last_seq": str(session.last_seq),
+                    },
+                )
             except Exception as exc:
                 logger.debug(
                     "Failed to persist last_stream_id (non-fatal)",
@@ -3292,6 +3812,24 @@ class SessionManager:
 
         async def _on_frame(frame: AudioFrame) -> None:
             if session.status != SessionStatus.ACTIVE:
+                # TASK-985 M-29 — this is a LOSS, not a no-op, and it used to be
+                # silent. `stt:control` and `stt:audio` are two Redis streams
+                # with no mutual ordering, so a control FINALIZE flips the
+                # status to FINALIZING while unread audio entries are still
+                # queued behind it — 80-160 ms of the closing utterance at
+                # steady state, more under back-pressure. Count it and say so
+                # once, so the residual is measurable after the gateway moves
+                # `stop` in-band (a zero-length `final=1` frame on `stt:audio`,
+                # which is ordered against the audio by construction).
+                session.frames_dropped_after_finalize += 1
+                if not session._dropped_after_finalize_warned:
+                    session._dropped_after_finalize_warned = True
+                    logger.warning(
+                        "stt.stream.frame_dropped_after_finalize",
+                        session_id=session.session_id,
+                        seq=frame.seq,
+                        status=session.status.value,
+                    )
                 return
 
             session.record_frame(seq=frame.seq, data=frame.data, sample_rate=frame.sr)
@@ -3302,7 +3840,7 @@ class SessionManager:
 
                 processed_pcm = preprocessor.drain_processed_samples()
                 if processed_pcm:
-                    session.processed_audio_buffer.extend(processed_pcm)
+                    session.append_processed_audio(processed_pcm)
                     if session.processed_sample_rate is None:
                         session.processed_sample_rate = preprocessor.target_sample_rate
 
@@ -3312,6 +3850,9 @@ class SessionManager:
                         self._cancel_partial(session.session_id)
                         # Next utterance starts a fresh policy
                         self._reset_commit_policy(session.session_id)
+                        # TASK-985 M-34 — an utterance boundary is the only
+                        # safe moment to change the front-end's geometry.
+                        self._adopt_pending_front_end_geometry(session.session_id, preprocessor)
                         # Block partials for next utterance until this final publishes
                         gate = self._final_published_gates.get(session.session_id)
                         if gate is not None:
@@ -3350,19 +3891,31 @@ class SessionManager:
 
             # If final frame, trigger finalization
             if frame.final:
+                # TASK-985 M-29 — the terminal frame is the ORDERED stop signal:
+                # appended to `stt:audio` itself, it is reached strictly after
+                # every earlier entry, so the "unread audio at FINALIZE" window
+                # above is removed rather than narrowed. A zero-length body is
+                # deliberate — `record_frame` adds `len(data)//2 == 0` samples,
+                # so the marker cannot inflate `total_duration_seconds`, which
+                # is the BILLED quantity.
+                #
+                # Note the consequence for ordering, which is why the tail latch
+                # had to land first: once the gateway sends this instead of a
+                # control FINALIZE, `_on_frame` becomes the FIRST finalizer and
+                # the tail flush starts only after the whole audio backlog has
+                # drained — i.e. LATER, which WIDENS the window in which the
+                # SDK's DELETE overtakes it. Without `_run_tail_flush`'s
+                # completion latch this change makes M-04 more likely, not less.
                 logger.info(
                     "Final frame received",
                     session_id=session.session_id,
                     seq=frame.seq,
+                    bytes=len(frame.data),
                 )
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session.session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=preprocessor,
-                        )
-                        await self._drain_inference_queue(session.session_id)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, preprocessor)
                     await self._finalize_session(session)
                 except Exception as exc:
                     logger.error(
@@ -3398,13 +3951,9 @@ class SessionManager:
                         await publisher.publish_status("finalizing")
 
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session.session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=preprocessor,
-                        )
-                        await self._drain_inference_queue(session.session_id)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, preprocessor)
                     await self._finalize_session(session)
                 except Exception as exc:
                     logger.error(
@@ -3485,6 +4034,23 @@ class SessionManager:
             session.utterance_count = utterance.utterance_index + 1
             if result.is_final:
                 self._check_final_handover(session.session_id, result.text)
+            self._note_decode_outcome(session.session_id, utterance, result)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            # TASK-985 N-3 — this handler's broad `except` swallowed every ASR
+            # failure, so the switch controller was DEAF on exactly the path
+            # that matters most: the tail. The closing utterance is the one
+            # utterance most worth recovering, and it is the one whose failure
+            # could never arm the fallback.
+            #
+            # Deliberately NOT re-raised, which is what the design dossier
+            # proposed: this method is reached from `_flush_final_utterance`
+            # during teardown, whose caller turns any exception into "forcing
+            # session removal" — losing the MinIO uploads, the durable
+            # transcript and the teardown summary to rescue one utterance.
+            # Routing it through `record_failure` arms the fallback exactly as
+            # the steady-state loop does, and the retry below is the same
+            # buffer-handoff that loop performs.
+            await self._recover_inline_after_switch(session, utterance, exc)
         except Exception as exc:
             logger.warning(
                 "Inline inference failed",
@@ -3492,7 +4058,58 @@ class SessionManager:
                 error=str(exc),
             )
 
-    def _begin_tail_flush(self, session_id: str) -> bool:
+    async def _recover_inline_after_switch(
+        self,
+        session: StreamSession,
+        utterance: AudioUtterance,
+        exc: BaseException,
+    ) -> None:
+        """Classify an inline ASR failure and re-run the utterance if we switched.
+
+        TASK-985 N-3 — the tail path's equivalent of the inference loop's
+        failure branch. Never raises: teardown must complete either way.
+        """
+        controller = self._switch_controllers.get(session.session_id)
+        switched = False
+        if controller is not None:
+            try:
+                switched = await controller.record_failure(
+                    exc, utterance_index=utterance.utterance_index
+                )
+            except Exception as switch_exc:  # noqa: BLE001 — never fail teardown
+                logger.error(
+                    "Engine switch attempt failed on the inline/tail path",
+                    session_id=session.session_id,
+                    error=str(switch_exc),
+                )
+        logger.warning(
+            "stt.stream.inline_inference_failed",
+            session_id=session.session_id,
+            utterance_index=utterance.utterance_index,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            switched=switched,
+        )
+        if not switched:
+            return
+        worker = self._inference_workers.get(session.session_id)
+        if worker is None:
+            return
+        try:
+            result = await worker.process_utterance(session.session_id, utterance)
+            session.add_result(result)
+            session.utterance_count = utterance.utterance_index + 1
+            if result.is_final:
+                self._check_final_handover(session.session_id, result.text)
+        except Exception as retry_exc:  # noqa: BLE001 — floor: one lost utterance
+            logger.warning(
+                "Tail utterance re-run on fallback engine failed; dropping it",
+                session_id=session.session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(retry_exc),
+            )
+
+    def _begin_tail_flush(self, session_id: str) -> tuple[bool, asyncio.Event]:
         """Claim the one-and-only tail flush/drain for ``session_id``.
 
         F-32. ``_flush_final_utterance`` + ``_drain_inference_queue`` run before
@@ -3504,21 +4121,97 @@ class SessionManager:
 
         This is a test-and-set with NO ``await`` between the membership check and
         the insert: the asyncio event loop is single-threaded, so the pair is
-        atomic with respect to every other coroutine. Returns ``True`` for the
-        caller that owns the tail (it must flush + drain), ``False`` for every
-        later trigger (it skips straight to ``_finalize_session``, which stays
-        lock-serialized and idempotent). The flag is dropped in
-        ``remove_session`` alongside the finalize lock.
+        atomic with respect to every other coroutine.
+
+        TASK-985 M-04 — it returns ``(owned, done_event)``, not a bare bool.
+        ``owned`` is the unchanged F-32 mutual exclusion: exactly one caller
+        flushes and drains, and it MUST ``done_event.set()`` in a ``finally``.
+        ``done_event`` is the part F-32 lacked — a HAPPENS-BEFORE edge. Every
+        later trigger awaits it (bounded, via :meth:`_await_tail_flush`) before
+        finalizing, because ``False`` used to be read as "the tail is done" when
+        it only ever meant "someone else started it". Under that reading the
+        later trigger published the terminal ``closed`` status, built
+        ``transcript.json`` and called ``remove_session`` — which cancels the
+        inference loop and with it the tail decode still running inside the
+        first trigger. The closing utterance was lost from the captions, the
+        transcript and the durable record, while the billed audio seconds were
+        unaffected.
+
+        Both entries are dropped in ``remove_session`` alongside the finalize
+        lock.
         """
-        if session_id in self._tail_flush_started:
+        existing = self._tail_flush_done.get(session_id)
+        if existing is not None:
             logger.info(
-                "Tail flush already performed for this session; skipping duplicate "
-                "flush/drain and proceeding to finalize",
+                "Tail flush already claimed for this session; waiting for it to "
+                "complete before finalizing",
                 session_id=session_id,
+                already_done=existing.is_set(),
+            )
+            return (False, existing)
+        event = asyncio.Event()
+        self._tail_flush_done[session_id] = event
+        return (True, event)
+
+    async def _await_tail_flush(self, session_id: str, tail_done: asyncio.Event) -> bool:
+        """Wait (bounded, non-fatal) for another trigger's tail flush + drain.
+
+        Returns ``True`` when the tail completed, ``False`` on timeout.
+
+        BOUNDED and NON-FATAL by design. A wedged teardown holds a GPU slot,
+        a model pin and a capacity slot for the life of the process, which is a
+        strictly worse outcome than one lost tail utterance — so a timeout logs
+        at ERROR and lets the caller finalize anyway.
+
+        Note for the ``_on_frame`` caller: this runs on the single ingestion
+        dispatch loop, so while it waits the consumer stops XACK'ing
+        ``stt:audio``. Under the in-band terminal-frame design (M-29) the frame
+        that brought us here is the LAST entry on that stream, so there is
+        nothing left to starve; the bound caps the pathological case regardless.
+        """
+        if tail_done.is_set():
+            return True
+        try:
+            await asyncio.wait_for(tail_done.wait(), timeout=self._tail_wait_timeout_s)
+            return True
+        except TimeoutError:
+            # L-OBS request: `stt_stream_tail_wait_timeout_total`. Until that
+            # counter exists this ERROR is the only signal, so it carries the
+            # bound it exceeded rather than just naming the session.
+            logger.error(
+                "stt.stream.tail_wait_timeout",
+                session_id=session_id,
+                timeout_s=self._tail_wait_timeout_s,
             )
             return False
-        self._tail_flush_started.add(session_id)
-        return True
+
+    async def _run_tail_flush(
+        self,
+        session: StreamSession,
+        preprocessor: StreamingPreprocessor | None,
+    ) -> None:
+        """The tail flush + drain, claimed once and awaited by every other trigger.
+
+        TASK-985 M-04 — the ONE body all four finalize triggers share, so the
+        latch protocol cannot be half-implemented at one of them. A fifth
+        trigger added later gets the invariant by calling this instead of
+        re-deriving it.
+
+        ``finally: set()`` is the deadlock guard, not tidiness:
+        ``_flush_final_utterance`` swallows its own exceptions but
+        ``_drain_inference_queue`` does not, and the reaper must always be able
+        to finish.
+        """
+        session_id = session.session_id
+        owned, tail_done = self._begin_tail_flush(session_id)
+        if owned:
+            try:
+                await self._flush_final_utterance(session=session, preprocessor=preprocessor)
+                await self._drain_inference_queue(session_id)
+            finally:
+                tail_done.set()
+        else:
+            await self._await_tail_flush(session_id, tail_done)
 
     async def _flush_final_utterance(
         self,
@@ -3534,7 +4227,7 @@ class SessionManager:
 
             remaining_pcm = preprocessor.drain_processed_samples()
             if remaining_pcm:
-                session.processed_audio_buffer.extend(remaining_pcm)
+                session.append_processed_audio(remaining_pcm)
                 if session.processed_sample_rate is None:
                     session.processed_sample_rate = preprocessor.target_sample_rate
 
@@ -3563,6 +4256,20 @@ class SessionManager:
                     session_id=session.session_id,
                 )
                 await self._run_inline_inference(session, final_utt)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            # TASK-985 N-3 — an engine failure should have been classified by
+            # `_run_inline_inference` (or by the inference loop, for the queued
+            # path). Reaching here means a switchable error escaped one of them,
+            # which is a HOLE in the fallback wiring rather than a flush
+            # problem: log it as such rather than as a generic warning. Still
+            # swallowed — teardown must complete — but no longer indistinguishable
+            # from a preprocessor hiccup.
+            logger.error(
+                "stt.stream.tail_flush_switchable_error_escaped",
+                session_id=session.session_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
         except Exception as exc:
             logger.warning(
                 "Failed to flush final utterance during finalization",
@@ -4043,8 +4750,16 @@ class SessionManager:
                 error=str(re_exc),
             )
 
-    async def _finalize_session(self, session: StreamSession) -> dict[str, Any] | None:
+    async def _finalize_session(
+        self, session: StreamSession, *, stash_summary: bool = True
+    ) -> dict[str, Any] | None:
         """Finalize a session under a per-session lock.
+
+        ``stash_summary`` — TASK-985 M-23. ``False`` for the HTTP ``end_session``
+        caller, which RETURNS the summary to the gateway and is therefore the
+        one that emits the ledger row. Every other finalizer (the final audio
+        frame, the control ``FINALIZE``, the idle reaper) has nobody to return
+        it to, so it stashes it for the DELETE that is still coming.
 
         The four finalize entrypoints (``end_session``, the final audio frame,
         the control-FINALIZE command, and the reaper) can race; without
@@ -4064,7 +4779,7 @@ class SessionManager:
             lock = asyncio.Lock()
             self._finalize_locks[session.session_id] = lock
         async with lock:
-            return await self._finalize_session_locked(session)
+            return await self._finalize_session_locked(session, stash_summary=stash_summary)
 
     def _compute_session_seconds(self, session: StreamSession) -> float:
         """Wall-clock socket open->close seconds (``created_at`` -> ``closed_at``).
@@ -4252,7 +4967,9 @@ class SessionManager:
             "channel_count": self._session_channel_counts.get(session.session_id, 1),
         }
 
-    async def _finalize_session_locked(self, session: StreamSession) -> dict[str, Any] | None:
+    async def _finalize_session_locked(
+        self, session: StreamSession, *, stash_summary: bool = True
+    ) -> dict[str, Any] | None:
         """Finalize a session — mark finalizing, close out the live stream, upload, clean up.
 
         Callers must drain the inference queue *before* calling this
@@ -4277,6 +4994,26 @@ class SessionManager:
         # Once a session is closed, re-finalizing is a no-op.
         if session.status == SessionStatus.CLOSED:
             return None
+
+        # TASK-985 M-04 — the invariant this method's own docstring asserts
+        # ("callers must drain the inference queue BEFORE calling this
+        # method"), enforced HERE as well as at the four callers.
+        #
+        # The callers all go through `_run_tail_flush`, so in practice this is
+        # already satisfied on entry. It is repeated at the sink because this is
+        # the method that states the contract and the one whose violation is
+        # expensive: everything below — the terminal `closed` status the
+        # gateway's caption subscription COMPLETES on, `build_transcript_json`,
+        # the durable persist, `remove_session` — is unrecoverable once run. A
+        # fifth finalize trigger added later inherits the guarantee instead of
+        # having to remember it.
+        #
+        # An absent latch entry means NOBODY claimed a tail for this session
+        # (e.g. a recovered session finalized before any trigger ran), so there
+        # is nothing to wait for and no reason to block.
+        tail_done = self._tail_flush_done.get(session.session_id)
+        if tail_done is not None and not tail_done.is_set():
+            await self._await_tail_flush(session.session_id, tail_done)
 
         publisher = self._publishers.get(session.session_id)
         raw_audio_uri: str | None = None
@@ -4467,6 +5204,22 @@ class SessionManager:
                     error=str(summary_exc),
                 )
 
+            # TASK-985 M-23 — a summary nobody can return is a ledger row
+            # nobody writes. THIS IS BILLING CORRECTNESS, not tidiness: on the
+            # ordinary clean stop the control `FINALIZE` arrives first and
+            # finalizes here, the return value is discarded by `_on_control`,
+            # and the DELETE that follows finds no session and answers 204 —
+            # so `transcribe.stream` gets NO row at all for a consultation that
+            # was fully served. Stashing it lets the DELETE answer 200 with the
+            # same summary.
+            #
+            # The gateway, not STT, stays the owner of `interrupted`: this
+            # summary is IDENTICAL either way (see `_build_teardown_summary` —
+            # "STT has no notion of interrupted"), and which code path called
+            # `removeSession` is knowledge only the gateway has.
+            if stash_summary and teardown_summary is not None:
+                self._stash_teardown_summary(session.session_id, teardown_summary)
+
             # Always clean up in-memory and capacity state, even if graceful
             # close failed.
             await self.remove_session(session.session_id)
@@ -4615,7 +5368,9 @@ class SessionManager:
                     asr_pipeline = runtime.asr_pipeline
 
                     session.processed_sample_rate = runtime.target_sr
-                    session._vad_active = runtime.vad_enabled
+                    # TASK-985 CL-4 — same rule on the recovery path: what
+                    # LOADED, not what was declared.
+                    session._vad_active = runtime.vad_service is not None
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
                     # warm VAD state. Deferred — VAD starts cold but
@@ -4750,14 +5505,19 @@ class SessionManager:
                     timeout_s=timeout_s,
                 )
                 try:
-                    # F-32 — one tail flush per session across all triggers.
-                    if self._begin_tail_flush(session_id):
-                        await self._flush_final_utterance(
-                            session=session,
-                            preprocessor=self._preprocessors.get(session_id),
-                        )
-                        await self._drain_inference_queue(session_id)
-                    teardown_summary = await self._finalize_session(session)
+                    # F-32 / TASK-985 M-04 — one tail flush per session across
+                    # all triggers, and a bounded WAIT when another claimed it.
+                    await self._run_tail_flush(session, self._preprocessors.get(session_id))
+                    # TASK-985 M-23 — the reaper is the one finalizer that both
+                    # emits AND stashes, in that order. It pushes back
+                    # IMMEDIATELY (below) because it fires precisely when the
+                    # gateway is gone: deferring to the stash TTL would lose the
+                    # row outright to a pod roll inside that window. The entry
+                    # is then kept, marked `pushed_back`, only so a late DELETE
+                    # is answered honestly rather than re-emitting.
+                    teardown_summary = await self._finalize_session(
+                        session, stash_summary=False
+                    )
                     # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:
                     # no removeSession() caller received the DELETE-teardown
@@ -4765,7 +5525,8 @@ class SessionManager:
                     # Push the built summary back to the gateway (idempotent on the
                     # session id → a late DELETE never double-bills).
                     if teardown_summary:
-                        await self._push_streaming_usage_back(teardown_summary)
+                        await self._push_streaming_usage_back(teardown_summary, interrupted=True)
+                        self._stash_teardown_summary(session_id, teardown_summary, pushed_back=True)
                 except Exception as exc:
                     logger.error(
                         "Failed to reap session gracefully; forcing removal",
@@ -4776,15 +5537,114 @@ class SessionManager:
 
         return len(to_reap)
 
-    async def _push_streaming_usage_back(self, summary: dict[str, Any]) -> None:
-        """POST a reaper-built teardown summary to the gateway.
+    def _stash_teardown_summary(
+        self, session_id: str, summary: dict[str, Any], *, pushed_back: bool = False
+    ) -> None:
+        """Hold a non-HTTP finalizer's summary for the DELETE that follows.
+
+        TASK-985 M-23. Bounded twice — by TTL (checked on the way out of
+        :meth:`claim_teardown_summary`, swept by the heartbeat) and by entry
+        count, evicting oldest-first. Eviction PUSHES BACK rather than dropping:
+        the entry exists because a real consultation was served, so discarding
+        it silently is the same ledger hole this method exists to close.
+
+        ``pushed_back`` marks a summary whose finalizer already POSTed it (the
+        idle reaper), so neither eviction nor the sweep POSTs it twice.
+        """
+        ttl_s = float(getattr(self, "_teardown_stash_ttl_s", _TEARDOWN_STASH_TTL_S))
+        self._pending_teardown_summaries[session_id] = _StashedTeardown(
+            summary=summary,
+            expires_at=time.monotonic() + ttl_s,
+            pushed_back=pushed_back,
+        )
+        while len(self._pending_teardown_summaries) > _TEARDOWN_STASH_MAX_ENTRIES:
+            # dicts preserve insertion order, so the first key is the oldest.
+            evicted_id = next(iter(self._pending_teardown_summaries))
+            evicted = self._pending_teardown_summaries.pop(evicted_id)
+            logger.warning(
+                "stt.stream.teardown_stash_evicted",
+                session_id=evicted_id,
+                held=len(self._pending_teardown_summaries),
+                cap=_TEARDOWN_STASH_MAX_ENTRIES,
+            )
+            if not evicted.pushed_back:
+                # The gateway never came for it, so it never told us whether the
+                # session was interrupted — and an abandoned teardown is exactly
+                # what `interrupted` means.
+                task = asyncio.create_task(
+                    self._push_streaming_usage_back(evicted.summary, interrupted=True)
+                )
+                self._stash_pushback_tasks.add(task)
+                task.add_done_callback(self._stash_pushback_tasks.discard)
+
+    def claim_teardown_summary(self, session_id: str) -> dict[str, Any] | None:
+        """Pop the stashed teardown summary for ``session_id``, if any.
+
+        Read by ``DELETE /internal/streaming/sessions/{id}`` when the session is
+        already gone: instead of answering 204 ("nothing to summarize") it
+        answers 200 with the summary the finalizer that ran had no way to
+        return. Claiming is destructive so two DELETEs cannot both emit; the
+        ledger's idempotency key would dedup anyway, but not trying is better
+        than relying on it.
+        """
+        entry = self._pending_teardown_summaries.pop(session_id, None)
+        if entry is None:
+            return None
+        if time.monotonic() > entry.expires_at:
+            logger.warning(
+                "stt.stream.teardown_stash_expired_on_claim",
+                session_id=session_id,
+            )
+            return None
+        if entry.pushed_back:
+            # Already POSTed by its finalizer. Returning it here would be a
+            # second emission attempt for the same teardown; the ledger's
+            # idempotency key would dedup it, but not trying is better than
+            # relying on that.
+            logger.info(
+                "stt.stream.teardown_stash_already_pushed",
+                session_id=session_id,
+            )
+            return None
+        return entry.summary
+
+    async def _sweep_teardown_summaries(self) -> None:
+        """Push back teardown summaries no DELETE ever claimed.
+
+        Runs on the worker heartbeat. An expired entry means the gateway never
+        came for it — it crashed, or its removal retries were exhausted — which
+        is the same situation the reaper's push-back already handles, so it gets
+        the same treatment and the same ``interrupted=True`` verdict. The
+        ledger's idempotency key is shared across both paths, so a late claim
+        after a push-back is a no-op at the ledger, never a double charge.
+        """
+        now = time.monotonic()
+        expired = [
+            sid for sid, entry in self._pending_teardown_summaries.items() if now > entry.expires_at
+        ]
+        for session_id in expired:
+            entry = self._pending_teardown_summaries.pop(session_id, None)
+            if entry is None or entry.pushed_back:
+                continue
+            logger.warning(
+                "stt.stream.teardown_stash_unclaimed",
+                session_id=session_id,
+            )
+            await self._push_streaming_usage_back(entry.summary, interrupted=True)
+
+    async def _push_streaming_usage_back(
+        self, summary: dict[str, Any], *, interrupted: bool = True
+    ) -> None:
+        """POST a finalizer-built teardown summary to the gateway.
 
         Best-effort by design: the gateway may still be down (it just crashed),
         so a failure here is logged and dropped — a metering side effect must
         never fail the reaper, and the raw ledger back-rate remains the backstop.
-        ``interrupted=True`` because a reaped session was abandoned, not cleanly
-        stopped. A short-lived client is fine: the reaper runs on a multi-minute
-        idle cadence, so per-call construction cost is irrelevant.
+        ``interrupted`` defaults to ``True`` because every caller of this method
+        is a path where the gateway did NOT come to collect: a reaped session
+        was abandoned, and an unclaimed stash was abandoned by the gateway. A
+        short-lived client is fine: these run on a multi-second-or-worse cadence,
+        so per-call construction cost is irrelevant.
         """
         settings = get_settings()
         base_url = getattr(settings, "api_gateway_url", "")
@@ -4796,7 +5656,7 @@ class SessionManager:
             base_url, api_key, timeout=getattr(settings, "api_gateway_timeout", 30)
         )
         try:
-            await client.record_streaming_usage(summary, interrupted=True)
+            await client.record_streaming_usage(summary, interrupted=interrupted)
         except Exception as exc:  # noqa: BLE001 — best-effort metering side effect
             logger.warning(
                 "stt.stream.usage_pushback_failed",
@@ -4914,6 +5774,8 @@ class SessionManager:
             while self._running:
                 await asyncio.sleep(self._heartbeat_interval_s)
                 await self._reconcile_capacity_guard()
+                # TASK-985 M-23 — teardown summaries the gateway never claimed.
+                await self._sweep_teardown_summaries()
                 key = worker_key(self._worker_id)
                 # Update session list and extend TTL
                 session_ids = list(self._sessions.keys())
@@ -4930,10 +5792,21 @@ class SessionManager:
             pass
 
     async def _reconcile_capacity_guard(self) -> None:
-        """Self-heal leaked capacity slots that are not present in session maps."""
+        """Self-heal leaked capacity slots that are not present in session maps.
+
+        TASK-985 N-1 — a session in CREATION holds a slot and is deliberately
+        not yet in ``self._sessions``; it is not a leak, and releasing it
+        silently exceeds the cap. ``_creating`` is registered before the
+        capacity admission completes, so the reconciler never sees a gap —
+        preferred over a time-based grace window, which would have to be longer
+        than the slowest cold load to be correct and would mask a real leak for
+        that long.
+        """
         guard_ids = set(self._capacity_guard.active_session_ids)
         tracked_ids = set(self._sessions.keys())
-        leaked_ids = guard_ids - tracked_ids
+        # getattr guard, same posture as `_draining`: pre-existing fixtures
+        # build managers that predate this set.
+        leaked_ids = guard_ids - tracked_ids - set(getattr(self, "_creating", ()))
         if not leaked_ids:
             return
 

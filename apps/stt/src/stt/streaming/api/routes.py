@@ -299,13 +299,30 @@ async def delete_streaming_session(
     A REAL teardown returns 200 with the usage-attribution
     summary (``StreamingSessionTeardownResponse``) the API Gateway needs to
     emit the ``transcribe.stream`` ledger row — 204/no-body when the session
-    was already gone (nothing to summarize) OR when ``end_session`` could not
-    build one (best-effort; logged server-side, never blocks teardown).
+    was already gone AND no summary was stashed for it, OR when ``end_session``
+    could not build one (best-effort; logged server-side, never blocks
+    teardown).
+
+    TASK-985 M-23 — "already gone" is the COMMON case on a clean stop, not an
+    edge case: the client's `stop` writes a control FINALIZE, that finalizer
+    closes the session and has nobody to return its summary to, and this DELETE
+    then arrives to find nothing. Answering 204 there produced NO
+    `transcribe.stream` row at all for a consultation that was fully served.
+    The finalizer now stashes; this route claims the stash and answers 200, so
+    the GATEWAY still emits the row and still owns the `interrupted` verdict
+    (STT has no notion of it — see `_build_teardown_summary`).
     """
     mgr = _require_session_manager()
 
     session = mgr.get_session(session_id)
     if session is None:
+        stashed = mgr.claim_teardown_summary(session_id)
+        if stashed is not None:
+            logger.info(
+                "stt.stream.teardown_stash_claimed",
+                session_id=session_id,
+            )
+            return StreamingSessionTeardownResponse(**stashed)
         logger.debug("Session already removed, returning 204", session_id=session_id)
         response.status_code = 204
         return None

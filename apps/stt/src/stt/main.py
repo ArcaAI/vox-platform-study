@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import os
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -93,6 +94,121 @@ def _configure_torch_threading() -> None:
 # read `PRELOAD_PIPELINES`, a knob whose own description said it was deprecated
 # and not used for selection; with the setting gone the function had no input
 # and no caller-visible effect. Models load lazily on first use.
+#
+# TASK-985 QW-4 / OD-F brings a warm start BACK, and the removed knob's own
+# epitaph said where it belongs: "a warm-start knob, if one is ever wanted
+# again, belongs in the control plane like every other"
+# (`core/config/settings.py`). Hence `stt.warmDefaultAsrOnBoot` below rather
+# than an env var.
+
+#: The control-plane key that opts a pod into warming its ASR model at boot.
+#: SYSTEM-tier, boolean, DEFAULT OFF — absent, null or non-boolean all leave
+#: today's lazy-load behaviour in force, which is the `open-to-default` posture
+#: this class of tuning knob takes (it is availability, not selection).
+WARM_DEFAULT_ASR_ON_BOOT_KEY = "stt.warmDefaultAsrOnBoot"
+
+#: Where the gateway answers "which ASR spec would a tenant with no opinion
+#: get?". STT resolves NOTHING itself here: since TASK-861 the agent path reads
+#: no selection from Postgres, and its `database_enabled` is off by default, so
+#: the alternative would be re-opening the DB read that ticket deliberately
+#: closed. Absent route ⇒ one WARN and no warm (the key is default-OFF anyway).
+DEFAULT_ASR_SPEC_PATH = "/internal/stt/default-asr-spec"
+
+
+async def _warm_default_asr_model() -> None:
+    """Load the platform's default ASR model once, off every request path.
+
+    TASK-985 QW-4. Idle TTL evicts the served model between consultations —
+    measured at a 4.6 s cold reload inside a 5807 ms session-create against
+    118/224 ms warm — and the cluster's own runbook documents the resulting 503
+    on the first session after a GPU pod rolls.
+
+    THREE PROPERTIES THIS FUNCTION MUST KEEP, and they are the whole design:
+
+    1. **It never gates startup.** Fired detached, never awaited by `lifespan`.
+       A slow load (a network-backed cache read) or a broken one (bad digest,
+       corrupt GGUF) would otherwise turn a routine model swap into a
+       `CrashLoopBackOff` that kills ALL serving capacity — strictly worse than
+       today's per-session cold penalty. This inherits the contract the
+       cache-root warm task already documents: "warming can make the first probe
+       faster, never slower, and it must not delay or fail boot."
+    2. **It never gates readiness.** `/health/ready` checks that the process's
+       hard infra dependencies are reachable; model residency is not one of
+       them, because a pod that has not warmed is still fully capable of
+       lazy-loading on first request. Gating readiness on residency is a
+       separate, LATER change with a mandatory timeout, and it belongs to
+       whoever owns `/health/ready`.
+    3. **It warms the ASR model and nothing else.** Silero VAD, the Pyannote
+       embedding and Cadence punctuation stay lazy behind their own idempotent
+       per-use guards: most sessions never touch diarization or embedding, and
+       generalising this to "everything the SYSTEM agent might reference" would
+       reintroduce at boot the dead-import cost that was moved to first use.
+
+    Every failure path is a log line and a return. This function raises nothing.
+    """
+    from stt.core.effective_config import get_effective_config_client
+
+    try:
+        snapshot = await get_effective_config_client().get()
+        entry = (snapshot.raw.get("settings") or {}).get(WARM_DEFAULT_ASR_ON_BOOT_KEY)
+        enabled = entry.get("value") if isinstance(entry, dict) else None
+    except Exception as exc:  # noqa: BLE001 — boot must not depend on the config plane
+        logger.warning("stt.warm_default_asr.config_unavailable", error=str(exc))
+        return
+
+    # `is not True`, not falsy: a served string or number is a WRONG value, and a
+    # wrong value must leave the bootstrap behaviour standing rather than be
+    # coerced into an opinion.
+    if enabled is not True:
+        logger.debug("stt.warm_default_asr.disabled", served=enabled)
+        return
+
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.api_gateway_url,
+            timeout=getattr(settings, "api_gateway_timeout", 30),
+            headers={"X-Internal-Service-Key": settings.api_gateway_key.get_secret_value()},
+        ) as client:
+            response = await client.get(DEFAULT_ASR_SPEC_PATH)
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:  # noqa: BLE001 — a warm is best-effort, always
+        logger.warning(
+            "stt.warm_default_asr.spec_unavailable",
+            path=DEFAULT_ASR_SPEC_PATH,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return
+
+    try:
+        from stt.models import get_model_cache
+        from stt.pipeline.spec import bundle_from_resolved
+
+        # The SAME mapping a session create performs, so a warmed model is
+        # keyed and budgeted exactly as the served one will be — warming under a
+        # different key would warm nothing.
+        bundle = bundle_from_resolved(payload)
+        slug = bundle.spec.models.asr.slug
+        model_config = bundle.model_configs.get(slug)
+        if model_config is None:
+            logger.warning("stt.warm_default_asr.model_config_missing", model_slug=slug)
+            return
+        started = time.monotonic()
+        await get_model_cache().get_or_load(model_config)
+        logger.info(
+            "stt.warm_default_asr.loaded",
+            model_slug=slug,
+            elapsed_s=round(time.monotonic() - started, 3),
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — a failed warm is a slow first session
+        logger.warning(
+            "stt.warm_default_asr.load_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 @asynccontextmanager
@@ -191,6 +307,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         warm_cache_roots(hf_cache_dir=_cache_dir, s3_cache_dir=_cache_dir, service="stt")
     )
 
+    # TASK-985 QW-4 / OD-F — optionally warm the default ASR model, on exactly
+    # the same terms as the cache-root warm above: detached, never awaited,
+    # cancelled on shutdown, and governed by a SYSTEM-tier key that is DEFAULT
+    # OFF. Deliberately fired AFTER `refresh_settings_from_control_plane()`
+    # (which ran above), so the key's served value is already in hand.
+    #
+    # Landing this does NOT replace the `stt.modelCache.ttlSeconds` write: the
+    # TTL is what removes the recurring MID-SHIFT cold start, and it is a
+    # control-plane write, not code. This only removes the post-roll one.
+    app.state.asr_warmup_task = asyncio.create_task(_warm_default_asr_model())
+
     logger.info("STT Service started successfully")
 
     yield
@@ -200,6 +327,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     warmup_task = getattr(app.state, "model_cache_warmup_task", None)
     if warmup_task is not None and not warmup_task.done():
         warmup_task.cancel()
+    asr_warmup_task = getattr(app.state, "asr_warmup_task", None)
+    if asr_warmup_task is not None and not asr_warmup_task.done():
+        asr_warmup_task.cancel()
     invalidation_task = getattr(app.state, "config_invalidation_task", None)
     if invalidation_task is not None:
         invalidation_task.cancel()

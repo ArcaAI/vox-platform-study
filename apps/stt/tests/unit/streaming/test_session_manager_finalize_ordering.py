@@ -68,7 +68,6 @@ def _make_manager():
         preprocess_pool_size=2,
         max_concurrent_streams=10,
         batch_scheduler_max_wait_ms=500,
-        vad_silence_threshold_ms=700,
         multi_gpu_strategy="none",
     )
     redis_mock = AsyncMock()

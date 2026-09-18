@@ -62,7 +62,13 @@ class ExecutionProfile:
     # Streaming tuning
     max_concurrent_streams: int
     batch_scheduler_max_wait_ms: int
-    vad_silence_threshold_ms: int
+    # TASK-985 M-13 — `vad_silence_threshold_ms` lived here, a literal 500 on
+    # all five profiles, and it had exactly ONE production reader: the `else`
+    # branch of `_build_preprocessor_vad_kwargs`, which substituted it whenever
+    # the agent had not enabled the Silero stage. That branch is gone. The value
+    # is a property of the CLINICIAN's speech, not of the hardware, so it
+    # belongs to the agent and nowhere else — a profile field with a plausible
+    # default is a hardcoded configuration value wearing a costume.
 
     # Multi-GPU
     multi_gpu_strategy: str  # "replicate", "split", "none"
@@ -158,7 +164,6 @@ def _build_a100_h100_profile(
         preprocess_pool_size=16,
         max_concurrent_streams=100,
         batch_scheduler_max_wait_ms=1000,
-        vad_silence_threshold_ms=500,
         multi_gpu_strategy="none",
     )
 
@@ -183,7 +188,6 @@ def _build_multi_gpu_profile(
         preprocess_pool_size=12,
         max_concurrent_streams=40,
         batch_scheduler_max_wait_ms=800,
-        vad_silence_threshold_ms=500,
         multi_gpu_strategy="split",
     )
 
@@ -206,7 +210,6 @@ def _build_rtx_a2000_profile(device_name: str, vram_gb: float) -> ExecutionProfi
         preprocess_pool_size=8,
         max_concurrent_streams=20,
         batch_scheduler_max_wait_ms=800,
-        vad_silence_threshold_ms=500,
         multi_gpu_strategy="none",
     )
 
@@ -240,7 +243,6 @@ def _build_apple_silicon_profile(unified_memory_gb: float) -> ExecutionProfile:
         preprocess_pool_size=min(8, psutil.cpu_count(logical=False) or 4),
         max_concurrent_streams=max_streams,
         batch_scheduler_max_wait_ms=1500,
-        vad_silence_threshold_ms=500,
         multi_gpu_strategy="none",
     )
 
@@ -280,7 +282,6 @@ def _build_cpu_profile() -> ExecutionProfile:
         preprocess_pool_size=pool_size,
         max_concurrent_streams=max_streams,
         batch_scheduler_max_wait_ms=2000,
-        vad_silence_threshold_ms=500,
         multi_gpu_strategy="none",
     )
 
