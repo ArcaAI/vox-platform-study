@@ -111,6 +111,7 @@ promote-dev:
     - if: $PIPELINE_TYPE == "dev"
   environment:
     name: dev
+    url: $DEV_HEALTH_URL
 
 promote-staging:
   extends: .promote-base
@@ -146,6 +147,98 @@ promote-prod:
       when: manual
   environment:
     name: production
+
+# ══════════════════════════════════════════════════════════════════════════════
+# verify-dev — close the loop between CI and the cluster
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Until TASK-990 this pipeline had no idea whether a deploy landed. `promote-dev`
+# resolves a digest, commits it to hope-v2-deployment, and the pipeline goes
+# green — that is the moment CI stopped caring. Argo CD then syncs, the pods
+# roll, and the in-cluster `hope-smoke-test` PostSync hook curls nine readiness
+# endpoints and fails the SYNC on any non-2xx. All of which is invisible here:
+# a promotion that Argo never applied, or applied into a CrashLoop, looked
+# exactly like a successful one.
+#
+# This job is the missing edge. It needs NO new credential — no Argo token, no
+# kubeconfig — because the running gateway already identifies its own build.
+# `/api/v1/health` reports the version baked into the image at build time
+# (`/app/build-info.json`), and for an untagged build the grammar is
+# `0.0.0-<branch-slug>.<sha8>` (packages/utils/src/version-grammar.ts). So
+# "did MY commit reach the cluster and is it serving?" is answerable by polling
+# one public endpoint until the thing that answers names this pipeline's SHA.
+#
+# What a green verify-dev proves: the digest promoted here was applied by Argo,
+# the gateway rolled onto it, and it passes its own readiness gate. What it does
+# NOT prove: that the six Python services rolled — they are not publicly
+# reachable, and the PostSync smoke test is what covers them (it fails the sync,
+# which is a stronger remedy than failing this job). Do not widen this into a
+# fan-out over internal services; that is the smoke test's job and duplicating
+# it here would put CI on the critical path of every service's health.
+#
+# It is deliberately BLOCKING. A deploy verification that is allowed to fail is
+# the same "gate that proves nothing" this ticket exists to remove. Note that a
+# red verify-dev does not block the deploy — `promote-dev` has already
+# committed — it reports that the deploy did not arrive, which is the point.
+verify-dev:
+  stage: deploy
+  needs: [promote-dev]
+  tags: [deploy]
+  image: alpine:3.21
+  interruptible: false
+  variables:
+    # Topology, not application config (09-infrastructure-devops.md
+    # §Configuration Tiers): override with a project CI variable if the dev
+    # gateway ever moves. `api-dev.taphuynh.dev` is the equivalent hostname.
+    DEV_HEALTH_URL: "https://api.taphuynh.dev"
+    # Argo polls its repo on an interval and the gateway carries
+    # minReadySeconds 15 plus a startup probe, so a correct deploy is minutes,
+    # not seconds. 15 minutes is generous for the API specifically — it is NOT
+    # sized for the GPU services, which this job does not wait on.
+    VERIFY_TIMEOUT_S: "900"
+    VERIFY_INTERVAL_S: "15"
+  rules:
+    - if: $PIPELINE_TYPE == "dev"
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      set -u
+      want="$(printf '%s' "$CI_COMMIT_SHA" | cut -c1-8 | tr 'A-Z' 'a-z')"
+      url="${DEV_HEALTH_URL}/api/v1/health"
+      echo "── waiting for $url to report build .$want (timeout ${VERIFY_TIMEOUT_S}s) ──"
+      deadline=$(( $(date +%s) + VERIFY_TIMEOUT_S ))
+      body=""; reached=0
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        if body="$(curl -fsS --max-time 10 "$url" 2>/dev/null)"; then
+          reached=1
+          if printf '%s' "$body" | grep -q "\"version\":\"[^\"]*\.${want}\""; then
+            echo "$body"
+            echo "✓ dev is serving build .$want"
+            exit 0
+          fi
+          echo "  serving: $(printf '%s' "$body" | sed -n 's/.*\"version\":\"\([^\"]*\)\".*/\1/p') — waiting for .$want"
+        else
+          echo "  $url not answering yet"
+        fi
+        sleep "$VERIFY_INTERVAL_S"
+      done
+      echo ""
+      echo "✗ dev did not report build .$want within ${VERIFY_TIMEOUT_S}s." >&2
+      if [ "$reached" = "0" ]; then
+        echo "  The endpoint never answered at all. Before assuming the deploy failed," >&2
+        echo "  check that this runner can reach $DEV_HEALTH_URL — it is published" >&2
+        echo "  through the Cloudflare tunnel, and runner egress/DNS is the first" >&2
+        echo "  suspect on a FIRST run of this job. Override DEV_HEALTH_URL if the" >&2
+        echo "  hostname moved." >&2
+      else
+        echo "  The gateway answered but kept reporting: $(printf '%s' "$body" | sed -n 's/.*\"version\":\"\([^\"]*\)\".*/\1/p')" >&2
+        echo "  So the promotion did not reach the cluster, or Argo has not applied it." >&2
+        echo "  Look at the Argo Application hope-v2-dev (sync status + last operation)" >&2
+        echo "  and at the hope-smoke-test PostSync hook, which fails the sync when a" >&2
+        echo "  service's readiness endpoint does not come up." >&2
+      fi
+      exit 1
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PgBouncer smoke test
