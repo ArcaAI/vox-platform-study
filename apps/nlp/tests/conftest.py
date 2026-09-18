@@ -1,3 +1,6 @@
+import io
+import logging
+from collections.abc import Callable
 from unittest.mock import patch
 
 import pytest
@@ -10,7 +13,56 @@ from pydantic import SecretStr
 
 import nlp.lifespan  # noqa: F401 — ensure module is importable before patching
 
-assert_source_tree(["nlp", "hope_env", "hope_runtime_models"], __file__)
+assert_source_tree(["nlp", "hope_env", "hope_runtime_models", "hope_obs"], __file__)
+
+# `nlp.core.logging.get_logger` now proxies to `structlog`, exactly like every
+# module that already called `structlog.get_logger(__name__)` directly
+# (`nlp.dependencies`, `nlp.core.effective_config`, ...). Unconfigured,
+# structlog uses ITS OWN default renderer/logger-factory (`PrintLogger`),
+# which bypasses Python's stdlib `logging` module entirely — and with it,
+# `caplog`, which is a stdlib-`logging` handler. In production this never
+# arises: `nlp.main` calls `setup_logging()` at import time before anything
+# else runs. Tests never import `nlp.main`, so this one call reproduces that
+# "always configured" baseline for the WHOLE session, exactly once, before
+# pytest's per-test log-capturing handler exists — so it can never clash with
+# a `caplog`-based test the way a per-test reset would (see
+# `hope_obs.logging.configure_logging`: every call wipes the root logger's
+# existing handlers, `caplog`'s included).
+#
+# `test_observability.py` and `test_task883_logging_retirement.py` need a
+# FRESH reconfiguration per test (to see a monkeypatched `NLP_LOG_LEVEL`, a
+# different OTLP endpoint, ...); they carry their own MODULE-LOCAL autouse
+# fixture that resets `hope_obs.logging._SETUP_DONE` and is safe there
+# because neither file uses `caplog`.
+from hope_obs import ObservabilityConfig  # noqa: E402
+from hope_obs import configure_logging as _hope_obs_configure_logging  # noqa: E402
+
+_hope_obs_configure_logging(ObservabilityConfig(service_name="nlp"))
+
+
+@pytest.fixture
+def capture_log_output() -> Callable[[], io.StringIO]:
+    """Redirect the root ``StreamHandler`` `hope_obs.configure_logging` installs
+    into an in-memory buffer. Call AFTER logging is configured (directly, via
+    `nlp.core.logging.setup_logging`, or via `nlp.core.observability.
+    setup_opentelemetry`): the handler is created there and holds whatever
+    ``sys.stdout`` was at that moment.
+
+    Deliberately not `caplog`: `configure_logging` clears every existing root
+    handler on each call (idempotence guard aside — this still runs the FIRST
+    time in a test), which would silently drop `caplog`'s own handler if
+    logging were (re)configured inside a `caplog.at_level(...)` block. Mirrors
+    `packages/py-obs/tests/conftest.py`.
+    """
+
+    def _attach() -> io.StringIO:
+        stream = io.StringIO()
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setStream(stream)
+        return stream
+
+    return _attach
 
 
 class FakeService:
