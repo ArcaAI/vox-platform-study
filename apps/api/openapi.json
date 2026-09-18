@@ -49030,7 +49030,7 @@
                 "0197f1e6-5b8e-7a1c-9c3d-2b6f0a1d4e55"
               ],
               "items": {
-                "format": "uuid",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
                 "type": "string"
               },
               "maxItems": 10000,
